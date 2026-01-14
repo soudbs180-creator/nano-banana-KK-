@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Portable Node (local only, not needed for web deployment)
+node-portable/
+
+# Build output
+dist/
+
+# Environment files (sensitive)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE/Editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local scripts (not needed for web)
+*.bat
+*.vbs
+*.exe
+*.ps1
