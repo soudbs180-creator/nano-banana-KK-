@@ -28,17 +28,11 @@ export const generateImage = async (
 
   // Local development: Direct API call
   if (isLocalDev) {
-    // FIX: For Local Dev with Free Tier, we cannot call backend (unless using netlify dev).
-    // So we use the specific key DIRECTLY here for testing, ensuring it works immediately.
-    if (useFreeTier) {
-      // Enforce model locally too
-      if (model !== ModelType.NANO_BANANA) {
-        throw new Error("免费额度仅限 Nano Banana (Fast) 模型");
-      }
-      return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
-    }
-
-    return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
+    // For local dev with Free Tier, we need the key client-side or use backend
+    // If usage is Free Tier, let's try to use backend even in local dev? 
+    // Or just use the key if provided.
+    // Simplifying: If Free Tier, use backend (so we can hide key in .env)
+    return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, useFreeTier);
   }
 
   // Production: Call backend
@@ -74,25 +68,15 @@ async function generateImageDirect(
     parts.push({ text: prompt });
 
     // Build config
-    let finalPrompt = prompt;
-    const requestConfig: any = {};
-
-    // Imagen Models use imageConfig
-    if (model.includes('imagen')) {
-      requestConfig.imageConfig = { aspectRatio };
-      if (model === ModelType.PRO_QUALITY) {
-        requestConfig.imageConfig.imageSize = imageSize;
-      }
-    } else if (model.includes('gemini')) {
-      // Gemini Models (2.0 Flash) don't use imageConfig, use prompt engineering
-      finalPrompt = `${prompt} (Aspect Ratio: ${aspectRatio})`;
-      // Gemini config (generationConfig) for validation/safety can go here if needed
+    const imageConfig: any = { aspectRatio };
+    if (model === ModelType.PRO_QUALITY) {
+      imageConfig.imageSize = imageSize;
     }
 
     const response = await ai.models.generateContent({
       model,
-      contents: [{ role: 'user', parts: [{ text: finalPrompt }, ...parts.filter(p => p.inlineData)] }],
-      config: requestConfig,
+      contents: [{ role: 'user', parts }],
+      config: { imageConfig },
     });
 
     if (response.candidates && response.candidates.length > 0) {
@@ -140,14 +124,7 @@ async function generateImageViaBackend(
       }),
     });
 
-    const text = await response.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      console.error("Failed to parse backend response:", text);
-      throw new Error(`服务器响应错误: ${response.status} ${response.statusText}`);
-    }
+    const data = await response.json();
 
     if (!response.ok) {
       throw new Error(data.error || `请求失败: ${response.status}`);

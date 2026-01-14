@@ -31,30 +31,19 @@ export default async (request: Request) => {
     }
 
     try {
-        // Parse body
-        let body: GenerateRequest;
-        try {
-            body = await request.json();
-        } catch (e) {
-            console.error("Failed to parse request body:", e);
-            return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-                status: 400,
-                headers: { "Content-Type": "application/json" },
-            });
-        }
-
+        const body: GenerateRequest = await request.json();
         const { prompt, aspectRatio, imageSize, model, referenceImages, useFreeTier } = body;
 
         // Security: Determine effective API Key
         let effectiveApiKey = body.apiKey;
 
         if (useFreeTier) {
-            // Use server-side environment variable for Free Tier, with fallback to the specific provided key
+            // Use server-side environment variable for Free Tier
             // This ensures the key is never exposed to the client
-            effectiveApiKey = process.env.FREE_TIER_KEY || "AIzaSyBCV8yD_VdxZb3EBcv0pyJiFNTgXh_mNzQ";
+            effectiveApiKey = process.env.FREE_TIER_KEY;
 
             // Enforce Nano Banana (Fast) model for Free Tier
-            if (model !== 'gemini-2.0-flash-preview-image-generation') {
+            if (model !== 'gemini-2.5-flash-image') {
                 return new Response(JSON.stringify({ error: "Free Tier only supports Nano Banana Flash model" }), {
                     status: 403,
                     headers: { "Content-Type": "application/json" },
@@ -91,37 +80,16 @@ export default async (request: Request) => {
         parts.push({ text: prompt });
 
         // Build image generation config
-        let requestConfig: any = undefined;
-        let finalPrompt = prompt;
-
-        if (model.includes('imagen')) {
-            requestConfig = { imageConfig: { aspectRatio } };
-            if (model === "imagen-3.0-generate-002" && imageSize) {
-                requestConfig.imageConfig.imageSize = imageSize;
-            }
-        } else {
-            // Gemini models: Add aspect ratio to prompt
-            finalPrompt = `${prompt} (Aspect Ratio: ${aspectRatio})`;
+        const imageConfig: any = { aspectRatio };
+        if (model === "imagen-3.0-generate-002" && imageSize) {
+            imageConfig.imageSize = imageSize;
         }
-
-        // Re-build contents with modified prompt if needed
-        // Note: 'parts' already contains reference images and the *original* prompt text at the end (line 69)
-        // We need to replace the text part or clear parts and rebuild.
-        // Easier: Just rebuild the text part.
-
-        const finalParts = [];
-        if (referenceImages && referenceImages.length > 0) {
-            for (const img of referenceImages) {
-                finalParts.push({ inlineData: { data: img.data, mimeType: img.mimeType } });
-            }
-        }
-        finalParts.push({ text: finalPrompt });
 
         // Call Gemini API
         const response = await ai.models.generateContent({
             model,
-            contents: [{ role: "user", parts: finalParts }],
-            config: requestConfig,
+            contents: [{ role: "user", parts }],
+            config: { imageConfig },
         });
 
         // Extract image from response
