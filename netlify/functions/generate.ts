@@ -31,7 +31,18 @@ export default async (request: Request) => {
     }
 
     try {
-        const body: GenerateRequest = await request.json();
+        // Parse body
+        let body: GenerateRequest;
+        try {
+            body = await request.json();
+        } catch (e) {
+            console.error("Failed to parse request body:", e);
+            return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" },
+            });
+        }
+
         const { prompt, aspectRatio, imageSize, model, referenceImages, useFreeTier } = body;
 
         // Security: Determine effective API Key
@@ -43,7 +54,7 @@ export default async (request: Request) => {
             effectiveApiKey = process.env.FREE_TIER_KEY || "AIzaSyBCV8yD_VdxZb3EBcv0pyJiFNTgXh_mNzQ";
 
             // Enforce Nano Banana (Fast) model for Free Tier
-            if (model !== 'gemini-2.0-flash-exp') {
+            if (model !== 'gemini-2.0-flash-preview-image-generation') {
                 return new Response(JSON.stringify({ error: "Free Tier only supports Nano Banana Flash model" }), {
                     status: 403,
                     headers: { "Content-Type": "application/json" },

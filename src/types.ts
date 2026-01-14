@@ -16,7 +16,7 @@ export enum ImageSize {
 }
 
 export enum ModelType {
-  NANO_BANANA = 'gemini-2.0-flash-exp',
+  NANO_BANANA = 'gemini-2.0-flash-preview-image-generation',
   PRO_QUALITY = 'imagen-3.0-generate-001',
 }
 

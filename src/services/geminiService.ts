@@ -31,6 +31,10 @@ export const generateImage = async (
     // FIX: For Local Dev with Free Tier, we cannot call backend (unless using netlify dev).
     // So we use the specific key DIRECTLY here for testing, ensuring it works immediately.
     if (useFreeTier) {
+      // Enforce model locally too
+      if (model !== ModelType.NANO_BANANA) {
+        throw new Error("免费额度仅限 Nano Banana (Fast) 模型");
+      }
       return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
     }
 
@@ -136,7 +140,14 @@ async function generateImageViaBackend(
       }),
     });
 
-    const data = await response.json();
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error("Failed to parse backend response:", text);
+      throw new Error(`服务器响应错误: ${response.status} ${response.statusText}`);
+    }
 
     if (!response.ok) {
       throw new Error(data.error || `请求失败: ${response.status}`);

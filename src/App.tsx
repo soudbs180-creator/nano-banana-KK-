@@ -1102,8 +1102,12 @@ const AppContent: React.FC = () => {
 
             <div className="mt-6 space-y-3">
               <button
-                onClick={() => saveApiKeys(apiKeys)}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+                onClick={() => {
+                  saveApiKeys(apiKeys);
+                  setIsUsingFreeKey(false); // Disable free mode when manual keys are saved
+                  setShowApiModal(false);
+                }}
+                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 rounded-xl transition-all text-sm mb-3"
               >
                 保存密钥
               </button>
@@ -1117,35 +1121,20 @@ const AppContent: React.FC = () => {
                 获取免费 API 密钥
               </a>
 
-              {/* Free Tier Test Button */}
+              {/* Free Tier Test Button - DISABLED */}
               <div className="pt-4 border-t border-white/5">
                 <button
-                  onClick={() => {
-                    // Activate Free Key Mode
-                    setIsUsingFreeKey(true);
-
-                    // Force model to Fast (Nano Banana)
-                    setConfig(prev => ({ ...prev, model: ModelType.NANO_BANANA }));
-
-                    // Show success feedback
-                    setError(null);
-                    console.log("Activated Free Key Mode");
-
-                    // Close modal
-                    setShowApiModal(false);
-
-                    alert("已开启免费体验模式！\n\n• 使用专用免费API key\n• 仅限 Nano Banana (Fast) 模型\n• 手动配置的 Key 将暂时被忽略");
-                  }}
-                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-2 border border-white/5"
+                  disabled={true}
+                  className="w-full bg-zinc-800/50 text-zinc-500 font-medium py-2 rounded-xl text-xs flex items-center justify-center gap-2 border border-white/5 cursor-not-allowed opacity-50"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                     <polyline points="22 4 12 14.01 9 11.01" />
                   </svg>
-                  体验免费额度 (Nano Banana)
+                  免费额度 - 未上线请等待
                 </button>
                 <p className="text-[10px] text-zinc-600 text-center mt-2">
-                  * 公共测试密钥，请勿用于生产环境
+                  * 该功能即将上线
                 </p>
               </div>
             </div>
