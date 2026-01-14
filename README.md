@@ -45,3 +45,5 @@
 
 **版本**: 1.0.0  
 **兼容系统**: Windows 10/11 (64位)
+
+<!-- trigger deployment -->
