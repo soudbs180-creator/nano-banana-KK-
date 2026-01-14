@@ -132,56 +132,56 @@ const PromptBar: React.FC<PromptBarProps> = ({
     ];
 
     return (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-3xl z-40 px-4">
-            <div className="bg-[#18181b]/90 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl p-2 transition-all duration-300">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-3xl z-40 px-4 animate-slideUp">
+            <div className="glass-panel rounded-3xl p-2 transition-all duration-300 relative shadow-2xl ring-1 ring-white/10 group-hover:ring-white/20">
 
                 {/* Reference Images Preview Area */}
                 {(config.referenceImages.length > 0 || activeSourceImage) && (
-                    <div className="flex gap-2 px-2 pt-2 pb-1 overflow-x-auto scrollbar-hide mb-2 border-b border-white/5">
+                    <div className="flex gap-2 px-2 pt-2 pb-2 overflow-x-auto scrollbar-hide mb-2 border-b border-white/5">
                         {config.referenceImages.map((img) => (
-                            <div key={img.id} className="relative group flex-shrink-0">
+                            <div key={img.id} className="relative group/image flex-shrink-0">
                                 <img
                                     src={`data:${img.mimeType};base64,${img.data}`}
                                     alt="Reference"
-                                    className="w-12 h-12 rounded-lg object-cover border border-white/10"
+                                    className="w-14 h-14 rounded-lg object-cover border border-white/10 shadow-sm"
                                 />
                                 <button
                                     onClick={() => removeReferenceImage(img.id)}
-                                    className="absolute -top-1 -right-1 p-0.5 bg-zinc-800 rounded-full text-zinc-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="absolute -top-1.5 -right-1.5 p-1 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover/image:opacity-100 transition-all scale-90 hover:scale-100 shadow-md"
                                 >
-                                    <X size={10} />
+                                    <X size={10} strokeWidth={3} />
                                 </button>
                             </div>
                         ))}
 
                         {/* Dragged Source Image */}
                         {activeSourceImage && (
-                            <div className="relative group flex-shrink-0 animate-fadeIn">
+                            <div className="relative group/image flex-shrink-0 animate-fadeIn">
                                 <img
                                     src={activeSourceImage.url}
                                     alt="Source"
-                                    className="w-12 h-12 rounded-lg object-cover border border-indigo-500/50 ring-1 ring-indigo-500"
+                                    className="w-14 h-14 rounded-lg object-cover border-2 border-primary shadow-lg shadow-primary/20"
                                 />
-                                <div className="absolute inset-0 bg-indigo-500/10 rounded-lg pointer-events-none" />
+                                <div className="absolute inset-0 bg-primary/10 rounded-lg pointer-events-none" />
                                 <button
                                     onClick={onClearSource}
-                                    className="absolute -top-1 -right-1 p-0.5 bg-zinc-800 rounded-full text-zinc-400 hover:text-white"
+                                    className="absolute -top-1.5 -right-1.5 p-1 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover/image:opacity-100 transition-all scale-90 hover:scale-100 shadow-md"
                                 >
-                                    <X size={10} />
+                                    <X size={10} strokeWidth={3} />
                                 </button>
                             </div>
                         )}
                     </div>
                 )}
 
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-2 pl-2">
                     {/* Add Image Button */}
                     <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-full transition-colors flex-shrink-0"
+                        className="p-3 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-2xl transition-all duration-200 flex-shrink-0"
                         title="Add reference image"
                     >
-                        <ImagePlus size={20} />
+                        <ImagePlus size={22} strokeWidth={1.5} />
                     </button>
                     <input
                         type="file"
@@ -195,15 +195,15 @@ const PromptBar: React.FC<PromptBarProps> = ({
                     {/* Aspect Ratio Menu */}
                     <div className="relative">
                         <button
-                            className={`menu-trigger p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-full transition-colors ${activeMenu === 'ratio' ? 'bg-white/10 text-white' : ''}`}
+                            className={`menu-trigger p-3 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-2xl transition-all duration-200 ${activeMenu === 'ratio' ? 'bg-white/10 text-foreground' : ''}`}
                             onClick={() => toggleMenu('ratio')}
                             title="Aspect Ratio"
                         >
-                            <Ratio size={20} />
+                            <Ratio size={22} strokeWidth={1.5} />
                         </button>
 
                         {activeMenu === 'ratio' && (
-                            <div className="menu-dropdown absolute bottom-full left-0 mb-2 p-2 bg-[#18181b] border border-white/10 rounded-xl shadow-xl flex flex-col gap-1 w-40 animate-slideUp">
+                            <div className="menu-dropdown absolute bottom-full left-0 mb-3 p-1.5 bg-zinc-900/95 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-2xl flex flex-col gap-1 w-48 animate-slideUp overflow-hidden ring-1 ring-white/5">
                                 {aspectRatios.map((ratio) => (
                                     <button
                                         key={ratio.value}
@@ -211,7 +211,10 @@ const PromptBar: React.FC<PromptBarProps> = ({
                                             setConfig(prev => ({ ...prev, aspectRatio: ratio.value }));
                                             setActiveMenu(null);
                                         }}
-                                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${config.aspectRatio === ratio.value ? 'bg-indigo-500/20 text-indigo-400' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${config.aspectRatio === ratio.value
+                                                ? 'bg-primary/20 text-primary font-medium'
+                                                : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/5'
+                                            }`}
                                     >
                                         {ratio.icon}
                                         {ratio.label}
@@ -224,30 +227,36 @@ const PromptBar: React.FC<PromptBarProps> = ({
                     {/* Main Settings Menu */}
                     <div className="relative">
                         <button
-                            className={`menu-trigger p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-full transition-colors ${activeMenu === 'settings' ? 'bg-white/10 text-white' : ''}`}
+                            className={`menu-trigger p-3 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-2xl transition-all duration-200 ${activeMenu === 'settings' ? 'bg-white/10 text-foreground' : ''}`}
                             onClick={() => toggleMenu('settings')}
                             title="Advanced Settings"
                         >
-                            <Settings2 size={20} />
+                            <Settings2 size={22} strokeWidth={1.5} />
                         </button>
 
                         {activeMenu === 'settings' && (
-                            <div className="menu-dropdown absolute bottom-full left-0 mb-2 p-4 bg-[#18181b] border border-white/10 rounded-2xl shadow-xl w-64 animate-slideUp">
-                                <div className="space-y-4">
+                            <div className="menu-dropdown absolute bottom-full left-0 mb-3 p-4 bg-zinc-900/95 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-2xl w-72 animate-slideUp ring-1 ring-white/5">
+                                <div className="space-y-6">
                                     <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-xs font-medium text-zinc-400">Model</span>
+                                        <div className="flex justify-between items-center mb-3">
+                                            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Model</span>
                                         </div>
-                                        <div className="flex gap-1 p-1 bg-black/20 rounded-lg">
+                                        <div className="grid grid-cols-2 gap-2 p-1 bg-black/40 rounded-xl border border-white/5">
                                             <button
                                                 onClick={() => setConfig(prev => ({ ...prev, model: ModelType.GEMINI_PRO }))}
-                                                className={`flex-1 py-1.5 text-[10px] font-medium rounded-md transition-all ${config.model === ModelType.GEMINI_PRO ? 'bg-indigo-500 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                                className={`py-2 text-xs font-medium rounded-lg transition-all ${config.model === ModelType.GEMINI_PRO
+                                                        ? 'bg-primary text-primary-foreground shadow-lg'
+                                                        : 'text-zinc-500 hover:text-zinc-300'
+                                                    }`}
                                             >
                                                 PRO
                                             </button>
                                             <button
                                                 onClick={() => setConfig(prev => ({ ...prev, model: ModelType.GEMINI_FLASH }))}
-                                                className={`flex-1 py-1.5 text-[10px] font-medium rounded-md transition-all ${config.model === ModelType.GEMINI_FLASH ? 'bg-emerald-500 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                                className={`py-2 text-xs font-medium rounded-lg transition-all ${config.model === ModelType.GEMINI_FLASH
+                                                        ? 'bg-emerald-600 text-white shadow-lg'
+                                                        : 'text-zinc-500 hover:text-zinc-300'
+                                                    }`}
                                             >
                                                 FLASH
                                             </button>
@@ -255,9 +264,9 @@ const PromptBar: React.FC<PromptBarProps> = ({
                                     </div>
 
                                     <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-xs font-medium text-zinc-400">Parallel Gen</span>
-                                            <span className="text-xs text-zinc-500">{config.parallelCount}</span>
+                                        <div className="flex justify-between items-center mb-3">
+                                            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Parallel Count</span>
+                                            <span className="text-xs font-mono bg-white/10 px-2 py-0.5 rounded text-zinc-300">{config.parallelCount}</span>
                                         </div>
                                         <input
                                             type="range"
@@ -265,8 +274,12 @@ const PromptBar: React.FC<PromptBarProps> = ({
                                             max="4"
                                             value={config.parallelCount}
                                             onChange={(e) => setConfig(prev => ({ ...prev, parallelCount: parseInt(e.target.value) }))}
-                                            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                            className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-primary hover:accent-primary/80 transition-all"
                                         />
+                                        <div className="flex justify-between text-[10px] text-zinc-600 mt-2 px-1">
+                                            <span>1</span>
+                                            <span>4</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -274,16 +287,16 @@ const PromptBar: React.FC<PromptBarProps> = ({
                     </div>
 
                     {/* Prompt Input Area */}
-                    <div className="flex-1 relative">
+                    <div className="flex-1 relative mx-1">
                         <textarea
                             ref={textareaRef}
                             value={config.prompt}
                             onChange={handleInput}
                             onKeyDown={handleKeyDown}
-                            placeholder="Describe your imagination... (Enter to generate)"
-                            className="w-full bg-transparent text-zinc-200 placeholder-zinc-500 text-sm resize-none focus:outline-none py-3 px-2 max-h-[160px] scrollbar-hide"
+                            placeholder="Describe your imagination..."
+                            className="w-full bg-transparent text-foreground placeholder-zinc-500 text-[15px] resize-none focus:outline-none py-3 px-2 max-h-[200px] scrollbar-hide leading-relaxed"
                             rows={1}
-                            style={{ minHeight: '44px' }}
+                            style={{ minHeight: '48px' }}
                         />
                     </div>
 
@@ -292,19 +305,19 @@ const PromptBar: React.FC<PromptBarProps> = ({
                         onClick={onGenerate}
                         disabled={isGenerating || !config.prompt.trim()}
                         className={`
-                            p-3 rounded-full flex items-center justify-center transition-all duration-300
+                            group relative p-3 rounded-2xl flex items-center justify-center transition-all duration-300 mb-1 mr-1
                             ${isGenerating
                                 ? 'bg-zinc-800 cursor-not-allowed text-zinc-500'
                                 : config.prompt.trim()
-                                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                                    ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 scale-100 hover:scale-105 active:scale-95'
                                     : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
                             }
                         `}
                     >
                         {isGenerating ? (
-                            <Loader2 size={20} className="animate-spin" />
+                            <Loader2 size={24} className="animate-spin" />
                         ) : (
-                            <ArrowUp size={20} className={config.prompt.trim() ? 'animate-pulse' : ''} />
+                            <ArrowUp size={24} className={`transition-transform duration-300 ${config.prompt.trim() ? 'group-hover:-translate-y-0.5 group-hover:translate-x-0.5' : ''}`} />
                         )}
                     </button>
                 </div>
