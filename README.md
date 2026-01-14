@@ -1,49 +1,72 @@
-# KK Studio - AI 图像生成工作室
+# KK Studio - AI 图像创作工作室
 
-## 便携版使用说明
+> 基于 Google Gemini API 的无限画布图像生成工具
 
-这是一个完全便携的版本，无需安装任何软件！
+## 🚀 快速启动
 
-### 快速开始
+**双击 `KK Studio.exe`** 即可启动（首次需要配置 API Key）
 
-1. **解压所有文件**到任意位置
-2. **双击** `启动 KK Studio.bat` 或 `KK Studio.exe`
-3. 等待浏览器自动打开
-4. 首次使用需要输入 **Gemini API Key**
+## ✨ 功能特性
 
-### 获取 API Key
+### 🎨 图像生成
+- 支持 **Gemini Pro** 和 **Flash** 两种模型
+- 多种比例：1:1、16:9、9:16、4:3、3:4 等
+- 分辨率选择：1K / 2K / 4K
+- 支持参考图片引导生成
 
-1. 访问 [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. 登录 Google 账号
-3. 创建新的 API Key
-4. 复制并粘贴到 KK Studio
+### 🖼️ 无限画布
+- 自由拖拽、缩放画布
+- 卡片自动居中定位
+- 平滑拖拽，即时响应
+- 定位按钮一键查看全部卡片
 
-### 文件说明
+### 💬 对话式创作
+- **点击图片**：以该图为基础继续创作
+- **点击提示词**：复制到输入框开启新对话
+- 可视化连接线展示创作关系
 
-| 文件/文件夹 | 说明 |
-|------------|------|
-| `启动 KK Studio.bat` | 启动程序 |
-| `stop.bat` | 停止后台服务 |
-| `node-portable/` | 内置 Node.js 环境 |
-| `node_modules/` | 依赖包（首次运行自动安装）|
+### 📁 画布管理
+- 支持最多 **10 个画布**
+- 重命名、删除画布
+- 删除前确认，防止误操作
+- 数据本地保存，持久化存储
 
-### 功能特点
+### 🔑 多 API Key 管理
+- 支持 **4 个 API Key**
+- 自动验证并显示状态
+- 优先使用有效的 Key
+- 失败自动切换
 
-- 🎨 AI 图像生成（支持 Gemini 2.5 Flash / Pro）
-- 🖼️ 无限画布自由布局
-- 📐 多种尺寸比例选择
-- 💾 本地自动保存
-- 🔗 参考图片功能
+## ⌨️ 快捷操作
 
-### 注意事项
+| 操作 | 说明 |
+|------|------|
+| 拖拽画布 | 平移视图 |
+| 滚轮 | 缩放画布 |
+| 拖拽卡片 | 移动卡片位置 |
+| 点击图片 | 继续该图创作 |
+| 点击提示词 | 复制到输入框 |
+| Enter | 开始生成 |
 
-- API Key 保存在浏览器本地，不会上传
-- 生成的图片保存在浏览器中
-- 关闭程序请运行 `stop.bat`
+## 📝 首次使用
+
+1. 双击 `KK Studio.exe` 启动
+2. 点击右上角头像，输入 Google API Key
+3. 在输入框输入提示词
+4. 按 Enter 或点击生成按钮
+
+## 🔧 获取 API Key
+
+访问 [Google AI Studio](https://aistudio.google.com/app/apikey) 免费获取
+
+## 📦 技术栈
+
+- React + TypeScript
+- Vite 开发服务器
+- Tailwind CSS
+- Lucide Icons
+- Google Gemini API
 
 ---
 
-**版本**: 1.0.0  
-**兼容系统**: Windows 10/11 (64位)
-
-<!-- trigger deployment -->
+**Made with ❤️ by KK Studio Team**
