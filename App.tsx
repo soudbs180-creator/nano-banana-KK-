@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import InfiniteCanvas from './components/Canvas';
 import Sidebar from './components/Sidebar';
@@ -6,7 +8,7 @@ import ImageNode from './components/ImageCard2';
 import PromptNodeComponent from './components/PromptNodeComponent';
 import PendingNode from './components/PendingNode';
 import { PromptNode, GeneratedImage, AspectRatio, ImageSize, ModelType, GenerationConfig } from './types';
-import { generateImage, validateApiKey } from './services/geminiService';
+import { generateImage } from './services/geminiService';
 import { KeyRound, Layers, Plus, Trash2, ChevronDown, Check, X, AlertCircle } from 'lucide-react';
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import ConnectionDot from './components/ConnectionDot';
@@ -15,7 +17,7 @@ import ConnectionDot from './components/ConnectionDot';
 const CanvasManager: React.FC = () => {
   const { state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, clearAllData } = useCanvas();
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null); // Keep this state for the modal
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
   const handleClearAll = () => {
     if (confirm('确定要清除所有画布数据吗？此操作无法撤销！')) {
@@ -58,7 +60,7 @@ const CanvasManager: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setShowDeleteConfirm(canvas.id); // Use the modal for deletion
+                        setShowDeleteConfirm(canvas.id);
                       }}
                       className="p-1 hover:bg-red-500/20 rounded text-red-400"
                     >
@@ -146,7 +148,7 @@ const AppContent: React.FC = () => {
     imageSize: ImageSize.SIZE_4K,
     referenceImages: [],
     parallelCount: 1,
-    model: ModelType.PRO_QUALITY
+    model: ModelType.GEMINI_PRO
   });
 
   // Pending generation state
@@ -166,60 +168,9 @@ const AppContent: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  // API Key Management (Persistent in localStorage)
-  // API Key Management (Persistent in localStorage - Secured)
-  const [apiKey, setApiKey] = useState<string>(() => {
-    // Check localStorage first
-    const storedKey = localStorage.getItem('api-key');
-    if (storedKey) {
-      console.log("Loaded persistent API key");
-      return storedKey;
-    }
-    // Fall back to environment variable
-    return import.meta.env.VITE_API_KEY || '';
-  });
-  const [apiStatus, setApiStatus] = useState<'success' | 'error' | 'unknown'>('unknown');
-  const [showApiModal, setShowApiModal] = useState(false);
 
-  // Validate API key and cache validation status
-  useEffect(() => {
-    const checkApiKey = async () => {
-      const effectiveKey = apiKey || import.meta.env.VITE_API_KEY;
-
-      // Check if we already validated this specific key
-      const lastValidatedKey = localStorage.getItem('api-validated-key');
-      if (effectiveKey && lastValidatedKey === effectiveKey) {
-        setApiStatus('success');
-        return;
-      }
-
-      if (effectiveKey) {
-        try {
-          const isValid = await validateApiKey(effectiveKey);
-          setApiStatus(isValid ? 'success' : 'error');
-          if (isValid) {
-            localStorage.setItem('api-validated-key', effectiveKey);
-          }
-        } catch (e) {
-          console.error("API Key validation failed:", e);
-          setApiStatus('error');
-        }
-      } else {
-        setApiStatus('unknown');
-      }
-    };
-    checkApiKey();
-  }, [apiKey]);
-
-  const saveApiKey = useCallback((key: string) => {
-    setApiKey(key);
-    // Store in localStorage (Persistent)
-    localStorage.setItem('api-key', key);
-    // Clear validation to force check
-    localStorage.removeItem('api-validated-key');
-    setShowApiModal(false);
-    setError(null);
-  }, []);
+  // API Status (always success since server handles the key)
+  const apiStatus = 'success';
 
   // Update pending position when prompt nodes change - Smart positioning to avoid overlap
   useEffect(() => {
@@ -246,16 +197,14 @@ const AppContent: React.FC = () => {
     const findEmptyPosition = () => {
       const centerX = window.innerWidth / 2;
       const centerY = 200;
-      const cardWidth = 400; // Approximate card bounding box width
-      const cardHeight = 500; // Approximate card bounding box height (with images)
+      const cardWidth = 400;
+      const cardHeight = 500;
 
-      // Get all existing card positions
       const allPositions: { x: number; y: number }[] = [
         ...(activeCanvas?.promptNodes.map(n => n.position) || []),
         ...(activeCanvas?.imageNodes.map(n => n.position) || [])
       ];
 
-      // Check if a position overlaps with existing cards
       const hasOverlap = (testX: number, testY: number) => {
         return allPositions.some(pos => {
           const dx = Math.abs(pos.x - testX);
@@ -264,9 +213,8 @@ const AppContent: React.FC = () => {
         });
       };
 
-      // Start from center, shift right until finding empty spot
       let testX = centerX;
-      const stepX = cardWidth + 50; // Step to the right
+      const stepX = cardWidth + 50;
 
       while (hasOverlap(testX, centerY) && testX < centerX + stepX * 10) {
         testX += stepX;
@@ -275,13 +223,11 @@ const AppContent: React.FC = () => {
       return { x: testX, y: centerY };
     };
 
-    // If no cards exist, use center
     if (!activeCanvas?.promptNodes.length && !activeCanvas?.imageNodes.length) {
-      setPendingPosition({ x: 0, y: 0 }); // Will be set to center in handleGenerate
+      setPendingPosition({ x: 0, y: 0 });
       return;
     }
 
-    // Find smart position
     const smartPos = findEmptyPosition();
     setPendingPosition(smartPos);
 
@@ -290,18 +236,12 @@ const AppContent: React.FC = () => {
 
   const handleGenerate = useCallback(async () => {
     if (isGenerating || !config.prompt.trim()) return;
-    // Check for API key from localStorage or env
-    const effectiveApiKey = apiKey || import.meta.env.VITE_API_KEY;
-    if (!effectiveApiKey) {
-      setShowApiModal(true);
-      return;
-    }
+
     setIsGenerating(true);
     setError(null);
 
     // 1. Create Persistent Prompt Node immediately
     const promptNodeId = Date.now().toString();
-    // Default to center of viewport if no position set
     const currentPos = (pendingPosition.x === 0 && pendingPosition.y === 0)
       ? { x: window.innerWidth / 2, y: 200 }
       : pendingPosition;
@@ -313,7 +253,7 @@ const AppContent: React.FC = () => {
       aspectRatio: config.aspectRatio,
       imageSize: config.imageSize,
       model: config.model,
-      childImageIds: [], // Will fill after generation
+      childImageIds: [],
       referenceImages: config.referenceImages,
       timestamp: Date.now()
     };
@@ -326,14 +266,12 @@ const AppContent: React.FC = () => {
           config.aspectRatio,
           config.imageSize,
           config.referenceImages,
-          config.model,
-          apiKey
+          config.model
         );
 
-        // Layout: Images to the RIGHT of prompt card, arranged vertically
-        const promptCardWidth = 320; // Width of prompt card
+        const promptCardWidth = 320;
         let cardWidth = 280;
-        let cardHeight = 280; // Default for SQUARE
+        let cardHeight = 280;
         switch (config.aspectRatio) {
           case AspectRatio.LANDSCAPE_16_9:
             cardWidth = 320;
@@ -348,14 +286,9 @@ const AppContent: React.FC = () => {
             cardHeight = 280;
         }
 
-        // Layout: Images BELOW the prompt card, centered and stacked vertically
-        const gap = 20; // Gap between cards
-        // Position below prompt card (prompt is at currentPos, images go below)
-        // Center the image horizontally with the prompt
-        const x = currentPos.x; // Center aligned with prompt
-
-        // Stack images vertically below the prompt card
-        const y = currentPos.y + 30 + index * (cardHeight + gap); // Start below prompt
+        const gap = 20;
+        const x = currentPos.x;
+        const y = currentPos.y + 30 + index * (cardHeight + gap);
 
         return {
           id: Date.now().toString() + index + Math.random(),
@@ -372,40 +305,32 @@ const AppContent: React.FC = () => {
 
       const results = await Promise.all(promises);
 
-      // Validate results
       if (!results || results.length === 0) {
         throw new Error('No images generated');
       }
 
-      // Filter out any null/undefined results
       const validResults = results.filter(r => r && r.id && r.url);
       if (validResults.length === 0) {
         throw new Error('All generated images were invalid');
       }
 
-      // Create the final prompt node with child IDs
       const finalPromptNode: PromptNode = {
         ...newPromptNode,
         childImageIds: validResults.map(img => img.id)
       };
 
-      // Add both prompt and images in sequence (React 18 will batch these)
       addPromptNode(finalPromptNode);
       addImageNodes(validResults);
 
-      // Clear prompt
       setConfig(prev => ({ ...prev, prompt: '' }));
 
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Generation failed.");
-      if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
-        setShowApiModal(true);
-      }
     } finally {
       setIsGenerating(false);
     }
-  }, [config, apiKey, pendingPosition, addPromptNode, addImageNodes, activeCanvas?.id, isGenerating]);
+  }, [config, pendingPosition, addPromptNode, addImageNodes, activeCanvas?.id, isGenerating]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
@@ -461,7 +386,6 @@ const AppContent: React.FC = () => {
     <div className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
       onMouseMove={(e) => {
         if (dragConnection?.active) {
-          // Convert client to canvas
           const canvasX = (e.clientX - canvasTransform.x) / canvasTransform.scale;
           const canvasY = (e.clientY - canvasTransform.y) / canvasTransform.scale;
           setDragConnection(prev => prev ? ({ ...prev, currentPos: { x: canvasX, y: canvasY } }) : null);
@@ -476,27 +400,23 @@ const AppContent: React.FC = () => {
       {/* Canvas Manager */}
       <CanvasManager />
 
-      {/* API Key Button with Status Indicator */}
+      {/* API Status Indicator (Top Right) */}
       <div className="absolute top-4 right-4 z-50">
-        <button
-          onClick={() => setShowApiModal(true)}
-          className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 hover:border-indigo-500 transition-colors shadow-2xl bg-[#1a1a1c]"
-          title="API Key Settings"
+        <div
+          className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 shadow-2xl bg-[#1a1a1c]"
+          title="API Status: Connected (Server-side key)"
         >
           <div className="w-full h-full bg-gradient-to-tr from-indigo-500 via-purple-500 to-amber-500 opacity-80" />
-        </button>
+        </div>
 
-        {/* API Status Dot - Clearly Above Avatar */}
-        <div className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#09090b] z-10 shadow-lg ${apiStatus === 'success' ? 'bg-green-500' :
-          apiStatus === 'error' ? 'bg-red-500' : 'bg-zinc-500'
-          }`} />
+        {/* API Status Dot */}
+        <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#09090b] z-10 shadow-lg bg-green-500" />
       </div>
 
       {/* Main Infinite Canvas */}
       <InfiniteCanvas
         onTransformChange={setCanvasTransform}
         onCanvasClick={() => {
-          // Clear input when clicking empty canvas, but NOT during generation
           if (!isGenerating) {
             setConfig(prev => ({ ...prev, prompt: '' }));
           }
@@ -529,40 +449,23 @@ const AppContent: React.FC = () => {
             return pn.childImageIds.map((childId) => {
               const childNode = activeCanvas.imageNodes.find(img => img.id === childId);
               if (!childNode) {
-                console.warn(`[Connection] Child node ${childId} not found for prompt ${pn.id}`);
                 return null;
               }
 
-              // Calculate card width for aspect ratio
               let cardWidth = 280;
               if (childNode.aspectRatio === '16:9') cardWidth = 320;
               else if (childNode.aspectRatio === '9:16') cardWidth = 200;
 
-              // Start point: Bottom center of prompt node
-              // PromptNode uses transform: translate(-50%, -100%), so position.x IS the center
-              const startX = pn.position.x + 5000; // Add SVG offset
-              const startY = pn.position.y + 15 + 5000; // Slightly below prompt position + SVG offset
-
-              // End point: Top center of image node
-              // ImageNode uses transform: translate(-50%, 0), so position.x IS the center
-              const endX = childNode.position.x + 5000; // position.x is already center
+              const startX = pn.position.x + 5000;
+              const startY = pn.position.y + 15 + 5000;
+              const endX = childNode.position.x + 5000;
               const endY = childNode.position.y + 5000;
 
-              // Calculate midpoint for connection dot
-              const midX = (startX + endX) / 2;
-              const midY = (startY + endY) / 2;
-
-              // Debug: log the coordinates
-              console.log(`[Line] Prompt ${pn.id} (${pn.position.x},${pn.position.y}) -> Image ${childId} (${childNode.position.x},${childNode.position.y})`);
-              console.log(`[Line] Drawing: (${startX},${startY}) to (${endX},${endY})`);
-
-              // Create a smooth curved path using quadratic bezier
               const controlX = (startX + endX) / 2;
               const controlY = startY + (endY - startY) * 0.7;
 
               return (
                 <g key={`${pn.id}-${childId}`}>
-                  {/* Curved dashed connection line - soft, behind cards */}
                   <path
                     d={`M${startX},${startY} Q${controlX},${controlY} ${endX},${endY}`}
                     fill="none"
@@ -644,59 +547,11 @@ const AppContent: React.FC = () => {
       {/* Sidebar (Optional) */}
       <Sidebar
         isOpen={isSidebarOpen}
-        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        onClose={() => setIsSidebarOpen(false)}
+        onOpenSettings={() => console.log('Open Settings')}
+        hasApiKey={true}
+        generatedCount={activeCanvas?.imageNodes.length || 0}
       />
-
-      {/* API Key Modal */}
-      {showApiModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-[#1a1a1c] border border-white/10 p-8 rounded-3xl shadow-2xl max-w-md w-full relative">
-            <button
-              onClick={() => setShowApiModal(false)}
-              className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors"
-            >
-              <X size={20} />
-            </button>
-
-            <div className="mb-6 text-center">
-              <div className="w-12 h-12 bg-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-400">
-                <KeyRound size={24} />
-              </div>
-              <h2 className="text-xl font-bold text-white mb-2">Google Gemini API Key</h2>
-              <p className="text-zinc-400 text-sm">
-                输入您的 Gemini API 密钥以开始创作。
-                <br />密钥将安全保存在本地，无需重复输入。
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-..."
-                className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-
-              <button
-                onClick={() => saveApiKey(apiKey)}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
-              >
-                Get Started
-              </button>
-
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noreferrer"
-                className="block text-center text-xs text-zinc-500 hover:text-indigo-400 transition-colors"
-              >
-                Get a free API key
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Error Toast */}
       {error && (

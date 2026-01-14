@@ -1,6 +1,8 @@
+'use client';
+
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
-import { GeneratedImage } from '../types';
+import { GeneratedImage } from '@/types';
 import { Download, Trash2 } from 'lucide-react';
 
 interface ImageNodeProps {

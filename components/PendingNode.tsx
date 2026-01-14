@@ -1,6 +1,8 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import { AspectRatio } from '../types';
+import { AspectRatio } from '@/types';
 
 interface PendingNodeProps {
     prompt: string;

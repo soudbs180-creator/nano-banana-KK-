@@ -1,5 +1,7 @@
+'use client';
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Canvas, PromptNode, GeneratedImage } from '../types';
+import { Canvas, PromptNode, GeneratedImage } from '@/types';
 
 interface CanvasState {
     canvases: Canvas[];
@@ -38,20 +40,25 @@ const DEFAULT_CANVAS: Canvas = {
 };
 
 export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [state, setState] = useState<CanvasState>(() => {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-            try {
-                return JSON.parse(stored);
-            } catch (e) {
-                console.error("Failed to parse stored state", e);
+    const [state, setState] = useState<CanvasState>({
+        canvases: [DEFAULT_CANVAS],
+        activeCanvasId: DEFAULT_CANVAS.id
+    });
+
+    // Load state from localStorage on mount (client-side only)
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    setState(parsed);
+                } catch (e) {
+                    console.error("Failed to parse stored state", e);
+                }
             }
         }
-        return {
-            canvases: [DEFAULT_CANVAS],
-            activeCanvasId: DEFAULT_CANVAS.id
-        };
-    });
+    }, []);
 
     // Persistence with error handling
     useEffect(() => {

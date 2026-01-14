@@ -16,8 +16,8 @@ export enum ImageSize {
 }
 
 export enum ModelType {
-  NANO_BANANA = 'gemini-2.5-flash-image',
-  PRO_QUALITY = 'gemini-3-pro-image-preview',
+  GEMINI_FLASH = 'gemini-2.5-flash-image',
+  GEMINI_PRO = 'gemini-3-pro-image-preview',
 }
 
 export interface ReferenceImage {
@@ -34,7 +34,7 @@ export interface GeneratedImage {
   timestamp: number;
   model: ModelType;
   canvasId: string;
-  parentPromptId: string;
+  parentPromptId?: string;
   position: { x: number; y: number };
 }
 

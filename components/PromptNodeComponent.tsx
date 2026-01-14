@@ -1,5 +1,7 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
-import { PromptNode, AspectRatio } from '../types';
+import { PromptNode, AspectRatio } from '@/types';
 import { Sparkles } from 'lucide-react';
 
 interface PromptNodeProps {
