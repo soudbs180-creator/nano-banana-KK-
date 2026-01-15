@@ -5,8 +5,11 @@ import PromptBar from './components/PromptBar';
 import ImageNode from './components/ImageCard2';
 import PromptNodeComponent from './components/PromptNodeComponent';
 import PendingNode from './components/PendingNode';
+import KeyManagerModal from './components/KeyManagerModal';
+import ChatSidebar from './components/ChatSidebar';
 import { PromptNode, GeneratedImage, AspectRatio, ImageSize, ModelType, GenerationConfig } from './types';
 import { generateImage, validateApiKey } from './services/geminiService';
+import { keyManager } from './services/keyManager';
 // Lucide icons replaced with SVGs
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import ConnectionDot from './components/ConnectionDot';
@@ -279,6 +282,7 @@ const AppContent: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -391,10 +395,10 @@ const AppContent: React.FC = () => {
     fetchKeyStatus();
   }, [isLocalDev]);
 
-  // Get derived API status for UI indicator
-  const derivedApiStatus = keySlots.some(k => k.status === 'valid') ? 'success'
-    : keySlots.some(k => k.hasKey && k.status === 'unknown') ? 'unknown'
-      : keySlots.some(k => k.hasKey) ? 'error' : 'unknown';
+  // Get derived API status for UI indicator - use keyManager
+  const keyManagerStats = keyManager.getStats();
+  const derivedApiStatus = keyManagerStats.valid > 0 ? 'success'
+    : keyManagerStats.total > 0 ? 'error' : 'unknown';
 
   // Save API keys to backend (with localStorage fallback for local dev)
   const saveApiKeys = useCallback(async () => {
@@ -806,12 +810,10 @@ const AppContent: React.FC = () => {
   const handleAutoArrange = useCallback(() => {
     if (!activeCanvas) return;
 
-    // Use current settings (simple grid for now, can be enhanced for mobile later)
-    // The user requested "always down" for mobile generation, which is handled in handleGenerate.
-    // This function resets everything to a standard grid.
-
-    const startX = 500;
-    const startY = 200;
+    // Use canvas center (0, 0) as the starting point
+    // Cards will be arranged relative to center so they're always visible
+    const centerX = 0;
+    const centerY = 0;
     const colSpacing = isMobile ? 0 : 450;
     const rowSpacing = 500;
     const imageGap = 30;
@@ -826,11 +828,8 @@ const AppContent: React.FC = () => {
     if (isMobile) {
       // Mobile: Single vertical column of prompts
       sortedPrompts.forEach((pn, index) => {
-        const newX = 0; // Centered at 0
-        // Previous prompts + their images height determines Y, but for simplicity just stack with large gaps
-        // Better: calculate Y based on previous cluster height.
-        // Simplified for reliability: Fixed large spacing
-        const newY = startY + index * 800; // Large vertical gap
+        const newX = centerX; // Centered at canvas center
+        const newY = centerY + index * 600; // Vertical stacking
 
         updatePromptNodePosition(pn.id, { x: newX, y: newY });
 
@@ -839,21 +838,28 @@ const AppContent: React.FC = () => {
         childImages.forEach((img, imgIndex) => {
           const col = imgIndex % 2;
           const row = Math.floor(imgIndex / 2);
-          const mobileCardWidth = 300; // Rendered width
+          const mobileCardWidth = 300;
           const gap = 20;
 
-          // Center 2 cols: Total ~620
           const gridStartX = newX - (mobileCardWidth + gap / 2) + mobileCardWidth / 2;
 
           updateImageNodePosition(img.id, {
             x: gridStartX + col * (mobileCardWidth + gap),
-            y: newY + imageOffsetY + row * (350)
+            y: newY + imageOffsetY + row * 350
           });
         });
       });
     } else {
-      // Desktop: 3 columns
+      // Desktop: 3 columns, centered around canvas center
       const columns = 3;
+      const numRows = Math.ceil(sortedPrompts.length / columns);
+      const totalWidth = columns * colSpacing;
+      const totalHeight = numRows * rowSpacing;
+
+      // Starting position to center the grid
+      const startX = centerX - totalWidth / 2 + colSpacing / 2;
+      const startY = centerY - totalHeight / 4; // Slightly above center
+
       sortedPrompts.forEach((pn, index) => {
         const col = index % columns;
         const row = Math.floor(index / columns);
@@ -864,8 +870,8 @@ const AppContent: React.FC = () => {
         updatePromptNodePosition(pn.id, { x: newX, y: newY });
 
         const childImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === pn.id);
-        const totalWidth = childImages.length * 280 + (childImages.length - 1) * imageGap;
-        const imagesStartX = newX - totalWidth / 2 + 140;
+        const totalImgWidth = childImages.length * 280 + (childImages.length - 1) * imageGap;
+        const imagesStartX = newX - totalImgWidth / 2 + 140;
 
         childImages.forEach((img, imgIndex) => {
           updateImageNodePosition(img.id, {
@@ -899,6 +905,13 @@ const AppContent: React.FC = () => {
     >
       {/* Canvas Manager */}
       <CanvasManager />
+
+      {/* Chat Sidebar (Left) */}
+      <ChatSidebar
+        isOpen={isChatOpen}
+        onToggle={() => setIsChatOpen(prev => !prev)}
+        isMobile={isMobile}
+      />
 
       {/* API Key Button with Status Indicator */}
       <div className="absolute top-4 right-4 z-50">
@@ -1062,6 +1075,7 @@ const AppContent: React.FC = () => {
           onPositionChange={setPendingPosition}
           isMobile={isMobile}
           canvasTransform={canvasTransform}
+          referenceImages={config.referenceImages}
         />
       </InfiniteCanvas>
 
@@ -1087,96 +1101,15 @@ const AppContent: React.FC = () => {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onOpenSettings={() => setShowApiModal(true)}
-        hasApiKey={keySlots.some(k => k.status === 'valid')}
+        hasApiKey={keyManager.hasValidKeys()}
         generatedCount={activeCanvas?.imageNodes.length || 0}
       />
 
-      {/* API Key Modal */}
-      {showApiModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-fadeIn">
-          <div className="glass-strong p-8 rounded-3xl shadow-2xl max-w-lg w-full relative">
-            <button
-              onClick={() => setShowApiModal(false)}
-              className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors p-1"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-
-            <div className="mb-6 text-center">
-              <div className="w-12 h-12 bg-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-400">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M7 11 V 7 a5 5 0 0 1 10 0 v 4" />
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <circle cx="12" cy="16" r="1" />
-                </svg>
-              </div>
-              <h2 className="text-xl font-bold text-white mb-2">Google API Key</h2>
-              <p className="text-zinc-400 text-sm">
-                支持多个 API 密钥，自动选择有效的密钥使用。
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              {keySlots.map((slot, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <span className="text-zinc-500 text-xs w-6">{index + 1}.</span>
-                  <input
-                    type="password"
-                    value={keyInputs[index]}
-                    onChange={(e) => {
-                      const newInputs = [...keyInputs];
-                      newInputs[index] = e.target.value;
-                      setKeyInputs(newInputs);
-                    }}
-                    placeholder={slot.hasKey ? '••••••••••••' : 'AIza...'}
-                    className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
-                  />
-                  {/* Status indicator */}
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${slot.status === 'valid' ? 'bg-green-500/20 text-green-400' :
-                    slot.status === 'invalid' ? 'bg-red-500/20 text-red-400' :
-                      slot.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 animate-pulse' :
-                        slot.hasKey ? 'bg-zinc-500/20 text-zinc-400' : 'bg-transparent'
-                    }`}>
-                    {slot.status === 'valid' && '✓'}
-                    {slot.status === 'invalid' && '✗'}
-                    {slot.status === 'pending' && '…'}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 space-y-3">
-              <button
-                onClick={saveApiKeys}
-                disabled={isSavingKeys}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
-              >
-                {isSavingKeys ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    保存中...
-                  </>
-                ) : '保存密钥'}
-              </button>
-
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noreferrer"
-                className="block text-center text-xs text-zinc-500 hover:text-indigo-400 transition-colors"
-              >
-                获取免费 API 密钥
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* API Key Manager Modal */}
+      <KeyManagerModal
+        isOpen={showApiModal}
+        onClose={() => setShowApiModal(false)}
+      />
 
       {error && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] bg-red-500/10 border border-red-500/20 backdrop-blur-xl text-red-400 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-slideDown">

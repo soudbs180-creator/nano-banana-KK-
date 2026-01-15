@@ -2,6 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { AspectRatio } from '../types';
 
+interface ReferenceImage {
+    id?: string;
+    data: string;
+    mimeType: string;
+}
+
 interface PendingNodeProps {
     prompt: string;
     parallelCount: number;
@@ -11,6 +17,7 @@ interface PendingNodeProps {
     onPositionChange?: (pos: { x: number; y: number }) => void;
     isMobile?: boolean;
     canvasTransform?: { x: number; y: number; scale: number };
+    referenceImages?: ReferenceImage[];
 }
 
 const PendingNode: React.FC<PendingNodeProps> = ({
@@ -21,7 +28,8 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     aspectRatio,
     onPositionChange,
     isMobile = false,
-    canvasTransform = { x: 0, y: 0, scale: 1 }
+    canvasTransform = { x: 0, y: 0, scale: 1 },
+    referenceImages = []
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -154,89 +162,124 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     }
 
     // 如果正在生成中，显示主卡片和连接的子占位符
+    // 使用简单的绝对定位：position 是整个组件的原点
+    const cardWidth = 320;
+    const cardHeight = 140; // approximate card height
+    const dotSize = 12;
+    const gapToPlaceholders = 50;
+
+    // Calculate placeholder grid center offset
+    const columns = isMobile ? 2 : 2;
+    const placeholderGap = isMobile ? 10 : 16;
+    const gridWidth = columns * w + (columns - 1) * placeholderGap;
+
     return (
         <div
-            className="absolute z-40 flex flex-col items-center"
+            className="absolute z-40"
             style={{
                 left: position.x,
                 top: position.y,
-                transform: 'translate(-50%, -100%)', // Same as PromptNodeComponent
                 cursor: isDragging ? 'grabbing' : 'grab'
             }}
             onMouseDown={handleMouseDown}
         >
-            {/* Main Prompt Node - Same layout as PromptNodeComponent */}
-            <div className="bg-[#1a1a1c] border-2 border-indigo-500/30 rounded-2xl p-4 shadow-xl w-[320px] flex flex-col gap-3 animate-fadeIn">
+            {/* Main Prompt Node - Centered above origin */}
+            <div
+                className="absolute bg-[#1a1a1c] border-2 border-indigo-500/30 rounded-2xl p-4 shadow-xl flex flex-col gap-3 animate-fadeIn"
+                style={{
+                    width: cardWidth,
+                    left: -cardWidth / 2,
+                    bottom: dotSize + 8
+                }}
+            >
                 <div className="flex items-center gap-2 mb-1">
                     <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
                     <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Generating x{parallelCount}</span>
                 </div>
+                {/* Reference Images Thumbnails */}
+                {referenceImages && referenceImages.length > 0 && (
+                    <div className="flex gap-1 mb-1 flex-wrap">
+                        {referenceImages.slice(0, 3).map((img, idx) => (
+                            <img
+                                key={img.id || idx}
+                                src={`data:${img.mimeType};base64,${img.data}`}
+                                alt="Reference"
+                                className="w-8 h-8 object-cover rounded border border-white/10"
+                            />
+                        ))}
+                        {referenceImages.length > 3 && (
+                            <div className="w-8 h-8 rounded border border-white/10 bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-400">
+                                +{referenceImages.length - 3}
+                            </div>
+                        )}
+                    </div>
+                )}
                 <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3">{prompt}</p>
             </div>
 
-            {/* Connection Dot - Below card */}
-            <div className="w-3 h-3 bg-indigo-500/50 rounded-full border-2 border-[#121212] mt-3" />
+            {/* Connection Dot at origin */}
+            <div
+                className="absolute bg-indigo-500/50 rounded-full border-2 border-[#121212]"
+                style={{
+                    width: dotSize,
+                    height: dotSize,
+                    left: -dotSize / 2,
+                    top: -dotSize / 2
+                }}
+            />
 
-            {/* Placeholders - Positioned BELOW the dot using relative positioning */}
-            <div className="relative mt-4" style={{ width: '100%', minHeight: 100 }}>
-                {Array.from({ length: parallelCount }).map((_, i) => {
-                    const gap = 16;
-                    const columns = isMobile ? 2 : 2;
-                    const cardW = isMobile ? 170 : w;
-                    const cardH = isMobile ? 200 : h;
-                    const cardGap = isMobile ? 10 : gap;
+            {/* Placeholders - Positioned BELOW origin */}
+            {Array.from({ length: parallelCount }).map((_, i) => {
+                const cardW = isMobile ? 170 : w;
+                const cardH = isMobile ? 200 : h;
 
-                    const col = i % columns;
-                    const row = Math.floor(i / columns);
-                    const gridWidth = columns * cardW + (columns - 1) * cardGap;
-                    const startX = -gridWidth / 2 + cardW / 2;
+                const col = i % columns;
+                const row = Math.floor(i / columns);
+                const currentGridWidth = columns * cardW + (columns - 1) * placeholderGap;
+                const startX = -currentGridWidth / 2;
 
-                    const offsetX = startX + col * (cardW + cardGap);
-                    const offsetY = row * (cardH + 50 + cardGap);
+                const offsetX = startX + col * (cardW + placeholderGap);
+                const offsetY = gapToPlaceholders + row * (cardH + placeholderGap);
 
-                    return (
-                        <React.Fragment key={i}>
-                            {/* Dashed line from center to placeholder */}
-                            <svg
-                                className="absolute pointer-events-none"
-                                style={{
-                                    left: '50%',
-                                    top: 0,
-                                    width: Math.abs(offsetX) * 2 + 10,
-                                    height: offsetY + 20,
-                                    overflow: 'visible',
-                                    transform: 'translateX(-50%)'
-                                }}
-                            >
-                                <path
-                                    d={`M${Math.abs(offsetX) + 5},0 L${Math.abs(offsetX) + 5 + offsetX},${offsetY}`}
-                                    fill="none"
-                                    stroke="rgba(99, 102, 241, 0.3)"
-                                    strokeWidth="2"
-                                    strokeDasharray="6 4"
-                                />
-                            </svg>
+                return (
+                    <React.Fragment key={i}>
+                        {/* Dashed line from dot to placeholder - z-10 to ensure above cards */}
+                        <svg
+                            className="absolute pointer-events-none z-10"
+                            style={{
+                                left: 0,
+                                top: 0,
+                                overflow: 'visible'
+                            }}
+                        >
+                            <path
+                                d={`M0,0 L${offsetX + cardW / 2},${offsetY}`}
+                                fill="none"
+                                stroke="rgba(99, 102, 241, 0.3)"
+                                strokeWidth="2"
+                                strokeDasharray="6 4"
+                            />
+                        </svg>
 
-                            {/* Placeholder Card */}
-                            <div
-                                className="absolute bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
-                                style={{
-                                    width: cardW,
-                                    height: cardH,
-                                    left: `calc(50% + ${offsetX}px - ${cardW / 2}px)`,
-                                    top: offsetY
-                                }}
-                            >
-                                <div className="flex flex-col items-center gap-3 opacity-50">
-                                    <Loader2 size={24} className="text-indigo-400 animate-spin" />
-                                    <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
-                                </div>
-                                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
+                        {/* Placeholder Card - z-0 to ensure below lines */}
+                        <div
+                            className="absolute z-0 bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
+                            style={{
+                                width: cardW,
+                                height: cardH,
+                                left: offsetX,
+                                top: offsetY
+                            }}
+                        >
+                            <div className="flex flex-col items-center gap-3 opacity-50">
+                                <Loader2 size={24} className="text-indigo-400 animate-spin" />
+                                <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
                             </div>
-                        </React.Fragment>
-                    );
-                })}
-            </div>
+                            <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
+                        </div>
+                    </React.Fragment>
+                );
+            })}
         </div>
     );
 };

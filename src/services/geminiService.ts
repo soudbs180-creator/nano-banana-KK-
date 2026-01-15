@@ -44,6 +44,7 @@ export const generateImage = async (
 
 /**
  * Direct Gemini API call (for local development fallback)
+ * Uses keyManager for multi-key rotation with automatic failover
  */
 async function generateImageDirect(
   prompt: string,
@@ -53,24 +54,25 @@ async function generateImageDirect(
   model: ModelType,
   apiKey: string
 ): Promise<string> {
+  // Import keyManager dynamically to avoid circular dependencies
+  const { keyManager } = await import('./keyManager');
+
   // Try to get API key from various sources
   let effectiveKey = apiKey;
+  let keyId: string | null = null;
 
   if (!effectiveKey) {
-    // Try localStorage (local dev storage)
-    try {
-      const stored = localStorage.getItem('kk-api-keys-local');
-      if (stored) {
-        const keys = JSON.parse(stored) as string[];
-        effectiveKey = keys.find(k => k && k.trim()) || '';
-      }
-    } catch (e) {
-      console.warn('Failed to read keys from localStorage');
+    // Try keyManager first (multi-key rotation)
+    const nextKey = keyManager.getNextKey();
+    if (nextKey) {
+      effectiveKey = nextKey.key;
+      keyId = nextKey.id;
+      console.log('[GeminiService] Using key from rotation:', keyId);
     }
   }
 
   if (!effectiveKey) {
-    // Try environment variable
+    // Try environment variable as fallback
     effectiveKey = import.meta.env.VITE_GEMINI_API_KEY || '';
   }
 
@@ -113,6 +115,10 @@ async function generateImageDirect(
     if (response.candidates && response.candidates.length > 0) {
       for (const part of response.candidates[0].content?.parts || []) {
         if (part.inlineData) {
+          // Report success to keyManager
+          if (keyId) {
+            keyManager.reportSuccess(keyId);
+          }
           return `data:image/png;base64,${part.inlineData.data}`;
         }
       }
@@ -121,6 +127,12 @@ async function generateImageDirect(
     throw new Error("未能生成图片");
   } catch (error: any) {
     console.error("Image generation error:", error);
+
+    // Report failure to keyManager
+    if (keyId) {
+      keyManager.reportFailure(keyId, error.message || 'Unknown error');
+    }
+
     throw normalizeError(error);
   }
 }
