@@ -5,7 +5,7 @@ import PromptBar from './components/PromptBar';
 import ImageNode from './components/ImageCard2';
 import PromptNodeComponent from './components/PromptNodeComponent';
 import PendingNode from './components/PendingNode';
-import KeyManagerModal from './components/KeyManagerModal';
+// KeyManagerModal removed - integrated into UserProfileModal
 import ChatSidebar from './components/ChatSidebar';
 import { PromptNode, GeneratedImage, AspectRatio, ImageSize, ModelType, GenerationConfig } from './types';
 import { generateImage, validateApiKey } from './services/geminiService';
@@ -14,9 +14,12 @@ import { keyManager } from './services/keyManager';
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import ConnectionDot from './components/ConnectionDot';
 import LoginScreen from './components/LoginScreen';
-import UserProfileModal from './components/UserProfileModal';
+import UserProfileModal, { UserProfileView } from './components/UserProfileModal';
 import { useAuth } from './context/AuthContext';
 import { Loader2 } from 'lucide-react';
+
+import { saveAs } from 'file-saver';
+import JSZip from 'jszip';
 
 // Canvas Manager Component (Top Left)
 const CanvasManager: React.FC = () => {
@@ -25,6 +28,7 @@ const CanvasManager: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Auto-close menu after 5 seconds of inactivity
   useEffect(() => {
@@ -40,6 +44,68 @@ const CanvasManager: React.FC = () => {
     if (confirm('确定要清除所有画布数据吗？此操作无法撤销！')) {
       clearAllData();
       setShowDropdown(false);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (!activeCanvas || activeCanvas.imageNodes.length === 0) {
+      alert("当前画布没有图片可下载");
+      return;
+    }
+
+    if (!confirm("确认下载所有图片？\n\n此操作将打包下载当前画布的所有图片（高清原图），但不包含提示词信息。")) {
+      return;
+    }
+
+    setIsDownloading(true);
+    setShowDropdown(false);
+
+    try {
+      const zip = new JSZip();
+      const folder = zip.folder(activeCanvas.name) || zip;
+
+      let count = 0;
+      const total = activeCanvas.imageNodes.length;
+
+      // Process in chunks to avoid freezing UI too much (though fetch is async)
+      const promises = activeCanvas.imageNodes.map(async (img, index) => {
+        try {
+          if (!img.url) return;
+
+          // Handle base64 or URL
+          let blob;
+          if (img.url.startsWith('data:')) {
+            blob = await (await fetch(img.url)).blob();
+          } else {
+            // External URL (unlikely given current setup, but good practice)
+            const response = await fetch(img.url);
+            blob = await response.blob();
+          }
+
+          const ext = blob.type.split('/')[1] || 'png';
+          const filename = `image_${index + 1}_${img.id.slice(0, 4)}.${ext}`;
+          folder.file(filename, blob);
+          count++;
+        } catch (e) {
+          console.error("Failed to add image to zip", e);
+        }
+      });
+
+      await Promise.all(promises);
+
+      if (count === 0) {
+        alert("下载失败：无法获取图片数据");
+        return;
+      }
+
+      const content = await zip.generateAsync({ type: "blob" });
+      saveAs(content, `${activeCanvas.name}_images.zip`);
+
+    } catch (err) {
+      console.error("Download failed", err);
+      alert("打包下载失败，请重试");
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -180,6 +246,23 @@ const CanvasManager: React.FC = () => {
               </button>
 
               <button
+                onClick={handleDownloadAll}
+                disabled={isDownloading}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors ${isDownloading ? 'opacity-50 cursor-wait' : ''}`}
+              >
+                {isDownloading ? (
+                  <Loader2 className="animate-spin w-3.5 h-3.5" />
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                )}
+                {isDownloading ? '打包中...' : '下载所有原图'}
+              </button>
+
+              <button
                 onClick={handleClearAll}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
               >
@@ -239,6 +322,7 @@ const AppContent: React.FC = () => {
   const {
     activeCanvas,
     addPromptNode,
+    updatePromptNode,
     addImageNodes,
     updatePromptNodePosition,
     updateImageNodePosition,
@@ -257,6 +341,9 @@ const AppContent: React.FC = () => {
   // Reactively track KeyManager state
   const [keyStats, setKeyStats] = useState(keyManager.getStats());
 
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileInitialView, setProfileInitialView] = useState<UserProfileView>('main');
+
   useEffect(() => {
     const unsubscribe = keyManager.subscribe(() => {
       setKeyStats(keyManager.getStats());
@@ -268,9 +355,10 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (user) {
       keyManager.setUserId(user.id).then(() => {
-        // Check if we need to show modal (only if no valid keys)
+        // Check if we need to show settings (only if no valid keys)
         if (!keyManager.hasValidKeys()) {
-          setShowApiModal(true);
+          setProfileInitialView('api-settings');
+          setShowProfileModal(true);
         }
       });
     }
@@ -346,13 +434,11 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, canUndo, canRedo]);
 
-  const [showApiModal, setShowApiModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  // const [showApiModal, setShowApiModal] = useState(false); // Removed
+  // Duplicate showProfileModal removed
 
   // Get derived API status for UI indicator - use keyManager
-
-  const derivedApiStatus = keyStats.valid > 0 ? 'success'
-    : keyStats.total > 0 ? 'error' : 'unknown';
+  const derivedApiStatus = keyStats.valid > 0 ? 'success' : keyStats.invalid > 0 ? 'error' : 'neutral';
 
 
 
@@ -491,7 +577,7 @@ const AppContent: React.FC = () => {
       }
     }
 
-    const newPromptNode: PromptNode = {
+    const generatingNode: PromptNode = {
       id: promptNodeId,
       prompt: config.prompt,
       position: currentPos,
@@ -500,14 +586,28 @@ const AppContent: React.FC = () => {
       model: config.model,
       childImageIds: [], // Will fill after generation
       referenceImages: finalReferenceImages,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      // New: Generating State
+      isGenerating: true,
+      sourceImageId: activeSourceImage || undefined
     };
+
+    // 4. Update State Immediately (Optimistic UI)
+    // 4. Update State Immediately (Optimistic UI)
+    addPromptNode(generatingNode);
+
+    // 5. Clear Input UI immediately & Unblock
+    const promptToUse = config.prompt; // Capture for API call
+    setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
+    setActiveSourceImage(null);
+    setPendingPosition({ x: 0, y: 0 });
+    setIsGenerating(false);
 
     try {
       const count = config.parallelCount;
       const promises = Array.from({ length: count }).map(async (_, index) => {
         const url = await generateImage(
-          config.prompt,
+          promptToUse,
           config.aspectRatio,
           config.imageSize,
           finalReferenceImages,
@@ -593,14 +693,14 @@ const AppContent: React.FC = () => {
         throw new Error('All generated images were invalid');
       }
 
-      // Create the final prompt node with child IDs
-      const finalPromptNode: PromptNode = {
-        ...newPromptNode,
-        childImageIds: validResults.map(img => img.id)
+      // Update the prompt node with success state
+      const updatedNode = {
+        ...generatingNode,
+        isGenerating: false,
+        childImageIds: validResults.map(r => r.id)
       };
 
-      // Add both prompt and images in sequence (React 18 will batch these)
-      addPromptNode(finalPromptNode);
+      updatePromptNode(updatedNode);
       addImageNodes(validResults);
 
       // Clear active source image after successful generation
@@ -631,9 +731,11 @@ const AppContent: React.FC = () => {
 
     } catch (err: any) {
       console.error(err);
+      updatePromptNode({ ...generatingNode, isGenerating: false, error: err.message || 'Failed' });
       setError(err.message || "Generation failed.");
       if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
-        setShowApiModal(true);
+        setProfileInitialView('api-settings');
+        setShowProfileModal(true);
       }
     } finally {
       setIsGenerating(false);
@@ -793,7 +895,10 @@ const AppContent: React.FC = () => {
       {/* API Key Button with Status Indicator */}
       <div className="absolute top-4 right-4 z-50">
         <button
-          onClick={() => setShowApiModal(true)}
+          onClick={() => {
+            setProfileInitialView('api-settings');
+            setShowProfileModal(true);
+          }}
           className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 hover:border-indigo-500 transition-colors shadow-2xl bg-[#1a1a1c]"
           title="API Key Settings"
         >
@@ -918,6 +1023,10 @@ const AppContent: React.FC = () => {
             onConnectStart={handleConnectStart}
             canvasTransform={canvasTransform}
             isMobile={isMobile}
+            sourcePosition={node.sourceImageId
+              ? activeCanvas?.imageNodes.find(n => n.id === node.sourceImageId)?.position
+              : undefined
+            }
           />
         ))}
 
@@ -933,8 +1042,8 @@ const AppContent: React.FC = () => {
             onClick={(imageId) => {
               // Set this image as source for continuing conversation
               setActiveSourceImage(imageId);
-              // Clear prompt to start fresh continue-conversation
-              setConfig(prev => ({ ...prev, prompt: '' }));
+              // Clear prompt and existing references to start fresh continue-conversation
+              setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
             }}
             isActive={node.id === activeSourceImage}
             canvasTransform={canvasTransform}
@@ -953,6 +1062,10 @@ const AppContent: React.FC = () => {
           isMobile={isMobile}
           canvasTransform={canvasTransform}
           referenceImages={config.referenceImages}
+          sourcePosition={activeSourceImage
+            ? activeCanvas?.imageNodes.find(n => n.id === activeSourceImage)?.position
+            : undefined
+          }
         />
       </InfiniteCanvas>
 
@@ -977,30 +1090,33 @@ const AppContent: React.FC = () => {
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
-        onOpenSettings={() => setShowApiModal(true)}
+        onOpenSettings={() => {
+          setProfileInitialView('api-settings');
+          setShowProfileModal(true);
+        }}
         hasApiKey={keyManager.hasValidKeys()}
         generatedCount={activeCanvas?.imageNodes.length || 0}
         user={user}
         onSignOut={signOut}
-        onOpenProfile={() => setShowProfileModal(true)}
+        onOpenProfile={() => {
+          if (keyManager.hasValidKeys()) {
+            setProfileInitialView('main');
+          } else {
+            setProfileInitialView('api-settings');
+          }
+          setShowProfileModal(true);
+        }}
       />
 
-      {/* API Key Manager Modal */}
-      <KeyManagerModal
-        isOpen={showApiModal}
-        onClose={() => setShowApiModal(false)}
-      />
+      {/* Legacy KeyManagerModal removed - integrated into UserProfileModal */}
 
-      {/* User Profile Modal */}
+      {/* User Profile Modal (Unified) */}
       <UserProfileModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
         user={user}
         onSignOut={signOut}
-        onOpenApiSettings={() => {
-          setShowProfileModal(false);
-          setShowApiModal(true);
-        }}
+        initialView={profileInitialView}
       />
 
       {error && (

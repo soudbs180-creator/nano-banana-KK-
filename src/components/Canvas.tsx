@@ -282,7 +282,14 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
             >
                 {/* Grid Background */}
                 {showGrid && (
-                    <div className="canvas-grid" />
+                    <div
+                        className="canvas-grid"
+                        style={{
+                            backgroundPosition: `${transform.x}px ${transform.y}px`,
+                            backgroundSize: `${40 * transform.scale}px ${40 * transform.scale}px`,
+                            opacity: Math.max(0.3, Math.min(0.8, transform.scale)) * 0.5 // Dynamic opacity
+                        }}
+                    />
                 )}
 
                 {/* Viewport with transform */}

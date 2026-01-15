@@ -127,20 +127,29 @@ class KeyManager {
     async setUserId(userId: string | null) {
         if (this.userId === userId) return;
 
-        // Security: Clear all keys when user changes or logs out
-        // This prevents User B from seeing User A's keys in local storage
-        this.clearAll();
+        const previousUserId = this.userId;
+        const localKeys = [...this.state.slots]; // Save local keys before potential clear
+
+        // Only clear keys if switching between different logged-in users
+        // (not when logging in from anonymous or logging out)
+        if (previousUserId && userId && previousUserId !== userId) {
+            // Switching users - clear for security
+            this.clearAll();
+        }
 
         this.userId = userId;
         if (userId) {
-            await this.loadFromCloud();
+            // Pass local keys to merge with cloud
+            await this.loadFromCloud(localKeys);
+        } else {
+            // Logging out - keep local keys as-is
         }
     }
 
     /**
-     * Load state from Supabase
+     * Load state from Supabase and merge with local keys
      */
-    private async loadFromCloud() {
+    private async loadFromCloud(localKeys: KeySlot[] = []) {
         if (!this.userId) return;
 
         try {
@@ -153,25 +162,49 @@ class KeyManager {
 
             if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
                 console.warn('[KeyManager] Failed to fetch cloud settings:', error);
+                // Keep local keys if cloud fetch fails
+                if (localKeys.length > 0 && this.state.slots.length === 0) {
+                    this.state.slots = localKeys;
+                    this.saveState();
+                }
                 return;
             }
 
             if (data && data.api_keys) {
-                // Merge cloud keys with local keys? Or overwrite? 
-                // For simplicity, let's trust cloud if it has data, but merge carefully.
-                // Actually, let's just use cloud valid data.
                 const cloudSlots = data.api_keys as KeySlot[];
-                if (Array.isArray(cloudSlots) && cloudSlots.length > 0) {
-                    this.state.slots = cloudSlots;
+                if (Array.isArray(cloudSlots)) {
+                    // Merge: cloud keys take priority, add unique local keys
+                    const cloudKeySet = new Set(cloudSlots.map(s => s.key));
+                    const uniqueLocalKeys = localKeys.filter(local => !cloudKeySet.has(local.key));
+
+                    this.state.slots = [...cloudSlots, ...uniqueLocalKeys];
+
+                    if (uniqueLocalKeys.length > 0) {
+                        console.log(`[KeyManager] Merged ${uniqueLocalKeys.length} local keys with ${cloudSlots.length} cloud keys`);
+                        // Save merged result to cloud
+                        await this.saveToCloud(this.state);
+                    }
+
                     this.saveState(); // Update local storage
                     this.notifyListeners();
                 }
             } else {
-                // Init user settings if empty
-                await this.saveToCloud(this.state);
+                // No cloud data, use local keys if available
+                if (localKeys.length > 0) {
+                    this.state.slots = localKeys;
+                    this.saveState();
+                    // Save local keys to cloud for this user
+                    await this.saveToCloud(this.state);
+                    console.log(`[KeyManager] Uploaded ${localKeys.length} local keys to cloud`);
+                }
             }
         } catch (e) {
             console.error('[KeyManager] Error loading from cloud:', e);
+            // Keep local keys on error
+            if (localKeys.length > 0 && this.state.slots.length === 0) {
+                this.state.slots = localKeys;
+                this.saveState();
+            }
         } finally {
             this.isSyncing = false;
         }

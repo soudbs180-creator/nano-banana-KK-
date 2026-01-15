@@ -200,9 +200,9 @@ body {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-  background-size: 40px 40px;
+    linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  /* background-size: handled in JS */
   pointer-events: none;
   z-index: 0;
 }
@@ -318,6 +318,12 @@ body {
   font-size: 14px;
   color: white;
   flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-avatar:hover {
+  transform: scale(1.05);
 }
 
 /* ============================================
@@ -562,8 +568,8 @@ body {
 @media (max-width: 640px) {
   .input-bar {
     bottom: 12px;
-    left: 8px;
-    right: 8px;
+    left: 16px;
+    right: 16px;
     transform: none;
     width: auto;
     max-width: none;
@@ -608,8 +614,8 @@ body {
 @media (max-width: 480px) {
   .input-bar {
     bottom: 8px;
-    left: 4px;
-    right: 4px;
+    left: 12px;
+    right: 12px;
   }
 
   .input-bar-inner {
@@ -669,16 +675,12 @@ body {
 /* Mobile Responsive Dropdown */
 @media (max-width: 640px) {
   .dropdown {
-    position: fixed !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    bottom: 80px !important;
-    /* Above prompt bar */
-    top: auto !important;
+    /* Keep position relative to parent button */
     max-width: 90vw;
     max-height: 50vh;
     overflow-y: auto;
     width: max-content;
+    min-width: 100px;
   }
 }
 
@@ -1102,4 +1104,93 @@ body {
 .add-node-btn:hover {
   transform: scale(1.05) rotate(3deg);
   box-shadow: var(--shadow-lg);
+}
+
+/* ============================================
+   Chat Bubble Animations & Styles
+   ============================================ */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+/* Breathing animation for bubble */
+@keyframes bubble-breathe {
+
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 4px 20px rgba(0, 122, 255, 0.3);
+  }
+
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 6px 28px rgba(0, 122, 255, 0.45);
+  }
+}
+
+@keyframes icon-breathe {
+
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.animate-bubble-breathe {
+  animation: bubble-breathe 3s ease-in-out infinite;
+}
+
+.animate-icon-breathe {
+  animation: icon-breathe 3s ease-in-out infinite;
+}
+
+/* Custom thin scrollbar for chat */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }

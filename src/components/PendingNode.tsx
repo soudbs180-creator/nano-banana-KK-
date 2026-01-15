@@ -18,6 +18,7 @@ interface PendingNodeProps {
     isMobile?: boolean;
     canvasTransform?: { x: number; y: number; scale: number };
     referenceImages?: ReferenceImage[];
+    sourcePosition?: { x: number; y: number };
 }
 
 const PendingNode: React.FC<PendingNodeProps> = ({
@@ -29,7 +30,8 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     onPositionChange,
     isMobile = false,
     canvasTransform = { x: 0, y: 0, scale: 1 },
-    referenceImages = []
+    referenceImages = [],
+    sourcePosition
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -168,10 +170,9 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     const dotSize = 12;
     const gapToPlaceholders = 50;
 
-    // Calculate placeholder grid center offset
-    const columns = isMobile ? 2 : 2;
+    // Calculate placeholder grid - use actual count for columns calculation
+    const columns = isMobile ? Math.min(parallelCount, 2) : Math.min(parallelCount, 2);
     const placeholderGap = isMobile ? 10 : 16;
-    const gridWidth = columns * w + (columns - 1) * placeholderGap;
 
     return (
         <div
@@ -179,16 +180,49 @@ const PendingNode: React.FC<PendingNodeProps> = ({
             style={{
                 left: position.x,
                 top: position.y,
+                transform: 'translate(-50%, 0)', // Center the entire component horizontally
                 cursor: isDragging ? 'grabbing' : 'grab'
             }}
             onMouseDown={handleMouseDown}
         >
+            {/* Draw connection line from source image if it exists */}
+            {sourcePosition && (
+                <svg
+                    className="absolute pointer-events-none"
+                    style={{
+                        overflow: 'visible',
+                        left: '50%',
+                        top: 0,
+                        zIndex: -1
+                    }}
+                >
+                    <path
+                        // Added offset (+320) to connect to bottom of source card
+                        d={`M${sourcePosition.x - position.x},${sourcePosition.y - position.y + 320} L0,0`}
+                        fill="none"
+                        stroke="#6366f1"
+                        strokeWidth="2"
+                        strokeDasharray="6 4"
+                        className="animate-pulse"
+                    />
+                    {/* Start Dot at source */}
+                    <circle
+                        cx={sourcePosition.x - position.x}
+                        cy={sourcePosition.y - position.y + 320}
+                        r="4"
+                        fill="#6366f1"
+                        fillOpacity="0.5"
+                    />
+                </svg>
+            )}
+
             {/* Main Prompt Node - Centered above origin */}
             <div
                 className="absolute bg-[#1a1a1c] border-2 border-indigo-500/30 rounded-2xl p-4 shadow-xl flex flex-col gap-3 animate-fadeIn"
                 style={{
                     width: cardWidth,
-                    left: -cardWidth / 2,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
                     bottom: dotSize + 8
                 }}
             >
@@ -217,43 +251,48 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3">{prompt}</p>
             </div>
 
-            {/* Connection Dot at origin */}
+            {/* Connection Dot at origin - centered */}
             <div
                 className="absolute bg-indigo-500/50 rounded-full border-2 border-[#121212]"
                 style={{
                     width: dotSize,
                     height: dotSize,
-                    left: -dotSize / 2,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
                     top: -dotSize / 2
                 }}
             />
 
-            {/* Placeholders - Positioned BELOW origin */}
+            {/* Placeholders - Positioned BELOW origin, centered */}
             {Array.from({ length: parallelCount }).map((_, i) => {
                 const cardW = isMobile ? 170 : w;
                 const cardH = isMobile ? 200 : h;
 
                 const col = i % columns;
                 const row = Math.floor(i / columns);
-                const currentGridWidth = columns * cardW + (columns - 1) * placeholderGap;
+
+                // Calculate actual grid width based on items in current row
+                const itemsInRow = Math.min(columns, parallelCount - row * columns);
+                const currentGridWidth = itemsInRow * cardW + (itemsInRow - 1) * placeholderGap;
                 const startX = -currentGridWidth / 2;
 
-                const offsetX = startX + col * (cardW + placeholderGap);
+                // For single item, center it; for multiple, position in grid
+                const offsetX = startX + col * (cardW + placeholderGap) + cardW / 2;
                 const offsetY = gapToPlaceholders + row * (cardH + placeholderGap);
 
                 return (
                     <React.Fragment key={i}>
-                        {/* Dashed line from dot to placeholder - z-10 to ensure above cards */}
+                        {/* Dashed line from dot to placeholder center */}
                         <svg
                             className="absolute pointer-events-none z-10"
                             style={{
-                                left: 0,
+                                left: '50%',
                                 top: 0,
                                 overflow: 'visible'
                             }}
                         >
                             <path
-                                d={`M0,0 L${offsetX + cardW / 2},${offsetY}`}
+                                d={`M0,0 L${offsetX},${offsetY}`}
                                 fill="none"
                                 stroke="rgba(99, 102, 241, 0.3)"
                                 strokeWidth="2"
@@ -261,14 +300,15 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                             />
                         </svg>
 
-                        {/* Placeholder Card - z-0 to ensure below lines */}
+                        {/* Placeholder Card - centered using transform */}
                         <div
                             className="absolute z-0 bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
                             style={{
                                 width: cardW,
                                 height: cardH,
-                                left: offsetX,
-                                top: offsetY
+                                left: `calc(50% + ${offsetX}px)`,
+                                top: offsetY,
+                                transform: 'translateX(-50%)'
                             }}
                         >
                             <div className="flex flex-col items-center gap-3 opacity-50">

@@ -48,6 +48,9 @@ export interface PromptNode {
   childImageIds: string[];
   referenceImages?: ReferenceImage[];
   timestamp: number;
+  sourceImageId?: string;
+  isGenerating?: boolean;
+  error?: string;
 }
 
 export interface Canvas {

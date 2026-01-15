@@ -24,6 +24,7 @@ interface CanvasContextType {
     deleteCanvas: (id: string) => void;
     renameCanvas: (id: string, newName: string) => void;
     addPromptNode: (node: PromptNode) => void;
+    updatePromptNode: (node: PromptNode) => void;
     addImageNodes: (nodes: GeneratedImage[]) => void;
     updatePromptNodePosition: (id: string, pos: { x: number; y: number }) => void;
     updateImageNodePosition: (id: string, pos: { x: number; y: number }) => void;
@@ -145,10 +146,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (isLoading) return; // Don't save while loading
 
         try {
-            // Save state with URLs - IndexedDB provides backup storage
-            // We keep URLs in localStorage for backward compatibility
+            // Save state with URLs STRIPPED - IndexedDB provides backup storage
+            // We use stripImageUrls to remove large base64 strings
             const stateToSave = {
                 ...state,
+                canvases: stripImageUrls(state.canvases),
                 // Strip history to save space (can be rebuilt)
                 history: {}
             };
@@ -258,6 +260,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateCanvas(c => ({
             ...c,
             promptNodes: [...c.promptNodes, node]
+        }));
+    }, [updateCanvas]);
+
+    const updatePromptNode = useCallback((node: PromptNode) => {
+        updateCanvas(c => ({
+            ...c,
+            promptNodes: c.promptNodes.map(n => n.id === node.id ? node : n)
         }));
     }, [updateCanvas]);
 
@@ -478,7 +487,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return (
         <CanvasContext.Provider value={{
             state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
-            addPromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition,
+            addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition,
             deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
             undo, redo, pushToHistory, canUndo, canRedo
         }}>

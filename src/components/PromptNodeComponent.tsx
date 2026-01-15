@@ -11,6 +11,7 @@ interface PromptNodeProps {
     onConnectStart?: (id: string, startPos: { x: number; y: number }) => void;
     canvasTransform?: { x: number; y: number; scale: number };
     isMobile?: boolean;
+    sourcePosition?: { x: number; y: number };
 }
 
 const PromptNodeComponent: React.FC<PromptNodeProps> = ({
@@ -21,7 +22,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
     onClickPrompt,
     onConnectStart,
     canvasTransform = { x: 0, y: 0, scale: 1 },
-    isMobile = false
+    isMobile = false,
+    sourcePosition
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const dragStartPos = useRef({ x: 0, y: 0 });
@@ -148,6 +150,19 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                 <p className="text-zinc-100 text-sm leading-relaxed line-clamp-3 font-normal flex-1">
                     {node.prompt}
                 </p>
+                {/* Generating Loading State */}
+                {node.isGenerating && (
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px] rounded-2xl flex flex-col items-center justify-center z-50">
+                        <div className="flex items-center gap-2 text-indigo-400">
+                            {/* Loader icon */}
+                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span className="text-xs font-medium">Coming soon...</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Connection Dot - Bottom Center */}
@@ -160,6 +175,47 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                     onConnectStart?.(node.id, { x: node.position.x + 160, y: node.position.y + 12 });
                 }}
             />
+
+            {/* Connection Line to Source */}
+            {sourcePosition && (
+                <svg
+                    className="absolute pointer-events-none"
+                    style={{
+                        overflow: 'visible',
+                        left: '50%',
+                        top: 0, // This is at 'top' of the container (which is card bottom due to flow?)
+                        // Wait, container is absolute at node.position (Bottom).
+                        // So 0,0 is Bottom-Center.
+                        // We want line from Source Bottom to Card Top.
+                        // Card Top is roughly -140px (depending on height).
+                        // Let's use negative Y for local point.
+                        zIndex: -1
+                    }}
+                >
+                    <path
+                        // sourcePosition is Absolute Top of Source.
+                        // node.position is Absolute Bottom of This.
+                        // Source Bottom ~ sourcePosition.y + 300.
+                        // This Top ~ node.position.y - CardHeight (~150).
+                        // Delta X = sourcePosition.x - node.position.x
+                        // Delta Y = (sourcePosition.y + 320) - node.position.y
+                        // Draw from (DeltaX, DeltaY) to (0, -150)
+                        d={`M${sourcePosition.x - node.position.x},${sourcePosition.y - node.position.y + 320} L0,${-140}`}
+                        fill="none"
+                        stroke="#6366f1"
+                        strokeWidth="2"
+                        strokeDasharray="6 4"
+                        className="animate-pulse"
+                    />
+                    {/* Dot at Start */}
+                    <circle
+                        cx={sourcePosition.x - node.position.x}
+                        cy={sourcePosition.y - node.position.y + 320}
+                        r="3"
+                        fill="#6366f1"
+                    />
+                </svg>
+            )}
 
             {/* Visual Guide Line (optional, only when dragging maybe?) */}
         </div>

@@ -121,15 +121,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {/* User Section */}
                     <div className="p-3 bg-black/20 rounded-xl mb-2">
                         <div className="flex items-center gap-3 mb-3">
-                            <div className="sidebar-avatar relative shrink-0" onClick={onOpenProfile} role="button">
-                                {user?.email?.[0].toUpperCase() || 'K'}
+                            <div className="sidebar-avatar relative shrink-0 overflow-hidden" onClick={onOpenProfile} role="button">
+                                {user?.user_metadata?.avatar_url ? (
+                                    <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                                ) : (
+                                    user?.email?.[0].toUpperCase() || 'K'
+                                )}
                                 {/* Status indicator */}
                                 <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-900 ${hasApiKey ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'
                                     }`} />
                             </div>
-                            <div className="flex-1 min-w-0" onClick={onOpenProfile} role="button">
-                                <p className="text-xs font-medium text-zinc-300 truncate">{user?.email || 'Guest'}</p>
-                                <p className="text-[10px] text-zinc-500 truncate">Pro Plan</p>
+                            <div className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity" onClick={onOpenProfile} role="button">
+                                <p className="text-xs font-medium text-zinc-300 truncate">
+                                    {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Guest'}
+                                </p>
+                                <p className="text-[10px] text-zinc-500 truncate">{user?.email || 'No email'}</p>
                             </div>
                         </div>
 
