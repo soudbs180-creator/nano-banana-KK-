@@ -10,6 +10,7 @@ interface PendingNodeProps {
     aspectRatio: AspectRatio;
     onPositionChange?: (pos: { x: number; y: number }) => void;
     isMobile?: boolean;
+    canvasTransform?: { x: number; y: number; scale: number };
 }
 
 const PendingNode: React.FC<PendingNodeProps> = ({
@@ -19,7 +20,8 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     position,
     aspectRatio,
     onPositionChange,
-    isMobile = false
+    isMobile = false,
+    canvasTransform = { x: 0, y: 0, scale: 1 }
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -83,10 +85,9 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 clientY = (e as MouseEvent).clientY;
             }
 
-            // Calculate delta in screen space (no scale conversion needed for pending node
-            // since it's positioned in canvas coordinates and the canvas handles transform)
-            const deltaX = clientX - dragOffset.x;
-            const deltaY = clientY - dragOffset.y;
+            // Calculate delta in screen space, then convert to canvas space by dividing by scale
+            const deltaX = (clientX - dragOffset.x) / canvasTransform.scale;
+            const deltaY = (clientY - dragOffset.y) / canvasTransform.scale;
 
             onPositionChange?.({
                 x: dragStartPos.current.x + deltaX,
@@ -110,7 +111,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
             window.removeEventListener('touchmove', handleMouseMove);
             window.removeEventListener('touchend', handleMouseUp);
         };
-    }, [isDragging, dragOffset, onPositionChange]);
+    }, [isDragging, dragOffset, onPositionChange, canvasTransform.scale]);
 
     // Conditional rendering AFTER all hooks
     if (!prompt) return null;
@@ -196,11 +197,20 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                     offsetX = startX + col * (mobileCardWidth + mobileGap);
                     offsetY = 150 + row * (250 + mobileGap); // Vertical offset below prompt
                 } else {
-                    // Desktop: Horizontal
-                    const totalWidth = parallelCount * w + (parallelCount - 1) * gap;
-                    const startX = -totalWidth / 2 + w / 2;
-                    offsetX = startX + i * (w + gap);
-                    offsetY = 50; // Fixed distance below prompt
+                    // Desktop: 2-column grid (matching final generation layout)
+                    const columns = 2;
+                    const gap = 16;
+                    const col = i % columns;
+                    const row = Math.floor(i / columns);
+
+                    // Calculate grid width for centering
+                    const gridWidth = columns * w + (columns - 1) * gap;
+                    const startX = -gridWidth / 2 + w / 2;
+
+                    offsetX = startX + col * (w + gap);
+                    // Calculate card height based on aspect ratio
+                    const cardHeight = h + 50; // Approximate with some padding
+                    offsetY = 50 + row * (cardHeight + gap);
                 }
 
                 return (

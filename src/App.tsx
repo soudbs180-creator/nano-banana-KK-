@@ -503,15 +503,20 @@ const AppContent: React.FC = () => {
     if (activeSourceImage) {
       const sourceImage = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
       if (sourceImage) {
+        // Calculate actual card height: image height + footer (~36px)
+        const footerHeight = 36;
         let imageHeight = 280;
         switch (sourceImage.aspectRatio) {
           case AspectRatio.LANDSCAPE_16_9: imageHeight = 180; break;
           case AspectRatio.PORTRAIT_9_16: imageHeight = 350; break;
           default: imageHeight = 280;
         }
+        const cardHeight = imageHeight + footerHeight;
+        // Position new prompt below the source image card with some spacing
+        // sourceImage.position.y is TOP of card (due to translate(-50%, 0))
         setPendingPosition({
-          x: sourceImage.position.x,
-          y: sourceImage.position.y + imageHeight + 100
+          x: sourceImage.position.x, // Keep same horizontal center
+          y: sourceImage.position.y + cardHeight + 80 // Below card with gap
         });
         return;
       }
@@ -563,6 +568,45 @@ const AppContent: React.FC = () => {
       ? { x: window.innerWidth / 2, y: 200 }
       : pendingPosition;
 
+    // If continuing from an image, auto-add it as reference (img2img)
+    let finalReferenceImages = [...config.referenceImages];
+    if (activeSourceImage) {
+      const sourceImage = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
+      if (sourceImage && sourceImage.url) {
+        // Fetch image and convert to base64 to use as reference
+        try {
+          const response = await fetch(sourceImage.url);
+          const blob = await response.blob();
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              const matches = result.match(/^data:(.+);base64,(.+)$/);
+              if (matches) {
+                resolve(matches[2]);
+              } else {
+                resolve('');
+              }
+            };
+            reader.readAsDataURL(blob);
+          });
+          if (base64) {
+            // Check if not already in references
+            const alreadyAdded = finalReferenceImages.some(ref => ref.id === sourceImage.id);
+            if (!alreadyAdded) {
+              finalReferenceImages.push({
+                id: sourceImage.id,
+                data: base64,
+                mimeType: blob.type || 'image/png'
+              });
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('Could not fetch source image for reference:', fetchErr);
+        }
+      }
+    }
+
     const newPromptNode: PromptNode = {
       id: promptNodeId,
       prompt: config.prompt,
@@ -571,7 +615,7 @@ const AppContent: React.FC = () => {
       imageSize: config.imageSize,
       model: config.model,
       childImageIds: [], // Will fill after generation
-      referenceImages: config.referenceImages,
+      referenceImages: finalReferenceImages,
       timestamp: Date.now()
     };
 
@@ -582,7 +626,7 @@ const AppContent: React.FC = () => {
           config.prompt,
           config.aspectRatio,
           config.imageSize,
-          config.referenceImages,
+          finalReferenceImages,
           config.model
         );
 
@@ -628,13 +672,18 @@ const AppContent: React.FC = () => {
           x = startX + col * (mobileCardWidth + mobileGap);
           y = currentPos.y + 200 + row * (250 + mobileGap); // Vertical offset below prompt
         } else {
-          // Desktop Layout: Horizontal row centered below prompt
-          const gap = 20;
-          const totalWidth = count * cardWidth + (count - 1) * gap;
-          const startX = currentPos.x - totalWidth / 2 + cardWidth / 2;
+          // Desktop Layout: 2-column grid below prompt (like reference image)
+          const columns = 2; // 2 columns for clean grid
+          const gap = 16;
+          const col = index % columns;
+          const row = Math.floor(index / columns);
 
-          x = startX + index * (cardWidth + gap);
-          y = currentPos.y + 50;
+          // Calculate grid width for centering
+          const gridWidth = columns * cardWidth + (columns - 1) * gap;
+          const startX = currentPos.x - gridWidth / 2 + cardWidth / 2;
+
+          x = startX + col * (cardWidth + gap);
+          y = currentPos.y + 50 + row * (cardHeight + gap + 20); // 50px below prompt + row offset
         }
 
         return {
@@ -673,6 +722,9 @@ const AppContent: React.FC = () => {
       addPromptNode(finalPromptNode);
       addImageNodes(validResults);
 
+      // Clear active source image after successful generation
+      setActiveSourceImage(null);
+
       // Keep prompt for continuous generation (don't clear)
 
       // Auto-scroll to center the new content (Mobile Only)
@@ -705,7 +757,7 @@ const AppContent: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [config, pendingPosition, addPromptNode, addImageNodes, activeCanvas?.id, isGenerating]);
+  }, [config, pendingPosition, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, isGenerating, isMobile]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
@@ -1009,6 +1061,7 @@ const AppContent: React.FC = () => {
           aspectRatio={config.aspectRatio}
           onPositionChange={setPendingPosition}
           isMobile={isMobile}
+          canvasTransform={canvasTransform}
         />
       </InfiniteCanvas>
 

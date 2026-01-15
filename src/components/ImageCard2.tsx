@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { GeneratedImage } from '../types';
 import { Download, Trash2 } from 'lucide-react';
@@ -28,9 +28,84 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [showLightbox, setShowLightbox] = useState(false);
-    const [lightboxZoom, setLightboxZoom] = useState(1); // 50% to 200%
+    const [lightboxZoom, setLightboxZoom] = useState(1);
+    const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
+    const [isPanning, setIsPanning] = useState(false);
+    const panStartRef = useRef({ x: 0, y: 0 });
+    const panStartPosRef = useRef({ x: 0, y: 0 });
+    const lightboxRef = useRef<HTMLDivElement>(null);
     const dragStartPos = useRef({ x: 0, y: 0 });
     const dragStartCanvasPos = useRef({ x: 0, y: 0 });
+
+    // Stored reference for cleanup (persists across effect calls)
+    const wheelCleanupRef = useRef<(() => void) | null>(null);
+
+    // Handle wheel zoom with non-passive listener
+    useEffect(() => {
+        if (!showLightbox) return;
+
+        // Small delay to ensure Portal has rendered to DOM
+        const timeoutId = setTimeout(() => {
+            const el = lightboxRef.current;
+            if (!el) {
+                console.warn('[Lightbox] Element not found after timeout');
+                return;
+            }
+
+            const handleWheel = (e: WheelEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const delta = e.deltaY > 0 ? -0.15 : 0.15;
+                setLightboxZoom(prev => Math.min(5, Math.max(0.25, prev + delta)));
+            };
+
+            el.addEventListener('wheel', handleWheel, { passive: false });
+
+            // Store cleanup function in ref (not on element)
+            wheelCleanupRef.current = () => {
+                el.removeEventListener('wheel', handleWheel);
+            };
+        }, 50); // 50ms delay for Portal render
+
+        return () => {
+            clearTimeout(timeoutId);
+            if (wheelCleanupRef.current) {
+                wheelCleanupRef.current();
+                wheelCleanupRef.current = null;
+            }
+        };
+    }, [showLightbox]);
+
+    // Handle pan/drag for lightbox image
+    const handleLightboxMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsPanning(true);
+        panStartRef.current = { x: e.clientX, y: e.clientY };
+        panStartPosRef.current = { x: lightboxPan.x, y: lightboxPan.y };
+    }, [lightboxPan]);
+
+    const handleLightboxMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!isPanning) return;
+        const dx = e.clientX - panStartRef.current.x;
+        const dy = e.clientY - panStartRef.current.y;
+        setLightboxPan({
+            x: panStartPosRef.current.x + dx,
+            y: panStartPosRef.current.y + dy
+        });
+    }, [isPanning]);
+
+    const handleLightboxMouseUp = useCallback(() => {
+        setIsPanning(false);
+    }, []);
+
+    // Reset pan and zoom when lightbox opens
+    useEffect(() => {
+        if (showLightbox) {
+            setLightboxZoom(1);
+            setLightboxPan({ x: 0, y: 0 });
+        }
+    }, [showLightbox]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         // e.preventDefault(); // Optional: prevent scroll on card drag?
@@ -206,20 +281,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
             {/* Lightbox Modal - Rendered to body via Portal for true top-level z-index */}
             {showLightbox && ReactDOM.createPortal(
                 <div
-                    className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center animate-fadeIn"
-                    onClick={() => setShowLightbox(false)}
-                    onWheel={(e) => {
-                        e.preventDefault();
-                        setLightboxZoom(prev => {
-                            const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                            return Math.min(2, Math.max(0.5, prev + delta));
-                        });
-                    }}
-                    style={{ backdropFilter: 'blur(8px)' }}
+                    ref={lightboxRef}
+                    className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center animate-fadeIn select-none"
+                    onClick={() => !isPanning && setShowLightbox(false)}
+                    onMouseMove={handleLightboxMouseMove}
+                    onMouseUp={handleLightboxMouseUp}
+                    onMouseLeave={handleLightboxMouseUp}
+                    style={{ backdropFilter: 'blur(8px)', cursor: isPanning ? 'grabbing' : 'default' }}
                 >
                     {/* Close Button - Top Right */}
                     <button
-                        onClick={() => setShowLightbox(false)}
+                        onClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
                         className="absolute top-4 right-4 z-[100000] w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-all duration-200 hover:scale-110"
                         title="关闭"
                     >
@@ -228,30 +300,52 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                         </svg>
                     </button>
 
-                    {/* Zoom indicator */}
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 px-3 py-1 rounded-full text-white text-sm">
-                        {Math.round(lightboxZoom * 100)}%
+                    {/* Zoom Controls */}
+                    <div className="absolute bottom-6 right-6 z-[100000] flex items-center gap-2 bg-black/50 rounded-lg p-2">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setLightboxZoom(prev => Math.max(0.25, prev - 0.25)); }}
+                            className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white"
+                            title="缩小"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        </button>
+                        <span className="text-white text-sm min-w-[50px] text-center">{Math.round(lightboxZoom * 100)}%</span>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setLightboxZoom(prev => Math.min(5, prev + 0.25)); }}
+                            className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white"
+                            title="放大"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        </button>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setLightboxZoom(1); setLightboxPan({ x: 0, y: 0 }); }}
+                            className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white ml-1"
+                            title="重置"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="8" /></svg>
+                        </button>
                     </div>
 
-                    {/* Main Image - Click anywhere to close, scroll to zoom */}
+                    {/* Main Image - Drag to pan, scroll to zoom */}
                     <img
                         src={image.url}
                         alt={image.prompt}
-                        onClick={(e) => e.stopPropagation()}
-                        onDoubleClick={() => setShowLightbox(false)}
+                        onMouseDown={handleLightboxMouseDown}
+                        onDoubleClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
                         onContextMenu={(e) => e.stopPropagation()}
-                        className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl cursor-zoom-in"
+                        className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
                         draggable={false}
                         style={{
-                            transform: `scale(${lightboxZoom})`,
-                            transition: 'transform 0.1s ease-out',
+                            transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
+                            transition: isPanning ? 'none' : 'transform 0.15s ease-out',
+                            cursor: isPanning ? 'grabbing' : 'grab',
                             animation: 'lightboxScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
                         }}
                     />
 
                     {/* Hint text */}
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs">
-                        滚轮缩放 · 双击关闭 · 右键复制图片
+                        滚轮缩放 · 拖拽移动 · 双击关闭
                     </div>
                 </div>,
                 document.body
