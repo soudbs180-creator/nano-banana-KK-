@@ -19,28 +19,30 @@ export const generateImage = async (
   imageSize: ImageSize,
   referenceImages: ReferenceImage[],
   model: ModelType,
-  apiKey: string,
-  useFreeTier: boolean = false
+  apiKey: string
 ): Promise<string> => {
-  if (!apiKey && !useFreeTier) {
-    throw new Error("请在设置中输入您的 API Key（右上角）");
-  }
+  // Allow empty key to pass through to backend (for Server-Side Key usage)
 
-  // Local development: Direct API call
+  // Local development: Try Backend first, but Fallback if missing
   if (isLocalDev) {
-    // For local dev with Free Tier, we need the key client-side or use backend
-    // If usage is Free Tier, let's try to use backend even in local dev? 
-    // Or just use the key if provided.
-    // Simplifying: If Free Tier, use backend (so we can hide key in .env)
-    return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, useFreeTier);
+    try {
+      return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
+    } catch (e: any) {
+      // If Backend is missing logic (e.g. running 'npm run dev' without Netlify), fallback to Direct
+      if (e.message.includes("Backend function not found") || e.message.includes("404")) {
+        console.warn("⚠️ Local Dev: Backend not found. Falling back to Direct Client-Side API call.");
+        return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
+      }
+      throw e;
+    }
   }
 
   // Production: Call backend
-  return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, useFreeTier);
+  return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
 };
 
 /**
- * Direct Gemini API call (for local development)
+ * Direct Gemini API call (for local development fallback)
  */
 async function generateImageDirect(
   prompt: string,
@@ -50,23 +52,27 @@ async function generateImageDirect(
   model: ModelType,
   apiKey: string
 ): Promise<string> {
+  if (!apiKey) {
+    throw new Error("本地 Direct 模式需要 API Key (后端连接失败)");
+  }
+
   try {
     const ai = new GoogleGenAI({ apiKey });
     const parts: any[] = [];
+    if (prompt) parts.push({ text: prompt });
 
-    // Add reference images
-    referenceImages.forEach(img => {
-      parts.push({
-        inlineData: {
-          data: img.data,
-          mimeType: img.mimeType,
-        },
+    // Add reference images if any
+    if (referenceImages && referenceImages.length > 0) {
+      referenceImages.forEach(img => {
+        // Convert base64 to inline data
+        parts.push({
+          inlineData: {
+            mimeType: img.mimeType,
+            data: img.data, // Ensure data is included
+          },
+        });
       });
-    });
-
-    // Add prompt
-    parts.push({ text: prompt });
-
+    }
     // Build config
     const imageConfig: any = { aspectRatio };
     if (model === ModelType.PRO_QUALITY) {
@@ -76,7 +82,10 @@ async function generateImageDirect(
     const response = await ai.models.generateContent({
       model,
       contents: [{ role: 'user', parts }],
-      config: { imageConfig },
+      config: {
+        // @ts-ignore - GoogleGenAI SDK types might vary
+        imageConfig
+      },
     });
 
     if (response.candidates && response.candidates.length > 0) {
@@ -103,8 +112,7 @@ async function generateImageViaBackend(
   imageSize: ImageSize,
   referenceImages: ReferenceImage[],
   model: ModelType,
-  apiKey: string,
-  useFreeTier?: boolean
+  apiKey: string
 ): Promise<string> {
   try {
     const response = await fetch(API_ENDPOINT, {
@@ -120,15 +128,26 @@ async function generateImageViaBackend(
           mimeType: img.mimeType,
         })),
         apiKey,
-        useFreeTier
       }),
     });
 
-    const data = await response.json();
-
+    // Handle non-OK responses first to avoid parsing empty bodies
     if (!response.ok) {
-      throw new Error(data.error || `请求失败: ${response.status}`);
+      // Try to parse error message, but fallback if empty
+      let errorText = `Request failed: ${response.status} ${response.statusText}`;
+      try {
+        const errData = await response.json();
+        if (errData && errData.error) errorText = errData.error;
+      } catch (e) {
+        // If body is empty or not JSON, stick to statusText
+        if (response.status === 404) {
+          errorText = "Backend function not found. (If local, make sure Netlify Dev is running)";
+        }
+      }
+      throw new Error(errorText);
     }
+
+    const data = await response.json();
 
     if (data.success && data.imageData) {
       return `data:${data.mimeType || "image/png"};base64,${data.imageData}`;

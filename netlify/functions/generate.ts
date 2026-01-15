@@ -36,29 +36,26 @@ export default async (request: Request) => {
 
         // Security: Determine effective API Key
         let effectiveApiKey = body.apiKey;
+        const { prompt, aspectRatio, imageSize, model, referenceImages, apiKey } = body;
 
-        if (useFreeTier) {
-            // Use server-side environment variable for Free Tier
-            // This ensures the key is never exposed to the client
-            effectiveApiKey = process.env.FREE_TIER_KEY;
-
-            // Enforce Nano Banana (Fast) model for Free Tier
-            if (model !== 'gemini-2.5-flash-image') {
-                return new Response(JSON.stringify({ error: "Free Tier only supports Nano Banana Flash model" }), {
-                    status: 403,
-                    headers: { "Content-Type": "application/json" },
-                });
-            }
-        }
+        // Security: Use provided key OR fallback to Server-Side Environment Variable
+        const effectiveApiKey = apiKey || process.env.GEMINI_API_KEY;
 
         if (!effectiveApiKey) {
-            return new Response(JSON.stringify({ error: "API key is required (or FREE_TIER_KEY env var missing)" }), {
+            return new Response(JSON.stringify({ error: "API key is required" }), {
                 status: 400,
                 headers: { "Content-Type": "application/json" },
             });
         }
 
-        // Initialize Gemini client with user's API key
+        if (!prompt) {
+            return new Response(JSON.stringify({ error: "Prompt is required" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" },
+            });
+        }
+
+        // Initialize Gemini client
         const ai = new GoogleGenAI({ apiKey: effectiveApiKey });
 
         // Build content parts

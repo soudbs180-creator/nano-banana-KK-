@@ -10,10 +10,9 @@ interface PromptBarProps {
     onFilesDrop?: (files: File[]) => void;
     activeSourceImage?: { id: string; url: string; prompt: string } | null;
     onClearSource?: () => void;
-    isFreeKeyMode?: boolean;
 }
 
-const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, isFreeKeyMode = false }) => {
+const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -334,13 +333,11 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             </div>
                                         </button>
                                         <button
-                                            className={`dropdown-item ${config.model === ModelType.PRO_QUALITY ? 'active' : ''} ${isFreeKeyMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            className={`dropdown-item ${config.model === ModelType.PRO_QUALITY ? 'active' : ''}`}
                                             onClick={() => {
-                                                if (isFreeKeyMode) return;
                                                 setConfig(prev => ({ ...prev, model: ModelType.PRO_QUALITY }));
                                                 setActiveMenu(null);
                                             }}
-                                            disabled={isFreeKeyMode}
                                         >
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-500">
                                                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
@@ -348,7 +345,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             <div>
                                                 <div className="font-medium text-zinc-200">Nano Banana Pro</div>
                                                 <div className="text-[10px] text-zinc-500">
-                                                    {isFreeKeyMode ? '免费额度仅限快速模型' : '高质量，较慢'}
+                                                    高质量，较慢
                                                 </div>
                                             </div>
                                         </button>
