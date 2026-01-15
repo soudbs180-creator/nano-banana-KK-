@@ -12,6 +12,7 @@ const API_ENDPOINT = "/.netlify/functions/generate";
  * Generate image using Gemini API
  * - Local dev: Calls Gemini SDK directly (faster)
  * - Production: Routes through backend (secure)
+ * - apiKey is optional: backend will use stored keys or env variable
  */
 export const generateImage = async (
   prompt: string,
@@ -19,7 +20,7 @@ export const generateImage = async (
   imageSize: ImageSize,
   referenceImages: ReferenceImage[],
   model: ModelType,
-  apiKey: string
+  apiKey: string = '' // Optional: backend handles key management
 ): Promise<string> => {
   // Allow empty key to pass through to backend (for Server-Side Key usage)
 
@@ -117,6 +118,7 @@ async function generateImageViaBackend(
   try {
     const response = await fetch(API_ENDPOINT, {
       method: "POST",
+      credentials: "include", // Send cookies for client identification
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt,
@@ -127,7 +129,7 @@ async function generateImageViaBackend(
           data: img.data,
           mimeType: img.mimeType,
         })),
-        apiKey,
+        apiKey, // Can be empty; backend will use stored keys
       }),
     });
 

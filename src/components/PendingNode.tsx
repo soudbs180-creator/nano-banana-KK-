@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { AspectRatio } from '../types';
 
@@ -38,24 +38,60 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     const totalWidth = parallelCount * (w + 20) - 20;
     const startX = -(totalWidth / 2) + w / 2;
 
-    const handleMouseDown = (e: React.MouseEvent) => {
+    const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if (isMobile) return; // Disable dragging on mobile (allow canvas panning)
 
         e.stopPropagation();
         setIsDragging(true);
+
+        // Handle both Mouse and Touch events
+        let clientX, clientY;
+        if ('touches' in e) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = (e as React.MouseEvent).clientX;
+            clientY = (e as React.MouseEvent).clientY;
+        }
+
+        // Store initial mouse position and card position
         setDragOffset({
-            x: e.clientX - position.x,
-            y: e.clientY - position.y
+            x: clientX,
+            y: clientY
         });
+        // Store the starting position of the card
+        dragStartPos.current = { x: position.x, y: position.y };
     };
+
+    // Reference to store starting card position
+    const dragStartPos = useRef({ x: 0, y: 0 });
 
     // MUST be called unconditionally - moved before any conditional returns
     useEffect(() => {
-        const handleMouseMove = (e: MouseEvent) => {
+        const handleMouseMove = (e: MouseEvent | TouchEvent) => {
             if (!isDragging) return;
-            const newX = e.clientX - dragOffset.x;
-            const newY = e.clientY - dragOffset.y;
-            onPositionChange?.({ x: newX, y: newY });
+
+            // Prevent scrolling while dragging
+            if (e.cancelable) e.preventDefault();
+
+            let clientX, clientY;
+            if ('touches' in e) {
+                clientX = (e as TouchEvent).touches[0].clientX;
+                clientY = (e as TouchEvent).touches[0].clientY;
+            } else {
+                clientX = (e as MouseEvent).clientX;
+                clientY = (e as MouseEvent).clientY;
+            }
+
+            // Calculate delta in screen space (no scale conversion needed for pending node
+            // since it's positioned in canvas coordinates and the canvas handles transform)
+            const deltaX = clientX - dragOffset.x;
+            const deltaY = clientY - dragOffset.y;
+
+            onPositionChange?.({
+                x: dragStartPos.current.x + deltaX,
+                y: dragStartPos.current.y + deltaY
+            });
         };
 
         const handleMouseUp = () => {
@@ -65,10 +101,14 @@ const PendingNode: React.FC<PendingNodeProps> = ({
         if (isDragging) {
             window.addEventListener('mousemove', handleMouseMove);
             window.addEventListener('mouseup', handleMouseUp);
+            window.addEventListener('touchmove', handleMouseMove, { passive: false });
+            window.addEventListener('touchend', handleMouseUp);
         }
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('touchmove', handleMouseMove);
+            window.removeEventListener('touchend', handleMouseUp);
         };
     }, [isDragging, dragOffset, onPositionChange]);
 
@@ -76,6 +116,8 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     if (!prompt) return null;
 
     // 如果只是在输入中，显示一个跟随的输入气泡
+    // Uses same transform as PromptNodeComponent: translate(-50%, -100%)
+    // This ensures the position matches before and after generation
     if (!isGenerating) {
         return (
             <div
@@ -83,17 +125,29 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 style={{
                     left: position.x,
                     top: position.y,
-                    transform: 'translate(-50%, -50%)',
+                    transform: 'translate(-50%, -100%)', // Same as PromptNodeComponent
                     cursor: 'grab'
                 }}
                 onMouseDown={handleMouseDown}
             >
-                <div className="glass-strong px-6 py-4 rounded-[24px] border border-white/10 shadow-2xl max-w-[400px] min-w-[200px] animate-scaleIn">
-                    <p className="text-zinc-200 text-sm font-medium leading-relaxed break-words line-clamp-3">
+                {/* Preview Card - matches PromptNodeComponent dimensions */}
+                <div className="bg-[#18181b] border border-indigo-500/30 rounded-2xl p-3 shadow-xl w-[320px] animate-scaleIn">
+                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500/50 to-purple-500/50 flex items-center justify-center">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
+                                <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" />
+                            </svg>
+                        </div>
+                        <span className="text-xs font-medium text-zinc-400">Prompt Preview</span>
+                    </div>
+                    <p className="text-zinc-100 text-sm leading-relaxed line-clamp-4 font-normal">
                         {prompt}
                         <span className="inline-block w-1.5 h-4 ml-1 bg-indigo-500 animate-pulse align-middle rounded-full" />
                     </p>
                 </div>
+
+                {/* Connection Dot - Below card (same as PromptNodeComponent) */}
+                <div className="w-3 h-3 bg-indigo-500/50 rounded-full border-2 border-[#121212] shadow-sm mt-3 mx-auto transition-transform" />
             </div>
         );
     }
@@ -151,19 +205,22 @@ const PendingNode: React.FC<PendingNodeProps> = ({
 
                 return (
                     <React.Fragment key={i}>
-                        {/* Curved connection line from prompt to placeholder */}
+                        {/* Curved connection line from prompt dot to placeholder top-center */}
                         <svg
                             className="absolute overflow-visible pointer-events-none"
                             style={{ top: 0, left: 0 }}
                         >
+                            {/* Start at dot position (18px below origin), end at top-center of placeholder */}
                             <path
-                                d={`M0,0 Q${offsetX * 0.5},${offsetY * 0.7} ${offsetX},${offsetY}`}
+                                d={`M0,18 Q${offsetX * 0.5},${(18 + offsetY) * 0.5} ${offsetX},${offsetY}`}
                                 fill="none"
-                                stroke="rgba(129, 140, 248, 0.4)"
-                                strokeWidth="2"
-                                strokeDasharray="8 6"
+                                stroke="rgba(99, 102, 241, 0.4)"
+                                strokeWidth="1.5"
+                                strokeDasharray="6 4"
                                 strokeLinecap="round"
                             />
+                            {/* Small dot at connection point */}
+                            <circle cx={offsetX} cy={offsetY} r="2" fill="rgba(99, 102, 241, 0.5)" />
                         </svg>
 
                         {/* Placeholder Card - horizontal layout */}

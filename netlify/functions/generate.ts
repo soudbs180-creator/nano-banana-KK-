@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { getStore } from "@netlify/blobs";
 
 interface GenerateRequest {
     prompt: string;
@@ -6,8 +7,58 @@ interface GenerateRequest {
     imageSize?: string;
     model: string;
     referenceImages?: Array<{ data: string; mimeType: string }>;
-    apiKey?: string;
-    useFreeTier?: boolean;
+    apiKey?: string; // Optional: frontend can still provide key directly
+}
+
+interface ApiKeyEntry {
+    key: string;
+    status: 'valid' | 'invalid' | 'pending' | 'unknown';
+}
+
+interface KeysData {
+    keys: ApiKeyEntry[];
+    updatedAt: number;
+}
+
+// Cookie name for client identification
+const CLIENT_ID_COOKIE = 'kk-client-id';
+
+/**
+ * Parse clientId from cookies
+ */
+function getClientIdFromCookies(cookieHeader: string | null): string | null {
+    if (!cookieHeader) return null;
+    const cookies = cookieHeader.split(';').map(c => c.trim());
+    for (const cookie of cookies) {
+        const [name, value] = cookie.split('=');
+        if (name === CLIENT_ID_COOKIE && value) {
+            return value;
+        }
+    }
+    return null;
+}
+
+/**
+ * Get a valid API key from stored keys (rotation support)
+ */
+async function getStoredApiKey(clientId: string): Promise<string | null> {
+    try {
+        const store = getStore("api-keys");
+        const data = await store.get(clientId, { type: 'json' }) as KeysData | null;
+
+        if (!data || !data.keys) return null;
+
+        // Find first valid key, or first available key
+        const validKey = data.keys.find(k => k.key && k.status === 'valid');
+        if (validKey) return validKey.key;
+
+        // Fallback to first non-empty key
+        const anyKey = data.keys.find(k => k.key);
+        return anyKey?.key || null;
+    } catch (e) {
+        console.error("Failed to retrieve stored keys:", e);
+        return null;
+    }
 }
 
 export default async (request: Request) => {
@@ -18,7 +69,8 @@ export default async (request: Request) => {
             headers: {
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Headers": "Content-Type, Cookie",
+                "Access-Control-Allow-Credentials": "true",
             },
         });
     }
@@ -32,16 +84,28 @@ export default async (request: Request) => {
 
     try {
         const body: GenerateRequest = await request.json();
-        const { prompt, aspectRatio, imageSize, model, referenceImages, useFreeTier } = body;
-
-        // Security: Determine effective API Key
-        let effectiveApiKey = body.apiKey;
         const { prompt, aspectRatio, imageSize, model, referenceImages, apiKey } = body;
 
-        // Security: Use provided key OR fallback to Server-Side Environment Variable
-        const effectiveApiKey = apiKey || process.env.GEMINI_API_KEY;
+        // Get client ID from cookies
+        const cookieHeader = request.headers.get('cookie');
+        const clientId = getClientIdFromCookies(cookieHeader);
+
+        // Determine effective API Key with priority:
+        // 1. Frontend-provided key (if any)
+        // 2. Server-stored key for this client
+        // 3. Server environment variable (fallback)
+        let effectiveApiKey = apiKey;
+
+        if (!effectiveApiKey && clientId) {
+            effectiveApiKey = await getStoredApiKey(clientId) || undefined;
+        }
 
         if (!effectiveApiKey) {
+            effectiveApiKey = process.env.GEMINI_API_KEY;
+        }
+
+        if (!effectiveApiKey) {
+
             return new Response(JSON.stringify({ error: "API key is required" }), {
                 status: 400,
                 headers: { "Content-Type": "application/json" },

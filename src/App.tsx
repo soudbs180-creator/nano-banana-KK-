@@ -314,110 +314,163 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, canUndo, canRedo]);
 
-  // Multi-API Key Management (4 keys with individual status)
-  interface ApiKeyEntry {
-    key: string;
-    status: 'valid' | 'invalid' | 'pending' | 'unknown';
+  // API Key Management - Server-Side Storage
+  interface ApiKeySlot {
+    slot: number;
+    status: 'valid' | 'invalid' | 'pending' | 'unknown' | 'empty';
+    hasKey: boolean;
   }
 
-  const [apiKeys, setApiKeys] = useState<ApiKeyEntry[]>(() => {
-    try {
-      const stored = localStorage.getItem('api-keys');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length === 4) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to parse stored API keys');
-    }
-    // Default: 4 empty entries
-    return [
-      { key: '', status: 'unknown' },
-      { key: '', status: 'unknown' },
-      { key: '', status: 'unknown' },
-      { key: '', status: 'unknown' }
-    ];
-  });
+  // Local input state for the modal (keys typed but not yet saved)
+  const [keyInputs, setKeyInputs] = useState<string[]>(['', '', '', '']);
+  const [keySlots, setKeySlots] = useState<ApiKeySlot[]>([
+    { slot: 1, status: 'empty', hasKey: false },
+    { slot: 2, status: 'empty', hasKey: false },
+    { slot: 3, status: 'empty', hasKey: false },
+    { slot: 4, status: 'empty', hasKey: false },
+  ]);
   const [showApiModal, setShowApiModal] = useState(false);
-  const [apiStatus, setApiStatus] = useState<'success' | 'error' | 'idle'>('idle');
+  const [isLoadingKeys, setIsLoadingKeys] = useState(true);
+  const [isSavingKeys, setIsSavingKeys] = useState(false);
 
-  // Get the first valid API key (for display status)
-  const derivedApiStatus = apiKeys.some(k => k.status === 'valid') ? 'success'
-    : apiKeys.some(k => k.key && k.status === 'unknown') ? 'unknown'
-      : apiKeys.some(k => k.key) ? 'error' : 'unknown';
+  // Detect if running locally (for fallback to localStorage)
+  const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-  // Get the first valid key for use
-  const getValidApiKey = useCallback((): string => {
-    const validKey = apiKeys.find(k => k.status === 'valid');
-    if (validKey) return validKey.key;
-    // Fallback to first non-empty key
-    const anyKey = apiKeys.find(k => k.key.trim());
-    return anyKey?.key || import.meta.env.VITE_API_KEY || '';
-  }, [apiKeys]);
-
-  // Validate all API keys on mount and when keys change
+  // Fetch key status from backend on mount (with localStorage fallback for local dev)
   useEffect(() => {
-    const validateKeys = async () => {
-      const newKeys = [...apiKeys];
-      let changed = false;
+    const fetchKeyStatus = async () => {
+      try {
+        const response = await fetch('/api/keys', {
+          method: 'GET',
+          credentials: 'include',
+        });
 
-      for (let i = 0; i < newKeys.length; i++) {
-        const entry = newKeys[i];
-        if (!entry.key.trim()) {
-          if (entry.status !== 'unknown') {
-            newKeys[i] = { ...entry, status: 'unknown' };
-            changed = true;
+        if (response.ok) {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const data = await response.json();
+            setKeySlots(data.slots || []);
+            if (!data.hasKeys) {
+              setShowApiModal(true);
+            }
+            return;
           }
-          continue;
         }
+        throw new Error('Backend not available');
+      } catch (e) {
+        console.warn('Backend not available, using localStorage fallback for local dev');
 
-        // Check cache first
-        const cacheKey = `api-validated-${entry.key}`;
-        const cached = localStorage.getItem(cacheKey);
-        if (cached === 'valid') {
-          if (entry.status !== 'valid') {
-            newKeys[i] = { ...entry, status: 'valid' };
-            changed = true;
+        // Fallback to localStorage for local development
+        if (isLocalDev) {
+          try {
+            const stored = localStorage.getItem('kk-api-keys-local');
+            if (stored) {
+              const keys = JSON.parse(stored) as string[];
+              if (keys.some(k => k)) {
+                setKeySlots(keys.map((k, i) => ({
+                  slot: i + 1,
+                  status: k ? 'unknown' : 'empty' as const,
+                  hasKey: !!k,
+                })));
+                setKeyInputs(keys);
+                return; // Don't show modal if we have stored keys
+              }
+            }
+          } catch (parseErr) {
+            console.error('Failed to parse localStorage keys');
           }
-          continue;
         }
 
-        // Need to validate
-        if (entry.status !== 'pending') {
-          newKeys[i] = { ...entry, status: 'pending' };
-          changed = true;
-        }
-
-        try {
-          const isValid = await validateApiKey(entry.key);
-          newKeys[i] = { ...entry, status: isValid ? 'valid' : 'invalid' };
-          if (isValid) {
-            localStorage.setItem(cacheKey, 'valid');
-          }
-          changed = true;
-        } catch (e) {
-          newKeys[i] = { ...entry, status: 'invalid' };
-          changed = true;
-        }
-      }
-
-      if (changed) {
-        setApiKeys(newKeys);
+        // Show modal if no keys found
+        setShowApiModal(true);
+      } finally {
+        setIsLoadingKeys(false);
       }
     };
 
-    validateKeys();
-  }, [apiKeys.map(k => k.key).join(',')]);
+    fetchKeyStatus();
+  }, [isLocalDev]);
 
-  // Save API keys
-  const saveApiKeys = useCallback((keys: ApiKeyEntry[]) => {
-    setApiKeys(keys);
-    localStorage.setItem('api-keys', JSON.stringify(keys));
-    setShowApiModal(false);
-    setError(null);
-  }, []);
+  // Get derived API status for UI indicator
+  const derivedApiStatus = keySlots.some(k => k.status === 'valid') ? 'success'
+    : keySlots.some(k => k.hasKey && k.status === 'unknown') ? 'unknown'
+      : keySlots.some(k => k.hasKey) ? 'error' : 'unknown';
+
+  // Save API keys to backend (with localStorage fallback for local dev)
+  const saveApiKeys = useCallback(async () => {
+    setIsSavingKeys(true);
+    try {
+      const response = await fetch('/api/keys', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: keyInputs }),
+      });
+
+      const contentType = response.headers.get('content-type');
+      if (response.ok && contentType && contentType.includes('application/json')) {
+        // Refresh key status
+        const statusResponse = await fetch('/api/keys', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (statusResponse.ok) {
+          const statusContentType = statusResponse.headers.get('content-type');
+          if (statusContentType && statusContentType.includes('application/json')) {
+            // Backend returns validated slots
+            const statusData = await response.json();
+            if (statusData.slots) {
+              setKeySlots(statusData.slots);
+            }
+          }
+        }
+        setShowApiModal(false);
+        setError(null);
+        return;
+      }
+      throw new Error('Backend not available');
+    } catch (e: any) {
+      // Fallback to localStorage for local development with local validation
+      if (isLocalDev) {
+        localStorage.setItem('kk-api-keys-local', JSON.stringify(keyInputs));
+
+        // Validate keys locally using Gemini API
+        const validatedSlots = await Promise.all(
+          keyInputs.map(async (key, i) => {
+            if (!key.trim()) {
+              return { slot: i + 1, status: 'empty' as const, hasKey: false };
+            }
+
+            try {
+              const testResponse = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models?key=${key.trim()}`,
+                { method: 'GET' }
+              );
+
+              if (testResponse.ok) {
+                return { slot: i + 1, status: 'valid' as const, hasKey: true };
+              } else if (testResponse.status === 400 || testResponse.status === 401 || testResponse.status === 403) {
+                return { slot: i + 1, status: 'invalid' as const, hasKey: true };
+              }
+              return { slot: i + 1, status: 'unknown' as const, hasKey: true };
+            } catch {
+              return { slot: i + 1, status: 'unknown' as const, hasKey: true };
+            }
+          })
+        );
+
+        setKeySlots(validatedSlots);
+        setShowApiModal(false);
+        setError(null);
+        console.log('Keys saved and validated locally');
+        return;
+      }
+      setError(e.message || '保存失败');
+    } finally {
+      setIsSavingKeys(false);
+
+    }
+  }, [keyInputs, isLocalDev]);
 
   // Track if position has been set for current prompt session using ref (more stable than state)
   const positionLockedRef = useRef(false);
@@ -497,8 +550,7 @@ const AppContent: React.FC = () => {
 
   const handleGenerate = useCallback(async () => {
     if (isGenerating || !config.prompt.trim()) return;
-    // Check for valid API key (Optional: Backend might have one)
-    const effectiveApiKey = getValidApiKey() || "";
+    // Note: API key is now managed server-side, no need to pass from frontend
 
     setIsGenerating(true);
     setError(null);
@@ -530,8 +582,7 @@ const AppContent: React.FC = () => {
           config.aspectRatio,
           config.imageSize,
           config.referenceImages,
-          config.model,
-          effectiveApiKey
+          config.model
         );
 
         // Layout: Images to the RIGHT of prompt card, arranged vertically
@@ -653,7 +704,7 @@ const AppContent: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [config, getValidApiKey, pendingPosition, addPromptNode, addImageNodes, activeCanvas?.id, isGenerating]);
+  }, [config, pendingPosition, addPromptNode, addImageNodes, activeCanvas?.id, isGenerating]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
@@ -807,8 +858,8 @@ const AppContent: React.FC = () => {
         </button>
 
         {/* API Status Dot - Clearly Above Avatar */}
-        <div className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#09090b] z-10 shadow-lg ${apiStatus === 'success' ? 'bg-green-500' :
-          apiStatus === 'error' ? 'bg-red-500' : 'bg-zinc-500'
+        <div className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#09090b] z-10 shadow-lg ${derivedApiStatus === 'success' ? 'bg-green-500' :
+          derivedApiStatus === 'error' ? 'bg-red-500' : 'bg-zinc-500'
           }`} />
       </div>
 
@@ -863,73 +914,24 @@ const AppContent: React.FC = () => {
               if (childNode.aspectRatio === '16:9') cardWidth = 320;
               else if (childNode.aspectRatio === '9:16') cardWidth = 200;
 
-              // Start point: Bottom center of prompt node
-              // PromptNode width is fixed at 320px -> Center is +160
-              // Height is variable, but dot is positioned relative to content.
-              // Actually, PromptNodeComponent puts the dot below the card.
-              // Let's align based on the visual inspection:
-              // Node position.x is LEFT edge.
-              // Node position.y is TOP edge.
-              // We need center X = pn.position.x + 160.
-              // We need bottom Y = roughly pn.position.y + [CardHeight] + 12 (margin) + 6 (radius)
-              // Since CardHeight varies, but the DOM element flow puts the dot at the bottom.
-              // Let's use a fixed offset approximation or better, reliance on the dot's known offset if possible.
-              // In PromptNodeComponent, onConnectStart passes {x: px + 160, y: py + 12}. Wait, that looks wrong in previous code.
+              // PromptNodeComponent uses transform: translate(-50%, -100%)
+              // This means:
+              // - position.x IS the horizontal center of the card
+              // - position.y IS the bottom of the card (before the dot)
+              // The connection dot is 12px (mt-3) below the card, with 6px radius
 
-              // Let's assume standard card height for now roughly 100-150px. 
-              // Better approach: Point to the bottom center.
-              // The user visual shows the dot is slightly separated.
-              // Let's fix the Start/End to be precice.
-
-              // REVISED COORDINATES:
-              // Prompt Center X: pn.position.x + 160 (320/2)
-              // Prompt Bottom Y: The prompt node renders content then the dot. 
-              // Since we don't know exact height, we might need to rely on the "hole" visual.
-              // However, typically we just drop line from bottom center.
-
-              // Let's try to match the `onConnectStart` logic from PromptNodeComponent:
-              // onConnectStart?.(node.id, { x: node.position.x + 160, y: node.position.y + 12 }); <-- This looks suspicious in the component code, y+12 is top of card?
-              // The dot is at the BOTTOM.
-
-              const startX = pn.position.x + 160 + 5000;
-              // We need to know height. But we don't. 
-              // HACK: For visual "close enough", we assume the dot is at a consistent place relative to content? No.
-              // Actually, let's look at how the lines were drawn before.
-
-              // Previous: const startY = pn.position.y + 18 + 5000;
-              // This implies Y was bottom? No, position in react-flow-like systems usually Top-Left.
-              // If position is Top-Left, Y+18 is near top.
-              // PromptNodeComponent renders: Card -> margin -> Dot.
-
-              // Let's look at PromptNodeComponent again.
-              // It renders: <div relative...> ... </div> <div dot ... onMouseDown... />
-              // The Dot is a sibling BELOW the card.
-
-              // To fix this properly without ref measuring, we can just ESTIMATE a safe bottom.
-              // Or, if "PromptNode" position is actually centered?
-              // App.tsx: UpdatePromptNodePosition...
-
-              // Let's stick to the request: "Thinner dashed lines, connect to dot".
-              // Start Y: pn.position.y + 100 (approx card height) + 12 (margin) + 6 (radius). 
-              // Since height is dynamic (text), this is hard.
-              // BUT, looking at the screenshot, the line starts from the dot.
-
-              // Let's use a "Gap" approach.
-              // We can just use the provided Start/End from specific known offsets if available, but they aren't.
-              // Adjusting to a visually pleasing offset.
-
-              // Offset Calculation:
-              // Card Height (140) + Margin (12) + Dot Radius (6) = 158
-              const startY = pn.position.y + 158 + 5000;
+              // Start point: Center-bottom of prompt node + dot offset
+              const startX = pn.position.x + 5000; // Already centered
+              const startY = pn.position.y + 18 + 5000; // Bottom + dot margin(12) + radius(6)
 
               // End point: Top center of image node
-              // Image width varies: 280, 320, 200.
-              const endX = childNode.position.x + cardWidth / 2 + 5000;
+              // ImageNode uses transform: translate(-50%, 0), so position.x is center, position.y is top
+              const endX = childNode.position.x + 5000; // Already centered
               const endY = childNode.position.y + 5000;
 
-              // Control point for curve
+              // Control point for smooth curve
               const controlX = (startX + endX) / 2;
-              const controlY = startY + (endY - startY) * 0.5;
+              const controlY = startY + (endY - startY) * 0.4;
 
               return (
                 <g key={`${pn.id}-${childId}`}>
@@ -937,14 +939,14 @@ const AppContent: React.FC = () => {
                   <path
                     d={`M${startX},${startY} Q${controlX},${controlY} ${endX},${endY}`}
                     fill="none"
-                    stroke="rgba(99, 102, 241, 0.6)"
+                    stroke="rgba(99, 102, 241, 0.5)"
                     strokeWidth="1.5"
                     strokeDasharray="6 4"
                     strokeLinecap="round"
                     className="transition-all duration-300"
                   />
                   {/* Small dot at image connection point */}
-                  <circle cx={endX} cy={endY} r="2" fill="#6366f1" />
+                  <circle cx={endX} cy={endY} r="2" fill="#6366f1" opacity="0.6" />
                 </g>
               );
             });
@@ -1032,7 +1034,7 @@ const AppContent: React.FC = () => {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onOpenSettings={() => setShowApiModal(true)}
-        hasApiKey={apiKeys.some(k => k.status === 'valid')}
+        hasApiKey={keySlots.some(k => k.status === 'valid')}
         generatedCount={activeCanvas?.imageNodes.length || 0}
       />
 
@@ -1065,29 +1067,29 @@ const AppContent: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {apiKeys.map((entry, index) => (
+              {keySlots.map((slot, index) => (
                 <div key={index} className="flex items-center gap-2">
                   <span className="text-zinc-500 text-xs w-6">{index + 1}.</span>
                   <input
                     type="password"
-                    value={entry.key}
+                    value={keyInputs[index]}
                     onChange={(e) => {
-                      const newKeys = [...apiKeys];
-                      newKeys[index] = { key: e.target.value, status: 'unknown' };
-                      setApiKeys(newKeys);
+                      const newInputs = [...keyInputs];
+                      newInputs[index] = e.target.value;
+                      setKeyInputs(newInputs);
                     }}
-                    placeholder="AIza..."
+                    placeholder={slot.hasKey ? '••••••••••••' : 'AIza...'}
                     className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                   {/* Status indicator */}
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${entry.status === 'valid' ? 'bg-green-500/20 text-green-400' :
-                    entry.status === 'invalid' ? 'bg-red-500/20 text-red-400' :
-                      entry.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 animate-pulse' :
-                        entry.key ? 'bg-zinc-500/20 text-zinc-400' : 'bg-transparent'
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${slot.status === 'valid' ? 'bg-green-500/20 text-green-400' :
+                    slot.status === 'invalid' ? 'bg-red-500/20 text-red-400' :
+                      slot.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 animate-pulse' :
+                        slot.hasKey ? 'bg-zinc-500/20 text-zinc-400' : 'bg-transparent'
                     }`}>
-                    {entry.status === 'valid' && '✓'}
-                    {entry.status === 'invalid' && '✗'}
-                    {entry.status === 'pending' && '…'}
+                    {slot.status === 'valid' && '✓'}
+                    {slot.status === 'invalid' && '✗'}
+                    {slot.status === 'pending' && '…'}
                   </div>
                 </div>
               ))}
@@ -1095,10 +1097,19 @@ const AppContent: React.FC = () => {
 
             <div className="mt-6 space-y-3">
               <button
-                onClick={() => saveApiKeys(apiKeys)}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+                onClick={saveApiKeys}
+                disabled={isSavingKeys}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
               >
-                保存密钥
+                {isSavingKeys ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    保存中...
+                  </>
+                ) : '保存密钥'}
               </button>
 
               <a
