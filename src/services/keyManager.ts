@@ -126,6 +126,11 @@ class KeyManager {
      */
     async setUserId(userId: string | null) {
         if (this.userId === userId) return;
+
+        // Security: Clear all keys when user changes or logs out
+        // This prevents User B from seeing User A's keys in local storage
+        this.clearAll();
+
         this.userId = userId;
         if (userId) {
             await this.loadFromCloud();

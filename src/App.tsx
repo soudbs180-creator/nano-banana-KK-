@@ -537,27 +537,24 @@ const AppContent: React.FC = () => {
         let x, y;
 
         if (isMobile) {
-          // Mobile Layout: 2-column grid below prompt
-          // Prompt is at currentPos.x, currentPos.y
-          // Images start below prompt
-          const col = index % 2;
-          const row = Math.floor(index / 2);
+          // Mobile Layout: Dynamic grid (1 or 2 cols)
+          const cols = Math.min(count, 2);
+          const col = index % cols;
+          const row = Math.floor(index / cols);
 
           // Fixed widths for mobile 2-col layout
-          // Updated: Reduced to 160px to provide more safety margin on small screens (375px)
           const mobileCardWidth = 160;
-          const mobileGap = 12; // Slightly larger gap
+          const mobileGap = 12;
 
-          // Center the 2-column grid relative to the prompt
-          // Total width = 320 + 12 = 332px. Margin on 375px = (375-332)/2 = ~21.5px
-          const gridWidth = mobileCardWidth * 2 + mobileGap;
+          // Center the grid relative to the prompt
+          const gridWidth = cols * mobileCardWidth + (cols - 1) * mobileGap;
           const startX = currentPos.x - gridWidth / 2 + mobileCardWidth / 2;
 
           x = startX + col * (mobileCardWidth + mobileGap);
           y = currentPos.y + 200 + row * (250 + mobileGap); // Vertical offset below prompt
         } else {
-          // Desktop Layout: 2-column grid below prompt (like reference image)
-          const columns = 2; // 2 columns for clean grid
+          // Desktop Layout: Dynamic grid (1 or 2 cols)
+          const columns = Math.min(count, 2);
           const gap = 16;
           const col = index % columns;
           const row = Math.floor(index / columns);
@@ -1025,7 +1022,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.1.0
+        v1.1.1
       </div>
     </div>
   );
