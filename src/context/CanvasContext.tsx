@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Canvas, PromptNode, GeneratedImage } from '../types';
+import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '../services/imageStorage';
 
 const MAX_CANVASES = 10;
 
@@ -53,7 +54,19 @@ const DEFAULT_CANVAS: Canvas = {
     lastModified: Date.now()
 };
 
+// Helper to strip image URLs for localStorage (they'll be stored in IndexedDB)
+const stripImageUrls = (canvases: Canvas[]): Canvas[] => {
+    return canvases.map(c => ({
+        ...c,
+        imageNodes: c.imageNodes.map(img => ({
+            ...img,
+            url: '' // Clear URL for localStorage, will be loaded from IndexedDB
+        }))
+    }));
+};
+
 export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [isLoading, setIsLoading] = useState(true);
     const [state, setState] = useState<CanvasState>(() => {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
@@ -75,24 +88,104 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
     });
 
+    // Load image URLs from IndexedDB on mount, with migration support
+    useEffect(() => {
+        const loadImages = async () => {
+            try {
+                const imageMap = await getAllImages();
+
+                // Migrate old images: if localStorage has URLs but IndexedDB doesn't, save them
+                let needsMigration = false;
+                const imagesToMigrate: { id: string; url: string }[] = [];
+
+                state.canvases.forEach(c => {
+                    c.imageNodes.forEach(img => {
+                        // If image has URL in state but not in IndexedDB, migrate it
+                        if (img.url && img.url.startsWith('data:') && !imageMap.has(img.id)) {
+                            imagesToMigrate.push({ id: img.id, url: img.url });
+                            needsMigration = true;
+                        }
+                    });
+                });
+
+                // Save migrated images to IndexedDB
+                for (const img of imagesToMigrate) {
+                    await saveImage(img.id, img.url);
+                    imageMap.set(img.id, img.url);
+                }
+
+                if (needsMigration) {
+                    console.log(`Migrated ${imagesToMigrate.length} images to IndexedDB`);
+                }
+
+                // Update state with images from IndexedDB (or already in state)
+                if (imageMap.size > 0) {
+                    setState(prev => ({
+                        ...prev,
+                        canvases: prev.canvases.map(c => ({
+                            ...c,
+                            imageNodes: c.imageNodes.map(img => ({
+                                ...img,
+                                url: imageMap.get(img.id) || img.url
+                            }))
+                        }))
+                    }));
+                }
+            } catch (error) {
+                console.error('Failed to load images from IndexedDB:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadImages();
+    }, []);
+
     // Persistence with error handling
     useEffect(() => {
+        if (isLoading) return; // Don't save while loading
+
         try {
-            const jsonStr = JSON.stringify(state);
-            // Check if we're approaching quota limits
-            if (jsonStr.length > 4500000) { // ~4.5MB (留出buffer)
-                console.warn('Canvas state approaching localStorage quota limit');
+            // Save state with URLs - IndexedDB provides backup storage
+            // We keep URLs in localStorage for backward compatibility
+            const stateToSave = {
+                ...state,
+                // Strip history to save space (can be rebuilt)
+                history: {}
+            };
+            const jsonStr = JSON.stringify(stateToSave);
+
+            // Check size and warn if approaching limit
+            if (jsonStr.length > 4500000) {
+                console.warn('Canvas state approaching localStorage quota limit. Consider clearing old data.');
             }
+
             localStorage.setItem(STORAGE_KEY, jsonStr);
         } catch (error: any) {
             if (error.name === 'QuotaExceededError') {
-                console.error('localStorage quota exceeded. Canvas state not saved.');
-                // Optionally: notify user or clear old data
+                console.error('localStorage quota exceeded. Trying to save without history...');
+                // Fallback: try saving with minimal data
+                try {
+                    const minimalState = {
+                        ...state,
+                        history: {},
+                        canvases: state.canvases.map(c => ({
+                            ...c,
+                            // Clear prompt node reference images to save space
+                            promptNodes: c.promptNodes.map(p => ({
+                                ...p,
+                                referenceImages: []
+                            }))
+                        }))
+                    };
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(minimalState));
+                } catch (e) {
+                    console.error('Still failed to save canvas state');
+                }
             } else {
                 console.error('Failed to save to localStorage:', error);
             }
         }
-    }, [state]);
+    }, [state, isLoading]);
 
     const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
     const canCreateCanvas = state.canvases.length < MAX_CANVASES;
@@ -176,6 +269,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return;
         }
 
+        // Save images to IndexedDB
+        validNodes.forEach(node => {
+            saveImage(node.id, node.url);
+        });
+
         updateCanvas(c => ({
             ...c,
             imageNodes: [...c.imageNodes, ...validNodes]
@@ -223,10 +321,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const deleteImageNode = useCallback((id: string) => {
         pushToHistory();
+        // Delete from IndexedDB
+        deleteImage(id);
+
         updateCanvas(c => ({
             ...c,
             imageNodes: c.imageNodes.filter(n => n.id !== id),
-            // Also update parent prompt node to remove strictly from child list?
+            // Also update parent prompt node to remove from child list
             promptNodes: c.promptNodes.map(p => ({
                 ...p,
                 childImageIds: p.childImageIds.filter(cid => cid !== id)
@@ -236,13 +337,23 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const deletePromptNode = useCallback((id: string) => {
         pushToHistory();
+
+        // Get child image IDs to delete from IndexedDB
+        const canvas = state.canvases.find(c => c.id === state.activeCanvasId);
+        const promptNode = canvas?.promptNodes.find(p => p.id === id);
+        const childImageIds = canvas?.imageNodes
+            .filter(img => img.parentPromptId === id)
+            .map(img => img.id) || [];
+
+        // Delete child images from IndexedDB
+        childImageIds.forEach(imgId => deleteImage(imgId));
+
         updateCanvas(c => ({
             ...c,
             promptNodes: c.promptNodes.filter(n => n.id !== id),
-            // Optionally delete children images?
             imageNodes: c.imageNodes.filter(img => img.parentPromptId !== id)
         }));
-    }, [updateCanvas]);
+    }, [updateCanvas, state.canvases, state.activeCanvasId]);
 
     const linkNodes = useCallback((promptId: string, imageId: string) => {
         updateCanvas(c => {
@@ -352,13 +463,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const canRedo = (state.history[state.activeCanvasId]?.future.length || 0) > 0;
 
     const clearAllData = useCallback(() => {
-        // Warning: clearAllData clears history too in current impl, maybe we want to undo clear?
-        // If we want to undo clear, we should keep history and only clear current canvas arrays?
-        // But user asked to "Clear All Data" which implies full reset. 
-        // Let's assume clearAllData is a hard reset.
-
         // Clear localStorage
         localStorage.removeItem(STORAGE_KEY);
+        // Clear IndexedDB images
+        clearAllImages();
         // Reset to default state
         setState({
             canvases: [DEFAULT_CANVAS],

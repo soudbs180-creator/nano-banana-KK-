@@ -196,17 +196,7 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
             >
                 {/* Grid Background */}
                 {showGrid && (
-                    <div
-                        className="absolute inset-0 pointer-events-none"
-                        style={{
-                            backgroundImage: `
-                                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px)
-                            `,
-                            backgroundSize: '40px 40px',
-                            opacity: 0.8
-                        }}
-                    />
+                    <div className="canvas-grid" />
                 )}
 
                 {/* Viewport with transform */}

@@ -1,38 +1,48 @@
 # Project Progress Report - KK Studio V1.1.0
 
-## Status: Completed (Ready for Deployment)
+## Status: In Development
 
-### 1. Completed Items
-- [x] **API Security**:
-    - Moved Free Tier Key implementation to Backend (`netlify/functions/generate.ts`).
-    - Implemented `FREE_TIER_KEY` environment variable support.
-    - Updated specific logic to enforce "Nano Banana" model on backend.
-    - Frontend (`App.tsx`, `PromptBar.tsx`) now indicates Free Mode without exposing keys.
-- [x] **Mobile Responsiveness**:
-    - Fixed Canvas Touch Events (Pan/Drag support).
-    - Refined Mobile Layout (2-column grid with 160px cards).
-    - Added Safety Margins (~20px) for mobile viewports.
-- [x] **Bug Fixes**:
-    - Fixed "Black Screen" crash (missing state).
-    - Fixed "Unexpected end of JSON" error on empty backend responses.
-- [x] **Versioning**:
-    - Bumped `package.json` to `v1.1.0`.
-    - Updated UI version badge.
+### 1. Completed Items (本次会话 2026-01-15)
+
+#### 1.1 Netlify 部署修复
+- [x] 修复 `vite: Permission denied` 构建错误
+- [x] 修改 `netlify.toml` 构建命令为 `npm ci && node node_modules/vite/bin/vite.js build`
+- [x] 移除冲突的 `/api/*` 重定向规则（Netlify Functions v2 使用 `config.path`）
+
+#### 1.2 API Key 管理重构
+- [x] 移除 Netlify Blobs 依赖（解决 401 Unauthorized 错误）
+- [x] 简化后端函数：`generate.ts` 和 `keys.ts` 不再存储 key
+- [x] 前端 localStorage 存储 API key，每次请求时传递给后端
+- [x] 修复 `geminiService.ts` API 端点从 `/.netlify/functions/generate` 改为 `/api/generate`
+
+#### 1.3 图片持久化修复
+- [x] 创建 `src/services/imageStorage.ts` IndexedDB 存储服务
+- [x] 修改 `CanvasContext.tsx` 集成 IndexedDB：
+  - 加载时从 IndexedDB 恢复图片 URL
+  - 保存时 localStorage 只存元数据（不含图片）
+  - 添加/删除图片时同步 IndexedDB
+- [x] 解决 localStorage 5MB 配额超限导致图片丢失问题
+
+#### 1.4 UI 修复
+- [x] 修复网格不显示问题（CSS 改用更明显的线条网格）
+- [x] 修复生成时无法继续发送（移除发送按钮的 `isGenerating` 禁用）
+- [x] 修复 PendingNode 连线错误（简化连线逻辑）
+- [x] PromptNodeComponent 添加参考图片缩略图显示
 
 ### 2. Current Architecture
-- **Frontend**: React + Vite + Tailwind CSS.
-- **Backend / API**: Netlify Functions (Serverless).
-- **AI Service**: Google Gemini API (via `@google/genai` SDK).
-- **State**: React Local State (`useState`, `useCallback`).
+- **Frontend**: React 19 + Vite 6 + Tailwind CSS 4
+- **Backend**: Netlify Functions v2 (Serverless)
+- **AI Service**: Google Gemini API (`@google/genai`)
+- **State**: React Context + IndexedDB (图片) + localStorage (元数据)
 
-### 3. Next Steps
-- **Deployment**:
-    1. Commit all changes to GitHub.
-    2. Deploy to Netlify/Vercel.
-    3. **Important**: Set `FREE_TIER_KEY` environment variable in the deployment platform settings.
+### 3. Pending / TODO
+- [ ] 测试 Netlify 部署是否正常
+- [ ] 验证图片刷新后持久化
+- [ ] 验证 API key 流程在生产环境工作
 
-### 4. Known Issues / Notes
-- **Local Development**: Since backend functions require `netlify dev`, simply running `npm run dev` (Vite) will not support "Free Tier" generation (returns 404). This is expected behavior. Manual API keys still work locally if provided.
+### 4. Known Issues
+- 本地开发需要运行 `netlify dev` 才能测试后端函数
+- 旧版本的图片数据需要重新生成（IndexedDB 中无历史数据）
 
 ---
-*Report Generated: 2026-01-15*
+*Report Updated: 2026-01-15 18:19*

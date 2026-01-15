@@ -153,22 +153,20 @@ const PendingNode: React.FC<PendingNodeProps> = ({
         );
     }
 
-    // 如果正在生成中，显示主卡片和连接的子占位符（放在右侧）
+    // 如果正在生成中，显示主卡片和连接的子占位符
     return (
         <div
-            className="absolute z-40"
+            className="absolute z-40 flex flex-col items-center"
             style={{
                 left: position.x,
                 top: position.y,
+                transform: 'translate(-50%, -100%)', // Same as PromptNodeComponent
                 cursor: isDragging ? 'grabbing' : 'grab'
             }}
             onMouseDown={handleMouseDown}
         >
-            {/* Main Prompt Node */}
-            <div
-                className="absolute bg-[#1a1a1c] border-2 border-indigo-500/30 rounded-2xl p-4 shadow-xl w-[320px] -translate-x-1/2 -translate-y-full flex flex-col gap-3 animate-fadeIn"
-                style={{ marginBottom: '12px' }}
-            >
+            {/* Main Prompt Node - Same layout as PromptNodeComponent */}
+            <div className="bg-[#1a1a1c] border-2 border-indigo-500/30 rounded-2xl p-4 shadow-xl w-[320px] flex flex-col gap-3 animate-fadeIn">
                 <div className="flex items-center gap-2 mb-1">
                     <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
                     <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Generating x{parallelCount}</span>
@@ -176,83 +174,69 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3">{prompt}</p>
             </div>
 
-            {/* Connecting Lines and Placeholders - Positioned BELOW prompt, HORIZONTAL layout */}
-            {Array.from({ length: parallelCount }).map((_, i) => {
-                // Horizontal layout: centered with prompt card
-                const gap = 20;
+            {/* Connection Dot - Below card */}
+            <div className="w-3 h-3 bg-indigo-500/50 rounded-full border-2 border-[#121212] mt-3" />
 
-                let offsetX, offsetY;
-
-                if (isMobile) {
-                    // Mobile: Vertical 2-col grid
-                    const col = i % 2;
-                    const row = Math.floor(i / 2);
-                    const mobileCardWidth = 170; // Approximation
-                    const mobileGap = 10;
-
-                    // Center the 2-column grid relative to the prompt (x=0 is center of prompt)
-                    const gridWidth = mobileCardWidth * 2 + mobileGap;
-                    const startX = -gridWidth / 2 + mobileCardWidth / 2;
-
-                    offsetX = startX + col * (mobileCardWidth + mobileGap);
-                    offsetY = 150 + row * (250 + mobileGap); // Vertical offset below prompt
-                } else {
-                    // Desktop: 2-column grid (matching final generation layout)
-                    const columns = 2;
+            {/* Placeholders - Positioned BELOW the dot using relative positioning */}
+            <div className="relative mt-4" style={{ width: '100%', minHeight: 100 }}>
+                {Array.from({ length: parallelCount }).map((_, i) => {
                     const gap = 16;
+                    const columns = isMobile ? 2 : 2;
+                    const cardW = isMobile ? 170 : w;
+                    const cardH = isMobile ? 200 : h;
+                    const cardGap = isMobile ? 10 : gap;
+
                     const col = i % columns;
                     const row = Math.floor(i / columns);
+                    const gridWidth = columns * cardW + (columns - 1) * cardGap;
+                    const startX = -gridWidth / 2 + cardW / 2;
 
-                    // Calculate grid width for centering
-                    const gridWidth = columns * w + (columns - 1) * gap;
-                    const startX = -gridWidth / 2 + w / 2;
+                    const offsetX = startX + col * (cardW + cardGap);
+                    const offsetY = row * (cardH + 50 + cardGap);
 
-                    offsetX = startX + col * (w + gap);
-                    // Calculate card height based on aspect ratio
-                    const cardHeight = h + 50; // Approximate with some padding
-                    offsetY = 50 + row * (cardHeight + gap);
-                }
+                    return (
+                        <React.Fragment key={i}>
+                            {/* Dashed line from center to placeholder */}
+                            <svg
+                                className="absolute pointer-events-none"
+                                style={{
+                                    left: '50%',
+                                    top: 0,
+                                    width: Math.abs(offsetX) * 2 + 10,
+                                    height: offsetY + 20,
+                                    overflow: 'visible',
+                                    transform: 'translateX(-50%)'
+                                }}
+                            >
+                                <path
+                                    d={`M${Math.abs(offsetX) + 5},0 L${Math.abs(offsetX) + 5 + offsetX},${offsetY}`}
+                                    fill="none"
+                                    stroke="rgba(99, 102, 241, 0.3)"
+                                    strokeWidth="2"
+                                    strokeDasharray="6 4"
+                                />
+                            </svg>
 
-                return (
-                    <React.Fragment key={i}>
-                        {/* Curved connection line from prompt dot to placeholder top-center */}
-                        <svg
-                            className="absolute overflow-visible pointer-events-none"
-                            style={{ top: 0, left: 0 }}
-                        >
-                            {/* Start at dot position (18px below origin), end at top-center of placeholder */}
-                            <path
-                                d={`M0,18 Q${offsetX * 0.5},${(18 + offsetY) * 0.5} ${offsetX},${offsetY}`}
-                                fill="none"
-                                stroke="rgba(99, 102, 241, 0.4)"
-                                strokeWidth="1.5"
-                                strokeDasharray="6 4"
-                                strokeLinecap="round"
-                            />
-                            {/* Small dot at connection point */}
-                            <circle cx={offsetX} cy={offsetY} r="2" fill="rgba(99, 102, 241, 0.5)" />
-                        </svg>
-
-                        {/* Placeholder Card - horizontal layout */}
-                        <div
-                            className="absolute bg-[#1a1a1c]/80 border border-white/5 rounded-xl overflow-hidden backdrop-blur-sm animate-pulse flex items-center justify-center"
-                            style={{
-                                width: w,
-                                height: h,
-                                left: offsetX - w / 2,
-                                top: offsetY
-                            }}
-                        >
-                            <div className="flex flex-col items-center gap-3 opacity-50">
-                                <Loader2 size={24} className="text-indigo-400 animate-spin" />
-                                <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
+                            {/* Placeholder Card */}
+                            <div
+                                className="absolute bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
+                                style={{
+                                    width: cardW,
+                                    height: cardH,
+                                    left: `calc(50% + ${offsetX}px - ${cardW / 2}px)`,
+                                    top: offsetY
+                                }}
+                            >
+                                <div className="flex flex-col items-center gap-3 opacity-50">
+                                    <Loader2 size={24} className="text-indigo-400 animate-spin" />
+                                    <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
+                                </div>
+                                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
                             </div>
-
-                            <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
-                        </div>
-                    </React.Fragment>
-                );
-            })}
+                        </React.Fragment>
+                    );
+                })}
+            </div>
         </div>
     );
 };

@@ -136,10 +136,23 @@ async function generateImageViaBackend(
   model: ModelType,
   apiKey: string
 ): Promise<string> {
+  // Try to get API key from localStorage if not provided
+  let effectiveKey = apiKey;
+  if (!effectiveKey) {
+    try {
+      const stored = localStorage.getItem('kk-api-keys-local');
+      if (stored) {
+        const keys = JSON.parse(stored) as string[];
+        effectiveKey = keys.find(k => k && k.trim()) || '';
+      }
+    } catch (e) {
+      console.warn('Failed to read keys from localStorage');
+    }
+  }
+
   try {
     const response = await fetch(API_ENDPOINT, {
       method: "POST",
-      credentials: "include", // Send cookies for client identification
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt,
@@ -150,7 +163,7 @@ async function generateImageViaBackend(
           data: img.data,
           mimeType: img.mimeType,
         })),
-        apiKey, // Can be empty; backend will use stored keys
+        apiKey: effectiveKey, // Pass the key from localStorage
       }),
     });
 

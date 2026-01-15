@@ -197,7 +197,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             <span className="text-xs">{config.aspectRatio}</span>
                         </button>
                         {activeMenu === 'ratio' && (
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20">
+                            <div
+                                className="absolute bottom-full mb-2 z-20"
+                                style={{ left: '50%', transform: 'translateX(-50%)' }}
+                            >
                                 <div className="dropdown static animate-scaleIn origin-bottom">
                                     {[
                                         AspectRatio.SQUARE,
@@ -239,7 +242,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <span className="text-xs">{config.imageSize}</span>
                             </button>
                             {activeMenu === 'size' && (
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20">
+                                <div
+                                    className="absolute bottom-full mb-2 z-20"
+                                    style={{ left: '50%', transform: 'translateX(-50%)' }}
+                                >
                                     <div className="dropdown static animate-scaleIn origin-bottom">
                                         {[ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K].map(size => (
                                             <button
@@ -315,7 +321,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 </span>
                             </button>
                             {activeMenu === 'model' && (
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20">
+                                <div
+                                    className="absolute bottom-full mb-2 z-20"
+                                    style={{ left: '50%', transform: 'translateX(-50%)' }}
+                                >
                                     <div className="dropdown static w-56 animate-scaleIn origin-bottom">
                                         <button
                                             className={`dropdown-item ${config.model === ModelType.NANO_BANANA ? 'active' : ''}`}
@@ -372,7 +381,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <span className="text-xs">x{config.parallelCount}</span>
                             </button>
                             {activeMenu === 'count' && (
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20">
+                                <div
+                                    className="absolute bottom-full mb-2 z-20"
+                                    style={{ left: '50%', transform: 'translateX(-50%)' }}
+                                >
                                     <div className="dropdown static w-20 animate-scaleIn origin-bottom">
                                         {[1, 2, 3, 4].map(num => (
                                             <button
@@ -408,7 +420,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         {/* Send Button - Elegant Design */}
                         <button
                             onClick={onGenerate}
-                            disabled={!config.prompt || isGenerating}
+                            disabled={!config.prompt}
                             className={`input-bar-send ${isGenerating ? 'sending' : ''}`}
                         >
                             {isGenerating ? (

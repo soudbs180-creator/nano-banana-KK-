@@ -115,7 +115,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
         >
             {/* Main Card */}
             <div className={`
-                relative bg-[#18181b] border rounded-2xl p-3 shadow-xl w-[320px] h-[140px] flex flex-col
+                relative bg-[#18181b] border rounded-2xl p-3 shadow-xl w-[320px] flex flex-col
                 ${isDragging ? '' : 'transition-all duration-200'}
                 ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-white/10 hover:border-white/20'}
             `}>
@@ -126,7 +126,26 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                     <span className="text-xs font-medium text-zinc-400">Prompt</span>
                 </div>
 
-                <p className="text-zinc-100 text-sm leading-relaxed line-clamp-4 font-normal">
+                {/* Reference Images Thumbnails */}
+                {node.referenceImages && node.referenceImages.length > 0 && (
+                    <div className="flex gap-1 mb-2 flex-wrap">
+                        {node.referenceImages.slice(0, 4).map((img, idx) => (
+                            <img
+                                key={img.id || idx}
+                                src={`data:${img.mimeType};base64,${img.data}`}
+                                alt="Reference"
+                                className="w-10 h-10 object-cover rounded border border-white/10"
+                            />
+                        ))}
+                        {node.referenceImages.length > 4 && (
+                            <div className="w-10 h-10 rounded border border-white/10 bg-zinc-800 flex items-center justify-center text-xs text-zinc-400">
+                                +{node.referenceImages.length - 4}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <p className="text-zinc-100 text-sm leading-relaxed line-clamp-3 font-normal flex-1">
                     {node.prompt}
                 </p>
             </div>
