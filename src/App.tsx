@@ -909,24 +909,24 @@ const AppContent: React.FC = () => {
                 return null;
               }
 
-              // Calculate card width for aspect ratio
-              let cardWidth = 280;
-              if (childNode.aspectRatio === '16:9') cardWidth = 320;
-              else if (childNode.aspectRatio === '9:16') cardWidth = 200;
+              // PromptNodeComponent wrapper:
+              // - Contains: Card (140px) + margin-top (12px) + Dot (12px) = 164px total height
+              // - Uses transform: translate(-50%, -100%)
+              // - This means: position.y is the BOTTOM of the entire wrapper (including dot)
+              // - So position.y is at the bottom edge of the dot
+              // - Dot center = position.y - 6 (half of 12px dot height)
 
-              // PromptNodeComponent uses transform: translate(-50%, -100%)
-              // This means:
-              // - position.x IS the horizontal center of the card
-              // - position.y IS the bottom of the card (before the dot)
-              // The connection dot is 12px (mt-3) below the card, with 6px radius
+              // ImageCard2:
+              // - Uses transform: translate(-50%, 0)
+              // - position.x is horizontal CENTER, position.y is TOP edge
 
-              // Start point: Center-bottom of prompt node + dot offset
-              const startX = pn.position.x + 5000; // Already centered
-              const startY = pn.position.y + 18 + 5000; // Bottom + dot margin(12) + radius(6)
+              // Start point: Center of the connection dot
+              // position.y is bottom of dot, subtract 6px to get center
+              const startX = pn.position.x + 5000;
+              const startY = pn.position.y - 6 + 5000; // Dot center (position.y is dot bottom)
 
-              // End point: Top center of image node
-              // ImageNode uses transform: translate(-50%, 0), so position.x is center, position.y is top
-              const endX = childNode.position.x + 5000; // Already centered
+              // End point: Top center of image card
+              const endX = childNode.position.x + 5000;
               const endY = childNode.position.y + 5000;
 
               // Control point for smooth curve
@@ -934,7 +934,7 @@ const AppContent: React.FC = () => {
               const controlY = startY + (endY - startY) * 0.4;
 
               return (
-                <g key={`${pn.id}-${childId}`}>
+                <g key={`${pn.id}-${childId}-${Math.round(startX)}-${Math.round(endX)}`}>
                   {/* Curved dashed connection line */}
                   <path
                     d={`M${startX},${startY} Q${controlX},${controlY} ${endX},${endY}`}
@@ -943,7 +943,6 @@ const AppContent: React.FC = () => {
                     strokeWidth="1.5"
                     strokeDasharray="6 4"
                     strokeLinecap="round"
-                    className="transition-all duration-300"
                   />
                   {/* Small dot at image connection point */}
                   <circle cx={endX} cy={endY} r="2" fill="#6366f1" opacity="0.6" />
