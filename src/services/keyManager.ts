@@ -3,7 +3,9 @@
  * 
  * Provides multi-key rotation, status monitoring, and automatic failover.
  * Similar to Gemini Balance but runs entirely on frontend.
+ * NOW SUPPORTS: Supabase Cloud Sync
  */
+import { supabase } from '../lib/supabase';
 
 export interface KeySlot {
     id: string;
@@ -29,6 +31,8 @@ const DEFAULT_MAX_FAILURES = 3;
 class KeyManager {
     private state: KeyManagerState;
     private listeners: Set<() => void> = new Set();
+    private userId: string | null = null;
+    private isSyncing = false;
 
     constructor() {
         this.state = this.loadState();
@@ -107,8 +111,83 @@ class KeyManager {
         const toSave = state || this.state;
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+
+            // Sync to cloud if user is logged in
+            if (this.userId && !this.isSyncing) {
+                this.saveToCloud(toSave);
+            }
         } catch (e) {
             console.error('[KeyManager] Failed to save state:', e);
+        }
+    }
+
+    /**
+     * Set user ID and sync with cloud
+     */
+    async setUserId(userId: string | null) {
+        if (this.userId === userId) return;
+        this.userId = userId;
+        if (userId) {
+            await this.loadFromCloud();
+        }
+    }
+
+    /**
+     * Load state from Supabase
+     */
+    private async loadFromCloud() {
+        if (!this.userId) return;
+
+        try {
+            this.isSyncing = true;
+            const { data, error } = await supabase
+                .from('user_settings')
+                .select('api_keys')
+                .eq('user_id', this.userId)
+                .single();
+
+            if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+                console.warn('[KeyManager] Failed to fetch cloud settings:', error);
+                return;
+            }
+
+            if (data && data.api_keys) {
+                // Merge cloud keys with local keys? Or overwrite? 
+                // For simplicity, let's trust cloud if it has data, but merge carefully.
+                // Actually, let's just use cloud valid data.
+                const cloudSlots = data.api_keys as KeySlot[];
+                if (Array.isArray(cloudSlots) && cloudSlots.length > 0) {
+                    this.state.slots = cloudSlots;
+                    this.saveState(); // Update local storage
+                    this.notifyListeners();
+                }
+            } else {
+                // Init user settings if empty
+                await this.saveToCloud(this.state);
+            }
+        } catch (e) {
+            console.error('[KeyManager] Error loading from cloud:', e);
+        } finally {
+            this.isSyncing = false;
+        }
+    }
+
+    /**
+     * Save state to Supabase
+     */
+    private async saveToCloud(state: KeyManagerState) {
+        if (!this.userId) return;
+
+        try {
+            await supabase
+                .from('user_settings')
+                .upsert({
+                    user_id: this.userId,
+                    api_keys: state.slots,
+                    updated_at: new Date().toISOString()
+                });
+        } catch (e) {
+            console.error('[KeyManager] Error saving to cloud:', e);
         }
     }
 

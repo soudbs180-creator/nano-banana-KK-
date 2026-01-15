@@ -13,6 +13,9 @@ import { keyManager } from './services/keyManager';
 // Lucide icons replaced with SVGs
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import ConnectionDot from './components/ConnectionDot';
+import LoginScreen from './components/LoginScreen';
+import { useAuth } from './context/AuthContext';
+import { Loader2 } from 'lucide-react';
 
 // Canvas Manager Component (Top Left)
 const CanvasManager: React.FC = () => {
@@ -247,6 +250,15 @@ const AppContent: React.FC = () => {
     canUndo,
     canRedo
   } = useCanvas();
+
+  const { user, signOut } = useAuth();
+
+  // Sync user with KeyManager
+  useEffect(() => {
+    if (user) {
+      keyManager.setUserId(user.id);
+    }
+  }, [user]);
 
   // Generation config state
   const [config, setConfig] = useState<GenerationConfig>({
@@ -1103,6 +1115,8 @@ const AppContent: React.FC = () => {
         onOpenSettings={() => setShowApiModal(true)}
         hasApiKey={keyManager.hasValidKeys()}
         generatedCount={activeCanvas?.imageNodes.length || 0}
+        user={user}
+        onSignOut={signOut}
       />
 
       {/* API Key Manager Modal */}
@@ -1136,10 +1150,26 @@ const AppContent: React.FC = () => {
   );
 };
 
-const App: React.FC = () => (
-  <CanvasProvider>
-    <AppContent />
-  </CanvasProvider>
-);
+const App: React.FC = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-[#0d0d0f] flex items-center justify-center">
+        <Loader2 className="animate-spin text-indigo-500" size={32} />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  return (
+    <CanvasProvider>
+      <AppContent />
+    </CanvasProvider>
+  );
+};
 
 export default App;

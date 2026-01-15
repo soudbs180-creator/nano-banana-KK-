@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { User } from '@supabase/supabase-js';
 // Lucide icons replaced with SVGs
 
 interface SidebarProps {
@@ -7,6 +8,8 @@ interface SidebarProps {
     onOpenSettings: () => void;
     hasApiKey: boolean;
     generatedCount: number;
+    user: User | null;
+    onSignOut: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -14,7 +17,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     onClose,
     onOpenSettings,
     hasApiKey,
-    generatedCount
+    generatedCount,
+    user,
+    onSignOut
 }) => {
     const [activeTab, setActiveTab] = useState<'home' | 'history'>('home');
 
@@ -112,29 +117,47 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {/* Footer */}
                 <div className="sidebar-footer">
                     {/* User Section */}
-                    <div className="sidebar-user" onClick={onOpenSettings}>
-                        <div className="sidebar-avatar relative">
-                            K
-                            {/* Status indicator */}
-                            <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-900 ${hasApiKey ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'
-                                }`} />
+                    <div className="p-3 bg-black/20 rounded-xl mb-2">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="sidebar-avatar relative shrink-0">
+                                {user?.email?.[0].toUpperCase() || 'K'}
+                                {/* Status indicator */}
+                                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-900 ${hasApiKey ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'
+                                    }`} />
+                            </div>
+                            <div className="flex-1 min-w-0" onClick={onOpenSettings} role="button">
+                                <p className="text-xs font-medium text-zinc-300 truncate">{user?.email || 'Guest'}</p>
+                                <p className="text-[10px] text-zinc-500 truncate">Pro Plan</p>
+                            </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-zinc-300 truncate">KK User</p>
-                            <p className="text-[10px] text-zinc-500">订阅与设置</p>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-medium ${hasApiKey
-                                ? 'bg-emerald-500/20 text-emerald-400'
-                                : 'bg-yellow-500/20 text-yellow-400'
-                                }`}>
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={onOpenSettings}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium transition-colors ${hasApiKey
+                                    ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                                    : 'bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
+                                    }`}
+                            >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                     <circle cx="7.5" cy="15.5" r="5.5" />
                                     <path d="m21 2-9.6 9.6" />
                                     <path d="m15.5 7.5 3 3L22 7l-3-3" />
                                 </svg>
-                                <span>{hasApiKey ? '已配置' : '未配置'}</span>
-                            </div>
+                                {hasApiKey ? 'Keys Configured' : 'Setup Keys'}
+                            </button>
+
+                            <button
+                                onClick={onSignOut}
+                                className="px-3 py-1.5 bg-white/5 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 rounded-lg transition-colors"
+                                title="Sign Out"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                    <polyline points="16 17 21 12 16 7" />
+                                    <line x1="21" y1="12" x2="9" y2="12" />
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </div>

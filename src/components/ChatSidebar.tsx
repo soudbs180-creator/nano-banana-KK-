@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { chatService, ChatMessage } from '../services/chatService';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Bot } from 'lucide-react';
 
 interface ChatSidebarProps {
     isOpen: boolean;
@@ -172,12 +172,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
                 {!isOpen && (
                     <button
                         onClick={onToggle}
-                        className="fixed bottom-24 right-4 z-[100] w-14 h-14 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-transform"
-                        style={{ boxShadow: '0 8px 32px rgba(99, 102, 241, 0.4)' }}
+                        className="fixed bottom-36 right-4 z-[999] w-12 h-12 bg-[#1c1c1e] border border-white/10 rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all duration-300"
+                        style={{ boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)' }}
                     >
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                        </svg>
+                        <Bot size={24} className="text-white" />
                     </button>
                 )}
 
@@ -253,8 +251,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
                                 messages.map((msg) => (
                                     <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                         <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user'
-                                                ? 'bg-indigo-500 text-white'
-                                                : 'bg-[#2c2c2e] text-zinc-200'
+                                            ? 'bg-indigo-500 text-white'
+                                            : 'bg-[#2c2c2e] text-zinc-200'
                                             }`}>
                                             <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
                                         </div>
