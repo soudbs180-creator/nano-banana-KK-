@@ -20,26 +20,27 @@ export const generateImage = async (
   imageSize: ImageSize,
   referenceImages: ReferenceImage[],
   model: ModelType,
-  apiKey: string = '' // Optional: backend handles key management
+  apiKey: string = '' // Optional
 ): Promise<string> => {
-  // Allow empty key to pass through to backend (for Server-Side Key usage)
+  // Check availability of client-side keys
+  const { keyManager } = await import('./keyManager');
+  const hasClientKeys = keyManager.hasValidKeys() || !!apiKey || !!import.meta.env.VITE_GEMINI_API_KEY;
 
-  // Local development: Try Backend first, but Fallback if missing
-  if (isLocalDev) {
-    try {
-      return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
-    } catch (e: any) {
-      // If Backend is missing logic (e.g. running 'npm run dev' without Netlify), fallback to Direct
-      if (e.message.includes("Backend function not found") || e.message.includes("404")) {
-        console.warn("⚠️ Local Dev: Backend not found. Falling back to Direct Client-Side API call.");
-        return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
-      }
-      throw e;
-    }
+  // 1. Prioritize Client-Side Generation if keys are available
+  if (hasClientKeys) {
+    return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
   }
 
-  // Production: Call backend
-  return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
+  // 2. If no client keys, try Backend (Server-Side Key)
+  try {
+    return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
+  } catch (e: any) {
+    // If Backend is missing (404), fallback to Direct (which validates keys and throws useful error)
+    if (e.message.includes("Backend function not found") || e.message.includes("404")) {
+      return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
+    }
+    throw e;
+  }
 };
 
 /**

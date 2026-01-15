@@ -14,6 +14,7 @@ import { keyManager } from './services/keyManager';
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import ConnectionDot from './components/ConnectionDot';
 import LoginScreen from './components/LoginScreen';
+import UserProfileModal from './components/UserProfileModal';
 import { useAuth } from './context/AuthContext';
 import { Loader2 } from 'lucide-react';
 
@@ -253,10 +254,25 @@ const AppContent: React.FC = () => {
 
   const { user, signOut } = useAuth();
 
-  // Sync user with KeyManager
+  // Reactively track KeyManager state
+  const [keyStats, setKeyStats] = useState(keyManager.getStats());
+
+  useEffect(() => {
+    const unsubscribe = keyManager.subscribe(() => {
+      setKeyStats(keyManager.getStats());
+    });
+    return unsubscribe;
+  }, []);
+
+  // Sync user with KeyManager and handle Modal Logic
   useEffect(() => {
     if (user) {
-      keyManager.setUserId(user.id);
+      keyManager.setUserId(user.id).then(() => {
+        // Check if we need to show modal (only if no valid keys)
+        if (!keyManager.hasValidKeys()) {
+          setShowApiModal(true);
+        }
+      });
     }
   }, [user]);
 
@@ -265,8 +281,8 @@ const AppContent: React.FC = () => {
     prompt: '',
     aspectRatio: AspectRatio.SQUARE,
     imageSize: ImageSize.SIZE_1K,
-    referenceImages: [],
     parallelCount: 1,
+    referenceImages: [],
     model: ModelType.PRO_QUALITY
   });
 
@@ -330,163 +346,15 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, canUndo, canRedo]);
 
-  // API Key Management - Server-Side Storage
-  interface ApiKeySlot {
-    slot: number;
-    status: 'valid' | 'invalid' | 'pending' | 'unknown' | 'empty';
-    hasKey: boolean;
-  }
-
-  // Local input state for the modal (keys typed but not yet saved)
-  const [keyInputs, setKeyInputs] = useState<string[]>(['', '', '', '']);
-  const [keySlots, setKeySlots] = useState<ApiKeySlot[]>([
-    { slot: 1, status: 'empty', hasKey: false },
-    { slot: 2, status: 'empty', hasKey: false },
-    { slot: 3, status: 'empty', hasKey: false },
-    { slot: 4, status: 'empty', hasKey: false },
-  ]);
   const [showApiModal, setShowApiModal] = useState(false);
-  const [isLoadingKeys, setIsLoadingKeys] = useState(true);
-  const [isSavingKeys, setIsSavingKeys] = useState(false);
-
-  // Detect if running locally (for fallback to localStorage)
-  const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-  // Fetch key status from backend on mount (with localStorage fallback for local dev)
-  useEffect(() => {
-    const fetchKeyStatus = async () => {
-      try {
-        const response = await fetch('/api/keys', {
-          method: 'GET',
-          credentials: 'include',
-        });
-
-        if (response.ok) {
-          const contentType = response.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            const data = await response.json();
-            setKeySlots(data.slots || []);
-            if (!data.hasKeys) {
-              setShowApiModal(true);
-            }
-            return;
-          }
-        }
-        throw new Error('Backend not available');
-      } catch (e) {
-        console.warn('Backend not available, using localStorage fallback for local dev');
-
-        // Fallback to localStorage for local development
-        if (isLocalDev) {
-          try {
-            const stored = localStorage.getItem('kk-api-keys-local');
-            if (stored) {
-              const keys = JSON.parse(stored) as string[];
-              if (keys.some(k => k)) {
-                setKeySlots(keys.map((k, i) => ({
-                  slot: i + 1,
-                  status: k ? 'unknown' : 'empty' as const,
-                  hasKey: !!k,
-                })));
-                setKeyInputs(keys);
-                return; // Don't show modal if we have stored keys
-              }
-            }
-          } catch (parseErr) {
-            console.error('Failed to parse localStorage keys');
-          }
-        }
-
-        // Show modal if no keys found
-        setShowApiModal(true);
-      } finally {
-        setIsLoadingKeys(false);
-      }
-    };
-
-    fetchKeyStatus();
-  }, [isLocalDev]);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Get derived API status for UI indicator - use keyManager
-  const keyManagerStats = keyManager.getStats();
-  const derivedApiStatus = keyManagerStats.valid > 0 ? 'success'
-    : keyManagerStats.total > 0 ? 'error' : 'unknown';
 
-  // Save API keys to backend (with localStorage fallback for local dev)
-  const saveApiKeys = useCallback(async () => {
-    setIsSavingKeys(true);
-    try {
-      const response = await fetch('/api/keys', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keys: keyInputs }),
-      });
+  const derivedApiStatus = keyStats.valid > 0 ? 'success'
+    : keyStats.total > 0 ? 'error' : 'unknown';
 
-      const contentType = response.headers.get('content-type');
-      if (response.ok && contentType && contentType.includes('application/json')) {
-        // Refresh key status
-        const statusResponse = await fetch('/api/keys', {
-          method: 'GET',
-          credentials: 'include',
-        });
-        if (statusResponse.ok) {
-          const statusContentType = statusResponse.headers.get('content-type');
-          if (statusContentType && statusContentType.includes('application/json')) {
-            // Backend returns validated slots
-            const statusData = await response.json();
-            if (statusData.slots) {
-              setKeySlots(statusData.slots);
-            }
-          }
-        }
-        setShowApiModal(false);
-        setError(null);
-        return;
-      }
-      throw new Error('Backend not available');
-    } catch (e: any) {
-      // Fallback to localStorage for local development with local validation
-      if (isLocalDev) {
-        localStorage.setItem('kk-api-keys-local', JSON.stringify(keyInputs));
 
-        // Validate keys locally using Gemini API
-        const validatedSlots = await Promise.all(
-          keyInputs.map(async (key, i) => {
-            if (!key.trim()) {
-              return { slot: i + 1, status: 'empty' as const, hasKey: false };
-            }
-
-            try {
-              const testResponse = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models?key=${key.trim()}`,
-                { method: 'GET' }
-              );
-
-              if (testResponse.ok) {
-                return { slot: i + 1, status: 'valid' as const, hasKey: true };
-              } else if (testResponse.status === 400 || testResponse.status === 401 || testResponse.status === 403) {
-                return { slot: i + 1, status: 'invalid' as const, hasKey: true };
-              }
-              return { slot: i + 1, status: 'unknown' as const, hasKey: true };
-            } catch {
-              return { slot: i + 1, status: 'unknown' as const, hasKey: true };
-            }
-          })
-        );
-
-        setKeySlots(validatedSlots);
-        setShowApiModal(false);
-        setError(null);
-        console.log('Keys saved and validated locally');
-        return;
-      }
-      setError(e.message || '保存失败');
-    } finally {
-      setIsSavingKeys(false);
-
-    }
-  }, [keyInputs, isLocalDev]);
 
   // Track if position has been set for current prompt session using ref (more stable than state)
   const positionLockedRef = useRef(false);
@@ -1117,12 +985,25 @@ const AppContent: React.FC = () => {
         generatedCount={activeCanvas?.imageNodes.length || 0}
         user={user}
         onSignOut={signOut}
+        onOpenProfile={() => setShowProfileModal(true)}
       />
 
       {/* API Key Manager Modal */}
       <KeyManagerModal
         isOpen={showApiModal}
         onClose={() => setShowApiModal(false)}
+      />
+
+      {/* User Profile Modal */}
+      <UserProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        onSignOut={signOut}
+        onOpenApiSettings={() => {
+          setShowProfileModal(false);
+          setShowApiModal(true);
+        }}
       />
 
       {error && (
