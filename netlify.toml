@@ -3,7 +3,7 @@
   node_bundler = "esbuild"
 
 [build]
-  command = "npm run build"
+  command = "npm ci && node node_modules/vite/bin/vite.js build"
   publish = "dist"
 
 [dev]
