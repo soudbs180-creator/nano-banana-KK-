@@ -549,7 +549,8 @@ const AppContent: React.FC = () => {
 
 
   const handleGenerate = useCallback(async () => {
-    if (isGenerating || !config.prompt.trim()) return;
+    // Allow multiple concurrent generations - only check for valid prompt
+    if (!config.prompt.trim()) return;
     // Note: API key is now managed server-side, no need to pass from frontend
 
     setIsGenerating(true);

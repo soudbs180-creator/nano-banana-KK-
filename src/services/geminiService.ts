@@ -53,12 +53,33 @@ async function generateImageDirect(
   model: ModelType,
   apiKey: string
 ): Promise<string> {
-  if (!apiKey) {
-    throw new Error("本地 Direct 模式需要 API Key (后端连接失败)");
+  // Try to get API key from various sources
+  let effectiveKey = apiKey;
+
+  if (!effectiveKey) {
+    // Try localStorage (local dev storage)
+    try {
+      const stored = localStorage.getItem('kk-api-keys-local');
+      if (stored) {
+        const keys = JSON.parse(stored) as string[];
+        effectiveKey = keys.find(k => k && k.trim()) || '';
+      }
+    } catch (e) {
+      console.warn('Failed to read keys from localStorage');
+    }
+  }
+
+  if (!effectiveKey) {
+    // Try environment variable
+    effectiveKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+  }
+
+  if (!effectiveKey) {
+    throw new Error("请先在设置中配置 API Key");
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: effectiveKey });
     const parts: any[] = [];
     if (prompt) parts.push({ text: prompt });
 
