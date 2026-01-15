@@ -12,7 +12,5 @@
   port = 8888
   autoLaunch = false
 
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
+# Functions use config.path for routing (Netlify Functions v2)
+# No redirects needed
