@@ -281,7 +281,8 @@ const PendingNode: React.FC<PendingNodeProps> = ({
             <div className="relative" style={{ height: 0 }}>
                 {Array.from({ length: parallelCount }).map((_, i) => {
                     const cardW = isMobile ? 170 : w;
-                    const cardH = isMobile ? 200 : h;
+                    // Add 60px footer height to match final ImageCard2
+                    const cardH = (isMobile ? 200 : h) + 60;
 
                     const col = i % columns;
                     const row = Math.floor(i / columns);

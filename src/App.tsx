@@ -384,6 +384,12 @@ const AppContent: React.FC = () => {
   const [pendingPrompt, setPendingPrompt] = useState<string>('');
   const [pendingPosition, setPendingPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // Use ref to track pending position for async access (fixing jump on completion)
+  const pendingPositionRef = useRef(pendingPosition);
+  useEffect(() => {
+    pendingPositionRef.current = pendingPosition;
+  }, [pendingPosition]);
+
   // Canvas transform state (for positioning in visible area)
   const [canvasTransform, setCanvasTransform] = useState<{ x: number; y: number; scale: number }>({
     x: window.innerWidth / 2,
@@ -679,8 +685,22 @@ const AppContent: React.FC = () => {
       }
 
       // Get the prompt node's CURRENT position (from REF to avoid stale closure)
+      // CRITICAL: Use pendingPositionRef because the PendingNode might have been dragged 
+      // while generation was running. The PromptNode created at start has stale pos.
+      const latestPendingPos = pendingPositionRef.current;
       const livePromptNode = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-      const livePos = livePromptNode?.position || currentPos;
+
+      // We should UPDATE the persistent prompt node to match where the user left the Pending Node
+      if (livePromptNode && (latestPendingPos.x !== 0 || latestPendingPos.y !== 0)) {
+        // Update local ref variable for calculation
+        livePromptNode.position = latestPendingPos;
+        // Also update global store? handleGenerate is inside App, so we might need a way to commit this.
+        // Since we are about to add images relative to this, we use this 'livePromptNode' for calculation.
+        // NOTE: We must actually update the canvas state for this to persist visually.
+        updatePromptNodePosition(promptNodeId, latestPendingPos);
+      }
+
+      const livePos = latestPendingPos.x !== 0 ? latestPendingPos : (livePromptNode?.position || currentPos);
 
       // Now calculate positions using the LIVE position
       const gapToImages = 80; // Increased to match visual style (dotted line)
@@ -741,7 +761,7 @@ const AppContent: React.FC = () => {
           const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
 
           x = livePos.x + offsetX;
-          y = livePos.y + offsetY; // Image TOP is now 80px below prompt BOTTOM
+          y = livePos.y + offsetY;
         }
 
         return {
@@ -754,7 +774,7 @@ const AppContent: React.FC = () => {
           canvasId: activeCanvas?.id || 'default',
           parentPromptId: promptNodeId,
           position: { x, y },
-          dimensions: config.aspectRatio === '1:1' ? '1024 x 1024' : config.aspectRatio === '16:9' ? '1344 x 768' : '768 x 1344',
+          dimensions: `${config.aspectRatio} · ${config.imageSize || '1K'}`,
           generationTime
         } as GeneratedImage;
       });
@@ -922,15 +942,29 @@ const AppContent: React.FC = () => {
 
         let imagesBlockHeight = 0;
         if (childImages.length > 0) {
-          // Images Layout (Single Column centered under prompt for cleanliness)
-          // Or maintain previous logic. Let's start images closer but safe.
+          // Images Layout: 2 Columns Grid under the prompt
+          const imgCols = 2;
+          const imgGap = 16;
+          const imgWidth = 280; // Standard card width
+          const imgHeight = 320; // Avg height including footer
+
           childImages.forEach((img, i) => {
+            const row = Math.floor(i / imgCols);
+            const col = i % imgCols;
+
+            // Center the grid under the prompt
+            const totalRowWidth = (Math.min(childImages.length, imgCols) * imgWidth) +
+              ((Math.min(childImages.length, imgCols) - 1) * imgGap);
+            const rowStartX = cx - (totalRowWidth / 2) + (imgWidth / 2);
+
             updateImageNodePosition(img.id, {
-              x: cx,
-              y: currentY + 80 + 320 + (i * 320) // +320 = imageHeight so TOP is below prompt
+              x: rowStartX + col * (imgWidth + imgGap),
+              y: currentY + 80 + imgHeight + (row * imgHeight) // +imgHeight because anchor is bottom
             });
           });
-          imagesBlockHeight = childImages.length * 320;
+
+          const rows = Math.ceil(childImages.length / imgCols);
+          imagesBlockHeight = rows * imgHeight;
         }
 
         // Update column Y tracker

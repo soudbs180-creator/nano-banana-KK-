@@ -155,7 +155,7 @@ async function generateImageDirect(
               // Add other Imagen-specific params if needed
             }
           }),
-          signal: controller?.signal
+          signal: controller?.signal || AbortSignal.timeout(45000)
         });
 
         // Update Quota Information
@@ -228,7 +228,7 @@ async function generateImageDirect(
               imageConfig
             }
           }),
-          signal: controller?.signal
+          signal: controller?.signal || AbortSignal.timeout(45000)
         });
 
         // Update Quota Information
