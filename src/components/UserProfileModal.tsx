@@ -84,6 +84,15 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
     const [isValidatingKeys, setIsValidatingKeys] = useState(false);
     const [keyError, setKeyError] = useState<string | null>(null);
 
+    // Live countdown timer - MUST be before early return (Rules of Hooks)
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        if (isOpen && view === 'api-settings') {
+            const timer = setInterval(() => setTick(t => t + 1), 1000);
+            return () => clearInterval(timer);
+        }
+    }, [isOpen, view]);
+
     // Reset view when opening
     useEffect(() => {
         if (isOpen) {
@@ -266,14 +275,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
     const userAvatarUrl = user?.user_metadata?.avatar_url;
     const userInitial = user?.email?.[0].toUpperCase() || 'K';
 
-    // Live countdown timer
-    const [, setTick] = useState(0);
-    useEffect(() => {
-        if (view === 'api-settings') {
-            const timer = setInterval(() => setTick(t => t + 1), 1000);
-            return () => clearInterval(timer);
-        }
-    }, [view]);
+    // Timer hook moved to top of component (Rules of Hooks)
 
     const formatDuration = (ms: number) => {
         if (ms <= 0) return 'Ready';
@@ -478,9 +480,17 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
                                                         <div className="w-full bg-zinc-700/30 h-1 rounded-full overflow-hidden">
                                                             <div className={`h-full transition-all duration-500 ${barColor}`} style={{ width: `${percent}%` }} />
                                                         </div>
+                                                        {resetText && <div className="text-[9px] text-zinc-500 mt-1 text-right">{resetText}</div>}
                                                     </div>
                                                 );
                                             }
+                                        } else {
+                                            // No quota data yet - show hint
+                                            progressDetail = (
+                                                <div className="mt-1.5 text-[9px] text-zinc-500 italic">
+                                                    生成图片后显示配额
+                                                </div>
+                                            );
                                         }
 
                                         return (
