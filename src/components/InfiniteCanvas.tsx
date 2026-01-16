@@ -232,17 +232,22 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
                             <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
                         </svg>
                     </button>
-                    {/* 4. Toggle Grid */}
+                    {/* 4. Toggle Dots */}
                     <button
                         className={`toolbar-btn ${showGrid ? 'active' : ''}`}
                         onClick={toggleGrid}
-                        title="网格 (Grid)"
+                        title="点阵 (Dots)"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="3" width="7" height="7" />
-                            <rect x="14" y="3" width="7" height="7" />
-                            <rect x="14" y="14" width="7" height="7" />
-                            <rect x="3" y="14" width="7" height="7" />
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                            <circle cx="6" cy="6" r="2" />
+                            <circle cx="12" cy="6" r="2" />
+                            <circle cx="18" cy="6" r="2" />
+                            <circle cx="6" cy="12" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="18" cy="12" r="2" />
+                            <circle cx="6" cy="18" r="2" />
+                            <circle cx="12" cy="18" r="2" />
+                            <circle cx="18" cy="18" r="2" />
                         </svg>
                     </button>
                 </div>

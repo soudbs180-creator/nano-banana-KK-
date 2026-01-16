@@ -280,15 +280,11 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
                 onMouseDown={handleMouseDown}
                 style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
             >
-                {/* Grid Background */}
+                {/* Dot Pattern Background */}
                 {showGrid && (
                     <div
                         className="canvas-grid"
-                        style={{
-                            backgroundPosition: `${transform.x}px ${transform.y}px`,
-                            backgroundSize: `${40 * transform.scale}px ${40 * transform.scale}px`,
-                            opacity: Math.max(0.3, Math.min(0.8, transform.scale)) * 0.5 // Dynamic opacity
-                        }}
+                        style={{ pointerEvents: 'none' }}
                     />
                 )}
 
@@ -326,18 +322,22 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
                             <circle cx="12" cy="12" r="3" />
                         </svg>
                     </button>
-                    {/* 4. Grid - Clean Grid */}
+                    {/* 4. Dots - Clean Dot Pattern */}
                     <button
                         className={`toolbar-btn group ${showGrid ? 'active' : ''}`}
                         onClick={toggleGrid}
-                        title="网格 (Grid)"
+                        title="点阵 (Dots)"
                     >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={showGrid ? "text-white" : "text-zinc-400 group-hover:text-white transition-colors"}>
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                            <line x1="3" y1="9" x2="21" y2="9" />
-                            <line x1="3" y1="15" x2="21" y2="15" />
-                            <line x1="9" y1="3" x2="9" y2="21" />
-                            <line x1="15" y1="3" x2="15" y2="21" />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" className={showGrid ? "text-white" : "text-zinc-400 group-hover:text-white transition-colors"}>
+                            <circle cx="6" cy="6" r="2" />
+                            <circle cx="12" cy="6" r="2" />
+                            <circle cx="18" cy="6" r="2" />
+                            <circle cx="6" cy="12" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="18" cy="12" r="2" />
+                            <circle cx="6" cy="18" r="2" />
+                            <circle cx="12" cy="18" r="2" />
+                            <circle cx="18" cy="18" r="2" />
                         </svg>
                     </button>
                     {/* 5. Auto Arrange - Clean Mosaic */}
