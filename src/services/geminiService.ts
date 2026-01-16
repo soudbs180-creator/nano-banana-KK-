@@ -128,86 +128,139 @@ async function generateImageDirect(
       throw new Error("请先在设置中配置 API Key");
     }
 
+    const controller = requestId ? abortControllers.get(requestId) : undefined;
+
     try {
-      const parts: any[] = [];
-      if (prompt) parts.push({ text: prompt });
+      // Determine if this is an Imagen model (uses different API)
+      const isImagen = model.startsWith('imagen-');
 
-      // Add reference images if any
-      if (referenceImages && referenceImages.length > 0) {
-        referenceImages.forEach(img => {
-          parts.push({
-            inlineData: {
-              mimeType: img.mimeType,
-              data: img.data,
-            },
-          });
-        });
-      }
-
-      // Build config
-      const imageConfig: any = { aspectRatio };
-      // Include imageSize for models that support it
-      if (model === ModelType.NANO_BANANA_PRO || model === ModelType.IMAGEN_4 || model === ModelType.IMAGEN_4_ULTRA) {
-        imageConfig.imageSize = imageSize;
-      }
-
-      const controller = requestId ? abortControllers.get(requestId) : undefined;
-
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts }],
-          generationConfig: {
-            imageConfig
-          }
-        }),
-        signal: controller?.signal
-      });
-
-      // Update Quota Information
-      if (keyId) {
-        const limitRequests = response.headers.get('x-ratelimit-limit-requests');
-        const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
-        const resetRequests = response.headers.get('x-ratelimit-reset-requests');
-
-        if (limitRequests || remainingRequests) {
-          const resetSeconds = resetRequests ? (parseInt(resetRequests) || 0) : 0;
-          // Some APIs return "60s" or similar, parseInt usually handles the leading number.
-          // If resetRequests is basically a formatted duration, we might need more logic but parseInt is a safe bet for "123s".
-
-          keyManager.updateQuota(keyId, {
-            limitRequests: parseInt(limitRequests || '0'),
-            remainingRequests: parseInt(remainingRequests || '0'),
-            resetConstant: resetRequests || '',
-            resetTime: Date.now() + (resetSeconds * 1000),
-            updatedAt: Date.now()
-          });
-        }
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.candidates && result.candidates.length > 0) {
-        for (const part of result.candidates[0].content?.parts || []) {
-          if (part.inlineData) {
-            // Report success to keyManager
-            if (keyId) {
-              keyManager.reportSuccess(keyId);
+      if (isImagen) {
+        // Imagen models use :predict endpoint with different payload
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${effectiveKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            instances: [{ prompt }],
+            parameters: {
+              sampleCount: 1,
+              aspectRatio: aspectRatio,
+              // Add other Imagen-specific params if needed
             }
-            return `data:image/png;base64,${part.inlineData.data}`;
+          }),
+          signal: controller?.signal
+        });
+
+        // Update Quota Information
+        if (keyId) {
+          const limitRequests = response.headers.get('x-ratelimit-limit-requests');
+          const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
+          const resetRequests = response.headers.get('x-ratelimit-reset-requests');
+
+          if (limitRequests || remainingRequests) {
+            const resetSeconds = resetRequests ? (parseInt(resetRequests) || 0) : 0;
+            keyManager.updateQuota(keyId, {
+              limitRequests: parseInt(limitRequests || '0'),
+              remainingRequests: parseInt(remainingRequests || '0'),
+              resetConstant: resetRequests || '',
+              resetTime: Date.now() + (resetSeconds * 1000),
+              updatedAt: Date.now()
+            });
           }
         }
-      }
 
-      throw new Error("未能生成图片");
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        // Imagen response format: predictions[].bytesBase64Encoded
+        if (result.predictions && result.predictions.length > 0) {
+          const imageBase64 = result.predictions[0].bytesBase64Encoded;
+          if (imageBase64) {
+            if (keyId) keyManager.reportSuccess(keyId);
+            return `data:image/png;base64,${imageBase64}`;
+          }
+        }
+
+        throw new Error("Imagen 未能生成图片");
+
+      } else {
+        // Gemini models use :generateContent endpoint
+        const parts: any[] = [];
+        if (prompt) parts.push({ text: prompt });
+
+        // Add reference images if any
+        if (referenceImages && referenceImages.length > 0) {
+          referenceImages.forEach(img => {
+            parts.push({
+              inlineData: {
+                mimeType: img.mimeType,
+                data: img.data,
+              },
+            });
+          });
+        }
+
+        // Build config
+        const imageConfig: any = { aspectRatio };
+        if (model === ModelType.NANO_BANANA_PRO || model === ModelType.IMAGEN_4 || model === ModelType.IMAGEN_4_ULTRA) {
+          imageConfig.imageSize = imageSize;
+        }
+
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts }],
+            generationConfig: {
+              imageConfig
+            }
+          }),
+          signal: controller?.signal
+        });
+
+        // Update Quota Information
+        if (keyId) {
+          const limitRequests = response.headers.get('x-ratelimit-limit-requests');
+          const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
+          const resetRequests = response.headers.get('x-ratelimit-reset-requests');
+
+          if (limitRequests || remainingRequests) {
+            const resetSeconds = resetRequests ? (parseInt(resetRequests) || 0) : 0;
+            keyManager.updateQuota(keyId, {
+              limitRequests: parseInt(limitRequests || '0'),
+              remainingRequests: parseInt(remainingRequests || '0'),
+              resetConstant: resetRequests || '',
+              resetTime: Date.now() + (resetSeconds * 1000),
+              updatedAt: Date.now()
+            });
+          }
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.candidates && result.candidates.length > 0) {
+          for (const part of result.candidates[0].content?.parts || []) {
+            if (part.inlineData) {
+              if (keyId) keyManager.reportSuccess(keyId);
+              return `data:image/png;base64,${part.inlineData.data}`;
+            }
+          }
+        }
+
+        throw new Error("未能生成图片");
+      }
     } catch (error: any) {
       if (error.name === 'AbortError' || error.message === 'Generation cancelled') {
         throw new Error('Generation cancelled');
