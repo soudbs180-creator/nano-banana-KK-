@@ -471,6 +471,14 @@ body {
   color: var(--text-primary);
   min-height: 44px;
   max-height: 160px;
+
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.input-bar-textarea::-webkit-scrollbar {
+  display: none;
 }
 
 .input-bar-textarea::placeholder {

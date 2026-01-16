@@ -17,7 +17,15 @@ export enum ImageSize {
 
 export enum ModelType {
   NANO_BANANA = 'gemini-2.5-flash-image',
-  PRO_QUALITY = 'gemini-3-pro-image-preview',
+  NANO_BANANA_PRO = 'gemini-3-pro-image-preview',
+  IMAGEN_4 = 'imagen-4.0-generate-001',
+  IMAGEN_4_ULTRA = 'imagen-4.0-ultra-generate-001',
+}
+
+export enum ChatModelType {
+  GEMINI_LITE = 'gemini-flash-lite-latest',
+  GEMINI_3_FLASH = 'gemini-3-flash-preview',
+  GEMINI_3_PRO = 'gemini-3-pro-preview',
 }
 
 export interface ReferenceImage {
@@ -50,6 +58,7 @@ export interface PromptNode {
   timestamp: number;
   sourceImageId?: string;
   isGenerating?: boolean;
+  parallelCount?: number; // Number of images being generated
   error?: string;
 }
 

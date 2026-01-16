@@ -23,6 +23,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
     }, [setConfig]);
 
+    // Reset height when prompt is cleared programmatically or manually
+    useEffect(() => {
+        if (!config.prompt && textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+        }
+    }, [config.prompt]);
+
     const processFiles = useCallback((files: FileList) => {
         if (config.referenceImages.length >= 5) {
             alert("最多只能上传 5 张参考图");
@@ -229,7 +236,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     </div>
 
                     {/* Image Size - Clean Icon */}
-                    {config.model === ModelType.PRO_QUALITY && (
+                    {(config.model === ModelType.NANO_BANANA_PRO || config.model === ModelType.IMAGEN_4 || config.model === ModelType.IMAGEN_4_ULTRA) && (
                         <div className="relative">
                             <button
                                 className="input-bar-option group"
@@ -313,11 +320,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 className="input-bar-model"
                                 onClick={() => toggleMenu('model')}
                             >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={config.model === ModelType.PRO_QUALITY ? 'text-yellow-500' : 'text-blue-400'}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={config.model === ModelType.NANO_BANANA ? 'text-blue-400' : 'text-yellow-500'}>
                                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
                                 </svg>
-                                <span className="text-xs flex-1 text-center">
-                                    {config.model === ModelType.PRO_QUALITY ? 'Nano Banana Pro (🍌 Pro)' : 'Nano Banana Flash'}
+                                <span className="text-xs flex-1 text-center truncate px-1">
+                                    {config.model === ModelType.NANO_BANANA && 'Nano Banana'}
+                                    {config.model === ModelType.NANO_BANANA_PRO && 'Nano Banana Pro'}
+                                    {config.model === ModelType.IMAGEN_4 && 'Imagen 4.0'}
+                                    {config.model === ModelType.IMAGEN_4_ULTRA && 'Imagen 4.0 Ultra'}
                                 </span>
                             </button>
                             {activeMenu === 'model' && (
@@ -325,39 +335,32 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     className="absolute bottom-full mb-2 z-20"
                                     style={{ left: '50%', transform: 'translateX(-50%)' }}
                                 >
-                                    <div className="dropdown static w-56 animate-scaleIn origin-bottom">
-                                        <button
-                                            className={`dropdown-item ${config.model === ModelType.NANO_BANANA ? 'active' : ''}`}
-                                            onClick={() => {
-                                                setConfig(prev => ({ ...prev, model: ModelType.NANO_BANANA }));
-                                                setActiveMenu(null);
-                                            }}
-                                        >
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
-                                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                                            </svg>
-                                            <div>
-                                                <div className="font-medium text-zinc-200">Nano Banana Flash</div>
-                                                <div className="text-[10px] text-zinc-500">快速生成</div>
-                                            </div>
-                                        </button>
-                                        <button
-                                            className={`dropdown-item ${config.model === ModelType.PRO_QUALITY ? 'active' : ''}`}
-                                            onClick={() => {
-                                                setConfig(prev => ({ ...prev, model: ModelType.PRO_QUALITY }));
-                                                setActiveMenu(null);
-                                            }}
-                                        >
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-500">
-                                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                                            </svg>
-                                            <div>
-                                                <div className="font-medium text-zinc-200">Nano Banana Pro</div>
-                                                <div className="text-[10px] text-zinc-500">
-                                                    高质量，较慢
+                                    <div className="dropdown static w-64 animate-scaleIn origin-bottom">
+                                        {[
+                                            { id: ModelType.NANO_BANANA, label: 'Nano Banana', desc: '极速生成，适合快速验证灵感' },
+                                            { id: ModelType.NANO_BANANA_PRO, label: 'Nano Banana Pro', desc: '增强细节与构图，适合高质量预览' },
+                                            { id: ModelType.IMAGEN_4, label: 'Imagen 4.0', desc: '谷歌最新旗舰，写实感与光影极佳' },
+                                            { id: ModelType.IMAGEN_4_ULTRA, label: 'Imagen 4.0 Ultra', desc: '极致画质与分辨率，适合商业级输出' }
+                                        ].map(model => (
+                                            <button
+                                                key={model.id}
+                                                className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors ${config.model === model.id ? 'bg-white/5' : ''}`}
+                                                onClick={() => {
+                                                    setConfig(prev => ({ ...prev, model: model.id }));
+                                                    setActiveMenu(null);
+                                                }}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className={`text-xs font-medium ${config.model === model.id ? 'text-indigo-400' : 'text-slate-200'}`}>
+                                                        {model.label}
+                                                    </span>
+                                                    {config.model === model.id && (
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                                                    )}
                                                 </div>
-                                            </div>
-                                        </button>
+                                                <span className="text-[10px] text-zinc-500 leading-tight">{model.desc}</span>
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
                             )}

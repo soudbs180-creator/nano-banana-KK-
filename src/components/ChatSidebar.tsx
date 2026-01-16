@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { chatService, ChatMessage } from '../services/chatService';
 import { Loader2, Bot } from 'lucide-react';
+import { ChatModelType } from '../types';
 
 interface ChatSidebarProps {
     isOpen: boolean;
@@ -14,9 +15,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [selectedModel, setSelectedModel] = useState<ChatModelType>(ChatModelType.GEMINI_LITE);
+    const [showModelMenu, setShowModelMenu] = useState(false);
 
     // Desktop: Window position and size (not used on mobile)
-    const [position, setPosition] = useState({ x: 16, y: 60 });
+    const [position, setPosition] = useState({ x: 380, y: 40 });
     const [size, setSize] = useState({ width: 380, height: 500 });
     const [isDragging, setIsDragging] = useState(false);
     const [resizeDir, setResizeDir] = useState<ResizeDirection>(null);
@@ -125,7 +128,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
         setMessages(prev => [...prev, tempUserMsg]);
 
         try {
-            await chatService.sendMessage(userInput);
+            await chatService.sendMessage(userInput, selectedModel);
             const session = chatService.getCurrentSession();
             if (session) {
                 setMessages(session.messages);
@@ -145,7 +148,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
             setIsLoading(false);
             isSendingRef.current = false;
         }
-    }, [input, isLoading]);
+    }, [input, isLoading, selectedModel]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -322,7 +325,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Drag state for floating bubble
-    const [bubblePosition, setBubblePosition] = useState({ x: 24, y: 24 }); // Distance from right/bottom edges
+    const [bubblePosition, setBubblePosition] = useState({ x: 380, y: 40 }); // Distance from right/bottom edges
     const [isBubbleDragging, setIsBubbleDragging] = useState(false);
     const bubbleDragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
 
@@ -445,7 +448,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
         >
-            {/* Unified Chat Card with Bubble */}
+            {/* Container that expands UPWARD */}
             <div
                 className="relative transition-all duration-300 ease-out"
                 style={{
@@ -453,21 +456,21 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
                     height: isHovered || isOpen ? 480 : 54,
                 }}
             >
-                {/* Chat Panel - Only visible when expanded */}
+                {/* Chat Panel - Expands ABOVE the bubble */}
                 <div
-                    className={`absolute flex flex-col overflow-hidden transition-all duration-300 ${isHovered || isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                        }`}
+                    className={`absolute flex flex-col overflow-hidden transition-all duration-300 ${isHovered || isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                     style={{
                         width: 360,
-                        height: 480,
+                        height: isHovered || isOpen ? 420 : 0,
                         right: expandToRight ? 'auto' : 0,
                         left: expandToRight ? 0 : 'auto',
-                        bottom: 0,
+                        bottom: 60, // Above the input bar
                         background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.98) 0%, rgba(8, 12, 21, 0.99) 100%)',
                         backdropFilter: 'blur(40px)',
                         border: '1px solid rgba(56, 189, 248, 0.15)',
-                        borderRadius: '24px',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 40px -10px rgba(56, 189, 248, 0.15)'
+                        borderBottom: 'none',
+                        borderRadius: '24px 24px 0 0',
+                        boxShadow: '0 -15px 40px -12px rgba(0, 0, 0, 0.5), 0 0 40px -10px rgba(56, 189, 248, 0.15)'
                     }}
                 >
                     {/* Header - Draggable */}
@@ -496,10 +499,46 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
                             </div>
                             <div>
                                 <h3 className="text-sm font-semibold text-white">AI 智能助手</h3>
-                                <div className="flex items-center gap-1.5">
+                                <button
+                                    className="flex items-center gap-1.5 hover:bg-white/5 rounded px-1.5 py-0.5 transition-colors group relative"
+                                    onClick={() => setShowModelMenu(!showModelMenu)}
+                                >
                                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                                    <span className="text-[10px] text-slate-400">Gemini 2.0 Flash</span>
-                                </div>
+                                    <span className="text-[10px] text-slate-400 group-hover:text-cyan-400 transition-colors">
+                                        {selectedModel === ChatModelType.GEMINI_LITE && 'Gemini'}
+                                        {selectedModel === ChatModelType.GEMINI_3_FLASH && 'Gemini 3 Flash'}
+                                        {selectedModel === ChatModelType.GEMINI_3_PRO && 'Gemini 3 Pro'}
+                                    </span>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-500 group-hover:text-cyan-400">
+                                        <path d="M6 9l6 6 6-6" />
+                                    </svg>
+
+                                    {/* Model Dropdown */}
+                                    {showModelMenu && (
+                                        <div className="absolute top-full left-0 mt-1 w-40 bg-[#1c1c1e] border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden animate-scaleIn origin-top-left">
+                                            <div className="py-1">
+                                                {[
+                                                    { id: ChatModelType.GEMINI_LITE, label: 'Gemini', desc: '轻量级模型，响应速度最快 (默认)' },
+                                                    { id: ChatModelType.GEMINI_3_FLASH, label: 'Gemini 3 Flash', desc: '新一代 Flash，平衡速度与推理能力' },
+                                                    { id: ChatModelType.GEMINI_3_PRO, label: 'Gemini 3 Pro', desc: '最强推理能力，擅长处理复杂任务' }
+                                                ].map(model => (
+                                                    <button
+                                                        key={model.id}
+                                                        className={`w-full px-3 py-2 text-left flex flex-col hover:bg-white/5 transition-colors ${selectedModel === model.id ? 'bg-white/5' : ''}`}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedModel(model.id);
+                                                            setShowModelMenu(false);
+                                                        }}
+                                                    >
+                                                        <span className={`text-xs font-medium ${selectedModel === model.id ? 'text-cyan-400' : 'text-slate-200'}`}>{model.label}</span>
+                                                        <span className="text-[9px] text-slate-500">{model.desc}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </button>
                             </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -511,6 +550,15 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
                             <button onClick={handleClear} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all" title="清空">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" />
+                                </svg>
+                            </button>
+                            <button
+                                onClick={() => { setIsPinned(false); setIsHovered(false); }}
+                                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+                                title="折叠"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M6 9l6 6 6-6" />
                                 </svg>
                             </button>
                         </div>
@@ -578,13 +626,28 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
                         )}
                         <div ref={messagesEndRef} />
                     </div>
+                </div>
 
-                    {/* Input Area - Apple iMessage Style (same as mobile) */}
-                    <div
-                        className="flex items-center gap-2 p-3 flex-shrink-0"
-                        style={{ borderTop: '1px solid rgba(56, 189, 248, 0.1)' }}
-                    >
-                        {/* Input Field - iMessage Style */}
+                {/* Bottom Input Bar - Always visible with fixed-position bubble */}
+                <div
+                    className={`absolute flex items-center transition-all duration-300 ${isHovered || isOpen ? 'gap-2' : ''}`}
+                    style={{
+                        bottom: 0,
+                        right: expandToRight ? 'auto' : 0,
+                        left: expandToRight ? 0 : 'auto',
+                        height: 60,
+                        width: isHovered || isOpen ? 360 : 54,
+                        padding: isHovered || isOpen ? '8px 8px 8px 12px' : 0,
+                        background: isHovered || isOpen
+                            ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.98))'
+                            : 'transparent',
+                        borderRadius: isHovered || isOpen ? '0 0 24px 24px' : '27px',
+                        border: isHovered || isOpen ? '1px solid rgba(56, 189, 248, 0.15)' : 'none',
+                        borderTop: 'none',
+                    }}
+                >
+                    {/* Input Field - Only visible when expanded */}
+                    {(isHovered || isOpen) && (
                         <div className="flex-1 bg-[#3a3a3c] rounded-[22px] border border-white/10 overflow-hidden">
                             <input
                                 value={input}
@@ -595,62 +658,51 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
                                 className="w-full bg-transparent text-white text-[15px] placeholder:text-zinc-500 focus:outline-none px-4 py-[10px]"
                             />
                         </div>
-                        {/* Send Button - Apple Style, aligned with input height */}
-                        <button
-                            onClick={handleSend}
-                            disabled={isLoading || !input.trim()}
-                            className="w-[44px] h-[44px] rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 disabled:opacity-30"
-                            style={{
-                                background: input.trim() ? '#007AFF' : '#3a3a3c',
-                            }}
-                        >
-                            {isLoading ? (
+                    )}
+
+                    {/* Bubble - Fixed position, acts as expand/send button */}
+                    <button
+                        onMouseDown={!isHovered && !isOpen ? startBubbleDrag : undefined}
+                        onClick={(isHovered || isOpen) ? handleSend : handleBubbleClick}
+                        disabled={(isHovered || isOpen) && (isLoading || !input.trim())}
+                        className={`flex items-center justify-center rounded-full flex-shrink-0 transition-all duration-300 relative
+                            ${!isHovered && !isOpen && isBubbleDragging ? 'cursor-grabbing scale-95' : ''}
+                            ${!isHovered && !isOpen && !isBubbleDragging ? 'animate-bubble-breathe cursor-grab' : ''} 
+                            ${(isHovered || isOpen) ? 'disabled:opacity-30' : ''} hover:scale-105 active:scale-95`}
+                        style={{
+                            width: isHovered || isOpen ? 44 : 52,
+                            height: isHovered || isOpen ? 44 : 52,
+                            background: (isHovered || isOpen)
+                                ? (input.trim() ? '#007AFF' : '#3a3a3c')
+                                : 'linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 100%), linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
+                            backdropFilter: 'blur(20px)',
+                            border: (isHovered || isOpen) ? 'none' : '0.5px solid rgba(255, 255, 255, 0.35)',
+                            boxShadow: (!isHovered && !isOpen)
+                                ? undefined
+                                : (input.trim() ? '0 2px 10px rgba(0, 122, 255, 0.35)' : 'none')
+                        }}
+                    >
+                        {/* Collapsed: Robot icon, Expanded: Send icon */}
+                        {(isHovered || isOpen) ? (
+                            isLoading ? (
                                 <Loader2 size={20} className="text-white animate-spin" />
                             ) : (
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
                                     <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
                                 </svg>
-                            )}
-                        </button>
-                    </div>
+                            )
+                        ) : (
+                            <Bot
+                                size={24}
+                                className={`text-white drop-shadow-sm ${!isBubbleDragging ? 'animate-icon-breathe' : ''}`}
+                            />
+                        )}
+                        {/* Notification indicator - Only when collapsed */}
+                        {messages.length > 0 && !isHovered && !isOpen && (
+                            <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm" />
+                        )}
+                    </button>
                 </div>
-
-                {/* Draggable Bubble - Position adapts to expand direction */}
-                <button
-                    onMouseDown={startBubbleDrag}
-                    onClick={handleBubbleClick}
-                    className={`absolute transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] flex items-center justify-center rounded-full ${isBubbleDragging ? 'cursor-grabbing scale-95' : 'cursor-grab'
-                        } ${!isHovered && !isOpen && !isBubbleDragging ? 'animate-bubble-breathe' : ''} hover:scale-105 active:scale-95`}
-                    style={{
-                        width: isHovered || isOpen ? 44 : 52,
-                        height: isHovered || isOpen ? 44 : 52,
-                        // When expanded to right, bubble stays at left; otherwise at right
-                        right: expandToRight
-                            ? 'auto'
-                            : (isHovered || isOpen ? 8 : 0),
-                        left: expandToRight
-                            ? (isHovered || isOpen ? 8 : 0)
-                            : 'auto',
-                        bottom: isHovered || isOpen ? 10 : 0,
-                        background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 100%), linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
-                        backdropFilter: 'blur(20px)',
-                        border: '0.5px solid rgba(255, 255, 255, 0.35)',
-                        boxShadow: isHovered || isOpen
-                            ? '0 2px 10px rgba(0, 122, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25)'
-                            : undefined // Let CSS animation control shadow
-                    }}
-                >
-                    {/* Robot Icon with breathing animation */}
-                    <Bot
-                        size={isHovered || isOpen ? 20 : 24}
-                        className={`text-white drop-shadow-sm ${!isHovered && !isOpen && !isBubbleDragging ? 'animate-icon-breathe' : ''}`}
-                    />
-
-                    {/* Notification indicator */}
-                    {messages.length > 0 && !isHovered && !isOpen && (
-                        <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm" />
-                    )}
-                </button>
             </div>
         </div>
     );

@@ -14,32 +14,66 @@ const API_ENDPOINT = "/api/generate";
  * - Production: Routes through backend (secure)
  * - apiKey is optional: backend will use stored keys or env variable
  */
+
+// AbortController map to track active requests
+const abortControllers = new Map<string, AbortController>();
+
+/**
+ * Cancel a specific generation request
+ */
+export const cancelGeneration = (id: string) => {
+  const controller = abortControllers.get(id);
+  if (controller) {
+    controller.abort();
+    abortControllers.delete(id);
+  }
+};
+
+/**
+ * Generate image using Gemini API
+ * - Local dev: Calls Gemini SDK directly (faster)
+ * - Production: Routes through backend (secure)
+ * - apiKey is optional: backend will use stored keys or env variable
+ */
 export const generateImage = async (
   prompt: string,
   aspectRatio: AspectRatio,
   imageSize: ImageSize,
   referenceImages: ReferenceImage[],
   model: ModelType,
-  apiKey: string = '' // Optional
+  apiKey: string = '', // Optional
+  requestId?: string // Optional ID for cancellation
 ): Promise<string> => {
   // Check availability of client-side keys
   const { keyManager } = await import('./keyManager');
   const hasClientKeys = keyManager.hasValidKeys() || !!apiKey || !!import.meta.env.VITE_GEMINI_API_KEY;
 
-  // 1. Prioritize Client-Side Generation if keys are available
-  if (hasClientKeys) {
-    return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
+  // Create AbortController if requestId provided
+  if (requestId) {
+    const controller = new AbortController();
+    abortControllers.set(requestId, controller);
   }
 
-  // 2. If no client keys, try Backend (Server-Side Key)
   try {
-    return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
+    // 1. Prioritize Client-Side Generation if keys are available
+    if (hasClientKeys) {
+      return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId);
+    }
+
+    // 2. If no client keys, try Backend (Server-Side Key)
+    return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId);
+
   } catch (e: any) {
     // If Backend is missing (404), fallback to Direct (which validates keys and throws useful error)
     if (e.message.includes("Backend function not found") || e.message.includes("404")) {
-      return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey);
+      return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId);
     }
     throw e;
+  } finally {
+    // Cleanup controller
+    if (requestId) {
+      abortControllers.delete(requestId);
+    }
   }
 };
 
@@ -53,8 +87,14 @@ async function generateImageDirect(
   imageSize: ImageSize,
   referenceImages: ReferenceImage[],
   model: ModelType,
-  apiKey: string
+  apiKey: string,
+  requestId?: string
 ): Promise<string> {
+  // Check cancellation before starting
+  if (requestId && abortControllers.get(requestId)?.signal.aborted) {
+    throw new Error('Generation cancelled');
+  }
+
   // Import keyManager dynamically to avoid circular dependencies
   const { keyManager } = await import('./keyManager');
 
@@ -100,11 +140,14 @@ async function generateImageDirect(
     }
     // Build config
     const imageConfig: any = { aspectRatio };
-    if (model === ModelType.PRO_QUALITY) {
+    // Include imageSize for models that support it
+    if (model === ModelType.NANO_BANANA_PRO || model === ModelType.IMAGEN_4 || model === ModelType.IMAGEN_4_ULTRA) {
       imageConfig.imageSize = imageSize;
     }
 
-    const response = await ai.models.generateContent({
+    // GoogleGenAI SDK doesn't support AbortSignal directly in generateContent yet,
+    // but we can wrap the promise to support cancellation "at the edges"
+    const generatePromise = ai.models.generateContent({
       model,
       contents: [{ role: 'user', parts }],
       config: {
@@ -112,6 +155,18 @@ async function generateImageDirect(
         imageConfig
       },
     });
+
+    // Race against cancellation
+    const response = await Promise.race([
+      generatePromise,
+      new Promise<never>((_, reject) => {
+        if (requestId && abortControllers.has(requestId)) {
+          abortControllers.get(requestId)?.signal.addEventListener('abort', () => {
+            reject(new Error('Generation cancelled'));
+          });
+        }
+      })
+    ]);
 
     if (response.candidates && response.candidates.length > 0) {
       for (const part of response.candidates[0].content?.parts || []) {
@@ -127,6 +182,11 @@ async function generateImageDirect(
 
     throw new Error("未能生成图片");
   } catch (error: any) {
+    // If cancelled, don't report as failure to key manager
+    if (error.message === 'Generation cancelled') {
+      throw error;
+    }
+
     console.error("Image generation error:", error);
 
     // Report failure to keyManager
@@ -147,8 +207,14 @@ async function generateImageViaBackend(
   imageSize: ImageSize,
   referenceImages: ReferenceImage[],
   model: ModelType,
-  apiKey: string
+  apiKey: string,
+  requestId?: string
 ): Promise<string> {
+  // Check cancellation
+  if (requestId && abortControllers.get(requestId)?.signal.aborted) {
+    throw new Error('Generation cancelled');
+  }
+
   // Try to get API key from localStorage if not provided
   let effectiveKey = apiKey;
   if (!effectiveKey) {
@@ -164,6 +230,8 @@ async function generateImageViaBackend(
   }
 
   try {
+    const controller = requestId ? abortControllers.get(requestId) : undefined;
+
     const response = await fetch(API_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -178,6 +246,7 @@ async function generateImageViaBackend(
         })),
         apiKey: effectiveKey, // Pass the key from localStorage
       }),
+      signal: controller?.signal
     });
 
     // Handle non-OK responses first to avoid parsing empty bodies
@@ -204,6 +273,9 @@ async function generateImageViaBackend(
 
     throw new Error(data.error || "未能生成图片");
   } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error('Generation cancelled');
+    }
     console.error("Backend generation error:", error);
     throw normalizeError(error);
   }

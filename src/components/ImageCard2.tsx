@@ -214,7 +214,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     left: position.x,
                     top: position.y,
                     width: nodeWidth,
-                    transform: 'translate(-50%, 0)',
+                    transform: 'translate(-50%, -100%)',
                     cursor: isDragging ? 'grabbing' : 'grab',
                     transition: isDragging ? 'none' : 'box-shadow 0.2s ease'
                 }}

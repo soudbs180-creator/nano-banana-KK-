@@ -6,6 +6,7 @@
  */
 
 import { keyManager } from './keyManager';
+import { ChatModelType } from '../types';
 
 export interface ChatMessage {
     id: string;
@@ -76,7 +77,7 @@ class ChatService {
     /**
      * Send a message and get a response from Gemini
      */
-    async sendMessage(content: string): Promise<string> {
+    async sendMessage(content: string, model: ChatModelType = ChatModelType.GEMINI_LITE): Promise<string> {
         const session = this.getCurrentSession();
         if (!session) {
             throw new Error('No active session');
@@ -109,7 +110,7 @@ class ChatService {
 
             // Call Gemini API
             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${keyData.key}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyData.key}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

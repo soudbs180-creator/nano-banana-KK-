@@ -8,7 +8,7 @@ import PendingNode from './components/PendingNode';
 // KeyManagerModal removed - integrated into UserProfileModal
 import ChatSidebar from './components/ChatSidebar';
 import { PromptNode, GeneratedImage, AspectRatio, ImageSize, ModelType, GenerationConfig } from './types';
-import { generateImage, validateApiKey } from './services/geminiService';
+import { generateImage, validateApiKey, cancelGeneration } from './services/geminiService';
 import { keyManager } from './services/keyManager';
 // Lucide icons replaced with SVGs
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
@@ -371,7 +371,7 @@ const AppContent: React.FC = () => {
     imageSize: ImageSize.SIZE_1K,
     parallelCount: 1,
     referenceImages: [],
-    model: ModelType.PRO_QUALITY
+    model: ModelType.NANO_BANANA_PRO
   });
 
   // Pending generation state
@@ -439,6 +439,33 @@ const AppContent: React.FC = () => {
 
   // Get derived API status for UI indicator - use keyManager
   const derivedApiStatus = keyStats.valid > 0 ? 'success' : keyStats.invalid > 0 ? 'error' : 'neutral';
+
+  const handleCancelGeneration = useCallback((id: string) => {
+    // 1. Cancel request in service
+    cancelGeneration(id);
+
+    // 2. Update UI state
+    updatePromptNode({
+      id,
+      isGenerating: false,
+      error: "Cancelled by user"
+    } as any); // Partial update logic handled by reducer/context usually, but here we might need full object? 
+    // Wait, updatePromptNode expects PromptNode. I need to get the current node or just pass the id and partial?
+    // Looking at useCanvas definition (not visible here), usually updates match partial or full. 
+    // Let's assume we need to fetch it first? Or does updatePromptNode handle partials?
+    // In many React apps, we'd need the full object. 
+    // Let's safe bet: find it first.
+
+    if (activeCanvas) {
+      const node = activeCanvas.promptNodes.find(n => n.id === id);
+      if (node) {
+        updatePromptNode({
+          ...node,
+          isGenerating: false
+        });
+      }
+    }
+  }, [activeCanvas, updatePromptNode]);
 
 
 
@@ -589,6 +616,7 @@ const AppContent: React.FC = () => {
       timestamp: Date.now(),
       // New: Generating State
       isGenerating: true,
+      parallelCount: config.parallelCount,
       sourceImageId: activeSourceImage || undefined
     };
 
@@ -611,11 +639,16 @@ const AppContent: React.FC = () => {
           config.aspectRatio,
           config.imageSize,
           finalReferenceImages,
-          config.model
+          config.model,
+          '', // apiKey (handled internally)
+          promptNodeId // requestId for cancellation
         );
 
-        // Layout: Images to the RIGHT of prompt card, arranged vertically
-        const promptCardWidth = 320; // Width of prompt card
+        // Layout: Images BELOW prompt card, using same logic as placeholder components
+        // currentPos is the prompt node position (bottom of card due to translate(-50%, -100%))
+        const gapToImages = 50; // Same as gapToPlaceholders in components
+        const gap = 16; // Same as placeholderGap in components
+
         let cardWidth = 280;
         let cardHeight = 280; // Default for SQUARE
         switch (config.aspectRatio) {
@@ -625,15 +658,14 @@ const AppContent: React.FC = () => {
             break;
           case AspectRatio.PORTRAIT_9_16:
             cardWidth = 200;
-            cardHeight = 350;
+            cardHeight = 355;
             break;
           default:
             cardWidth = 280;
             cardHeight = 280;
         }
 
-        // Calculate positions based on device type
-        // Note: We use the already existing 'index' from the outer map
+        // Calculate positions - SAME FORMULA as PromptNodeComponent/PendingNode placeholders
         let x, y;
 
         if (isMobile) {
@@ -642,29 +674,34 @@ const AppContent: React.FC = () => {
           const col = index % cols;
           const row = Math.floor(index / cols);
 
-          // Fixed widths for mobile 2-col layout
-          const mobileCardWidth = 160;
-          const mobileGap = 12;
+          const mobileCardWidth = 170; // Same as PendingNode
+          const mobileCardHeight = 200;
+          const mobileGap = 10; // Same as PendingNode placeholderGap for mobile
 
-          // Center the grid relative to the prompt
-          const gridWidth = cols * mobileCardWidth + (cols - 1) * mobileGap;
-          const startX = currentPos.x - gridWidth / 2 + mobileCardWidth / 2;
+          // Calculate grid width for centering (same as components)
+          const itemsInRow = Math.min(cols, count - row * cols);
+          const currentGridWidth = itemsInRow * mobileCardWidth + (itemsInRow - 1) * mobileGap;
+          const startX = -currentGridWidth / 2;
+          const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
+          const offsetY = gapToImages + row * (mobileCardHeight + mobileGap);
 
-          x = startX + col * (mobileCardWidth + mobileGap);
-          y = currentPos.y + 200 + row * (250 + mobileGap); // Vertical offset below prompt
+          x = currentPos.x + offsetX;
+          y = currentPos.y + offsetY;
         } else {
           // Desktop Layout: Dynamic grid (1 or 2 cols)
           const columns = Math.min(count, 2);
-          const gap = 16;
           const col = index % columns;
           const row = Math.floor(index / columns);
 
-          // Calculate grid width for centering
-          const gridWidth = columns * cardWidth + (columns - 1) * gap;
-          const startX = currentPos.x - gridWidth / 2 + cardWidth / 2;
+          // Calculate grid width for centering (SAME as PromptNodeComponent)
+          const itemsInRow = Math.min(columns, count - row * columns);
+          const currentGridWidth = itemsInRow * cardWidth + (itemsInRow - 1) * gap;
+          const startX = -currentGridWidth / 2;
+          const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
+          const offsetY = gapToImages + row * (cardHeight + gap);
 
-          x = startX + col * (cardWidth + gap);
-          y = currentPos.y + 50 + row * (cardHeight + gap + 20); // 50px below prompt + row offset
+          x = currentPos.x + offsetX;
+          y = currentPos.y + offsetY;
         }
 
         return {
@@ -920,7 +957,8 @@ const AppContent: React.FC = () => {
         ]}
         onCanvasClick={() => {
           // Clear input when clicking empty canvas, but NOT during generation
-          if (!isGenerating) {
+          // and NOT when in "continue from image" mode
+          if (!isGenerating && !activeSourceImage) {
             setConfig(prev => ({ ...prev, prompt: '' }));
           }
         }}
@@ -1027,6 +1065,7 @@ const AppContent: React.FC = () => {
               ? activeCanvas?.imageNodes.find(n => n.id === node.sourceImageId)?.position
               : undefined
             }
+            onCancel={handleCancelGeneration}
           />
         ))}
 

@@ -164,10 +164,11 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     }
 
     // 如果正在生成中，显示主卡片和连接的子占位符
-    // 使用简单的绝对定位：position 是整个组件的原点
+    // 使用与 PromptNodeComponent 相同的 transform: translate(-50%, -100%)
     const cardWidth = 320;
     const cardHeight = 140; // approximate card height
     const dotSize = 12;
+    const dotMarginTop = 12; // Same as PromptNodeComponent: mt-3 = 12px
     const gapToPlaceholders = 50;
 
     // Calculate placeholder grid - use actual count for columns calculation
@@ -176,11 +177,11 @@ const PendingNode: React.FC<PendingNodeProps> = ({
 
     return (
         <div
-            className="absolute z-40"
+            className="absolute z-40 flex flex-col items-center"
             style={{
                 left: position.x,
                 top: position.y,
-                transform: 'translate(-50%, 0)', // Center the entire component horizontally
+                transform: 'translate(-50%, -100%)', // SAME AS PromptNodeComponent
                 cursor: isDragging ? 'grabbing' : 'grab'
             }}
             onMouseDown={handleMouseDown}
@@ -192,12 +193,11 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                     style={{
                         overflow: 'visible',
                         left: '50%',
-                        top: 0,
+                        bottom: 0, // Bottom of this container = position.y (original)
                         zIndex: -1
                     }}
                 >
                     <path
-                        // Added offset (+320) to connect to bottom of source card
                         d={`M${sourcePosition.x - position.x},${sourcePosition.y - position.y + 320} L0,0`}
                         fill="none"
                         stroke="#6366f1"
@@ -216,15 +216,10 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 </svg>
             )}
 
-            {/* Main Prompt Node - Centered above origin */}
+            {/* Main Prompt Node - Same structure as PromptNodeComponent */}
             <div
-                className="absolute bg-[#1a1a1c] border-2 border-indigo-500/30 rounded-2xl p-4 shadow-xl flex flex-col gap-3 animate-fadeIn"
-                style={{
-                    width: cardWidth,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    bottom: dotSize + 8
-                }}
+                className="bg-[#1a1a1c] border-2 border-indigo-500/30 rounded-2xl p-4 shadow-xl flex flex-col gap-3 animate-fadeIn"
+                style={{ width: cardWidth }}
             >
                 <div className="flex items-center gap-2 mb-1">
                     <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
@@ -251,75 +246,80 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3">{prompt}</p>
             </div>
 
-            {/* Connection Dot at origin - centered */}
+            {/* Connection Dot - Below card (same as PromptNodeComponent: mt-3) */}
             <div
-                className="absolute bg-indigo-500/50 rounded-full border-2 border-[#121212]"
+                className="bg-indigo-500/50 rounded-full border-2 border-[#121212]"
                 style={{
                     width: dotSize,
                     height: dotSize,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    top: -dotSize / 2
+                    marginTop: dotMarginTop
                 }}
             />
 
-            {/* Placeholders - Positioned BELOW origin, centered */}
-            {Array.from({ length: parallelCount }).map((_, i) => {
-                const cardW = isMobile ? 170 : w;
-                const cardH = isMobile ? 200 : h;
+            {/* Placeholders - Positioned BELOW the dot (which is at container bottom) */}
+            {/* Since container uses translate(-50%, -100%), 'bottom' of container is at position.y */}
+            {/* Placeholders need to be positioned below using absolute positioning from container bottom */}
+            <div className="relative" style={{ height: 0 }}>
+                {Array.from({ length: parallelCount }).map((_, i) => {
+                    const cardW = isMobile ? 170 : w;
+                    const cardH = isMobile ? 200 : h;
 
-                const col = i % columns;
-                const row = Math.floor(i / columns);
+                    const col = i % columns;
+                    const row = Math.floor(i / columns);
 
-                // Calculate actual grid width based on items in current row
-                const itemsInRow = Math.min(columns, parallelCount - row * columns);
-                const currentGridWidth = itemsInRow * cardW + (itemsInRow - 1) * placeholderGap;
-                const startX = -currentGridWidth / 2;
+                    // Calculate actual grid width based on items in current row
+                    const itemsInRow = Math.min(columns, parallelCount - row * columns);
+                    const currentGridWidth = itemsInRow * cardW + (itemsInRow - 1) * placeholderGap;
+                    const startX = -currentGridWidth / 2;
 
-                // For single item, center it; for multiple, position in grid
-                const offsetX = startX + col * (cardW + placeholderGap) + cardW / 2;
-                const offsetY = gapToPlaceholders + row * (cardH + placeholderGap);
+                    // For single item, center it; for multiple, position in grid
+                    const offsetX = startX + col * (cardW + placeholderGap) + cardW / 2;
+                    const offsetY = gapToPlaceholders + row * (cardH + placeholderGap);
 
-                return (
-                    <React.Fragment key={i}>
-                        {/* Dashed line from dot to placeholder center */}
-                        <svg
-                            className="absolute pointer-events-none z-10"
-                            style={{
-                                left: '50%',
-                                top: 0,
-                                overflow: 'visible'
-                            }}
-                        >
-                            <path
-                                d={`M0,0 L${offsetX},${offsetY}`}
-                                fill="none"
-                                stroke="rgba(99, 102, 241, 0.3)"
-                                strokeWidth="2"
-                                strokeDasharray="6 4"
-                            />
-                        </svg>
+                    return (
+                        <React.Fragment key={i}>
+                            {/* Dashed line from dot to placeholder center */}
+                            <svg
+                                className="pointer-events-none"
+                                style={{
+                                    position: 'absolute',
+                                    left: '50%',
+                                    top: 0,
+                                    overflow: 'visible',
+                                    zIndex: 10
+                                }}
+                            >
+                                <path
+                                    d={`M0,0 L${offsetX},${offsetY}`}
+                                    fill="none"
+                                    stroke="rgba(99, 102, 241, 0.3)"
+                                    strokeWidth="2"
+                                    strokeDasharray="6 4"
+                                />
+                            </svg>
 
-                        {/* Placeholder Card - centered using transform */}
-                        <div
-                            className="absolute z-0 bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
-                            style={{
-                                width: cardW,
-                                height: cardH,
-                                left: `calc(50% + ${offsetX}px)`,
-                                top: offsetY,
-                                transform: 'translateX(-50%)'
-                            }}
-                        >
-                            <div className="flex flex-col items-center gap-3 opacity-50">
-                                <Loader2 size={24} className="text-indigo-400 animate-spin" />
-                                <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
+                            {/* Placeholder Card */}
+                            <div
+                                className="absolute bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
+                                style={{
+                                    width: cardW,
+                                    height: cardH,
+                                    left: `calc(50% + ${offsetX}px)`,
+                                    top: offsetY,
+                                    transform: 'translateX(-50%)',
+                                    zIndex: 0
+                                }}
+                            >
+                                <div className="flex flex-col items-center gap-3 opacity-50">
+                                    <Loader2 size={24} className="text-indigo-400 animate-spin" />
+                                    <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
+                                </div>
+                                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
                             </div>
-                            <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
-                        </div>
-                    </React.Fragment>
-                );
-            })}
+                        </React.Fragment>
+                    );
+                })}
+            </div>
         </div>
     );
 };

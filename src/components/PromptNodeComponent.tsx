@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PromptNode, AspectRatio } from '../types';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Loader2 } from 'lucide-react';
 
 interface PromptNodeProps {
     node: PromptNode;
@@ -12,6 +12,7 @@ interface PromptNodeProps {
     canvasTransform?: { x: number; y: number; scale: number };
     isMobile?: boolean;
     sourcePosition?: { x: number; y: number };
+    onCancel?: (id: string) => void;
 }
 
 const PromptNodeComponent: React.FC<PromptNodeProps> = ({
@@ -23,7 +24,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
     onConnectStart,
     canvasTransform = { x: 0, y: 0, scale: 1 },
     isMobile = false,
-    sourcePosition
+    sourcePosition,
+    onCancel
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const dragStartPos = useRef({ x: 0, y: 0 });
@@ -119,13 +121,44 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
             <div className={`
                 relative bg-[#18181b] border rounded-2xl p-3 shadow-xl w-[320px] flex flex-col
                 ${isDragging ? '' : 'transition-all duration-200'}
-                ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-white/10 hover:border-white/20'}
+                ${node.isGenerating ? 'border-indigo-500/30' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-white/10 hover:border-white/20'}
             `}>
+                {/* Header - Changes based on generating state */}
                 <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center">
-                        <Sparkles size={12} className="text-white" />
-                    </div>
-                    <span className="text-xs font-medium text-zinc-400">Prompt</span>
+                    {node.isGenerating ? (
+                        <>
+                            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center">
+                                <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            </div>
+                            <span className="text-xs font-medium text-indigo-400 flex-1">Generating...</span>
+
+                            {/* Stop Button */}
+                            {onCancel && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onCancel(node.id);
+                                    }}
+                                    className="w-6 h-6 flex items-center justify-center rounded-full bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all group/stop"
+                                    title="停止生成"
+                                >
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                                    </svg>
+                                </button>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center">
+                                <Sparkles size={12} className="text-white" />
+                            </div>
+                            <span className="text-xs font-medium text-zinc-400">Prompt</span>
+                        </>
+                    )}
                 </div>
 
                 {/* Reference Images Thumbnails */}
@@ -150,31 +183,96 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                 <p className="text-zinc-100 text-sm leading-relaxed line-clamp-3 font-normal flex-1">
                     {node.prompt}
                 </p>
-                {/* Generating Loading State */}
-                {node.isGenerating && (
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px] rounded-2xl flex flex-col items-center justify-center z-50">
-                        <div className="flex items-center gap-2 text-indigo-400">
-                            {/* Loader icon */}
-                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            <span className="text-xs font-medium">Coming soon...</span>
-                        </div>
-                    </div>
-                )}
             </div>
 
             {/* Connection Dot - Bottom Center */}
-            {/* Connection Dot - Bottom Center */}
             <div
-                className="w-3 h-3 bg-indigo-500 rounded-full border-2 border-[#121212] shadow-sm mt-3 relative z-10 transition-transform group-hover:scale-125 cursor-crosshair hover:bg-indigo-400"
+                className={`w-3 h-3 bg-indigo-500 rounded-full border-2 border-[#121212] shadow-sm mt-3 relative z-10 transition-transform group-hover:scale-125 ${node.isGenerating ? '' : 'cursor-crosshair hover:bg-indigo-400'}`}
                 onMouseDown={(e) => {
+                    if (node.isGenerating) return;
                     e.stopPropagation();
                     // Pass center X position (card left + half width)
                     onConnectStart?.(node.id, { x: node.position.x + 160, y: node.position.y + 12 });
                 }}
             />
+
+            {/* Loading Placeholders - Only shown when generating */}
+            {node.isGenerating && node.parallelCount && (() => {
+                const count = node.parallelCount;
+                const columns = Math.min(count, 2);
+                const placeholderGap = 16;
+                const gapToPlaceholders = 50;
+
+                // Calculate card dimensions based on aspect ratio
+                const getDims = (ratio: AspectRatio) => {
+                    switch (ratio) {
+                        case AspectRatio.SQUARE: return { w: 280, h: 280 };
+                        case AspectRatio.LANDSCAPE_16_9: return { w: 320, h: 180 };
+                        case AspectRatio.PORTRAIT_9_16: return { w: 200, h: 355 };
+                        default: return { w: 280, h: 280 };
+                    }
+                };
+                const { w, h } = getDims(node.aspectRatio);
+
+                return (
+                    <div className="relative" style={{ height: 0 }}>
+                        {Array.from({ length: count }).map((_, i) => {
+                            const col = i % columns;
+                            const row = Math.floor(i / columns);
+
+                            // Calculate grid positioning
+                            const itemsInRow = Math.min(columns, count - row * columns);
+                            const currentGridWidth = itemsInRow * w + (itemsInRow - 1) * placeholderGap;
+                            const startX = -currentGridWidth / 2;
+                            const offsetX = startX + col * (w + placeholderGap) + w / 2;
+                            const offsetY = gapToPlaceholders + row * (h + placeholderGap);
+
+                            return (
+                                <React.Fragment key={i}>
+                                    {/* Dashed line from dot to placeholder */}
+                                    <svg
+                                        className="pointer-events-none"
+                                        style={{
+                                            position: 'absolute',
+                                            left: '50%',
+                                            top: 0,
+                                            overflow: 'visible',
+                                            zIndex: 10
+                                        }}
+                                    >
+                                        <path
+                                            d={`M0,0 L${offsetX},${offsetY}`}
+                                            fill="none"
+                                            stroke="rgba(99, 102, 241, 0.3)"
+                                            strokeWidth="2"
+                                            strokeDasharray="6 4"
+                                        />
+                                    </svg>
+
+                                    {/* Placeholder Card */}
+                                    <div
+                                        className="absolute bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
+                                        style={{
+                                            width: w,
+                                            height: h,
+                                            left: `calc(50% + ${offsetX}px)`,
+                                            top: offsetY,
+                                            transform: 'translateX(-50%)',
+                                            zIndex: 0
+                                        }}
+                                    >
+                                        <div className="flex flex-col items-center gap-3 opacity-50">
+                                            <Loader2 size={24} className="text-indigo-400 animate-spin" />
+                                            <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
+                                        </div>
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
+                                    </div>
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
+                );
+            })()}
 
             {/* Connection Line to Source */}
             {sourcePosition && (
