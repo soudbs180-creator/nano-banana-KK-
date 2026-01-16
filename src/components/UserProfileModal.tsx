@@ -42,6 +42,7 @@ interface UserProfileModalProps {
 }
 
 const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, user, onSignOut, initialView = 'main' }) => {
+    // --- State Definitions (Restored) ---
     const [view, setView] = useState<UserProfileView>('main');
     const [apiTab, setApiTab] = useState<ApiTab>('overview');
     const [loading, setLoading] = useState(false);
@@ -64,6 +65,17 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
     const [keyError, setKeyError] = useState<string | null>(null);
     const [tick, setTick] = useState(0);
 
+    // Mobile Responsive State
+    const [isMobile, setIsMobile] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(true);
+
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
     // Hooks
     useEffect(() => {
         if (isOpen && view === 'api-settings') {
@@ -76,6 +88,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
         if (isOpen) {
             setView(initialView);
             setApiTab('overview');
+            setMobileMenuOpen(true); // Always start with menu on mobile
             if (user?.user_metadata) {
                 setDisplayName(user.user_metadata.full_name || '');
                 setAvatarUrl(user.user_metadata.avatar_url || '');
@@ -159,11 +172,15 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
     // --- Components ---
     const SideBarItem = ({ id, icon: Icon, label }: { id: ApiTab, icon: any, label: string }) => (
         <button
-            onClick={() => setApiTab(id)}
+            onClick={() => {
+                setApiTab(id);
+                if (isMobile) setMobileMenuOpen(false); // Force content view on click
+            }}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${apiTab === id ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
         >
             <Icon size={16} />
             {label}
+            {isMobile && <ChevronRight size={14} className="ml-auto opacity-50" />}
         </button>
     );
 
@@ -253,9 +270,9 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
 
                     {/* --- MAC DASHBOARD VIEW --- */}
                     {view === 'api-settings' && (
-                        <div className="flex w-full h-full bg-[#0d0d0e]">
-                            {/* Sidebar */}
-                            <div className="w-64 bg-[#161618] border-r border-white/5 flex flex-col p-4">
+                        <div className="flex w-full h-full bg-[#0d0d0e] overflow-hidden">
+                            {/* Sidebar: Hidden on mobile if menu closed */}
+                            <div className={`${isMobile && !mobileMenuOpen ? 'hidden' : 'flex'} w-full md:w-64 bg-[#161618] border-r border-white/5 flex-col p-4 shrink-0 transition-all`}>
                                 <div className="flex items-center gap-3 px-2 mb-8 mt-2">
                                     <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
                                         <LayoutDashboard size={18} />
@@ -279,13 +296,21 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                 </div>
                             </div>
 
-                            {/* Content Area */}
-                            <div className="flex-1 flex flex-col min-w-0 bg-[#0d0d0e]">
+                            {/* Content Area: Hidden on mobile if menu OPEN */}
+                            <div className={`${isMobile && mobileMenuOpen ? 'hidden' : 'flex'} flex-1 flex-col min-w-0 bg-[#0d0d0e]`}>
                                 {/* Header */}
                                 <div className="h-14 border-b border-white/5 flex items-center justify-between px-6 bg-[#0d0d0e]/50 backdrop-blur-xl z-10 sticky top-0">
-                                    <h2 className="text-lg font-semibold text-white">
-                                        {apiTab === 'overview' ? '仪表盘 (Dashboard)' : apiTab === 'channels' ? '渠道管理 (Channels)' : '系统日志 (Logs)'}
-                                    </h2>
+                                    <div className="flex items-center gap-2">
+                                        {/* Back Button (Mobile Only) */}
+                                        {isMobile && (
+                                            <button onClick={() => setMobileMenuOpen(true)} className="mr-2 p-1.5 bg-zinc-800 rounded-lg text-zinc-400">
+                                                <ChevronLeft size={16} />
+                                            </button>
+                                        )}
+                                        <h2 className="text-lg font-semibold text-white">
+                                            {apiTab === 'overview' ? '仪表盘 (Dashboard)' : apiTab === 'channels' ? '渠道管理 (Channels)' : '系统日志 (Logs)'}
+                                        </h2>
+                                    </div>
                                     <div className="flex items-center gap-3">
                                         <button onClick={handleRevalidateKeys} disabled={isValidatingKeys} className="p-2 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">
                                             <RefreshCw size={16} className={isValidatingKeys ? "animate-spin" : ""} />

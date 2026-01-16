@@ -37,6 +37,7 @@ export interface ReferenceImage {
 export interface GeneratedImage {
   id: string;
   url: string;
+  originalUrl?: string; // High-res original (if different from url)
   prompt: string;
   aspectRatio: AspectRatio;
   timestamp: number;

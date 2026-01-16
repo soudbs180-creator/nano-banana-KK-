@@ -51,7 +51,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     const startX = -(totalWidth / 2) + w / 2;
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-        if (isMobile) return; // Disable dragging on mobile (allow canvas panning)
+        // Allow dragging on mobile too (consistency across platforms)
 
         e.stopPropagation();
         setIsDragging(true);
@@ -140,6 +140,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                     cursor: 'grab'
                 }}
                 onMouseDown={handleMouseDown}
+                onTouchStart={handleMouseDown}
             >
                 {/* Preview Card - matches PromptNodeComponent dimensions */}
                 <div className="bg-[#18181b] border border-indigo-500/30 rounded-2xl p-3 shadow-xl w-[320px] animate-scaleIn">
@@ -182,6 +183,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 cursor: isDragging ? 'grabbing' : 'grab'
             }}
             onMouseDown={handleMouseDown}
+            onTouchStart={handleMouseDown}
         >
             {/* Connection Line from Source Image (Flowith style: Image bottom → Prompt top) */}
             {sourcePosition && (() => {

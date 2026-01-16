@@ -40,6 +40,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     // Stored reference for cleanup (persists across effect calls)
     const wheelCleanupRef = useRef<(() => void) | null>(null);
 
+    const [imgError, setImgError] = useState(false);
+
+    // Use original for zoom/download if available, otherwise fallback
+    const highResUrl = image.originalUrl || image.url;
+
     // Handle wheel zoom with non-passive listener
     useEffect(() => {
         if (!showLightbox) return;
@@ -174,7 +179,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
-            const response = await fetch(image.url);
+            const response = await fetch(highResUrl);
+            if (!response.ok) throw new Error('Download failed (404)');
+
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -186,6 +193,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
             URL.revokeObjectURL(url);
         } catch (err) {
             console.error('Download failed:', err);
+            alert('下载失败：原图可能已被清理 (Download failed: Original image may have been deleted)');
         }
     };
 
@@ -239,15 +247,24 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
                     {/* Main Image - Double-click to enlarge */}
                     <div
-                        className="relative aspect-auto cursor-pointer"
+                        className="relative aspect-auto cursor-pointer min-h-[100px] bg-zinc-900"
                         onDoubleClick={handleImageDoubleClick}
                     >
-                        <img
-                            src={image.url}
-                            alt={image.prompt}
-                            className="w-full h-auto block select-none pointer-events-none"
-                            draggable={false}
-                        />
+                        {!imgError ? (
+                            <img
+                                src={image.url}
+                                alt={image.prompt}
+                                onError={() => setImgError(true)}
+                                className="w-full h-auto block select-none pointer-events-none"
+                                draggable={false}
+                            />
+                        ) : (
+                            <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-zinc-500 p-4 text-center">
+                                <Trash2 size={24} className="mb-2 opacity-50" />
+                                <span className="text-xs">图片已被清理</span>
+                                <span className="text-[9px] opacity-60">(Storage Cleaned)</span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Footer - Model badge + Continue + Download + Delete */}
@@ -298,7 +315,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                             <button
                                 onClick={handleDownload}
                                 className="text-zinc-500 hover:text-white p-1 rounded-md hover:bg-white/5 transition-colors"
-                                title="下载"
+                                title="下载 (Download High-Res)"
                             >
                                 <Download size={12} />
                             </button>
@@ -364,7 +381,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
                     {/* Main Image - Drag to pan, scroll to zoom */}
                     <img
-                        src={image.url}
+                        src={highResUrl} // Use High Res logic
+                        onError={(e) => {
+                            // If high res fails, try low res as fallback? Or show error
+                            // e.currentTarget.src = image.url; 
+                            alert('原图加载失败 (Original Image Load Failed)');
+                        }}
                         alt={image.prompt}
                         onMouseDown={handleLightboxMouseDown}
                         onDoubleClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
@@ -380,8 +402,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     />
 
                     {/* Hint text */}
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs">
-                        滚轮缩放 · 拖拽移动 · 双击关闭
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center">
+                        滚轮缩放 · 拖拽移动 · 双击关闭<br />
+                        <span className="opacity-50 text-[10px]">正在查看原图 (Viewing Original)</span>
                     </div>
                 </div>,
                 document.body

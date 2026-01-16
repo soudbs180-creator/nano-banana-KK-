@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Canvas, PromptNode, GeneratedImage } from '../types';
 import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '../services/imageStorage';
+import { syncService } from '../services/syncService';
 
 const MAX_CANVASES = 10;
 
@@ -179,57 +180,81 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         loadImages();
     }, []);
 
-    // Persistence with error handling
+    // Persistence with error handling AND Cloud Sync
     useEffect(() => {
         if (isLoading) return; // Don't save while loading
 
         // Debounce saving slightly to avoid thrashing
-        const timer = setTimeout(() => {
+        const timer = setTimeout(async () => {
             try {
-                // Save state with URLs STRIPPED - IndexedDB provides backup storage
-                // We use stripImageUrls to remove large base64 strings
+                // 1. Local Storage Save (Backup/Offline)
                 const stateToSave = {
                     ...state,
                     canvases: stripImageUrls(state.canvases),
-                    // Strip history to save space (can be rebuilt)
                     history: {}
                 };
                 const jsonStr = JSON.stringify(stateToSave);
-
-                // Check size and warn if approaching limit
                 if (jsonStr.length > 4500000) {
-                    console.warn('Canvas state approaching localStorage quota limit. Consider clearing old data.');
+                    console.warn('Canvas state approaching localStorage quota limit.');
+                }
+                localStorage.setItem(STORAGE_KEY, jsonStr);
+
+                // 2. Cloud Sync (if logged in)
+                if (state.activeCanvasId) {
+                    const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
+                    if (activeCanvas) {
+                        try {
+                            // We just fire verification, if it fails (not logged in), catch silently
+                            await syncService.saveCanvas(activeCanvas);
+                        } catch (e) {
+                            // Not logged in or network error, ignore for now
+                        }
+                    }
                 }
 
-                localStorage.setItem(STORAGE_KEY, jsonStr);
             } catch (error: any) {
                 if (error.name === 'QuotaExceededError') {
-                    console.error('localStorage quota exceeded. Trying to save without history...');
-                    // Fallback: try saving with minimal data
-                    try {
-                        const minimalState = {
-                            ...state,
-                            history: {},
-                            canvases: state.canvases.map(c => ({
-                                ...c,
-                                // Clear prompt node reference images COMPLETELY if needed
-                                promptNodes: c.promptNodes.map(p => ({
-                                    ...p,
-                                    referenceImages: []
-                                }))
-                            }))
-                        };
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify(minimalState));
-                    } catch (e) {
-                        console.error('Still failed to save canvas state');
-                    }
+                    console.error('localStorage quota exceeded.');
                 } else {
-                    console.error('Failed to save to localStorage:', error);
+                    console.error('Failed to save state:', error);
                 }
             }
-        }, 500);
+        }, 1000); // Increased debounce for network requests
         return () => clearTimeout(timer);
     }, [state, isLoading]);
+
+    // Initial Load: Merge Cloud Data
+    useEffect(() => {
+        const loadCloud = async () => {
+            try {
+                const cloudCanvases = await syncService.loadCanvases();
+                if (cloudCanvases.length > 0) {
+                    setState(prev => {
+                        // Simple merge strategy: Cloud wins on ID match, append new
+                        const merged = [...prev.canvases];
+                        cloudCanvases.forEach(cloudC => {
+                            const idx = merged.findIndex(c => c.id === cloudC.id);
+                            if (idx >= 0) {
+                                // Overwrite if newer? For now, just prefer Cloud as source of truth
+                                merged[idx] = cloudC;
+                            } else {
+                                merged.push(cloudC);
+                            }
+                        });
+                        return {
+                            ...prev,
+                            canvases: merged
+                        };
+                    });
+                }
+            } catch (e) {
+                console.log('No cloud data or not logged in');
+            }
+        };
+        // Wait a bit for auth to settle
+        const t = setTimeout(loadCloud, 2000);
+        return () => clearTimeout(t);
+    }, []);
 
     const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
     const canCreateCanvas = state.canvases.length < MAX_CANVASES;

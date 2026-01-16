@@ -20,6 +20,7 @@ import { Loader2 } from 'lucide-react';
 
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
+import { syncService } from './services/syncService';
 
 // Canvas Manager Component (Top Left)
 const CanvasManager: React.FC = () => {
@@ -655,10 +656,9 @@ const AppContent: React.FC = () => {
     try {
       const count = config.parallelCount;
 
-      // First, generate all images (without position - will calculate after)
       const imageDataPromises = Array.from({ length: count }).map(async (_, index) => {
         const startTime = Date.now();
-        const url = await generateImage(
+        const generatedBase64 = await generateImage(
           promptToUse,
           config.aspectRatio,
           config.imageSize,
@@ -669,9 +669,32 @@ const AppContent: React.FC = () => {
         );
         const generationTime = Date.now() - startTime;
 
+        let originalUrl = '';
+        let displayUrl = generatedBase64;
+
+        // --- Cloud Sync Upgrade: Upload Generated Image ---
+        try {
+          // Convert Base64 to Blob
+          const res = await fetch(generatedBase64);
+          const blob = await res.blob();
+
+          // Upload (Generate Thumb + Original)
+          const id = `${Date.now()}_${index}`; // Temporary ID for upload path
+          const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
+
+          // Success: Use Cloud URLs
+          originalUrl = original;
+          displayUrl = thumbnail;
+
+        } catch (e) {
+          console.warn('Cloud upload failed, falling back to local base64:', e);
+          // Fallback: url stays as base64, originalUrl empty
+        }
+
         return {
           index,
-          url,
+          url: displayUrl,
+          originalUrl,
           generationTime
         };
       });
@@ -729,7 +752,7 @@ const AppContent: React.FC = () => {
       //   imageY - imageHeight = promptY + 80
       //   imageY = promptY + 80 + imageHeight
 
-      const validResults: GeneratedImage[] = validImageData.map(({ index, url, generationTime }) => {
+      const validResults: GeneratedImage[] = validImageData.map(({ index, url, originalUrl, generationTime }) => {
         let x, y;
 
         if (isMobile) {
@@ -767,6 +790,7 @@ const AppContent: React.FC = () => {
         return {
           id: Date.now().toString() + index + Math.random(),
           url,
+          originalUrl,
           prompt: config.prompt,
           aspectRatio: config.aspectRatio,
           timestamp: Date.now(),
