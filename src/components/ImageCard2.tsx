@@ -195,16 +195,16 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         setShowLightbox(true);
     };
 
-    const getMobileWidth = () => {
-        // Mobile 2-column grid uses ~170px width
-        return 170;
+    const getDims = () => {
+        if (isMobile) return { w: 170, h: 260 }; // 200 + 60 footer
+        switch (image.aspectRatio) {
+            case '16:9': return { w: 320, h: 240 }; // 180 + 60
+            case '9:16': return { w: 200, h: 415 }; // 355 + 60
+            case '1:1':
+            default: return { w: 280, h: 340 }; // 280 + 60
+        }
     };
-
-    const nodeWidth = isMobile ? getMobileWidth() : (
-        image.aspectRatio === '1:1' ? 280 :
-            image.aspectRatio === '16:9' ? 320 :
-                image.aspectRatio === '9:16' ? 200 : 280
-    );
+    const { w: nodeWidth, h: nodeHeight } = getDims();
 
     return (
         <>
@@ -214,6 +214,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     left: position.x,
                     top: position.y,
                     width: nodeWidth,
+                    minHeight: nodeHeight, // Enforce height for correct Bottom-Anchor positioning
                     transform: 'translate(-50%, -100%)',
                     cursor: isDragging ? 'grabbing' : 'grab',
                     transition: isDragging ? 'none' : 'box-shadow 0.2s ease'
@@ -277,12 +278,19 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                             );
                         })()}
 
-                        {/* Generation Time */}
-                        {image.generationTime && (
-                            <span className="text-[9px] text-zinc-500 font-mono ml-2">
-                                {(image.generationTime / 1000).toFixed(1)}s
-                            </span>
-                        )}
+                        {/* Dimensions & Time */}
+                        <div className="flex items-center gap-2 ml-2">
+                            {image.dimensions && (
+                                <span className="text-[9px] text-zinc-500 font-mono border border-white/5 px-1.5 rounded bg-white/5">
+                                    {image.dimensions}
+                                </span>
+                            )}
+                            {image.generationTime && (
+                                <span className="text-[9px] text-zinc-500 font-mono">
+                                    {(image.generationTime / 1000).toFixed(1)}s
+                                </span>
+                            )}
+                        </div>
 
                         <div className="flex items-center gap-1 ml-auto">
                             {/* Continue Creation Button */}

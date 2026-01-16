@@ -202,16 +202,15 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 const absDeltaX = Math.abs(deltaX);
                 const absDeltaY = Math.abs(deltaY);
 
+                // User requested Straight Line style (matching the "Generating" look)
                 let d = '';
-                if (absDeltaX > 100) {
-                    // Branching S-curve
-                    const controlY1 = startY + absDeltaY * 0.5;
-                    const controlY2 = endY - absDeltaY * 0.5;
-                    d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
+                if (absDeltaX < 20) {
+                    // Strictly straight if aligned
+                    d = `M${startX},${startY} L${endX},${endY}`;
                 } else {
-                    // Standard vertical
-                    const controlY1 = startY + deltaY * 0.4;
-                    const controlY2 = startY + deltaY * 0.6;
+                    // Minimal curve if offset
+                    const controlY1 = startY + deltaY * 0.5;
+                    const controlY2 = endY - deltaY * 0.5;
                     d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
                 }
 

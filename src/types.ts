@@ -45,6 +45,7 @@ export interface GeneratedImage {
   parentPromptId: string;
   position: { x: number; y: number };
   generationTime?: number; // Duration in ms
+  dimensions?: string; // e.g. "1024x1024"
 }
 
 export interface PromptNode {

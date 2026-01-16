@@ -338,6 +338,12 @@ const AppContent: React.FC = () => {
 
   const { user, signOut } = useAuth();
 
+  // Ref to access fresh state in async functions (fixing Stale Closure issue)
+  const activeCanvasRef = useRef(activeCanvas);
+  useEffect(() => {
+    activeCanvasRef.current = activeCanvas;
+  }, [activeCanvas]);
+
   // Reactively track KeyManager state
   const [keyStats, setKeyStats] = useState(keyManager.getStats());
 
@@ -672,8 +678,8 @@ const AppContent: React.FC = () => {
         throw new Error('All generated images were invalid');
       }
 
-      // Get the prompt node's CURRENT position (may have been dragged during generation)
-      const livePromptNode = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
+      // Get the prompt node's CURRENT position (from REF to avoid stale closure)
+      const livePromptNode = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
       const livePos = livePromptNode?.position || currentPos;
 
       // Now calculate positions using the LIVE position
@@ -748,6 +754,7 @@ const AppContent: React.FC = () => {
           canvasId: activeCanvas?.id || 'default',
           parentPromptId: promptNodeId,
           position: { x, y },
+          dimensions: config.aspectRatio === '1:1' ? '1024 x 1024' : config.aspectRatio === '16:9' ? '1344 x 768' : '768 x 1344',
           generationTime
         } as GeneratedImage;
       });
@@ -1055,19 +1062,14 @@ const AppContent: React.FC = () => {
               const absDeltaY = Math.abs(deltaY);
 
               let d = '';
-              // Branching / Large Offset
-              if (absDeltaX > 100) {
-                // S-curve for branching:
-                // Start goes down, then horizontal, then down to target
-                const controlY1 = startY + absDeltaY * 0.5;
-                const controlY2 = endY - absDeltaY * 0.5;
-
-                // If very wide, maybe bias horizontal movement
-                d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
+              // User requested Straight Line style if aligned
+              if (absDeltaX < 20) {
+                // Strictly straight if aligned
+                d = `M${startX},${startY} L${endX},${endY}`;
               } else {
-                // Standard vertical flow
-                const controlY1 = startY + deltaY * 0.4;
-                const controlY2 = startY + deltaY * 0.6;
+                // Minimal S-curve only if significantly offset
+                const controlY1 = startY + deltaY * 0.5;
+                const controlY2 = endY - deltaY * 0.5;
                 d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
               }
 
