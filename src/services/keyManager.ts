@@ -412,6 +412,24 @@ class KeyManager {
                 { method: 'GET' }
             );
 
+            // Capture Quota Headers
+            const limitRequests = response.headers.get('x-ratelimit-limit-requests');
+            const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
+            const resetRequests = response.headers.get('x-ratelimit-reset-requests');
+
+            // Find keyId if it exists (for existing keys being re-validated)
+            const existingSlot = this.state.slots.find(s => s.key === key);
+            if (existingSlot && (limitRequests || remainingRequests)) {
+                const resetSeconds = resetRequests ? (parseInt(resetRequests) || 0) : 0;
+                this.updateQuota(existingSlot.id, {
+                    limitRequests: parseInt(limitRequests || '0'),
+                    remainingRequests: parseInt(remainingRequests || '0'),
+                    resetConstant: resetRequests || '',
+                    resetTime: Date.now() + (resetSeconds * 1000),
+                    updatedAt: Date.now()
+                });
+            }
+
             if (response.ok) {
                 return { valid: true };
             } else if (response.status === 429) {

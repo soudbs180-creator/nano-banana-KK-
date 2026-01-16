@@ -549,6 +549,15 @@ const AppContent: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps  
   }, [config.prompt]);
 
+  // Helper to estimate prompt card height based on text length
+  const getPromptHeight = useCallback((text: string) => {
+    const baseHeight = 160; // Padding + Header + Footer
+    const charPerLine = 20; // Approx characters per line
+    const lineHeight = 24;
+    const lines = Math.ceil((text || '').length / charPerLine);
+    // Clamp min height to avoid too small cards
+    return Math.max(200, baseHeight + (lines * lineHeight));
+  }, []);
 
   const handleGenerate = useCallback(async () => {
     // Allow multiple concurrent generations - only check for valid prompt
@@ -668,7 +677,7 @@ const AppContent: React.FC = () => {
       const livePos = livePromptNode?.position || currentPos;
 
       // Now calculate positions using the LIVE position
-      const gapToImages = 50;
+      const gapToImages = 80; // Increased to match visual style (dotted line)
       const gap = 16;
       const FOOTER_HEIGHT = 60;
 
@@ -689,6 +698,11 @@ const AppContent: React.FC = () => {
       }
       cardHeight += FOOTER_HEIGHT;
 
+      // Note: Both prompt and image use translate(-50%, -100%), so position.y = BOTTOM
+      // For image TOP to be 80px below prompt BOTTOM:
+      //   imageY - imageHeight = promptY + 80
+      //   imageY = promptY + 80 + imageHeight
+
       const validResults: GeneratedImage[] = validImageData.map(({ index, url, generationTime }) => {
         let x, y;
 
@@ -705,10 +719,10 @@ const AppContent: React.FC = () => {
           const currentGridWidth = itemsInRow * mobileCardWidth + (itemsInRow - 1) * mobileGap;
           const startX = -currentGridWidth / 2;
           const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
-          const offsetY = gapToImages + row * (mobileCardHeight + mobileGap);
+          const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
 
           x = livePos.x + offsetX;
-          y = livePos.y + offsetY;
+          y = livePos.y + offsetY; // Image TOP is now 80px below prompt BOTTOM
         } else {
           const columns = Math.min(count, 2);
           const col = index % columns;
@@ -718,10 +732,10 @@ const AppContent: React.FC = () => {
           const currentGridWidth = itemsInRow * cardWidth + (itemsInRow - 1) * gap;
           const startX = -currentGridWidth / 2;
           const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
-          const offsetY = gapToImages + row * (cardHeight + gap);
+          const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
 
           x = livePos.x + offsetX;
-          y = livePos.y + offsetY;
+          y = livePos.y + offsetY; // Image TOP is now 80px below prompt BOTTOM
         }
 
         return {
@@ -830,79 +844,91 @@ const AppContent: React.FC = () => {
     setDragConnection(null);
   }, [dragConnection, linkNodes]);
 
-  // Auto-arrange all cards in a grid layout
+  // Auto-arrange all cards in a grid layout (Compact & Dynamic)
   const handleAutoArrange = useCallback(() => {
     if (!activeCanvas) return;
 
-    // Use canvas center (0, 0) as the starting point
-    // Cards will be arranged relative to center so they're always visible
-    const centerX = 0;
-    const centerY = 0;
-    const colSpacing = isMobile ? 0 : 450;
-    const rowSpacing = 800; // Increased to accommodate tall cards + footer
-    const imageGap = 30;
-    const imageOffsetY = 150;
+    // Configuration
+    const colWidth = 380;
+    const startY = 100;
+    const imageVirtualHeight = 320; // Height of an image row
 
-    // Get all prompt nodes sorted by creation time (id)
+    // Get all prompt nodes sorted by creation time
     const sortedPrompts = [...activeCanvas.promptNodes].sort((a, b) =>
       parseInt(a.id) - parseInt(b.id)
     );
 
-    // Arrange logic
     if (isMobile) {
-      // Mobile: Single vertical column of prompts
-      sortedPrompts.forEach((pn, index) => {
-        const newX = centerX; // Centered at canvas center
-        const newY = centerY + index * 600; // Vertical stacking
+      // Mobile: Single vertical column
+      let currentY = 0;
 
-        updatePromptNodePosition(pn.id, { x: newX, y: newY });
-
+      sortedPrompts.forEach((pn) => {
+        const promptHeight = getPromptHeight(pn.prompt);
         const childImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === pn.id);
-        // 2-col grid for images
+        const imageRows = Math.ceil(childImages.length / 2);
+
+        // Calculate total node block height
+        // Prompt + Gap + Images + Bottom Padding
+        const nodeBlockHeight = promptHeight + 80 + (imageRows * imageVirtualHeight) + 80;
+
+        updatePromptNodePosition(pn.id, { x: 0, y: currentY });
+
+        // Arrange images
         childImages.forEach((img, imgIndex) => {
           const col = imgIndex % 2;
           const row = Math.floor(imgIndex / 2);
-          const mobileCardWidth = 300;
-          const gap = 20;
-
-          const gridStartX = newX - (mobileCardWidth + gap / 2) + mobileCardWidth / 2;
+          const imgWidth = 170;
+          const gap = 10;
+          const startX = -(imgWidth * 2 + gap) / 2 + imgWidth / 2;
 
           updateImageNodePosition(img.id, {
-            x: gridStartX + col * (mobileCardWidth + gap),
-            y: newY + imageOffsetY + row * 350
+            x: startX + col * (imgWidth + gap),
+            y: currentY + 80 + 320 + row * 320 // +320 = imageHeight so TOP is below prompt
           });
         });
-      });
-    } else {
-      // Desktop: 3 columns, centered around canvas center
-      const columns = 3;
-      const numRows = Math.ceil(sortedPrompts.length / columns);
-      const totalWidth = columns * colSpacing;
-      const totalHeight = numRows * rowSpacing;
 
-      // Starting position to center the grid
-      const startX = centerX - totalWidth / 2 + colSpacing / 2;
-      const startY = centerY - totalHeight / 4; // Slightly above center
+        currentY += nodeBlockHeight;
+      });
+
+    } else {
+      // Desktop: 3 Columns Grid
+      const columns = 3;
+      const colGap = 50;
+      const totalGridWidth = (columns * 350) + ((columns - 1) * colGap);
+      const startX = -(totalGridWidth / 2) + (350 / 2);
+
+      // Track the Y position for each column
+      const columnY = [startY, startY, startY];
 
       sortedPrompts.forEach((pn, index) => {
-        const col = index % columns;
-        const row = Math.floor(index / columns);
+        const colIndex = index % columns;
+        const currentY = columnY[colIndex];
+        const cx = startX + colIndex * (350 + colGap);
 
-        const newX = startX + col * colSpacing;
-        const newY = startY + row * rowSpacing;
+        // Dynamic Height Calculation
+        const promptHeight = getPromptHeight(pn.prompt);
 
-        updatePromptNodePosition(pn.id, { x: newX, y: newY });
+        updatePromptNodePosition(pn.id, { x: cx, y: currentY });
 
+        // Arrange Images for this Prompt
         const childImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === pn.id);
-        const totalImgWidth = childImages.length * 280 + (childImages.length - 1) * imageGap;
-        const imagesStartX = newX - totalImgWidth / 2 + 140;
 
-        childImages.forEach((img, imgIndex) => {
-          updateImageNodePosition(img.id, {
-            x: imagesStartX + imgIndex * (280 + imageGap),
-            y: newY + imageOffsetY
+        let imagesBlockHeight = 0;
+        if (childImages.length > 0) {
+          // Images Layout (Single Column centered under prompt for cleanliness)
+          // Or maintain previous logic. Let's start images closer but safe.
+          childImages.forEach((img, i) => {
+            updateImageNodePosition(img.id, {
+              x: cx,
+              y: currentY + 80 + 320 + (i * 320) // +320 = imageHeight so TOP is below prompt
+            });
           });
-        });
+          imagesBlockHeight = childImages.length * 320;
+        }
+
+        // Update column Y tracker
+        const totalNodeHeight = 80 + imagesBlockHeight + 100; // Gap + images + spacing
+        columnY[colIndex] += totalNodeHeight;
       });
     }
   }, [activeCanvas, updatePromptNodePosition, updateImageNodePosition, isMobile]);
@@ -1003,43 +1029,62 @@ const AppContent: React.FC = () => {
                 return null;
               }
 
-              // PromptNodeComponent wrapper:
-              // - Contains: Card (140px) + margin-top (12px) + Dot (12px) = 164px total height
-              // - Uses transform: translate(-50%, -100%)
-              // - This means: position.y is the BOTTOM of the entire wrapper (including dot)
-              // - So position.y is at the bottom edge of the dot
-              // - Dot center = position.y - 6 (half of 12px dot height)
+              // Flowith-style: Prompt Bottom → Image Top
+              // 1. Calculate Image Height to find Top anchor
+              let imageHeight = 280; // default 1:1
+              switch (childNode.aspectRatio) {
+                case AspectRatio.LANDSCAPE_16_9: imageHeight = 180; break;
+                case AspectRatio.PORTRAIT_9_16: imageHeight = 355; break;
+                default: imageHeight = 280;
+              }
+              imageHeight += 60; // + Footer
 
-              // ImageCard2:
-              // - Uses transform: translate(-50%, 0)
-              // - position.x is horizontal CENTER, position.y is TOP edge
-
-              // Start point: Center of the connection dot
-              // position.y is bottom of dot, subtract 6px to get center
+              // Start: Prompt Bottom Center
+              // Both use translate(-50%, -100%), so position.y is BOTTOM
               const startX = pn.position.x + 5000;
-              const startY = pn.position.y - 6 + 5000; // Dot center (position.y is dot bottom)
+              const startY = pn.position.y + 5000;
 
-              // End point: Top center of image card
+              // End: Image Top Center (Bottom - Height)
               const endX = childNode.position.x + 5000;
-              const endY = childNode.position.y + 5000;
+              const endY = (childNode.position.y - imageHeight) + 5000;
 
-              // Control point for smooth curve
-              const controlX = (startX + endX) / 2;
-              const controlY = startY + (endY - startY) * 0.4;
+              // Bezier Logic
+              const deltaX = endX - startX;
+              const deltaY = endY - startY;
+              const absDeltaX = Math.abs(deltaX);
+              const absDeltaY = Math.abs(deltaY);
+
+              let d = '';
+              // Branching / Large Offset
+              if (absDeltaX > 100) {
+                // S-curve for branching:
+                // Start goes down, then horizontal, then down to target
+                const controlY1 = startY + absDeltaY * 0.5;
+                const controlY2 = endY - absDeltaY * 0.5;
+
+                // If very wide, maybe bias horizontal movement
+                d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
+              } else {
+                // Standard vertical flow
+                const controlY1 = startY + deltaY * 0.4;
+                const controlY2 = startY + deltaY * 0.6;
+                d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
+              }
 
               return (
                 <g key={`${pn.id}-${childId}-${Math.round(startX)}-${Math.round(endX)}`}>
-                  {/* Curved dashed connection line */}
+                  {/* Starting dot */}
+                  <circle cx={startX} cy={startY} r="3" fill="#D1D5DB" />
+                  {/* Smooth curve */}
                   <path
-                    d={`M${startX},${startY} Q${controlX},${controlY} ${endX},${endY}`}
+                    d={d}
                     fill="none"
-                    stroke="rgba(99, 102, 241, 0.5)"
+                    stroke="#D1D5DB"
                     strokeWidth="1.5"
-                    strokeDasharray="6 4"
+                    strokeDasharray="4 3"
                     strokeLinecap="round"
+                    className="transition-all duration-300 ease-in-out"
                   />
-                  {/* Small dot at image connection point */}
-                  <circle cx={endX} cy={endY} r="2" fill="#6366f1" opacity="0.6" />
                 </g>
               );
             });
@@ -1074,6 +1119,7 @@ const AppContent: React.FC = () => {
               : undefined
             }
             onCancel={handleCancelGeneration}
+            onDelete={deletePromptNode}
           />
         ))}
 

@@ -32,7 +32,7 @@ const LoginScreen: React.FC = () => {
                 if (error) throw error;
             }
         } catch (err: any) {
-            setError(err.message || 'Authentication failed');
+            setError(err.message || '认证失败');
         } finally {
             setLoading(false);
         }

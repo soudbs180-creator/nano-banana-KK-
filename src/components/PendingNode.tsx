@@ -156,9 +156,6 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                         <span className="inline-block w-1.5 h-4 ml-1 bg-indigo-500 animate-pulse align-middle rounded-full" />
                     </p>
                 </div>
-
-                {/* Connection Dot - Below card (same as PromptNodeComponent) */}
-                <div className="w-3 h-3 bg-indigo-500/50 rounded-full border-2 border-[#121212] shadow-sm mt-3 mx-auto transition-transform" />
             </div>
         );
     }
@@ -169,7 +166,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     const cardHeight = 140; // approximate card height
     const dotSize = 12;
     const dotMarginTop = 12; // Same as PromptNodeComponent: mt-3 = 12px
-    const gapToPlaceholders = 50;
+    const gapToPlaceholders = 80; // Must match handleGenerate gapToImages
 
     // Calculate placeholder grid - use actual count for columns calculation
     const columns = isMobile ? Math.min(parallelCount, 2) : Math.min(parallelCount, 2);
@@ -186,35 +183,68 @@ const PendingNode: React.FC<PendingNodeProps> = ({
             }}
             onMouseDown={handleMouseDown}
         >
-            {/* Draw connection line from source image if it exists */}
-            {sourcePosition && (
-                <svg
-                    className="absolute pointer-events-none"
-                    style={{
-                        overflow: 'visible',
-                        left: '50%',
-                        bottom: 0, // Bottom of this container = position.y (original)
-                        zIndex: -1
-                    }}
-                >
-                    <path
-                        d={`M${sourcePosition.x - position.x},${sourcePosition.y - position.y + 320} L0,0`}
-                        fill="none"
-                        stroke="#6366f1"
-                        strokeWidth="2"
-                        strokeDasharray="6 4"
-                        className="animate-pulse"
-                    />
-                    {/* Start Dot at source */}
-                    <circle
-                        cx={sourcePosition.x - position.x}
-                        cy={sourcePosition.y - position.y + 320}
-                        r="4"
-                        fill="#6366f1"
-                        fillOpacity="0.5"
-                    />
-                </svg>
-            )}
+            {/* Connection Line from Source Image (Flowith style: Image bottom → Prompt top) */}
+            {sourcePosition && (() => {
+                // Both cards use translate(-50%, -100%) so position.y is BOTTOM
+
+                // Start: Image bottom center
+                const startX = sourcePosition.x - position.x;
+                const startY = sourcePosition.y - position.y;
+
+                // End: Prompt Top Center (approx 140px height)
+                const promptHeightApprox = 140;
+                const endX = 0;
+                const endY = -promptHeightApprox; // Target TOP of this card
+
+                // Bezier Logic
+                const deltaX = endX - startX;
+                const deltaY = endY - startY;
+                const absDeltaX = Math.abs(deltaX);
+                const absDeltaY = Math.abs(deltaY);
+
+                let d = '';
+                if (absDeltaX > 100) {
+                    // Branching S-curve
+                    const controlY1 = startY + absDeltaY * 0.5;
+                    const controlY2 = endY - absDeltaY * 0.5;
+                    d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
+                } else {
+                    // Standard vertical
+                    const controlY1 = startY + deltaY * 0.4;
+                    const controlY2 = startY + deltaY * 0.6;
+                    d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
+                }
+
+                return (
+                    <svg
+                        className="absolute pointer-events-none"
+                        style={{
+                            overflow: 'visible',
+                            left: '50%',
+                            bottom: 0,
+                            zIndex: -1
+                        }}
+                    >
+                        {/* Starting dot */}
+                        <circle
+                            cx={startX}
+                            cy={startY}
+                            r="3"
+                            fill="#D1D5DB"
+                        />
+                        {/* Smooth Bezier curve */}
+                        <path
+                            d={d}
+                            fill="none"
+                            stroke="#D1D5DB"
+                            strokeWidth="1.5"
+                            strokeDasharray="4 3"
+                            strokeLinecap="round"
+                            className="transition-all duration-300 ease-in-out"
+                        />
+                    </svg>
+                );
+            })()}
 
             {/* Main Prompt Node - Same structure as PromptNodeComponent */}
             <div
@@ -246,17 +276,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3">{prompt}</p>
             </div>
 
-            {/* Connection Dot - Below card (same as PromptNodeComponent: mt-3) */}
-            <div
-                className="bg-indigo-500/50 rounded-full border-2 border-[#121212]"
-                style={{
-                    width: dotSize,
-                    height: dotSize,
-                    marginTop: dotMarginTop
-                }}
-            />
-
-            {/* Placeholders - Positioned BELOW the dot (which is at container bottom) */}
+            {/* Placeholders - Positioned BELOW the card bottom */}
             {/* Since container uses translate(-50%, -100%), 'bottom' of container is at position.y */}
             {/* Placeholders need to be positioned below using absolute positioning from container bottom */}
             <div className="relative" style={{ height: 0 }}>
@@ -274,7 +294,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
 
                     // For single item, center it; for multiple, position in grid
                     const offsetX = startX + col * (cardW + placeholderGap) + cardW / 2;
-                    const offsetY = gapToPlaceholders + row * (cardH + placeholderGap);
+                    const offsetY = gapToPlaceholders + cardH + row * (cardH + placeholderGap);
 
                     return (
                         <React.Fragment key={i}>
@@ -292,9 +312,9 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                                 <path
                                     d={`M0,0 L${offsetX},${offsetY}`}
                                     fill="none"
-                                    stroke="rgba(99, 102, 241, 0.3)"
-                                    strokeWidth="2"
-                                    strokeDasharray="6 4"
+                                    stroke="#52525b"
+                                    strokeWidth="1.5"
+                                    strokeDasharray="4 3"
                                 />
                             </svg>
 

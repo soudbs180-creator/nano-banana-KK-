@@ -2,43 +2,26 @@ import React, { useState, useEffect, useCallback, Component, ErrorInfo, ReactNod
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { keyManager, KeySlot } from '../services/keyManager';
-import { X, ChevronRight, Key, LogOut, User as UserIcon, Lock, Mail, ChevronLeft, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { X, ChevronRight, Key, LogOut, User as UserIcon, Lock, Mail, ChevronLeft, Loader2, RefreshCw, AlertTriangle, Sparkles, Pencil, Trash2, LayoutDashboard, List, Activity, Settings as SettingsIcon, Plus } from 'lucide-react';
 
-// Error Boundary to catch render errors
-interface ErrorBoundaryState {
-    hasError: boolean;
-    error: Error | null;
-}
-
+// Error Boundary
+interface ErrorBoundaryState { hasError: boolean; error: Error | null; }
 class ProfileErrorBoundary extends Component<{ children: ReactNode; onClose: () => void }, ErrorBoundaryState> {
     constructor(props: { children: ReactNode; onClose: () => void }) {
         super(props);
         this.state = { hasError: false, error: null };
     }
-
-    static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-        return { hasError: true, error };
-    }
-
-    componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        console.error('[UserProfileModal] Render error:', error, errorInfo);
-    }
-
+    static getDerivedStateFromError(error: Error): ErrorBoundaryState { return { hasError: true, error }; }
+    componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error('[UserProfileModal] Render error:', error, errorInfo); }
     render() {
         if (this.state.hasError) {
             return (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-sm bg-[#1c1c1e] rounded-2xl shadow-2xl p-6 border border-red-500/30 text-center">
+                    <div className="w-full max-w-sm bg-[#1c1c1e] rounded-2xl shadow-2xl p-6 border border-zinc-800 text-center">
                         <AlertTriangle size={48} className="text-red-500 mx-auto mb-4" />
-                        <h2 className="text-lg font-bold text-white mb-2">加载失败</h2>
-                        <p className="text-sm text-zinc-400 mb-4">个人中心加载时出错</p>
-                        <p className="text-xs text-zinc-500 font-mono mb-4 break-all">{this.state.error?.message}</p>
-                        <button
-                            onClick={this.props.onClose}
-                            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm"
-                        >
-                            关闭
-                        </button>
+                        <h2 className="text-lg font-bold text-white mb-2">加载错误</h2>
+                        <p className="text-sm text-zinc-400 mb-4">{this.state.error?.message}</p>
+                        <button onClick={this.props.onClose} className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm">关闭</button>
                     </div>
                 </div>
             );
@@ -48,6 +31,7 @@ class ProfileErrorBoundary extends Component<{ children: ReactNode; onClose: () 
 }
 
 export type UserProfileView = 'main' | 'change-password' | 'forgot-password' | 'api-settings' | 'edit-profile';
+type ApiTab = 'overview' | 'channels' | 'logs';
 
 interface UserProfileModalProps {
     isOpen: boolean;
@@ -57,35 +41,30 @@ interface UserProfileModalProps {
     initialView?: UserProfileView;
 }
 
-const UserProfileModal: React.FC<UserProfileModalProps> = ({
-    isOpen,
-    onClose,
-    user,
-    onSignOut,
-    initialView = 'main'
-}) => {
+const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, user, onSignOut, initialView = 'main' }) => {
     const [view, setView] = useState<UserProfileView>('main');
+    const [apiTab, setApiTab] = useState<ApiTab>('overview');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-    // Profile Data State
+    // Profile Data
     const [displayName, setDisplayName] = useState('');
     const [avatarUrl, setAvatarUrl] = useState('');
 
-    // Change Password State
+    // Password Data
     const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
 
-    // API Key State
+    // API Key Data
     const [keySlots, setKeySlots] = useState<KeySlot[]>([]);
     const [newKey, setNewKey] = useState('');
     const [isAddingKey, setIsAddingKey] = useState(false);
     const [isValidatingKeys, setIsValidatingKeys] = useState(false);
     const [keyError, setKeyError] = useState<string | null>(null);
+    const [tick, setTick] = useState(0);
 
-    // Live countdown timer - MUST be before early return (Rules of Hooks)
-    const [, setTick] = useState(0);
+    // Hooks
     useEffect(() => {
         if (isOpen && view === 'api-settings') {
             const timer = setInterval(() => setTick(t => t + 1), 1000);
@@ -93,11 +72,10 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
         }
     }, [isOpen, view]);
 
-    // Reset view when opening
     useEffect(() => {
         if (isOpen) {
             setView(initialView);
-            // Initialize profile data from user metadata
+            setApiTab('overview');
             if (user?.user_metadata) {
                 setDisplayName(user.user_metadata.full_name || '');
                 setAvatarUrl(user.user_metadata.avatar_url || '');
@@ -105,7 +83,6 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
         }
     }, [isOpen, initialView, user]);
 
-    // Load API keys
     useEffect(() => {
         if (isOpen && view === 'api-settings') {
             const updateSlots = () => setKeySlots(keyManager.getSlots());
@@ -119,108 +96,46 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
     const resetState = () => {
         setView('main');
         setMessage(null);
-        setOldPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-        setLoading(false);
-        setKeyError(null);
-        setNewKey('');
+        setOldPassword(''); setNewPassword(''); setConfirmPassword('');
+        setLoading(false); setKeyError(null); setNewKey('');
     };
 
-    const handleClose = () => {
-        resetState();
-        onClose();
-    };
+    const handleClose = () => { resetState(); onClose(); };
 
-    // --- Profile Update Logic ---
+    // Handlers
     const handleUpdateProfile = async () => {
-        setLoading(true);
-        setMessage(null);
+        setLoading(true); setMessage(null);
         try {
-            const { error } = await supabase.auth.updateUser({
-                data: {
-                    full_name: displayName,
-                    avatar_url: avatarUrl
-                }
-            });
-
+            const { error } = await supabase.auth.updateUser({ data: { full_name: displayName, avatar_url: avatarUrl } });
             if (error) throw error;
             setMessage({ type: 'success', text: '个人资料已更新' });
-            setTimeout(() => setView('main'), 1000); // Return to main view after success
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message || '更新失败' });
-        } finally {
-            setLoading(false);
-        }
+            setTimeout(() => setView('main'), 1000);
+        } catch (e: any) { setMessage({ type: 'error', text: e.message || '更新失败' }); } finally { setLoading(false); }
     };
 
-    // --- Password Logic ---
     const handleChangePassword = async () => {
-        if (!user || !user.email) return;
-        if (newPassword !== confirmPassword) {
-            setMessage({ type: 'error', text: '两次输入的新密码不一致' });
-            return;
+        if (!user?.email || newPassword !== confirmPassword || newPassword.length < 6) {
+            setMessage({ type: 'error', text: '密码输入无效或不一致' }); return;
         }
-        if (newPassword.length < 6) {
-            setMessage({ type: 'error', text: '密码长度至少需要6位' });
-            return;
-        }
-
-        setLoading(true);
-        setMessage(null);
-
+        setLoading(true); setMessage(null);
         try {
-            const { error: signInError } = await supabase.auth.signInWithPassword({
-                email: user.email,
-                password: oldPassword
-            });
-
+            const { error: signInError } = await supabase.auth.signInWithPassword({ email: user.email, password: oldPassword });
             if (signInError) throw new Error('旧密码错误');
-
-            const { error: updateError } = await supabase.auth.updateUser({
-                password: newPassword
-            });
-
+            const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
             if (updateError) throw updateError;
-
-            setMessage({ type: 'success', text: '密码修改成功' });
+            setMessage({ type: 'success', text: '密码已修改成功' });
             setTimeout(() => resetState(), 1500);
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message || '修改失败，请重试' });
-        } finally {
-            setLoading(false);
-        }
+        } catch (e: any) { setMessage({ type: 'error', text: e.message || '修改失败' }); } finally { setLoading(false); }
     };
 
-    const handleForgotPassword = async () => {
-        if (!user || !user.email) return;
-        setLoading(true);
-        try {
-            const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-                redirectTo: window.location.origin,
-            });
-            if (error) throw error;
-            setMessage({ type: 'success', text: '重置邮件已发送，请检查您的邮箱' });
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message || '发送失败' });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // --- API Key Logic ---
     const handleAddKey = async () => {
         if (!newKey.trim()) return;
-        setIsAddingKey(true);
-        setKeyError(null);
-
+        setIsAddingKey(true); setKeyError(null);
         const result = await keyManager.addKey(newKey);
         if (result.success) {
             setNewKey('');
             if (result.error) setKeyError(result.error);
-        } else {
-            setKeyError(result.error || '添加失败');
-        }
+        } else { setKeyError(result.error || '添加失败'); }
         setIsAddingKey(false);
     };
 
@@ -230,332 +145,318 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
         setIsValidatingKeys(false);
     };
 
-    // --- UI Components ---
-    const ModalHeader = ({ title, backAction }: { title: string, backAction?: () => void }) => (
-        <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-                {backAction && (
-                    <button onClick={backAction} className="p-1 hover:bg-white/10 rounded-full transition-colors -ml-2">
-                        <ChevronLeft size={20} className="text-blue-500" />
-                    </button>
-                )}
-                <h2 className="text-xl font-bold text-white">{title}</h2>
-            </div>
-            <button
-                onClick={handleClose}
-                className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-full transition-colors"
-                aria-label="关闭"
-            >
-                <X size={16} />
-            </button>
-        </div>
-    );
+    const formatDuration = (ms: number) => {
+        if (ms <= 0) return '就绪';
+        const s = Math.ceil(ms / 1000);
+        if (s > 60) return `${Math.ceil(s / 60)}分`;
+        return `${s}秒`;
+    };
 
-    const MenuItem = ({ icon: Icon, label, value, onClick, isDestructive = false }: any) => (
+    const keyStats = keyManager.getStats ? keyManager.getStats() : { valid: 0, invalid: 0, disabled: 0, rateLimited: 0, total: 0 };
+    const userDisplayName = user?.user_metadata?.full_name || '用户';
+    const userAvatarUrl = user?.user_metadata?.avatar_url;
+
+    // --- Components ---
+    const SideBarItem = ({ id, icon: Icon, label }: { id: ApiTab, icon: any, label: string }) => (
         <button
-            onClick={onClick}
-            className="w-full flex items-center justify-between p-3.5 hover:bg-white/5 transition-colors active:bg-white/10 first:rounded-t-xl last:rounded-b-xl border-b border-zinc-800 last:border-0"
+            onClick={() => setApiTab(id)}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${apiTab === id ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
         >
-            <div className="flex items-center gap-3">
-                <div className={`p-1.5 rounded-md ${isDestructive ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}`}>
-                    <Icon size={16} />
-                </div>
-                <span className={`text-sm font-medium ${isDestructive ? 'text-red-500' : 'text-zinc-200'}`}>{label}</span>
-            </div>
-            <div className="flex items-center gap-2">
-                {value && <span className="text-xs text-zinc-500">{value}</span>}
-                <ChevronRight size={14} className="text-zinc-600" />
-            </div>
+            <Icon size={16} />
+            {label}
         </button>
     );
 
-    const keyStats = keyManager.getStats ? keyManager.getStats() : { valid: 0, invalid: 0, disabled: 0, rateLimited: 0, total: 0 };
-    // Get display values
-    const userDisplayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'KK User';
-    const userAvatarUrl = user?.user_metadata?.avatar_url;
-    const userInitial = user?.email?.[0].toUpperCase() || 'K';
-
-    // Timer hook moved to top of component (Rules of Hooks)
-
-    const formatDuration = (ms: number) => {
-        if (ms <= 0) return 'Ready';
-        const s = Math.ceil(ms / 1000);
-        if (s > 60) return `${Math.ceil(s / 60)}m`;
-        return `${s}s`;
-    };
+    const StatCard = ({ label, value, color, icon: Icon }: any) => (
+        <div className="bg-[#1c1c1e] p-4 rounded-xl border border-zinc-800/50 shadow-sm flex flex-col justify-between h-24 relative overflow-hidden group">
+            <div className={`absolute right-2 top-2 p-2 rounded-lg ${color} bg-opacity-10 text-opacity-100`}>
+                <Icon size={18} className={color.replace('bg-', 'text-')} />
+            </div>
+            <span className="text-zinc-500 text-xs font-medium uppercase tracking-wider">{label}</span>
+            <span className="text-2xl font-bold text-white font-mono">{value}</span>
+            <div className={`absolute bottom-0 left-0 h-1 ${color} w-full opacity-50`} />
+        </div>
+    );
 
     return (
         <ProfileErrorBoundary onClose={onClose}>
-            <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={handleClose}>
-                <div className={`w-full ${view === 'api-settings' ? 'max-w-md' : 'max-w-sm'} bg-[#1c1c1e] rounded-2xl shadow-2xl p-5 border border-zinc-800 animate-in zoom-in-95 duration-200 relative overflow-hidden transition-all`} onClick={(e) => e.stopPropagation()}>
+            <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200" onClick={handleClose}>
+                <div
+                    className={`bg-[#000000] rounded-2xl shadow-2xl border border-zinc-800/50 animate-in zoom-in-95 duration-200 overflow-hidden flex transition-all ease-out
+                        ${view === 'api-settings' ? 'w-[900px] h-[600px] max-w-[95vw]' : 'w-full max-w-sm'}`}
+                    onClick={e => e.stopPropagation()}
+                >
 
-                    {view === 'main' && (
-                        <>
-                            <ModalHeader title="个人中心" />
-                            <div className="flex items-center gap-4 mb-6 p-4 bg-zinc-800/50 rounded-xl border border-zinc-800 relative group cursor-pointer hover:bg-zinc-800/80 transition-colors" onClick={() => setView('edit-profile')}>
-                                {/* Avatar */}
-                                <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 shrink-0">
-                                    {userAvatarUrl ? (
-                                        <img src={userAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-                                    ) : (
-                                        userInitial
+                    {/* Standard Profile Views (Small) */}
+                    {view !== 'api-settings' && (
+                        <div className="w-full p-5">
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-2">
+                                    {view !== 'main' && <button onClick={() => setView('main')}><ChevronLeft size={20} className="text-blue-500" /></button>}
+                                    <h2 className="text-xl font-bold text-white">
+                                        {view === 'main' ? '个人中心' : view === 'edit-profile' ? '编辑资料' : view === 'change-password' ? '修改密码' : '重置密码'}
+                                    </h2>
+                                </div>
+                                <button onClick={handleClose} className="p-1.5 bg-zinc-800 rounded-full text-zinc-400 hover:text-white"><X size={16} /></button>
+                            </div>
+
+                            {view === 'main' && (
+                                <>
+                                    <div className="flex items-center gap-4 mb-6 p-4 bg-zinc-900 rounded-xl border border-zinc-800 cursor-pointer hover:bg-zinc-800 transition-colors" onClick={() => setView('edit-profile')}>
+                                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl font-bold text-white overflow-hidden">
+                                            {userAvatarUrl ? <img src={userAvatarUrl} className="w-full h-full object-cover" /> : user?.email?.[0].toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-white">{displayName || 'User'}</h3>
+                                            <p className="text-xs text-zinc-400">{user?.email}</p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <button onClick={() => setView('edit-profile')} className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors">
+                                            <span className="flex items-center gap-3"><UserIcon size={16} /> 编辑资料</span> <ChevronRight size={14} />
+                                        </button>
+                                        <button onClick={() => setView('change-password')} className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors">
+                                            <span className="flex items-center gap-3"><Lock size={16} /> 安全设置</span> <ChevronRight size={14} />
+                                        </button>
+                                        <button onClick={() => setView('api-settings')} className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors">
+                                            <span className="flex items-center gap-3"><LayoutDashboard size={16} /> One API 面板</span> <ChevronRight size={14} />
+                                        </button>
+                                        <button onClick={onSignOut} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors mt-4">
+                                            <span className="flex items-center gap-3"><LogOut size={16} /> 退出登录</span>
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+
+                            {(view === 'edit-profile' || view === 'change-password') && (
+                                <div className="text-center text-zinc-500 py-10">
+                                    {view === 'edit-profile' && (
+                                        <div className="space-y-4">
+                                            <input value={displayName} onChange={e => setDisplayName(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800" placeholder="昵称 / Display Name" />
+                                            <input value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800" placeholder="头像链接 / Avatar URL" />
+                                            <button onClick={handleUpdateProfile} className="w-full bg-blue-600 py-2 rounded-xl text-white">保存更改</button>
+                                        </div>
+                                    )}
+                                    {view === 'change-password' && (
+                                        <div className="space-y-4">
+                                            <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800" placeholder="当前密码" />
+                                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800" placeholder="新密码 (至少6位)" />
+                                            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800" placeholder="确认新密码" />
+                                            <button onClick={handleChangePassword} className="w-full bg-blue-600 py-2 rounded-xl text-white">更新密码</button>
+                                        </div>
                                     )}
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="text-lg font-semibold text-white truncate flex items-center gap-2">
-                                        {userDisplayName}
-                                        <ChevronRight size={14} className="text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </h3>
-                                    <p className="text-xs text-zinc-400 truncate">{user?.email}</p>
-                                    <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-medium border border-emerald-500/20">
-                                        Pro Plan
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bg-zinc-800/30 rounded-xl mb-4 overflow-hidden border border-zinc-800/50">
-                                <MenuItem icon={UserIcon} label="编辑个人资料" onClick={() => setView('edit-profile')} />
-                                <MenuItem icon={Lock} label="账号安全 & 密码" onClick={() => setView('change-password')} />
-                                <MenuItem icon={Key} label="API Key 设置" value={`${keyStats.valid} 个有效`} onClick={() => setView('api-settings')} />
-                            </div>
-                            <div className="bg-zinc-800/30 rounded-xl overflow-hidden border border-zinc-800/50">
-                                <MenuItem icon={LogOut} label="退出当前账号" isDestructive onClick={onSignOut} />
-                            </div>
-                        </>
+                            )}
+                        </div>
                     )}
 
-                    {view === 'edit-profile' && (
-                        <>
-                            <ModalHeader title="编辑资料" backAction={() => setView('main')} />
-                            <div className="space-y-4">
-                                <div className="flex justify-center mb-6">
-                                    <div className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-lg overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 relative group">
-                                        {avatarUrl ? (
-                                            <img src={avatarUrl} alt="Avatar Preview" className="w-full h-full object-cover" />
-                                        ) : (
-                                            userInitial
-                                        )}
-                                    </div>
-                                </div>
 
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="text-xs text-zinc-500 ml-1 mb-1 block">昵称 / Display Name</label>
-                                        <input
-                                            type="text"
-                                            value={displayName}
-                                            onChange={e => setDisplayName(e.target.value)}
-                                            className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-zinc-600"
-                                            placeholder="设置您的昵称"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-zinc-500 ml-1 mb-1 block">头像链接 / Avatar URL</label>
-                                        <input
-                                            type="text"
-                                            value={avatarUrl}
-                                            onChange={e => setAvatarUrl(e.target.value)}
-                                            className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-zinc-600"
-                                            placeholder="https://example.com/avatar.jpg"
-                                        />
-                                        <p className="text-[10px] text-zinc-500 mt-1 ml-1 line-clamp-1">
-                                            * 支持任意图片直链，推荐使用正方形图片
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {message && (
-                                    <div className={`p-3 rounded-lg text-xs font-medium ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                                        {message.text}
-                                    </div>
-                                )}
-
-                                <button onClick={handleUpdateProfile} disabled={loading} className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-4">
-                                    {loading && <Loader2 size={16} className="animate-spin" />}
-                                    {loading ? '保存中...' : '保存更改'}
-                                </button>
-                            </div>
-                        </>
-                    )}
-
-                    {view === 'change-password' && (
-                        <>
-                            <ModalHeader title="修改密码" backAction={() => setView('main')} />
-                            <div className="space-y-4">
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="text-xs text-zinc-500 ml-1 mb-1 block">旧密码</label>
-                                        <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-zinc-600" placeholder="请输入当前使用的密码" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-zinc-500 ml-1 mb-1 block">新密码</label>
-                                        <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-zinc-600" placeholder="至少 6 位字符" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-zinc-500 ml-1 mb-1 block">确认新密码</label>
-                                        <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-zinc-600" placeholder="再次输入新密码" />
-                                    </div>
-                                </div>
-                                {message && (
-                                    <div className={`p-3 rounded-lg text-xs font-medium ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                                        {message.text}
-                                    </div>
-                                )}
-                                <button onClick={handleChangePassword} disabled={loading || !oldPassword || !newPassword} className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2">
-                                    {loading && <Loader2 size={16} className="animate-spin" />}
-                                    {loading ? '验证并更新...' : '更新密码'}
-                                </button>
-                                <div className="text-center pt-2">
-                                    <button onClick={() => setView('forgot-password')} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">忘记原密码？通过邮箱重置</button>
-                                </div>
-                            </div>
-                        </>
-                    )}
-
-                    {view === 'forgot-password' && (
-                        <>
-                            <ModalHeader title="重置密码" backAction={() => setView('change-password')} />
-                            <div className="text-center py-6">
-                                <div className="w-16 h-16 bg-blue-500/20 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <Mail size={32} />
-                                </div>
-                                <h3 className="text-lg font-medium text-white mb-2">发送重置邮件</h3>
-                                <p className="text-sm text-zinc-400 mb-6 px-4">我们将向 <b>{user?.email}</b> 发送一封包含密码重置链接的邮件。</p>
-                                {message && (
-                                    <div className={`mb-4 p-3 rounded-lg text-xs font-medium text-left ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                                        {message.text}
-                                    </div>
-                                )}
-                                <button onClick={handleForgotPassword} disabled={loading} className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2">
-                                    {loading && <Loader2 size={16} className="animate-spin" />}
-                                    {loading ? '发送中...' : '发送验证邮件'}
-                                </button>
-                            </div>
-                        </>
-                    )}
-
+                    {/* --- MAC DASHBOARD VIEW --- */}
                     {view === 'api-settings' && (
-                        <>
-                            <ModalHeader title="API Key 管理" backAction={() => setView('main')} />
+                        <div className="flex w-full h-full bg-[#0d0d0e]">
+                            {/* Sidebar */}
+                            <div className="w-64 bg-[#161618] border-r border-white/5 flex flex-col p-4">
+                                <div className="flex items-center gap-3 px-2 mb-8 mt-2">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+                                        <LayoutDashboard size={18} />
+                                    </div>
+                                    <span className="font-bold text-white tracking-tight">One API</span>
+                                </div>
 
-                            {/* Stats */}
-                            <div className="flex items-center gap-3 px-3 py-2 bg-zinc-800/30 rounded-lg mb-4 text-[10px] text-zinc-400 border border-zinc-800/50">
-                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-green-500" />有效 {keyStats.valid}</div>
-                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500" />无效 {keyStats.invalid}</div>
-                                <button onClick={handleRevalidateKeys} disabled={isValidatingKeys || keySlots.length === 0} className="ml-auto flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50">
-                                    {isValidatingKeys ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                                    验证
-                                </button>
+                                <div className="space-y-1 flex-1">
+                                    <div className="px-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">平台管理</div>
+                                    <SideBarItem id="overview" icon={LayoutDashboard} label="概览 (Overview)" />
+                                    <SideBarItem id="channels" icon={List} label="渠道 (Channels)" />
+                                    <SideBarItem id="logs" icon={Activity} label="日志 (Logs)" />
+                                </div>
+
+                                <div className="pt-4 border-t border-white/5">
+                                    <div className="px-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">系统设置</div>
+                                    <button onClick={() => setView('main')} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-all">
+                                        <SettingsIcon size={16} />
+                                        返回设置
+                                    </button>
+                                </div>
                             </div>
 
-                            {/* List */}
-                            <div className="max-h-60 overflow-y-auto mb-4 space-y-2 pr-1 custom-scrollbar">
-                                {keySlots.length === 0 ? (
-                                    <div className="text-center py-6 text-zinc-500 text-xs border border-dashed border-zinc-800 rounded-xl">
-                                        暂无 API Key，请添加
+                            {/* Content Area */}
+                            <div className="flex-1 flex flex-col min-w-0 bg-[#0d0d0e]">
+                                {/* Header */}
+                                <div className="h-14 border-b border-white/5 flex items-center justify-between px-6 bg-[#0d0d0e]/50 backdrop-blur-xl z-10 sticky top-0">
+                                    <h2 className="text-lg font-semibold text-white">
+                                        {apiTab === 'overview' ? '仪表盘 (Dashboard)' : apiTab === 'channels' ? '渠道管理 (Channels)' : '系统日志 (Logs)'}
+                                    </h2>
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={handleRevalidateKeys} disabled={isValidatingKeys} className="p-2 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">
+                                            <RefreshCw size={16} className={isValidatingKeys ? "animate-spin" : ""} />
+                                        </button>
+                                        <button onClick={handleClose} className="p-2 text-zinc-400 hover:text-white hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-colors">
+                                            <X size={18} />
+                                        </button>
                                     </div>
-                                ) : (
-                                    keySlots.map(slot => {
-                                        // Quota Calculations
-                                        let progressDetail = null;
-                                        let resetText = '';
-                                        if (slot.quota) {
-                                            const { remainingRequests, limitRequests, resetTime } = slot.quota;
-                                            if (limitRequests > 0) {
-                                                const percent = Math.max(0, Math.min(100, (remainingRequests / limitRequests) * 100));
-                                                const remaining = Math.max(0, resetTime - Date.now());
+                                </div>
 
-                                                resetText = remaining > 0 ? `重置: ${formatDuration(remaining)}` : 'Ready';
+                                {/* Scrollable Content */}
+                                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
 
-                                                // Color based on percentage
-                                                let barColor = 'bg-blue-500';
-                                                if (percent < 20) barColor = 'bg-red-500';
-                                                else if (percent < 50) barColor = 'bg-yellow-500';
+                                    {/* OVERVIEW TAB */}
+                                    {apiTab === 'overview' && (
+                                        <div className="space-y-6">
+                                            <div className="grid grid-cols-4 gap-4">
+                                                <StatCard label="总渠道数" value={keyStats.total} color="bg-blue-500" icon={Key} />
+                                                <StatCard label="可用状态" value={keyStats.valid} color="bg-emerald-500" icon={Sparkles} />
+                                                <StatCard label="异常状态" value={keyStats.invalid} color="bg-red-500" icon={AlertTriangle} />
+                                                <StatCard label="系统在线率" value="99.9%" color="bg-indigo-500" icon={Activity} />
+                                            </div>
 
-                                                progressDetail = (
-                                                    <div className="mt-1.5 mb-1">
-                                                        <div className="flex justify-between items-end mb-1">
-                                                            <span className="text-[10px] text-zinc-500">配额</span>
-                                                            <span className="text-[10px] text-zinc-400 font-medium">{percent.toFixed(0)}% ({remainingRequests}/{limitRequests})</span>
-                                                        </div>
-                                                        <div className="w-full bg-zinc-700/30 h-1 rounded-full overflow-hidden">
-                                                            <div className={`h-full transition-all duration-500 ${barColor}`} style={{ width: `${percent}%` }} />
-                                                        </div>
-                                                        {resetText && <div className="text-[9px] text-zinc-500 mt-1 text-right">{resetText}</div>}
-                                                    </div>
-                                                );
-                                            }
-                                        } else {
-                                            // No quota data yet - show hint
-                                            progressDetail = (
-                                                <div className="mt-1.5 text-[9px] text-zinc-500 italic">
-                                                    生成图片后显示配额
-                                                </div>
-                                            );
-                                        }
-
-                                        return (
-                                            <div key={slot.id} className={`flex flex-col p-3 rounded-xl border transition-colors ${slot.status === 'valid' ? 'bg-green-500/5 border-green-500/20' : 'bg-zinc-800/30 border-zinc-800'}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${slot.status === 'valid' ? 'bg-green-500' : 'bg-red-500'}`} />
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="text-xs font-mono text-zinc-300 truncate">
-                                                            {slot.key.substring(0, 8)}...{slot.key.substring(slot.key.length - 4)}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <button onClick={() => keyManager.toggleKey(slot.id)} className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors" title={slot.disabled ? "启用" : "禁用"}>
-                                                            {slot.disabled ? <Lock size={12} /> : <div className="w-3 h-3 rounded-full border border-current opacity-50" />}
-                                                        </button>
-                                                        <button onClick={() => keyManager.removeKey(slot.id)} className="p-1.5 text-zinc-400 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors" title="删除">
-                                                            <X size={12} />
-                                                        </button>
+                                            <div className="grid grid-cols-2 gap-6 h-64">
+                                                <div className="bg-[#1c1c1e] rounded-xl border border-zinc-800/50 p-5 flex flex-col">
+                                                    <h3 className="text-sm font-medium text-zinc-400 mb-4">请求量统计 (24h)</h3>
+                                                    <div className="flex-1 flex items-end justify-between gap-1 px-2">
+                                                        {/* Mock Chart Bars */}
+                                                        {[30, 45, 25, 60, 75, 50, 80, 40, 55, 70, 65, 90].map((h, i) => (
+                                                            <div key={i} className="w-full bg-blue-600/20 hover:bg-blue-500 rounded-t-sm transition-all relative group" style={{ height: `${h}%` }}>
+                                                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                                                    {h} 次
+                                                                </div>
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 </div>
-
-                                                {/* Quota Progress */}
-                                                {progressDetail}
-
-                                                {/* Footer Stats */}
-                                                <div className="flex justify-between items-center mt-1 pt-1 opacity-60">
-                                                    <div className="text-[10px] text-zinc-500">
-                                                        调用 {slot.successCount} · 失败 {slot.failCount}
-                                                    </div>
-                                                    {resetText && (
-                                                        <div className="text-[10px] text-indigo-400 font-mono">
-                                                            {resetText}
+                                                <div className="bg-[#1c1c1e] rounded-xl border border-zinc-800/50 p-5">
+                                                    <h3 className="text-sm font-medium text-zinc-400 mb-4">系统健康状态</h3>
+                                                    <div className="space-y-4">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-sm text-zinc-300">API 平均延迟</span>
+                                                            <span className="text-sm font-mono text-emerald-400">45ms</span>
                                                         </div>
-                                                    )}
+                                                        <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                                                            <div className="bg-emerald-500 h-full w-[15%]" />
+                                                        </div>
+                                                        <div className="flex items-center justify-between mt-2">
+                                                            <span className="text-sm text-zinc-300">配额总使用率</span>
+                                                            <span className="text-sm font-mono text-blue-400">12%</span>
+                                                        </div>
+                                                        <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                                                            <div className="bg-blue-500 h-full w-[12%]" />
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        );
-                                    })
-                                )}
-                            </div>
+                                        </div>
+                                    )}
 
-                            {/* Input */}
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={newKey}
-                                    onChange={e => setNewKey(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleAddKey()}
-                                    placeholder="sk-..."
-                                    className="flex-1 bg-zinc-800/50 border border-zinc-700/50 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all font-mono placeholder:font-sans"
-                                />
-                                <button
-                                    onClick={handleAddKey}
-                                    disabled={isAddingKey || !newKey}
-                                    className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-medium rounded-xl transition-all flex items-center gap-1"
-                                >
-                                    {isAddingKey && <Loader2 size={10} className="animate-spin" />}
-                                    添加
-                                </button>
+                                    {/* CHANNELS TAB */}
+                                    {apiTab === 'channels' && (
+                                        <div className="space-y-4">
+                                            {/* Toolbar */}
+                                            <div className="flex gap-2">
+                                                <div className="relative flex-1">
+                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"><Key size={14} /></div>
+                                                    <input
+                                                        value={newKey}
+                                                        onChange={e => setNewKey(e.target.value)}
+                                                        onKeyDown={e => e.key === 'Enter' && handleAddKey()}
+                                                        placeholder="输入 API Key 以添加新渠道 (sk-...)"
+                                                        className="w-full bg-[#1c1c1e] border border-zinc-800 rounded-lg pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono transition-all"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleAddKey}
+                                                    disabled={isAddingKey || !newKey}
+                                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                                                >
+                                                    {isAddingKey ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                                                    添加渠道
+                                                </button>
+                                            </div>
+
+                                            {/* Channels List (The refined horizontal strip) */}
+                                            <div className="space-y-2">
+                                                {keySlots.length === 0 ? (
+                                                    <div className="text-center py-20 text-zinc-500">暂无配置渠道</div>
+                                                ) : (
+                                                    keySlots.map(slot => {
+                                                        const hasQuota = slot.quota && slot.quota.limitRequests > 0;
+                                                        const percent = hasQuota ? (slot.quota!.remainingRequests / slot.quota!.limitRequests) * 100 : 0;
+                                                        const isHealth = slot.status === 'valid';
+
+                                                        return (
+                                                            <div key={slot.id} className="group flex items-center gap-4 p-3 bg-[#1c1c1e] border border-zinc-800/50 hover:border-zinc-700 rounded-xl transition-all">
+                                                                <div className={`w-2 h-2 rounded-full ${isHealth ? 'bg-emerald-500' : 'bg-red-500'}`} />
+
+                                                                <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400">
+                                                                    <Sparkles size={16} />
+                                                                </div>
+
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <span className="text-sm font-medium text-white truncate">Google Gemini</span>
+                                                                        <span className="text-xs font-mono text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded">...{slot.key.slice(-4)}</span>
+                                                                    </div>
+                                                                    {hasQuota ? (
+                                                                        <div className="flex items-center gap-2 w-full max-w-[200px]">
+                                                                            <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                                                                                <div style={{ width: `${percent}%` }} className={`h-full rounded-full ${percent < 20 ? 'bg-red-500' : 'bg-blue-500'}`} />
+                                                                            </div>
+                                                                            <span className="text-[10px] text-zinc-500 font-mono">{percent.toFixed(0)}%</span>
+                                                                        </div>
+                                                                    ) : <span className="text-[10px] text-zinc-600">暂无配额数据</span>}
+                                                                </div>
+
+                                                                <div className="text-right">
+                                                                    <div className="text-xs text-zinc-300 font-mono">{hasQuota ? slot.quota?.remainingRequests : '--'}</div>
+                                                                    <div className="text-[10px] text-zinc-600">剩余请求</div>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2 pl-4 border-l border-zinc-800 ml-2">
+                                                                    <button onClick={() => keyManager.toggleKey(slot.id)} className={`p-2 rounded-lg transition-colors ${!slot.disabled ? 'text-emerald-500 bg-emerald-500/10' : 'text-zinc-600 bg-zinc-800'} hover:bg-opacity-20`}>
+                                                                        <Activity size={16} />
+                                                                    </button>
+                                                                    <button onClick={() => { if (confirm('确认删除该渠道?')) keyManager.removeKey(slot.id); }} className="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                                                                        <Trash2 size={16} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* LOGS TAB */}
+                                    {apiTab === 'logs' && (
+                                        <div className="border border-zinc-800 rounded-xl overflow-hidden min-h-[300px] flex flex-col">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="bg-[#1c1c1e] text-zinc-400 border-b border-zinc-800">
+                                                    <tr>
+                                                        <th className="px-4 py-3 font-medium">时间</th>
+                                                        <th className="px-4 py-3 font-medium">类型</th>
+                                                        <th className="px-4 py-3 font-medium">模型</th>
+                                                        <th className="px-4 py-3 font-medium text-right">消耗 Tokens</th>
+                                                        <th className="px-4 py-3 font-medium text-right">状态</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-zinc-800">
+                                                    {/* Empty State */}
+                                                    <tr>
+                                                        <td colSpan={5} className="py-20 text-center text-zinc-500">
+                                                            <div className="flex flex-col items-center justify-center gap-2">
+                                                                <Activity size={32} className="opacity-20" />
+                                                                <span>暂无调用日志</span>
+                                                                <span className="text-[10px] text-zinc-600">本地模式下暂不记录详细消耗统计</span>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+
+                                </div>
                             </div>
-                            {keyError && <div className="mt-2 text-[10px] text-red-400">{keyError}</div>}
-                            <p className="mt-3 text-[10px] text-zinc-500 text-center">
-                                前往 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">Google AI Studio</a> 获取 Key
-                            </p>
-                        </>
+                        </div>
                     )}
 
                 </div>

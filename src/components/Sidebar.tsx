@@ -152,13 +152,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     <path d="m21 2-9.6 9.6" />
                                     <path d="m15.5 7.5 3 3L22 7l-3-3" />
                                 </svg>
-                                {hasApiKey ? 'Keys Configured' : 'Setup Keys'}
+                                {hasApiKey ? '已配置密钥' : '配置密钥'}
                             </button>
 
                             <button
                                 onClick={onSignOut}
                                 className="px-3 py-1.5 bg-white/5 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 rounded-lg transition-colors"
-                                title="Sign Out"
+                                title="退出登录"
                             >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

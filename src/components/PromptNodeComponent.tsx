@@ -13,6 +13,7 @@ interface PromptNodeProps {
     isMobile?: boolean;
     sourcePosition?: { x: number; y: number };
     onCancel?: (id: string) => void;
+    onDelete?: (id: string) => void;
 }
 
 const PromptNodeComponent: React.FC<PromptNodeProps> = ({
@@ -25,7 +26,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
     canvasTransform = { x: 0, y: 0, scale: 1 },
     isMobile = false,
     sourcePosition,
-    onCancel
+    onCancel,
+    onDelete
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const dragStartPos = useRef({ x: 0, y: 0 });
@@ -156,7 +158,26 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                             <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center">
                                 <Sparkles size={12} className="text-white" />
                             </div>
-                            <span className="text-xs font-medium text-zinc-400">Prompt</span>
+                            <span className="text-xs font-medium text-zinc-400 flex-1">Prompt</span>
+
+                            {/* Delete Button */}
+                            {onDelete && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm('删除此提示词卡片？')) {
+                                            onDelete(node.id);
+                                        }
+                                    }}
+                                    className="w-6 h-6 flex items-center justify-center rounded-full text-zinc-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                                    title="删除"
+                                >
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="3 6 5 6 21 6" />
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    </svg>
+                                </button>
+                            )}
                         </>
                     )}
                 </div>
@@ -185,26 +206,23 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                 </p>
             </div>
 
-            {/* Connection Dot - Bottom Center */}
-            <div
-                className={`w-3 h-3 bg-indigo-500 rounded-full border-2 border-[#121212] shadow-sm mt-3 relative z-10 transition-transform group-hover:scale-125 ${node.isGenerating ? '' : 'cursor-crosshair hover:bg-indigo-400'}`}
-                onMouseDown={(e) => {
-                    if (node.isGenerating) return;
-                    e.stopPropagation();
-                    // Pass center X position (card left + half width)
-                    onConnectStart?.(node.id, { x: node.position.x + 160, y: node.position.y + 12 });
-                }}
-            />
+            {/* Spacer (formerly connection dot - removed per user request) */}
+            <div className="h-3 mt-3" />
 
             {/* Loading Placeholders - Only shown when generating */}
             {node.isGenerating && node.parallelCount && (() => {
                 const count = node.parallelCount;
                 const columns = Math.min(count, 2);
                 const placeholderGap = 16;
-                const gapToPlaceholders = 50;
+                const gapToPlaceholders = 80; // Must match handleGenerate gapToImages
 
-                // Calculate card dimensions based on aspect ratio
+                // Calculate card dimensions based on aspect ratio AND mobile
                 const getDims = (ratio: AspectRatio) => {
+                    // Mobile dimensions (matching App.tsx logic)
+                    if (isMobile) {
+                        return { w: 170, h: 200 + 60 }; // cardWidth + Footer
+                    }
+                    // Desktop dimensions
                     switch (ratio) {
                         case AspectRatio.SQUARE: return { w: 280, h: 280 };
                         case AspectRatio.LANDSCAPE_16_9: return { w: 320, h: 180 };
@@ -243,9 +261,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                                         <path
                                             d={`M0,0 L${offsetX},${offsetY}`}
                                             fill="none"
-                                            stroke="rgba(99, 102, 241, 0.3)"
-                                            strokeWidth="2"
-                                            strokeDasharray="6 4"
+                                            stroke="#52525b"
+                                            strokeWidth="1.5"
+                                            strokeDasharray="4 3"
                                         />
                                     </svg>
 
@@ -274,46 +292,68 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                 );
             })()}
 
-            {/* Connection Line to Source */}
-            {sourcePosition && (
-                <svg
-                    className="absolute pointer-events-none"
-                    style={{
-                        overflow: 'visible',
-                        left: '50%',
-                        top: 0, // This is at 'top' of the container (which is card bottom due to flow?)
-                        // Wait, container is absolute at node.position (Bottom).
-                        // So 0,0 is Bottom-Center.
-                        // We want line from Source Bottom to Card Top.
-                        // Card Top is roughly -140px (depending on height).
-                        // Let's use negative Y for local point.
-                        zIndex: -1
-                    }}
-                >
-                    <path
-                        // sourcePosition is Absolute Top of Source.
-                        // node.position is Absolute Bottom of This.
-                        // Source Bottom ~ sourcePosition.y + 300.
-                        // This Top ~ node.position.y - CardHeight (~150).
-                        // Delta X = sourcePosition.x - node.position.x
-                        // Delta Y = (sourcePosition.y + 320) - node.position.y
-                        // Draw from (DeltaX, DeltaY) to (0, -150)
-                        d={`M${sourcePosition.x - node.position.x},${sourcePosition.y - node.position.y + 320} L0,${-140}`}
-                        fill="none"
-                        stroke="#6366f1"
-                        strokeWidth="2"
-                        strokeDasharray="6 4"
-                        className="animate-pulse"
-                    />
-                    {/* Dot at Start */}
-                    <circle
-                        cx={sourcePosition.x - node.position.x}
-                        cy={sourcePosition.y - node.position.y + 320}
-                        r="3"
-                        fill="#6366f1"
-                    />
-                </svg>
-            )}
+            {/* Connection Line from Source Image (Flowith style: Image bottom → Prompt top) */}
+            {sourcePosition && (() => {
+                // Both cards use translate(-50%, -100%) so position.y is BOTTOM
+
+                // Start: Image bottom center
+                const startX = sourcePosition.x - node.position.x;
+                const startY = sourcePosition.y - node.position.y;
+
+                // End: Prompt Top Center (approx 140px height for prompt)
+                const promptHeightApprox = 140;
+                const endX = 0;
+                const endY = -promptHeightApprox;
+
+                // Bezier Logic
+                const deltaX = endX - startX;
+                const deltaY = endY - startY;
+                const absDeltaX = Math.abs(deltaX);
+                const absDeltaY = Math.abs(deltaY);
+
+                let d = '';
+                if (absDeltaX > 100) {
+                    // Branching S-curve
+                    const controlY1 = startY + absDeltaY * 0.5;
+                    const controlY2 = endY - absDeltaY * 0.5;
+                    d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
+                } else {
+                    // Standard vertical
+                    const controlY1 = startY + deltaY * 0.4;
+                    const controlY2 = startY + deltaY * 0.6;
+                    d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
+                }
+
+                return (
+                    <svg
+                        className="absolute pointer-events-none"
+                        style={{
+                            overflow: 'visible',
+                            left: '50%',
+                            top: 0,
+                            zIndex: -1
+                        }}
+                    >
+                        {/* Starting dot */}
+                        <circle
+                            cx={startX}
+                            cy={startY}
+                            r="3"
+                            fill="#D1D5DB"
+                        />
+                        {/* Smooth Bezier curve */}
+                        <path
+                            d={d}
+                            fill="none"
+                            stroke="#D1D5DB"
+                            strokeWidth="1.5"
+                            strokeDasharray="4 3"
+                            strokeLinecap="round"
+                            className="transition-all duration-300 ease-in-out"
+                        />
+                    </svg>
+                );
+            })()}
 
             {/* Visual Guide Line (optional, only when dragging maybe?) */}
         </div>

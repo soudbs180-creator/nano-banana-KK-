@@ -251,12 +251,31 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
                     {/* Footer - Model badge + Continue + Download + Delete */}
                     <div className="px-3 py-2 bg-[#121212]/50 flex items-center justify-between border-t border-white/5">
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium border ${image.model?.includes('pro')
-                            ? 'border-amber-500/30 text-amber-400 bg-amber-500/10'
-                            : 'border-blue-500/30 text-blue-400 bg-blue-500/10'
-                            }`}>
-                            {image.model?.includes('pro') ? 'PRO' : 'FAST'}
-                        </span>
+                        {(() => {
+                            const model = image.model || '';
+                            let label = 'AI';
+                            let style = 'border-zinc-500/30 text-zinc-400 bg-zinc-500/10';
+
+                            if (model.includes('ultra')) {
+                                label = 'Imagen 4 Ultra';
+                                style = 'border-purple-500/30 text-purple-400 bg-purple-500/10';
+                            } else if (model.includes('imagen-4')) {
+                                label = 'Imagen 4';
+                                style = 'border-blue-500/30 text-blue-400 bg-blue-500/10';
+                            } else if (model.includes('pro')) {
+                                label = 'Gemini 3 Pro';
+                                style = 'border-amber-500/30 text-amber-400 bg-amber-500/10';
+                            } else if (model.includes('flash')) {
+                                label = 'Gemini 2.5';
+                                style = 'border-yellow-500/30 text-yellow-400 bg-yellow-500/10';
+                            }
+
+                            return (
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium border whitespace-nowrap ${style}`}>
+                                    {label}
+                                </span>
+                            );
+                        })()}
 
                         {/* Generation Time */}
                         {image.generationTime && (

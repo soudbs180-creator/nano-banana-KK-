@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
     return {
         server: {
             port: 3000,
+            strictPort: true, // Fail if port 3000 is in use (don't auto-switch)
             host: '0.0.0.0',
             open: false, // VBS script handles browser opening
         },

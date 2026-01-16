@@ -136,6 +136,12 @@ async function generateImageDirect(
 
       if (isImagen) {
         // Imagen models use :predict endpoint with different payload
+        // Imagen supports limited aspect ratios: 1:1, 9:16, 16:9, 4:3, 3:4
+        let safeAspectRatio = aspectRatio;
+        if (aspectRatio === AspectRatio.LANDSCAPE_21_9) safeAspectRatio = AspectRatio.LANDSCAPE_16_9;
+        else if (aspectRatio === AspectRatio.STANDARD_2_3) safeAspectRatio = AspectRatio.PORTRAIT_9_16; // Closest vertical
+        else if (aspectRatio === AspectRatio.STANDARD_3_2) safeAspectRatio = AspectRatio.LANDSCAPE_16_9; // Closest horizontal
+
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${effectiveKey}`, {
           method: 'POST',
           headers: {
@@ -145,7 +151,7 @@ async function generateImageDirect(
             instances: [{ prompt }],
             parameters: {
               sampleCount: 1,
-              aspectRatio: aspectRatio,
+              aspectRatio: safeAspectRatio,
               // Add other Imagen-specific params if needed
             }
           }),
@@ -207,7 +213,7 @@ async function generateImageDirect(
 
         // Build config
         const imageConfig: any = { aspectRatio };
-        if (model === ModelType.NANO_BANANA_PRO || model === ModelType.IMAGEN_4 || model === ModelType.IMAGEN_4_ULTRA) {
+        if (model === ModelType.NANO_BANANA_PRO) {
           imageConfig.imageSize = imageSize;
         }
 

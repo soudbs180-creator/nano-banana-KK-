@@ -17,6 +17,50 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
+    // Filter available aspect ratios based on model
+    const getAvailableAspectRatios = () => {
+        const ratios = [
+            AspectRatio.SQUARE,
+            AspectRatio.STANDARD_2_3,
+            AspectRatio.STANDARD_3_2,
+            AspectRatio.PORTRAIT_3_4,
+            AspectRatio.LANDSCAPE_4_3,
+            AspectRatio.PORTRAIT_9_16,
+            AspectRatio.LANDSCAPE_16_9,
+            AspectRatio.LANDSCAPE_21_9
+        ];
+
+        if (config.model === ModelType.IMAGEN_4) {
+            // Imagen 4.0 does not support 21:9
+            return ratios.filter(r => r !== AspectRatio.LANDSCAPE_21_9);
+        }
+        return ratios;
+    };
+
+    // Filter available image sizes based on model
+    const getAvailableImageSizes = () => {
+        const sizes = [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
+
+        if (config.model === ModelType.IMAGEN_4) {
+            // Imagen 4.0 supports max 2K usually (checking vs user request which says 4K not supported)
+            return sizes.filter(s => s !== ImageSize.SIZE_4K);
+        }
+        return sizes;
+    };
+
+    const availableRatios = getAvailableAspectRatios();
+    const availableSizes = getAvailableImageSizes();
+
+    // Auto-correct config if the selected option is no longer available
+    useEffect(() => {
+        if (!availableRatios.includes(config.aspectRatio)) {
+            setConfig(prev => ({ ...prev, aspectRatio: AspectRatio.SQUARE }));
+        }
+        if (!availableSizes.includes(config.imageSize)) {
+            setConfig(prev => ({ ...prev, imageSize: ImageSize.SIZE_1K }));
+        }
+    }, [config.model]); // Check when model changes
+
     const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setConfig(prev => ({ ...prev, prompt: e.target.value }));
         e.target.style.height = 'auto';
@@ -209,16 +253,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 style={{ left: '50%', transform: 'translateX(-50%)' }}
                             >
                                 <div className="dropdown static animate-scaleIn origin-bottom">
-                                    {[
-                                        AspectRatio.SQUARE,
-                                        AspectRatio.STANDARD_2_3,
-                                        AspectRatio.STANDARD_3_2,
-                                        AspectRatio.PORTRAIT_3_4,
-                                        AspectRatio.LANDSCAPE_4_3,
-                                        AspectRatio.PORTRAIT_9_16,
-                                        AspectRatio.LANDSCAPE_16_9,
-                                        AspectRatio.LANDSCAPE_21_9
-                                    ].map(ratio => (
+                                    {availableRatios.map(ratio => (
                                         <button
                                             key={ratio}
                                             className={`dropdown-item ${config.aspectRatio === ratio ? 'active' : ''}`}
@@ -254,7 +289,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     style={{ left: '50%', transform: 'translateX(-50%)' }}
                                 >
                                     <div className="dropdown static animate-scaleIn origin-bottom">
-                                        {[ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K].map(size => (
+                                        {availableSizes.map(size => (
                                             <button
                                                 key={size}
                                                 className={`dropdown-item ${config.imageSize === size ? 'active' : ''}`}
