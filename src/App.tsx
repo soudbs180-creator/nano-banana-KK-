@@ -633,7 +633,10 @@ const AppContent: React.FC = () => {
 
     try {
       const count = config.parallelCount;
-      const promises = Array.from({ length: count }).map(async (_, index) => {
+
+      // First, generate all images (without position - will calculate after)
+      const imageDataPromises = Array.from({ length: count }).map(async (_, index) => {
+        const startTime = Date.now();
         const url = await generateImage(
           promptToUse,
           config.aspectRatio,
@@ -643,65 +646,82 @@ const AppContent: React.FC = () => {
           '', // apiKey (handled internally)
           promptNodeId // requestId for cancellation
         );
+        const generationTime = Date.now() - startTime;
 
-        // Layout: Images BELOW prompt card, using same logic as placeholder components
-        // currentPos is the prompt node position (bottom of card due to translate(-50%, -100%))
-        const gapToImages = 50; // Same as gapToPlaceholders in components
-        const gap = 16; // Same as placeholderGap in components
+        return {
+          index,
+          url,
+          generationTime
+        };
+      });
 
-        let cardWidth = 280;
-        let cardHeight = 280; // Default for SQUARE
-        switch (config.aspectRatio) {
-          case AspectRatio.LANDSCAPE_16_9:
-            cardWidth = 320;
-            cardHeight = 180;
-            break;
-          case AspectRatio.PORTRAIT_9_16:
-            cardWidth = 200;
-            cardHeight = 355;
-            break;
-          default:
-            cardWidth = 280;
-            cardHeight = 280;
-        }
+      const imageData = await Promise.all(imageDataPromises);
 
-        // Calculate positions - SAME FORMULA as PromptNodeComponent/PendingNode placeholders
+      // Validate results
+      const validImageData = imageData.filter(d => d && d.url);
+      if (validImageData.length === 0) {
+        throw new Error('All generated images were invalid');
+      }
+
+      // Get the prompt node's CURRENT position (may have been dragged during generation)
+      const livePromptNode = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
+      const livePos = livePromptNode?.position || currentPos;
+
+      // Now calculate positions using the LIVE position
+      const gapToImages = 50;
+      const gap = 16;
+      const FOOTER_HEIGHT = 60;
+
+      let cardWidth = 280;
+      let cardHeight = 280;
+      switch (config.aspectRatio) {
+        case AspectRatio.LANDSCAPE_16_9:
+          cardWidth = 320;
+          cardHeight = 180;
+          break;
+        case AspectRatio.PORTRAIT_9_16:
+          cardWidth = 200;
+          cardHeight = 355;
+          break;
+        default:
+          cardWidth = 280;
+          cardHeight = 280;
+      }
+      cardHeight += FOOTER_HEIGHT;
+
+      const validResults: GeneratedImage[] = validImageData.map(({ index, url, generationTime }) => {
         let x, y;
 
         if (isMobile) {
-          // Mobile Layout: Dynamic grid (1 or 2 cols)
           const cols = Math.min(count, 2);
           const col = index % cols;
           const row = Math.floor(index / cols);
 
-          const mobileCardWidth = 170; // Same as PendingNode
-          const mobileCardHeight = 200;
-          const mobileGap = 10; // Same as PendingNode placeholderGap for mobile
+          const mobileCardWidth = 170;
+          const mobileCardHeight = 200 + FOOTER_HEIGHT;
+          const mobileGap = 10;
 
-          // Calculate grid width for centering (same as components)
           const itemsInRow = Math.min(cols, count - row * cols);
           const currentGridWidth = itemsInRow * mobileCardWidth + (itemsInRow - 1) * mobileGap;
           const startX = -currentGridWidth / 2;
           const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
           const offsetY = gapToImages + row * (mobileCardHeight + mobileGap);
 
-          x = currentPos.x + offsetX;
-          y = currentPos.y + offsetY;
+          x = livePos.x + offsetX;
+          y = livePos.y + offsetY;
         } else {
-          // Desktop Layout: Dynamic grid (1 or 2 cols)
           const columns = Math.min(count, 2);
           const col = index % columns;
           const row = Math.floor(index / columns);
 
-          // Calculate grid width for centering (SAME as PromptNodeComponent)
           const itemsInRow = Math.min(columns, count - row * columns);
           const currentGridWidth = itemsInRow * cardWidth + (itemsInRow - 1) * gap;
           const startX = -currentGridWidth / 2;
           const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
           const offsetY = gapToImages + row * (cardHeight + gap);
 
-          x = currentPos.x + offsetX;
-          y = currentPos.y + offsetY;
+          x = livePos.x + offsetX;
+          y = livePos.y + offsetY;
         }
 
         return {
@@ -713,22 +733,10 @@ const AppContent: React.FC = () => {
           model: config.model,
           canvasId: activeCanvas?.id || 'default',
           parentPromptId: promptNodeId,
-          position: { x, y }
+          position: { x, y },
+          generationTime
         } as GeneratedImage;
       });
-
-      const results = await Promise.all(promises);
-
-      // Validate results
-      if (!results || results.length === 0) {
-        throw new Error('No images generated');
-      }
-
-      // Filter out any null/undefined results
-      const validResults = results.filter(r => r && r.id && r.url);
-      if (validResults.length === 0) {
-        throw new Error('All generated images were invalid');
-      }
 
       // Update the prompt node with success state
       const updatedNode = {
@@ -749,8 +757,8 @@ const AppContent: React.FC = () => {
       if (isMobile) {
         // We want to center on the NEW PROMPT node, or slightly below it to see images
         // Target Y is prompt position Y + some offset
-        const targetX = currentPos.x;
-        const targetY = currentPos.y + 150; // Center between prompt and images
+        const targetX = livePos.x;
+        const targetY = livePos.y + 150; // Center between prompt and images
 
         // Calculate new translation to put (targetX, targetY) at screen center
         // visualX = targetX * scale + newTranslateX = screenW / 2
@@ -831,7 +839,7 @@ const AppContent: React.FC = () => {
     const centerX = 0;
     const centerY = 0;
     const colSpacing = isMobile ? 0 : 450;
-    const rowSpacing = 500;
+    const rowSpacing = 800; // Increased to accommodate tall cards + footer
     const imageGap = 30;
     const imageOffsetY = 150;
 
@@ -1177,7 +1185,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.1.1
+        v1.1.3
       </div>
     </div>
   );

@@ -101,101 +101,134 @@ async function generateImageDirect(
   // Try to get API key from various sources
   let effectiveKey = apiKey;
   let keyId: string | null = null;
+  let attempts = 0;
+  const maxAttempts = 3;
+  let lastError: any = null;
 
-  if (!effectiveKey) {
-    // Try keyManager first (multi-key rotation)
-    const nextKey = keyManager.getNextKey();
-    if (nextKey) {
-      effectiveKey = nextKey.key;
-      keyId = nextKey.id;
-      console.log('[GeminiService] Using key from rotation:', keyId);
-    }
-  }
+  while (attempts < maxAttempts) {
+    attempts++;
 
-  if (!effectiveKey) {
-    // Try environment variable as fallback
-    effectiveKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-  }
-
-  if (!effectiveKey) {
-    throw new Error("请先在设置中配置 API Key");
-  }
-
-  try {
-    const ai = new GoogleGenAI({ apiKey: effectiveKey });
-    const parts: any[] = [];
-    if (prompt) parts.push({ text: prompt });
-
-    // Add reference images if any
-    if (referenceImages && referenceImages.length > 0) {
-      referenceImages.forEach(img => {
-        // Convert base64 to inline data
-        parts.push({
-          inlineData: {
-            mimeType: img.mimeType,
-            data: img.data, // Ensure data is included
-          },
-        });
-      });
-    }
-    // Build config
-    const imageConfig: any = { aspectRatio };
-    // Include imageSize for models that support it
-    if (model === ModelType.NANO_BANANA_PRO || model === ModelType.IMAGEN_4 || model === ModelType.IMAGEN_4_ULTRA) {
-      imageConfig.imageSize = imageSize;
-    }
-
-    // GoogleGenAI SDK doesn't support AbortSignal directly in generateContent yet,
-    // but we can wrap the promise to support cancellation "at the edges"
-    const generatePromise = ai.models.generateContent({
-      model,
-      contents: [{ role: 'user', parts }],
-      config: {
-        // @ts-ignore - GoogleGenAI SDK types might vary
-        imageConfig
-      },
-    });
-
-    // Race against cancellation
-    const response = await Promise.race([
-      generatePromise,
-      new Promise<never>((_, reject) => {
-        if (requestId && abortControllers.has(requestId)) {
-          abortControllers.get(requestId)?.signal.addEventListener('abort', () => {
-            reject(new Error('Generation cancelled'));
-          });
-        }
-      })
-    ]);
-
-    if (response.candidates && response.candidates.length > 0) {
-      for (const part of response.candidates[0].content?.parts || []) {
-        if (part.inlineData) {
-          // Report success to keyManager
-          if (keyId) {
-            keyManager.reportSuccess(keyId);
-          }
-          return `data:image/png;base64,${part.inlineData.data}`;
-        }
+    // If not first attempt or no initial key, get next key
+    if ((!effectiveKey && attempts === 1) || attempts > 1) {
+      // Try keyManager first (multi-key rotation)
+      const nextKey = keyManager.getNextKey();
+      if (nextKey) {
+        effectiveKey = nextKey.key;
+        keyId = nextKey.id;
+        console.log(`[GeminiService] Using key from rotation (Attempt ${attempts}):`, keyId);
       }
     }
 
-    throw new Error("未能生成图片");
-  } catch (error: any) {
-    // If cancelled, don't report as failure to key manager
-    if (error.message === 'Generation cancelled') {
-      throw error;
+    if (!effectiveKey) {
+      // Try environment variable as fallback
+      effectiveKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     }
 
-    console.error("Image generation error:", error);
-
-    // Report failure to keyManager
-    if (keyId) {
-      keyManager.reportFailure(keyId, error.message || 'Unknown error');
+    if (!effectiveKey) {
+      throw new Error("请先在设置中配置 API Key");
     }
 
-    throw normalizeError(error);
+    try {
+      const parts: any[] = [];
+      if (prompt) parts.push({ text: prompt });
+
+      // Add reference images if any
+      if (referenceImages && referenceImages.length > 0) {
+        referenceImages.forEach(img => {
+          parts.push({
+            inlineData: {
+              mimeType: img.mimeType,
+              data: img.data,
+            },
+          });
+        });
+      }
+
+      // Build config
+      const imageConfig: any = { aspectRatio };
+      // Include imageSize for models that support it
+      if (model === ModelType.NANO_BANANA_PRO || model === ModelType.IMAGEN_4 || model === ModelType.IMAGEN_4_ULTRA) {
+        imageConfig.imageSize = imageSize;
+      }
+
+      const controller = requestId ? abortControllers.get(requestId) : undefined;
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts }],
+          generationConfig: {
+            imageConfig
+          }
+        }),
+        signal: controller?.signal
+      });
+
+      // Update Quota Information
+      if (keyId) {
+        const limitRequests = response.headers.get('x-ratelimit-limit-requests');
+        const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
+        const resetRequests = response.headers.get('x-ratelimit-reset-requests');
+
+        if (limitRequests || remainingRequests) {
+          const resetSeconds = resetRequests ? (parseInt(resetRequests) || 0) : 0;
+          // Some APIs return "60s" or similar, parseInt usually handles the leading number.
+          // If resetRequests is basically a formatted duration, we might need more logic but parseInt is a safe bet for "123s".
+
+          keyManager.updateQuota(keyId, {
+            limitRequests: parseInt(limitRequests || '0'),
+            remainingRequests: parseInt(remainingRequests || '0'),
+            resetConstant: resetRequests || '',
+            resetTime: Date.now() + (resetSeconds * 1000),
+            updatedAt: Date.now()
+          });
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.candidates && result.candidates.length > 0) {
+        for (const part of result.candidates[0].content?.parts || []) {
+          if (part.inlineData) {
+            // Report success to keyManager
+            if (keyId) {
+              keyManager.reportSuccess(keyId);
+            }
+            return `data:image/png;base64,${part.inlineData.data}`;
+          }
+        }
+      }
+
+      throw new Error("未能生成图片");
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.message === 'Generation cancelled') {
+        throw new Error('Generation cancelled');
+      }
+
+      console.error(`Attempt failed with key ${keyId || 'unknown'}:`, error);
+
+      // Report failure to keyManager
+      if (keyId) {
+        keyManager.reportFailure(keyId, error.message || 'Unknown error');
+      }
+
+      lastError = error;
+      // Continue loop
+    }
+  } // End of retry loop
+
+  if (lastError) {
+    throw normalizeError(lastError);
   }
+  throw new Error("Unable to generate image after retries");
 }
 
 /**
@@ -285,22 +318,48 @@ async function generateImageViaBackend(
  * Normalize error messages for UI
  */
 function normalizeError(error: any): Error {
-  const msg = error.message || error.toString();
+  const msg = (error.message || error.toString()).toLowerCase();
 
-  if (msg.includes("403") || msg.includes("permission") || msg.includes("leaked")) {
-    return new Error("API Key 无效或已泄露，请使用新的 API Key");
+  // Cancelled
+  if (msg.includes('cancelled')) {
+    return new Error("任务已取消");
   }
-  if (msg.includes("400") || msg.includes("INVALID_ARGUMENT")) {
-    return new Error("请求无效：模型可能不支持此配置或提示词被屏蔽");
+
+  // Rate Limit
+  if (msg.includes('429') || msg.includes('rate limit') || msg.includes('quota')) {
+    return new Error("请求太过频繁 (429)，正在尝试切换线路，请稍后...");
   }
+
+  // Auth / Permission
+  if (msg.includes("403") || msg.includes("permission") || msg.includes("api_key_invalid")) {
+    return new Error("API Key 无效或已过期 (403)，请检查设置");
+  }
+
   if (msg.includes("MISSING_API_KEY")) {
-    return new Error("请在设置中输入您的 API Key（右上角）");
-  }
-  if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed to fetch")) {
-    return new Error("网络错误，请检查连接");
+    return new Error("请先在设置中配置有效的 API Key");
   }
 
-  return new Error(msg);
+  // Safety / Policy
+  if (msg.includes("safety") || msg.includes("blocked") || msg.includes("policy")) {
+    return new Error("生成内容被安全策略拦截，请修改提示词");
+  }
+
+  // Argument Error
+  if (msg.includes("400") || msg.includes("invalid_argument")) {
+    return new Error("请求参数无效：模型可能不支持当前配置");
+  }
+
+  // Network / Server
+  if (msg.includes("500") || msg.includes("internal")) {
+    return new Error("谷歌服务器繁忙 (500)，请稍后重试");
+  }
+
+  if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
+    return new Error("网络连接失败，请检查您的网络设置");
+  }
+
+  // Default fallback with translated hint if possible, otherwise original
+  return new Error(`生成失败: ${error.message || '未知错误'}`);
 }
 
 /**

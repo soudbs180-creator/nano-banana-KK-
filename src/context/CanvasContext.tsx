@@ -55,13 +55,20 @@ const DEFAULT_CANVAS: Canvas = {
     lastModified: Date.now()
 };
 
-// Helper to strip image URLs for localStorage (they'll be stored in IndexedDB)
+// Helper to strip image URLs and Reference Image data for localStorage
 const stripImageUrls = (canvases: Canvas[]): Canvas[] => {
     return canvases.map(c => ({
         ...c,
         imageNodes: c.imageNodes.map(img => ({
             ...img,
             url: '' // Clear URL for localStorage, will be loaded from IndexedDB
+        })),
+        promptNodes: c.promptNodes.map(pn => ({
+            ...pn,
+            referenceImages: pn.referenceImages?.map(ref => ({
+                ...ref,
+                data: '' // Clear base64 data for localStorage
+            }))
         }))
     }));
 };
@@ -96,15 +103,31 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const imageMap = await getAllImages();
 
                 // Migrate old images: if localStorage has URLs but IndexedDB doesn't, save them
+                // Also migrate Reference Images
                 let needsMigration = false;
                 const imagesToMigrate: { id: string; url: string }[] = [];
 
                 state.canvases.forEach(c => {
+                    // Check generated images
                     c.imageNodes.forEach(img => {
-                        // If image has URL in state but not in IndexedDB, migrate it
                         if (img.url && img.url.startsWith('data:') && !imageMap.has(img.id)) {
                             imagesToMigrate.push({ id: img.id, url: img.url });
                             needsMigration = true;
+                        }
+                    });
+
+                    // Check reference images in prompt nodes
+                    c.promptNodes.forEach(pn => {
+                        if (pn.referenceImages) {
+                            pn.referenceImages.forEach(ref => {
+                                if (ref.data && !imageMap.has(ref.id)) {
+                                    // Reconstruct data URL if needed or just store raw base64 depending on storage format
+                                    // referenceImages.data is typically just the base64 string, not full URL
+                                    const fullUrl = ref.data.startsWith('data:') ? ref.data : `data:${ref.mimeType};base64,${ref.data}`;
+                                    imagesToMigrate.push({ id: ref.id, url: fullUrl });
+                                    needsMigration = true;
+                                }
+                            });
                         }
                     });
                 });
@@ -116,7 +139,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
 
                 if (needsMigration) {
-                    console.log(`Migrated ${imagesToMigrate.length} images to IndexedDB`);
+                    console.log(`Migrated ${imagesToMigrate.length} images (generated & references) to IndexedDB`);
                 }
 
                 // Update state with images from IndexedDB (or already in state)
@@ -128,6 +151,21 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             imageNodes: c.imageNodes.map(img => ({
                                 ...img,
                                 url: imageMap.get(img.id) || img.url
+                            })),
+                            // Rehydrate reference images
+                            promptNodes: c.promptNodes.map(pn => ({
+                                ...pn,
+                                referenceImages: pn.referenceImages?.map(ref => {
+                                    const storedUrl = imageMap.get(ref.id);
+                                    if (storedUrl) {
+                                        // Parse back the base64 data and mime type
+                                        const matches = storedUrl.match(/^data:(.+);base64,(.+)$/);
+                                        if (matches) {
+                                            return { ...ref, mimeType: matches[1], data: matches[2] };
+                                        }
+                                    }
+                                    return ref;
+                                }) || []
                             }))
                         }))
                     }));
@@ -145,48 +183,52 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     useEffect(() => {
         if (isLoading) return; // Don't save while loading
 
-        try {
-            // Save state with URLs STRIPPED - IndexedDB provides backup storage
-            // We use stripImageUrls to remove large base64 strings
-            const stateToSave = {
-                ...state,
-                canvases: stripImageUrls(state.canvases),
-                // Strip history to save space (can be rebuilt)
-                history: {}
-            };
-            const jsonStr = JSON.stringify(stateToSave);
+        // Debounce saving slightly to avoid thrashing
+        const timer = setTimeout(() => {
+            try {
+                // Save state with URLs STRIPPED - IndexedDB provides backup storage
+                // We use stripImageUrls to remove large base64 strings
+                const stateToSave = {
+                    ...state,
+                    canvases: stripImageUrls(state.canvases),
+                    // Strip history to save space (can be rebuilt)
+                    history: {}
+                };
+                const jsonStr = JSON.stringify(stateToSave);
 
-            // Check size and warn if approaching limit
-            if (jsonStr.length > 4500000) {
-                console.warn('Canvas state approaching localStorage quota limit. Consider clearing old data.');
-            }
-
-            localStorage.setItem(STORAGE_KEY, jsonStr);
-        } catch (error: any) {
-            if (error.name === 'QuotaExceededError') {
-                console.error('localStorage quota exceeded. Trying to save without history...');
-                // Fallback: try saving with minimal data
-                try {
-                    const minimalState = {
-                        ...state,
-                        history: {},
-                        canvases: state.canvases.map(c => ({
-                            ...c,
-                            // Clear prompt node reference images to save space
-                            promptNodes: c.promptNodes.map(p => ({
-                                ...p,
-                                referenceImages: []
-                            }))
-                        }))
-                    };
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(minimalState));
-                } catch (e) {
-                    console.error('Still failed to save canvas state');
+                // Check size and warn if approaching limit
+                if (jsonStr.length > 4500000) {
+                    console.warn('Canvas state approaching localStorage quota limit. Consider clearing old data.');
                 }
-            } else {
-                console.error('Failed to save to localStorage:', error);
+
+                localStorage.setItem(STORAGE_KEY, jsonStr);
+            } catch (error: any) {
+                if (error.name === 'QuotaExceededError') {
+                    console.error('localStorage quota exceeded. Trying to save without history...');
+                    // Fallback: try saving with minimal data
+                    try {
+                        const minimalState = {
+                            ...state,
+                            history: {},
+                            canvases: state.canvases.map(c => ({
+                                ...c,
+                                // Clear prompt node reference images COMPLETELY if needed
+                                promptNodes: c.promptNodes.map(p => ({
+                                    ...p,
+                                    referenceImages: []
+                                }))
+                            }))
+                        };
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(minimalState));
+                    } catch (e) {
+                        console.error('Still failed to save canvas state');
+                    }
+                } else {
+                    console.error('Failed to save to localStorage:', error);
+                }
             }
-        }
+        }, 500);
+        return () => clearTimeout(timer);
     }, [state, isLoading]);
 
     const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
@@ -257,6 +299,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const addPromptNode = useCallback((node: PromptNode) => {
+        // Save reference images to IndexedDB
+        if (node.referenceImages) {
+            node.referenceImages.forEach(ref => {
+                if (ref.data) {
+                    const fullUrl = ref.data.startsWith('data:') ? ref.data : `data:${ref.mimeType};base64,${ref.data}`;
+                    saveImage(ref.id, fullUrl);
+                }
+            });
+        }
         updateCanvas(c => ({
             ...c,
             promptNodes: [...c.promptNodes, node]
@@ -264,6 +315,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, [updateCanvas]);
 
     const updatePromptNode = useCallback((node: PromptNode) => {
+        // Save reference images to IndexedDB
+        if (node.referenceImages) {
+            node.referenceImages.forEach(ref => {
+                if (ref.data) {
+                    const fullUrl = ref.data.startsWith('data:') ? ref.data : `data:${ref.mimeType};base64,${ref.data}`;
+                    saveImage(ref.id, fullUrl);
+                }
+            });
+        }
         updateCanvas(c => ({
             ...c,
             promptNodes: c.promptNodes.map(n => n.id === node.id ? node : n)

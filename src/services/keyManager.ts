@@ -17,6 +17,13 @@ export interface KeySlot {
     lastError: string | null;
     disabled: boolean;
     createdAt: number;
+    quota?: {
+        limitRequests: number;
+        remainingRequests: number;
+        resetConstant?: string; // e.g. "1m"
+        resetTime: number; // timestamp when it resets
+        updatedAt: number;
+    };
 }
 
 interface KeyManagerState {
@@ -314,6 +321,18 @@ class KeyManager {
                 slot.status = 'invalid';
             }
 
+            this.saveState();
+            this.notifyListeners();
+        }
+    }
+
+    /**
+     * Update quota information for a key
+     */
+    updateQuota(keyId: string, quota: KeySlot['quota']): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot && quota) {
+            slot.quota = quota;
             this.saveState();
             this.notifyListeners();
         }

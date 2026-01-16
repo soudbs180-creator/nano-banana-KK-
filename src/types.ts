@@ -44,6 +44,7 @@ export interface GeneratedImage {
   canvasId: string;
   parentPromptId: string;
   position: { x: number; y: number };
+  generationTime?: number; // Duration in ms
 }
 
 export interface PromptNode {

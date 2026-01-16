@@ -119,7 +119,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
         >
             {/* Main Card */}
             <div className={`
-                relative bg-[#18181b] border rounded-2xl p-3 shadow-xl w-[320px] flex flex-col
+                relative bg-[#18181b] border rounded-2xl p-3 shadow-xl w-[320px] max-w-[95vw] flex flex-col select-none
                 ${isDragging ? '' : 'transition-all duration-200'}
                 ${node.isGenerating ? 'border-indigo-500/30' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-white/10 hover:border-white/20'}
             `}>

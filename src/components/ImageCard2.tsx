@@ -209,7 +209,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     return (
         <>
             <div
-                className={`absolute flex flex-col items-center group animate-cardPopIn ${isActive ? 'z-10' : 'z-1'}`}
+                className={`absolute flex flex-col items-center group animate-cardPopIn select-none ${isActive ? 'z-10' : 'z-1'}`}
                 style={{
                     left: position.x,
                     top: position.y,
@@ -258,7 +258,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                             {image.model?.includes('pro') ? 'PRO' : 'FAST'}
                         </span>
 
-                        <div className="flex items-center gap-1">
+                        {/* Generation Time */}
+                        {image.generationTime && (
+                            <span className="text-[9px] text-zinc-500 font-mono ml-2">
+                                {(image.generationTime / 1000).toFixed(1)}s
+                            </span>
+                        )}
+
+                        <div className="flex items-center gap-1 ml-auto">
                             {/* Continue Creation Button */}
 
                             <button

@@ -205,14 +205,54 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = 
                         {/* Header */}
                         <div className="flex items-center justify-between px-5 pb-3">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center relative overflow-hidden">
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                                     </svg>
                                 </div>
                                 <div>
                                     <h2 className="text-white font-semibold text-lg">AI 对话</h2>
-                                    <p className="text-zinc-500 text-xs">Gemini 2.0 Flash</p>
+                                    <button
+                                        className="flex items-center gap-1.5 active:bg-white/10 rounded px-1.5 py-0.5 transition-colors -ml-1.5"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowModelMenu(!showModelMenu);
+                                        }}
+                                    >
+                                        <span className="text-xs text-cyan-400 font-medium">
+                                            {selectedModel === ChatModelType.GEMINI_LITE && 'Gemini'}
+                                            {selectedModel === ChatModelType.GEMINI_3_FLASH && 'Gemini 3 Flash'}
+                                            {selectedModel === ChatModelType.GEMINI_3_PRO && 'Gemini 3 Pro'}
+                                        </span>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-zinc-500">
+                                            <path d="M6 9l6 6 6-6" />
+                                        </svg>
+                                    </button>
+                                    {/* Mobile Model Dropdown */}
+                                    {showModelMenu && (
+                                        <div className="absolute top-16 left-16 mt-1 w-48 bg-[#2c2c2e] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden animate-scaleIn origin-top-left">
+                                            <div className="py-1">
+                                                {[
+                                                    { id: ChatModelType.GEMINI_LITE, label: 'Gemini', desc: '轻量/极速' },
+                                                    { id: ChatModelType.GEMINI_3_FLASH, label: 'Gemini 3 Flash', desc: '平衡/智能' },
+                                                    { id: ChatModelType.GEMINI_3_PRO, label: 'Gemini 3 Pro', desc: '强力/复杂' }
+                                                ].map(model => (
+                                                    <button
+                                                        key={model.id}
+                                                        className={`w-full px-4 py-3 text-left flex flex-col active:bg-white/10 transition-colors ${selectedModel === model.id ? 'bg-white/5' : ''}`}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedModel(model.id);
+                                                            setShowModelMenu(false);
+                                                        }}
+                                                    >
+                                                        <span className={`text-sm font-medium ${selectedModel === model.id ? 'text-cyan-400' : 'text-slate-200'}`}>{model.label}</span>
+                                                        <span className="text-xs text-zinc-500 mt-0.5">{model.desc}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
