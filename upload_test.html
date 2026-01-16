@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>KK Studio - Upload Diagnostic</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        .box {
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 8px;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .error {
+            color: red;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>☁️ Upload Diagnostic</h1>
+    <p>Click the button below to test the connection and upload logic.</p>
+
+    <button onclick="runTest()">Run Test</button>
+
+    <div id="log" class="box" style="background: #f9f9f9; min-height: 200px; white-space: pre-wrap;">Log will appear
+        here...</div>
+
+    <script>
+        // Configuration from your .env
+        const SUPABASE_URL = 'https://ovdjhdofjysanamgkfng.supabase.co';
+        // We ask user to enter key or we try to grab it? 
+        // We can't easily grab .env from HTML file without build step.
+        // We will ask user to input key if they have it, OR we try to read it if we were in the app (we are not).
+        // HARDCODE the ANON KEY from the previous 'view .env' step (Step 2783) for convenience!
+        const SUPABASE_KEY = 'sb_publishable_UvP5c6ShzuoYDtnZppd1yA_3L_m13l0'; // Placeholder logic, but wait, the view_file showed a WEIRD key.
+        // The key in Step 2783 was: 'sb_publishable_UvP5c6ShzuoYDtnZppd1yA_3L_m13l0'
+        // That does NOT look like a standard Supabase Anon Key (usually starts with eyJ...).
+        // "sb_publishable_"?? That looks like a different provider or a custom proxy?
+        // Wait, "ovdjhdofjysanamgkfng.supabase.co" is standard.
+        // If the key is WRONG, that explains EVERYTHING.
+        // Standard Supabase Anon keys are JWTs (eyJ...).
+        // If user put 'sb_publishable_...', maybe they copied the wrong thing?
+
+        // I will use the key found in .env. If it fails, that's the bug!
+
+        async function runTest() {
+            const logEl = document.getElementById('log');
+            const log = (msg, type = 'info') => {
+                const color = type === 'error' ? 'red' : (type === 'success' ? 'green' : 'black');
+                logEl.innerHTML += `<div style="color:${color}">[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            };
+            logEl.innerHTML = '';
+
+            try {
+                log(`Initializing Supabase...`, 'info');
+                log(`URL: ${SUPABASE_URL}`);
+                log(`Key: ${SUPABASE_KEY} (Check if this looks right)`);
+
+                const supabase = updateSupabaseKey();
+
+                // 1. Check Auth
+                log('Checking User Session...', 'info');
+                const { data: { session }, error: authError } = await supabase.auth.getSession();
+
+                if (authError) {
+                    log(`Auth Error: ${authError.message}`, 'error');
+                } else {
+                    if (session) {
+                        log(`User Logged In: ${session.user.email} (${session.user.id})`, 'success');
+                    } else {
+                        log(`⚠️ No active session in this file context. We will try Anonymous Upload (may fail if RLS requires Auth).`, 'warning');
+                        log(`Login first in the main App, then maybe this frame shares session? (Likely not cross-origin/file).`);
+                        // We can try a simple Login if needed? 
+                        // Check if RLS allows anon? 
+                        // Policy: "Users can upload images" -> auth.uid() = owner.
+                        // So Anon CANNOT upload.
+                        // This test is tricky if not integrated.
+
+                        // BUT, checking the CLIENT KEY format is the first step.
+                        // If the key is "sb_publishable...", it is suspicious.
+                    }
+                }
+
+                // Create dummy file
+                const blob = new Blob(['Hello World'], { type: 'text/plain' });
+                const fileName = `test_${Date.now()}.txt`;
+
+                log(`Attempting Upload: generated-images/${fileName}`, 'info');
+
+                const { data, error } = await supabase.storage
+                    .from('generated-images')
+                    .upload(`test/${fileName}`, blob);
+
+                if (error) {
+                    log(`❌ Upload Failed: ${error.message}`, 'error');
+                    log(`Details: ${JSON.stringify(error)}`, 'error');
+                } else {
+                    log(`✅ Upload Success! Path: ${data.path}`, 'success');
+                }
+
+            } catch (e) {
+                log(`Critical Exception: ${e.message}`, 'error');
+            }
+        }
+
+        function updateSupabaseKey() {
+            return supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        }
+    </script>
+</body>
+
+</html>

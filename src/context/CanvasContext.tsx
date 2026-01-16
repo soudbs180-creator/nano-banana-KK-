@@ -151,7 +151,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             ...c,
                             imageNodes: c.imageNodes.map(img => ({
                                 ...img,
-                                url: imageMap.get(img.id) || img.url
+                                url: img.url || imageMap.get(img.id) || '',
+                                // Hydrate originalUrl from IndexedDB (Local Original Cache)
+                                originalUrl: imageMap.get(img.id) || img.originalUrl
                             })),
                             // Rehydrate reference images
                             promptNodes: c.promptNodes.map(pn => ({

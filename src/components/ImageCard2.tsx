@@ -404,7 +404,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     {/* Hint text */}
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center">
                         滚轮缩放 · 拖拽移动 · 双击关闭<br />
-                        <span className="opacity-50 text-[10px]">正在查看原图 (Viewing Original)</span>
+                        <span className="opacity-50 text-[10px]">
+                            {image.originalUrl ? '正在查看原图 (Viewing Original)' : '正在查看预览 (Viewing Preview - Original on Source)'}
+                        </span>
                     </div>
                 </div>,
                 document.body

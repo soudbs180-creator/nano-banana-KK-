@@ -21,6 +21,7 @@ import { Loader2 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import { syncService } from './services/syncService';
+import { saveImage } from './services/imageStorage';
 
 // Canvas Manager Component (Top Left)
 const CanvasManager: React.FC = () => {
@@ -695,7 +696,8 @@ const AppContent: React.FC = () => {
           index,
           url: displayUrl,
           originalUrl,
-          generationTime
+          generationTime,
+          base64: generatedBase64 // Return base64 for local saving
         };
       });
 
@@ -752,7 +754,7 @@ const AppContent: React.FC = () => {
       //   imageY - imageHeight = promptY + 80
       //   imageY = promptY + 80 + imageHeight
 
-      const validResults: GeneratedImage[] = validImageData.map(({ index, url, originalUrl, generationTime }) => {
+      const validResults: GeneratedImage[] = validImageData.map(({ index, url, originalUrl, generationTime, base64 }) => {
         let x, y;
 
         if (isMobile) {
@@ -787,8 +789,17 @@ const AppContent: React.FC = () => {
           y = livePos.y + offsetY;
         }
 
+        const uniqueId = Date.now().toString() + index + Math.random();
+
+        // Save Original to IndexedDB (Local Cache) if available
+        if (base64) {
+          // We save the Base64 string directly as 'url' in IndexedDB
+          // This matches what 'saveImage' expects (id, url)
+          saveImage(uniqueId, base64).catch(err => console.error("Failed to cache original locally", err));
+        }
+
         return {
-          id: Date.now().toString() + index + Math.random(),
+          id: uniqueId,
           url,
           originalUrl,
           prompt: config.prompt,
