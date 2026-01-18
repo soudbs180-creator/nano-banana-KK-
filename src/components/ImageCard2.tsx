@@ -179,10 +179,27 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
+            // Fetch the high-res image
             const response = await fetch(highResUrl);
             if (!response.ok) throw new Error('Download failed (404)');
 
             const blob = await response.blob();
+
+            // Check storage mode - if 'local', save to local folder
+            const { getStorageMode, saveOriginalToLocalFolder } = await import('../services/storagePreference');
+            const storageMode = await getStorageMode();
+
+            if (storageMode === 'local') {
+                // Try to save to local folder
+                const saved = await saveOriginalToLocalFolder(image.id, blob, image.prompt);
+                if (saved) {
+                    console.log('[ImageCard] Saved to local folder');
+                    return; // Success - no need to download
+                }
+                // If local save failed, fall through to browser download
+            }
+
+            // Browser download fallback
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;

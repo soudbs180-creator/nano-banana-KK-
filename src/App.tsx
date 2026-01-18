@@ -15,6 +15,7 @@ import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import ConnectionDot from './components/ConnectionDot';
 import LoginScreen from './components/LoginScreen';
 import UserProfileModal, { UserProfileView } from './components/UserProfileModal';
+import StorageSelectionModal from './components/StorageSelectionModal';
 import { useAuth } from './context/AuthContext';
 import { Loader2 } from 'lucide-react';
 
@@ -352,6 +353,7 @@ const AppContent: React.FC = () => {
 
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileInitialView, setProfileInitialView] = useState<UserProfileView>('main');
+  const [showStorageModal, setShowStorageModal] = useState(false);
 
   useEffect(() => {
     const unsubscribe = keyManager.subscribe(() => {
@@ -360,12 +362,20 @@ const AppContent: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  // Sync user with KeyManager and handle Modal Logic
+  // Sync user with KeyManager and handle Modal Logic (Storage -> API)
   useEffect(() => {
     if (user) {
-      keyManager.setUserId(user.id).then(() => {
-        // Check if we need to show settings (only if no valid keys)
-        if (!keyManager.hasValidKeys()) {
+      // First sync KeyManager
+      keyManager.setUserId(user.id).then(async () => {
+        // Check storage mode first
+        const { getStorageMode } = await import('./services/storagePreference');
+        const storageMode = await getStorageMode();
+
+        if (!storageMode) {
+          // Show storage selection modal first
+          setShowStorageModal(true);
+        } else if (!keyManager.hasValidKeys()) {
+          // Storage configured, check API key
           setProfileInitialView('api-settings');
           setShowProfileModal(true);
         }
@@ -1314,6 +1324,19 @@ const AppContent: React.FC = () => {
         user={user}
         onSignOut={signOut}
         initialView={profileInitialView}
+      />
+
+      {/* Storage Selection Modal (Post-Login) */}
+      <StorageSelectionModal
+        isOpen={showStorageModal}
+        onComplete={() => {
+          setShowStorageModal(false);
+          // After storage configured, check if API key is set
+          if (!keyManager.hasValidKeys()) {
+            setProfileInitialView('api-settings');
+            setShowProfileModal(true);
+          }
+        }}
       />
 
       {error && (

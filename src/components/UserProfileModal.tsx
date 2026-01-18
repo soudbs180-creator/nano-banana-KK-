@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, Component, ErrorInfo, ReactNod
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { keyManager, KeySlot } from '../services/keyManager';
-import { X, ChevronRight, Key, LogOut, User as UserIcon, Lock, Mail, ChevronLeft, Loader2, RefreshCw, AlertTriangle, Sparkles, Pencil, Trash2, LayoutDashboard, List, Activity, Settings as SettingsIcon, Plus } from 'lucide-react';
+import { X, ChevronRight, Key, LogOut, User as UserIcon, Lock, Mail, ChevronLeft, Loader2, RefreshCw, AlertTriangle, Sparkles, Pencil, Trash2, LayoutDashboard, List, Activity, Settings as SettingsIcon, Plus, HardDrive, FolderOpen, Globe } from 'lucide-react';
 
 // Error Boundary
 interface ErrorBoundaryState { hasError: boolean; error: Error | null; }
@@ -30,7 +30,7 @@ class ProfileErrorBoundary extends Component<{ children: ReactNode; onClose: () 
     }
 }
 
-export type UserProfileView = 'main' | 'change-password' | 'forgot-password' | 'api-settings' | 'edit-profile';
+export type UserProfileView = 'main' | 'change-password' | 'forgot-password' | 'api-settings' | 'edit-profile' | 'storage-settings';
 type ApiTab = 'overview' | 'channels' | 'logs';
 
 interface UserProfileModalProps {
@@ -193,6 +193,96 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
         </div>
     );
 
+    // Storage Settings Panel Component
+    const StorageSettingsPanel = ({ onBack }: { onBack: () => void }) => {
+        const [currentMode, setCurrentMode] = React.useState<string | null>(null);
+        const [isLoading, setIsLoading] = React.useState(true);
+        const [isChanging, setIsChanging] = React.useState(false);
+
+        React.useEffect(() => {
+            (async () => {
+                const { getStorageMode } = await import('../services/storagePreference');
+                const mode = await getStorageMode();
+                setCurrentMode(mode);
+                setIsLoading(false);
+            })();
+        }, []);
+
+        const handleChangeToLocal = async () => {
+            setIsChanging(true);
+            const { selectLocalFolder, setStorageMode } = await import('../services/storagePreference');
+            const handle = await selectLocalFolder();
+            if (handle) {
+                await setStorageMode('local');
+                setCurrentMode('local');
+            }
+            setIsChanging(false);
+        };
+
+        const handleChangeToBrowser = async () => {
+            setIsChanging(true);
+            const { setStorageMode } = await import('../services/storagePreference');
+            await setStorageMode('browser');
+            setCurrentMode('browser');
+            setIsChanging(false);
+        };
+
+        return (
+            <div className="space-y-4 text-left">
+                <p className="text-sm text-zinc-400 mb-4">原图存储位置决定了图片的保存方式</p>
+
+                {isLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                        <Loader2 className="animate-spin text-zinc-500" size={24} />
+                    </div>
+                ) : (
+                    <>
+                        {/* Current Mode Display */}
+                        <div className="p-4 bg-zinc-800/50 rounded-xl border border-zinc-700">
+                            <span className="text-xs text-zinc-500 uppercase">当前存储模式</span>
+                            <div className="flex items-center gap-2 mt-1">
+                                {currentMode === 'local' ? (
+                                    <><FolderOpen size={18} className="text-blue-400" /><span className="text-white font-medium">本地文件夹</span></>
+                                ) : (
+                                    <><Globe size={18} className="text-indigo-400" /><span className="text-white font-medium">浏览器存储</span></>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Change Options */}
+                        <div className="space-y-2">
+                            {currentMode !== 'local' && (
+                                <button
+                                    onClick={handleChangeToLocal}
+                                    disabled={isChanging}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors disabled:opacity-50"
+                                >
+                                    <span className="flex items-center gap-3"><FolderOpen size={16} /> 切换到本地文件夹</span>
+                                    {isChanging ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
+                                </button>
+                            )}
+                            {currentMode !== 'browser' && (
+                                <button
+                                    onClick={handleChangeToBrowser}
+                                    disabled={isChanging}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors disabled:opacity-50"
+                                >
+                                    <span className="flex items-center gap-3"><Globe size={16} /> 切换到浏览器存储</span>
+                                    {isChanging ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Info */}
+                        <div className="p-3 bg-zinc-900 rounded-lg text-xs text-zinc-500">
+                            <strong className="text-zinc-400">提示：</strong>缩略图始终同步到云端，切换模式不影响已有图片。
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    };
+
     return (
         <ProfileErrorBoundary onClose={onClose}>
             <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200" onClick={handleClose}>
@@ -236,6 +326,9 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                         <button onClick={() => setView('api-settings')} className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors">
                                             <span className="flex items-center gap-3"><LayoutDashboard size={16} /> One API 面板</span> <ChevronRight size={14} />
                                         </button>
+                                        <button onClick={() => setView('storage-settings')} className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors">
+                                            <span className="flex items-center gap-3"><HardDrive size={16} /> 存储位置</span> <ChevronRight size={14} />
+                                        </button>
                                         <button onClick={onSignOut} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors mt-4">
                                             <span className="flex items-center gap-3"><LogOut size={16} /> 退出登录</span>
                                         </button>
@@ -243,7 +336,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                 </>
                             )}
 
-                            {(view === 'edit-profile' || view === 'change-password') && (
+                            {(view === 'edit-profile' || view === 'change-password' || view === 'storage-settings') && (
                                 <div className="text-center text-zinc-500 py-10">
                                     {view === 'edit-profile' && (
                                         <div className="space-y-4">
@@ -259,6 +352,9 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                             <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800" placeholder="确认新密码" />
                                             <button onClick={handleChangePassword} className="w-full bg-blue-600 py-2 rounded-xl text-white">更新密码</button>
                                         </div>
+                                    )}
+                                    {view === 'storage-settings' && (
+                                        <StorageSettingsPanel onBack={() => setView('main')} />
                                     )}
                                 </div>
                             )}
