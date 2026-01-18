@@ -23,6 +23,8 @@ import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import { syncService } from './services/syncService';
 import { saveImage } from './services/imageStorage';
+import NotificationToast from './components/NotificationToast';
+import { notify } from './services/notificationService';
 
 // Canvas Manager Component (Top Left)
 const CanvasManager: React.FC = () => {
@@ -1395,6 +1397,7 @@ const App: React.FC = () => {
 
   return (
     <CanvasProvider>
+      <NotificationToast />
       <AppContent />
     </CanvasProvider>
   );

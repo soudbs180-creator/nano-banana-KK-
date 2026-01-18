@@ -179,11 +179,28 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
-            // Fetch the high-res image
-            const response = await fetch(highResUrl);
-            if (!response.ok) throw new Error('Download failed (404)');
+            // PRIORITY: Try IndexedDB first (true original, uncompressed)
+            const { getImage } = await import('../services/imageStorage');
+            const indexedDbImage = await getImage(image.id);
 
-            const blob = await response.blob();
+            let blob: Blob;
+
+            if (indexedDbImage && indexedDbImage.startsWith('data:')) {
+                // Found original in IndexedDB - use it (uncompressed)
+                console.log('[ImageCard] Using original from IndexedDB');
+                const res = await fetch(indexedDbImage);
+                blob = await res.blob();
+            } else if (highResUrl && highResUrl.startsWith('data:')) {
+                // Base64 URL directly (already original)
+                const res = await fetch(highResUrl);
+                blob = await res.blob();
+            } else {
+                // Fallback: Fetch from URL (might be thumbnail - last resort)
+                console.warn('[ImageCard] Original not found locally, downloading from URL (may be thumbnail)');
+                const response = await fetch(highResUrl);
+                if (!response.ok) throw new Error('Download failed (404)');
+                blob = await response.blob();
+            }
 
             // Check storage mode - if 'local', save to local folder
             const { getStorageMode, saveOriginalToLocalFolder } = await import('../services/storagePreference');
@@ -208,9 +225,15 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-        } catch (err) {
+        } catch (err: any) {
             console.error('Download failed:', err);
-            alert('下载失败：原图可能已被清理 (Download failed: Original image may have been deleted)');
+            // Import and call notify for AI-readable error
+            const { notify } = await import('../services/notificationService');
+            notify.error(
+                '下载失败',
+                '原图可能已被清理或无法访问',
+                `ImageCard Download Error: ${err.message || err}`
+            );
         }
     };
 

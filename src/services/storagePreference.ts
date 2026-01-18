@@ -55,7 +55,12 @@ export async function getStorageMode(): Promise<StorageMode | null> {
 export async function setStorageMode(mode: StorageMode): Promise<boolean> {
     try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return false;
+        if (!user) {
+            import('./notificationService').then(({ notify }) => {
+                notify.error('存储设置失败', '用户未登录', 'setStorageMode: No authenticated user');
+            });
+            return false;
+        }
 
         const { error } = await supabase
             .from('user_settings')
@@ -68,13 +73,30 @@ export async function setStorageMode(mode: StorageMode): Promise<boolean> {
 
         if (error) {
             console.error('[StoragePreference] Failed to save storage mode:', error);
+            import('./notificationService').then(({ notify }) => {
+                notify.error(
+                    '存储设置失败',
+                    '无法保存到数据库，请检查 Supabase 配置',
+                    `Supabase Error: ${error.code} - ${error.message} | Hint: ${error.hint || 'none'} | Details: ${error.details || 'none'}`
+                );
+            });
             return false;
         }
 
         cachedMode = mode;
+        import('./notificationService').then(({ notify }) => {
+            notify.success('存储设置成功', mode === 'browser' ? '原图将保存在浏览器中' : '原图将保存到本地文件夹');
+        });
         return true;
-    } catch (e) {
+    } catch (e: any) {
         console.error('[StoragePreference] Error setting storage mode:', e);
+        import('./notificationService').then(({ notify }) => {
+            notify.error(
+                '存储设置失败',
+                '发生未知错误',
+                `Exception: ${e.message || e}`
+            );
+        });
         return false;
     }
 }
@@ -151,6 +173,14 @@ export async function selectLocalFolder(): Promise<FileSystemDirectoryHandle | n
     } catch (e: any) {
         if (e.name !== 'AbortError') {
             console.error('[StoragePreference] Folder selection failed:', e);
+            // Dynamic import of notify for error display
+            import('./notificationService').then(({ notify }) => {
+                notify.error(
+                    '文件夹选择失败',
+                    '无法获取文件夹访问权限',
+                    `StoragePreference Error: ${e.message || e}`
+                );
+            });
         }
         return null;
     }
