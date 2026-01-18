@@ -574,42 +574,87 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     /**
      * Arrange all nodes in a compact grid layout
+     * - Prompts are placed above their child images
+     * - Multi-image prompts expand horizontally
+     * - No overlapping
      */
     const arrangeAllNodes = useCallback(() => {
         pushToHistory(); // Allow undo
 
         const CARD_WIDTH = 300;
-        const CARD_HEIGHT = 320;
+        const PROMPT_HEIGHT = 120; // Prompt cards are shorter
+        const IMAGE_HEIGHT = 300;
         const GAP = 24;
         const SLOT_WIDTH = CARD_WIDTH + GAP;
-        const SLOT_HEIGHT = CARD_HEIGHT + GAP;
-        const COLUMNS = 4; // Fixed 4 columns for consistent layout
+        const COLUMNS = 4;
 
         setState(prev => {
             const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
             if (!currentCanvas) return prev;
 
-            // Combine all nodes and sort by timestamp (oldest first)
-            const allItems: { type: 'prompt' | 'image'; id: string; timestamp: number }[] = [
-                ...currentCanvas.promptNodes.map(n => ({ type: 'prompt' as const, id: n.id, timestamp: n.timestamp })),
-                ...currentCanvas.imageNodes.map(n => ({ type: 'image' as const, id: n.id, timestamp: n.timestamp }))
-            ];
-            allItems.sort((a, b) => a.timestamp - b.timestamp);
-
-            // Calculate new positions in grid
             const promptPositions: { [id: string]: { x: number; y: number } } = {};
             const imagePositions: { [id: string]: { x: number; y: number } } = {};
 
-            allItems.forEach((item, index) => {
-                const row = Math.floor(index / COLUMNS);
-                const col = index % COLUMNS;
-                const pos = { x: col * SLOT_WIDTH, y: row * SLOT_HEIGHT };
+            // Group prompts with their child images
+            const promptGroups = currentCanvas.promptNodes
+                .map(pn => ({
+                    prompt: pn,
+                    images: currentCanvas.imageNodes.filter(img => img.parentPromptId === pn.id)
+                }))
+                .sort((a, b) => a.prompt.timestamp - b.prompt.timestamp);
 
-                if (item.type === 'prompt') {
-                    promptPositions[item.id] = pos;
-                } else {
-                    imagePositions[item.id] = pos;
+            // Find orphan images (no parent prompt)
+            const orphanImages = currentCanvas.imageNodes.filter(
+                img => !currentCanvas.promptNodes.some(pn => pn.id === img.parentPromptId)
+            );
+
+            let currentRow = 0;
+            let currentCol = 0;
+
+            // Layout each prompt group (prompt + its images)
+            promptGroups.forEach(group => {
+                const imageCount = group.images.length;
+                const columnsNeeded = Math.max(1, imageCount);
+
+                // If this group won't fit on current row, move to next row
+                if (currentCol + columnsNeeded > COLUMNS && currentCol > 0) {
+                    currentRow++;
+                    currentCol = 0;
                 }
+
+                // Calculate Y positions for this group
+                const promptY = currentRow * (PROMPT_HEIGHT + IMAGE_HEIGHT + GAP * 2);
+                const imageY = promptY + PROMPT_HEIGHT + GAP;
+
+                // Place prompt (centered above its images if multiple)
+                const promptX = currentCol * SLOT_WIDTH + (columnsNeeded - 1) * SLOT_WIDTH / 2;
+                promptPositions[group.prompt.id] = { x: promptX, y: promptY };
+
+                // Place child images in a row below the prompt
+                group.images.forEach((img, imgIndex) => {
+                    const imgX = (currentCol + imgIndex) * SLOT_WIDTH;
+                    imagePositions[img.id] = { x: imgX, y: imageY };
+                });
+
+                // Move column pointer
+                currentCol += columnsNeeded;
+
+                // If we filled the row, move to next
+                if (currentCol >= COLUMNS) {
+                    currentRow++;
+                    currentCol = 0;
+                }
+            });
+
+            // Layout orphan images at the end
+            orphanImages.forEach(img => {
+                if (currentCol >= COLUMNS) {
+                    currentRow++;
+                    currentCol = 0;
+                }
+                const y = currentRow * (PROMPT_HEIGHT + IMAGE_HEIGHT + GAP * 2) + PROMPT_HEIGHT + GAP;
+                imagePositions[img.id] = { x: currentCol * SLOT_WIDTH, y };
+                currentCol++;
             });
 
             return {
