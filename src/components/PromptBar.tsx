@@ -404,6 +404,57 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                     {/* Right: Actions */}
                     <div className="input-bar-actions">
+                        {/* Tools - Clean Icon */}
+                        <div className="relative">
+                            <button
+                                className={`input-bar-option group ${config.enableGrounding ? 'text-indigo-400 bg-indigo-500/10' : ''}`}
+                                onClick={() => toggleMenu('tools')}
+                                title="工具与设置"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors ${config.enableGrounding ? 'text-indigo-400' : 'text-zinc-400 group-hover:text-indigo-400'}`}>
+                                    <circle cx="12" cy="12" r="10" />
+                                    <line x1="2" y1="12" x2="22" y2="12" />
+                                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                </svg>
+                            </button>
+                            {activeMenu === 'tools' && (
+                                <div
+                                    className="absolute bottom-full mb-2 z-20"
+                                    style={{ left: '50%', transform: 'translateX(-50%)' }}
+                                >
+                                    <div className="dropdown static w-64 animate-scaleIn origin-bottom p-2">
+                                        <div className="text-[10px] font-bold text-zinc-500 px-2 py-1 uppercase tracking-wider">Tools</div>
+
+                                        <button
+                                            className={`w-full px-2 py-2 flex items-center justify-between rounded-lg hover:bg-white/5 transition-colors ${!config.model.includes('gemini') ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            onClick={() => {
+                                                if (config.model.includes('gemini')) {
+                                                    setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }));
+                                                } else {
+                                                    alert("Grounding 仅支持 Gemini 系列模型");
+                                                }
+                                            }}
+                                        >
+                                            <div className="flex flex-col items-start gap-0.5">
+                                                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-200">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
+                                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                                    </svg>
+                                                    Grounding with Google Search
+                                                </div>
+                                                <div className="text-[10px] text-zinc-500">使用谷歌搜索优化生成结果</div>
+                                            </div>
+
+                                            {/* Toggle Switch */}
+                                            <div className={`w-8 h-4 rounded-full relative transition-colors ${config.enableGrounding ? 'bg-indigo-500' : 'bg-zinc-700'}`}>
+                                                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${config.enableGrounding ? 'left-4.5' : 'left-0.5'}`} style={{ left: config.enableGrounding ? '18px' : '2px' }} />
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         {/* Parallel Count - Clean Icon */}
                         <div className="relative">
                             <button

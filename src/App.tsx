@@ -379,7 +379,8 @@ const AppContent: React.FC = () => {
     imageSize: ImageSize.SIZE_1K,
     parallelCount: 1,
     referenceImages: [],
-    model: ModelType.NANO_BANANA_PRO
+    model: ModelType.NANO_BANANA_PRO,
+    enableGrounding: false // Default to false
   });
 
   // Pending generation state
@@ -417,9 +418,18 @@ const AppContent: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile && !isSidebarOpen) setIsSidebarOpen(true); // Auto-open on desktop if closed? Or just default?
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, [isSidebarOpen]);
+
+  // Initial Sidebar State
+  useEffect(() => {
+    if (!isMobile) setIsSidebarOpen(true);
   }, []);
 
   // Keyboard Shortcuts (Undo/Redo)
@@ -659,52 +669,74 @@ const AppContent: React.FC = () => {
 
       const imageDataPromises = Array.from({ length: count }).map(async (_, index) => {
         const startTime = Date.now();
-        const generatedBase64 = await generateImage(
-          promptToUse,
-          config.aspectRatio,
-          config.imageSize,
-          finalReferenceImages,
-          config.model,
-          '', // apiKey (handled internally)
-          promptNodeId // requestId for cancellation
-        );
-        const generationTime = Date.now() - startTime;
+        const currentRequestId = `${promptNodeId}-${index}`;
 
-        let originalUrl = '';
-        let displayUrl = generatedBase64;
+        // Timeout Check (4 minutes)
+        let isFinished = false;
+        const timeoutId = setTimeout(() => {
+          if (!isFinished) {
+            cancelGeneration(currentRequestId);
+            alert("生成超时 (4分钟)，已自动停止。请检查网络或稍后重试。");
+          }
+        }, 240000); // 4 minutes
 
-        // --- Cloud Sync Upgrade: Upload Generated Image ---
         try {
-          // Convert Base64 to Blob
-          const res = await fetch(generatedBase64);
-          const blob = await res.blob();
+          const generatedBase64 = await generateImage(
+            promptToUse,
+            config.aspectRatio,
+            config.imageSize,
+            finalReferenceImages,
+            config.model,
+            '', // apiKey (handled internally)
+            currentRequestId, // Unique requestId for cancellation
+            config.enableGrounding // Pass grounding config
+          );
+          isFinished = true;
+          clearTimeout(timeoutId);
 
-          // Upload (Generate Thumb + Original)
-          const id = `${Date.now()}_${index}`; // Temporary ID for upload path
-          const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
+          const generationTime = Date.now() - startTime;
 
-          // Success: Use Cloud URLs
-          originalUrl = original;
-          displayUrl = thumbnail;
+          let originalUrl = '';
+          let displayUrl = generatedBase64;
 
-        } catch (e) {
-          console.warn('Cloud upload failed, falling back to local base64:', e);
-          // Fallback: url stays as base64, originalUrl empty
+          // --- Cloud Sync Upgrade: Upload Generated Image ---
+          try {
+            // Convert Base64 to Blob
+            const res = await fetch(generatedBase64);
+            const blob = await res.blob();
+
+            // Upload (Generate Thumb + Original)
+            const id = `${Date.now()}_${index}`; // Temporary ID for upload path
+            const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
+
+            // Success: Use Cloud URLs
+            originalUrl = original;
+            displayUrl = thumbnail;
+
+          } catch (e) {
+            console.warn('Cloud upload failed, falling back to local base64:', e);
+            // Fallback: url stays as base64, originalUrl empty
+          }
+
+          return {
+            index,
+            url: displayUrl,
+            originalUrl,
+            generationTime,
+            base64: generatedBase64 // Return base64 for local saving
+          };
+        } catch (error: any) {
+          isFinished = true;
+          clearTimeout(timeoutId);
+          console.error(`Generation ${index} failed:`, error);
+          return null;
         }
-
-        return {
-          index,
-          url: displayUrl,
-          originalUrl,
-          generationTime,
-          base64: generatedBase64 // Return base64 for local saving
-        };
       });
 
       const imageData = await Promise.all(imageDataPromises);
 
       // Validate results
-      const validImageData = imageData.filter(d => d && d.url);
+      const validImageData = imageData.filter((d): d is NonNullable<typeof d> => !!d && !!d.url);
       if (validImageData.length === 0) {
         throw new Error('All generated images were invalid');
       }
@@ -1304,6 +1336,20 @@ const AppContent: React.FC = () => {
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
         v1.1.3
       </div>
+
+      {/* Sidebar Toggle Button (Visible when sidebar is closed or on mobile) */}
+      {(!isSidebarOpen || isMobile) && (
+        <button
+          onClick={() => setIsSidebarOpen(true)}
+          className="fixed top-4 left-4 z-50 p-2 bg-[#1c1c1e]/80 backdrop-blur-md border border-zinc-800 text-zinc-400 hover:text-white rounded-lg shadow-lg transition-all hover:scale-105"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 };

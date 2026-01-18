@@ -88,13 +88,15 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
         if (isOpen) {
             setView(initialView);
             setApiTab('overview');
-            setMobileMenuOpen(true); // Always start with menu on mobile
+            // On mobile: show menu first (mobileMenuOpen = true)
+            // On desktop: show both sidebar and content (mobileMenuOpen doesn't matter for desktop layout)
+            setMobileMenuOpen(isMobile);
             if (user?.user_metadata) {
                 setDisplayName(user.user_metadata.full_name || '');
                 setAvatarUrl(user.user_metadata.avatar_url || '');
             }
         }
-    }, [isOpen, initialView, user]);
+    }, [isOpen, initialView, user, isMobile]);
 
     useEffect(() => {
         if (isOpen && view === 'api-settings') {
@@ -169,14 +171,10 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
     const userDisplayName = user?.user_metadata?.full_name || '用户';
     const userAvatarUrl = user?.user_metadata?.avatar_url;
 
-    // --- Components ---
-    const SideBarItem = ({ id, icon: Icon, label }: { id: ApiTab, icon: any, label: string }) => (
+    const SideBarItem = ({ id, icon: Icon, label, active, onClick, isMobile }: { id: ApiTab, icon: any, label: string, active: boolean, onClick: (id: ApiTab) => void, isMobile: boolean }) => (
         <button
-            onClick={() => {
-                setApiTab(id);
-                if (isMobile) setMobileMenuOpen(false); // Force content view on click
-            }}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${apiTab === id ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
+            onClick={() => onClick(id)}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${active ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
         >
             <Icon size={16} />
             {label}
@@ -271,8 +269,11 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                     {/* --- MAC DASHBOARD VIEW --- */}
                     {view === 'api-settings' && (
                         <div className="flex w-full h-full bg-[#0d0d0e] overflow-hidden">
-                            {/* Sidebar: Hidden on mobile if menu closed */}
-                            <div className={`${isMobile && !mobileMenuOpen ? 'hidden' : 'flex'} w-full md:w-64 bg-[#161618] border-r border-white/5 flex-col p-4 shrink-0 transition-all`}>
+                            {/* Sidebar: On mobile toggles full-screen, on desktop fixed width */}
+                            <div className={`
+                                ${isMobile ? (mobileMenuOpen ? 'flex w-full' : 'hidden') : 'flex w-64'}
+                                bg-[#161618] border-r border-white/5 flex-col p-4 shrink-0 transition-all
+                            `}>
                                 <div className="flex items-center gap-3 px-2 mb-8 mt-2">
                                     <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
                                         <LayoutDashboard size={18} />
@@ -282,9 +283,30 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
 
                                 <div className="space-y-1 flex-1">
                                     <div className="px-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">平台管理</div>
-                                    <SideBarItem id="overview" icon={LayoutDashboard} label="概览 (Overview)" />
-                                    <SideBarItem id="channels" icon={List} label="渠道 (Channels)" />
-                                    <SideBarItem id="logs" icon={Activity} label="日志 (Logs)" />
+                                    <SideBarItem
+                                        id="overview"
+                                        icon={LayoutDashboard}
+                                        label="概览 (Overview)"
+                                        active={apiTab === 'overview'}
+                                        onClick={(id) => { setApiTab(id); if (isMobile) setMobileMenuOpen(false); }}
+                                        isMobile={isMobile}
+                                    />
+                                    <SideBarItem
+                                        id="channels"
+                                        icon={List}
+                                        label="渠道 (Channels)"
+                                        active={apiTab === 'channels'}
+                                        onClick={(id) => { setApiTab(id); if (isMobile) setMobileMenuOpen(false); }}
+                                        isMobile={isMobile}
+                                    />
+                                    <SideBarItem
+                                        id="logs"
+                                        icon={Activity}
+                                        label="日志 (Logs)"
+                                        active={apiTab === 'logs'}
+                                        onClick={(id) => { setApiTab(id); if (isMobile) setMobileMenuOpen(false); }}
+                                        isMobile={isMobile}
+                                    />
                                 </div>
 
                                 <div className="pt-4 border-t border-white/5">
@@ -296,8 +318,11 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                 </div>
                             </div>
 
-                            {/* Content Area: Hidden on mobile if menu OPEN */}
-                            <div className={`${isMobile && mobileMenuOpen ? 'hidden' : 'flex'} flex-1 flex-col min-w-0 bg-[#0d0d0e]`}>
+                            {/* Content Area: On mobile toggles visibility, on desktop always visible */}
+                            <div className={`
+                                ${isMobile ? (mobileMenuOpen ? 'hidden' : 'flex') : 'flex'}
+                                flex-1 flex-col min-w-0 bg-[#0d0d0e]
+                            `}>
                                 {/* Header */}
                                 <div className="h-14 border-b border-white/5 flex items-center justify-between px-6 bg-[#0d0d0e]/50 backdrop-blur-xl z-10 sticky top-0">
                                     <div className="flex items-center gap-2">
@@ -427,6 +452,14 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                                                             <span className="text-[10px] text-zinc-500 font-mono">{percent.toFixed(0)}%</span>
                                                                         </div>
                                                                     ) : <span className="text-[10px] text-zinc-600">暂无配额数据</span>}
+
+                                                                    {/* Token Usage Badge */}
+                                                                    {slot.usedTokens !== undefined && slot.usedTokens > 0 && (
+                                                                        <div className="mt-1 flex items-center gap-1">
+                                                                            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Used:</span>
+                                                                            <span className="text-xs font-mono text-indigo-400">{slot.usedTokens.toLocaleString()} Tokens</span>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
 
                                                                 <div className="text-right">

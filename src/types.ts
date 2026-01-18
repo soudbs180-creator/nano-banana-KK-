@@ -80,4 +80,5 @@ export interface GenerationConfig {
   referenceImages: ReferenceImage[];
   parallelCount: number;
   model: ModelType;
+  enableGrounding: boolean; // New Flag
 }

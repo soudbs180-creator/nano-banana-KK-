@@ -17,6 +17,7 @@ export interface KeySlot {
     lastError: string | null;
     disabled: boolean;
     createdAt: number;
+    usedTokens?: number; // Total tokens consumed
     quota?: {
         limitRequests: number;
         remainingRequests: number;
@@ -44,6 +45,20 @@ class KeyManager {
     constructor() {
         this.state = this.loadState();
     }
+
+    /**
+     * Add token usage to a key
+     */
+    addUsage(keyId: string, tokens: number): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot) {
+            slot.usedTokens = (slot.usedTokens || 0) + tokens;
+            this.saveState();
+            this.notifyListeners();
+        }
+    }
+
+
 
     /**
      * Load state from localStorage
