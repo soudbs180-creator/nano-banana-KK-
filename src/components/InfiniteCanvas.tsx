@@ -4,6 +4,8 @@ interface InfiniteCanvasProps {
     children: React.ReactNode;
     onTransformChange?: (transform: { x: number; y: number; scale: number }) => void;
     onCanvasClick?: () => void; // Called when clicking empty canvas area
+    onAutoArrange?: () => void; // Called when arrange button is clicked
+    cardPositions?: { x: number; y: number }[]; // For auto-arrange calculation
 }
 
 interface Transform {
@@ -12,7 +14,7 @@ interface Transform {
     scale: number;
 }
 
-const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformChange, onCanvasClick }) => {
+const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformChange, onCanvasClick, onAutoArrange }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
     const [isDragging, setIsDragging] = useState(false);
@@ -250,6 +252,17 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
                             <circle cx="18" cy="18" r="2" />
                         </svg>
                     </button>
+                    {/* 5. Auto Arrange */}
+                    {onAutoArrange && (
+                        <button className="toolbar-btn" onClick={onAutoArrange} title="整理排版 (Arrange)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="7" height="7" rx="1" />
+                                <rect x="14" y="3" width="7" height="7" rx="1" />
+                                <rect x="3" y="14" width="7" height="7" rx="1" />
+                                <rect x="14" y="14" width="7" height="7" rx="1" />
+                            </svg>
+                        </button>
+                    )}
                 </div>
             </div>
 

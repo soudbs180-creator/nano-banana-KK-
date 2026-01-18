@@ -335,7 +335,8 @@ const AppContent: React.FC = () => {
     undo,
     redo,
     canUndo,
-    canRedo
+    canRedo,
+    arrangeAllNodes
   } = useCanvas();
 
   const { user, signOut } = useAuth();
@@ -1104,7 +1105,7 @@ const AppContent: React.FC = () => {
             setConfig(prev => ({ ...prev, prompt: '' }));
           }
         }}
-        onAutoArrange={handleAutoArrange}
+        onAutoArrange={arrangeAllNodes}
       >
         {/* 1. Connection Lines Layer (SVG) - Below all cards */}
         <svg

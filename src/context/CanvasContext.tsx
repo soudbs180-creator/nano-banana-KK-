@@ -40,6 +40,7 @@ interface CanvasContextType {
     pushToHistory: () => void;
     canUndo: boolean;
     canRedo: boolean;
+    arrangeAllNodes: () => void; // Auto-layout cards in compact grid
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -571,12 +572,73 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
     }, []);
 
+    /**
+     * Arrange all nodes in a compact grid layout
+     */
+    const arrangeAllNodes = useCallback(() => {
+        pushToHistory(); // Allow undo
+
+        const CARD_WIDTH = 300;
+        const CARD_HEIGHT = 320;
+        const GAP = 24;
+        const SLOT_WIDTH = CARD_WIDTH + GAP;
+        const SLOT_HEIGHT = CARD_HEIGHT + GAP;
+        const COLUMNS = 4; // Fixed 4 columns for consistent layout
+
+        setState(prev => {
+            const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
+            if (!currentCanvas) return prev;
+
+            // Combine all nodes and sort by timestamp (oldest first)
+            const allItems: { type: 'prompt' | 'image'; id: string; timestamp: number }[] = [
+                ...currentCanvas.promptNodes.map(n => ({ type: 'prompt' as const, id: n.id, timestamp: n.timestamp })),
+                ...currentCanvas.imageNodes.map(n => ({ type: 'image' as const, id: n.id, timestamp: n.timestamp }))
+            ];
+            allItems.sort((a, b) => a.timestamp - b.timestamp);
+
+            // Calculate new positions in grid
+            const promptPositions: { [id: string]: { x: number; y: number } } = {};
+            const imagePositions: { [id: string]: { x: number; y: number } } = {};
+
+            allItems.forEach((item, index) => {
+                const row = Math.floor(index / COLUMNS);
+                const col = index % COLUMNS;
+                const pos = { x: col * SLOT_WIDTH, y: row * SLOT_HEIGHT };
+
+                if (item.type === 'prompt') {
+                    promptPositions[item.id] = pos;
+                } else {
+                    imagePositions[item.id] = pos;
+                }
+            });
+
+            return {
+                ...prev,
+                canvases: prev.canvases.map(c => {
+                    if (c.id !== prev.activeCanvasId) return c;
+                    return {
+                        ...c,
+                        promptNodes: c.promptNodes.map(n => ({
+                            ...n,
+                            position: promptPositions[n.id] || n.position
+                        })),
+                        imageNodes: c.imageNodes.map(n => ({
+                            ...n,
+                            position: imagePositions[n.id] || n.position
+                        })),
+                        lastModified: Date.now()
+                    };
+                })
+            };
+        });
+    }, [pushToHistory]);
+
     return (
         <CanvasContext.Provider value={{
             state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
             addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition,
             deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
-            undo, redo, pushToHistory, canUndo, canRedo
+            undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes
         }}>
             {children}
         </CanvasContext.Provider>
