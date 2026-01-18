@@ -78,7 +78,6 @@ const LoginScreen: React.FC = () => {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="w-full bg-[#2c2c2e] border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-colors"
-                            placeholder="name@example.com"
                             required
                         />
                     </div>
@@ -90,7 +89,6 @@ const LoginScreen: React.FC = () => {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             className="w-full bg-[#2c2c2e] border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-colors"
-                            placeholder="••••••••"
                             required
                             minLength={6}
                         />
