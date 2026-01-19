@@ -577,49 +577,65 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
      * Arrange all nodes in a compact horizontal-first layout
      * - All cards arrange left-to-right, wrap to next row
      * - No overlapping
-     * - Cards sorted by timestamp
+     * - Prompts in row, child images below each prompt
+     * - Groups arranged left-to-right
      */
     const arrangeAllNodes = useCallback(() => {
         pushToHistory(); // Allow undo
 
-        const CARD_WIDTH = 280;
-        const CARD_HEIGHT = 320; // Unified height for all cards
-        const GAP_X = 20;
-        const GAP_Y = 20;
-        const MAX_WIDTH = 1600; // Max row width before wrapping
+        const CARD_WIDTH = 200;
+        const PROMPT_HEIGHT = 160;
+        const IMAGE_HEIGHT = 200;
+        const GAP_X = 16;
+        const GAP_Y = 16;
         const SLOT_WIDTH = CARD_WIDTH + GAP_X;
-        const SLOT_HEIGHT = CARD_HEIGHT + GAP_Y;
 
         setState(prev => {
             const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
             if (!currentCanvas) return prev;
 
-            // Collect all cards (prompts + images) and sort by timestamp
-            type CardItem = { id: string; type: 'prompt' | 'image'; timestamp: number };
-            const allCards: CardItem[] = [
-                ...currentCanvas.promptNodes.map(n => ({ id: n.id, type: 'prompt' as const, timestamp: n.timestamp })),
-                ...currentCanvas.imageNodes.map(n => ({ id: n.id, type: 'image' as const, timestamp: n.timestamp }))
-            ].sort((a, b) => a.timestamp - b.timestamp);
-
             const promptPositions: { [id: string]: { x: number; y: number } } = {};
             const imagePositions: { [id: string]: { x: number; y: number } } = {};
 
+            // Group prompts with their child images
+            const promptGroups = currentCanvas.promptNodes
+                .map(pn => ({
+                    prompt: pn,
+                    images: currentCanvas.imageNodes.filter(img => img.parentPromptId === pn.id)
+                }))
+                .sort((a, b) => a.prompt.timestamp - b.prompt.timestamp);
+
+            // Find orphan images (no parent prompt)
+            const orphanImages = currentCanvas.imageNodes.filter(
+                img => !currentCanvas.promptNodes.some(pn => pn.id === img.parentPromptId)
+            );
+
             let currentX = 0;
-            let currentY = 0;
-            const columnsPerRow = Math.floor(MAX_WIDTH / SLOT_WIDTH);
 
-            allCards.forEach((card, index) => {
-                const col = index % columnsPerRow;
-                const row = Math.floor(index / columnsPerRow);
+            // Layout each prompt group (prompt on top, images below)
+            promptGroups.forEach(group => {
+                const imageCount = Math.max(1, group.images.length);
+                const groupWidth = imageCount * SLOT_WIDTH;
 
-                const x = col * SLOT_WIDTH;
-                const y = row * SLOT_HEIGHT;
+                // Place prompt at top-left of group
+                promptPositions[group.prompt.id] = { x: currentX, y: 0 };
 
-                if (card.type === 'prompt') {
-                    promptPositions[card.id] = { x, y };
-                } else {
-                    imagePositions[card.id] = { x, y };
-                }
+                // Place child images in a row below the prompt
+                group.images.forEach((img, imgIndex) => {
+                    imagePositions[img.id] = {
+                        x: currentX + imgIndex * SLOT_WIDTH,
+                        y: PROMPT_HEIGHT + GAP_Y
+                    };
+                });
+
+                // Move X pointer for next group
+                currentX += groupWidth;
+            });
+
+            // Layout orphan images at the end
+            orphanImages.forEach(img => {
+                imagePositions[img.id] = { x: currentX, y: PROMPT_HEIGHT + GAP_Y };
+                currentX += SLOT_WIDTH;
             });
 
             return {
