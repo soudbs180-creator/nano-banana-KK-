@@ -16,6 +16,42 @@ interface SettingsPanelProps {
 
 const DashboardView = ({ keyStats }: { keyStats: any }) => {
     const dailyCosts = getTodayCosts();
+    const [budget, setBudget] = React.useState<number>(-1);
+    const [isEditingBudget, setIsEditingBudget] = React.useState(false);
+    const [newBudget, setNewBudget] = React.useState('');
+
+    useEffect(() => {
+        import('../services/costService').then(mod => {
+            setBudget(mod.getDailyBudget());
+        });
+    }, []);
+
+    const handleSaveBudget = async () => {
+        const val = parseFloat(newBudget);
+        if (!isNaN(val) && val >= 0) {
+            const mod = await import('../services/costService');
+            mod.setDailyBudget(val);
+            setBudget(val);
+        } else {
+            // Treat empty or invalid as unlimited if intended, 
+            // but here let's assume specific input. 
+            // If user clears input, maybe set to -1?
+            if (newBudget.trim() === '') {
+                const mod = await import('../services/costService');
+                mod.setDailyBudget(-1);
+                setBudget(-1);
+            }
+        }
+        setIsEditingBudget(false);
+    };
+
+    const toggleInfinite = async () => {
+        const mod = await import('../services/costService');
+        mod.setDailyBudget(-1);
+        setBudget(-1);
+        setIsEditingBudget(false);
+    };
+
     // dailyCosts is already the DailyCostData for today
     const todayData = {
         count: dailyCosts.totalImages,
@@ -23,9 +59,14 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
         costUsd: dailyCosts.totalCostUsd
     };
 
+    const budgetPercent = budget > 0 ? Math.min(100, (todayData.costUsd / budget) * 100) : 0;
+
     return (
         <div className="space-y-6">
-            <h3 className="text-2xl font-bold text-white mb-6">仪表盘 Dashboard</h3>
+            <h3 className="text-2xl font-bold text-white mb-6">
+                设置 Settings
+                <span className="block text-xs text-zinc-500 font-normal mt-1">System Dashboard & Preferences</span>
+            </h3>
 
             <div className="grid grid-cols-4 grid-rows-2 gap-4 h-[320px]">
                 {/* Hero Card: Cost */}
@@ -35,7 +76,10 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                     <div className="flex flex-col h-full justify-between relative z-10">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400"><DollarSign size={24} /></div>
-                            <span className="text-zinc-400 font-medium">今日预估成本</span>
+                            <div>
+                                <span className="text-zinc-400 font-medium block">今日预估成本</span>
+                                <span className="text-xs text-zinc-600 block">Today's Estimated Cost</span>
+                            </div>
                         </div>
 
                         <div>
@@ -48,11 +92,41 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                         </div>
 
                         <div className="w-full bg-zinc-800/50 h-1.5 rounded-full overflow-hidden mt-4">
-                            <div className="h-full bg-indigo-500 w-[15%]" />
+                            <div
+                                className={`h-full w-[${budget > 0 ? Math.round(budgetPercent) : 5}%] transition-all duration-500 ${budget > 0 && budgetPercent > 90 ? 'bg-red-500' : 'bg-indigo-500'}`}
+                                style={{ width: `${budget > 0 ? budgetPercent : 5}%` }}
+                            />
                         </div>
-                        <div className="flex justify-between text-xs text-zinc-500 mt-2">
-                            <span>Daily Budget</span>
-                            <span>$5.00</span>
+                        <div className="flex justify-between items-center text-xs text-zinc-500 mt-2">
+                            <div className="flex items-center gap-2">
+                                <span>每日预算 Daily Budget</span>
+                            </div>
+
+                            {isEditingBudget ? (
+                                <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-200">
+                                    <input
+                                        autoFocus
+                                        className="w-16 bg-zinc-800 text-white rounded px-1 py-0.5 text-right outline-none border border-indigo-500/50"
+                                        placeholder="$"
+                                        value={newBudget}
+                                        onChange={e => setNewBudget(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleSaveBudget()}
+                                    />
+                                    <button onClick={handleSaveBudget} className="text-emerald-500 hover:text-emerald-400"><Check size={14} /></button>
+                                    <button onClick={toggleInfinite} className="text-indigo-500 hover:text-indigo-400 text-[10px] whitespace-nowrap">无限 ∞</button>
+                                    <button onClick={() => setIsEditingBudget(false)} className="text-red-500 hover:text-red-400"><X size={14} /></button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => { setNewBudget(budget > 0 ? budget.toString() : ''); setIsEditingBudget(true); }}
+                                    className="flex items-center gap-1 hover:text-white transition-colors group/btn"
+                                >
+                                    <span className="font-mono">
+                                        {budget < 0 ? '无限 (Unlimited)' : `$${budget.toFixed(2)}`}
+                                    </span>
+                                    <div className="opacity-0 group-hover/btn:opacity-100 transition-opacity"><ScrollText size={10} /></div>
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -60,17 +134,23 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                 {/* Secondary Card: Images */}
                 <div className="col-span-1 row-span-1 bg-[#1c1c1e] p-5 rounded-2xl border border-zinc-800/50 flex flex-col justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
                     <div className="absolute right-3 top-3 text-zinc-600 group-hover:text-emerald-500 transition-colors"><Sparkles size={20} /></div>
-                    <div className="text-zinc-400 text-sm font-medium">今日生成</div>
+                    <div>
+                        <div className="text-zinc-400 text-sm font-medium">今日生成</div>
+                        <div className="text-xs text-zinc-600">Images Generated</div>
+                    </div>
                     <div className="flex items-baseline gap-1">
                         <span className="text-3xl font-bold text-white font-mono">{todayData.count}</span>
-                        <span className="text-xs text-zinc-500">张</span>
+                        <span className="text-xs text-zinc-500">张 (Count)</span>
                     </div>
                 </div>
 
                 {/* Secondary Card: Tokens */}
                 <div className="col-span-1 row-span-1 bg-[#1c1c1e] p-5 rounded-2xl border border-zinc-800/50 flex flex-col justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
                     <div className="absolute right-3 top-3 text-zinc-600 group-hover:text-blue-500 transition-colors"><Activity size={20} /></div>
-                    <div className="text-zinc-400 text-sm font-medium">Token 消耗</div>
+                    <div>
+                        <div className="text-zinc-400 text-sm font-medium">Token 消耗</div>
+                        <div className="text-xs text-zinc-600">Tokens Used</div>
+                    </div>
                     <div className="flex items-baseline gap-1">
                         <span className="text-2xl font-bold text-white font-mono">{(todayData.tokens / 1000).toFixed(1)}</span>
                         <span className="text-xs text-zinc-500">k</span>
@@ -86,10 +166,11 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                             </div>
                             <div>
                                 <div className="text-sm font-medium text-zinc-300">API 渠道状态</div>
-                                <div className="text-xs text-zinc-500 flex gap-2 mt-0.5">
-                                    <span className="text-emerald-500">{keyStats.valid} 正常</span>
+                                <div className="text-xs text-zinc-600">API Channels Status</div>
+                                <div className="text-xs text-zinc-500 flex gap-2 mt-1">
+                                    <span className="text-emerald-500">{keyStats.valid} 正常 (Active)</span>
                                     <span className="text-zinc-600">|</span>
-                                    <span className={keyStats.invalid > 0 ? "text-red-500" : "text-zinc-600"}>{keyStats.invalid} 异常</span>
+                                    <span className={keyStats.invalid > 0 ? "text-red-500" : "text-zinc-600"}>{keyStats.invalid} 异常 (Error)</span>
                                 </div>
                             </div>
                         </div>

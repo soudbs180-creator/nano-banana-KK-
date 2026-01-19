@@ -234,3 +234,15 @@ export function getModelDisplayName(model: string): string {
         .replace(/-/g, ' ')
         .replace(/\b\w/g, c => c.toUpperCase());
 }
+
+const BUDGET_STORAGE_KEY = 'kk_studio_daily_budget';
+
+export function getDailyBudget(): number {
+    const stored = localStorage.getItem(BUDGET_STORAGE_KEY);
+    // Default to -1 (Unlimited) if not set
+    return stored ? parseFloat(stored) : -1;
+}
+
+export function setDailyBudget(amount: number): void {
+    localStorage.setItem(BUDGET_STORAGE_KEY, amount.toString());
+}
