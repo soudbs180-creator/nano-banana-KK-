@@ -628,34 +628,47 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // Layout each project
             projects.forEach(project => {
-                // Calculate project width (max of prompt width and images width)
-                let maxImageWidth = 0;
-                let totalImagesHeight = 0;
+                // Calculate image dimensions and total width
                 const imageDims: { w: number; h: number }[] = [];
+                let totalImagesWidth = 0;
+                let maxImageHeight = 0;
+                const IMAGE_GAP = 15;
 
                 project.images.forEach(img => {
                     const dims = getImageDims(img.aspectRatio);
                     imageDims.push(dims);
-                    maxImageWidth = Math.max(maxImageWidth, dims.w);
-                    totalImagesHeight += dims.h;
+                    totalImagesWidth += dims.w;
+                    maxImageHeight = Math.max(maxImageHeight, dims.h);
                 });
 
-                const projectWidth = Math.max(PROMPT_WIDTH, maxImageWidth);
+                // Add gaps between images
+                if (project.images.length > 1) {
+                    totalImagesWidth += (project.images.length - 1) * IMAGE_GAP;
+                }
+
+                // Project width = max of prompt width and total images width
+                const projectWidth = Math.max(PROMPT_WIDTH, totalImagesWidth);
 
                 // Position prompt (anchor is center-bottom)
                 const promptX = currentX + projectWidth / 2;
                 const promptY = startY + PROMPT_HEIGHT;
                 promptPositions[project.prompt.id] = { x: promptX, y: promptY };
 
-                // Position images below prompt (stacked vertically)
-                let imageY = promptY + GAP_Y;
-                project.images.forEach((img, idx) => {
-                    const dims = imageDims[idx];
-                    imageY += dims.h; // Move down by image height (anchor is bottom)
-                    const imgX = currentX + projectWidth / 2; // Center align
-                    imagePositions[img.id] = { x: imgX, y: imageY };
-                    imageY += GAP_Y / 2; // Small gap between images
-                });
+                // Position images horizontally below prompt, centered
+                if (project.images.length > 0) {
+                    const imagesStartX = currentX + (projectWidth - totalImagesWidth) / 2;
+                    const imageY = promptY + GAP_Y + maxImageHeight; // All images at same Y (bottom anchor)
+
+                    let imgX = imagesStartX;
+                    project.images.forEach((img, idx) => {
+                        const dims = imageDims[idx];
+                        imagePositions[img.id] = {
+                            x: imgX + dims.w / 2, // Center anchor
+                            y: imageY
+                        };
+                        imgX += dims.w + IMAGE_GAP;
+                    });
+                }
 
                 // Move X for next project
                 currentX += projectWidth + GAP_X;
