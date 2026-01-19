@@ -16,6 +16,7 @@ import ConnectionDot from './components/ConnectionDot';
 import LoginScreen from './components/LoginScreen';
 import UserProfileModal, { UserProfileView } from './components/UserProfileModal';
 import StorageSelectionModal from './components/StorageSelectionModal';
+import SettingsPanel from './components/SettingsPanel';
 import { useAuth } from './context/AuthContext';
 import { Loader2 } from 'lucide-react';
 
@@ -25,6 +26,8 @@ import { syncService } from './services/syncService';
 import { saveImage } from './services/imageStorage';
 import NotificationToast from './components/NotificationToast';
 import { notify } from './services/notificationService';
+import UpdateNotification from './components/UpdateNotification';
+import { initUpdateCheck } from './services/updateCheck';
 
 // Canvas Manager Component (Top Left)
 const CanvasManager: React.FC = () => {
@@ -356,6 +359,7 @@ const AppContent: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileInitialView, setProfileInitialView] = useState<UserProfileView>('main');
   const [showStorageModal, setShowStorageModal] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   useEffect(() => {
     const unsubscribe = keyManager.subscribe(() => {
@@ -686,10 +690,19 @@ const AppContent: React.FC = () => {
 
         // Timeout Check (4 minutes)
         let isFinished = false;
+        let isTimedOut = false;
         const timeoutId = setTimeout(() => {
           if (!isFinished) {
+            isTimedOut = true;
             cancelGeneration(currentRequestId);
-            alert("生成超时 (4分钟)，已自动停止。请检查网络或稍后重试。");
+            // Update prompt node with timeout error
+            updatePromptNode({
+              ...generatingNode,
+              isGenerating: false,
+              error: '生成超时，请重新发送任务'
+            });
+            // Show system notification
+            notify.warning('生成超时', '已超过4分钟，任务已自动停止。请检查网络后重试。');
           }
         }, 240000); // 4 minutes
 
@@ -868,6 +881,11 @@ const AppContent: React.FC = () => {
 
       updatePromptNode(updatedNode);
       addImageNodes(validResults);
+
+      // Record cost for this generation
+      import('./services/costService').then(({ recordCost }) => {
+        recordCost(config.model, config.imageSize, validResults.length);
+      });
 
       // Clear active source image after successful generation
       setActiveSourceImage(null);
@@ -1087,10 +1105,7 @@ const AppContent: React.FC = () => {
       {/* API Key Button with Status Indicator */}
       <div className="absolute top-4 right-4 z-50">
         <button
-          onClick={() => {
-            setProfileInitialView('api-settings');
-            setShowProfileModal(true);
-          }}
+          onClick={() => setShowSettingsPanel(true)}
           className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 hover:border-indigo-500 transition-colors shadow-2xl bg-[#1a1a1c]"
           title="API Key Settings"
         >
@@ -1236,6 +1251,21 @@ const AppContent: React.FC = () => {
             }
             onCancel={handleCancelGeneration}
             onDelete={deletePromptNode}
+            onRetry={(failedNode) => {
+              // Refill prompt bar with failed node's config
+              setConfig(prev => ({
+                ...prev,
+                prompt: failedNode.prompt,
+                aspectRatio: failedNode.aspectRatio,
+                imageSize: failedNode.imageSize,
+                model: failedNode.model,
+                referenceImages: failedNode.referenceImages || []
+              }));
+              // Delete the failed node
+              deletePromptNode(failedNode.id);
+              // Show notification
+              notify.info('已恢复任务', '点击发送按钮重新生成');
+            }}
           />
         ))}
 
@@ -1299,10 +1329,7 @@ const AppContent: React.FC = () => {
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
-        onOpenSettings={() => {
-          setProfileInitialView('api-settings');
-          setShowProfileModal(true);
-        }}
+        onOpenSettings={() => setShowSettingsPanel(true)}
         hasApiKey={keyManager.hasValidKeys()}
         generatedCount={activeCanvas?.imageNodes.length || 0}
         user={user}
@@ -1326,6 +1353,12 @@ const AppContent: React.FC = () => {
         user={user}
         onSignOut={signOut}
         initialView={profileInitialView}
+      />
+
+      {/* Settings Panel (Dashboard, API Channels, Cost, Logs) */}
+      <SettingsPanel
+        isOpen={showSettingsPanel}
+        onClose={() => setShowSettingsPanel(false)}
       />
 
       {/* Storage Selection Modal (Post-Login) */}
@@ -1395,9 +1428,15 @@ const App: React.FC = () => {
     return <LoginScreen />;
   }
 
+  // Initialize update check on mount
+  useEffect(() => {
+    initUpdateCheck();
+  }, []);
+
   return (
     <CanvasProvider>
       <NotificationToast />
+      <UpdateNotification />
       <AppContent />
     </CanvasProvider>
   );

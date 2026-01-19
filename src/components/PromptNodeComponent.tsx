@@ -14,6 +14,7 @@ interface PromptNodeProps {
     sourcePosition?: { x: number; y: number };
     onCancel?: (id: string) => void;
     onDelete?: (id: string) => void;
+    onRetry?: (node: PromptNode) => void;
 }
 
 const PromptNodeComponent: React.FC<PromptNodeProps> = ({
@@ -27,7 +28,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
     isMobile = false,
     sourcePosition,
     onCancel,
-    onDelete
+    onDelete,
+    onRetry
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const dragStartPos = useRef({ x: 0, y: 0 });
@@ -149,6 +151,48 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                                 >
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                                         <rect x="6" y="6" width="12" height="12" rx="2" />
+                                    </svg>
+                                </button>
+                            )}
+                        </>
+                    ) : node.error ? (
+                        <>
+                            <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <line x1="12" y1="8" x2="12" y2="12" />
+                                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                                </svg>
+                            </div>
+                            <span className="text-xs font-medium text-red-400 flex-1 truncate">{node.error}</span>
+
+                            {/* Retry Button */}
+                            {onRetry && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onRetry(node);
+                                    }}
+                                    className="px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500 hover:text-white transition-all"
+                                    title="重新发送"
+                                >
+                                    重试
+                                </button>
+                            )}
+
+                            {/* Delete Button */}
+                            {onDelete && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onDelete(node.id);
+                                    }}
+                                    className="w-6 h-6 flex items-center justify-center rounded-full text-zinc-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                                    title="删除"
+                                >
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18" />
+                                        <line x1="6" y1="6" x2="18" y2="18" />
                                     </svg>
                                 </button>
                             )}
