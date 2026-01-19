@@ -39,7 +39,14 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     const [isDownloading, setIsDownloading] = useState(false);
 
     // Dragging Logic
-    const [topPosition, setTopPosition] = useState(112); // Initial top: 28 * 4 = 112px
+    const [topPosition, setTopPosition] = useState(() => {
+        const saved = localStorage.getItem('kk_pm_pos');
+        return saved ? parseFloat(saved) : 112;
+    }); // Initial top: 28 * 4 = 112px or saved
+
+    useEffect(() => {
+        localStorage.setItem('kk_pm_pos', topPosition.toString());
+    }, [topPosition]);
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef({ y: 0, startTop: 0 });
     const hasDraggedRef = useRef(false);

@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
             port: 3000,
             strictPort: true, // Fail if port 3000 is in use (don't auto-switch)
             host: '0.0.0.0',
-            open: false, // VBS script handles browser opening
+            open: true, // Auto-open browser on start
         },
         plugins: [react()],
         define: {

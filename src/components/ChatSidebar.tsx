@@ -60,8 +60,18 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile })
     const [showModelMenu, setShowModelMenu] = useState(false);
 
     // Draggable Position State (Default Left-Bottom)
-    // Using simple offset from bottom-left corner
-    const [position, setPosition] = useState({ x: 20, y: 20 });
+    // Using simple offset from bottom-left corner or restoration
+    const [position, setPosition] = useState(() => {
+        try {
+            const saved = localStorage.getItem('kk_chat_pos');
+            if (saved) return JSON.parse(saved);
+        } catch (e) { }
+        return { x: 20, y: 20 };
+    });
+
+    useEffect(() => {
+        localStorage.setItem('kk_chat_pos', JSON.stringify(position));
+    }, [position]);
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef({ x: 0, y: 0 });
     const startPosRef = useRef({ x: 0, y: 0 });

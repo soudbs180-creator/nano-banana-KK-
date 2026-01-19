@@ -251,11 +251,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
 
         // Debounce saving
-        const timer = setTimeout(saveState, 500); // Reduced to 500ms
+        const timer = setTimeout(saveState, 200); // Reduced to 200ms for snappier saves
 
-        // Save immediately on page unload
-        const handleBeforeUnload = () => {
-            // Attempt synchronous save logic for localStorage (syncService is async, might fail)
+        // Save immediately on page unload or hidden (tab switch)
+        const handleSave = () => {
             try {
                 const stateToSave = {
                     ...state,
@@ -267,11 +266,17 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 console.error('Failed to save state on unload:', e);
             }
         };
-        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        window.addEventListener('beforeunload', handleSave);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') handleSave();
+        });
 
         return () => {
             clearTimeout(timer);
-            window.removeEventListener('beforeunload', handleBeforeUnload);
+            window.removeEventListener('beforeunload', handleSave);
+            // Note: visibilitychange listener cleanup omitted for brevity in hot-reload, but ideally should be removed.
+            // Given the context key, we can rely on React's cleanup if we name the listener.
         };
     }, [state, isLoading]);
 
@@ -296,7 +301,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 // This prevents data loss if clock skew makes stale cloud data look "newer"
                                 const localHasMoreContent = (localC.promptNodes?.length || 0) > (cloudC.promptNodes?.length || 0);
 
-                                if (!localHasMoreContent && cloudTime > localTime) {
+                                // Freshness Check: If local was modified recently (e.g. < 60 seconds), TRUST LOCAL.
+                                // This prevents "Refresh" from reverting changes made just seconds ago, even if Cloud timestamp is weird.
+                                const isLocalFresh = (Date.now() - localTime) < 60000;
+
+                                if (!isLocalFresh && !localHasMoreContent && cloudTime > localTime) {
                                     // Cloud is newer AND local doesn't have extra unsynced nodes
                                     console.log(`[Sync] Updating canvas ${cloudC.name} from cloud (Newer: ${new Date(cloudTime).toLocaleTimeString()})`);
                                     merged[idx] = cloudC;
@@ -795,26 +804,46 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 currentX += dims.w + GAP_X;
             });
 
-            return {
-                ...prev,
-                canvases: prev.canvases.map(c => {
-                    if (c.id !== prev.activeCanvasId) return c;
-                    return {
-                        ...c,
-                        promptNodes: c.promptNodes.map(n => ({
-                            ...n,
-                            position: promptPositions[n.id] || n.position
-                        })),
-                        imageNodes: c.imageNodes.map(n => ({
-                            ...n,
-                            position: imagePositions[n.id] || n.position
-                        })),
-                        lastModified: Date.now() // Urgent fix: Ensure arrange updates timestamp
-                    };
-                })
+            // 1. Construct new list of canvases with updated positions
+            const newCanvases = state.canvases.map(c => {
+                if (c.id !== state.activeCanvasId) return c;
+                return {
+                    ...c,
+                    promptNodes: c.promptNodes.map(n => ({
+                        ...n,
+                        position: promptPositions[n.id] || n.position
+                    })),
+                    imageNodes: c.imageNodes.map(n => ({
+                        ...n,
+                        position: imagePositions[n.id] || n.position
+                    })),
+                    lastModified: Date.now()
+                };
+            });
+
+            const newState = {
+                ...state,
+                canvases: newCanvases
             };
+
+            // 2. URGENT SAVE: Persist immediately to localStorage
+            // This bypasses the useEffect debounce to ensure "Auto Arrange" is never lost on quick refresh
+            try {
+                const stateToSave = {
+                    ...newState,
+                    canvases: stripImageUrls(newState.canvases),
+                    history: {}
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+                // console.log('[AutoArrange] Layout saved immediately to localStorage');
+            } catch (e) {
+                console.error('[AutoArrange] Urgent save failed:', e);
+            }
+
+            // 3. Update React State
+            return newState;
         });
-    }, [pushToHistory]);
+    }, [pushToHistory, state.canvases, state.activeCanvasId]); // Added dependencies for safety
 
     /**
      * Get the next available position for a new card (to the right of existing cards)

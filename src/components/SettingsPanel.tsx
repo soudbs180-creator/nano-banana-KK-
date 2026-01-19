@@ -546,7 +546,6 @@ const CostEstimationView = () => {
                 </div>
             </div>
         </div>
-        </div >
     );
 };
 

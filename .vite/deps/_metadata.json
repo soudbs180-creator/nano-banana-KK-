@@ -1,55 +1,8 @@
 {
-  "hash": "44b20cd4",
+  "hash": "aa406945",
   "configHash": "384ac3b8",
-  "lockfileHash": "f283732f",
-  "browserHash": "1bc83a43",
-  "optimized": {
-    "react/jsx-dev-runtime": {
-      "src": "../../node_modules/react/jsx-dev-runtime.js",
-      "file": "react_jsx-dev-runtime.js",
-      "fileHash": "75671fe8",
-      "needsInterop": true
-    },
-    "react": {
-      "src": "../../node_modules/react/index.js",
-      "file": "react.js",
-      "fileHash": "916b7b85",
-      "needsInterop": true
-    },
-    "react-dom/client": {
-      "src": "../../node_modules/react-dom/client.js",
-      "file": "react-dom_client.js",
-      "fileHash": "c57a614a",
-      "needsInterop": true
-    },
-    "lucide-react": {
-      "src": "../../node_modules/lucide-react/dist/esm/lucide-react.js",
-      "file": "lucide-react.js",
-      "fileHash": "9653022e",
-      "needsInterop": false
-    },
-    "@google/genai": {
-      "src": "../../node_modules/@google/genai/dist/web/index.mjs",
-      "file": "@google_genai.js",
-      "fileHash": "1b02822a",
-      "needsInterop": false
-    },
-    "react-dom": {
-      "src": "../../node_modules/react-dom/index.js",
-      "file": "react-dom.js",
-      "fileHash": "d65318e7",
-      "needsInterop": true
-    }
-  },
-  "chunks": {
-    "chunk-HQYTDYU2": {
-      "file": "chunk-HQYTDYU2.js"
-    },
-    "chunk-PAMVEWRW": {
-      "file": "chunk-PAMVEWRW.js"
-    },
-    "chunk-G3PMV62Z": {
-      "file": "chunk-G3PMV62Z.js"
-    }
-  }
+  "lockfileHash": "00ac877b",
+  "browserHash": "acb41f14",
+  "optimized": {},
+  "chunks": {}
 }

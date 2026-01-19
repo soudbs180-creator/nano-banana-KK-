@@ -30,11 +30,27 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     const dragStart = useRef({ x: 0, y: 0 });
     const lastTransform = useRef({ x: 0, y: 0 });
 
-    // Center the canvas on mount
+    // Center the canvas on mount OR restore from localStorage
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
+        // Try to load saved view
+        try {
+            const savedView = localStorage.getItem('kk_canvas_view');
+            if (savedView) {
+                const parsed = JSON.parse(savedView);
+                if (parsed.x !== undefined && parsed.y !== undefined && parsed.scale !== undefined) {
+                    setTransform(parsed);
+                    onTransformChange?.(parsed);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load canvas view", e);
+        }
+
+        // Fallback to center
         const rect = container.getBoundingClientRect();
         const initialTransform = {
             x: rect.width / 2,
@@ -44,6 +60,14 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         setTransform(initialTransform);
         onTransformChange?.(initialTransform);
     }, []);
+
+    // Save view to localStorage on change (debounced)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            localStorage.setItem('kk_canvas_view', JSON.stringify(transform));
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [transform]);
 
     // Handle mouse wheel zoom
     const handleWheel = useCallback((e: WheelEvent) => {
