@@ -214,18 +214,59 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         }
     }, [resetView, zoomIn, zoomOut]);
 
+    // Touch Handling (Mirroring Mouse Logic)
+    const handleTouchStart = useCallback((e: TouchEvent) => {
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            setIsDragging(true);
+            dragStart.current = { x: touch.clientX, y: touch.clientY };
+            lastTransform.current = { x: transform.x, y: transform.y };
+        }
+    }, [transform]);
+
+    const handleTouchMove = useCallback((e: TouchEvent) => {
+        if (!isDragging) return;
+        if (e.touches.length === 1) {
+            if (e.cancelable) e.preventDefault(); // Stop Browser Scroll
+            const touch = e.touches[0];
+            const dx = touch.clientX - dragStart.current.x;
+            const dy = touch.clientY - dragStart.current.y;
+
+            const newTransform = {
+                x: lastTransform.current.x + dx,
+                y: lastTransform.current.y + dy,
+                scale: transform.scale
+            };
+            setTransform(newTransform);
+            onTransformChange?.(newTransform);
+        }
+    }, [isDragging, transform.scale, onTransformChange]);
+
+    const handleTouchEnd = useCallback(() => {
+        setIsDragging(false);
+    }, []);
+
     // Setup event listeners
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
         container.addEventListener('wheel', handleWheel, { passive: false });
+        // Touch Listeners (Passive: false to allow preventDefault)
+        container.addEventListener('touchstart', handleTouchStart, { passive: false });
+        container.addEventListener('touchmove', handleTouchMove, { passive: false });
+        container.addEventListener('touchend', handleTouchEnd);
+
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
         window.addEventListener('keydown', handleKeyDown);
 
         return () => {
             container.removeEventListener('wheel', handleWheel);
+            container.removeEventListener('touchstart', handleTouchStart);
+            container.removeEventListener('touchmove', handleTouchMove);
+            container.removeEventListener('touchend', handleTouchEnd);
+
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
             window.removeEventListener('keydown', handleKeyDown);

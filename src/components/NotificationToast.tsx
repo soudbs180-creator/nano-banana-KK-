@@ -103,9 +103,9 @@ const NotificationToast: React.FC = () => {
                 </div>
             )}
 
-            {/* Message Notifications (Bottom Right) - For Success & Info */}
+            {/* Message Notifications (Bottom Right on Desktop, Bottom Center on Mobile) - For Success & Info */}
             {messageNotifications.length > 0 && (
-                <div className="fixed bottom-8 right-8 z-[9999] flex flex-col-reverse gap-2 pointer-events-none max-w-[320px] w-full">
+                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-8 md:right-8 z-[2000] flex flex-col-reverse gap-2 pointer-events-none max-w-[90vw] md:max-w-[320px] w-full">
                     {messageNotifications.map(notification => (
                         <div
                             key={notification.id}

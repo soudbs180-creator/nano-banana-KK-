@@ -41,8 +41,8 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     // Dragging Logic
     const [topPosition, setTopPosition] = useState(() => {
         const saved = localStorage.getItem('kk_pm_pos');
-        return saved ? parseFloat(saved) : 112;
-    }); // Initial top: 28 * 4 = 112px or saved
+        return saved ? parseFloat(saved) : 80;
+    }); // Initial top: 28 * 4 = 112px or saved -> Adjusted to 80px
 
     useEffect(() => {
         localStorage.setItem('kk_pm_pos', topPosition.toString());
@@ -51,7 +51,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     const dragStartRef = useRef({ y: 0, startTop: 0 });
     const hasDraggedRef = useRef(false);
 
-    const INITIAL_TOP = 112;
+    const INITIAL_TOP = 60;
 
     useEffect(() => {
         if (!isDragging) return;
@@ -196,22 +196,51 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
     const activeProjectName = activeCanvas?.name || '项目';
 
+
+    // Auto-retract logic for Toolbar (User calls this "Sidebar")
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const resetInactivityTimer = () => {
+        if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+        setIsCollapsed(false);
+        inactivityTimerRef.current = setTimeout(() => {
+            setIsCollapsed(true);
+        }, 4000);
+    };
+
+    useEffect(() => {
+        resetInactivityTimer();
+        window.addEventListener('mousemove', resetInactivityTimer);
+        window.addEventListener('touchstart', resetInactivityTimer);
+        window.addEventListener('click', resetInactivityTimer);
+        return () => {
+            if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+            window.removeEventListener('mousemove', resetInactivityTimer);
+            window.removeEventListener('touchstart', resetInactivityTimer);
+            window.removeEventListener('click', resetInactivityTimer);
+        };
+    }, []);
+
     return (
         <div
-            className="fixed left-4 z-50 flex flex-col items-start gap-2 select-none"
+            className={`fixed left-4 z-50 flex flex-col items-start gap-2 select-none transition-transform duration-500 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
             style={{ top: topPosition }}
+            onMouseEnter={() => setIsCollapsed(false)}
+            onTouchStart={() => setIsCollapsed(false)}
         >
             {/* Project Module Container */}
             <div
-                className={`flex flex-col gap-2 p-1.5 glass-strong rounded-xl border border-white/5 shadow-xl transition-colors hover:bg-[#1c1c1e]/90 cursor-grab active:cursor-grabbing ${isDragging ? 'scale-[0.98]' : ''}`}
+                className={`flex flex-col gap-2 p-1.5 glass-strong rounded-2xl border border-white/5 shadow-xl transition-colors hover:bg-[#1c1c1e]/90 cursor-grab active:cursor-grabbing ${isDragging ? 'scale-[0.98]' : ''}`}
                 onMouseDown={handleMouseDown}
             >
-                {/* Drag Handle Indicator (Optional, subtle) */}
+                {/* Drag Handle Indicator */}
                 <div className="w-full flex justify-center py-0.5 opacity-20 hover:opacity-50">
                     <div className="w-4 h-0.5 bg-white/50 rounded-full" />
                 </div>
 
-                {/* 1. Sidebar Toggle */}
+                {/* 1. Sidebar Toggle REMOVED as per user request (Extra Icon) */}
+                {/* 
                 {(!isSidebarOpen || isMobile) && (
                     <button
                         onClick={(e) => { e.stopPropagation(); onToggleSidebar(); }}
@@ -221,6 +250,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                         <Menu size={20} />
                     </button>
                 )}
+                */}
 
                 {/* 2. Project Selector */}
                 <div className="relative">
@@ -243,7 +273,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
                     {/* Dropdown Menu */}
                     {showDropdown && (
-                        <div className="absolute left-full top-0 ml-3 w-64 glass-strong rounded-xl overflow-hidden z-50 animate-scaleIn origin-top-left border border-white/5 shadow-2xl cursor-default">
+                        <div className="absolute left-full top-0 ml-3 w-64 glass-strong rounded-2xl overflow-hidden z-50 animate-scaleIn origin-top-left border border-white/5 shadow-2xl cursor-default">
                             {/* ... same dropdown content ... */}
                             <div className="px-4 py-3 border-b border-white/5 bg-white/5 flex items-center justify-between">
                                 <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">我的项目</h3>
@@ -397,7 +427,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                                 取消
                             </button>
                             <button
-                                onClick={() => { deleteCanvas(showDeleteConfirm); setShowDeleteConfirm(null); setShowDropdown(false); }}
+                                onClick={() => { if (showDeleteConfirm) deleteCanvas(showDeleteConfirm); setShowDeleteConfirm(null); setShowDropdown(false); }}
                                 className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20 transition-all active:scale-95"
                             >
                                 确认删除

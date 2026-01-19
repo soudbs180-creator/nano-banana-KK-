@@ -67,17 +67,17 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
 
     return (
         <div className="space-y-6">
-            <h3 className="text-2xl font-bold text-white mb-6">
+            <h3 className="text-2xl font-bold text-white mb-6 hidden md:block">
                 设置 (Settings)
                 <span className="block text-xs text-zinc-500 font-normal mt-1">系统概览与偏好设置 (System Dashboard & Preferences)</span>
             </h3>
 
-            <div className="grid grid-cols-4 grid-rows-2 gap-4 h-[320px]">
+            <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-4 h-auto md:h-[320px]">
                 {/* Hero Card: Cost */}
-                <div className="col-span-2 row-span-2 bg-gradient-to-br from-indigo-500/10 via-[#1c1c1e] to-[#1c1c1e] p-6 rounded-2xl border border-indigo-500/20 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/10" />
+                <div className="col-span-1 md:col-span-2 md:row-span-2 bg-gradient-to-br from-indigo-500/10 via-[#1c1c1e] to-[#1c1c1e] p-5 md:p-6 rounded-[32px] border border-indigo-500/20 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-24 md:p-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/10" />
 
-                    <div className="flex flex-col h-full justify-between relative z-10">
+                    <div className="flex flex-col h-full justify-between gap-4 md:gap-0 relative z-10">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400"><DollarSign size={24} /></div>
                             <div>
@@ -87,7 +87,7 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                         </div>
 
                         <div>
-                            <div className="text-5xl font-bold text-white font-mono tracking-tight mb-2">
+                            <div className="text-4xl md:text-5xl font-bold text-white font-mono tracking-tight mb-2">
                                 ${todayData.costUsd.toFixed(4)}
                             </div>
                             <div className="text-sm text-zinc-500">
@@ -95,7 +95,7 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                             </div>
                         </div>
 
-                        <div className="w-full bg-zinc-800/50 h-1.5 rounded-full overflow-hidden mt-4">
+                        <div className="w-full bg-zinc-800/50 h-1.5 rounded-full overflow-hidden mt-2 md:mt-4">
                             <div
                                 className={`h-full transition-all duration-500 ${remainingPercent < 20 ? 'bg-red-500' : 'bg-indigo-500'}`}
                                 style={{ width: `${remainingPercent}%` }}
@@ -136,33 +136,33 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                 </div>
 
                 {/* Secondary Card: Images */}
-                <div className="col-span-1 row-span-1 bg-[#1c1c1e] p-5 rounded-2xl border border-zinc-800/50 flex flex-col justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
+                <div className="col-span-1 md:col-span-1 md:row-span-1 bg-[#1c1c1e] p-5 rounded-[32px] border border-zinc-800/50 flex flex-col justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
                     <div className="absolute right-3 top-3 text-zinc-600 group-hover:text-emerald-500 transition-colors"><Sparkles size={20} /></div>
                     <div>
                         <div className="text-zinc-400 text-sm font-medium">今日生成</div>
                         <div className="text-xs text-zinc-600">Images Generated</div>
                     </div>
-                    <div className="flex items-baseline gap-1">
+                    <div className="flex items-baseline gap-1 mt-4 md:mt-0">
                         <span className="text-3xl font-bold text-white font-mono">{todayData.count}</span>
                         <span className="text-xs text-zinc-500">张 (Count)</span>
                     </div>
                 </div>
 
                 {/* Secondary Card: Tokens */}
-                <div className="col-span-1 row-span-1 bg-[#1c1c1e] p-5 rounded-2xl border border-zinc-800/50 flex flex-col justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
+                <div className="col-span-1 md:col-span-1 md:row-span-1 bg-[#1c1c1e] p-5 rounded-[32px] border border-zinc-800/50 flex flex-col justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
                     <div className="absolute right-3 top-3 text-zinc-600 group-hover:text-blue-500 transition-colors"><Activity size={20} /></div>
                     <div>
                         <div className="text-zinc-400 text-sm font-medium">Token 消耗</div>
                         <div className="text-xs text-zinc-600">Tokens Used</div>
                     </div>
-                    <div className="flex items-baseline gap-1">
+                    <div className="flex items-baseline gap-1 mt-4 md:mt-0">
                         <span className="text-2xl font-bold text-white font-mono">{(todayData.tokens / 1000).toFixed(1)}</span>
                         <span className="text-xs text-zinc-500">k</span>
                     </div>
                 </div>
 
                 {/* Wide Card: API Status */}
-                <div className="col-span-2 row-span-1 bg-[#1c1c1e] p-5 rounded-2xl border border-zinc-800/50 flex flex-col justify-center relative overflow-hidden hover:border-zinc-700 transition-colors">
+                <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[#1c1c1e] p-5 rounded-[32px] border border-zinc-800/50 flex flex-col justify-center relative overflow-hidden hover:border-zinc-700 transition-colors">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <div className={`p-2 rounded-lg ${keyStats.valid > 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
@@ -170,8 +170,8 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                             </div>
                             <div>
                                 <div className="text-sm font-medium text-zinc-300">API 渠道状态</div>
-                                <div className="text-xs text-zinc-600">API Channels Status</div>
-                                <div className="text-xs text-zinc-500 flex gap-2 mt-1">
+                                <div className="text-xs text-zinc-600 hidden md:block">API Channels Status</div>
+                                <div className="text-xs text-zinc-500 flex flex-wrap gap-2 mt-1">
                                     <span className="text-emerald-500">{keyStats.valid} 正常 (Active)</span>
                                     <span className="text-zinc-600">|</span>
                                     <span className={keyStats.invalid > 0 ? "text-red-500" : "text-zinc-600"}>{keyStats.invalid} 异常 (Error)</span>
@@ -179,7 +179,7 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                             </div>
                         </div>
                         <div className="text-right">
-                            <div className="text-xs text-zinc-500 mb-1">密钥总数 (Total Keys)</div>
+                            <div className="text-xs text-zinc-500 mb-1">密钥总数</div>
                             <div className="text-xl font-bold text-white font-mono">{keyStats.total}</div>
                         </div>
                     </div>
@@ -187,22 +187,22 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
             </div>
 
             {/* System Status Section - Compact */}
-            <div className="grid grid-cols-3 gap-4">
-                <div className="bg-[#1c1c1e] rounded-xl border border-zinc-800/50 p-4 flex items-center gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-[#1c1c1e] rounded-[32px] border border-zinc-800/50 p-4 flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">系统状态 (System Status)</div>
                         <div className="text-sm font-medium text-zinc-300">运行正常 (Operational)</div>
                     </div>
                 </div>
-                <div className="bg-[#1c1c1e] rounded-xl border border-zinc-800/50 p-4 flex items-center gap-3">
+                <div className="bg-[#1c1c1e] rounded-[32px] border border-zinc-800/50 p-4 flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-blue-500" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">延迟 (Latency)</div>
                         <div className="text-sm font-medium text-zinc-300 font-mono">45ms</div>
                     </div>
                 </div>
-                <div className="bg-[#1c1c1e] rounded-xl border border-zinc-800/50 p-4 flex items-center gap-3">
+                <div className="bg-[#1c1c1e] rounded-[32px] border border-zinc-800/50 p-4 flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">版本 (Version)</div>
@@ -291,12 +291,12 @@ const ApiChannelsView = () => {
     return (
         <div className="space-y-6 h-full flex flex-col">
             {/* Header */}
-            <div className="flex justify-between items-center flex-shrink-0">
-                <div>
+            <div className="flex justify-end md:justify-between items-center flex-shrink-0">
+                <div className="hidden md:block">
                     <h3 className="text-2xl font-bold text-white">API 渠道管理 (API Channels)</h3>
                     <p className="text-xs text-zinc-500 mt-1">云端同步 · 查看消耗 · 预算控制 (Cloud Sync & Budget)</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="hidden md:flex gap-2">
                     <button onClick={handleRefresh} className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 transition-colors" title="刷新所有状态 (Refresh)">
                         <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                     </button>
@@ -309,6 +309,13 @@ const ApiChannelsView = () => {
                 </div>
             </div>
 
+            {/* Mobile Actions (Top Right Refresh Only) */}
+            <div className="md:hidden absolute top-4 right-16 z-30">
+                <button onClick={handleRefresh} className="w-8 h-8 flex items-center justify-center bg-zinc-800/80 rounded-full text-zinc-400 hover:text-white backdrop-blur-md">
+                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                </button>
+            </div>
+
             {/* List */}
             <div className="flex-1 overflow-y-auto space-y-3 min-h-0 pr-1">
                 {slots.length === 0 ? (
@@ -319,15 +326,15 @@ const ApiChannelsView = () => {
                     </div>
                 ) : (
                     slots.map(slot => (
-                        <div key={slot.id} className="group bg-[#1c1c1e] border border-zinc-800 hover:border-zinc-600 rounded-2xl p-4 transition-all duration-200 shadow-sm relative overflow-hidden">
+                        <div key={slot.id} className="group bg-[#1c1c1e] border border-zinc-800 hover:border-zinc-600 rounded-[32px] p-4 transition-all duration-200 shadow-sm relative overflow-hidden">
                             {/* Status Indicator Bar */}
                             <div className={`absolute left-0 top-0 bottom-0 w-1 ${slot.status === 'valid' ? 'bg-emerald-500' : slot.status === 'invalid' ? 'bg-red-500' : 'bg-zinc-700'}`} />
 
                             <div className="pl-3 flex flex-col gap-3">
                                 {/* Top Row: Name, Provider, Status */}
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <h4 className="font-bold text-white text-base">{slot.name || 'API Key'}</h4>
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="font-bold text-white text-base truncate max-w-[150px] md:max-w-none">{slot.name || 'API Key'}</h4>
                                         <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 uppercase">{slot.provider || 'Gemini'}</span>
                                         {slot.status !== 'valid' && (
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${slot.status === 'invalid' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
@@ -394,6 +401,17 @@ const ApiChannelsView = () => {
                         </div>
                     ))
                 )}
+            </div>
+
+            {/* Mobile Floating Add Key Button (Middle Bottom) */}
+            <div className="md:hidden absolute bottom-40 left-1/2 -translate-x-1/2 z-30">
+                <button
+                    onClick={openAddModal}
+                    className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-bold shadow-[0_8px_20px_rgba(79,70,229,0.4)] active:scale-95 transition-all backdrop-blur-sm border border-white/10"
+                >
+                    <Plus size={18} />
+                    <span>添加密钥 (Add Key)</span>
+                </button>
             </div>
 
             {/* Modal Overlay */}
@@ -494,12 +512,15 @@ const CostEstimationView = () => {
 
     return (
         <div className="space-y-6">
-            <div>
+            <div className="hidden md:block">
                 <h3 className="text-2xl font-bold text-white">成本详情 (Cost Breakdown)</h3>
                 <p className="text-xs text-zinc-500 mt-1">按模型和规格统计的详细使用记录 (Detailed usage by model and size)</p>
             </div>
 
-            <div className="bg-[#1c1c1e] border border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block bg-[#1c1c1e] border border-zinc-800 rounded-[32px] overflow-x-auto shadow-sm">
                 <table className="w-full text-left text-sm">
                     <thead className="bg-zinc-900 border-b border-zinc-800">
                         <tr>
@@ -532,7 +553,51 @@ const CostEstimationView = () => {
                 </table>
             </div>
 
-            <div className="text-xs text-zinc-500 p-5 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
+            {/* Mobile Vertical Card View */}
+            <div className="md:hidden space-y-3">
+                {breakdown.length === 0 ? (
+                    <div className="p-8 text-center text-zinc-500 bg-[#1c1c1e] rounded-[32px] border border-zinc-800">
+                        今日暂无数据 (No Data Today)
+                    </div>
+                ) : (
+                    breakdown.map((item, idx) => (
+                        <div key={idx} className="bg-[#1c1c1e] border border-zinc-800 rounded-[32px] p-5 shadow-sm space-y-3">
+                            {/* Header: Model Name */}
+                            <div className="flex justify-between items-start">
+                                <div className="space-y-1">
+                                    <span className="text-xs text-zinc-500 font-mono uppercase">Model</span>
+                                    <div className="text-white font-bold text-base break-all">{item.model}</div>
+                                </div>
+                                <div className="text-right space-y-1">
+                                    <span className="text-xs text-zinc-500 font-mono uppercase">Cost</span>
+                                    <div className="text-emerald-400 font-mono font-bold">${item.cost.toFixed(5)}</div>
+                                </div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="h-px bg-white/5" />
+
+                            {/* Stats Grid */}
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                                <div className="bg-zinc-900/50 rounded-2xl p-2">
+                                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Size</div>
+                                    <div className="text-zinc-300 font-mono text-xs">{item.imageSize || 'Default'}</div>
+                                </div>
+                                <div className="bg-zinc-900/50 rounded-2xl p-2">
+                                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Count</div>
+                                    <div className="text-zinc-300 font-mono text-xs">{item.count}</div>
+                                </div>
+                                <div className="bg-zinc-900/50 rounded-2xl p-2">
+                                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Tokens</div>
+                                    <div className="text-indigo-400 font-mono text-xs">{(item.tokens || 0).toLocaleString()}</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            <div className="text-xs text-zinc-500 p-5 bg-zinc-900/50 rounded-[32px] border border-zinc-800/50">
                 <p className="font-medium text-zinc-400 mb-2">计费参考 (Pricing Reference)</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div className="flex items-center gap-2">
@@ -545,7 +610,7 @@ const CostEstimationView = () => {
                     <span>Imagen: 标准版 $0.04/张 (Approx)</span>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
@@ -577,15 +642,15 @@ const StorageSettingsView = () => {
 
     return (
         <div className="space-y-6">
-            <div>
+            <div className="hidden md:block">
                 <h3 className="text-2xl font-bold text-white">存储位置 (Storage Location)</h3>
                 <p className="text-zinc-400 text-sm mt-1">选择原图的保存方式 (缩略图始终同步至云端) / Cloud Sync</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button
                     onClick={() => handleChange('browser')}
-                    className={`relative p-6 rounded-2xl border transition-all duration-200 group text-left ${currentMode === 'browser' ? 'bg-blue-600/10 border-blue-500 ring-1 ring-blue-500/50' : 'bg-[#1c1c1e] border-zinc-800 hover:border-zinc-600'}`}
+                    className={`relative p-6 rounded-[32px] border transition-all duration-200 group text-left ${currentMode === 'browser' ? 'bg-blue-600/10 border-blue-500 ring-1 ring-blue-500/50' : 'bg-[#1c1c1e] border-zinc-800 hover:border-zinc-600'}`}
                 >
                     <div className="flex items-start justify-between mb-4">
                         <div className={`p-3 rounded-xl ${currentMode === 'browser' ? 'bg-blue-500 text-white' : 'bg-zinc-800 text-zinc-400 group-hover:bg-zinc-700 group-hover:text-white transition-colors'}`}>
@@ -603,7 +668,7 @@ const StorageSettingsView = () => {
 
                 <button
                     onClick={() => handleChange('local')}
-                    className={`relative p-6 rounded-2xl border transition-all duration-200 group text-left ${currentMode === 'local' ? 'bg-indigo-600/10 border-indigo-500 ring-1 ring-indigo-500/50' : 'bg-[#1c1c1e] border-zinc-800 hover:border-zinc-600'}`}
+                    className={`relative p-6 rounded-[32px] border transition-all duration-200 group text-left ${currentMode === 'local' ? 'bg-indigo-600/10 border-indigo-500 ring-1 ring-indigo-500/50' : 'bg-[#1c1c1e] border-zinc-800 hover:border-zinc-600'}`}
                 >
                     <div className="flex items-start justify-between mb-4">
                         <div className={`p-3 rounded-xl ${currentMode === 'local' ? 'bg-indigo-500 text-white' : 'bg-zinc-800 text-zinc-400 group-hover:bg-zinc-700 group-hover:text-white transition-colors'}`}>
@@ -646,8 +711,8 @@ const SystemLogsView = () => {
 
     return (
         <div className="space-y-6 h-full flex flex-col">
-            <div className="flex justify-between items-center mb-2">
-                <div>
+            <div className="flex justify-end md:justify-between items-center mb-2">
+                <div className="hidden md:block">
                     <h3 className="text-2xl font-bold text-white">系统日志 (System Logs)</h3>
                     <p className="text-xs text-zinc-500 mt-1">调试信息与错误追踪 (Debug & Trace)</p>
                 </div>
@@ -657,7 +722,9 @@ const SystemLogsView = () => {
                 </button>
             </div>
 
-            <div className="bg-[#0f0f10] border border-zinc-800 rounded-2xl flex-1 overflow-hidden flex flex-col shadow-inner relative">
+
+
+            <div className="bg-[#0f0f10] border border-zinc-800 rounded-[32px] flex-1 overflow-hidden flex flex-col shadow-inner relative">
                 {logs.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 gap-3">
                         <div className="p-4 bg-zinc-900 rounded-full mb-2">
@@ -694,7 +761,7 @@ const SystemLogsView = () => {
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 
@@ -711,70 +778,155 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
         return unsub;
     }, []);
 
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
     if (!isOpen) return null;
 
     const navItems: { id: SettingsView; label: string; icon: any }[] = [
-        { id: 'dashboard', label: '仪表盘 (Dashboard)', icon: LayoutDashboard },
-        { id: 'api-channels', label: 'API 渠道 (Channels)', icon: Key },
-        { id: 'cost-estimation', label: '成本估算 (Cost)', icon: DollarSign },
-        { id: 'storage-settings', label: '存储位置 (Storage)', icon: HardDrive },
-        { id: 'system-logs', label: '系统日志 (Logs)', icon: ScrollText },
+        { id: 'dashboard', label: '仪表盘', icon: LayoutDashboard },
+        { id: 'api-channels', label: 'API 渠道', icon: Key },
+        { id: 'cost-estimation', label: '成本', icon: DollarSign },
+        { id: 'storage-settings', label: '存储', icon: HardDrive },
+        { id: 'system-logs', label: '日志', icon: ScrollText },
     ];
 
     return (
         <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200" onClick={onClose}>
-            <div
-                className="w-[980px] h-[640px] max-w-[95vw] bg-[#0d0d0e] rounded-2xl shadow-2xl border border-zinc-800/50 flex overflow-hidden animate-in zoom-in-95 duration-200"
-                onClick={e => e.stopPropagation()}
-            >
-                {/* Sidebar */}
-                <div className="w-64 bg-[#161618] border-r border-white/5 flex flex-col p-4">
-                    <div className="flex items-center gap-3 px-2 mb-8 mt-2">
-                        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
-                            <LayoutDashboard size={18} />
+            {!isMobile ? (
+                /* --- Desktop Layout (Strictly Preserved) --- */
+                <div
+                    className="hidden md:flex w-[980px] h-[640px] bg-[#0d0d0e] rounded-2xl shadow-2xl border border-zinc-800/50 overflow-hidden animate-in zoom-in-95 duration-200"
+                    onClick={e => e.stopPropagation()}
+                >
+                    {/* Desktop Sidebar */}
+                    <div className="w-64 bg-[#161618] border-r border-white/5 flex flex-col p-4 shrink-0">
+                        <div className="flex items-center gap-3 px-2 mb-8 mt-2">
+                            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+                                <LayoutDashboard size={18} />
+                            </div>
+                            <span className="font-bold text-white tracking-tight">系统设置 (System Settings)</span>
                         </div>
-                        <span className="font-bold text-white tracking-tight">系统设置 (System Settings)</span>
+
+                        <div className="space-y-1">
+                            {navItems.map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => setActiveView(item.id)}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeView === item.id ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
+                                >
+                                    <item.icon size={16} />
+                                    {item.label === '仪表盘' ? '仪表盘 (Dashboard)' :
+                                        item.label === 'API 渠道' ? 'API 渠道 (Channels)' :
+                                            item.label === '成本' ? '成本估算 (Cost)' :
+                                                item.label === '存储' ? '存储位置 (Storage)' :
+                                                    '系统日志 (Logs)'}
+                                    {activeView === item.id && <ChevronRight size={14} className="ml-auto opacity-50" />}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="mt-auto pt-4 border-t border-white/5">
+                            <div className="px-3 py-2 bg-zinc-900 rounded-lg">
+                                <div className="text-xs text-zinc-500 mb-1">总消耗 (Total Consumption)</div>
+                                <div className="text-lg font-bold text-white font-mono">${getTodayCosts().entries.reduce((a, b) => a + b.costUsd, 0).toFixed(4)}</div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="space-y-1">
-                        {navItems.map(item => (
-                            <button
-                                key={item.id}
-                                onClick={() => setActiveView(item.id)}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeView === item.id ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
-                            >
-                                <item.icon size={16} />
-                                {item.label}
-                                {activeView === item.id && <ChevronRight size={14} className="ml-auto opacity-50" />}
+                    {/* Desktop Content */}
+                    <div className="flex-1 flex flex-col min-w-0 bg-[#0d0d0e]">
+                        <div className="h-14 border-b border-white/5 flex items-center justify-end px-6 bg-[#0d0d0e]/50 backdrop-blur-xl sticky top-0 z-10">
+                            <button onClick={onClose} className="p-2 text-zinc-400 hover:text-white hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-colors">
+                                <X size={18} />
                             </button>
-                        ))}
-                    </div>
+                        </div>
 
-                    <div className="mt-auto pt-4 border-t border-white/5">
-                        <div className="px-3 py-2 bg-zinc-900 rounded-lg">
-                            <div className="text-xs text-zinc-500 mb-1">总消耗 (Total Consumption)</div>
-                            <div className="text-lg font-bold text-white font-mono">${getTodayCosts().entries.reduce((a, b) => a + b.costUsd, 0).toFixed(4)}</div>
+                        <div className="flex-1 overflow-y-auto p-8 scrollbar-thin">
+                            <div className="max-w-4xl mx-auto">
+                                {activeView === 'dashboard' && <DashboardView keyStats={keyStats} />}
+                                {activeView === 'api-channels' && <ApiChannelsView />}
+                                {activeView === 'cost-estimation' && <CostEstimationView />}
+                                {activeView === 'storage-settings' && <StorageSettingsView />}
+                                {activeView === 'system-logs' && <SystemLogsView />}
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                {/* Content Area */}
-                <div className="flex-1 flex flex-col min-w-0 bg-[#0d0d0e]">
-                    <div className="h-14 border-b border-white/5 flex items-center justify-end px-6 bg-[#0d0d0e]/50 backdrop-blur-xl sticky top-0 z-10">
-                        <button onClick={onClose} className="p-2 text-zinc-400 hover:text-white hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-colors">
+            ) : (
+                /* --- Mobile Layout (Window/Card Style for iOS) --- */
+                <div
+                    className="fixed inset-0 w-full h-full bg-[#000000] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 z-[10001]"
+                    onClick={e => e.stopPropagation()}
+                >
+                    {/* Mobile Header (iOS Style) */}
+                    <div className="h-14 border-b border-white/5 flex items-center justify-between px-5 bg-[#161618]/80 backdrop-blur-xl sticky top-0 z-20 shrink-0">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-900/20">
+                                <LayoutDashboard size={14} />
+                            </div>
+                            <span className="text-white font-bold text-[17px] tracking-tight truncate">
+                                {(() => {
+                                    const item = navItems.find(n => n.id === activeView);
+                                    if (!item) return '设置';
+                                    const map: Record<string, string> = {
+                                        '仪表盘': '仪表盘',
+                                        'API 渠道': 'API 渠道',
+                                        '成本': '成本估算',
+                                        '存储': '存储位置',
+                                        '日志': '系统日志'
+                                    };
+                                    return map[item.label] || item.label;
+                                })()}
+                            </span>
+                        </div>
+                        <button
+                            onClick={onClose}
+                            className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-white bg-zinc-800/80 rounded-full transition-all active:scale-90"
+                        >
                             <X size={18} />
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-8 scrollbar-thin">
-                        {activeView === 'dashboard' && <DashboardView keyStats={keyStats} />}
-                        {activeView === 'api-channels' && <ApiChannelsView />}
-                        {activeView === 'cost-estimation' && <CostEstimationView />}
-                        {activeView === 'storage-settings' && <StorageSettingsView />}
-                        {activeView === 'system-logs' && <SystemLogsView />}
+                    {/* Mobile Content (Scrollable) */}
+                    <div className="flex-1 overflow-y-auto p-4 scrollbar-none space-y-4 pb-32 bg-[#000000]">
+                        {/* Dynamic Content based on activeView */}
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            {activeView === 'dashboard' && <DashboardView keyStats={keyStats} />}
+                            {activeView === 'api-channels' && <ApiChannelsView />}
+                            {activeView === 'cost-estimation' && <CostEstimationView />}
+                            {activeView === 'storage-settings' && <StorageSettingsView />}
+                            {activeView === 'system-logs' && <SystemLogsView />}
+                        </div>
+                    </div>
+
+                    {/* Mobile Bottom Navigation Bar (iOS Tab Bar Style) */}
+                    {/* Mobile Bottom Navigation Bar (Floating Glass Pill - iOS 26 Style) */}
+                    <div className="absolute bottom-6 left-0 right-0 mx-auto w-[90%] max-w-[360px] bg-[#161618]/80 backdrop-blur-2xl border border-white/10 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex items-center justify-around h-[64px] px-2 z-[10002]">
+                        {navItems.map(item => (
+                            <button
+                                key={item.id}
+                                onClick={() => setActiveView(item.id)}
+                                className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-90
+                                    ${activeView === item.id
+                                        ? 'text-blue-500'
+                                        : 'text-zinc-400 hover:text-zinc-200'
+                                    }`}
+                            >
+                                <div className={`p-1.5 rounded-full transition-all duration-300 ${activeView === item.id ? 'bg-blue-500/15 translate-y-[-2px]' : ''}`}>
+                                    <item.icon size={22} strokeWidth={activeView === item.id ? 2.5 : 2} />
+                                </div>
+                                <span className={`text-[9px] font-medium tracking-tight transform ${activeView === item.id ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>{item.label}</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };

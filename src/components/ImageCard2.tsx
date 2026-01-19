@@ -354,7 +354,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     };
 
     const getDims = () => {
-        if (isMobile) return { w: 170, h: 260 }; // 200 + 60 footer
+        // if (isMobile) return { w: 170, h: 260 }; // Disabled for consistent sizing
         switch (image.aspectRatio) {
             case '16:9': return { w: 320, h: 240 }; // 180 + 60
             case '9:16': return { w: 200, h: 415 }; // 355 + 60
@@ -395,10 +395,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                         onMouseUp={() => onConnectEnd?.(image.id)}
                     />
 
-                    {/* Main Image - Double-click to enlarge */}
+                    {/* Main Image - Click to enlarge (was double-click) */}
                     <div
                         className="relative aspect-auto cursor-pointer min-h-[100px] bg-zinc-900"
-                        onDoubleClick={handleImageDoubleClick}
+                        onClick={handleImageDoubleClick}
                     >
                         {!imgError ? (
                             <img

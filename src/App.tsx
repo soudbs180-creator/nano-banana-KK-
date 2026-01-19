@@ -961,23 +961,22 @@ const AppContent: React.FC = () => {
         // So Image Y = node.position.y + gapToImages + exactImageHeight.
 
         if (isMobile) {
-          const cols = Math.min(count, 2);
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          const mobileCardWidth = 170;
-          // Mobile logic usually simplified, but let's try to center
-          const mobileGap = 10;
-          const itemsInRow = Math.min(cols, count - row * cols);
-          const currentGridWidth = itemsInRow * mobileCardWidth + (itemsInRow - 1) * mobileGap;
+          // Mobile: Maintain Desktop Size but Single Column
+          const cols = 1; // Force single column to fit screen
+          const col = 0; // Always col 0
+          const row = i; // Row increments with index
+          const mobileCardWidth = cardWidth; // Use full desktop width
 
-          const startX = -currentGridWidth / 2;
-          const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
+          const mobileGap = 20;
+          // Center X
+          const startX = -mobileCardWidth / 2;
+          const offsetX = startX + mobileCardWidth / 2; // Center anchor
 
-          const mobileImageHeight = exactImageHeight * 0.7; // Approx scale? Or just use fixed logic?
+          const mobileImageHeight = exactImageHeight; // Use full desktop height
           // Let's stick to simple mobile logic for now or align with desktop logic but scaled
           // For now, keep existing Mobile Y logic roughly, but center X
 
-          const offsetY = gapToImages + (200 + FOOTER_HEIGHT) + row * (210);
+          const offsetY = gapToImages + (cardHeight) + row * (mobileImageHeight + mobileGap);
           x = node.position.x + offsetX;
           y = node.position.y + offsetY;
         } else {
@@ -1371,6 +1370,7 @@ const AppContent: React.FC = () => {
           } : null : null
         }
         onClearSource={() => setActiveSourceImage(null)}
+        isMobile={isMobile}
       />
 
       {/* Chat Sidebar (Left) */}

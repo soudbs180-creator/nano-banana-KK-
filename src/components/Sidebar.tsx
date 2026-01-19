@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
 // Lucide icons replaced with SVGs
 
@@ -23,6 +23,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     onSignOut,
     onOpenProfile
 }) => {
+    // Auto-retract on mobile after 4s
+    useEffect(() => {
+        if (isOpen && window.innerWidth < 768) {
+            const timer = setTimeout(onClose, 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [isOpen, onClose]);
+
     const [activeTab, setActiveTab] = useState<'home' | 'history'>('home');
 
     return (
@@ -105,6 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 </span>
                             )}
                         </button>
+                        {/* 
                         <button
                             className="sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all"
                             style={{ color: 'var(--text-secondary)' }}
@@ -116,6 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </svg>
                             <span className="font-medium text-sm">项目收藏</span>
                         </button>
+                        */}
                     </div>
 
                     {/* Placeholder for history list when history tab is active */}
@@ -192,7 +202,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                     </div>
                 </div>
-            </aside>
+            </aside >
         </>
     );
 };

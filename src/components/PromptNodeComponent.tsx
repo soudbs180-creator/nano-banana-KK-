@@ -256,7 +256,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                     </div>
                 )}
 
-                <p className="text-zinc-100 text-sm leading-relaxed line-clamp-3 font-normal flex-1">
+                <p className="text-zinc-100 text-[15px] leading-7 line-clamp-4 font-normal flex-1 tracking-wide">
                     {node.prompt}
                 </p>
             </div>
@@ -273,10 +273,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
 
                 // Calculate card dimensions based on aspect ratio AND mobile
                 const getDims = (ratio: AspectRatio) => {
-                    // Mobile dimensions (matching App.tsx logic)
-                    if (isMobile) {
-                        return { w: 170, h: 200 + 60 }; // cardWidth + Footer
-                    }
+
                     // Desktop dimensions
                     switch (ratio) {
                         case AspectRatio.SQUARE: return { w: 280, h: 280 + 60 };

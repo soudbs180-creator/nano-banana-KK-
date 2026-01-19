@@ -66,12 +66,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile })
             const saved = localStorage.getItem('kk_chat_pos');
             if (saved) return JSON.parse(saved);
         } catch (e) { }
+
+        // Mobile Default: Top-Left (High Y value because Y is distance from bottom)
+        if (isMobile) {
+            return { x: 20, y: (window.innerHeight - 180) };
+        }
         return { x: 20, y: 20 };
     });
 
     useEffect(() => {
         localStorage.setItem('kk_chat_pos', JSON.stringify(position));
     }, [position]);
+
+
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef({ x: 0, y: 0 });
     const startPosRef = useRef({ x: 0, y: 0 });
