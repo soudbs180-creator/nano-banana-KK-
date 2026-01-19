@@ -574,15 +574,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     /**
-     * Arrange all nodes in a compact horizontal-first layout
-     * - Dynamic sizing based on actual card dimensions
-     * - Compact, right-first arrangement
+     * Arrange all nodes: Group by project (prompt + child images)
+     * - Each project: prompt on top, images below (vertical)
+     * - Projects arranged left-to-right (horizontal)
      * - No overlapping
      */
     const arrangeAllNodes = useCallback(() => {
         pushToHistory(); // Allow undo
 
-        // Helper: Get image card dimensions based on aspectRatio (matches ImageCard2.getDims)
+        // Helper: Get image card dimensions based on aspectRatio
         const getImageDims = (aspectRatio?: string) => {
             switch (aspectRatio) {
                 case '16:9': return { w: 320, h: 240 };
@@ -592,10 +592,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
         };
 
-        // Prompt card dimensions (from PromptNodeComponent: w-[320px])
         const PROMPT_WIDTH = 320;
-        const PROMPT_HEIGHT = 200; // Approximate
-        const GAP = 20;
+        const PROMPT_HEIGHT = 200;
+        const GAP_X = 40; // Gap between projects
+        const GAP_Y = 30; // Gap between prompt and images
 
         setState(prev => {
             const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
@@ -604,61 +604,70 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const promptPositions: { [id: string]: { x: number; y: number } } = {};
             const imagePositions: { [id: string]: { x: number; y: number } } = {};
 
-            // Sort all items by timestamp for layout order
-            type LayoutItem = {
-                type: 'prompt' | 'image';
-                id: string;
-                timestamp: number;
-                width: number;
-                height: number;
-            };
+            // Group: each prompt with its child images
+            interface ProjectGroup {
+                prompt: typeof currentCanvas.promptNodes[0];
+                images: typeof currentCanvas.imageNodes;
+            }
 
-            const items: LayoutItem[] = [
-                ...currentCanvas.promptNodes.map(n => ({
-                    type: 'prompt' as const,
-                    id: n.id,
-                    timestamp: n.timestamp,
-                    width: PROMPT_WIDTH,
-                    height: PROMPT_HEIGHT
-                })),
-                ...currentCanvas.imageNodes.map(n => {
-                    const dims = getImageDims(n.aspectRatio);
-                    return {
-                        type: 'image' as const,
-                        id: n.id,
-                        timestamp: n.timestamp,
-                        width: dims.w,
-                        height: dims.h
-                    };
-                })
-            ].sort((a, b) => a.timestamp - b.timestamp);
+            const projects: ProjectGroup[] = currentCanvas.promptNodes
+                .map(pn => ({
+                    prompt: pn,
+                    images: currentCanvas.imageNodes.filter(img => img.parentPromptId === pn.id)
+                }))
+                .sort((a, b) => a.prompt.timestamp - b.prompt.timestamp);
 
-            // Simple horizontal layout - each card next to the previous
-            let currentX = GAP;
-            let currentY = GAP;
-            let rowMaxHeight = 0;
-            const MAX_ROW_WIDTH = 2400; // Max width before wrap
+            // Orphan images (no parent)
+            const orphanImages = currentCanvas.imageNodes.filter(
+                img => !currentCanvas.promptNodes.some(pn => pn.id === img.parentPromptId)
+            );
 
-            items.forEach(item => {
-                // Check if need to wrap to next row
-                if (currentX + item.width > MAX_ROW_WIDTH && currentX > GAP) {
-                    currentX = GAP;
-                    currentY += rowMaxHeight + GAP;
-                    rowMaxHeight = 0;
-                }
+            // Start position
+            let currentX = 50;
+            const startY = 50;
 
-                // Position at anchor point (cards use translate(-50%, -100%))
-                const posX = currentX + item.width / 2;
-                const posY = currentY + item.height;
+            // Layout each project
+            projects.forEach(project => {
+                // Calculate project width (max of prompt width and images width)
+                let maxImageWidth = 0;
+                let totalImagesHeight = 0;
+                const imageDims: { w: number; h: number }[] = [];
 
-                if (item.type === 'prompt') {
-                    promptPositions[item.id] = { x: posX, y: posY };
-                } else {
-                    imagePositions[item.id] = { x: posX, y: posY };
-                }
+                project.images.forEach(img => {
+                    const dims = getImageDims(img.aspectRatio);
+                    imageDims.push(dims);
+                    maxImageWidth = Math.max(maxImageWidth, dims.w);
+                    totalImagesHeight += dims.h;
+                });
 
-                currentX += item.width + GAP;
-                rowMaxHeight = Math.max(rowMaxHeight, item.height);
+                const projectWidth = Math.max(PROMPT_WIDTH, maxImageWidth);
+
+                // Position prompt (anchor is center-bottom)
+                const promptX = currentX + projectWidth / 2;
+                const promptY = startY + PROMPT_HEIGHT;
+                promptPositions[project.prompt.id] = { x: promptX, y: promptY };
+
+                // Position images below prompt (stacked vertically)
+                let imageY = promptY + GAP_Y;
+                project.images.forEach((img, idx) => {
+                    const dims = imageDims[idx];
+                    imageY += dims.h; // Move down by image height (anchor is bottom)
+                    const imgX = currentX + projectWidth / 2; // Center align
+                    imagePositions[img.id] = { x: imgX, y: imageY };
+                    imageY += GAP_Y / 2; // Small gap between images
+                });
+
+                // Move X for next project
+                currentX += projectWidth + GAP_X;
+            });
+
+            // Orphan images at the end
+            orphanImages.forEach((img, idx) => {
+                const dims = getImageDims(img.aspectRatio);
+                const imgX = currentX + dims.w / 2;
+                const imgY = startY + PROMPT_HEIGHT + GAP_Y + dims.h;
+                imagePositions[img.id] = { x: imgX, y: imgY };
+                currentX += dims.w + GAP_X;
             });
 
             return {
