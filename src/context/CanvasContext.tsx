@@ -287,18 +287,22 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         cloudCanvases.forEach(cloudC => {
                             const idx = merged.findIndex(c => c.id === cloudC.id);
                             if (idx >= 0) {
-                                // Conflict Resolution: Last Write Wins
+                                // Conflict Resolution: Last Write Wins + Safety Heuristic
                                 const localC = merged[idx];
                                 const cloudTime = cloudC.lastModified || 0;
                                 const localTime = localC.lastModified || 0;
 
-                                if (cloudTime > localTime) {
-                                    // Cloud is newer, overwrite local
+                                // Safety: If local has MORE content (prompt nodes), assume it's newer/unsynced work
+                                // This prevents data loss if clock skew makes stale cloud data look "newer"
+                                const localHasMoreContent = (localC.promptNodes?.length || 0) > (cloudC.promptNodes?.length || 0);
+
+                                if (!localHasMoreContent && cloudTime > localTime) {
+                                    // Cloud is newer AND local doesn't have extra unsynced nodes
                                     console.log(`[Sync] Updating canvas ${cloudC.name} from cloud (Newer: ${new Date(cloudTime).toLocaleTimeString()})`);
                                     merged[idx] = cloudC;
                                 } else {
-                                    // Local is newer, keep local (and it will push to cloud on next save)
-                                    console.log(`[Sync] Keeping local canvas ${localC.name} (Newer/Equal: ${new Date(localTime).toLocaleTimeString()})`);
+                                    // Local is newer OR has more content -> Keep Local
+                                    console.log(`[Sync] Keeping local canvas ${localC.name} (Newer/More Content: ${new Date(localTime).toLocaleTimeString()})`);
                                 }
                             } else {
                                 merged.push(cloudC);

@@ -37,7 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Sidebar */}
             <aside
-                className={`sidebar fixed md:relative z-50 transition-all duration-300 ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-0 md:opacity-0'
+                className={`sidebar fixed inset-y-0 left-0 z-50 transition-all duration-300 bg-black/80 backdrop-blur-xl border-r border-white/5 ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-0 md:opacity-0'
                     }`}
                 style={{ width: isOpen ? 280 : 0 }}
             >

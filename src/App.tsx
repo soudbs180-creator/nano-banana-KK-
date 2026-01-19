@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import InfiniteCanvas from './components/Canvas';
-import Sidebar from './components/Sidebar';
+
 import PromptBar from './components/PromptBar';
 import ImageNode from './components/ImageCard2';
 import PromptNodeComponent from './components/PromptNodeComponent';
@@ -8,6 +8,7 @@ import PendingNode from './components/PendingNode';
 // KeyManagerModal removed - integrated into UserProfileModal
 import ChatSidebar from './components/ChatSidebar';
 import { PromptNode, GeneratedImage, AspectRatio, ImageSize, ModelType, GenerationConfig } from './types';
+import { User, LayoutDashboard, LogOut, Settings } from 'lucide-react'; // Added icons for User Menu
 import { generateImage, validateApiKey, cancelGeneration } from './services/geminiService';
 import { keyManager } from './services/keyManager';
 // Lucide icons replaced with SVGs
@@ -356,9 +357,14 @@ const AppContent: React.FC = () => {
   const [keyStats, setKeyStats] = useState(keyManager.getStats());
 
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false); // New User Menu State
+  useEffect(() => {
+    console.log('[App] showProfileModal changed:', showProfileModal);
+  }, [showProfileModal]);
   const [profileInitialView, setProfileInitialView] = useState<UserProfileView>('main');
   const [showStorageModal, setShowStorageModal] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-channels' | 'cost-estimation' | 'storage-settings' | 'system-logs'>('dashboard');
 
   useEffect(() => {
     const unsubscribe = keyManager.subscribe(() => {
@@ -380,9 +386,8 @@ const AppContent: React.FC = () => {
           // Show storage selection modal first
           setShowStorageModal(true);
         } else if (!keyManager.hasValidKeys()) {
-          // Storage configured, check API key
-          setProfileInitialView('api-settings');
-          setShowProfileModal(true);
+          setShowSettingsPanel(true);
+          setSettingsInitialView('api-channels');
         }
       });
     }
@@ -923,8 +928,8 @@ const AppContent: React.FC = () => {
       updatePromptNode({ ...generatingNode, isGenerating: false, error: err.message || 'Failed' });
       setError(err.message || "Generation failed.");
       if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
-        setProfileInitialView('api-settings');
-        setShowProfileModal(true);
+        setShowSettingsPanel(true);
+        setSettingsInitialView('api-channels');
       }
     } finally {
       setIsGenerating(false);
@@ -1179,29 +1184,74 @@ const AppContent: React.FC = () => {
 
       const newImageNodes = results.map((img, i) => {
         let x, y;
+
+        // STRICT LAYOUT LOGIC (Matching arrangeAllNodes)
+        // 1. Calculate Image Height strictly based on dimensions/aspectRatio (Footer included +40)
+        let exactImageHeight = cardHeight;
+        if (img.dimensions) {
+          const [w, h] = img.dimensions.split('x').map(Number);
+          if (w && h) {
+            const ratio = w / h;
+            const displayWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
+            exactImageHeight = (displayWidth / ratio) + 40;
+          }
+        } else {
+          // Fallback
+          switch (node.aspectRatio) {
+            case AspectRatio.LANDSCAPE_16_9: exactImageHeight = 220; break; // 180 + 40
+            case AspectRatio.PORTRAIT_9_16: exactImageHeight = 395; break; // 355 + 40
+            default: exactImageHeight = 320; // 280 + 40
+          }
+        }
+
+        // 2. Position:
+        // Y: Prompt Bottom + Gap + Image Height (Because Image Y is anchor bottom!)
+        // Note: node.position.y is Prompt Bottom.
+        // So Image Y = node.position.y + gapToImages + exactImageHeight.
+
         if (isMobile) {
           const cols = Math.min(count, 2);
           const col = i % cols;
           const row = Math.floor(i / cols);
           const mobileCardWidth = 170;
-          const mobileCardHeight = 200 + FOOTER_HEIGHT;
+          // Mobile logic usually simplified, but let's try to center
           const mobileGap = 10;
           const itemsInRow = Math.min(cols, count - row * cols);
           const currentGridWidth = itemsInRow * mobileCardWidth + (itemsInRow - 1) * mobileGap;
+
           const startX = -currentGridWidth / 2;
           const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
-          const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
+
+          const mobileImageHeight = exactImageHeight * 0.7; // Approx scale? Or just use fixed logic?
+          // Let's stick to simple mobile logic for now or align with desktop logic but scaled
+          // For now, keep existing Mobile Y logic roughly, but center X
+
+          const offsetY = gapToImages + (200 + FOOTER_HEIGHT) + row * (210);
           x = node.position.x + offsetX;
           y = node.position.y + offsetY;
         } else {
+          // DESKTOP LOGIC
           const cols = Math.min(count, 2);
           const col = i % cols;
           const row = Math.floor(i / cols);
           const itemsInRow = Math.min(cols, count - row * cols);
+
+          // Calculate grid width for centering
           const currentGridWidth = itemsInRow * cardWidth + (itemsInRow - 1) * gap;
           const startX = -currentGridWidth / 2;
+
+          // X: Center relative to Prompt X
           const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
-          const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
+
+          // Y: Prompt Bottom + Gap + Image Height (for specific row)
+          // If multiple rows, add height of previous rows
+          // Simplifying: Assume uniform height for generated batch 
+          const rowHeight = exactImageHeight;
+          const rowOffsetY = row * (rowHeight + gap);
+
+          // Final Y (Bottom Anchor) = PromptBottom + Gap + ThisImageHeight + RowOffset
+          const offsetY = gapToImages + exactImageHeight + rowOffsetY;
+
           x = node.position.x + offsetX;
           y = node.position.y + offsetY;
         }
@@ -1270,20 +1320,97 @@ const AppContent: React.FC = () => {
         isMobile={isMobile}
       />
 
-      {/* API Key Button with Status Indicator */}
-      <div className="absolute top-4 right-4 z-50">
-        <button
-          onClick={() => setShowSettingsPanel(true)}
-          className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 hover:border-indigo-500 transition-colors shadow-2xl bg-[#1a1a1c]"
-          title="API Key Settings"
-        >
-          <div className="w-full h-full bg-gradient-to-tr from-indigo-500 via-purple-500 to-amber-500 opacity-80" />
-        </button>
+      {/* Top Right User Menu */}
+      <div className="absolute top-4 right-4 z-[100] flex items-center gap-3">
 
-        {/* API Status Dot - Clearly Above Avatar */}
-        <div className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#09090b] z-10 shadow-lg ${derivedApiStatus === 'success' ? 'bg-green-500' :
-          derivedApiStatus === 'error' ? 'bg-red-500' : 'bg-zinc-500'
-          }`} />
+        {/* User Avatar & Dropdown Trigger */}
+        <div className="relative group">
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 hover:border-indigo-500 transition-all shadow-2xl bg-[#1a1a1c] flex items-center justify-center cursor-pointer active:scale-95"
+          >
+            {user?.user_metadata?.avatar_url ? (
+              <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-tr from-indigo-500 via-purple-500 to-amber-500 flex items-center justify-center font-bold text-white text-sm">
+                {user?.email?.[0].toUpperCase() || 'K'}
+              </div>
+            )}
+          </button>
+
+          {/* API Status Dot */}
+          <div className={`absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#09090b] z-10 shadow-lg ${derivedApiStatus === 'success' ? 'bg-green-500' :
+            derivedApiStatus === 'error' ? 'bg-red-500' : 'bg-zinc-500'
+            }`} />
+
+          {/* New User Menu Dropdown */}
+          {showUserMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+              <div className="absolute top-12 right-0 w-64 bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+
+                {/* User Info Header */}
+                <div className="px-3 py-3 border-b border-white/5 mb-2 hover:bg-white/5 rounded-lg transition-colors cursor-pointer" onClick={() => {
+                  setProfileInitialView('main');
+                  setShowProfileModal(true);
+                  setShowUserMenu(false);
+                }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold overflow-hidden">
+                      {user?.user_metadata?.avatar_url ? (
+                        <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />
+                      ) : user?.email?.[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-white truncate">{user?.user_metadata?.full_name || 'User'}</div>
+                      <div className="text-xs text-zinc-400 truncate">{user?.email}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Menu Items */}
+                <div className="space-y-1">
+                  <button
+                    onClick={() => {
+                      setProfileInitialView('main');
+                      setShowProfileModal(true);
+                      setShowUserMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-left"
+                  >
+                    <div className="p-1.5 bg-blue-500/10 text-blue-400 rounded-lg"><User size={14} /></div>
+                    个人中心
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      setShowSettingsPanel(true);
+                      setSettingsInitialView('dashboard');
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-left"
+                  >
+                    <div className="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg"><LayoutDashboard size={14} /></div>
+                    设置
+                  </button>
+
+                  <div className="h-px bg-white/5 my-1" />
+
+                  <button
+                    onClick={() => {
+                      signOut();
+                      setShowUserMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left"
+                  >
+                    <div className="p-1.5 bg-red-500/10 rounded-lg"><LogOut size={14} /></div>
+                    退出登录
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Main Infinite Canvas */}
@@ -1500,19 +1627,7 @@ const AppContent: React.FC = () => {
       />
 
       {/* Sidebar (Optional) */}
-      <Sidebar
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        onOpenSettings={() => setShowSettingsPanel(true)}
-        hasApiKey={keyManager.hasValidKeys()}
-        generatedCount={activeCanvas?.imageNodes.length || 0}
-        user={user}
-        onSignOut={signOut}
-        onOpenProfile={() => {
-          setProfileInitialView('main');
-          setShowProfileModal(true);
-        }}
-      />
+
 
       {/* Legacy KeyManagerModal removed - integrated into UserProfileModal */}
 
@@ -1529,6 +1644,7 @@ const AppContent: React.FC = () => {
       <SettingsPanel
         isOpen={showSettingsPanel}
         onClose={() => setShowSettingsPanel(false)}
+        initialView={settingsInitialView}
       />
 
       {/* Storage Selection Modal (Post-Login) */}
@@ -1537,9 +1653,10 @@ const AppContent: React.FC = () => {
         onComplete={() => {
           setShowStorageModal(false);
           // After storage configured, check if API key is set
-          if (!keyManager.hasValidKeys()) {
-            setProfileInitialView('api-settings');
-            setShowProfileModal(true);
+          if (keyManager.getSlots().length === 0) {
+            setShowSettingsPanel(true);
+            setSettingsInitialView('api-channels');
+            return;
           }
         }}
       />
