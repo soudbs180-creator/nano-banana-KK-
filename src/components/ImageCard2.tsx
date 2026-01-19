@@ -194,6 +194,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         dragStartCanvasPos.current = { x: position.x, y: position.y };
     };
 
+    const requestRef = useRef<number | null>(null);
+
     const handleMouseMove = (e: MouseEvent | TouchEvent) => {
         if (!isDragging) return;
         e.preventDefault(); // Prevent scrolling while dragging card
@@ -207,18 +209,28 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
             clientY = (e as MouseEvent).clientY;
         }
 
-        // Calculate delta in screen space, then convert to canvas space
-        const deltaX = (clientX - dragStartPos.current.x) / canvasTransform.scale;
-        const deltaY = (clientY - dragStartPos.current.y) / canvasTransform.scale;
+        // Throttle updates using requestAnimationFrame
+        if (requestRef.current !== null) return;
 
-        onPositionChange(image.id, {
-            x: dragStartCanvasPos.current.x + deltaX,
-            y: dragStartCanvasPos.current.y + deltaY
+        requestRef.current = requestAnimationFrame(() => {
+            // Calculate delta in screen space, then convert to canvas space
+            const deltaX = (clientX - dragStartPos.current.x) / canvasTransform.scale;
+            const deltaY = (clientY - dragStartPos.current.y) / canvasTransform.scale;
+
+            onPositionChange(image.id, {
+                x: dragStartCanvasPos.current.x + deltaX,
+                y: dragStartCanvasPos.current.y + deltaY
+            });
+            requestRef.current = null;
         });
     };
 
     const handleMouseUp = () => {
         setIsDragging(false);
+        if (requestRef.current !== null) {
+            cancelAnimationFrame(requestRef.current);
+            requestRef.current = null;
+        }
     };
 
     React.useEffect(() => {
@@ -228,14 +240,18 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
             // Touch listeners (non-passive to prevent scroll)
             window.addEventListener('touchmove', handleMouseMove, { passive: false });
             window.addEventListener('touchend', handleMouseUp);
+
+            return () => {
+                window.removeEventListener('mousemove', handleMouseMove);
+                window.removeEventListener('mouseup', handleMouseUp);
+                window.removeEventListener('touchmove', handleMouseMove);
+                window.removeEventListener('touchend', handleMouseUp);
+                if (requestRef.current) {
+                    cancelAnimationFrame(requestRef.current);
+                }
+            };
         }
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-            window.removeEventListener('touchmove', handleMouseMove);
-            window.removeEventListener('touchend', handleMouseUp);
-        };
-    }, [isDragging, canvasTransform.scale]);
+    }, [isDragging]); // Removed handler dependencies as they use refs or stable/enclosed scope
 
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();

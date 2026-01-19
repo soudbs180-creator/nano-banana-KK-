@@ -15,7 +15,7 @@ interface SettingsPanelProps {
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialView = 'dashboard' }) => {
     const [activeView, setActiveView] = useState<SettingsView>(initialView);
-    const [apiSlots, setApiSlots] = useState<{ id: string; key: string }[]>([]);
+    const [apiSlots, setApiSlots] = useState<KeySlot[]>([]);
     const [newKey, setNewKey] = useState('');
     const [copied, setCopied] = useState(false);
 
@@ -28,7 +28,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
 
     const loadApiKeys = async () => {
         const slots = keyManager.getSlots();
-        setApiSlots(slots.map(s => ({ id: s.id, key: s.key })));
+        setApiSlots(slots);
     };
 
     const handleAddKey = async () => {
@@ -164,9 +164,14 @@ const DashboardView: React.FC<{ apiKeysCount: number }> = ({ apiKeysCount }) => 
     );
 };
 
+// Import KeySlot type
+import { KeySlot } from '../services/keyManager';
+
+// ...
+
 // API Channels View
 interface ApiChannelsViewProps {
-    apiSlots: { id: string; key: string }[];
+    apiSlots: KeySlot[];
     newKey: string;
     setNewKey: (key: string) => void;
     onAdd: () => void;
@@ -174,6 +179,24 @@ interface ApiChannelsViewProps {
 }
 
 const ApiChannelsView: React.FC<ApiChannelsViewProps> = ({ apiSlots, newKey, setNewKey, onAdd, onRemove }) => {
+    const getStatusColor = (status: KeySlot['status']) => {
+        switch (status) {
+            case 'valid': return 'text-green-400 bg-green-400/10 border-green-400/20';
+            case 'rate_limited': return 'text-orange-400 bg-orange-400/10 border-orange-400/20';
+            case 'invalid': return 'text-red-400 bg-red-400/10 border-red-400/20';
+            default: return 'text-zinc-400 bg-zinc-400/10 border-zinc-400/20';
+        }
+    };
+
+    const getStatusLabel = (status: KeySlot['status']) => {
+        switch (status) {
+            case 'valid': return '正常';
+            case 'rate_limited': return '限流';
+            case 'invalid': return '失效';
+            default: return '未知';
+        }
+    };
+
     return (
         <div className="space-y-4">
             {/* Add Key */}
@@ -202,19 +225,39 @@ const ApiChannelsView: React.FC<ApiChannelsViewProps> = ({ apiSlots, newKey, set
                     </div>
                 ) : (
                     apiSlots.map((slot) => (
-                        <div key={slot.id} className="flex items-center justify-between bg-black/20 border border-white/5 rounded-lg px-4 py-3">
-                            <div className="flex items-center gap-3">
-                                <Key size={16} className="text-zinc-500" />
-                                <span className="text-sm text-white font-mono">
-                                    {slot.key.slice(0, 8)}...{slot.key.slice(-4)}
-                                </span>
+                        <div key={slot.id} className="bg-black/20 border border-white/5 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-3">
+                                    <Key size={16} className={slot.status === 'valid' ? "text-indigo-400" : "text-zinc-500"} />
+                                    <span className="text-sm text-white font-mono">
+                                        {slot.key.slice(0, 8)}...{slot.key.slice(-4)}
+                                    </span>
+                                    {/* Status Badge */}
+                                    <div className={`px-2 py-0.5 rounded text-[10px] border ${getStatusColor(slot.status)}`}>
+                                        {getStatusLabel(slot.status)}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => onRemove(slot.id)}
+                                    className="text-xs text-red-400 hover:text-red-300 px-2 py-1 hover:bg-red-500/10 rounded"
+                                >
+                                    删除
+                                </button>
                             </div>
-                            <button
-                                onClick={() => onRemove(slot.id)}
-                                className="text-xs text-red-400 hover:text-red-300"
-                            >
-                                删除
-                            </button>
+
+                            {/* Stats */}
+                            <div className="flex items-center gap-4 text-[10px] text-zinc-500 pl-7">
+                                <div>成功: <span className="text-zinc-300">{slot.successCount}</span></div>
+                                <div>失败: <span className={slot.failCount > 0 ? "text-orange-400" : "text-zinc-300"}>{slot.failCount}</span></div>
+                                {slot.lastUsed && (
+                                    <div>最近使用: {new Date(slot.lastUsed).toLocaleTimeString()}</div>
+                                )}
+                                {slot.lastError && (
+                                    <div className="text-red-400/70 truncate max-w-[150px]" title={slot.lastError}>
+                                        {slot.lastError}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     ))
                 )}
