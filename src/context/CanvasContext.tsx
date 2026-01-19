@@ -52,7 +52,7 @@ const generateId = () => Date.now().toString(36) + Math.random().toString(36).su
 
 const DEFAULT_CANVAS: Canvas = {
     id: 'default',
-    name: '默认画布',
+    name: '画布1',
     promptNodes: [],
     imageNodes: [],
     lastModified: Date.now()
@@ -188,8 +188,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     useEffect(() => {
         if (isLoading) return; // Don't save while loading
 
-        // Debounce saving slightly to avoid thrashing
-        const timer = setTimeout(async () => {
+        const saveState = async () => {
             try {
                 // 1. Local Storage Save (Backup/Offline)
                 const stateToSave = {
@@ -208,14 +207,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
                     if (activeCanvas) {
                         try {
-                            // We just fire verification, if it fails (not logged in), catch silently
                             await syncService.saveCanvas(activeCanvas);
                         } catch (e) {
-                            // Not logged in or network error, ignore for now
+                            // Ignored
                         }
                     }
                 }
-
             } catch (error: any) {
                 if (error.name === 'QuotaExceededError') {
                     console.error('localStorage quota exceeded.');
@@ -223,8 +220,31 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     console.error('Failed to save state:', error);
                 }
             }
-        }, 1000); // Increased debounce for network requests
-        return () => clearTimeout(timer);
+        };
+
+        // Debounce saving
+        const timer = setTimeout(saveState, 500); // Reduced to 500ms
+
+        // Save immediately on page unload
+        const handleBeforeUnload = () => {
+            // Attempt synchronous save logic for localStorage (syncService is async, might fail)
+            try {
+                const stateToSave = {
+                    ...state,
+                    canvases: stripImageUrls(state.canvases),
+                    history: {}
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+            } catch (e) {
+                console.error('Failed to save state on unload:', e);
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
     }, [state, isLoading]);
 
     // Initial Load: Merge Cloud Data

@@ -57,20 +57,24 @@ export const syncService = {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('User not logged in');
 
+        const pathOriginal = `${user.id}/${id}.png`;
         const pathThumb = `${user.id}/${id}${THUMB_SUFFIX}`;
 
         // 1. Generate Thumbnail
         const thumbBlob = await compressImage(blob, { maxWidth: 512, quality: 0.7, type: 'image/jpeg' });
 
         try {
-            // 2. Upload Thumbnail Only (Smaller, faster)
-            await this._uploadWithQuotaCheck(pathThumb, thumbBlob);
+            // 2. Upload Both
+            await Promise.all([
+                this._uploadWithQuotaCheck(pathOriginal, blob),
+                this._uploadWithQuotaCheck(pathThumb, thumbBlob)
+            ]);
 
-            // 3. Get Public URL for Thumbnail
+            // 3. Get Public URLs
+            const { data: { publicUrl: originalUrl } } = supabase.storage.from(BUCKET_NAME).getPublicUrl(pathOriginal);
             const { data: { publicUrl: thumbUrl } } = supabase.storage.from(BUCKET_NAME).getPublicUrl(pathThumb);
 
-            // Return empty original string (Client handles local storage)
-            return { original: '', thumbnail: thumbUrl };
+            return { original: originalUrl, thumbnail: thumbUrl };
         } catch (e: any) {
             console.error('Upload failed:', e);
             throw e;
