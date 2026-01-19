@@ -41,6 +41,7 @@ interface CanvasContextType {
     canUndo: boolean;
     canRedo: boolean;
     arrangeAllNodes: () => void; // Auto-layout cards in compact grid
+    getNextCardPosition: () => { x: number; y: number }; // Get next available position for new card
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -573,88 +574,52 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     /**
-     * Arrange all nodes in a compact grid layout
-     * - Prompts are placed above their child images
-     * - Multi-image prompts expand horizontally
+     * Arrange all nodes in a compact horizontal-first layout
+     * - All cards arrange left-to-right, wrap to next row
      * - No overlapping
+     * - Cards sorted by timestamp
      */
     const arrangeAllNodes = useCallback(() => {
         pushToHistory(); // Allow undo
 
-        const CARD_WIDTH = 300;
-        const PROMPT_HEIGHT = 120; // Prompt cards are shorter
-        const IMAGE_HEIGHT = 300;
-        const GAP = 24;
-        const SLOT_WIDTH = CARD_WIDTH + GAP;
-        const COLUMNS = 4;
+        const CARD_WIDTH = 280;
+        const CARD_HEIGHT = 320; // Unified height for all cards
+        const GAP_X = 20;
+        const GAP_Y = 20;
+        const MAX_WIDTH = 1600; // Max row width before wrapping
+        const SLOT_WIDTH = CARD_WIDTH + GAP_X;
+        const SLOT_HEIGHT = CARD_HEIGHT + GAP_Y;
 
         setState(prev => {
             const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
             if (!currentCanvas) return prev;
 
+            // Collect all cards (prompts + images) and sort by timestamp
+            type CardItem = { id: string; type: 'prompt' | 'image'; timestamp: number };
+            const allCards: CardItem[] = [
+                ...currentCanvas.promptNodes.map(n => ({ id: n.id, type: 'prompt' as const, timestamp: n.timestamp })),
+                ...currentCanvas.imageNodes.map(n => ({ id: n.id, type: 'image' as const, timestamp: n.timestamp }))
+            ].sort((a, b) => a.timestamp - b.timestamp);
+
             const promptPositions: { [id: string]: { x: number; y: number } } = {};
             const imagePositions: { [id: string]: { x: number; y: number } } = {};
 
-            // Group prompts with their child images
-            const promptGroups = currentCanvas.promptNodes
-                .map(pn => ({
-                    prompt: pn,
-                    images: currentCanvas.imageNodes.filter(img => img.parentPromptId === pn.id)
-                }))
-                .sort((a, b) => a.prompt.timestamp - b.prompt.timestamp);
+            let currentX = 0;
+            let currentY = 0;
+            const columnsPerRow = Math.floor(MAX_WIDTH / SLOT_WIDTH);
 
-            // Find orphan images (no parent prompt)
-            const orphanImages = currentCanvas.imageNodes.filter(
-                img => !currentCanvas.promptNodes.some(pn => pn.id === img.parentPromptId)
-            );
+            allCards.forEach((card, index) => {
+                const col = index % columnsPerRow;
+                const row = Math.floor(index / columnsPerRow);
 
-            let currentRow = 0;
-            let currentCol = 0;
+                const x = col * SLOT_WIDTH;
+                const y = row * SLOT_HEIGHT;
 
-            // Layout each prompt group (prompt + its images)
-            promptGroups.forEach(group => {
-                const imageCount = group.images.length;
-                const columnsNeeded = Math.max(1, imageCount);
-
-                // If this group won't fit on current row, move to next row
-                if (currentCol + columnsNeeded > COLUMNS && currentCol > 0) {
-                    currentRow++;
-                    currentCol = 0;
+                if (card.type === 'prompt') {
+                    promptPositions[card.id] = { x, y };
+                } else {
+                    imagePositions[card.id] = { x, y };
                 }
-
-                // Calculate Y positions for this group
-                const promptY = currentRow * (PROMPT_HEIGHT + IMAGE_HEIGHT + GAP * 2);
-                const imageY = promptY + PROMPT_HEIGHT + GAP;
-
-                // Place prompt (centered above its images if multiple)
-                const promptX = currentCol * SLOT_WIDTH + (columnsNeeded - 1) * SLOT_WIDTH / 2;
-                promptPositions[group.prompt.id] = { x: promptX, y: promptY };
-
-                // Place child images in a row below the prompt
-                group.images.forEach((img, imgIndex) => {
-                    const imgX = (currentCol + imgIndex) * SLOT_WIDTH;
-                    imagePositions[img.id] = { x: imgX, y: imageY };
-                });
-
-                // Move column pointer
-                currentCol += columnsNeeded;
-
-                // If we filled the row, move to next
-                if (currentCol >= COLUMNS) {
-                    currentRow++;
-                    currentCol = 0;
-                }
-            });
-
-            // Layout orphan images at the end
-            orphanImages.forEach(img => {
-                if (currentCol >= COLUMNS) {
-                    currentRow++;
-                    currentCol = 0;
-                }
-                const y = currentRow * (PROMPT_HEIGHT + IMAGE_HEIGHT + GAP * 2) + PROMPT_HEIGHT + GAP;
-                imagePositions[img.id] = { x: currentCol * SLOT_WIDTH, y };
-                currentCol++;
             });
 
             return {
@@ -678,12 +643,35 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
     }, [pushToHistory]);
 
+    /**
+     * Get the next available position for a new card (to the right of existing cards)
+     */
+    const getNextCardPosition = useCallback((): { x: number; y: number } => {
+        const CARD_WIDTH = 280;
+        const CARD_HEIGHT = 320;
+        const GAP_X = 20;
+        const GAP_Y = 20;
+        const MAX_WIDTH = 1600;
+        const SLOT_WIDTH = CARD_WIDTH + GAP_X;
+        const SLOT_HEIGHT = CARD_HEIGHT + GAP_Y;
+        const columnsPerRow = Math.floor(MAX_WIDTH / SLOT_WIDTH);
+
+        const currentCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
+        if (!currentCanvas) return { x: 0, y: 0 };
+
+        const totalCards = currentCanvas.promptNodes.length + currentCanvas.imageNodes.length;
+        const col = totalCards % columnsPerRow;
+        const row = Math.floor(totalCards / columnsPerRow);
+
+        return { x: col * SLOT_WIDTH, y: row * SLOT_HEIGHT };
+    }, [state]);
+
     return (
         <CanvasContext.Provider value={{
             state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
             addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition,
             deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
-            undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes
+            undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition
         }}>
             {children}
         </CanvasContext.Provider>

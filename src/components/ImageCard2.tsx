@@ -41,9 +41,70 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const wheelCleanupRef = useRef<(() => void) | null>(null);
 
     const [imgError, setImgError] = useState(false);
+    const [lightboxOriginalUrl, setLightboxOriginalUrl] = useState<string | null>(null);
+    const [isLoadingOriginal, setIsLoadingOriginal] = useState(false);
 
     // Use original for zoom/download if available, otherwise fallback
     const highResUrl = image.originalUrl || image.url;
+
+    // Load original from IndexedDB when lightbox opens, and save based on storage mode
+    useEffect(() => {
+        if (showLightbox && !lightboxOriginalUrl && !isLoadingOriginal) {
+            setIsLoadingOriginal(true);
+            (async () => {
+                const { getImage, saveImage } = await import('../services/imageStorage');
+                const { getStorageMode, saveOriginalToLocalFolder } = await import('../services/storagePreference');
+
+                // Try to load from IndexedDB first
+                const cached = await getImage(image.id);
+
+                if (cached && cached.startsWith('data:')) {
+                    // Already have original cached
+                    setLightboxOriginalUrl(cached);
+                    setIsLoadingOriginal(false);
+                    return;
+                }
+
+                // Need to fetch original from URL and save based on storage mode
+                let originalUrl = image.originalUrl || image.url;
+                let originalBase64 = originalUrl;
+
+                // If it's a URL (not base64), fetch it
+                if (originalUrl && !originalUrl.startsWith('data:')) {
+                    try {
+                        const res = await fetch(originalUrl);
+                        const blob = await res.blob();
+                        originalBase64 = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result as string);
+                            reader.readAsDataURL(blob);
+                        });
+                    } catch (e) {
+                        console.error('[Lightbox] Failed to fetch original:', e);
+                    }
+                }
+
+                // Save to appropriate storage based on mode
+                const mode = await getStorageMode();
+                if (mode === 'local') {
+                    // Save to local folder
+                    try {
+                        const res = await fetch(originalBase64);
+                        const blob = await res.blob();
+                        await saveOriginalToLocalFolder(image.id, blob, image.prompt);
+                    } catch (e) {
+                        console.warn('[Lightbox] Failed to save to local folder:', e);
+                    }
+                } else {
+                    // Save to IndexedDB (browser mode or default)
+                    await saveImage(image.id, originalBase64);
+                }
+
+                setLightboxOriginalUrl(originalBase64);
+                setIsLoadingOriginal(false);
+            })();
+        }
+    }, [showLightbox, lightboxOriginalUrl, isLoadingOriginal, image.id, image.originalUrl, image.url, image.prompt]);
 
     // Handle wheel zoom with non-passive listener
     useEffect(() => {
@@ -202,21 +263,41 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                 blob = await response.blob();
             }
 
-            // Check storage mode - if 'local', save to local folder
-            const { getStorageMode, saveOriginalToLocalFolder } = await import('../services/storagePreference');
-            const storageMode = await getStorageMode();
+            // Always prompt for folder selection when downloading
+            const { isFileSystemAccessSupported } = await import('../services/storagePreference');
 
-            if (storageMode === 'local') {
-                // Try to save to local folder
-                const saved = await saveOriginalToLocalFolder(image.id, blob, image.prompt);
-                if (saved) {
-                    console.log('[ImageCard] Saved to local folder');
-                    return; // Success - no need to download
+            if (isFileSystemAccessSupported()) {
+                try {
+                    // Prompt user to select folder
+                    const handle = await (window as any).showDirectoryPicker({
+                        mode: 'readwrite',
+                        startIn: 'pictures'
+                    });
+
+                    // Generate filename
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    const sanitizedPrompt = (image.prompt || 'image').slice(0, 30).replace(/[<>:"/\\|?*]/g, '');
+                    const filename = `${sanitizedPrompt}_${timestamp}.png`;
+
+                    // Create file and write
+                    const fileHandle = await handle.getFileHandle(filename, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+
+                    const { notify } = await import('../services/notificationService');
+                    notify.success('下载成功', `已保存到: ${filename}`);
+                    return;
+                } catch (err: any) {
+                    if (err.name === 'AbortError') {
+                        // User cancelled folder selection
+                        return;
+                    }
+                    console.warn('[ImageCard] Folder save failed, falling back to browser download:', err);
                 }
-                // If local save failed, fall through to browser download
             }
 
-            // Browser download fallback
+            // Browser download fallback (if File System Access not supported or failed)
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -227,7 +308,6 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
             URL.revokeObjectURL(url);
         } catch (err: any) {
             console.error('Download failed:', err);
-            // Import and call notify for AI-readable error
             const { notify } = await import('../services/notificationService');
             notify.error(
                 '下载失败',
@@ -420,26 +500,32 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     </div>
 
                     {/* Main Image - Drag to pan, scroll to zoom */}
-                    <img
-                        src={highResUrl} // Use High Res logic
-                        onError={(e) => {
-                            // If high res fails, try low res as fallback? Or show error
-                            // e.currentTarget.src = image.url; 
-                            alert('原图加载失败 (Original Image Load Failed)');
-                        }}
-                        alt={image.prompt}
-                        onMouseDown={handleLightboxMouseDown}
-                        onDoubleClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
-                        onContextMenu={(e) => e.stopPropagation()}
-                        className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
-                        draggable={false}
-                        style={{
-                            transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
-                            transition: isPanning ? 'none' : 'transform 0.15s ease-out',
-                            cursor: isPanning ? 'grabbing' : 'grab',
-                            animation: 'lightboxScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
-                        }}
-                    />
+                    {isLoadingOriginal ? (
+                        <div className="flex items-center justify-center w-64 h-64 bg-black/50 rounded-xl">
+                            <div className="text-white text-sm">加载原图中...</div>
+                        </div>
+                    ) : (
+                        <img
+                            src={lightboxOriginalUrl || highResUrl}
+                            onError={(e) => {
+                                // If high res fails, try low res as fallback? Or show error
+                                // e.currentTarget.src = image.url; 
+                                alert('原图加载失败 (Original Image Load Failed)');
+                            }}
+                            alt={image.prompt}
+                            onMouseDown={handleLightboxMouseDown}
+                            onDoubleClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
+                            onContextMenu={(e) => e.stopPropagation()}
+                            className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
+                            draggable={false}
+                            style={{
+                                transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
+                                transition: isPanning ? 'none' : 'transform 0.15s ease-out',
+                                cursor: isPanning ? 'grabbing' : 'grab',
+                                animation: 'lightboxScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+                            }}
+                        />
+                    )}
 
                     {/* Hint text */}
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center">

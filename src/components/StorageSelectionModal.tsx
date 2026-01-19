@@ -84,8 +84,8 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
                         onClick={handleSelectLocal}
                         disabled={!supportsLocalStorage}
                         className={`w-full p-4 rounded-xl border-2 transition-all text-left ${selectedMode === 'local'
-                                ? 'border-blue-500 bg-blue-500/10'
-                                : 'border-white/10 hover:border-white/20 bg-white/5'
+                            ? 'border-blue-500 bg-blue-500/10'
+                            : 'border-white/10 hover:border-white/20 bg-white/5'
                             } ${!supportsLocalStorage ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         <div className="flex items-start gap-4">
@@ -112,12 +112,22 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
                         </div>
                     </button>
 
+                    {/* Warning for Local Mode - System Folder Restriction */}
+                    {selectedMode === 'local' && (
+                        <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-start gap-2">
+                            <AlertTriangle size={16} className="text-blue-400 shrink-0 mt-0.5" />
+                            <p className="text-xs text-blue-300">
+                                <strong>注意：</strong>请选择普通文件夹（如 Documents、Pictures），系统文件夹（Windows、Program Files）无法访问。
+                            </p>
+                        </div>
+                    )}
+
                     {/* Browser Storage Option */}
                     <button
                         onClick={handleSelectBrowser}
                         className={`w-full p-4 rounded-xl border-2 transition-all text-left ${selectedMode === 'browser'
-                                ? 'border-blue-500 bg-blue-500/10'
-                                : 'border-white/10 hover:border-white/20 bg-white/5'
+                            ? 'border-blue-500 bg-blue-500/10'
+                            : 'border-white/10 hover:border-white/20 bg-white/5'
                             }`}
                     >
                         <div className="flex items-start gap-4">
