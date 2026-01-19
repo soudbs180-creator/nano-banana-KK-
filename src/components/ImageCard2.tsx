@@ -482,23 +482,35 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                         src={lightboxOriginalUrl || highResUrl}
                         onError={(e) => {
                             console.warn('[Lightbox] Failed to load original, falling back to thumbnail');
-                            // Fallback is handled by browser showing broken image icon, or we could switch src
-                            // e.currentTarget.src = image.url; 
                         }}
-                        onLoad={() => {
-                            // Optional: could hide a loading spinner here
+                        onLoad={(e) => {
+                            // Reset zoom/pan when image actually loads/changes size, if needed
+                            // But keep user position if just swapping src quality
                         }}
                         alt={image.prompt}
                         onMouseDown={handleLightboxMouseDown}
-                        onDoubleClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
+                        onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            // Toggle Zoom: If not 1, reset to 1. If 1, zoom to 2.
+                            if (lightboxZoom !== 1) {
+                                setLightboxZoom(1);
+                                setLightboxPan({ x: 0, y: 0 });
+                            } else {
+                                setLightboxZoom(2);
+                            }
+                        }}
                         onContextMenu={(e) => e.stopPropagation()}
-                        className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
+                        // Use max-w/max-h to fit default, but allow transform to scale it up visually
+                        // We use object-contain to ensure aspect ratio is preserved
+                        className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
                         draggable={false}
                         style={{
+                            maxWidth: '95vw',
+                            maxHeight: '95vh',
                             transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
                             transition: isPanning ? 'none' : 'transform 0.15s ease-out',
                             cursor: isPanning ? 'grabbing' : 'grab',
-                            animation: 'lightboxScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+                            // animation: 'lightboxScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' // Removed to prevent conflict with transform
                         }}
                     />
 
@@ -513,11 +525,15 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     </button>
 
                     {/* Hint text */}
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center">
-                        滚轮缩放 · 拖拽移动 · 双击关闭<br />
-                        <span className="opacity-50 text-[10px]">
-                            {image.originalUrl ? '正在查看原图 (Viewing Original)' : '正在查看预览 (Viewing Preview - Original on Source)'}
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center pointer-events-none select-none">
+                        滚轮缩放 · 拖拽移动 · 双击{lightboxZoom === 1 ? '放大' : '还原'}<br />
+                        <span className={`text-[10px] ${lightboxOriginalUrl || image.originalUrl || (image.url && image.url.startsWith('data:')) ? 'text-green-400/70' : 'text-amber-400/70'}`}>
+                            {lightboxOriginalUrl || image.originalUrl || (image.url && image.url.startsWith('data:'))
+                                ? '正在查看原图 (Viewing Original)'
+                                : '正在查看预览 (Viewing Preview - Original Not Found)'}
                         </span>
+                        {/* Debug Info */}
+                        {/* <div className="text-[9px] opacity-30 mt-1">Zoom: {Math.round(lightboxZoom * 100)}%</div> */}
                     </div>
                 </div>,
                 document.body
