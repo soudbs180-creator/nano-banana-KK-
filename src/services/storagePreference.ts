@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 export type StorageMode = 'local' | 'browser';
 
 const FOLDER_HANDLE_KEY = 'kk_studio_local_folder_handle';
+const STORAGE_MODE_KEY = 'kk_studio_storage_mode';
 
 // In-memory cache
 let cachedMode: StorageMode | null = null;
@@ -21,27 +22,14 @@ export function isFileSystemAccessSupported(): boolean {
 }
 
 /**
- * Get storage mode from cloud (user_settings)
+ * Get storage mode from localStorage (browser local, not cloud)
  */
 export async function getStorageMode(): Promise<StorageMode | null> {
     if (cachedMode) return cachedMode;
 
     try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return null;
-
-        const { data, error } = await supabase
-            .from('user_settings')
-            .select('storage_mode')
-            .eq('user_id', user.id)
-            .single();
-
-        if (error && error.code !== 'PGRST116') {
-            console.warn('[StoragePreference] Failed to fetch storage mode:', error);
-            return null;
-        }
-
-        cachedMode = data?.storage_mode as StorageMode || null;
+        const stored = localStorage.getItem(STORAGE_MODE_KEY);
+        cachedMode = stored as StorageMode || null;
         return cachedMode;
     } catch (e) {
         console.error('[StoragePreference] Error getting storage mode:', e);
@@ -50,40 +38,13 @@ export async function getStorageMode(): Promise<StorageMode | null> {
 }
 
 /**
- * Set storage mode in cloud (user_settings)
+ * Set storage mode in localStorage (browser local, not cloud)
  */
 export async function setStorageMode(mode: StorageMode): Promise<boolean> {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            import('./notificationService').then(({ notify }) => {
-                notify.error('存储设置失败', '用户未登录', 'setStorageMode: No authenticated user');
-            });
-            return false;
-        }
-
-        const { error } = await supabase
-            .from('user_settings')
-            .upsert({
-                user_id: user.id,
-                storage_mode: mode,
-                storage_configured_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            });
-
-        if (error) {
-            console.error('[StoragePreference] Failed to save storage mode:', error);
-            import('./notificationService').then(({ notify }) => {
-                notify.error(
-                    '存储设置失败',
-                    '无法保存到数据库，请检查 Supabase 配置',
-                    `Supabase Error: ${error.code} - ${error.message} | Hint: ${error.hint || 'none'} | Details: ${error.details || 'none'}`
-                );
-            });
-            return false;
-        }
-
+        localStorage.setItem(STORAGE_MODE_KEY, mode);
         cachedMode = mode;
+
         import('./notificationService').then(({ notify }) => {
             notify.success('存储设置成功', mode === 'browser' ? '原图将保存在浏览器中' : '原图将保存到本地文件夹');
         });
@@ -93,8 +54,8 @@ export async function setStorageMode(mode: StorageMode): Promise<boolean> {
         import('./notificationService').then(({ notify }) => {
             notify.error(
                 '存储设置失败',
-                '发生未知错误',
-                `Exception: ${e.message || e}`
+                '无法保存设置',
+                `LocalStorage Error: ${e.message || e}`
             );
         });
         return false;
