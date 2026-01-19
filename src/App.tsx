@@ -1431,7 +1431,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.1.6
+        v1.1.7
       </div>
 
       {/* Project Manager (Replaces Canvas Manager) */}

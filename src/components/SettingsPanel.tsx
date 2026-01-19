@@ -206,7 +206,7 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">版本 (Version)</div>
-                        <div className="text-sm font-medium text-zinc-300">v1.1.6</div>
+                        <div className="text-sm font-medium text-zinc-300">v1.1.7</div>
                     </div>
                 </div>
             </div>
@@ -331,7 +331,7 @@ const ApiChannelsView = () => {
                                         <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 uppercase">{slot.provider || 'Gemini'}</span>
                                         {slot.status !== 'valid' && (
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${slot.status === 'invalid' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                                                    'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                                                'bg-orange-500/10 text-orange-400 border-orange-500/20'
                                                 }`}>
                                                 {slot.status === 'rate_limited' ? '速率限制 (Rate Limited)' : '无效 (Invalid)'}
                                             </span>
@@ -539,13 +539,14 @@ const CostEstimationView = () => {
                         <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
                         <span>Gemini: $0.075/百万输入, $0.3/百万输出</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                        <span>Imagen: 标准版 $0.04/张 (Approx)</span>
-                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                    <span>Imagen: 标准版 $0.04/张 (Approx)</span>
                 </div>
             </div>
         </div>
+        </div >
     );
 };
 
