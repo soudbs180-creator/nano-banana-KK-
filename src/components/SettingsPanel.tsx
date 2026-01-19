@@ -59,7 +59,11 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
         costUsd: dailyCosts.totalCostUsd
     };
 
-    const budgetPercent = budget > 0 ? Math.min(100, (todayData.costUsd / budget) * 100) : 0;
+    // Remaining Budget view:
+    // If infinite (-1): 100% full.
+    // If limited (>0): 100% - usage%.
+    const usagePercent = budget > 0 ? (todayData.costUsd / budget) * 100 : 0;
+    const remainingPercent = budget < 0 ? 100 : Math.max(0, 100 - usagePercent);
 
     return (
         <div className="space-y-6">
@@ -93,8 +97,8 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
 
                         <div className="w-full bg-zinc-800/50 h-1.5 rounded-full overflow-hidden mt-4">
                             <div
-                                className={`h-full w-[${budget > 0 ? Math.round(budgetPercent) : 5}%] transition-all duration-500 ${budget > 0 && budgetPercent > 90 ? 'bg-red-500' : 'bg-indigo-500'}`}
-                                style={{ width: `${budget > 0 ? budgetPercent : 5}%` }}
+                                className={`h-full transition-all duration-500 ${remainingPercent < 20 ? 'bg-red-500' : 'bg-indigo-500'}`}
+                                style={{ width: `${remainingPercent}%` }}
                             />
                         </div>
                         <div className="flex justify-between items-center text-xs text-zinc-500 mt-2">
