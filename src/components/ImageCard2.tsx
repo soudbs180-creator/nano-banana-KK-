@@ -106,42 +106,6 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         }
     }, [showLightbox, lightboxOriginalUrl, isLoadingOriginal, image.id, image.originalUrl, image.url, image.prompt]);
 
-    // Handle wheel zoom with non-passive listener
-    useEffect(() => {
-        if (!showLightbox) return;
-
-        // Small delay to ensure Portal has rendered to DOM
-        const timeoutId = setTimeout(() => {
-            const el = lightboxRef.current;
-            if (!el) {
-                console.warn('[Lightbox] Element not found after timeout');
-                return;
-            }
-
-            const handleWheel = (e: WheelEvent) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const delta = e.deltaY > 0 ? -0.15 : 0.15;
-                setLightboxZoom(prev => Math.min(5, Math.max(0.25, prev + delta)));
-            };
-
-            el.addEventListener('wheel', handleWheel, { passive: false });
-
-            // Store cleanup function in ref (not on element)
-            wheelCleanupRef.current = () => {
-                el.removeEventListener('wheel', handleWheel);
-            };
-        }, 50); // 50ms delay for Portal render
-
-        return () => {
-            clearTimeout(timeoutId);
-            if (wheelCleanupRef.current) {
-                wheelCleanupRef.current();
-                wheelCleanupRef.current = null;
-            }
-        };
-    }, [showLightbox]);
-
     // Handle pan/drag for lightbox image
     const handleLightboxMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -151,19 +115,55 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         panStartPosRef.current = { x: lightboxPan.x, y: lightboxPan.y };
     }, [lightboxPan]);
 
-    const handleLightboxMouseMove = useCallback((e: React.MouseEvent) => {
+    // Global listener for lightbox panning
+    useEffect(() => {
         if (!isPanning) return;
-        const dx = e.clientX - panStartRef.current.x;
-        const dy = e.clientY - panStartRef.current.y;
-        setLightboxPan({
-            x: panStartPosRef.current.x + dx,
-            y: panStartPosRef.current.y + dy
-        });
+
+        const handleWindowMouseMove = (e: MouseEvent) => {
+            const dx = e.clientX - panStartRef.current.x;
+            const dy = e.clientY - panStartRef.current.y;
+            setLightboxPan({
+                x: panStartPosRef.current.x + dx,
+                y: panStartPosRef.current.y + dy
+            });
+        };
+
+        const handleWindowMouseUp = () => {
+            setIsPanning(false);
+        };
+
+        window.addEventListener('mousemove', handleWindowMouseMove);
+        window.addEventListener('mouseup', handleWindowMouseUp);
+
+        return () => {
+            window.removeEventListener('mousemove', handleWindowMouseMove);
+            window.removeEventListener('mouseup', handleWindowMouseUp);
+        };
     }, [isPanning]);
 
-    const handleLightboxMouseUp = useCallback(() => {
-        setIsPanning(false);
-    }, []);
+    // Handle wheel zoom with non-passive listener
+    useEffect(() => {
+        if (!showLightbox) return;
+
+        const el = lightboxRef.current;
+        if (!el) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const delta = e.deltaY > 0 ? -0.2 : 0.2; // Increase step slightly
+            setLightboxZoom(prev => {
+                const newZoom = Math.min(5, Math.max(0.25, prev + delta));
+                return parseFloat(newZoom.toFixed(2)); // Clean precision
+            });
+        };
+
+        el.addEventListener('wheel', handleWheel, { passive: false });
+
+        return () => {
+            el.removeEventListener('wheel', handleWheel);
+        };
+    }, [showLightbox]); // Removed timeout, assuming ref is ready on effect run
 
     // Reset pan and zoom when lightbox opens
     useEffect(() => {
@@ -253,59 +253,40 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                 blob = await res.blob();
             } else if (highResUrl && highResUrl.startsWith('data:')) {
                 // Base64 URL directly (already original)
+                console.log('[ImageCard] Using highResUrl base64');
                 const res = await fetch(highResUrl);
                 blob = await res.blob();
+            } else if (image.originalUrl) {
+                // Try original URL from cloud
+                console.log('[ImageCard] Fetching original from cloud');
+                const response = await fetch(image.originalUrl);
+                if (!response.ok) throw new Error('Original fetch failed');
+                blob = await response.blob();
             } else {
-                // Fallback: Fetch from URL (might be thumbnail - last resort)
-                console.warn('[ImageCard] Original not found locally, downloading from URL (may be thumbnail)');
-                const response = await fetch(highResUrl);
+                // Fallback: Use displayed image URL
+                console.warn('[ImageCard] Using thumbnail as fallback');
+                const response = await fetch(image.url);
                 if (!response.ok) throw new Error('Download failed (404)');
                 blob = await response.blob();
             }
 
-            // Always prompt for folder selection when downloading
-            const { isFileSystemAccessSupported } = await import('../services/storagePreference');
+            // Generate filename
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const sanitizedPrompt = (image.prompt || 'image').slice(0, 30).replace(/[<>:"/\\|?*]/g, '');
+            const filename = `${sanitizedPrompt}_${timestamp}.png`;
 
-            if (isFileSystemAccessSupported()) {
-                try {
-                    // Prompt user to select folder
-                    const handle = await (window as any).showDirectoryPicker({
-                        mode: 'readwrite',
-                        startIn: 'pictures'
-                    });
-
-                    // Generate filename
-                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                    const sanitizedPrompt = (image.prompt || 'image').slice(0, 30).replace(/[<>:"/\\|?*]/g, '');
-                    const filename = `${sanitizedPrompt}_${timestamp}.png`;
-
-                    // Create file and write
-                    const fileHandle = await handle.getFileHandle(filename, { create: true });
-                    const writable = await fileHandle.createWritable();
-                    await writable.write(blob);
-                    await writable.close();
-
-                    const { notify } = await import('../services/notificationService');
-                    notify.success('下载成功', `已保存到: ${filename}`);
-                    return;
-                } catch (err: any) {
-                    if (err.name === 'AbortError') {
-                        // User cancelled folder selection
-                        return;
-                    }
-                    console.warn('[ImageCard] Folder save failed, falling back to browser download:', err);
-                }
-            }
-
-            // Browser download fallback (if File System Access not supported or failed)
+            // Browser download - saves to user's Downloads folder
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `kk-studio-${image.id}.png`;
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+
+            const { notify } = await import('../services/notificationService');
+            notify.success('下载成功', `已保存到下载文件夹: ${filename}`);
         } catch (err: any) {
             console.error('Download failed:', err);
             const { notify } = await import('../services/notificationService');
@@ -457,9 +438,6 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     ref={lightboxRef}
                     className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center animate-fadeIn select-none"
                     onClick={() => !isPanning && setShowLightbox(false)}
-                    onMouseMove={handleLightboxMouseMove}
-                    onMouseUp={handleLightboxMouseUp}
-                    onMouseLeave={handleLightboxMouseUp}
                     style={{ backdropFilter: 'blur(8px)', cursor: isPanning ? 'grabbing' : 'default' }}
                 >
                     {/* Close Button - Top Right */}
@@ -500,32 +478,39 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     </div>
 
                     {/* Main Image - Drag to pan, scroll to zoom */}
-                    {isLoadingOriginal ? (
-                        <div className="flex items-center justify-center w-64 h-64 bg-black/50 rounded-xl">
-                            <div className="text-white text-sm">加载原图中...</div>
-                        </div>
-                    ) : (
-                        <img
-                            src={lightboxOriginalUrl || highResUrl}
-                            onError={(e) => {
-                                // If high res fails, try low res as fallback? Or show error
-                                // e.currentTarget.src = image.url; 
-                                alert('原图加载失败 (Original Image Load Failed)');
-                            }}
-                            alt={image.prompt}
-                            onMouseDown={handleLightboxMouseDown}
-                            onDoubleClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
-                            onContextMenu={(e) => e.stopPropagation()}
-                            className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
-                            draggable={false}
-                            style={{
-                                transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
-                                transition: isPanning ? 'none' : 'transform 0.15s ease-out',
-                                cursor: isPanning ? 'grabbing' : 'grab',
-                                animation: 'lightboxScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
-                            }}
-                        />
-                    )}
+                    <img
+                        src={lightboxOriginalUrl || highResUrl}
+                        onError={(e) => {
+                            console.warn('[Lightbox] Failed to load original, falling back to thumbnail');
+                            // Fallback is handled by browser showing broken image icon, or we could switch src
+                            // e.currentTarget.src = image.url; 
+                        }}
+                        onLoad={() => {
+                            // Optional: could hide a loading spinner here
+                        }}
+                        alt={image.prompt}
+                        onMouseDown={handleLightboxMouseDown}
+                        onDoubleClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
+                        onContextMenu={(e) => e.stopPropagation()}
+                        className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
+                        draggable={false}
+                        style={{
+                            transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
+                            transition: isPanning ? 'none' : 'transform 0.15s ease-out',
+                            cursor: isPanning ? 'grabbing' : 'grab',
+                            animation: 'lightboxScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+                        }}
+                    />
+
+                    {/* Download Button in Lightbox */}
+                    <button
+                        onClick={handleDownload}
+                        className="absolute bottom-6 left-6 z-[100000] flex items-center gap-2 bg-black/50 hover:bg-white/20 text-white rounded-lg px-4 py-2 transition-colors"
+                        title="下载原图"
+                    >
+                        <Download size={16} />
+                        <span className="text-sm">下载原图</span>
+                    </button>
 
                     {/* Hint text */}
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center">
