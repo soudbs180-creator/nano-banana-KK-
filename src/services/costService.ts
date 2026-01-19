@@ -1,14 +1,11 @@
 /**
  * Cost Estimation Service
- * Tracks daily API usage costs based on Gemini pricing
- * Data resets at midnight each day
+ * Tracks daily API usage costs based on updated pricing models.
  * 
- * Pricing Reference (per image):
- * - Gemini 2.5 Flash Image: $0.039
- * - Gemini 3 Pro Image (1K-2K): $0.134
- * - Gemini 3 Pro Image (4K): $0.24
- * - Imagen 4: $0.02
- * - Imagen 4 Ultra: $0.04
+ * Pricing Reference:
+ * - Imagen 4 ($0.02), Ultra ($0.04) (Fixed)
+ * - Gemini 3 Pro (Token Based): Input $2/1M, Output $120/1M
+ * - Gemini 2.5 Flash: Input $0.10/1M, Output $0.40/1M (Approx)
  */
 
 import { ModelType, ImageSize } from '../types';
@@ -20,6 +17,7 @@ interface CostEntry {
     count: number;
     costUsd: number;
     timestamp: number;
+    details?: string; // e.g. "Input: 100, Output: 2000"
 }
 
 interface DailyCostData {
@@ -31,47 +29,37 @@ interface DailyCostData {
 
 const STORAGE_KEY = 'kk_studio_daily_costs';
 
-// Pricing per image in USD
-const MODEL_PRICING: Record<string, Record<string, number>> = {
-    [ModelType.NANO_BANANA]: {
-        [ImageSize.SIZE_1K]: 0.039,
-        [ImageSize.SIZE_2K]: 0.039,
-        [ImageSize.SIZE_4K]: 0.039, // Same for Flash
+const PRICING = {
+    IMAGEN: {
+        FAST: 0.02,
+        STD: 0.04,
+        ULTRA: 0.06
     },
-    [ModelType.NANO_BANANA_PRO]: {
-        [ImageSize.SIZE_1K]: 0.134,
-        [ImageSize.SIZE_2K]: 0.134,
-        [ImageSize.SIZE_4K]: 0.24,
+    GEMINI_3_PRO: {
+        INPUT_1M: 2.00,
+        OUTPUT_1M: 120.00,
+        REF_IMG_TOKENS: 560,
+        GEN_TOKENS_STD: 1120, // 1K, 2K
+        GEN_TOKENS_HD: 2000   // 4K
     },
-    [ModelType.IMAGEN_4]: {
-        [ImageSize.SIZE_1K]: 0.02,
-        [ImageSize.SIZE_2K]: 0.02,
-        [ImageSize.SIZE_4K]: 0.03,
-    },
-    [ModelType.IMAGEN_4_ULTRA]: {
-        [ImageSize.SIZE_1K]: 0.04,
-        [ImageSize.SIZE_2K]: 0.04,
-        [ImageSize.SIZE_4K]: 0.06,
-    },
+    GEMINI_2_5: {
+        INPUT_1M: 0.10,
+        OUTPUT_1M: 0.40,
+        REF_IMG_TOKENS: 258,
+        GEN_TOKENS_STD: 258 // Assuming output tokens for image if applicable
+    }
 };
 
-/**
- * Get today's date string in YYYY-MM-DD format
- */
 function getTodayString(): string {
     const now = new Date();
     return now.toISOString().split('T')[0];
 }
 
-/**
- * Load daily cost data from localStorage
- */
 function loadDailyCosts(): DailyCostData {
     try {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
             const data: DailyCostData = JSON.parse(stored);
-            // Check if it's today's data
             if (data.date === getTodayString()) {
                 return data;
             }
@@ -79,8 +67,6 @@ function loadDailyCosts(): DailyCostData {
     } catch (e) {
         console.warn('[CostService] Failed to load costs:', e);
     }
-
-    // Return fresh data for new day
     return {
         date: getTodayString(),
         entries: [],
@@ -89,9 +75,6 @@ function loadDailyCosts(): DailyCostData {
     };
 }
 
-/**
- * Save daily cost data to localStorage
- */
 function saveDailyCosts(data: DailyCostData): void {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -100,56 +83,101 @@ function saveDailyCosts(data: DailyCostData): void {
     }
 }
 
-/**
- * Get price for a specific model and size
- */
-export function getModelPrice(model: ModelType, size: ImageSize): number {
-    const modelPrices = MODEL_PRICING[model];
-    if (!modelPrices) return 0;
-    return modelPrices[size] || modelPrices[ImageSize.SIZE_1K] || 0;
-}
+export const calculateCost = (
+    model: ModelType,
+    size: ImageSize,
+    count: number,
+    promptLen: number = 0,
+    refCount: number = 0
+): { cost: number; details: string } => {
+    let cost = 0;
+    let details = '';
+
+    // Imagen Models (Fixed Price)
+    if (model.includes('imagen')) {
+        let pricePerImage = PRICING.IMAGEN.STD;
+        if (model.includes('fast')) pricePerImage = PRICING.IMAGEN.FAST;
+        if (model.includes('ultra')) pricePerImage = PRICING.IMAGEN.ULTRA;
+        cost = pricePerImage * count;
+        details = `Fixed: $${pricePerImage}/img`;
+        return { cost, details };
+    }
+
+    // Gemini 3 Pro (Token Based)
+    if (model.includes('banana-pro') || model.includes('gemini-3')) {
+        // Output Tokens: Generation
+        const isHD = size === ImageSize.SIZE_4K;
+        const outputTokens = count * (isHD ? PRICING.GEMINI_3_PRO.GEN_TOKENS_HD : PRICING.GEMINI_3_PRO.GEN_TOKENS_STD);
+        const outputCost = (outputTokens / 1_000_000) * PRICING.GEMINI_3_PRO.OUTPUT_1M;
+
+        // Input Tokens: Prompt + References
+        const textTokens = Math.ceil(promptLen / 4);
+        const refTokens = refCount * PRICING.GEMINI_3_PRO.REF_IMG_TOKENS;
+        const inputTokens = textTokens + refTokens;
+        const inputCost = (inputTokens / 1_000_000) * PRICING.GEMINI_3_PRO.INPUT_1M;
+
+        cost = inputCost + outputCost;
+        details = `In: ${inputTokens}tk, Out: ${outputTokens}tk`;
+        return { cost, details };
+    }
+
+    // Gemini 2.5 Flash (Standard)
+    if (model.includes('banana') || model.includes('flash')) {
+        const outputTokens = count * PRICING.GEMINI_2_5.GEN_TOKENS_STD;
+        const outputCost = (outputTokens / 1_000_000) * PRICING.GEMINI_2_5.OUTPUT_1M;
+
+        const textTokens = Math.ceil(promptLen / 4);
+        const refTokens = refCount * PRICING.GEMINI_2_5.REF_IMG_TOKENS;
+        const inputTokens = textTokens + refTokens;
+        const inputCost = (inputTokens / 1_000_000) * PRICING.GEMINI_2_5.INPUT_1M;
+
+        cost = Math.max(0.0001, inputCost + outputCost);
+        details = `In: ${inputTokens}tk, Out: ${outputTokens}tk (Flash)`;
+        return { cost, details };
+    }
+
+    return { cost: 0, details: 'Unknown Model' };
+};
 
 /**
- * Record a generation cost
+ * Record a new cost entry
  */
-export function recordCost(model: ModelType, size: ImageSize, count: number = 1): void {
-    const pricePerImage = getModelPrice(model, size);
-    const totalCost = pricePerImage * count;
+export function recordCost(
+    model: ModelType,
+    imageSize: ImageSize,
+    count: number,
+    prompt: string = '',
+    refImageCount: number = 0
+): void {
+    if (count <= 0) return;
 
-    const data = loadDailyCosts();
+    const currentData = loadDailyCosts();
+    const { cost, details } = calculateCost(model, imageSize, count, prompt.length, refImageCount);
 
-    const entry: CostEntry = {
-        id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    currentData.totalCostUsd += cost;
+    currentData.totalImages += count;
+
+    currentData.entries.push({
+        id: Date.now().toString(),
         model,
-        imageSize: size,
+        imageSize,
         count,
-        costUsd: totalCost,
-        timestamp: Date.now()
-    };
+        costUsd: cost,
+        timestamp: Date.now(),
+        details
+    });
 
-    data.entries.push(entry);
-    data.totalCostUsd += totalCost;
-    data.totalImages += count;
-
-    saveDailyCosts(data);
-
-    console.log(`[CostService] Recorded: ${count} images @ $${pricePerImage}/ea = $${totalCost.toFixed(4)}`);
+    saveDailyCosts(currentData);
+    console.log(`[CostService] Recorded: $${cost.toFixed(4)} (${details})`);
 }
 
-/**
- * Get today's cost summary
- */
 export function getTodayCosts(): DailyCostData {
     return loadDailyCosts();
 }
 
-/**
- * Get cost breakdown by model
- */
 export function getCostsByModel(): Record<string, { count: number; cost: number }> {
     const data = loadDailyCosts();
     const breakdown: Record<string, { count: number; cost: number }> = {};
-
     data.entries.forEach(entry => {
         if (!breakdown[entry.model]) {
             breakdown[entry.model] = { count: 0, cost: 0 };
@@ -157,31 +185,5 @@ export function getCostsByModel(): Record<string, { count: number; cost: number 
         breakdown[entry.model].count += entry.count;
         breakdown[entry.model].cost += entry.costUsd;
     });
-
     return breakdown;
-}
-
-/**
- * Get human-readable model name
- */
-export function getModelDisplayName(model: ModelType): string {
-    switch (model) {
-        case ModelType.NANO_BANANA:
-            return 'Gemini 2.5 Flash Image';
-        case ModelType.NANO_BANANA_PRO:
-            return 'Gemini 3 Pro Image';
-        case ModelType.IMAGEN_4:
-            return 'Imagen 4';
-        case ModelType.IMAGEN_4_ULTRA:
-            return 'Imagen 4 Ultra';
-        default:
-            return model;
-    }
-}
-
-/**
- * Clear today's costs (for testing)
- */
-export function clearTodayCosts(): void {
-    localStorage.removeItem(STORAGE_KEY);
 }

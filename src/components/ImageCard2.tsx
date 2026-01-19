@@ -27,6 +27,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     isMobile = false
 }) => {
     const [isDragging, setIsDragging] = useState(false);
+
+    // Local display position to avoid global re-renders during drag
+    const [localPos, setLocalPos] = useState(position);
+
+    // Sync local position with prop position when NOT dragging
+    React.useEffect(() => {
+        if (!isDragging) {
+            setLocalPos(position);
+        }
+    }, [position.x, position.y, isDragging]);
+
     const [showLightbox, setShowLightbox] = useState(false);
     const [lightboxZoom, setLightboxZoom] = useState(1);
     const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
@@ -191,7 +202,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
         // Store initial mouse position and card position
         dragStartPos.current = { x: clientX, y: clientY };
-        dragStartCanvasPos.current = { x: position.x, y: position.y };
+        dragStartCanvasPos.current = { x: localPos.x, y: localPos.y };
     };
 
     const requestRef = useRef<number | null>(null);
@@ -217,7 +228,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
             const deltaX = (clientX - dragStartPos.current.x) / canvasTransform.scale;
             const deltaY = (clientY - dragStartPos.current.y) / canvasTransform.scale;
 
-            onPositionChange(image.id, {
+            // Update LOCAL state only
+            setLocalPos({
                 x: dragStartCanvasPos.current.x + deltaX,
                 y: dragStartCanvasPos.current.y + deltaY
             });
@@ -226,7 +238,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     };
 
     const handleMouseUp = () => {
-        setIsDragging(false);
+        if (isDragging) {
+            setIsDragging(false);
+            // Commit final position to global state
+            onPositionChange(image.id, localPos);
+        }
+
         if (requestRef.current !== null) {
             cancelAnimationFrame(requestRef.current);
             requestRef.current = null;
@@ -336,10 +353,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
             <div
                 className={`absolute flex flex-col items-center group animate-cardPopIn select-none ${isActive ? 'z-10' : 'z-1'}`}
                 style={{
-                    left: position.x,
-                    top: position.y,
+                    left: localPos.x,
+                    top: localPos.y,
                     width: nodeWidth,
-                    minHeight: nodeHeight, // Enforce height for correct Bottom-Anchor positioning
+                    // minHeight removed to fix hit-box issues
                     transform: 'translate(-50%, -100%)',
                     cursor: isDragging ? 'grabbing' : 'grab',
                     transition: isDragging ? 'none' : 'box-shadow 0.2s ease'

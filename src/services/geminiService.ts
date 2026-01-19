@@ -88,25 +88,21 @@ async function generateImageDirect(
 
   if (!effectiveKey) throw new Error("MISSING_API_KEY");
 
+  // Robust Failover: Try up to 50 times (effectively "infinite" for typical key counts)
+  // keyManager will automatically disable keys after X failures, ensuring we eventually rotate through all or fail.
+  const MAX_ATTEMPTS = 50;
   let lastError: any = null;
-  const maxRetries = keyId ? 2 : 0; // Retry if using managed keys
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // If retrying, get a new key
-    if (attempt > 0 && keyId) {
-      const nextKey = keyManager.getNextKey();
-      if (nextKey) {
-        effectiveKey = nextKey.key;
-        keyId = nextKey.id;
-      } else {
-        break; // No more keys
-      }
-    }
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    // If we don't have a key (and logic above didn't find one), break.
+    if (!effectiveKey) break;
 
     try {
       if (requestId && controller?.signal.aborted) {
         throw new Error('Generation cancelled');
       }
+
+      console.log(`[Gemini] Attempt ${attempt + 1}/${MAX_ATTEMPTS} using key ${keyId || 'env'}`);
 
       const isImagen = model.startsWith('imagen-');
 
@@ -128,6 +124,7 @@ async function generateImageDirect(
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          // If 429/403, we should definitely retry
           throw new Error(errorData.error?.message || `HTTP ${response.status}`);
         }
 
@@ -137,12 +134,11 @@ async function generateImageDirect(
         if (prediction?.bytesBase64Encoded) {
           if (keyId) {
             keyManager.reportSuccess(keyId);
-            // No token count for Imagen usually, but we could add if needed
           }
           return `data:image/png;base64,${prediction.bytesBase64Encoded}`;
         }
 
-        throw new Error("未能生成图片");
+        throw new Error("未能生成图片 (No Image Data)");
 
       } else {
         // Gemini Models
@@ -192,7 +188,6 @@ async function generateImageDirect(
 
         const result = await response.json();
         const candidate = result.candidates?.[0];
-        // Gemini image gen usually returns inlineData in parts
         const inlineData = candidate?.content?.parts?.find((p: any) => p.inlineData)?.inlineData;
 
         if (inlineData) {
@@ -204,19 +199,41 @@ async function generateImageDirect(
           return `data:image/png;base64,${inlineData.data}`;
         }
 
-        throw new Error("未能生成图片");
+        throw new Error("未能生成图片 (No Image Data)");
       }
 
     } catch (error: any) {
       if (error.name === 'AbortError' || error.message === 'Generation cancelled') throw new Error('Generation cancelled');
-      console.error(`Attempt failed with key ${keyId || 'unknown'}:`, error);
-      if (keyId) keyManager.reportFailure(keyId, error.message || 'Unknown error');
+
+      console.warn(`[Gemini] Attempt ${attempt + 1} failed with key ${keyId || 'env'}:`, error.message);
+
+      if (keyId) {
+        keyManager.reportFailure(keyId, error.message || 'Unknown error');
+
+        // IMMEDIATE GLOBAL ROTATION:
+        // Get the NEXT available key
+        const nextKeyStruct = keyManager.getNextKey();
+        if (nextKeyStruct) {
+          effectiveKey = nextKeyStruct.key;
+          keyId = nextKeyStruct.id;
+        } else {
+          console.error('[Gemini] No more keys available!');
+          break; // No valid keys left
+        }
+      } else {
+        // If using env key and it failed, we can't switch to anything else unless we have managed keys
+        // If we had managed keys, we would have started with them.
+        // So just break or retry logic? 
+        // If we are here, it means we don't have managed keys. 
+        break;
+      }
+
       lastError = error;
     }
   }
 
   if (lastError) throw normalizeError(lastError);
-  throw new Error("Unable to generate image after retries");
+  throw new Error("Unable to generate image after retries (All keys exhausted)");
 }
 
 async function generateImageViaBackend(

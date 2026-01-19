@@ -268,10 +268,10 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                     }
                     // Desktop dimensions
                     switch (ratio) {
-                        case AspectRatio.SQUARE: return { w: 280, h: 280 };
-                        case AspectRatio.LANDSCAPE_16_9: return { w: 320, h: 180 };
-                        case AspectRatio.PORTRAIT_9_16: return { w: 200, h: 355 };
-                        default: return { w: 280, h: 280 };
+                        case AspectRatio.SQUARE: return { w: 280, h: 280 + 60 };
+                        case AspectRatio.LANDSCAPE_16_9: return { w: 320, h: 180 + 60 };
+                        case AspectRatio.PORTRAIT_9_16: return { w: 200, h: 355 + 60 };
+                        default: return { w: 280, h: 280 + 60 };
                     }
                 };
                 const { w, h } = getDims(node.aspectRatio);

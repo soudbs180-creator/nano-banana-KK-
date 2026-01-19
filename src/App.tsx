@@ -884,7 +884,13 @@ const AppContent: React.FC = () => {
 
       // Record cost for this generation
       import('./services/costService').then(({ recordCost }) => {
-        recordCost(config.model, config.imageSize, validResults.length);
+        recordCost(
+          config.model,
+          config.imageSize,
+          validResults.length,
+          config.prompt,
+          finalReferenceImages.length
+        );
       });
 
       // Clear active source image after successful generation
@@ -1076,6 +1082,169 @@ const AppContent: React.FC = () => {
     unlinkNodes(promptId, imageId);
   }, [unlinkNodes]);
 
+  // Retry Logic (In-Place Regeneration)
+  const handleRetryNode = useCallback(async (node: PromptNode) => {
+    // 1. Reset state to generating
+    updatePromptNode({
+      ...node,
+      isGenerating: true,
+      error: undefined
+    });
+
+    const currentNodeId = node.id;
+    const count = node.parallelCount || config.parallelCount || 1;
+    const startTime = Date.now();
+
+    try {
+      const results = await Promise.all(Array.from({ length: count }).map(async (_, index) => {
+        const requestId = `${currentNodeId}-${index}`;
+
+        let isFinished = false;
+        const timer = setTimeout(() => {
+          if (!isFinished) {
+            cancelGeneration(requestId);
+            updatePromptNode({ ...node, isGenerating: false, error: '生成超时' });
+          }
+        }, 240000);
+
+        try {
+          const apiModel = node.model;
+          const b64 = await generateImage(
+            node.prompt,
+            node.aspectRatio,
+            node.imageSize,
+            node.referenceImages || [],
+            apiModel,
+            '', // managed key
+            requestId,
+            false // grounding
+          );
+          isFinished = true;
+          clearTimeout(timer);
+
+          // Upload
+          let url = b64;
+          let originalUrl = '';
+          try {
+            const res = await fetch(b64);
+            const blob = await res.blob();
+            const id = `${Date.now()}_${index}`;
+            const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
+            url = thumbnail;
+            originalUrl = original;
+          } catch (e) {
+            console.warn('Upload failed, using local base64');
+          }
+
+          const generationTime = Date.now() - startTime;
+
+          return {
+            canvasId: activeCanvas?.id || 'default',
+            parentPromptId: node.id,
+            dimensions: `${node.aspectRatio} · ${node.imageSize || '1K'}`,
+            generationTime,
+            index,
+            url,
+            originalUrl,
+            prompt: node.prompt,
+            width: 0,
+            height: 0,
+            aspectRatio: node.aspectRatio,
+            imageSize: node.imageSize,
+            model: node.model,
+            seed: -1,
+            id: `${Date.now()}_${index}_${Math.random().toString(36).substr(2, 5)}`,
+            mimeType: 'image/png',
+            timestamp: Date.now()
+          };
+        } catch (e: any) {
+          isFinished = true;
+          clearTimeout(timer);
+          throw e;
+        }
+      }));
+
+      // Calculate Positions
+      const gapToImages = 80;
+      const gap = 16;
+      const FOOTER_HEIGHT = 60;
+
+      let cardWidth = 280;
+      let cardHeight = 280;
+      switch (node.aspectRatio) {
+        case AspectRatio.LANDSCAPE_16_9: cardWidth = 320; cardHeight = 180; break;
+        case AspectRatio.PORTRAIT_9_16: cardWidth = 200; cardHeight = 355; break;
+        default: cardWidth = 280; cardHeight = 280;
+      }
+      cardHeight += FOOTER_HEIGHT;
+
+      const newImageNodes = results.map((img, i) => {
+        let x, y;
+        if (isMobile) {
+          const cols = Math.min(count, 2);
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const mobileCardWidth = 170;
+          const mobileCardHeight = 200 + FOOTER_HEIGHT;
+          const mobileGap = 10;
+          const itemsInRow = Math.min(cols, count - row * cols);
+          const currentGridWidth = itemsInRow * mobileCardWidth + (itemsInRow - 1) * mobileGap;
+          const startX = -currentGridWidth / 2;
+          const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
+          const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
+          x = node.position.x + offsetX;
+          y = node.position.y + offsetY;
+        } else {
+          const cols = Math.min(count, 2);
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const itemsInRow = Math.min(cols, count - row * cols);
+          const currentGridWidth = itemsInRow * cardWidth + (itemsInRow - 1) * gap;
+          const startX = -currentGridWidth / 2;
+          const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
+          const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
+          x = node.position.x + offsetX;
+          y = node.position.y + offsetY;
+        }
+        return {
+          ...img,
+          position: { x, y }
+        };
+      });
+
+      // Add to canvas
+      addImageNodes(newImageNodes);
+
+      // Update Prompt Node (Success)
+      updatePromptNode({
+        ...node,
+        isGenerating: false,
+        childImageIds: newImageNodes.map(n => n.id),
+        error: undefined
+      });
+
+      // Record cost
+      import('./services/costService').then(({ recordCost }) => {
+        recordCost(
+          node.model,
+          node.imageSize,
+          newImageNodes.length,
+          node.prompt,
+          node.referenceImages?.length || 0
+        );
+      });
+      notify.success('重新生成成功');
+
+    } catch (error: any) {
+      updatePromptNode({
+        ...node,
+        isGenerating: false,
+        error: error.message || 'Retry failed'
+      });
+      notify.error('重试失败', error.message);
+    }
+  }, [config.parallelCount, isMobile, updatePromptNode, addImageNodes, config.enableGrounding]);
+
   return (
     <div className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
       onMouseMove={(e) => {
@@ -1250,22 +1419,8 @@ const AppContent: React.FC = () => {
               : undefined
             }
             onCancel={handleCancelGeneration}
+            onRetry={handleRetryNode}
             onDelete={deletePromptNode}
-            onRetry={(failedNode) => {
-              // Refill prompt bar with failed node's config
-              setConfig(prev => ({
-                ...prev,
-                prompt: failedNode.prompt,
-                aspectRatio: failedNode.aspectRatio,
-                imageSize: failedNode.imageSize,
-                model: failedNode.model,
-                referenceImages: failedNode.referenceImages || []
-              }));
-              // Delete the failed node
-              deletePromptNode(failedNode.id);
-              // Show notification
-              notify.info('已恢复任务', '点击发送按钮重新生成');
-            }}
           />
         ))}
 
@@ -1393,7 +1548,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.1.3
+        v1.1.5
       </div>
 
       {/* Sidebar Toggle Button (Visible when sidebar is closed or on mobile) */}

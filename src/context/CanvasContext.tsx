@@ -644,7 +644,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // Start position
             let currentX = 50;
-            const startY = 50;
+            let currentY = 50;
+            const MAX_PER_ROW = 10;
+            let projectIndex = 0;
+            let maxRowHeight = 0;
+            const ROW_GAP = 100;
 
             // Layout each project
             projects.forEach(project => {
@@ -668,10 +672,20 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 // Project width = max of prompt width and total images width
                 const projectWidth = Math.max(PROMPT_WIDTH, totalImagesWidth);
+                const projectHeight = PROMPT_HEIGHT + GAP_Y + maxImageHeight;
+
+                // WRAP LOGIC: Check if we need to start a new row
+                if (projectIndex > 0 && projectIndex % MAX_PER_ROW === 0) {
+                    currentX = 50;
+                    currentY += maxRowHeight + ROW_GAP;
+                    maxRowHeight = 0;
+                }
+
+                maxRowHeight = Math.max(maxRowHeight, projectHeight);
 
                 // Position prompt (anchor is center-bottom)
                 const promptX = currentX + projectWidth / 2;
-                const promptY = startY + PROMPT_HEIGHT;
+                const promptY = currentY + PROMPT_HEIGHT;
                 promptPositions[project.prompt.id] = { x: promptX, y: promptY };
 
                 // Position images horizontally below prompt, centered
@@ -692,13 +706,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 // Move X for next project
                 currentX += projectWidth + GAP_X;
+                projectIndex++;
             });
 
             // Orphan images at the end
             orphanImages.forEach((img, idx) => {
                 const dims = getImageDims(img.aspectRatio);
                 const imgX = currentX + dims.w / 2;
-                const imgY = startY + PROMPT_HEIGHT + GAP_Y + dims.h;
+                const imgY = currentY + PROMPT_HEIGHT + GAP_Y + dims.h;
                 imagePositions[img.id] = { x: imgX, y: imgY };
                 currentX += dims.w + GAP_X;
             });
