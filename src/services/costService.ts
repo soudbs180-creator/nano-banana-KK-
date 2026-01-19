@@ -187,3 +187,18 @@ export function getCostsByModel(): Record<string, { count: number; cost: number 
     });
     return breakdown;
 }
+
+export function getModelDisplayName(model: string): string {
+    if (model.includes('imagen-3.0-generate-001')) return 'Imagen 3 Fast';
+    if (model.includes('imagen-3.0-generate-002')) return 'Imagen 3';
+    if (model.includes('gemini-2.0-flash-exp')) return 'Gemini 2.0 Flash';
+    if (model.includes('gemini-2.0-pro-exp')) return 'Gemini 2.0 Pro'; // Common name if applicable
+    if (model.includes('nano-banana')) return 'Gemini 2.5 Flash'; // Mapping internal ID
+    if (model.includes('nano-banana-pro')) return 'Gemini 3 Pro'; // Mapping internal ID
+
+    // Fallback cleanup
+    return model
+        .replace('models/', '')
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+}
