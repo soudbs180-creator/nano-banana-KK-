@@ -332,8 +332,7 @@ const AppContent: React.FC = () => {
     addPromptNode,
     updatePromptNode,
     addImageNodes,
-    updatePromptNodePosition,
-    updateImageNodePosition,
+    updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions,
     deletePromptNode,
     deleteImageNode,
     linkNodes,
@@ -1165,9 +1164,9 @@ const AppContent: React.FC = () => {
       }));
 
       // Calculate Positions
-      const gapToImages = 80;
+      const gapToImages = 20; // Reduced to minimum for tight layout
       const gap = 16;
-      const FOOTER_HEIGHT = 60;
+      const FOOTER_HEIGHT = 40; // Reduced from 60 to match actual footer (~36px)
 
       let cardWidth = 280;
       let cardHeight = 280;
@@ -1346,20 +1345,20 @@ const AppContent: React.FC = () => {
               }
 
               // Default height calculation
-              let imageHeight = (cardWidth / 1) + 60; // fallback 1:1
+              let imageHeight = (cardWidth / 1) + 40; // fallback 1:1 + footer
 
               // Try to use actual dimensions for precise height
               if (childNode.dimensions) {
                 const [w, h] = childNode.dimensions.split('x').map(Number);
                 if (w && h) {
                   const ratio = w / h;
-                  imageHeight = (cardWidth / ratio) + 60;
+                  imageHeight = (cardWidth / ratio) + 40;
                 }
               } else {
                 // Fallback to AspectRatio enum approximation
                 switch (childNode.aspectRatio) {
-                  case AspectRatio.LANDSCAPE_16_9: imageHeight = 180 + 60; break;
-                  case AspectRatio.PORTRAIT_9_16: imageHeight = 355 + 60; break;
+                  case AspectRatio.LANDSCAPE_16_9: imageHeight = 180 + 40; break;
+                  case AspectRatio.PORTRAIT_9_16: imageHeight = 355 + 40; break;
                 }
               }
 
@@ -1450,6 +1449,7 @@ const AppContent: React.FC = () => {
             image={node}
             position={node.position}
             onPositionChange={updateImageNodePosition}
+            onDimensionsUpdate={updateImageNodeDimensions}
             onDelete={deleteImageNode}
             onConnectEnd={handleConnectEnd}
             onClick={(imageId) => {

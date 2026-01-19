@@ -36,15 +36,15 @@ const PRICING = {
         ULTRA: 0.06
     },
     GEMINI_3_PRO: {
-        INPUT_1M: 2.00,
-        OUTPUT_1M: 120.00,
-        REF_IMG_TOKENS: 560,
+        INPUT_1M: 3.50,   // Updated to match Gemini 1.5 Pro pricing ($3.50/1M)
+        OUTPUT_1M: 10.50, // Updated ($10.50/1M)
+        REF_IMG_TOKENS: 258, // Fixed 258 tokens per image
         GEN_TOKENS_STD: 1120, // 1K, 2K
         GEN_TOKENS_HD: 2000   // 4K
     },
     GEMINI_2_5: {
-        INPUT_1M: 0.10,
-        OUTPUT_1M: 0.40,
+        INPUT_1M: 0.075,  // Gemini 1.5 Flash ($0.075/1M)
+        OUTPUT_1M: 0.30,  // ($0.30/1M)
         REF_IMG_TOKENS: 258,
         GEN_TOKENS_STD: 258 // Assuming output tokens for image if applicable
     }
@@ -93,18 +93,25 @@ export const calculateCost = (
     let cost = 0;
     let details = '';
 
-    // Imagen Models (Fixed Price)
-    if (model.includes('imagen')) {
-        let pricePerImage = PRICING.IMAGEN.STD;
-        if (model.includes('fast')) pricePerImage = PRICING.IMAGEN.FAST;
-        if (model.includes('ultra')) pricePerImage = PRICING.IMAGEN.ULTRA;
+    const modelId = model.toLowerCase();
+
+    // 1. Imagen Models (Fixed Price per Image)
+    // Pricing Ref: Imagen 3 Standard ($0.03), Fast ($0.02 approx or same?)
+    if (modelId.includes('imagen')) {
+        let pricePerImage = 0.03; // Standard Imagen 3 rate
+        if (modelId.includes('ultra') || modelId.includes('imagen-4.0-ultra')) {
+            pricePerImage = 0.06; // Assume Ultra is double
+        } else if (modelId.includes('fast') || modelId.includes('flash')) {
+            pricePerImage = 0.02; // Discounted rate for distilled variants
+        }
         cost = pricePerImage * count;
         details = `Fixed: $${pricePerImage}/img`;
         return { cost, details };
     }
 
-    // Gemini 3 Pro (Token Based)
-    if (model.includes('banana-pro') || model.includes('gemini-3')) {
+    // 2. Gemini Pro Models (Tier 1 Pricing - $3.50/$10.50)
+    // Matches: gemini-3-pro-image-preview (aka 1.5 Pro), gemini-2.0-pro-exp
+    if (modelId.includes('pro') || modelId.includes('gemini-3') || modelId.includes('gemini-1.5-pro')) {
         // Output Tokens: Generation
         const isHD = size === ImageSize.SIZE_4K;
         const outputTokens = count * (isHD ? PRICING.GEMINI_3_PRO.GEN_TOKENS_HD : PRICING.GEMINI_3_PRO.GEN_TOKENS_STD);
@@ -117,12 +124,13 @@ export const calculateCost = (
         const inputCost = (inputTokens / 1_000_000) * PRICING.GEMINI_3_PRO.INPUT_1M;
 
         cost = inputCost + outputCost;
-        details = `In: ${inputTokens}tk, Out: ${outputTokens}tk`;
+        details = `Pro: $${PRICING.GEMINI_3_PRO.INPUT_1M}/1M In`;
         return { cost, details };
     }
 
-    // Gemini 2.5 Flash (Standard)
-    if (model.includes('banana') || model.includes('flash')) {
+    // 3. Gemini Flash Models (Tier 2 Pricing - $0.075/$0.30)
+    // Matches: gemini-2.5-flash-image (aka 1.5 Flash), gemini-2.0-flash-exp
+    if (modelId.includes('flash') || modelId.includes('banana') || modelId.includes('lite') || modelId.includes('gemini-1.5-flash')) {
         const outputTokens = count * PRICING.GEMINI_2_5.GEN_TOKENS_STD;
         const outputCost = (outputTokens / 1_000_000) * PRICING.GEMINI_2_5.OUTPUT_1M;
 
@@ -131,12 +139,12 @@ export const calculateCost = (
         const inputTokens = textTokens + refTokens;
         const inputCost = (inputTokens / 1_000_000) * PRICING.GEMINI_2_5.INPUT_1M;
 
-        cost = Math.max(0.0001, inputCost + outputCost);
-        details = `In: ${inputTokens}tk, Out: ${outputTokens}tk (Flash)`;
+        cost = Math.max(0.000001, inputCost + outputCost);
+        details = `Flash: $${PRICING.GEMINI_2_5.INPUT_1M}/1M In`;
         return { cost, details };
     }
 
-    return { cost: 0, details: 'Unknown Model' };
+    return { cost: 0, details: 'Unknown' };
 };
 
 /**

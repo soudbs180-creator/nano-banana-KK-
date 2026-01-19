@@ -10,6 +10,7 @@ interface ImageNodeProps {
     onDelete: (id: string) => void;
     onConnectEnd?: (imageId: string) => void;
     onClick?: (imageId: string) => void;
+    onDimensionsUpdate?: (id: string, dimensions: string) => void;
     isActive?: boolean;
     canvasTransform?: { x: number; y: number; scale: number };
     isMobile?: boolean;
@@ -22,6 +23,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     onDelete,
     onConnectEnd,
     onClick,
+    onDimensionsUpdate,
     isActive = false,
     canvasTransform = { x: 0, y: 0, scale: 1 },
     isMobile = false
@@ -184,8 +186,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         }
     }, [showLightbox]);
 
+    // Ref to track latest localPos without triggering effect re-runs
+    const localPosRef = useRef(localPos);
+    useEffect(() => { localPosRef.current = localPos; }, [localPos]);
+
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-        // e.preventDefault(); // Optional: prevent scroll on card drag?
+        // e.preventDefault(); // Optional
         e.stopPropagation(); // Stop canvas panning
 
         setIsDragging(true);
@@ -203,6 +209,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         // Store initial mouse position and card position
         dragStartPos.current = { x: clientX, y: clientY };
         dragStartCanvasPos.current = { x: localPos.x, y: localPos.y };
+
+        console.log('[ImageCard] Drag Start', { clientX, clientY, localPos });
     };
 
     const requestRef = useRef<number | null>(null);
@@ -225,14 +233,21 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
         requestRef.current = requestAnimationFrame(() => {
             // Calculate delta in screen space, then convert to canvas space
+            // Use refs or fresh props if possible, but canvasTransform doesn't change much during drag
             const deltaX = (clientX - dragStartPos.current.x) / canvasTransform.scale;
             const deltaY = (clientY - dragStartPos.current.y) / canvasTransform.scale;
 
-            // Update LOCAL state only
-            setLocalPos({
+            // Update LOCAL state for smooth drag
+            const newPos = {
                 x: dragStartCanvasPos.current.x + deltaX,
                 y: dragStartCanvasPos.current.y + deltaY
-            });
+            };
+            setLocalPos(newPos);
+            localPosRef.current = newPos;
+
+            // Update GLOBAL state to sync connection lines
+            onPositionChange(image.id, newPos);
+
             requestRef.current = null;
         });
     };
@@ -240,8 +255,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const handleMouseUp = () => {
         if (isDragging) {
             setIsDragging(false);
-            // Commit final position to global state
-            onPositionChange(image.id, localPos);
+            console.log('[ImageCard] Drag End', localPosRef.current);
+            // Commit final position to global state using REF value
+            onPositionChange(image.id, localPosRef.current);
         }
 
         if (requestRef.current !== null) {
@@ -351,7 +367,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     return (
         <>
             <div
-                className={`absolute flex flex-col items-center group animate-cardPopIn select-none ${isActive ? 'z-10' : 'z-1'}`}
+                className={`absolute flex flex-col items-center group animate-cardPopIn select-none ${isActive ? 'z-15' : 'z-5'}`}
                 style={{
                     left: localPos.x,
                     top: localPos.y,
@@ -389,6 +405,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                                 src={image.url}
                                 alt={image.prompt}
                                 onError={() => setImgError(true)}
+                                onLoad={(e) => {
+                                    const img = e.target as HTMLImageElement;
+                                    const dims = `${img.naturalWidth}x${img.naturalHeight}`;
+                                    // Only update if dimensions are missing or different
+                                    if (onDimensionsUpdate && image.dimensions !== dims) {
+                                        onDimensionsUpdate(image.id, dims);
+                                    }
+                                }}
                                 className="w-full h-auto block select-none pointer-events-none"
                                 draggable={false}
                             />
@@ -433,7 +457,19 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                         <div className="flex items-center gap-2 ml-2">
                             {image.dimensions && (
                                 <span className="text-[9px] text-zinc-500 font-mono border border-white/5 px-1.5 rounded bg-white/5">
-                                    {image.dimensions}
+                                    {(() => {
+                                        const [w, h] = image.dimensions.split('x').map(Number);
+                                        if (!w || !h) return image.dimensions;
+
+                                        let sizeLabel = '1K';
+                                        if (w >= 3000 || h >= 3000) sizeLabel = '4K';
+                                        else if (w >= 1500 || h >= 1500) sizeLabel = '2K';
+
+                                        // Use predefined aspect ratio if available, or calculate simplified one
+                                        const ratio = image.aspectRatio || `${Math.round(w / 100)}:${Math.round(h / 100)}`;
+
+                                        return `${ratio} · ${sizeLabel}`;
+                                    })()}
                                 </span>
                             )}
                             {image.generationTime && (

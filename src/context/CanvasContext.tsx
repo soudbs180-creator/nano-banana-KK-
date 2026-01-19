@@ -29,6 +29,7 @@ interface CanvasContextType {
     addImageNodes: (nodes: GeneratedImage[]) => void;
     updatePromptNodePosition: (id: string, pos: { x: number; y: number }) => void;
     updateImageNodePosition: (id: string, pos: { x: number; y: number }) => void;
+    updateImageNodeDimensions: (id: string, dimensions: string) => void;
     deleteImageNode: (id: string) => void;
     deletePromptNode: (id: string) => void;
     linkNodes: (promptId: string, imageId: string) => void;
@@ -286,8 +287,19 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         cloudCanvases.forEach(cloudC => {
                             const idx = merged.findIndex(c => c.id === cloudC.id);
                             if (idx >= 0) {
-                                // Overwrite if newer? For now, just prefer Cloud as source of truth
-                                merged[idx] = cloudC;
+                                // Conflict Resolution: Last Write Wins
+                                const localC = merged[idx];
+                                const cloudTime = cloudC.lastModified || 0;
+                                const localTime = localC.lastModified || 0;
+
+                                if (cloudTime > localTime) {
+                                    // Cloud is newer, overwrite local
+                                    console.log(`[Sync] Updating canvas ${cloudC.name} from cloud (Newer: ${new Date(cloudTime).toLocaleTimeString()})`);
+                                    merged[idx] = cloudC;
+                                } else {
+                                    // Local is newer, keep local (and it will push to cloud on next save)
+                                    console.log(`[Sync] Keeping local canvas ${localC.name} (Newer/Equal: ${new Date(localTime).toLocaleTimeString()})`);
+                                }
                             } else {
                                 merged.push(cloudC);
                             }
@@ -368,7 +380,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const updateCanvas = useCallback((updater: (canvas: Canvas) => Canvas) => {
         setState(prev => ({
             ...prev,
-            canvases: prev.canvases.map(c => c.id === prev.activeCanvasId ? updater(c) : c),
+            canvases: prev.canvases.map(c =>
+                c.id === prev.activeCanvasId ? { ...updater(c), lastModified: Date.now() } : c
+            ),
             // Maintain existing history structure when updating canvas content
             history: prev.history
         }));
@@ -463,6 +477,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             ...c,
             imageNodes: c.imageNodes.map(img =>
                 img.id === id ? { ...img, position: pos } : img
+            )
+        }));
+    }, [updateCanvas]);
+
+    const updateImageNodeDimensions = useCallback((id: string, dimensions: string) => {
+        updateCanvas(c => ({
+            ...c,
+            imageNodes: c.imageNodes.map(img =>
+                img.id === id ? { ...img, dimensions } : img
             )
         }));
     }, [updateCanvas]);
@@ -571,7 +594,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             return {
                 ...prev,
-                canvases: prev.canvases.map(c => c.id === prev.activeCanvasId ? previousState : c),
+                canvases: prev.canvases.map(c =>
+                    c.id === prev.activeCanvasId ? { ...previousState, lastModified: Date.now() } : c
+                ),
                 history: {
                     ...prev.history,
                     [prev.activeCanvasId]: {
@@ -595,7 +620,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             return {
                 ...prev,
-                canvases: prev.canvases.map(c => c.id === prev.activeCanvasId ? nextState : c),
+                canvases: prev.canvases.map(c =>
+                    c.id === prev.activeCanvasId ? { ...nextState, lastModified: Date.now() } : c
+                ),
                 history: {
                     ...prev.history,
                     [prev.activeCanvasId]: {
@@ -632,20 +659,32 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const arrangeAllNodes = useCallback(() => {
         pushToHistory(); // Allow undo
 
-        // Helper: Get image card dimensions based on aspectRatio
-        const getImageDims = (aspectRatio?: string) => {
+        // Helper: Get image card dimensions based on aspectRatio (Must match App.tsx rendering)
+        const getImageDims = (aspectRatio?: string, dimensions?: string) => {
+            // Priority: Try to use actual dimensions if available
+            if (dimensions) {
+                const [w, h] = dimensions.split('x').map(Number);
+                if (w && h) {
+                    const ratio = w / h;
+                    const cardWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
+                    const imageHeight = (cardWidth / ratio) + 40; // +40 Footer
+                    return { w: cardWidth, h: imageHeight };
+                }
+            }
+
+            // Fallback to AspectRatio enum
             switch (aspectRatio) {
-                case '16:9': return { w: 320, h: 240 };
-                case '9:16': return { w: 200, h: 415 };
+                case '16:9': return { w: 320, h: 220 }; // 180 + 40
+                case '9:16': return { w: 200, h: 395 }; // 355 + 40
                 case '1:1':
-                default: return { w: 280, h: 340 };
+                default: return { w: 280, h: 320 }; // 280 + 40
             }
         };
 
         const PROMPT_WIDTH = 320;
         const PROMPT_HEIGHT = 200;
         const GAP_X = 40; // Gap between projects
-        const GAP_Y = 30; // Gap between prompt and images
+        const GAP_Y = 20; // Gap between prompt and images
 
         setState(prev => {
             const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
@@ -689,7 +728,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const IMAGE_GAP = 15;
 
                 project.images.forEach(img => {
-                    const dims = getImageDims(img.aspectRatio);
+                    const dims = getImageDims(img.aspectRatio, img.dimensions);
                     imageDims.push(dims);
                     totalImagesWidth += dims.w;
                     maxImageHeight = Math.max(maxImageHeight, dims.h);
@@ -718,19 +757,23 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const promptY = currentY + PROMPT_HEIGHT;
                 promptPositions[project.prompt.id] = { x: promptX, y: promptY };
 
-                // Position images horizontally below prompt, centered
+                // Position images horizontally below prompt
                 if (project.images.length > 0) {
                     const imagesStartX = currentX + (projectWidth - totalImagesWidth) / 2;
-                    const imageY = promptY + GAP_Y + maxImageHeight; // All images at same Y (bottom anchor)
+                    // Note: No longer using single imageY. Calculating per image to ensure uniform top-alignment.
 
-                    let imgX = imagesStartX;
+                    let imgX = imagesStartX + (imageDims[0]?.w || 0) / 2; // Center first image X
+
                     project.images.forEach((img, idx) => {
                         const dims = imageDims[idx];
-                        imagePositions[img.id] = {
-                            x: imgX + dims.w / 2, // Center anchor
-                            y: imageY
-                        };
-                        imgX += dims.w + IMAGE_GAP;
+                        const thisImageY = promptY + GAP_Y + dims.h; // Y is Bottom. Top = Y - h = Prompt + Gap. Uniform Top!
+
+                        if (idx > 0) {
+                            const prevDims = imageDims[idx - 1];
+                            imgX += prevDims.w / 2 + IMAGE_GAP + dims.w / 2;
+                        }
+
+                        imagePositions[img.id] = { x: imgX, y: thisImageY };
                     });
                 }
 
@@ -762,7 +805,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             ...n,
                             position: imagePositions[n.id] || n.position
                         })),
-                        lastModified: Date.now()
+                        lastModified: Date.now() // Urgent fix: Ensure arrange updates timestamp
                     };
                 })
             };
@@ -795,7 +838,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return (
         <CanvasContext.Provider value={{
             state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
-            addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition,
+            addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions,
             deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
             undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition
         }}>
