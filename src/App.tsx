@@ -1336,13 +1336,32 @@ const AppContent: React.FC = () => {
 
               // Flowith-style: Prompt Bottom → Image Top
               // 1. Calculate Image Height to find Top anchor
-              let imageHeight = 280; // default 1:1
+              // Flowith-style: Prompt Bottom → Image Top
+              // 1. Calculate Image Height to find Top anchor (matching ImageCard2 width logic)
+              let cardWidth = 280;
               switch (childNode.aspectRatio) {
-                case AspectRatio.LANDSCAPE_16_9: imageHeight = 180; break;
-                case AspectRatio.PORTRAIT_9_16: imageHeight = 355; break;
-                default: imageHeight = 280;
+                case AspectRatio.LANDSCAPE_16_9: cardWidth = 320; break;
+                case AspectRatio.PORTRAIT_9_16: cardWidth = 200; break;
+                default: cardWidth = 280;
               }
-              imageHeight += 60; // + Footer
+
+              // Default height calculation
+              let imageHeight = (cardWidth / 1) + 60; // fallback 1:1
+
+              // Try to use actual dimensions for precise height
+              if (childNode.dimensions) {
+                const [w, h] = childNode.dimensions.split('x').map(Number);
+                if (w && h) {
+                  const ratio = w / h;
+                  imageHeight = (cardWidth / ratio) + 60;
+                }
+              } else {
+                // Fallback to AspectRatio enum approximation
+                switch (childNode.aspectRatio) {
+                  case AspectRatio.LANDSCAPE_16_9: imageHeight = 180 + 60; break;
+                  case AspectRatio.PORTRAIT_9_16: imageHeight = 355 + 60; break;
+                }
+              }
 
               // Start: Prompt Bottom Center
               // Both use translate(-50%, -100%), so position.y is BOTTOM
@@ -1490,11 +1509,7 @@ const AppContent: React.FC = () => {
         user={user}
         onSignOut={signOut}
         onOpenProfile={() => {
-          if (keyManager.hasValidKeys()) {
-            setProfileInitialView('main');
-          } else {
-            setProfileInitialView('api-settings');
-          }
+          setProfileInitialView('main');
           setShowProfileModal(true);
         }}
       />
