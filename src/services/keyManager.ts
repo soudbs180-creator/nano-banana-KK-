@@ -10,6 +10,8 @@ import { supabase } from '../lib/supabase';
 export interface KeySlot {
     id: string;
     key: string;
+    name: string; // User defined name
+    provider: string; // e.g. 'Gemini', 'OpenAI'
     status: 'valid' | 'invalid' | 'rate_limited' | 'unknown';
     failCount: number;
     successCount: number;
@@ -18,6 +20,8 @@ export interface KeySlot {
     disabled: boolean;
     createdAt: number;
     usedTokens?: number; // Total tokens consumed
+    totalCost: number; // Total cost in USD
+    budgetLimit: number; // Budget limit in USD (-1 for unlimited)
     quota?: {
         limitRequests: number;
         remainingRequests: number;
@@ -35,6 +39,8 @@ interface KeyManagerState {
 
 const STORAGE_KEY = 'kk_studio_key_manager';
 const DEFAULT_MAX_FAILURES = 3;
+// Simple pricing estimation (avg between input/output for simplicity, or 0.15/1M)
+const COST_PER_TOKEN = 0.00000015;
 
 class KeyManager {
     private state: KeyManagerState;
@@ -47,12 +53,21 @@ class KeyManager {
     }
 
     /**
-     * Add token usage to a key
+     * Add token usage to a key and update cost
      */
     addUsage(keyId: string, tokens: number): void {
         const slot = this.state.slots.find(s => s.id === keyId);
         if (slot) {
             slot.usedTokens = (slot.usedTokens || 0) + tokens;
+            // Update cost
+            const cost = tokens * COST_PER_TOKEN;
+            slot.totalCost = (slot.totalCost || 0) + cost;
+
+            // Check budget auto-disable
+            if (slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit) {
+                console.warn(`[KeyManager] Key ${slot.name} exceeded budget.`);
+            }
+
             this.saveState();
             this.notifyListeners();
         }
@@ -68,8 +83,16 @@ class KeyManager {
             const stored = localStorage.getItem(STORAGE_KEY);
             if (stored) {
                 const parsed = JSON.parse(stored);
+                // Migration for existing keys
+                const slots = (parsed.slots || []).map((s: any) => ({
+                    ...s,
+                    name: s.name || 'Unnamed Key',
+                    provider: s.provider || 'Gemini',
+                    totalCost: s.totalCost || 0,
+                    budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1
+                }));
                 return {
-                    slots: parsed.slots || [],
+                    slots: slots,
                     currentIndex: parsed.currentIndex || 0,
                     maxFailures: parsed.maxFailures || DEFAULT_MAX_FAILURES
                 };
@@ -95,13 +118,17 @@ class KeyManager {
                     .map((key, i) => ({
                         id: `key_${Date.now()}_${i}`,
                         key: key.trim(),
+                        name: `Migrated Key ${i + 1}`,
+                        provider: 'Gemini',
                         status: 'unknown' as const,
                         failCount: 0,
                         successCount: 0,
                         lastUsed: null,
                         lastError: null,
                         disabled: false,
-                        createdAt: Date.now()
+                        createdAt: Date.now(),
+                        totalCost: 0,
+                        budgetLimit: -1
                     }));
 
                 if (slots.length > 0) {
@@ -193,8 +220,18 @@ class KeyManager {
             }
 
             if (data && data.api_keys) {
-                const cloudSlots = data.api_keys as KeySlot[];
+                // Parse cloud slots and ensure new fields exist
+                let cloudSlots = data.api_keys as KeySlot[];
                 if (Array.isArray(cloudSlots)) {
+                    // Backfill new fields if missing from cloud
+                    cloudSlots = cloudSlots.map(s => ({
+                        ...s,
+                        name: s.name || 'Cloud Key',
+                        provider: s.provider || 'Gemini',
+                        totalCost: s.totalCost || 0,
+                        budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1
+                    }));
+
                     // Merge: cloud keys take priority, add unique local keys
                     const cloudKeySet = new Set(cloudSlots.map(s => s.key));
                     const uniqueLocalKeys = localKeys.filter(local => !cloudKeySet.has(local.key));
@@ -271,15 +308,12 @@ class KeyManager {
      */
     getNextKey(): { id: string; key: string } | null {
         const availableSlots = this.state.slots.filter(
-            s => !s.disabled && s.status !== 'invalid'
+            s => !s.disabled && s.status !== 'invalid' && (s.budgetLimit < 0 || s.totalCost < s.budgetLimit)
         );
 
         if (availableSlots.length === 0) {
-            // Fallback: try any non-disabled key
-            const anySlot = this.state.slots.find(s => !s.disabled);
-            if (anySlot) {
-                return { id: anySlot.id, key: anySlot.key };
-            }
+            // Fallback: try any non-disabled key even if over budget (optional, maybe not?)
+            // Strict budget enforcement: return null if all valid keys are over budget
             return null;
         }
 
@@ -356,7 +390,7 @@ class KeyManager {
     /**
      * Add a new API key
      */
-    async addKey(key: string): Promise<{ success: boolean; error?: string }> {
+    async addKey(key: string, options?: { name?: string, provider?: string, budgetLimit?: number }): Promise<{ success: boolean; error?: string }> {
         const trimmedKey = key.trim();
 
         if (!trimmedKey) {
@@ -369,18 +403,22 @@ class KeyManager {
         }
 
         // Validate the key
-        const validation = await this.validateKey(trimmedKey);
+        const validation = await this.validateKey(trimmedKey, options?.provider);
 
         const newSlot: KeySlot = {
             id: `key_${Date.now()}`,
             key: trimmedKey,
+            name: options?.name || 'My Key',
+            provider: options?.provider || 'Gemini',
             status: validation.valid ? 'valid' : 'invalid',
             failCount: 0,
             successCount: 0,
             lastUsed: null,
             lastError: validation.error || null,
             disabled: !validation.valid,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            totalCost: 0,
+            budgetLimit: options?.budgetLimit ?? -1
         };
 
         this.state.slots.push(newSlot);
@@ -403,6 +441,20 @@ class KeyManager {
     }
 
     /**
+     * Update an existing API key
+     */
+    updateKey(id: string, updates: { name?: string, budgetLimit?: number }): void {
+        const slot = this.state.slots.find(s => s.id === id);
+        if (slot) {
+            if (updates.name !== undefined) slot.name = updates.name;
+            if (updates.budgetLimit !== undefined) slot.budgetLimit = updates.budgetLimit;
+
+            this.saveState();
+            this.notifyListeners();
+        }
+    }
+
+    /**
      * Toggle key enabled/disabled
      */
     toggleKey(keyId: string): void {
@@ -420,7 +472,11 @@ class KeyManager {
     /**
      * Validate an API key by making a test request
      */
-    async validateKey(key: string): Promise<{ valid: boolean; error?: string }> {
+    async validateKey(key: string, provider: string = 'Gemini'): Promise<{ valid: boolean; error?: string }> {
+        if (provider !== 'Gemini') {
+            return { valid: true }; // Skip validation for other providers for now
+        }
+
         try {
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
@@ -464,7 +520,7 @@ class KeyManager {
      */
     async revalidateAll(): Promise<void> {
         for (const slot of this.state.slots) {
-            const result = await this.validateKey(slot.key);
+            const result = await this.validateKey(slot.key, slot.provider);
             slot.status = result.valid ? 'valid' : 'invalid';
             slot.lastError = result.error || null;
         }

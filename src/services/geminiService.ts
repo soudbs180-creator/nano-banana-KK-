@@ -330,3 +330,111 @@ export const validateApiKey = async (apiKey: string): Promise<boolean> => {
     return response.status !== 403;
   } catch { return true; }
 };
+
+/**
+ * Generate text conversation (Chat) using Gemini API
+ */
+export const generateText = async (
+  messages: { role: 'user' | 'assistant', content: string }[],
+  model: string,
+  apiKey: string = ''
+): Promise<string> => {
+  let effectiveKey = apiKey;
+  let keyId: string | undefined;
+
+  // Key Selection
+  if (!effectiveKey) {
+    const keyData = keyManager.getNextKey();
+    if (keyData) {
+      effectiveKey = keyData.key;
+      keyId = keyData.id;
+    } else {
+      effectiveKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    }
+  }
+
+  if (!effectiveKey) throw new Error("MISSING_API_KEY");
+
+  const MAX_ATTEMPTS = 3; // Retry fewer times for chat to be responsive
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (!effectiveKey) break;
+
+    try {
+      // Map 'assistant' role to 'model' for API
+      const contents = messages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents }),
+        signal: AbortSignal.timeout(30000) // 30s timeout for chat
+      });
+
+      // Update Quota (if using managed key)
+      if (keyId) {
+        const limit = response.headers.get('x-ratelimit-limit-requests');
+        const remaining = response.headers.get('x-ratelimit-remaining-requests');
+        const reset = response.headers.get('x-ratelimit-reset-requests');
+        if (limit || remaining) {
+          keyManager.updateQuota(keyId, {
+            limitRequests: parseInt(limit || '0'),
+            remainingRequests: parseInt(remaining || '0'),
+            resetConstant: reset || '',
+            resetTime: Date.now() + ((parseInt(reset || '0')) * 1000),
+            updatedAt: Date.now()
+          });
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      const candidate = result.candidates?.[0];
+      const text = candidate?.content?.parts?.[0]?.text;
+
+      if (text) {
+        if (keyId) {
+          keyManager.reportSuccess(keyId);
+          // Estimate chat tokens (very rough approximation: 1 char ~ 0.25 token)
+          // Input + Output
+          const inputLen = messages.reduce((acc, m) => acc + m.content.length, 0);
+          const outputLen = text.length;
+          const tokens = Math.ceil((inputLen + outputLen) * 0.3);
+          keyManager.addUsage(keyId, tokens);
+        }
+        return text;
+      }
+
+      throw new Error("No text response from model");
+
+    } catch (error: any) {
+      console.warn(`[Gemini Chat] Attempt ${attempt + 1} failed:`, error.message);
+
+      if (keyId) {
+        keyManager.reportFailure(keyId, error.message);
+        // Rotate key
+        const nextKeyStruct = keyManager.getNextKey();
+        if (nextKeyStruct) {
+          effectiveKey = nextKeyStruct.key;
+          keyId = nextKeyStruct.id;
+        } else {
+          break;
+        }
+      } else {
+        break;
+      }
+      lastError = error;
+    }
+  }
+
+  if (lastError) throw normalizeError(lastError);
+  throw new Error("Chat generation failed");
+};

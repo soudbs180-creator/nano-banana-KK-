@@ -558,15 +558,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                         }}
                         alt={image.prompt}
                         onMouseDown={handleLightboxMouseDown}
+                        onClick={(e) => e.stopPropagation()}
                         onDoubleClick={(e) => {
                             e.stopPropagation();
-                            // Toggle Zoom: If not 1, reset to 1. If 1, zoom to 2.
-                            if (lightboxZoom !== 1) {
-                                setLightboxZoom(1);
-                                setLightboxPan({ x: 0, y: 0 });
-                            } else {
-                                setLightboxZoom(2);
-                            }
+                            setShowLightbox(false);
                         }}
                         onContextMenu={(e) => e.stopPropagation()}
                         // Use max-w/max-h to fit default, but allow transform to scale it up visually
@@ -595,7 +590,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
                     {/* Hint text */}
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center pointer-events-none select-none">
-                        滚轮缩放 · 拖拽移动 · 双击{lightboxZoom === 1 ? '放大' : '还原'}<br />
+                        滚轮缩放 · 按住左键拖拽 · 双击关闭<br />
                         <span className={`text-[10px] ${lightboxOriginalUrl || image.originalUrl || (image.url && image.url.startsWith('data:')) ? 'text-green-400/70' : 'text-amber-400/70'}`}>
                             {lightboxOriginalUrl || image.originalUrl || (image.url && image.url.startsWith('data:'))
                                 ? '正在查看原图 (Viewing Original)'

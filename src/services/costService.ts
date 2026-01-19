@@ -114,8 +114,9 @@ export const calculateCost = (
         return { cost, details, tokens: 0 };
     }
 
-    // 2. Gemini Pro Models (Tier 1 Pricing)
-    if (modelId.includes('pro') || modelId.includes('gemini-3') || modelId.includes('gemini-1.5-pro')) {
+    // 2. Gemini Pro Models (Tier 1 Pricing - $3.50/$10.50)
+    // Covering: gemini-3-pro-preview, gemini-1.5-pro, gemini-3-pro
+    if (modelId.includes('pro') && !modelId.includes('lite') && !modelId.includes('flash')) {
         const isHD = size === ImageSize.SIZE_4K;
         const outputTokens = count * (isHD ? PRICING.GEMINI_3_PRO.GEN_TOKENS_HD : PRICING.GEMINI_3_PRO.GEN_TOKENS_STD);
         const outputCost = (outputTokens / 1_000_000) * PRICING.GEMINI_3_PRO.OUTPUT_1M;
@@ -131,15 +132,30 @@ export const calculateCost = (
         return { cost, details, tokens };
     }
 
-    // 3. Gemini Flash Models (Tier 2 Pricing)
-    if (modelId.includes('flash') || modelId.includes('banana') || modelId.includes('lite') || modelId.includes('gemini-1.5-flash')) {
+    // 3. Gemini Flash / Lite Models (Tier 2 Pricing - $0.075/$0.30)
+    // Covering: gemini-flash-latest, gemini-flash-lite-latest, gemini-3-flash-preview
+    // Lite is usually cheaper, but using Flash rate as safe baseline or defining Lite specific if critical.
+    // Flash Lite (Preview) often free, but let's estimate as Flash rate for budget safety.
+    if (modelId.includes('flash') || modelId.includes('lite') || modelId.includes('banana')) {
+        // Flash Pricing
+        const inputRate = 0.075;
+        const outputRate = 0.30;
+
+        // If it's pure text generation (Chat), 'count' might be 1 (msg), promptLen is input chars.
+        // For Image gen (Flash Image), we use per-image token estimation.
+        // Let's distinguish by context? Or just use generic token calc.
+        // Assuming this function is primarily for IMAGE gen cost (based on 'imageSize' arg).
+        // BUT user asked to count CHAT cost?
+        // Chat cost usually handled separately or via recordCost with count=1.
+
+        // Image Gen logic (Flash Image):
         const outputTokens = count * PRICING.GEMINI_2_5.GEN_TOKENS_STD;
-        const outputCost = (outputTokens / 1_000_000) * PRICING.GEMINI_2_5.OUTPUT_1M;
+        const outputCost = (outputTokens / 1_000_000) * outputRate;
 
         const textTokens = Math.ceil(promptLen / 4);
         const refTokens = refCount * PRICING.GEMINI_2_5.REF_IMG_TOKENS;
         const inputTokens = textTokens + refTokens;
-        const inputCost = (inputTokens / 1_000_000) * PRICING.GEMINI_2_5.INPUT_1M;
+        const inputCost = (inputTokens / 1_000_000) * inputRate;
 
         cost = Math.max(0.000001, inputCost + outputCost);
         tokens = inputTokens + outputTokens;
@@ -149,6 +165,14 @@ export const calculateCost = (
 
     return { cost: 0, details: 'Unknown', tokens: 0 };
 };
+
+// Add separate text-only cost calculator if needed, or rely on recordCost passing accurate 'promptLen' and 'count=0' (if image cost).
+// Actually, ChatSidebar calls generateText using geminiService.
+// We need to ensure ChatSidebar calls 'recordCost' too, or geminiService does.
+// Currently ChatSidebar doesn't seem to call recordCost. 
+// I should check ChatSidebar.tsx to see if it records usage.
+// Checking previous view: ChatSidebar.tsx handles 'handleSend' but no 'recordCost' call visible in snippet.
+// I will need to add recordCost to ChatSidebar.tsx.
 
 /**
  * Record a new cost entry

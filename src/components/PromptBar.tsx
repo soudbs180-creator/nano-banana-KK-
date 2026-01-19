@@ -187,14 +187,21 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     return (
         <div
-            className={`input-bar ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
+            className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500 scale-[1.02]' : ''}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            style={{
+                backgroundColor: 'var(--toolbar-bg-dark)',
+                backdropFilter: 'blur(20px) saturate(180%)',
+                borderColor: 'var(--border-medium)',
+                boxShadow: 'var(--shadow-xl)',
+                borderRadius: 'var(--radius-xl)'
+            }}
         >
             {/* Drag Overlay */}
             {isDragging && (
-                <div className="absolute inset-0 z-50 bg-indigo-500/20 backdrop-blur-md rounded-3xl flex items-center justify-center animate-fadeIn pointer-events-none">
+                <div className="absolute inset-0 z-50 bg-indigo-500/20 backdrop-blur-md rounded-[inherit] flex items-center justify-center animate-fadeIn pointer-events-none">
                     <div className="flex flex-col items-center gap-2 text-white drop-shadow-lg">
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400">
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -209,23 +216,28 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             )}
 
             <div className="input-bar-inner">
-                {/* Continue from Image Banner */}
+                {/* Active Source Image Banner */}
                 {activeSourceImage && (
-                    <div className="flex items-center gap-3 px-3 py-2 mb-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                    <div className="flex items-center gap-3 px-3 py-2.5 mb-2 rounded-xl border transition-all animate-in slide-in-from-bottom-2"
+                        style={{
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            borderColor: 'rgba(245, 158, 11, 0.2)'
+                        }}
+                    >
                         <img
                             src={activeSourceImage.url}
                             alt="Source"
-                            className="w-10 h-10 object-cover rounded-lg border border-amber-500/30"
+                            className="w-10 h-10 object-cover rounded-lg shadow-sm"
                         />
                         <div className="flex-1 min-w-0">
-                            <div className="text-xs text-amber-400 font-medium">从此图继续创作</div>
+                            <div className="text-xs font-semibold text-amber-500">从此图继续创作</div>
                             <div className="text-xs text-zinc-400 truncate">{activeSourceImage.prompt}</div>
                         </div>
                         <button
                             onClick={onClearSource}
-                            className="w-6 h-6 flex items-center justify-center rounded-full bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition-colors"
+                            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-500/10 text-zinc-500 hover:text-red-500 transition-colors"
                         >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <line x1="18" y1="6" x2="6" y2="18" />
                                 <line x1="6" y1="6" x2="18" y2="18" />
                             </svg>
@@ -235,24 +247,29 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                 {/* Quick Options Row */}
                 <div className="input-bar-options">
-                    {/* Aspect Ratio - Clean Icon */}
+                    {/* Aspect Ratio */}
                     <div className="relative">
                         <button
                             className="input-bar-option group"
                             onClick={() => toggleMenu('ratio')}
                             title="宽高比"
+                            style={{
+                                backgroundColor: 'var(--bg-tertiary)',
+                                borderColor: 'var(--border-light)',
+                                color: 'var(--text-secondary)'
+                            }}
                         >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-indigo-400 transition-colors">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-indigo-400 transition-colors">
                                 <rect x="3" y="5" width="18" height="14" rx="2" />
                             </svg>
-                            <span className="text-xs">{config.aspectRatio}</span>
+                            <span className="text-xs font-medium">{config.aspectRatio}</span>
                         </button>
                         {activeMenu === 'ratio' && (
                             <div
                                 className="absolute bottom-full mb-2 z-20"
                                 style={{ left: '50%', transform: 'translateX(-50%)' }}
                             >
-                                <div className="dropdown static animate-scaleIn origin-bottom">
+                                <div className="dropdown static animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
                                     {availableRatios.map(ratio => (
                                         <button
                                             key={ratio}
@@ -261,6 +278,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 setConfig(prev => ({ ...prev, aspectRatio: ratio }));
                                                 setActiveMenu(null);
                                             }}
+                                            style={{ color: config.aspectRatio === ratio ? 'var(--accent-indigo-light)' : 'var(--text-secondary)' }}
                                         >
                                             {ratio}
                                         </button>
@@ -270,25 +288,30 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         )}
                     </div>
 
-                    {/* Image Size - Clean Icon */}
+                    {/* Image Size */}
                     {(config.model === ModelType.NANO_BANANA_PRO || config.model === ModelType.IMAGEN_4 || config.model === ModelType.IMAGEN_4_ULTRA) && (
                         <div className="relative">
                             <button
                                 className="input-bar-option group"
                                 onClick={() => toggleMenu('size')}
                                 title="分辨率"
+                                style={{
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    borderColor: 'var(--border-light)',
+                                    color: 'var(--text-secondary)'
+                                }}
                             >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-indigo-400 transition-colors">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-indigo-400 transition-colors">
                                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
                                 </svg>
-                                <span className="text-xs">{config.imageSize}</span>
+                                <span className="text-xs font-medium">{config.imageSize}</span>
                             </button>
                             {activeMenu === 'size' && (
                                 <div
                                     className="absolute bottom-full mb-2 z-20"
                                     style={{ left: '50%', transform: 'translateX(-50%)' }}
                                 >
-                                    <div className="dropdown static animate-scaleIn origin-bottom">
+                                    <div className="dropdown static animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
                                         {availableSizes.map(size => (
                                             <button
                                                 key={size}
@@ -297,6 +320,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                     setConfig(prev => ({ ...prev, imageSize: size }));
                                                     setActiveMenu(null);
                                                 }}
+                                                style={{ color: config.imageSize === size ? 'var(--accent-indigo-light)' : 'var(--text-secondary)' }}
                                             >
                                                 {size}
                                             </button>
@@ -310,17 +334,17 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                 {/* Reference Images */}
                 {config.referenceImages.length > 0 && (
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-2 flex-wrap mt-2">
                         {config.referenceImages.map(img => (
                             <div key={img.id} className="relative group">
                                 <img
                                     src={`data:${img.mimeType};base64,${img.data}`}
-                                    className="w-12 h-12 object-cover rounded-lg border border-white/10"
+                                    className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm"
                                     alt="Reference"
                                 />
                                 <button
                                     onClick={() => removeReferenceImage(img.id)}
-                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                                 >
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
                                         <line x1="18" y1="6" x2="6" y2="18" />
@@ -341,24 +365,36 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     onPaste={handlePaste}
                     onFocus={() => setActiveMenu(null)}
                     placeholder="描述你想要生成的图片..."
-                    className="input-bar-textarea"
+                    className="input-bar-textarea w-full bg-transparent border-none outline-none text-sm resize-none mt-2"
+                    style={{
+                        color: 'var(--text-primary)',
+                        minHeight: '48px',
+                        maxHeight: '160px',
+                        lineHeight: '1.6',
+                        fontSize: '15px'
+                    }}
                     rows={1}
                 />
 
                 {/* Footer */}
-                <div className="input-bar-footer">
+                <div className="input-bar-footer flex items-center justify-between pt-3 mt-1" style={{ borderTop: '1px solid var(--border-light)' }}>
                     {/* Left: Model */}
                     <div className="flex items-center gap-2">
                         {/* Model Selector */}
                         <div className="relative">
                             <button
-                                className="input-bar-model"
+                                className="input-bar-model flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all hover:border-opacity-50"
                                 onClick={() => toggleMenu('model')}
+                                style={{
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    borderColor: 'var(--border-light)',
+                                    color: 'var(--text-secondary)'
+                                }}
                             >
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={config.model === ModelType.NANO_BANANA ? 'text-blue-400' : 'text-yellow-500'}>
                                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
                                 </svg>
-                                <span className="text-xs flex-1 text-center truncate px-1">
+                                <span className="text-xs flex-1 text-center truncate font-medium">
                                     {config.model === ModelType.NANO_BANANA && 'Nano Banana'}
                                     {config.model === ModelType.NANO_BANANA_PRO && 'Nano Banana Pro'}
                                     {config.model === ModelType.IMAGEN_4 && 'Imagen 4.0'}
@@ -368,9 +404,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             {activeMenu === 'model' && (
                                 <div
                                     className="absolute bottom-full mb-2 z-20"
-                                    style={{ left: '50%', transform: 'translateX(-50%)' }}
+                                    style={{ left: '0' }}
                                 >
-                                    <div className="dropdown static w-64 animate-scaleIn origin-bottom">
+                                    <div className="dropdown static w-64 animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
                                         {[
                                             { id: ModelType.NANO_BANANA, label: 'Nano Banana', desc: '极速生成，适合快速验证灵感' },
                                             { id: ModelType.NANO_BANANA_PRO, label: 'Nano Banana Pro', desc: '增强细节与构图，适合高质量预览' },
@@ -403,15 +439,15 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     </div>
 
                     {/* Right: Actions */}
-                    <div className="input-bar-actions">
-                        {/* Tools - Clean Icon */}
+                    <div className="input-bar-actions flex items-center gap-2">
+                        {/* Tools */}
                         <div className="relative">
                             <button
-                                className={`input-bar-option group ${config.enableGrounding ? 'text-indigo-400 bg-indigo-500/10' : ''}`}
+                                className={`input-bar-option group p-2 rounded-full transition-all ${config.enableGrounding ? 'bg-indigo-500/10' : 'bg-transparent hover:bg-white/5'}`}
                                 onClick={() => toggleMenu('tools')}
                                 title="工具与设置"
                             >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors ${config.enableGrounding ? 'text-indigo-400' : 'text-zinc-400 group-hover:text-indigo-400'}`}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors ${config.enableGrounding ? 'text-indigo-400' : 'text-zinc-400 group-hover:text-indigo-400'}`}>
                                     <circle cx="12" cy="12" r="10" />
                                     <line x1="2" y1="12" x2="22" y2="12" />
                                     <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
@@ -422,7 +458,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     className="absolute bottom-full mb-2 z-20"
                                     style={{ left: '50%', transform: 'translateX(-50%)' }}
                                 >
-                                    <div className="dropdown static w-64 animate-scaleIn origin-bottom p-2">
+                                    <div className="dropdown static w-64 animate-scaleIn origin-bottom p-2" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
                                         <div className="text-[10px] font-bold text-zinc-500 px-2 py-1 uppercase tracking-wider">Tools</div>
 
                                         <button
@@ -445,7 +481,6 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 <div className="text-[10px] text-zinc-500">使用谷歌搜索优化生成结果</div>
                                             </div>
 
-                                            {/* Toggle Switch */}
                                             <div className={`w-8 h-4 rounded-full relative transition-colors ${config.enableGrounding ? 'bg-indigo-500' : 'bg-zinc-700'}`}>
                                                 <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${config.enableGrounding ? 'left-4.5' : 'left-0.5'}`} style={{ left: config.enableGrounding ? '18px' : '2px' }} />
                                             </div>
@@ -455,26 +490,27 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             )}
                         </div>
 
-                        {/* Parallel Count - Clean Icon */}
+                        {/* Parallel Count */}
                         <div className="relative">
                             <button
-                                className="input-bar-option group"
+                                className="input-bar-option group p-2 rounded-full bg-transparent hover:bg-white/5 transition-all"
                                 onClick={() => toggleMenu('count')}
                                 title="生成数量"
                             >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-indigo-400 transition-colors">
-                                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-                                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-                                    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-                                </svg>
-                                <span className="text-xs">x{config.parallelCount}</span>
+                                <div className="flex items-center gap-1">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-indigo-400 transition-colors">
+                                        <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                                        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                                    </svg>
+                                    <span className="text-xs font-medium text-zinc-400 group-hover:text-indigo-400">x{config.parallelCount}</span>
+                                </div>
                             </button>
                             {activeMenu === 'count' && (
                                 <div
                                     className="absolute bottom-full mb-2 z-20"
                                     style={{ left: '50%', transform: 'translateX(-50%)' }}
                                 >
-                                    <div className="dropdown static w-20 animate-scaleIn origin-bottom">
+                                    <div className="dropdown static w-20 animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
                                         {[1, 2, 3, 4].map(num => (
                                             <button
                                                 key={num}
@@ -483,6 +519,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                     setConfig(prev => ({ ...prev, parallelCount: num }));
                                                     setActiveMenu(null);
                                                 }}
+                                                style={{ color: config.parallelCount === num ? 'var(--accent-indigo-light)' : 'var(--text-secondary)' }}
                                             >
                                                 x{num}
                                             </button>
@@ -492,32 +529,39 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             )}
                         </div>
 
-                        {/* Upload Button - Clean Icon */}
+                        {/* Upload Button */}
                         <button
-                            className="input-bar-option group"
+                            className="input-bar-option group p-2 rounded-full bg-transparent hover:bg-white/5 transition-all"
                             onClick={() => fileInputRef.current?.click()}
                             disabled={config.referenceImages.length >= 5}
                             title="上传参考图"
                         >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-indigo-400 transition-colors">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-indigo-400 transition-colors">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                                 <polyline points="17 8 12 3 7 8" />
                                 <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
                         </button>
 
-                        {/* Send Button - Elegant Design */}
+                        {/* Send Button */}
+                        <div className="w-[1px] h-6 bg-white/10 mx-1"></div>
+
                         <button
                             onClick={onGenerate}
                             disabled={!config.prompt}
                             className={`input-bar-send ${isGenerating ? 'sending' : ''}`}
+                            style={{
+                                background: 'var(--gradient-primary)',
+                                boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)',
+                                border: 'none'
+                            }}
                         >
                             {isGenerating ? (
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="animate-spin">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="animate-spin text-white">
                                     <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="31.4 31.4" />
                                 </svg>
                             ) : (
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="send-icon">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="send-icon text-white">
                                     <path d="M22 2L11 13" />
                                     <path d="M22 2L15 22L11 13L2 9L22 2Z" />
                                 </svg>

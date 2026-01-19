@@ -1,751 +1,367 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { chatService, ChatMessage } from '../services/chatService';
-import { Loader2, Bot } from 'lucide-react';
-import { ChatModelType } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { Send, Bot, User, X, Trash2, ChevronDown, GripVertical } from 'lucide-react';
+import { generateText } from '../services/geminiService';
+import { notify } from '../services/notificationService';
 
 interface ChatSidebarProps {
     isOpen: boolean;
     onToggle: () => void;
-    isMobile?: boolean;
+    isMobile: boolean;
 }
 
-type ResizeDirection = 'right' | 'bottom' | 'corner' | null;
+interface Message {
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: number;
+}
 
-const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile = false }) => {
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+// Models as requested by user with descriptions
+// Models as requested by user with descriptions
+const AVAILABLE_MODELS = [
+    {
+        id: 'gemini-flash-lite-latest',
+        name: 'Gemini 3 Flash Lite',
+        icon: '⚡',
+        desc: '超高性价比，超低延迟 (Best Value)'
+    },
+    {
+        id: 'gemini-flash-latest',
+        name: 'Gemini 3 Flash',
+        icon: '🚀',
+        desc: '性能均衡，高吞吐量 (Balanced)'
+    },
+    {
+        id: 'gemini-3-flash-preview',
+        name: 'Gemini 3 Flash (Preview)',
+        icon: '🌟',
+        desc: '最新预览版，更强逻辑 (Preview)'
+    },
+    {
+        id: 'gemini-3-pro-preview',
+        name: 'Gemini 3 Pro (Preview)',
+        icon: '🧠',
+        desc: '顶级推理能力，适合复杂任务 (Top Tier)'
+    },
+];
+
+const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile }) => {
+    const [messages, setMessages] = useState<Message[]>([
+        {
+            id: 'welcome',
+            role: 'assistant',
+            content: '你好！我是 KK Studio 数字助手。\n有什么我可以帮您？',
+            timestamp: Date.now()
+        }
+    ]);
     const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [selectedModel, setSelectedModel] = useState<ChatModelType>(ChatModelType.GEMINI_LITE);
+    const [isThinking, setIsThinking] = useState(false);
+    const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0]); // Default Lite
     const [showModelMenu, setShowModelMenu] = useState(false);
 
-    // Desktop: Window position and size (not used on mobile)
-    const [position, setPosition] = useState({ x: 380, y: 40 });
-    const [size, setSize] = useState({ width: 380, height: 500 });
+    // Draggable Position State (Default Left-Bottom)
+    // Using simple offset from bottom-left corner
+    const [position, setPosition] = useState({ x: 20, y: 20 });
     const [isDragging, setIsDragging] = useState(false);
-    const [resizeDir, setResizeDir] = useState<ResizeDirection>(null);
+    const dragStartRef = useRef({ x: 0, y: 0 });
+    const startPosRef = useRef({ x: 0, y: 0 });
+    const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
-    const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
-    const isSendingRef = useRef(false);
-
-    const MIN_WIDTH = 300;
-    const MAX_WIDTH = 800;
-    const MIN_HEIGHT = 300;
-
-    // Load messages on mount
-    useEffect(() => {
-        const session = chatService.getCurrentSession();
-        if (session) {
-            setMessages(session.messages);
-        }
-    }, []);
-
-    // Scroll to bottom when messages change
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+    }, [messages, isOpen]);
 
-    // Handle drag and resize (desktop only)
+    // Cleanup drag listeners
     useEffect(() => {
-        if (isMobile) return;
-
         const handleMouseMove = (e: MouseEvent) => {
-            if (isDragging) {
-                const deltaX = e.clientX - dragStartRef.current.x;
-                const deltaY = e.clientY - dragStartRef.current.y;
-                setPosition({
-                    x: Math.max(0, dragStartRef.current.posX + deltaX),
-                    y: Math.max(0, dragStartRef.current.posY + deltaY)
-                });
-            }
+            if (!isDragging) return;
+            const dx = e.clientX - dragStartRef.current.x;
+            const dy = e.clientY - dragStartRef.current.y;
 
-            if (resizeDir) {
-                const deltaX = e.clientX - resizeStartRef.current.x;
-                const deltaY = e.clientY - resizeStartRef.current.y;
-
-                if (resizeDir === 'right' || resizeDir === 'corner') {
-                    const newWidth = resizeStartRef.current.width + deltaX;
-                    setSize(prev => ({ ...prev, width: Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth)) }));
-                }
-
-                if (resizeDir === 'bottom' || resizeDir === 'corner') {
-                    const newHeight = resizeStartRef.current.height + deltaY;
-                    setSize(prev => ({ ...prev, height: Math.max(MIN_HEIGHT, newHeight) }));
-                }
-            }
+            // Calculate new position (inverted Y because bottom-based)
+            setPosition({
+                x: Math.max(0, startPosRef.current.x + dx),
+                y: Math.max(0, startPosRef.current.y - dy)
+            });
         };
 
         const handleMouseUp = () => {
             setIsDragging(false);
-            setResizeDir(null);
         };
 
-        if (isDragging || resizeDir) {
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-            document.body.style.cursor = isDragging ? 'move' : resizeDir === 'corner' ? 'nwse-resize' : resizeDir === 'right' ? 'ew-resize' : 'ns-resize';
-            document.body.style.userSelect = 'none';
+        if (isDragging) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
         }
 
         return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isDragging, resizeDir, isMobile]);
+    }, [isDragging]);
 
     const startDrag = (e: React.MouseEvent) => {
-        if (isMobile) return;
+        if (isOpen) return; // Disable drag when open (or maybe allow? usually bubble is draggable)
         e.preventDefault();
-        dragStartRef.current = { x: e.clientX, y: e.clientY, posX: position.x, posY: position.y };
         setIsDragging(true);
+        dragStartRef.current = { x: e.clientX, y: e.clientY };
+        startPosRef.current = { ...position };
     };
 
-    const startResize = (dir: ResizeDirection) => (e: React.MouseEvent) => {
-        if (isMobile) return;
-        e.preventDefault();
-        e.stopPropagation();
-        resizeStartRef.current = { x: e.clientX, y: e.clientY, width: size.width, height: size.height };
-        setResizeDir(dir);
-    };
+    const handleSend = async () => {
+        if (!input.trim() || isThinking) return;
 
-    const handleSend = useCallback(async () => {
-        if (!input.trim() || isLoading || isSendingRef.current) return;
-        isSendingRef.current = true;
+        const userText = input.trim();
+        const userMsg: Message = { id: Date.now().toString(), role: 'user', content: userText, timestamp: Date.now() };
 
-        const userInput = input.trim();
+        // Optimistic update
+        setMessages(prev => [...prev, userMsg]);
         setInput('');
-        setIsLoading(true);
-
-        const tempUserMsg: ChatMessage = {
-            id: `temp_${Date.now()}`,
-            role: 'user',
-            content: userInput,
-            timestamp: Date.now()
-        };
-        setMessages(prev => [...prev, tempUserMsg]);
+        setIsThinking(true);
 
         try {
-            await chatService.sendMessage(userInput, selectedModel);
-            const session = chatService.getCurrentSession();
-            if (session) {
-                setMessages(session.messages);
-            }
-        } catch (error: any) {
-            setMessages(prev => [
-                ...prev.filter(m => m.id !== tempUserMsg.id),
-                tempUserMsg,
-                {
-                    id: `error_${Date.now()}`,
-                    role: 'assistant',
-                    content: `❌ ${error.message || '发送失败'}`,
-                    timestamp: Date.now()
-                }
-            ]);
-        } finally {
-            setIsLoading(false);
-            isSendingRef.current = false;
-        }
-    }, [input, isLoading, selectedModel]);
+            // Build history for context
+            // Exclude the welcome message if it's just static, but here we include all for continuity
+            // Map to the simple format expected by generateText
+            const history = messages
+                .filter(m => m.id !== 'welcome') // Optional: exclude welcome msg from prompt context
+                .map(m => ({ role: m.role, content: m.content }));
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.nativeEvent.isComposing) return;
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
+            // Add current user message
+            history.push({ role: 'user', content: userText });
+
+            // Call API
+            const responseText = await generateText(history, selectedModel.id);
+
+            const aiMsg: Message = {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: responseText,
+                timestamp: Date.now()
+            };
+            setMessages(prev => [...prev, aiMsg]);
+
+            // Record Cost (Estimation)
+            // We treat both input and output as 'context' for simplicity in this version, 
+            // casting to '1K' size logic just for rate lookup
+            import('../services/costService').then(({ recordCost }) => {
+                const fullText = history.map(m => m.content).join('') + userText + responseText;
+                // Pass 0 images, but long prompt. 
+                // Note: costService currently calculates cost based on Image Count mainly for output.
+                // To track text cost properly, we'd need a dedicated Text API in costService.
+                // For now, we log the prompt length which triggers Input Token cost.
+                recordCost(
+                    selectedModel.id as any, // Cast to ModelType
+                    '1K' as any,
+                    0, // 0 Images
+                    fullText
+                );
+            });
+
+        } catch (error: any) {
+            console.error('Chat Error:', error);
+            notify.error('AI 生成失败', error.message || '请检查网络或 API Key');
+
+            // Add error message to chat for visibility
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: `⚠️ 出错了: ${error.message}`,
+                timestamp: Date.now()
+            }]);
+        } finally {
+            setIsThinking(false);
         }
     };
 
     const handleClear = () => {
-        chatService.clearCurrentSession();
-        setMessages([]);
+        if (confirm('确定要清空对话历史吗?')) {
+            setMessages([{ id: Date.now().toString(), role: 'assistant', content: '对话已重置。', timestamp: Date.now() }]);
+        }
     };
 
-    const handleNewChat = () => {
-        chatService.createNewSession();
-        setMessages([]);
+    // Calculate transform origin based on bubble position (approximate corner)
+    // If bubble is on left/right half, anchor X. If top/bottom half, anchor Y.
+    const getTransformOrigin = () => {
+        const x = position.x < window.innerWidth / 2 ? 'left' : 'right';
+        const y = position.y < window.innerHeight / 2 ? 'bottom' : 'bottom'; // Usually bottom since it's a bubble
+        return `${x} ${y}`;
     };
-
-    // ==================== MOBILE UI ====================
-    if (isMobile) {
-        return (
-            <>
-                {/* Mobile Toggle Button - Bottom Right floating (same style as desktop) */}
-                {!isOpen && (
-                    <button
-                        onClick={onToggle}
-                        className="fixed bottom-36 right-4 z-[999] w-[52px] h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-all duration-300 animate-bubble-breathe"
-                        style={{
-                            background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 100%), linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
-                            backdropFilter: 'blur(20px)',
-                            border: '0.5px solid rgba(255, 255, 255, 0.35)',
-                            boxShadow: '0 4px 20px rgba(0, 122, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25)'
-                        }}
-                    >
-                        <Bot size={24} className="text-white drop-shadow-sm animate-icon-breathe" />
-                    </button>
-                )}
-
-                {/* Mobile Full Screen Panel - Slides up from bottom */}
-                <div
-                    className={`fixed inset-0 z-[200] transition-all duration-300 ease-out ${isOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
-                        }`}
-                >
-                    {/* Backdrop */}
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onToggle} />
-
-                    {/* Panel - Apple Style */}
-                    <div className="absolute bottom-0 left-0 right-0 h-[92vh] bg-[#1c1c1e] rounded-t-[2rem] flex flex-col overflow-hidden shadow-2xl">
-                        {/* Handle Bar */}
-                        <div className="flex justify-center py-3">
-                            <div className="w-10 h-1 bg-white/20 rounded-full" />
-                        </div>
-
-                        {/* Header */}
-                        <div className="flex items-center justify-between px-5 pb-3">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center relative overflow-hidden">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h2 className="text-white font-semibold text-lg">AI 对话</h2>
-                                    <button
-                                        className="flex items-center gap-1.5 active:bg-white/10 rounded px-1.5 py-0.5 transition-colors -ml-1.5"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowModelMenu(!showModelMenu);
-                                        }}
-                                    >
-                                        <span className="text-xs text-cyan-400 font-medium">
-                                            {selectedModel === ChatModelType.GEMINI_LITE && 'Gemini'}
-                                            {selectedModel === ChatModelType.GEMINI_3_FLASH && 'Gemini 3 Flash'}
-                                            {selectedModel === ChatModelType.GEMINI_3_PRO && 'Gemini 3 Pro'}
-                                        </span>
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-zinc-500">
-                                            <path d="M6 9l6 6 6-6" />
-                                        </svg>
-                                    </button>
-                                    {/* Mobile Model Dropdown */}
-                                    {showModelMenu && (
-                                        <div className="absolute top-16 left-16 mt-1 w-48 bg-[#2c2c2e] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden animate-scaleIn origin-top-left">
-                                            <div className="py-1">
-                                                {[
-                                                    { id: ChatModelType.GEMINI_LITE, label: 'Gemini', desc: '轻量/极速' },
-                                                    { id: ChatModelType.GEMINI_3_FLASH, label: 'Gemini 3 Flash', desc: '平衡/智能' },
-                                                    { id: ChatModelType.GEMINI_3_PRO, label: 'Gemini 3 Pro', desc: '强力/复杂' }
-                                                ].map(model => (
-                                                    <button
-                                                        key={model.id}
-                                                        className={`w-full px-4 py-3 text-left flex flex-col active:bg-white/10 transition-colors ${selectedModel === model.id ? 'bg-white/5' : ''}`}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedModel(model.id);
-                                                            setShowModelMenu(false);
-                                                        }}
-                                                    >
-                                                        <span className={`text-sm font-medium ${selectedModel === model.id ? 'text-cyan-400' : 'text-slate-200'}`}>{model.label}</span>
-                                                        <span className="text-xs text-zinc-500 mt-0.5">{model.desc}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={handleNewChat}
-                                    className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center active:bg-white/10"
-                                >
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                                    </svg>
-                                </button>
-                                <button
-                                    onClick={handleClear}
-                                    className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center active:bg-white/10"
-                                >
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                    </svg>
-                                </button>
-                                <button
-                                    onClick={onToggle}
-                                    className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center active:bg-white/10"
-                                >
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Messages */}
-                        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
-                            {messages.length === 0 ? (
-                                <div className="text-center py-16 text-zinc-500">
-                                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
-                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-indigo-400">
-                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                        </svg>
-                                    </div>
-                                    <p className="text-base font-medium mb-1">开始对话</p>
-                                    <p className="text-sm text-zinc-600">向 AI 提问任何问题</p>
-                                </div>
-                            ) : (
-                                messages.map((msg) => (
-                                    <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user'
-                                            ? 'bg-[#007AFF] text-white'
-                                            : 'bg-[#3a3a3c] text-zinc-200'
-                                            }`}>
-                                            <p className="text-[15px] whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                            {isLoading && (
-                                <div className="flex justify-start">
-                                    <div className="bg-[#3a3a3c] rounded-2xl px-4 py-3">
-                                        <Loader2 size={20} className="text-zinc-400 animate-spin" />
-                                    </div>
-                                </div>
-                            )}
-                            <div ref={messagesEndRef} />
-                        </div>
-
-                        {/* Input Area - Apple iMessage Style */}
-                        <div className="px-3 pb-6 pt-2 bg-[#1c1c1e]">
-                            <div className="flex gap-2 items-center">
-                                {/* Input Field - iMessage Style */}
-                                <div className="flex-1 bg-[#3a3a3c] rounded-[22px] border border-white/10 overflow-hidden">
-                                    <textarea
-                                        value={input}
-                                        onChange={(e) => setInput(e.target.value)}
-                                        onKeyDown={handleKeyDown}
-                                        placeholder="信息"
-                                        rows={1}
-                                        className="w-full bg-transparent text-white text-[17px] placeholder:text-zinc-500 focus:outline-none resize-none px-4 py-[10px]"
-                                        style={{ maxHeight: 120, minHeight: 44 }}
-                                    />
-                                </div>
-                                {/* Send Button - Apple Style, aligned with input height */}
-                                <button
-                                    onClick={handleSend}
-                                    disabled={isLoading || !input.trim()}
-                                    className="w-[44px] h-[44px] rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90 disabled:opacity-30"
-                                    style={{
-                                        background: input.trim() ? '#007AFF' : '#3a3a3c',
-                                    }}
-                                >
-                                    {isLoading ? (
-                                        <Loader2 size={20} className="text-white animate-spin" />
-                                    ) : (
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                                            <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-                                        </svg>
-                                    )}
-                                </button>
-                            </div>
-                            {/* Safe area padding for iPhone */}
-                            <div className="h-safe-area-inset-bottom" />
-                        </div>
-                    </div>
-                </div>
-            </>
-        );
-    }
-
-    // ==================== DESKTOP UI - Floating Bubble ====================
-    const [isHovered, setIsHovered] = useState(false);
-    const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
-
-    // Drag state for floating bubble
-    const [bubblePosition, setBubblePosition] = useState({ x: 380, y: 40 }); // Distance from right/bottom edges
-    const [isBubbleDragging, setIsBubbleDragging] = useState(false);
-    const bubbleDragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
-
-    // Handle bubble drag
-    useEffect(() => {
-        if (!isBubbleDragging) return;
-
-        const handleMouseMove = (e: MouseEvent) => {
-            const deltaX = bubbleDragStartRef.current.x - e.clientX;
-            const deltaY = bubbleDragStartRef.current.y - e.clientY;
-
-            // Mark as dragged if moved more than 5 pixels
-            if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
-                hasDraggedRef.current = true;
-            }
-
-            // Calculate new position (distance from right/bottom edges)
-            const newX = Math.max(10, Math.min(window.innerWidth - 70, bubbleDragStartRef.current.posX + deltaX));
-            const newY = Math.max(10, Math.min(window.innerHeight - 70, bubbleDragStartRef.current.posY + deltaY));
-
-            setBubblePosition({ x: newX, y: newY });
-        };
-
-        const handleMouseUp = () => {
-            setIsBubbleDragging(false);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-        document.body.style.cursor = 'grabbing';
-        document.body.style.userSelect = 'none';
-
-        return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, [isBubbleDragging]);
-
-    // Track if actual dragging happened (to distinguish from click)
-    const hasDraggedRef = useRef(false);
-
-    const startBubbleDrag = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
-        bubbleDragStartRef.current = {
-            x: e.clientX,
-            y: e.clientY,
-            posX: bubblePosition.x,
-            posY: bubblePosition.y
-        };
-        hasDraggedRef.current = false;
-        setIsBubbleDragging(true);
-    }, [bubblePosition]);
-
-    // Track if the panel is pinned (opened by click vs hover)
-    const [isPinned, setIsPinned] = useState(false);
-
-    const handleBubbleClick = useCallback(() => {
-        // Only toggle if it was a click, not a drag
-        if (!hasDraggedRef.current) {
-            if (isHovered && isPinned) {
-                // If already pinned, unpin and close
-                setIsPinned(false);
-                setIsHovered(false);
-            } else {
-                // Pin the panel open
-                setIsPinned(true);
-                setIsHovered(true);
-            }
-        }
-    }, [isHovered, isPinned]);
-
-    // Handle mouse enter/leave with delay
-    const handleMouseEnter = useCallback(() => {
-        if (isBubbleDragging) return; // Don't show panel while dragging
-        if (hoverTimeoutRef.current) {
-            clearTimeout(hoverTimeoutRef.current);
-            hoverTimeoutRef.current = null;
-        }
-        setIsHovered(true);
-    }, [isBubbleDragging]);
-
-    const handleMouseLeave = useCallback(() => {
-        // Don't close if pinned
-        if (isPinned) return;
-        // Small delay before closing to allow moving to expanded panel
-        hoverTimeoutRef.current = setTimeout(() => {
-            setIsHovered(false);
-        }, 300);
-    }, [isPinned]);
-
-    // Auto-open when there's a pending message
-    useEffect(() => {
-        if (input.trim()) {
-            setIsHovered(true);
-        }
-    }, [input]);
-
-    // Determine expand direction based on bubble position
-    const [expandToRight, setExpandToRight] = useState(false);
-
-    // Update expand direction when bubble position changes
-    useEffect(() => {
-        // If bubble is on the left half of screen, expand to right
-        // bubblePosition.x is distance from RIGHT edge, so larger value = more to the left
-        const bubbleLeftEdge = window.innerWidth - bubblePosition.x - 54;
-        setExpandToRight(bubbleLeftEdge < window.innerWidth / 2);
-    }, [bubblePosition.x]);
 
     return (
-        <div
-            ref={containerRef}
-            className="fixed z-[200]"
-            style={{
-                right: expandToRight ? 'auto' : bubblePosition.x,
-                left: expandToRight ? (window.innerWidth - bubblePosition.x - 54) : 'auto',
-                bottom: bubblePosition.y
-            }}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-        >
-            {/* Container that expands UPWARD */}
+        <>
+            {/* 1. Draggable Floating Trigger (Purple Breathing) */}
             <div
-                className="relative transition-all duration-300 ease-out"
-                style={{
-                    width: isHovered || isOpen ? 360 : 54,
-                    height: isHovered || isOpen ? 480 : 54,
+                className={`fixed z-[90] transition-all duration-300 ease-in-out ${isOpen ? 'opacity-0 scale-50 pointer-events-none' : 'opacity-100 scale-100'}`}
+                style={{ left: position.x, bottom: position.y }}
+                onMouseEnter={() => {
+                    if (!isOpen && !isDragging) {
+                        // Simple hover-to-open, maybe add small delay?
+                        // For "automatic expansion", usually instant or very quick is preferred.
+                        onToggle();
+                    }
                 }}
             >
-                {/* Chat Panel - Expands ABOVE the bubble */}
                 <div
-                    className={`absolute flex flex-col overflow-hidden transition-all duration-300 ${isHovered || isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                    onMouseDown={startDrag}
+                    className={`group relative w-12 h-12 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-2xl animate-float-breathe cursor-move active:scale-95 transition-transform hover:brightness-110 ${isDragging ? 'cursor-grabbing scale-95' : ''}`}
+                    title="Open AI Assistant (Drag to move)"
+                >
+                    {/* Inner Icon Breathing - Smaller now */}
+                    <Bot size={24} className="animate-icon-breathe drop-shadow-md pointer-events-none" />
+
+                    {/* Status Dot - Smaller */}
+                    <span className="absolute top-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#09090b] shadow-lg animate-pulse pointer-events-none" />
+
+                    {/* Click handler strictly on a overlay to separate from drag?
+                        Actually standard click works if no drag occurred.
+                        But we need to distinguish click vs dragend.
+                        Simple check: if moved > threshold.
+                        For now, let's assume a clean click is quick.
+                    */}
+                    <div
+                        className="absolute inset-0 rounded-full"
+                        onClick={(e) => {
+                            if (!isDragging) {
+                                e.stopPropagation();
+                                onToggle();
+                            }
+                        }}
+                    />
+                </div>
+            </div>
+
+            {/* 2. Chat Card Popover (Morph Transformation) */}
+            {isOpen && (
+                <div
+                    className="fixed z-[100] w-[380px] h-[600px] max-h-[80vh] flex flex-col bg-[#131316]/95 backdrop-blur-2xl border border-purple-500/30 rounded-3xl shadow-[0_0_50px_-12px_rgba(124,58,237,0.5)] animate-scale-up-corner overflow-hidden ring-1 ring-white/10 origin-bottom-left"
                     style={{
-                        width: 360,
-                        height: isHovered || isOpen ? 420 : 0,
-                        right: expandToRight ? 'auto' : 0,
-                        left: expandToRight ? 0 : 'auto',
-                        bottom: 60, // Above the input bar
-                        background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.98) 0%, rgba(8, 12, 21, 0.99) 100%)',
-                        backdropFilter: 'blur(40px)',
-                        border: '1px solid rgba(56, 189, 248, 0.15)',
-                        borderBottom: 'none',
-                        borderRadius: '24px 24px 0 0',
-                        boxShadow: '0 -15px 40px -12px rgba(0, 0, 0, 0.5), 0 0 40px -10px rgba(56, 189, 248, 0.15)'
+                        left: Math.min(window.innerWidth - 390, Math.max(20, position.x)),
+                        bottom: Math.max(20, position.y), // Align bottom with bubble to look like expansion
+                        transformOrigin: getTransformOrigin()
                     }}
                 >
-                    {/* Header - Draggable */}
-                    <div
-                        className="flex items-center justify-between px-4 py-3 flex-shrink-0 cursor-move"
-                        onMouseDown={startBubbleDrag}
-                        style={{
-                            background: 'linear-gradient(180deg, rgba(56, 189, 248, 0.05) 0%, transparent 100%)',
-                            borderBottom: '1px solid rgba(56, 189, 248, 0.1)'
-                        }}
-                    >
-                        <div className="flex items-center gap-3">
-                            <div
-                                className="w-10 h-10 rounded-2xl flex items-center justify-center relative overflow-hidden"
-                                style={{
-                                    background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 50%, #14b8a6 100%)',
-                                    boxShadow: '0 4px 15px rgba(14, 165, 233, 0.4)'
-                                }}
-                            >
-                                {/* Sparkle Icon */}
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" />
-                                </svg>
-                                {/* Shimmer */}
-                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full animate-shimmer" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-semibold text-white">AI 智能助手</h3>
-                                <button
-                                    className="flex items-center gap-1.5 hover:bg-white/5 rounded px-1.5 py-0.5 transition-colors group relative"
-                                    onClick={() => setShowModelMenu(!showModelMenu)}
-                                >
-                                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                                    <span className="text-[10px] text-slate-400 group-hover:text-cyan-400 transition-colors">
-                                        {selectedModel === ChatModelType.GEMINI_LITE && 'Gemini'}
-                                        {selectedModel === ChatModelType.GEMINI_3_FLASH && 'Gemini 3 Flash'}
-                                        {selectedModel === ChatModelType.GEMINI_3_PRO && 'Gemini 3 Pro'}
-                                    </span>
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-500 group-hover:text-cyan-400">
-                                        <path d="M6 9l6 6 6-6" />
-                                    </svg>
 
-                                    {/* Model Dropdown */}
-                                    {showModelMenu && (
-                                        <div className="absolute top-full left-0 mt-1 w-40 bg-[#1c1c1e] border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden animate-scaleIn origin-top-left">
-                                            <div className="py-1">
-                                                {[
-                                                    { id: ChatModelType.GEMINI_LITE, label: 'Gemini', desc: '轻量级模型，响应速度最快 (默认)' },
-                                                    { id: ChatModelType.GEMINI_3_FLASH, label: 'Gemini 3 Flash', desc: '新一代 Flash，平衡速度与推理能力' },
-                                                    { id: ChatModelType.GEMINI_3_PRO, label: 'Gemini 3 Pro', desc: '最强推理能力，擅长处理复杂任务' }
-                                                ].map(model => (
-                                                    <button
-                                                        key={model.id}
-                                                        className={`w-full px-3 py-2 text-left flex flex-col hover:bg-white/5 transition-colors ${selectedModel === model.id ? 'bg-white/5' : ''}`}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedModel(model.id);
-                                                            setShowModelMenu(false);
-                                                        }}
-                                                    >
-                                                        <span className={`text-xs font-medium ${selectedModel === model.id ? 'text-cyan-400' : 'text-slate-200'}`}>{model.label}</span>
-                                                        <span className="text-[9px] text-slate-500">{model.desc}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <button onClick={handleNewChat} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all" title="新对话">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 5v14M5 12h14" />
-                                </svg>
-                            </button>
-                            <button onClick={handleClear} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all" title="清空">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" />
-                                </svg>
-                            </button>
+                    {/* Header */}
+                    <div className="h-14 border-b border-white/10 flex items-center justify-between px-4 bg-gradient-to-r from-purple-900/40 to-indigo-900/20 shrink-0">
+                        {/* Model Selector */}
+                        <div className="relative">
                             <button
-                                onClick={() => { setIsPinned(false); setIsHovered(false); }}
-                                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all"
-                                title="折叠"
+                                onClick={() => setShowModelMenu(!showModelMenu)}
+                                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-100 transition-colors text-xs font-medium group"
                             >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M6 9l6 6 6-6" />
-                                </svg>
+                                <span className="text-base">{selectedModel.icon}</span>
+                                <span>{selectedModel.name}</span>
+                                <ChevronDown size={12} className={`text-zinc-500 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                             </button>
+
+                            {/* Dropdown */}
+                            {showModelMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowModelMenu(false)} />
+                                    <div className="absolute top-full left-0 mt-2 w-64 bg-[#18181b] border border-white/10 rounded-xl shadow-xl z-20 p-1 animate-in fade-in zoom-in-95 duration-100">
+                                        <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-zinc-500 font-bold border-b border-white/5 mb-1">Select Model</div>
+                                        {AVAILABLE_MODELS.map(model => (
+                                            <button
+                                                key={model.id}
+                                                onClick={() => { setSelectedModel(model); setShowModelMenu(false); }}
+                                                className={`w-full flex items-start gap-3 px-3 py-2 rounded-lg text-sm text-left transition-colors ${selectedModel.id === model.id ? 'bg-purple-500/20 text-purple-300' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+                                                    }`}
+                                            >
+                                                <span className="mt-0.5">{model.icon}</span>
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="font-medium">{model.name}</span>
+                                                    <span className="text-[10px] opacity-60 leading-tight">{model.desc}</span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1">
+                            {/* Drag Handle for Card? (Optional) */}
+                            {/* <div className="p-2 text-zinc-600 cursor-move"><GripVertical size={18} /></div> */}
+                            <button onClick={handleClear} className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                            <button onClick={onToggle} className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><X size={18} /></button>
                         </div>
                     </div>
 
                     {/* Messages */}
-                    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scrollbar-thin">
-                        {messages.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-full text-center">
-                                <div
-                                    className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 relative overflow-hidden"
-                                    style={{
-                                        background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(20, 184, 166, 0.15) 100%)',
-                                        border: '1px solid rgba(56, 189, 248, 0.2)'
-                                    }}
-                                >
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-cyan-400">
-                                        <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" />
-                                    </svg>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
+                        {messages.map((msg) => (
+                            <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''} group`}>
+                                {/* Avatar */}
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-lg ${msg.role === 'user'
+                                    ? 'bg-zinc-800 border border-zinc-700'
+                                    : 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-purple-500/20'
+                                    }`}>
+                                    {msg.role === 'user' ? <User size={14} className="text-zinc-400" /> : <Bot size={16} className="animate-icon-breathe" />}
                                 </div>
-                                <h4 className="text-sm font-medium text-slate-200 mb-1">开始智能对话</h4>
-                                <p className="text-[11px] text-slate-500 max-w-[180px]">向 AI 助手提问，获取即时帮助</p>
+
+                                {/* Content */}
+                                <div className={`max-w-[85%] rounded-2xl p-3 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                                    ? 'bg-[#27272a] text-zinc-100 rounded-tr-sm border border-zinc-700/50'
+                                    : 'bg-purple-500/10 text-purple-100 border border-purple-500/20 rounded-tl-sm backdrop-blur-sm'
+                                    }`}>
+                                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                                </div>
                             </div>
-                        ) : (
-                            messages.map((msg, index) => (
-                                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`} style={{ animation: `fadeSlideIn 0.2s ease-out ${index * 0.03}s both` }}>
-                                    {msg.role === 'assistant' && (
-                                        <div className="w-7 h-7 rounded-xl flex items-center justify-center mr-2 mt-0.5 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #14b8a6 100%)' }}>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                                                <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" />
-                                            </svg>
-                                        </div>
-                                    )}
-                                    <div
-                                        className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed ${msg.role === 'user' ? 'text-white' : 'text-slate-200'}`}
-                                        style={msg.role === 'user' ? {
-                                            background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
-                                            boxShadow: '0 4px 15px rgba(14, 165, 233, 0.3)'
-                                        } : {
-                                            background: 'rgba(255, 255, 255, 0.03)',
-                                            border: '1px solid rgba(56, 189, 248, 0.1)'
-                                        }}
-                                    >
-                                        <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                                    </div>
+                        ))}
+
+                        {isThinking && (
+                            <div className="flex gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center shrink-0">
+                                    <Bot size={16} className="animate-pulse" />
                                 </div>
-                            ))
-                        )}
-                        {isLoading && (
-                            <div className="flex justify-start">
-                                <div className="w-7 h-7 rounded-xl flex items-center justify-center mr-2 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #14b8a6 100%)' }}>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                                        <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" />
-                                    </svg>
-                                </div>
-                                <div className="rounded-2xl px-4 py-2.5 flex items-center gap-2" style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(56, 189, 248, 0.1)' }}>
-                                    <div className="flex gap-1">
-                                        <div className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                                        <div className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                                        <div className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                                    </div>
-                                    <span className="text-[11px] text-slate-400">思考中...</span>
+                                <div className="flex items-center gap-1 p-3 bg-purple-500/10 border border-purple-500/20 rounded-2xl rounded-tl-sm h-10">
+                                    <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                                    <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                                    <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" />
                                 </div>
                             </div>
                         )}
                         <div ref={messagesEndRef} />
                     </div>
-                </div>
 
-                {/* Bottom Input Bar - Always visible with fixed-position bubble */}
-                <div
-                    className={`absolute flex items-center transition-all duration-300 ${isHovered || isOpen ? 'gap-2' : ''}`}
-                    style={{
-                        bottom: 0,
-                        right: expandToRight ? 'auto' : 0,
-                        left: expandToRight ? 0 : 'auto',
-                        height: 60,
-                        width: isHovered || isOpen ? 360 : 54,
-                        padding: isHovered || isOpen ? '8px 8px 8px 12px' : 0,
-                        background: isHovered || isOpen
-                            ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.98))'
-                            : 'transparent',
-                        borderRadius: isHovered || isOpen ? '0 0 24px 24px' : '27px',
-                        border: isHovered || isOpen ? '1px solid rgba(56, 189, 248, 0.15)' : 'none',
-                        borderTop: 'none',
-                    }}
-                >
-                    {/* Input Field - Only visible when expanded */}
-                    {(isHovered || isOpen) && (
-                        <div className="flex-1 bg-[#3a3a3c] rounded-[22px] border border-white/10 overflow-hidden">
-                            <input
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                onFocus={() => setIsPinned(true)}
-                                placeholder="信息"
-                                className="w-full bg-transparent text-white text-[15px] placeholder:text-zinc-500 focus:outline-none px-4 py-[10px]"
-                            />
+                    {/* Input */}
+                    <div className="p-3 bg-[#18181b]/80 border-t border-purple-500/20 backdrop-blur-xl shrink-0">
+                        <div className="relative group/input">
+                            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-indigo-500/20 rounded-2xl blur-md opacity-0 group-hover/input:opacity-100 transition-opacity" />
+                            <div className="relative flex items-end gap-2 bg-[#09090b] border border-white/10 rounded-2xl p-1.5 focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
+                                <textarea
+                                    className="flex-1 bg-transparent text-white text-sm px-3 py-2 outline-none resize-none scrollbar-hide max-h-32"
+                                    placeholder={`Message ${selectedModel.name.split(' ')[0]}...`}
+                                    rows={1}
+                                    value={input}
+                                    onChange={e => {
+                                        setInput(e.target.value);
+                                        e.target.style.height = 'auto';
+                                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                                    }}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSend();
+                                        }
+                                    }}
+                                />
+                                <button
+                                    onClick={handleSend}
+                                    disabled={!input.trim() || isThinking}
+                                    className="p-2 bg-gradient-to-tr from-purple-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                                >
+                                    <Send size={16} />
+                                </button>
+                            </div>
                         </div>
-                    )}
-
-                    {/* Bubble - Fixed position, acts as expand/send button */}
-                    <button
-                        onMouseDown={!isHovered && !isOpen ? startBubbleDrag : undefined}
-                        onClick={(isHovered || isOpen) ? handleSend : handleBubbleClick}
-                        disabled={(isHovered || isOpen) && (isLoading || !input.trim())}
-                        className={`flex items-center justify-center rounded-full flex-shrink-0 transition-all duration-300 relative
-                            ${!isHovered && !isOpen && isBubbleDragging ? 'cursor-grabbing scale-95' : ''}
-                            ${!isHovered && !isOpen && !isBubbleDragging ? 'animate-bubble-breathe cursor-grab' : ''} 
-                            ${(isHovered || isOpen) ? 'disabled:opacity-30' : ''} hover:scale-105 active:scale-95`}
-                        style={{
-                            width: isHovered || isOpen ? 44 : 52,
-                            height: isHovered || isOpen ? 44 : 52,
-                            background: (isHovered || isOpen)
-                                ? (input.trim() ? '#007AFF' : '#3a3a3c')
-                                : 'linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 100%), linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
-                            backdropFilter: 'blur(20px)',
-                            border: (isHovered || isOpen) ? 'none' : '0.5px solid rgba(255, 255, 255, 0.35)',
-                            boxShadow: (!isHovered && !isOpen)
-                                ? undefined
-                                : (input.trim() ? '0 2px 10px rgba(0, 122, 255, 0.35)' : 'none')
-                        }}
-                    >
-                        {/* Collapsed: Robot icon, Expanded: Send icon */}
-                        {(isHovered || isOpen) ? (
-                            isLoading ? (
-                                <Loader2 size={20} className="text-white animate-spin" />
-                            ) : (
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                                    <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-                                </svg>
-                            )
-                        ) : (
-                            <Bot
-                                size={24}
-                                className={`text-white drop-shadow-sm ${!isBubbleDragging ? 'animate-icon-breathe' : ''}`}
-                            />
-                        )}
-                        {/* Notification indicator - Only when collapsed */}
-                        {messages.length > 0 && !isHovered && !isOpen && (
-                            <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm" />
-                        )}
-                    </button>
+                    </div>
                 </div>
-            </div>
-        </div>
+            )}
+        </>
     );
 };
 

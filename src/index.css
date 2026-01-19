@@ -2,70 +2,68 @@
 @import "tailwindcss";
 
 /* ============================================
-   CSS Variables & Design Tokens (Apple HIG)
+   CSS Variables & Design Tokens (AnyGen Premium)
    ============================================ */
 :root {
-  /* Background Colors */
-  --bg-primary: #000000;
-  --bg-secondary: #1c1c1e;
-  --bg-tertiary: #2c2c2e;
+  /* Background Colors - Deep Premium Dark */
+  --bg-primary: #050505;
+  --bg-secondary: #0F0F10;
+  --bg-tertiary: #18181B;
   --bg-canvas: #050505;
 
-  /* Toolbar Colors - Solid Background */
-  --toolbar-bg: rgba(30, 30, 35, 1);
-  --toolbar-bg-dark: rgba(20, 20, 25, 1);
-  --toolbar-hover: rgba(255, 255, 255, 0.1);
-  --toolbar-active: rgba(255, 255, 255, 0.15);
-  --toolbar-divider: rgba(255, 255, 255, 0.1);
+  /* Toolbar & Glass Colors */
+  --toolbar-bg: rgba(15, 15, 16, 0.7);
+  --toolbar-bg-dark: rgba(10, 10, 12, 0.8);
+  --toolbar-hover: rgba(255, 255, 255, 0.08);
+  --toolbar-active: rgba(255, 255, 255, 0.12);
+  --toolbar-divider: rgba(255, 255, 255, 0.08);
 
-  /* Border Colors */
-  --border-light: rgba(255, 255, 255, 0.08);
-  /* Apple-style inner glow */
-  --border-medium: rgba(255, 255, 255, 0.12);
-  --border-strong: rgba(255, 255, 255, 0.2);
+  /* Border Colors - Subtle & Refined */
+  --border-light: rgba(255, 255, 255, 0.06);
+  --border-medium: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
 
-  /* Text Colors - San Francisco System Colors */
-  --text-primary: #ffffff;
-  --text-secondary: rgba(235, 235, 245, 0.6);
-  --text-tertiary: rgba(235, 235, 245, 0.3);
-  --text-muted: rgba(235, 235, 245, 0.18);
+  /* Text Colors */
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-tertiary: rgba(255, 255, 255, 0.4);
+  --text-muted: rgba(255, 255, 255, 0.25);
 
-  /* Accent Colors */
-  --accent-indigo: #5e5ce6;
-  /* System Indigo */
-  --accent-blue: #0a84ff;
-  /* System Blue */
-  --accent-green: #30d158;
-  /* System Green */
-  --accent-orange: #ff9f0a;
-  /* System Orange */
-  --accent-red: #ff453a;
-  /* System Red */
-  --accent-yellow: #ffd60a;
-  /* System Yellow */
-  --accent-purple: #bf5af2;
-  /* System Purple */
-  --accent-pink: #ff375f;
-  /* System Pink */
+  /* Accent Colors - Vibrant & Electric */
+  --accent-indigo: #6366F1;
+  --accent-indigo-light: #818CF8;
+  --accent-blue: #3B82F6;
+  --accent-cyan: #06B6D4;
+  --accent-green: #10B981;
+  --accent-orange: #F59E0B;
+  --accent-red: #EF4444;
+  --accent-purple: #8B5CF6;
+  --accent-pink: #EC4899;
 
-  /* Shadows - Layered & Soft */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.4);
-  --shadow-inner: inset 0 0.5px 0 rgba(255, 255, 255, 0.1);
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, #6366F1 0%, #A855F7 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(24, 24, 27, 0.6) 0%, rgba(24, 24, 27, 0.3) 100%);
 
-  /* Transitions - Fluid Motion */
-  --transition-fast: 0.18s cubic-bezier(0.25, 0.1, 0.25, 1);
-  --transition-normal: 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
-  --transition-spring: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-  /* Spring-like */
+  /* Shadows - Ambient & Soft */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+
+  /* Transitions */
+  --transition-fast: 0.2s cubic-bezier(0.2, 0, 0, 1);
+  --transition-normal: 0.3s cubic-bezier(0.2, 0, 0, 1);
+  --transition-slow: 0.5s cubic-bezier(0.2, 0, 0, 1);
+  --transition-bounce: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 
   /* Border Radius */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-xl: 28px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
   --radius-full: 9999px;
 }
 
@@ -79,7 +77,6 @@
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
-  /* Remove tap highlight on mobile */
 }
 
 html,
@@ -91,14 +88,13 @@ body,
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
-  letter-spacing: -0.01em;
-  /* Apple-style tracking */
+  letter-spacing: -0.015em;
 }
 
 /* ============================================
@@ -106,27 +102,27 @@ body {
    ============================================ */
 .glass {
   background: var(--toolbar-bg);
-  backdrop-filter: blur(25px) saturate(180%);
-  -webkit-backdrop-filter: blur(25px) saturate(180%);
-  border: 0.5px solid var(--border-light);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-light);
   box-shadow: var(--shadow-sm);
 }
 
 .glass-strong {
   background: var(--toolbar-bg-dark);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
-  border: 0.5px solid var(--border-medium);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid var(--border-medium);
   box-shadow: var(--shadow-lg);
 }
 
 .toolbar {
-  background: rgba(30, 30, 35, 0.6);
-  backdrop-filter: blur(30px) saturate(180%);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
-  border: 0.5px solid var(--border-light);
+  background: var(--toolbar-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  padding: 5px;
+  padding: 4px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -134,18 +130,17 @@ body {
 }
 
 .toolbar-btn {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  /* Softer corners */
   border: none;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: all var(--transition-fast);
 }
 
 .toolbar-btn:hover {
@@ -1203,4 +1198,59 @@ body {
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* Breathing Animation for Floating Bubble */
+@keyframes float-breathe {
+
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+  }
+
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+  }
+}
+
+.animate-float-breathe {
+  animation: float-breathe 3s ease-in-out infinite;
+}
+
+/* Breathing Animation for Icon (Counter-scale/Sync) */
+@keyframes icon-breathe {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.animate-icon-breathe {
+  animation: icon-breathe 3s ease-in-out infinite;
+}
+
+/* Pop-in Animation for Card (Scale Up from Corner) */
+@keyframes scale-up-corner {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translate(40px, 40px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) translate(0, 0);
+  }
+}
+
+.animate-scale-up-corner {
+  animation: scale-up-corner 0.4s cubic-bezier(0.19, 1, 0.22, 1) forwards;
 }

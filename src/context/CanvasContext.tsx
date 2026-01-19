@@ -53,7 +53,7 @@ const generateId = () => Date.now().toString(36) + Math.random().toString(36).su
 
 const DEFAULT_CANVAS: Canvas = {
     id: 'default',
-    name: '画布1',
+    name: '项目1',
     promptNodes: [],
     imageNodes: [],
     lastModified: Date.now()
@@ -331,10 +331,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return false; // Max reached
         }
 
-        // Find next available number for "画布X"
+        // Find next available number for "项目X"
         const existingNumbers = state.canvases
             .map(c => {
-                const match = c.name.match(/^画布(\d+)$/);
+                const match = c.name.match(/^项目(\d+)$/);
                 return match ? parseInt(match[1], 10) : 0;
             })
             .filter(n => n > 0);
@@ -342,7 +342,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const newCanvas: Canvas = {
             id: generateId(),
-            name: `画布${nextNumber}`,
+            name: `项目${nextNumber}`,
             promptNodes: [],
             imageNodes: [],
             lastModified: Date.now()

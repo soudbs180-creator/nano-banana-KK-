@@ -1,4 +1,12 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+
+export interface InfiniteCanvasHandle {
+    zoomIn: () => void;
+    zoomOut: () => void;
+    resetView: () => void;
+    toggleGrid: () => void;
+    setView: (x: number, y: number, scale: number) => void;
+}
 
 interface InfiniteCanvasProps {
     children: React.ReactNode;
@@ -14,7 +22,7 @@ interface Transform {
     scale: number;
 }
 
-const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformChange, onCanvasClick, onAutoArrange }) => {
+const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, onTransformChange, onCanvasClick, onAutoArrange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
     const [isDragging, setIsDragging] = useState(false);
@@ -101,19 +109,6 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
         setIsDragging(false);
     }, []);
 
-    // Handle keyboard shortcuts
-    const handleKeyDown = useCallback((e: KeyboardEvent) => {
-        if (e.key === 'Escape' || e.key === 'Home') {
-            resetView();
-        }
-        if (e.key === '+' || e.key === '=') {
-            zoomIn();
-        }
-        if (e.key === '-' || e.key === '_') {
-            zoomOut();
-        }
-    }, []);
-
     // Zoom controls
     const zoomIn = useCallback(() => {
         const newScale = Math.min(3, transform.scale * 1.2);
@@ -169,6 +164,32 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
         setShowGrid(prev => !prev);
     }, []);
 
+    // Expose methods to parent
+    useImperativeHandle(ref, () => ({
+        zoomIn,
+        zoomOut,
+        resetView,
+        toggleGrid,
+        setView: (x: number, y: number, scale: number) => {
+            const newTransform = { x, y, scale };
+            setTransform(newTransform);
+            onTransformChange?.(newTransform);
+        }
+    }));
+
+    // Handle keyboard shortcuts
+    const handleKeyDown = useCallback((e: KeyboardEvent) => {
+        if (e.key === 'Escape' || e.key === 'Home') {
+            resetView();
+        }
+        if (e.key === '+' || e.key === '=') {
+            zoomIn();
+        }
+        if (e.key === '-' || e.key === '_') {
+            zoomOut();
+        }
+    }, [resetView, zoomIn, zoomOut]);
+
     // Setup event listeners
     useEffect(() => {
         const container = containerRef.current;
@@ -212,60 +233,6 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
                 </div>
             </div>
 
-            {/* Canvas Controls - Bottom Left */}
-            <div className="absolute bottom-4 left-4 z-50">
-                <div className="toolbar">
-                    {/* 1. Zoom In */}
-                    <button className="toolbar-btn" onClick={zoomIn} title="放大 (+)">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 5v14M5 12h14" />
-                        </svg>
-                    </button>
-                    {/* 2. Zoom Out */}
-                    <button className="toolbar-btn" onClick={zoomOut} title="缩小 (-)">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M5 12h14" />
-                        </svg>
-                    </button>
-                    {/* 3. Reset View */}
-                    <button className="toolbar-btn" onClick={resetView} title="复位 (Home)">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="3" />
-                            <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-                        </svg>
-                    </button>
-                    {/* 4. Toggle Dots */}
-                    <button
-                        className={`toolbar-btn ${showGrid ? 'active' : ''}`}
-                        onClick={toggleGrid}
-                        title="点阵 (Dots)"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                            <circle cx="6" cy="6" r="2" />
-                            <circle cx="12" cy="6" r="2" />
-                            <circle cx="18" cy="6" r="2" />
-                            <circle cx="6" cy="12" r="2" />
-                            <circle cx="12" cy="12" r="2" />
-                            <circle cx="18" cy="12" r="2" />
-                            <circle cx="6" cy="18" r="2" />
-                            <circle cx="12" cy="18" r="2" />
-                            <circle cx="18" cy="18" r="2" />
-                        </svg>
-                    </button>
-                    {/* 5. Auto Arrange */}
-                    {onAutoArrange && (
-                        <button className="toolbar-btn" onClick={onAutoArrange} title="整理排版 (Arrange)">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="3" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="3" width="7" height="7" rx="1" />
-                                <rect x="3" y="14" width="7" height="7" rx="1" />
-                                <rect x="14" y="14" width="7" height="7" rx="1" />
-                            </svg>
-                        </button>
-                    )}
-                </div>
-            </div>
-
             {/* Scale Indicator */}
             <div className="absolute bottom-4 right-4 z-50">
                 <div className="glass px-3 py-1.5 rounded-lg text-xs text-zinc-400 font-medium">
@@ -274,6 +241,6 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
             </div>
         </div>
     );
-};
+});
 
 export default InfiniteCanvas;

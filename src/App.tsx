@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import InfiniteCanvas from './components/Canvas';
+import InfiniteCanvas, { InfiniteCanvasHandle } from './components/InfiniteCanvas';
 
 import PromptBar from './components/PromptBar';
 import ImageNode from './components/ImageCard2';
@@ -30,302 +30,10 @@ import { notify } from './services/notificationService';
 import UpdateNotification from './components/UpdateNotification';
 import { initUpdateCheck } from './services/updateCheck';
 
-// Canvas Manager Component (Top Left)
-const CanvasManager: React.FC = () => {
-  const { state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas, clearAllData, canCreateCanvas } = useCanvas();
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  // Auto-close menu after 5 seconds of inactivity
-  useEffect(() => {
-    if (showDropdown) {
-      const timer = setTimeout(() => {
-        setShowDropdown(false);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [showDropdown]);
-
-  const handleClearAll = () => {
-    if (confirm('确定要清除所有画布数据吗？此操作无法撤销！')) {
-      clearAllData();
-      setShowDropdown(false);
-    }
-  };
-
-  const handleDownloadAll = async () => {
-    if (!activeCanvas || activeCanvas.imageNodes.length === 0) {
-      alert("当前画布没有图片可下载");
-      return;
-    }
-
-    if (!confirm("确认下载所有图片？\n\n此操作将打包下载当前画布的所有图片（高清原图），但不包含提示词信息。")) {
-      return;
-    }
-
-    setIsDownloading(true);
-    setShowDropdown(false);
-
-    try {
-      const zip = new JSZip();
-      const folder = zip.folder(activeCanvas.name) || zip;
-
-      let count = 0;
-      const total = activeCanvas.imageNodes.length;
-
-      // Process in chunks to avoid freezing UI too much (though fetch is async)
-      const promises = activeCanvas.imageNodes.map(async (img, index) => {
-        try {
-          if (!img.url) return;
-
-          // Handle base64 or URL
-          let blob;
-          if (img.url.startsWith('data:')) {
-            blob = await (await fetch(img.url)).blob();
-          } else {
-            // External URL (unlikely given current setup, but good practice)
-            const response = await fetch(img.url);
-            blob = await response.blob();
-          }
-
-          const ext = blob.type.split('/')[1] || 'png';
-          const filename = `image_${index + 1}_${img.id.slice(0, 4)}.${ext}`;
-          folder.file(filename, blob);
-          count++;
-        } catch (e) {
-          console.error("Failed to add image to zip", e);
-        }
-      });
-
-      await Promise.all(promises);
-
-      if (count === 0) {
-        alert("下载失败：无法获取图片数据");
-        return;
-      }
-
-      const content = await zip.generateAsync({ type: "blob" });
-      saveAs(content, `${activeCanvas.name}_images.zip`);
-
-    } catch (err) {
-      console.error("Download failed", err);
-      alert("打包下载失败，请重试");
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  const handleCreateCanvas = () => {
-    if (!canCreateCanvas) {
-      alert('最多只能创建 10 个画布！');
-      return;
-    }
-    createCanvas();
-    setShowDropdown(false);
-  };
-
-  const startEditing = (canvas: { id: string; name: string }) => {
-    setEditingId(canvas.id);
-    setEditName(canvas.name);
-  };
-
-  const saveEdit = () => {
-    if (editingId && editName.trim()) {
-      renameCanvas(editingId, editName.trim());
-    }
-    setEditingId(null);
-    setEditName('');
-  };
-
-  return (
-    <div className="absolute top-4 left-4 z-50">
-      <div className="relative">
-        {/* Canvas Selector */}
-        <button
-          onClick={() => setShowDropdown(!showDropdown)}
-          className="flex items-center gap-2 px-3 py-2 glass hover:bg-white/10 transition-colors text-sm text-zinc-300 rounded-lg"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="12 2 2 7 12 12 22 7 12 2" />
-            <polyline points="2 17 12 22 22 17" />
-            <polyline points="2 12 12 17 22 12" />
-          </svg>
-          <span>{activeCanvas?.name || '画布'}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`}>
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
-
-        {/* Dropdown Menu Overlay */}
-        {showDropdown && (
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setShowDropdown(false)}
-          />
-        )}
-
-        {/* Dropdown Menu */}
-        {showDropdown && (
-          <div className="absolute top-full left-0 mt-2 w-72 glass-strong rounded-xl overflow-hidden z-50 animate-scaleIn origin-top-left">
-            {/* Canvas List */}
-            <div className="max-h-60 overflow-y-auto">
-              {state.canvases.map(canvas => (
-                <div
-                  key={canvas.id}
-                  className={`flex items-center gap-2 px-3 py-2 hover:bg-white/5 cursor-pointer ${canvas.id === activeCanvas?.id ? 'bg-indigo-500/10 text-indigo-400' : 'text-zinc-300'
-                    }`}
-                  onClick={() => {
-                    if (editingId !== canvas.id) {
-                      switchCanvas(canvas.id);
-                      setShowDropdown(false);
-                    }
-                  }}
-                >
-                  <div className={`w-4 h-4 flex items-center justify-center ${canvas.id === activeCanvas?.id ? 'opacity-100' : 'opacity-0'}`}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </div>
-
-                  {editingId === canvas.id ? (
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      onBlur={saveEdit}
-                      onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex-1 bg-black/30 border border-indigo-500 rounded px-2 py-0.5 text-sm text-white focus:outline-none"
-                      autoFocus
-                    />
-                  ) : (
-                    <span className="flex-1 text-sm truncate">{canvas.name}</span>
-                  )}
-
-                  <div className="flex items-center gap-1">
-                    {/* Edit button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startEditing(canvas);
-                      }}
-                      className="p-1 hover:bg-white/10 rounded text-zinc-400 hover:text-white"
-                      title="重命名"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                      </svg>
-                    </button>
-
-                    {/* Delete button */}
-                    {state.canvases.length > 1 && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowDeleteConfirm(canvas.id);
-                        }}
-                        className="p-1 hover:bg-red-500/20 rounded text-red-400 group"
-                        title="删除画布"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70 group-hover:opacity-100 transition-opacity">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Actions */}
-            <div className="border-t border-white/5 p-1">
-              <button
-                onClick={handleCreateCanvas}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg ${canCreateCanvas ? 'text-indigo-400 hover:bg-white/10' : 'text-zinc-500 cursor-not-allowed'}`}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                新建画布 {!canCreateCanvas && '(已达上限)'}
-              </button>
-
-              <button
-                onClick={handleDownloadAll}
-                disabled={isDownloading}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors ${isDownloading ? 'opacity-50 cursor-wait' : ''}`}
-              >
-                {isDownloading ? (
-                  <Loader2 className="animate-spin w-3.5 h-3.5" />
-                ) : (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                )}
-                {isDownloading ? '打包中...' : '下载所有原图'}
-              </button>
-
-              <button
-                onClick={handleClearAll}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18" />
-                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                </svg>
-                清除所有数据
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-md animate-fadeIn">
-          <div className="glass-strong p-6 rounded-2xl shadow-2xl max-w-sm w-full animate-scaleIn">
-            <div className="flex items-center gap-3 mb-4 text-red-500">
-              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  <line x1="10" y1="11" x2="10" y2="17" />
-                  <line x1="14" y1="11" x2="14" y2="17" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-white">确认删除画布？</h3>
-            </div>
-            <p className="text-zinc-400 text-sm mb-6 leading-relaxed">
-              删除后，该画布中的所有卡片和创作记录将永久丢失，缓存也会被清除。<br />
-              <strong className="text-red-400">此操作无法撤销！</strong>
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowDeleteConfirm(null)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:bg-white/5 hover:text-white transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => { deleteCanvas(showDeleteConfirm); setShowDeleteConfirm(null); setShowDropdown(false); }}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/20 transition-all"
-              >
-                确认删除
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+// ProjectManager imported from components
+import ProjectManager from './components/ProjectManager';
+import SearchPalette from './components/SearchPalette';
+import { Search } from 'lucide-react'; // Import Search icon
 
 const AppContent: React.FC = () => {
   const {
@@ -344,6 +52,14 @@ const AppContent: React.FC = () => {
     canRedo,
     arrangeAllNodes
   } = useCanvas();
+
+  // Canvas Ref for Zoom/Pan Controls
+  const canvasRef = useRef<InfiniteCanvasHandle>(null);
+
+  const handleZoomIn = () => canvasRef.current?.zoomIn();
+  const handleZoomOut = () => canvasRef.current?.zoomOut();
+  const handleResetView = () => canvasRef.current?.resetView();
+  const handleToggleGrid = () => canvasRef.current?.toggleGrid();
 
   const { user, signOut } = useAuth();
 
@@ -364,6 +80,7 @@ const AppContent: React.FC = () => {
   const [profileInitialView, setProfileInitialView] = useState<UserProfileView>('main');
   const [showStorageModal, setShowStorageModal] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+
   const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-channels' | 'cost-estimation' | 'storage-settings' | 'system-logs'>('dashboard');
 
   useEffect(() => {
@@ -453,12 +170,46 @@ const AppContent: React.FC = () => {
     if (!isMobile) setIsSidebarOpen(true);
   }, []);
 
-  // Keyboard Shortcuts (Undo/Redo)
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Clean Fly-to Navigation Logic
+  const handleNavigateToNode = useCallback((targetX: number, targetY: number) => {
+    const screenCenterX = window.innerWidth / 2;
+    const screenCenterY = window.innerHeight / 2;
+
+    // Calculate new position to center the target
+    // We want: targetX * scale + transformX = screenCenterX
+    // So: transformX = screenCenterX - targetX * scale
+
+    // User requested "Zoom and Pan" (平移并缩放)
+    const targetScale = 1; // Reset to 1:1 view for clarity
+
+    const newX = screenCenterX - targetX * targetScale;
+    const newY = screenCenterY - targetY * targetScale;
+
+    // IMPERATIVE UPDATE: Tell InfiniteCanvas to move
+    canvasRef.current?.setView(newX, newY, targetScale);
+
+    // Keep local state in sync (though onTransformChange should technically handle this, 
+    // doing it here ensures immediate React updates if needed)
+    setCanvasTransform({
+      x: newX,
+      y: newY,
+      scale: targetScale
+    });
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if input is focused
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
+      }
+
+      // Ctrl + K or Cmd + K to open Search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(prev => !prev);
       }
 
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -1310,15 +1061,10 @@ const AppContent: React.FC = () => {
         }
       }}
     >
-      {/* Canvas Manager */}
-      <CanvasManager />
+
 
       {/* Chat Sidebar (Left) */}
-      <ChatSidebar
-        isOpen={isChatOpen}
-        onToggle={() => setIsChatOpen(prev => !prev)}
-        isMobile={isMobile}
-      />
+
 
       {/* Top Right User Menu */}
       <div className="absolute top-4 right-4 z-[100] flex items-center gap-3">
@@ -1415,6 +1161,7 @@ const AppContent: React.FC = () => {
 
       {/* Main Infinite Canvas */}
       <InfiniteCanvas
+        ref={canvasRef}
         onTransformChange={setCanvasTransform}
         cardPositions={[
           ...(activeCanvas?.promptNodes.map(n => n.position) || []),
@@ -1626,8 +1373,12 @@ const AppContent: React.FC = () => {
         onClearSource={() => setActiveSourceImage(null)}
       />
 
-      {/* Sidebar (Optional) */}
-
+      {/* Chat Sidebar (Left) */}
+      <ChatSidebar
+        isOpen={isChatOpen}
+        onToggle={() => setIsChatOpen(prev => !prev)}
+        isMobile={isMobile}
+      />
 
       {/* Legacy KeyManagerModal removed - integrated into UserProfileModal */}
 
@@ -1683,19 +1434,26 @@ const AppContent: React.FC = () => {
         v1.1.6
       </div>
 
-      {/* Sidebar Toggle Button (Visible when sidebar is closed or on mobile) */}
-      {(!isSidebarOpen || isMobile) && (
-        <button
-          onClick={() => setIsSidebarOpen(true)}
-          className="fixed top-4 left-4 z-50 p-2 bg-[#1c1c1e]/80 backdrop-blur-md border border-zinc-800 text-zinc-400 hover:text-white rounded-lg shadow-lg transition-all hover:scale-105"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-      )}
+      {/* Project Manager (Replaces Canvas Manager) */}
+      <ProjectManager
+        onSearch={() => setIsSearchOpen(true)}
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
+        isMobile={isMobile}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onResetView={handleResetView}
+        onToggleGrid={handleToggleGrid}
+        onAutoArrange={arrangeAllNodes}
+      />
+
+      {/* Search Palette */}
+      <SearchPalette
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        promptNodes={activeCanvas?.promptNodes || []}
+        onNavigate={handleNavigateToNode}
+      />
     </div>
   );
 };

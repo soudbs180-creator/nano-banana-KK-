@@ -24,6 +24,7 @@ export enum ModelType {
 
 export enum ChatModelType {
   GEMINI_LITE = 'gemini-flash-lite-latest',
+  GEMINI_FLASH = 'gemini-flash-latest',
   GEMINI_3_FLASH = 'gemini-3-flash-preview',
   GEMINI_3_PRO = 'gemini-3-pro-preview',
 }
