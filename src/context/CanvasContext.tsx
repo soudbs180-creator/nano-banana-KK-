@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Canvas, PromptNode, GeneratedImage } from '../types';
+import { Canvas, PromptNode, GeneratedImage, AspectRatio, ModelType } from '../types';
 import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '../services/imageStorage';
 import { syncService } from '../services/syncService';
 
@@ -82,14 +82,41 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
             try {
-                const parsed = JSON.parse(stored);
-                // Schema migration: Ensure history exists for old data
+                const parsed: CanvasState = JSON.parse(stored);
+
+                // Schema migration 1: Ensure history exists
                 if (!parsed.history) {
                     parsed.history = {};
                 }
+
+                // Schema migration 2: Sanitize Nodes (Fix "Overlap/Broken Features" from old data)
+                parsed.canvases = parsed.canvases.map(canvas => ({
+                    ...canvas,
+                    // Fix Image Nodes
+                    imageNodes: (canvas.imageNodes || []).map(img => ({
+                        ...img,
+                        // Ensure new fields exist
+                        generationTime: img.generationTime || Date.now(),
+                        canvasId: img.canvasId || canvas.id,
+                        parentPromptId: img.parentPromptId || 'unknown',
+                        prompt: img.prompt || '',
+                        dimensions: img.dimensions || "1024x1024", // Default string
+                        aspectRatio: img.aspectRatio || AspectRatio.SQUARE,
+                        model: img.model || ModelType.IMAGEN_4 // Fallback valid enum
+                    })),
+                    // Fix Prompt Nodes
+                    promptNodes: (canvas.promptNodes || []).map(node => ({
+                        ...node,
+                        referenceImages: node.referenceImages || [],
+                        parallelCount: node.parallelCount || 1,
+                        isGenerating: false, // Reset generating state on reload
+                        error: undefined     // Clear old errors
+                    }))
+                }));
+
                 return parsed;
             } catch (e) {
-                console.error("Failed to parse stored state", e);
+                console.error("Failed to parse stored state, resetting...", e);
             }
         }
         return {

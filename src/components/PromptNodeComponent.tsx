@@ -35,6 +35,15 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
     const dragStartPos = useRef({ x: 0, y: 0 });
     const dragStartCanvasPos = useRef({ x: 0, y: 0 });
 
+    const cardRef = useRef<HTMLDivElement>(null);
+    const [cardHeight, setCardHeight] = useState(140);
+
+    useEffect(() => {
+        if (cardRef.current) {
+            setCardHeight(cardRef.current.offsetHeight);
+        }
+    }, [node.prompt, node.referenceImages, isMobile]);
+
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         // Stop canvas panning when touching the card
         e.stopPropagation();
@@ -122,7 +131,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
             }}
         >
             {/* Main Card */}
-            <div className={`
+            <div
+                ref={cardRef}
+                className={`
                 relative bg-[#18181b] border rounded-2xl p-3 shadow-xl w-[320px] max-w-[95vw] flex flex-col select-none
                 ${isDragging ? '' : 'transition-all duration-200'}
                 ${node.isGenerating ? 'border-indigo-500/30' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-white/10 hover:border-white/20'}
@@ -344,10 +355,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                 const startX = sourcePosition.x - node.position.x;
                 const startY = sourcePosition.y - node.position.y;
 
-                // End: Prompt Top Center (approx 140px height for prompt)
-                const promptHeightApprox = 140;
+                // End: Prompt Top Center (Dynamic Height)
                 const endX = 0;
-                const endY = -promptHeightApprox;
+                const endY = -cardHeight;
 
                 // Bezier Logic
                 const deltaX = endX - startX;
