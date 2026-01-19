@@ -406,7 +406,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
     }, [updateCanvas]);
 
-    const addImageNodes = useCallback((nodes: GeneratedImage[]) => {
+    const addImageNodes = useCallback(async (nodes: GeneratedImage[]) => {
         // Defensive check: filter out any invalid nodes
         const validNodes = Array.isArray(nodes) ? nodes.filter(n => n && n.id && n.url) : [];
         if (validNodes.length === 0) {
@@ -414,10 +414,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return;
         }
 
-        // Save images to IndexedDB
-        validNodes.forEach(node => {
-            saveImage(node.id, node.url);
-        });
+        // Save images to IndexedDB robustly
+        try {
+            await Promise.all(validNodes.map(node => saveImage(node.id, node.url)));
+        } catch (error) {
+            console.error('[CanvasContext] Failed to save images to IndexedDB:', error);
+            // We continue to update state so UI shows standard image even if persistence failed temporarily
+        }
 
         updateCanvas(c => ({
             ...c,

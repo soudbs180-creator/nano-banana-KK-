@@ -1233,7 +1233,7 @@ const AppContent: React.FC = () => {
           node.referenceImages?.length || 0
         );
       });
-      notify.success('重新生成成功');
+      notify.success('生成完成', '重新生成成功');
 
     } catch (error: any) {
       updatePromptNode({

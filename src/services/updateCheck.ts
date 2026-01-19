@@ -9,16 +9,27 @@ let updateAvailable = false;
 let updateListeners: ((available: boolean) => void)[] = [];
 
 /**
- * Get the current build hash from index.html script tags
+ * Get the current build fingerprint from index.html script tags
+ * This matches ANY script src change (bundled assets), making it robust for Vite/Webpack/etc.
  */
 async function fetchBuildHash(): Promise<string | null> {
     try {
         const response = await fetch('/', { cache: 'no-cache' });
         const html = await response.text();
 
-        // Look for the main JS bundle hash in script tags
-        const scriptMatch = html.match(/assets\/index-([a-zA-Z0-9]+)\.js/);
-        return scriptMatch ? scriptMatch[1] : null;
+        // Extract all script src values
+        // Matches <script ... src="..."></script>
+        const scriptSrcs = Array.from(html.matchAll(/<script[^>]*src="([^"]*)"[^>]*>/g))
+            .map(match => match[1]);
+
+        // Filter for app-like bundles (ignore external CDNs if needed, but safer to track all)
+        // In Vite prod, usually /assets/index-HASH.js
+        // In Vite dev, /src/main.tsx
+
+        if (scriptSrcs.length === 0) return null;
+
+        // Join them to form a unique version fingerprint
+        return scriptSrcs.join('|');
     } catch (e) {
         console.warn('[UpdateCheck] Failed to fetch build hash:', e);
         return null;
