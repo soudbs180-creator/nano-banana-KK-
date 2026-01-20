@@ -51,7 +51,11 @@ const AppContent: React.FC = () => {
     redo,
     canUndo,
     canRedo,
-    arrangeAllNodes
+    canRedo,
+    arrangeAllNodes,
+    selectedNodeIds,
+    selectNodes,
+    clearSelection
   } = useCanvas();
 
   // Canvas Ref for Zoom/Pan Controls
@@ -138,6 +142,97 @@ const AppContent: React.FC = () => {
     y: window.innerHeight / 2,
     scale: 1
   });
+
+  // Right-Click Selection State
+  const [selectionBox, setSelectionBox] = useState<{ start: { x: number; y: number }; current: { x: number; y: number }; active: boolean } | null>(null);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Middle click (button 1) or Left click (button 0) are handled by InfiniteCanvas
+    if (e.button === 2) { // Right click
+      e.preventDefault();
+      e.stopPropagation();
+      setSelectionBox({
+        start: { x: e.clientX, y: e.clientY },
+        current: { x: e.clientX, y: e.clientY },
+        active: true
+      });
+    }
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (selectionBox?.active) {
+      setSelectionBox(prev => prev ? ({ ...prev, current: { x: e.clientX, y: e.clientY } }) : null);
+    }
+  }, [selectionBox]);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (selectionBox?.active) {
+      const startX = Math.min(selectionBox.start.x, selectionBox.current.x);
+      const startY = Math.min(selectionBox.start.y, selectionBox.current.y);
+      const endX = Math.max(selectionBox.start.x, selectionBox.current.x);
+      const endY = Math.max(selectionBox.start.y, selectionBox.current.y);
+      const width = endX - startX;
+      const height = endY - startY;
+
+      if (width > 5 || height > 5) {
+        // Convert screen rect to canvas rect
+        const s = canvasTransform.scale;
+        const ox = canvasTransform.x;
+        const oy = canvasTransform.y;
+
+        const canvasRect = {
+          x: (startX - ox) / s,
+          y: (startY - oy) / s,
+          w: width / s,
+          h: height / s
+        };
+
+        const ids: string[] = [];
+        // Check prompts
+        activeCanvas?.promptNodes.forEach(node => {
+          const { width: nw } = getCardDimensions(node.aspectRatio);
+          const nh = 140; // Approx height
+          // Card origin (x,y) is Bottom Center.
+          // Rect is [x - w/2, y - h, w, h]
+          const nx = node.position.x - nw / 2;
+          const ny = node.position.y - nh;
+
+          if (nx < canvasRect.x + canvasRect.w && nx + nw > canvasRect.x &&
+            ny < canvasRect.y + canvasRect.h && ny + nh > canvasRect.y) {
+            ids.push(node.id);
+          }
+        });
+
+        // Check images
+        activeCanvas?.imageNodes.forEach(node => {
+          const { width: nw, totalHeight: nh } = getCardDimensions(node.aspectRatio, true);
+          const nx = node.position.x - nw / 2;
+          const ny = node.position.y - nh;
+
+          if (nx < canvasRect.x + canvasRect.w && nx + nw > canvasRect.x &&
+            ny < canvasRect.y + canvasRect.h && ny + nh > canvasRect.y) {
+            ids.push(node.id);
+          }
+        });
+
+        if (ids.length > 0) {
+          selectNodes(ids, !e.shiftKey);
+        } else {
+          if (!e.shiftKey) clearSelection();
+        }
+      } else {
+        // Clicked without drag - Clear selection? 
+        // If purely right click, we might want context menu (but we prevented it)
+        // Just clear for now
+        if (!e.shiftKey) clearSelection();
+      }
+      setSelectionBox(null);
+    }
+  }, [selectionBox, canvasTransform, activeCanvas, selectNodes, clearSelection]);
 
   // Active source image for continuing conversation
   const [activeSourceImage, setActiveSourceImage] = useState<string | null>(null);
@@ -1268,8 +1363,8 @@ const AppContent: React.FC = () => {
             key={node.id}
             node={node}
             onPositionChange={updatePromptNodePosition}
-            isSelected={false}
-            onSelect={() => { }}
+            isSelected={selectedNodeIds.includes(node.id)}
+            onSelect={() => selectNodes([node.id], !window.event?.shiftKey)}
             onClickPrompt={(clickedNode) => {
               // Clear continue mode - clicking prompt = start NEW conversation
               setActiveSourceImage(null);
@@ -1306,12 +1401,17 @@ const AppContent: React.FC = () => {
             onDelete={deleteImageNode}
             onConnectEnd={handleConnectEnd}
             onClick={(imageId) => {
+              // Click to select
+              selectNodes([imageId], !window.event?.shiftKey);
+
               // Set this image as source for continuing conversation
               setActiveSourceImage(imageId);
               // Clear prompt and existing references to start fresh continue-conversation
               setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
             }}
             isActive={node.id === activeSourceImage}
+            isSelected={selectedNodeIds.includes(node.id)}
+            onSelect={() => selectNodes([node.id], !window.event?.shiftKey)}
             canvasTransform={canvasTransform}
             isMobile={isMobile}
           />

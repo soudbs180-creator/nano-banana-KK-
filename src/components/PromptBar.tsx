@@ -171,6 +171,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         }
     }, [processFiles]);
 
+    const dragCounter = useRef(0);
     const [isDragging, setIsDragging] = useState(false);
 
     // Click outside to close menus
@@ -185,16 +186,27 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const handleDragEnter = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current += 1;
+        if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+            setIsDragging(true);
+        }
+    }, []);
+
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        setIsDragging(true);
+        // Necessary to allow dropping
     }, []);
 
     const handleDragLeave = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+        dragCounter.current -= 1;
+        if (dragCounter.current <= 0) {
+            dragCounter.current = 0;
             setIsDragging(false);
         }
     }, []);
@@ -202,6 +214,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        dragCounter.current = 0;
         setIsDragging(false);
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             processFiles(e.dataTransfer.files);
@@ -211,7 +224,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     return (
         <div
-            className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500 scale-[1.02]' : ''}`}
+            className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
+            onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}

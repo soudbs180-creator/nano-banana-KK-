@@ -15,6 +15,8 @@ interface ImageNodeProps {
     isActive?: boolean;
     canvasTransform?: { x: number; y: number; scale: number };
     isMobile?: boolean;
+    isSelected?: boolean;
+    onSelect?: () => void;
 }
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = ({
@@ -27,7 +29,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     onDimensionsUpdate,
     isActive = false,
     canvasTransform = { x: 0, y: 0, scale: 1 },
-    isMobile = false
+    isMobile = false,
+    isSelected = false,
+    onSelect
 }) => {
     const [isDragging, setIsDragging] = useState(false);
 
@@ -221,6 +225,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
         setIsDragging(true);
         wasDraggingRef.current = false; // Reset drag flag
+        onSelect?.();
 
         // Handle both Mouse and Touch events
         let clientX, clientY;

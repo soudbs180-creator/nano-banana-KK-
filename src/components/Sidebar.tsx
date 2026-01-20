@@ -81,7 +81,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <div className="mb-6 space-y-1">
                         <button
                             className={`sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'home' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('home')}
+                            onClick={(e) => { e.currentTarget.blur(); setActiveTab('home'); }}
                             style={{
                                 backgroundColor: activeTab === 'home' ? 'var(--toolbar-active)' : 'transparent',
                                 color: activeTab === 'home' ? 'var(--text-primary)' : 'var(--text-secondary)'
@@ -96,7 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </button>
                         <button
                             className={`sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'history' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('history')}
+                            onClick={(e) => { e.currentTarget.blur(); setActiveTab('history'); }}
                             style={{
                                 backgroundColor: activeTab === 'history' ? 'var(--toolbar-active)' : 'transparent',
                                 color: activeTab === 'history' ? 'var(--text-primary)' : 'var(--text-secondary)'

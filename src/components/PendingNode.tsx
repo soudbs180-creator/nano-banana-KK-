@@ -157,8 +157,8 @@ const PendingNode: React.FC<PendingNodeProps> = ({
 
     // 如果正在生成中，显示主卡片和连接的子占位符
     // 使用与 PromptNodeComponent 相同的 transform: translate(-50%, -100%)
-    const cardWidth = 320;
-    const cardHeight = 140; // approximate card height
+    const cardWidth = w; // Use dynamic width from styleUtils
+    const cardHeight = h; // Use totalHeight (image + footer) from styleUtils
     const dotSize = 12;
     const dotMarginTop = 12; // Same as PromptNodeComponent: mt-3 = 12px
     const gapToPlaceholders = 80; // Must match handleGenerate gapToImages
