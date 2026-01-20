@@ -258,8 +258,9 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 <div className="relative">
                     <button
                         onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown); }}
-                        className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all group relative flex items-center justify-center"
+                        className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all group relative flex items-center justify-center outline-none focus:outline-none"
                         title={activeProjectName}
+                        tabIndex={-1}
                     >
                         <Layers size={20} className={showDropdown ? 'text-indigo-400' : ''} />
                         <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-indigo-500 rounded-full border border-[#1c1c1e]" />
@@ -347,8 +348,9 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 {/* 3. Search Button */}
                 <button
                     onClick={(e) => { e.stopPropagation(); onSearch(); }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
                     title="搜索提示词 (Ctrl+K)"
+                    tabIndex={-1}
                 >
                     <Search size={20} />
                 </button>
@@ -358,40 +360,36 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 {/* 4. Zoom Controls and Tools */}
                 <button
                     onClick={(e) => { e.stopPropagation(); onZoomIn(); }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
                     title="放大 (+)"
+                    tabIndex={-1}
                 >
                     <ZoomIn size={20} />
                 </button>
 
                 <button
                     onClick={(e) => { e.stopPropagation(); onZoomOut(); }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
                     title="缩小 (-)"
+                    tabIndex={-1}
                 >
                     <ZoomOut size={20} />
                 </button>
 
                 <button
-                    onClick={(e) => { e.stopPropagation(); onResetView(); }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-                    title="复位 (Home)"
-                >
-                    <Focus size={20} />
-                </button>
-
-                <button
                     onClick={(e) => { e.stopPropagation(); onToggleGrid(); }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
                     title="显示/隐藏网格"
+                    tabIndex={-1}
                 >
                     <Grid3x3 size={20} />
                 </button>
 
                 <button
                     onClick={(e) => { e.stopPropagation(); onAutoArrange(); }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
                     title="自动整理 (Auto Arrange)"
+                    tabIndex={-1}
                 >
                     <LayoutDashboard size={20} />
                 </button>

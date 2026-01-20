@@ -206,6 +206,12 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
     // Handle keyboard shortcuts
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
+        // Prevent default space action (scrolling/button press)
+        // Check for both 'Space' code and ' ' key to be robust
+        if (e.code === 'Space' || e.key === ' ') {
+            e.preventDefault();
+        }
+
         if (e.key === 'Escape' || e.key === 'Home') {
             resetView();
         }
@@ -281,7 +287,8 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             {/* Canvas Container */}
             <div
                 ref={containerRef}
-                className="canvas-container"
+                className="canvas-container outline-none focus:outline-none"
+                tabIndex={-1}
                 onMouseDown={handleMouseDown}
                 onContextMenu={(e) => {
                     e.preventDefault();

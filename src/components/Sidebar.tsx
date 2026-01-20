@@ -63,8 +63,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </div>
                     <span className="sidebar-title" style={{ fontFamily: 'var(--font-sans)', letterSpacing: '-0.02em' }}>KK Studio</span>
                     <button
-                        onClick={onClose}
-                        className="ml-auto p-2 rounded-lg transition-all"
+                        onClick={(e) => { e.currentTarget.blur(); onClose(); }}
+                        tabIndex={-1}
+                        className="ml-auto p-2 rounded-lg transition-all outline-none focus:outline-none"
                         style={{ color: 'var(--text-tertiary)' }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)'; e.currentTarget.style.backgroundColor = 'transparent'; }}
@@ -80,8 +81,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {/* Main Actions */}
                     <div className="mb-6 space-y-1">
                         <button
-                            className={`sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'home' ? 'active' : ''}`}
+                            className={`sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all outline-none focus:outline-none ${activeTab === 'home' ? 'active' : ''}`}
                             onClick={(e) => { e.currentTarget.blur(); setActiveTab('home'); }}
+                            tabIndex={-1}
                             style={{
                                 backgroundColor: activeTab === 'home' ? 'var(--toolbar-active)' : 'transparent',
                                 color: activeTab === 'home' ? 'var(--text-primary)' : 'var(--text-secondary)'
@@ -95,8 +97,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                             <span className="font-medium text-sm">图像生成</span>
                         </button>
                         <button
-                            className={`sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeTab === 'history' ? 'active' : ''}`}
+                            className={`sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all outline-none focus:outline-none ${activeTab === 'history' ? 'active' : ''}`}
                             onClick={(e) => { e.currentTarget.blur(); setActiveTab('history'); }}
+                            tabIndex={-1}
                             style={{
                                 backgroundColor: activeTab === 'history' ? 'var(--toolbar-active)' : 'transparent',
                                 color: activeTab === 'history' ? 'var(--text-primary)' : 'var(--text-secondary)'
@@ -172,8 +175,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                         <div className="flex gap-2">
                             <button
-                                onClick={onOpenSettings}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all hover:brightness-110 active:scale-95"
+                                onClick={(e) => { e.currentTarget.blur(); onOpenSettings(); }}
+                                tabIndex={-1}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all hover:brightness-110 active:scale-95 outline-none focus:outline-none"
                                 style={{
                                     backgroundColor: hasApiKey ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
                                     color: hasApiKey ? 'var(--accent-green)' : 'var(--accent-orange)'
@@ -188,8 +192,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </button>
 
                             <button
-                                onClick={onSignOut}
-                                className="px-3 py-2 rounded-lg transition-all hover:bg-red-500/20 hover:text-red-400 active:scale-95"
+                                onClick={(e) => { e.currentTarget.blur(); onSignOut(); }}
+                                tabIndex={-1}
+                                className="px-3 py-2 rounded-lg transition-all hover:bg-red-500/20 hover:text-red-400 active:scale-95 outline-none focus:outline-none"
                                 style={{ backgroundColor: 'var(--toolbar-hover)', color: 'var(--text-tertiary)' }}
                                 title="退出登录"
                             >
