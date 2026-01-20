@@ -56,6 +56,23 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
         setIsEditingBudget(false);
     };
 
+    const [isSyncing, setIsSyncing] = React.useState(false);
+
+    const handleSync = async () => {
+        setIsSyncing(true);
+        try {
+            const { forceSync } = await import('../services/costService');
+            await forceSync();
+            // Reload budget after sync
+            const mod = await import('../services/costService');
+            setBudget(mod.getDailyBudget());
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     // dailyCosts is already the DailyCostData for today
     const todayData = {
         count: dailyCosts.totalImages,
@@ -71,10 +88,22 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
 
     return (
         <div className="space-y-6">
-            <h3 className="text-2xl font-bold text-white mb-6 hidden md:block">
-                设置 (Settings)
-                <span className="block text-xs text-zinc-500 font-normal mt-1">系统概览与偏好设置 (System Dashboard & Preferences)</span>
-            </h3>
+            <div className="flex justify-between items-start mb-6 hidden md:flex">
+                <div>
+                    <h3 className="text-2xl font-bold text-white">
+                        仪表盘 (Dashboard)
+                    </h3>
+                    <span className="block text-xs text-zinc-500 font-normal mt-1">系统概览与偏好设置 (System Dashboard & Preferences)</span>
+                </div>
+                <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors"
+                    title="校准消耗和预算 (Sync Data)"
+                >
+                    <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
+                </button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-4 h-auto md:h-[320px]">
                 {/* Hero Card: Cost */}
