@@ -1144,7 +1144,10 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
+      onMouseDown={handleMouseDown}
+      onContextMenu={handleContextMenu}
       onMouseMove={(e) => {
+        handleMouseMove(e);
         if (dragConnection?.active) {
           // Convert client to canvas
           const canvasX = (e.clientX - canvasTransform.x) / canvasTransform.scale;
@@ -1152,7 +1155,8 @@ const AppContent: React.FC = () => {
           setDragConnection(prev => prev ? ({ ...prev, currentPos: { x: canvasX, y: canvasY } }) : null);
         }
       }}
-      onMouseUp={() => {
+      onMouseUp={(e) => {
+        handleMouseUp(e);
         if (dragConnection?.active) {
           setDragConnection(null);
         }
@@ -1256,6 +1260,19 @@ const AppContent: React.FC = () => {
         </div>
       </div>
 
+      {/* Selection Box Overlay */}
+      {selectionBox && selectionBox.active && (
+        <div
+          className="fixed z-[9999] border border-indigo-500 bg-indigo-500/10 pointer-events-none"
+          style={{
+            left: Math.min(selectionBox.start.x, selectionBox.current.x),
+            top: Math.min(selectionBox.start.y, selectionBox.current.y),
+            width: Math.abs(selectionBox.current.x - selectionBox.start.x),
+            height: Math.abs(selectionBox.current.y - selectionBox.start.y),
+          }}
+        />
+      )}
+
       {/* Main Infinite Canvas */}
       <InfiniteCanvas
         ref={canvasRef}
@@ -1270,6 +1287,8 @@ const AppContent: React.FC = () => {
           if (!isGenerating && !activeSourceImage) {
             setConfig(prev => ({ ...prev, prompt: '' }));
           }
+          // Always clear selection on empty click
+          clearSelection();
         }}
         onAutoArrange={arrangeAllNodes}
       >

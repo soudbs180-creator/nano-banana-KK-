@@ -36,6 +36,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
     const dragStartPos = useRef({ x: 0, y: 0 });
     const dragStartCanvasPos = useRef({ x: 0, y: 0 });
 
+    const hasMoved = useRef(false);
+
     const cardRef = useRef<HTMLDivElement>(null);
     const [cardHeight, setCardHeight] = useState(140);
 
@@ -46,11 +48,19 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
     }, [node.prompt, node.referenceImages, isMobile]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+        // Ignore Right Click (2)
+        if ('button' in e && e.button === 2) return;
+
         // Stop canvas panning when touching the card
         e.stopPropagation();
 
         setIsDragging(true);
-        onSelect();
+        hasMoved.current = false; // Reset hasMoved on new drag/click attempt
+
+        // Only select if not already selected (Preserve Group)
+        if (!isSelected) {
+            onSelect();
+        }
 
         // Handle both Mouse and Touch events
         let clientX, clientY;
@@ -80,6 +90,11 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
         } else {
             clientX = (e as MouseEvent).clientX;
             clientY = (e as MouseEvent).clientY;
+        }
+
+        const moveDist = Math.hypot(clientX - dragStartPos.current.x, clientY - dragStartPos.current.y);
+        if (moveDist > 3) {
+            hasMoved.current = true;
         }
 
         // Calculate delta in screen space, convert to canvas space
@@ -124,9 +139,13 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
             onMouseDown={handleMouseDown}
             onTouchStart={handleMouseDown}
             onClick={(e) => {
-                // Single click to fill input, but not when dragging
-                if (!isDragging) {
-                    e.stopPropagation();
+                e.stopPropagation();
+                // If clicked (not dragged) and isSelected, reset to single selection (Exclusive)
+                if (isSelected && !hasMoved.current) {
+                    onSelect();
+                }
+
+                if (!hasMoved.current) {
                     onClickPrompt?.(node);
                 }
             }}

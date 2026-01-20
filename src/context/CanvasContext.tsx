@@ -379,7 +379,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 activeCanvasId: newActiveId,
                 history: prev.history,
                 fileSystemHandle: prev.fileSystemHandle,
-                folderName: prev.folderName
+                folderName: prev.folderName,
+                selectedNodeIds: []
             };
         });
     }, []);
@@ -457,7 +458,28 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const dx = pos.x - node.position.x;
             const dy = pos.y - node.position.y;
 
-            // Move all child images along with the prompt node
+            // GROUP MOVE LOGIC
+            const selectedIds = new Set(state.selectedNodeIds || []);
+            if (selectedIds.has(id)) {
+                const newPromptNodes = c.promptNodes.map(n => {
+                    if (selectedIds.has(n.id)) {
+                        return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+                    }
+                    return n;
+                });
+
+                const movedPromptIds = new Set(c.promptNodes.filter(n => selectedIds.has(n.id)).map(n => n.id));
+                const newImageNodes = c.imageNodes.map(img => {
+                    if (selectedIds.has(img.id) || (img.parentPromptId && movedPromptIds.has(img.parentPromptId))) {
+                        return { ...img, position: { x: img.position.x + dx, y: img.position.y + dy } };
+                    }
+                    return img;
+                });
+
+                return { ...c, promptNodes: newPromptNodes, imageNodes: newImageNodes };
+            }
+
+            // SINGLE MOVE LOGIC
             const newImageNodes = c.imageNodes.map(img => {
                 if (img.parentPromptId === id) {
                     return {
@@ -477,16 +499,45 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 imageNodes: newImageNodes
             };
         });
-    }, [updateCanvas]);
+    }, [updateCanvas, state.selectedNodeIds]);
 
     const updateImageNodePosition = useCallback((id: string, pos: { x: number; y: number }) => {
-        updateCanvas(c => ({
-            ...c,
-            imageNodes: c.imageNodes.map(img =>
-                img.id === id ? { ...img, position: pos } : img
-            )
-        }));
-    }, [updateCanvas]);
+        updateCanvas(c => {
+            const node = c.imageNodes.find(n => n.id === id);
+            if (!node) return c;
+
+            const dx = pos.x - node.position.x;
+            const dy = pos.y - node.position.y;
+
+            // GROUP MOVE LOGIC
+            const selectedIds = new Set(state.selectedNodeIds || []);
+            if (selectedIds.has(id)) {
+                const newPromptNodes = c.promptNodes.map(n => {
+                    if (selectedIds.has(n.id)) {
+                        return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+                    }
+                    return n;
+                });
+
+                const movedPromptIds = new Set(c.promptNodes.filter(n => selectedIds.has(n.id)).map(n => n.id));
+                const newImageNodes = c.imageNodes.map(img => {
+                    if (selectedIds.has(img.id) || (img.parentPromptId && movedPromptIds.has(img.parentPromptId))) {
+                        return { ...img, position: { x: img.position.x + dx, y: img.position.y + dy } };
+                    }
+                    return img;
+                });
+
+                return { ...c, promptNodes: newPromptNodes, imageNodes: newImageNodes };
+            }
+
+            return {
+                ...c,
+                imageNodes: c.imageNodes.map(img =>
+                    img.id === id ? { ...img, position: pos } : img
+                )
+            };
+        });
+    }, [updateCanvas, state.selectedNodeIds]);
 
     const updateImageNodeDimensions = useCallback((id: string, dimensions: string) => {
         updateCanvas(c => ({
@@ -655,7 +706,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             activeCanvasId: DEFAULT_CANVAS.id,
             history: {},
             fileSystemHandle: null,
-            folderName: null
+            folderName: null,
+            selectedNodeIds: []
         });
     }, []);
 

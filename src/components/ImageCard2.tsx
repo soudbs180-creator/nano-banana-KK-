@@ -220,12 +220,19 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const wasDraggingRef = useRef(false);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-        // e.preventDefault(); // Optional
-        e.stopPropagation(); // Stop canvas panning
+        // Ignore Right Click (2)
+        if ('button' in e && e.button === 2) return;
+
+        // Stop canvas panning
+        e.stopPropagation();
 
         setIsDragging(true);
         wasDraggingRef.current = false; // Reset drag flag
-        onSelect?.();
+
+        // Only select if not already selected (Preserve Group)
+        if (!isSelected && onSelect) {
+            onSelect();
+        }
 
         // Handle both Mouse and Touch events
         let clientX, clientY;
@@ -413,7 +420,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                 }}
                 onMouseDown={handleMouseDown}
                 onTouchStart={handleMouseDown}
-                onClick={(e) => { e.stopPropagation(); onClick?.(image.id); }}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (!wasDraggingRef.current) {
+                        onClick?.(image.id);
+                    }
+                }}
             >
                 {/* Image Card */}
                 <div

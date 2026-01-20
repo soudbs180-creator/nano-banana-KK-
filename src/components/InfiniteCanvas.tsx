@@ -99,18 +99,15 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         const isEmptyCanvas = e.target === containerRef.current || (e.target as HTMLElement).classList.contains('canvas-grid');
 
-        if (e.button === 1 || isEmptyCanvas) {
+        // Pan on Middle Button (1) OR Left Button (0) on empty background
+        // IGNORE Right Button (2) to allow external handling (Selection)
+        if (e.button === 1 || (isEmptyCanvas && e.button === 0)) {
             e.preventDefault();
             setIsDragging(true);
             dragStart.current = { x: e.clientX, y: e.clientY };
             lastTransform.current = { x: transform.x, y: transform.y };
-
-            // Notify parent when clicking empty canvas (for clearing input)
-            if (isEmptyCanvas && e.button === 0) {
-                onCanvasClick?.();
-            }
         }
-    }, [transform, onCanvasClick]);
+    }, [transform]);
 
     // Handle mouse move for panning
     const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -129,9 +126,15 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     }, [isDragging, transform.scale, onTransformChange]);
 
     // Handle mouse up
-    const handleMouseUp = useCallback(() => {
-        setIsDragging(false);
-    }, []);
+    const handleMouseUp = useCallback((e: MouseEvent) => {
+        if (isDragging) {
+            const dist = Math.hypot(e.clientX - dragStart.current.x, e.clientY - dragStart.current.y);
+            if (dist < 5 && e.button === 0) {
+                onCanvasClick?.();
+            }
+            setIsDragging(false);
+        }
+    }, [isDragging, onCanvasClick]);
 
     // Zoom controls
     const zoomIn = useCallback(() => {
@@ -280,6 +283,10 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 ref={containerRef}
                 className="canvas-container"
                 onMouseDown={handleMouseDown}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }}
                 style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
             >
                 {/* Grid Background */}
