@@ -306,35 +306,62 @@ async function loadFromCloud() {
         const { data, error } = await supabase.from('user_settings').select('daily_budget, usage_stats').eq('user_id', currentUserId).single();
 
         if (error) {
-            if (error.code !== 'PGRST116') { // Ignore "Row not found" (new user)
-                throw error;
-            }
+            // Ignore "Row not found" (new user), otherwise throw
+            if (error.code !== 'PGRST116') throw error;
         }
 
         if (data) {
             // Sync Budget
             if (data.daily_budget !== null && data.daily_budget !== undefined) {
-                localStorage.setItem(BUDGET_STORAGE_KEY, String(data.daily_budget));
+                const localBudget = getDailyBudget();
+                if (localBudget !== data.daily_budget) {
+                    localStorage.setItem(BUDGET_STORAGE_KEY, String(data.daily_budget));
+                }
             }
 
-            // Sync Usage Stats
+            // Sync Usage Stats - Deep Merge
             if (data.usage_stats) {
                 const cloudStats = data.usage_stats as DailyCostData;
                 const local = loadDailyCosts();
 
-                // Only sync if it's for today (CostService resets daily)
                 const isToday = cloudStats.date === getTodayString();
 
                 if (isToday) {
-                    // Simple merge: keep whichever has higher cost (assuming accumulation)
-                    if (cloudStats.totalCostUsd > local.totalCostUsd) {
-                        try {
-                            localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudStats));
-                            console.log('[CostService] Synced from cloud (Higher cost found)');
-                        } catch (e) { console.warn('Failed to save synced costs', e); }
-                    } else if (local.totalCostUsd > cloudStats.totalCostUsd) {
-                        // Local is ahead of cloud, push it
-                        saveToCloud();
+                    // Merge Entries by ID to prevents duplicates but combining history
+                    const entryMap = new Map<string, CostEntry>();
+
+                    // 1. Add Cloud Entries
+                    if (Array.isArray(cloudStats.entries)) {
+                        cloudStats.entries.forEach(e => entryMap.set(e.id, e));
+                    }
+
+                    // 2. Add Local Entries (Local might have newer ones not in cloud)
+                    if (Array.isArray(local.entries)) {
+                        local.entries.forEach(e => entryMap.set(e.id, e));
+                    }
+
+                    const mergedEntries = Array.from(entryMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+
+                    // 3. Recalculate Totals
+                    const totalCostUsd = mergedEntries.reduce((sum, e) => sum + e.costUsd, 0);
+                    const totalImages = mergedEntries.reduce((sum, e) => sum + e.count, 0);
+                    const totalTokens = mergedEntries.reduce((sum, e) => sum + (e.tokens || 0), 0);
+
+                    const mergedData: DailyCostData = {
+                        date: getTodayString(),
+                        entries: mergedEntries,
+                        totalCostUsd,
+                        totalImages,
+                        totalTokens
+                    };
+
+                    // 4. Save Merged to Local
+                    saveDailyCosts(mergedData);
+                    console.log(`[CostService] Merged Cloud & Local: $${totalCostUsd.toFixed(4)} (${mergedEntries.length} entries)`);
+
+                    // 5. If Merged differs from cloud, push back to Cloud
+                    if (Math.abs(totalCostUsd - cloudStats.totalCostUsd) > 0.0001 || mergedEntries.length > (cloudStats.entries?.length || 0)) {
+                        setTimeout(() => saveToCloud(), 100);
                     }
                 }
             }
