@@ -9,6 +9,10 @@
  */
 
 import { ModelType, ImageSize } from '../types';
+import { supabase } from '../lib/supabase';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import { notify } from './notificationService';
 
 interface CostEntry {
     id: string;
@@ -30,6 +34,11 @@ interface DailyCostData {
 }
 
 const STORAGE_KEY = 'kk_studio_daily_costs';
+const BUDGET_STORAGE_KEY = 'kk_studio_daily_budget';
+
+let currentUserId: string | null = null;
+let isSyncing = false;
+let syncTimer: any = null;
 
 const PRICING = {
     IMAGEN: {
@@ -141,13 +150,6 @@ export const calculateCost = (
         const inputRate = 0.075;
         const outputRate = 0.30;
 
-        // If it's pure text generation (Chat), 'count' might be 1 (msg), promptLen is input chars.
-        // For Image gen (Flash Image), we use per-image token estimation.
-        // Let's distinguish by context? Or just use generic token calc.
-        // Assuming this function is primarily for IMAGE gen cost (based on 'imageSize' arg).
-        // BUT user asked to count CHAT cost?
-        // Chat cost usually handled separately or via recordCost with count=1.
-
         // Image Gen logic (Flash Image):
         const outputTokens = count * PRICING.GEMINI_2_5.GEN_TOKENS_STD;
         const outputCost = (outputTokens / 1_000_000) * outputRate;
@@ -165,14 +167,6 @@ export const calculateCost = (
 
     return { cost: 0, details: 'Unknown', tokens: 0 };
 };
-
-// Add separate text-only cost calculator if needed, or rely on recordCost passing accurate 'promptLen' and 'count=0' (if image cost).
-// Actually, ChatSidebar calls generateText using geminiService.
-// We need to ensure ChatSidebar calls 'recordCost' too, or geminiService does.
-// Currently ChatSidebar doesn't seem to call recordCost. 
-// I should check ChatSidebar.tsx to see if it records usage.
-// Checking previous view: ChatSidebar.tsx handles 'handleSend' but no 'recordCost' call visible in snippet.
-// I will need to add recordCost to ChatSidebar.tsx.
 
 /**
  * Record a new cost entry
@@ -194,7 +188,7 @@ export function recordCost(
     currentData.totalTokens += tokens;
 
     currentData.entries.push({
-        id: Date.now().toString(),
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5), // Add random suffix to prevent exact timestamp collision on diff devices
         model,
         imageSize,
         count,
@@ -207,8 +201,8 @@ export function recordCost(
     saveDailyCosts(currentData);
     console.log(`[CostService] Recorded: $${cost.toFixed(4)} (${details})`);
 
-    // Trigger Sync
-    saveToCloud();
+    // Trigger Safe Sync (Debounced)
+    scheduleSync();
 }
 
 export function getTodayCosts(): DailyCostData {
@@ -262,8 +256,6 @@ export function getModelDisplayName(model: string): string {
         .replace(/\b\w/g, c => c.toUpperCase());
 }
 
-const BUDGET_STORAGE_KEY = 'kk_studio_daily_budget';
-
 export function getDailyBudget(): number {
     const stored = localStorage.getItem(BUDGET_STORAGE_KEY);
     return stored ? parseFloat(stored) : -1;
@@ -271,38 +263,40 @@ export function getDailyBudget(): number {
 
 export function setDailyBudget(amount: number): void {
     localStorage.setItem(BUDGET_STORAGE_KEY, amount.toString());
-    saveToCloud();
+    scheduleSync();
 }
 
-// --- Cloud Sync ---
-import { supabase } from '../lib/supabase';
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import { notify } from './notificationService';
-
-let currentUserId: string | null = null;
-let isSyncing = false;
-
+/**
+ * Sync Management
+ */
 export async function setUserId(userId: string | null) {
     if (currentUserId === userId) return;
     currentUserId = userId;
     if (userId) {
         console.log('[CostService] Setting user and syncing:', userId);
-        await loadFromCloud();
+        await syncWithCloud();
     }
 }
 
 export async function forceSync(): Promise<boolean> {
     if (!currentUserId) return false;
     console.log('[CostService] Force sync requested');
-    await loadFromCloud();
+    await syncWithCloud();
     return true;
 }
 
-async function loadFromCloud() {
+function scheduleSync() {
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => {
+        syncWithCloud();
+    }, 2000); // 2s debounce
+}
+
+async function syncWithCloud() {
     if (!currentUserId || isSyncing) return;
     isSyncing = true;
     try {
+        // 1. Fetch Cloud State
         const { data, error } = await supabase.from('user_settings').select('daily_budget, usage_stats').eq('user_id', currentUserId).single();
 
         if (error) {
@@ -310,8 +304,13 @@ async function loadFromCloud() {
             if (error.code !== 'PGRST116') throw error;
         }
 
+        // 2. Prepare Local State
+        const local = loadDailyCosts();
+        let finalData = local;
+        let needsPush = false;
+
         if (data) {
-            // Sync Budget
+            // A. Sync Budget (Cloud wins if set)
             if (data.daily_budget !== null && data.daily_budget !== undefined) {
                 const localBudget = getDailyBudget();
                 if (localBudget !== data.daily_budget) {
@@ -319,35 +318,34 @@ async function loadFromCloud() {
                 }
             }
 
-            // Sync Usage Stats - Deep Merge
+            // B. Sync Usage Stats (Deep Merge)
             if (data.usage_stats) {
                 const cloudStats = data.usage_stats as DailyCostData;
-                const local = loadDailyCosts();
-
                 const isToday = cloudStats.date === getTodayString();
 
                 if (isToday) {
-                    // Merge Entries by ID to prevents duplicates but combining history
                     const entryMap = new Map<string, CostEntry>();
 
-                    // 1. Add Cloud Entries
+                    // Add Cloud Entries
                     if (Array.isArray(cloudStats.entries)) {
                         cloudStats.entries.forEach(e => entryMap.set(e.id, e));
                     }
 
-                    // 2. Add Local Entries (Local might have newer ones not in cloud)
+                    // Add Local Entries (Local might have newer items)
                     if (Array.isArray(local.entries)) {
                         local.entries.forEach(e => entryMap.set(e.id, e));
                     }
 
                     const mergedEntries = Array.from(entryMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 
-                    // 3. Recalculate Totals
+                    // Recalc Totals
                     const totalCostUsd = mergedEntries.reduce((sum, e) => sum + e.costUsd, 0);
+                    // Use a Set to count unique timestamps/ids? No, simple sum is better based on merged list
+                    // totalImages is sum of counts
                     const totalImages = mergedEntries.reduce((sum, e) => sum + e.count, 0);
                     const totalTokens = mergedEntries.reduce((sum, e) => sum + (e.tokens || 0), 0);
 
-                    const mergedData: DailyCostData = {
+                    finalData = {
                         date: getTodayString(),
                         entries: mergedEntries,
                         totalCostUsd,
@@ -355,42 +353,47 @@ async function loadFromCloud() {
                         totalTokens
                     };
 
-                    // 4. Save Merged to Local
-                    saveDailyCosts(mergedData);
-                    console.log(`[CostService] Merged Cloud & Local: $${totalCostUsd.toFixed(4)} (${mergedEntries.length} entries)`);
-
-                    // 5. If Merged differs from cloud, push back to Cloud
-                    if (Math.abs(totalCostUsd - cloudStats.totalCostUsd) > 0.0001 || mergedEntries.length > (cloudStats.entries?.length || 0)) {
-                        setTimeout(() => saveToCloud(), 100);
+                    // Check if we need to push back to cloud
+                    // Logic: If Merged count > Cloud count, or Cost differs significantly
+                    const cloudCount = cloudStats.entries?.length || 0;
+                    if (mergedEntries.length > cloudCount || Math.abs(totalCostUsd - cloudStats.totalCostUsd) > 0.0001) {
+                        needsPush = true;
                     }
                 }
+            } else {
+                // Cloud has no stats, but we have local? Push it.
+                if (local.entries.length > 0) needsPush = true;
             }
+        } else {
+            // No data in cloud at all (new user), push local if exists
+            if (local.entries.length > 0) needsPush = true;
         }
+
+        // 3. Save Merged State Locally
+        saveDailyCosts(finalData);
+
+        // 4. Push to Cloud if needed
+        if (needsPush) {
+            console.log('[CostService] Pushing merged stats to cloud...');
+            // Upsert with clean data
+            const { error: upsertError } = await supabase.from('user_settings').upsert({
+                user_id: currentUserId,
+                daily_budget: getDailyBudget(),
+                usage_stats: finalData,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' });
+
+            if (upsertError) throw upsertError;
+        } else {
+            console.log('[CostService] Sync complete (No cloud update needed)');
+        }
+
     } catch (e: any) {
-        console.warn('[CostService] Sync load failed', e);
+        console.warn('[CostService] Sync failed', e);
+        if (e.code === '42P01') {
+            notify.error('配置缺失', '请在 Supabase 创建 user_settings 表');
+        }
     } finally {
         isSyncing = false;
-    }
-}
-
-async function saveToCloud() {
-    if (!currentUserId) return;
-    try {
-        // Use UPSERT to update cost fields without validating other columns (like api_keys)
-        const { error } = await supabase.from('user_settings').upsert({
-            user_id: currentUserId,
-            daily_budget: getDailyBudget(),
-            usage_stats: loadDailyCosts(),
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-
-        if (error) throw error;
-
-    } catch (e: any) {
-        console.warn('[CostService] Sync save failed', e);
-        // If table doesn't exist (42P01), notify user specifically about setup
-        if (e.code === '42P01') {
-            notify.error('同步配置缺失', '请在 Supabase 创建 user_settings 表以同步成本数据');
-        }
     }
 }

@@ -98,10 +98,10 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                 <button
                     onClick={handleSync}
                     disabled={isSyncing}
-                    className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors"
-                    title="校准消耗和预算 (Sync Data)"
+                    className="group relative flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 bg-[length:200%_100%] hover:bg-right transition-all duration-500 text-white rounded-full shadow-lg shadow-indigo-500/20 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                    <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
+                    <RefreshCw size={16} className={isSyncing ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"} />
+                    <span className="text-sm font-bold tracking-wide">同步数据 (Sync)</span>
                 </button>
             </div>
 
@@ -229,7 +229,7 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                     </div>
                 </div>
                 <div className="bg-[#1c1c1e] rounded-[32px] border border-zinc-800/50 p-4 flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    <div className="w-2 h-2 rounded-full bg-indigo-500" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">延迟 (Latency)</div>
                         <div className="text-sm font-medium text-zinc-300 font-mono">45ms</div>
@@ -794,7 +794,7 @@ const StorageSettingsView = () => {
                     存储管理
                     <div className={`text-xs ml-2 font-normal px-2 py-0.5 rounded-full border ${isConnectedToLocal
                         ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                        : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                        : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
                         }`}>
                         {isConnectedToLocal ? '本地模式 (Local)' : '临时模式 (Temp)'}
                     </div>
@@ -807,24 +807,23 @@ const StorageSettingsView = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
 
 
-                {/* Browser Storage Card */}
                 <div
                     onClick={!isConnectedToLocal ? undefined : handleConnectBrowser}
                     className={`relative p-8 rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
                     ${!isConnectedToLocal
-                            ? 'bg-blue-600/5 border-blue-500/50 shadow-[0_0_40px_-10px_rgba(59,130,246,0.2)]'
-                            : 'bg-[#18181b] border-zinc-800/50 hover:border-blue-500/30 hover:bg-zinc-800/50 opacity-60 hover:opacity-100'
+                            ? 'bg-indigo-600/5 border-indigo-500/50 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]'
+                            : 'bg-[#18181b] border-zinc-800/50 hover:border-indigo-500/30 hover:bg-zinc-800/50 opacity-60 hover:opacity-100'
                         }`}>
 
                     <div className="flex justify-between items-start">
-                        <div className={`p-4 rounded-2xl ${!isConnectedToLocal ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
+                        <div className={`p-4 rounded-2xl ${!isConnectedToLocal ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
                             <Globe size={24} />
                         </div>
                         {!isConnectedToLocal && (
-                            <div className="flex items-center gap-2 text-blue-400 text-xs font-bold px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
+                            <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold px-3 py-1 bg-indigo-500/10 rounded-full border border-indigo-500/20">
                                 <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
                                 </span>
                                 使用中 (ACTIVE)
                             </div>
@@ -833,7 +832,7 @@ const StorageSettingsView = () => {
 
                     <div className="mt-8">
                         <h4 className={`text-lg font-bold ${!isConnectedToLocal ? 'text-white' : 'text-zinc-400'}`}>临时文件 (Temp)</h4>
-                        <div className={`text-4xl font-mono font-bold mt-2 ${!isConnectedToLocal ? 'text-blue-400' : 'text-zinc-600'}`}>
+                        <div className={`text-4xl font-mono font-bold mt-2 ${!isConnectedToLocal ? 'text-indigo-400' : 'text-zinc-600'}`}>
                             {formatBytes(browserUsage)}
                         </div>
                         <p className="text-xs text-zinc-500 mt-4 leading-relaxed">
@@ -848,8 +847,8 @@ const StorageSettingsView = () => {
                             disabled={!isConnectedToLocal}
                             className={`flex-1 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
                             ${!isConnectedToLocal
-                                    ? 'bg-blue-500/10 text-blue-400 cursor-default'
-                                    : 'bg-zinc-800 text-zinc-300 hover:bg-blue-600 hover:text-white hover:shadow-lg'}`}
+                                    ? 'bg-indigo-500/10 text-indigo-400 cursor-default'
+                                    : 'bg-zinc-800 text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
                         >
                             {isConnectedToLocal ? '切换到临时模式' : '当前已激活'}
                         </button>
@@ -941,13 +940,13 @@ const StorageSettingsView = () => {
                 loading && (
                     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 rounded-[32px]">
                         <div className="bg-[#18181b] p-6 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-4 animate-in zoom-in-95">
-                            <Loader2 size={40} className="text-blue-500 animate-spin" />
+                            <Loader2 size={40} className="text-indigo-500 animate-spin" />
                             <div className="text-white font-medium">正在切换存储模式...</div>
                         </div>
                     </div>
                 )
             }
-        </div>
+        </div >
     );
 };
 
