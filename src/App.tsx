@@ -51,7 +51,6 @@ const AppContent: React.FC = () => {
     redo,
     canUndo,
     canRedo,
-    canRedo,
     arrangeAllNodes,
     selectedNodeIds,
     selectNodes,
