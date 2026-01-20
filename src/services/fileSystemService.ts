@@ -61,10 +61,8 @@ export const fileSystemService = {
         // 1. Ensure directories exist
         // @ts-ignore
         const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
-        // @ts-ignore
-        const thumbsDir = await handle.getDirectoryHandle(DIRS.THUMBNAILS, { create: true });
 
-        // 2. Save Images (Originals & Thumbs)
+        // 2. Save Images (Originals Only)
         for (const [id, blob] of imagesToSave.entries()) {
             const filename = `${id}.png`;
 
@@ -97,24 +95,6 @@ export const fileSystemService = {
             } catch (err) {
                 logError('FileSystem', err, `Failed to save original ${id}`);
             }
-
-            // B. Generate and Save Thumbnail (if large or always for consistency)
-            try {
-                // Generate thumb blob
-                const originalUrl = URL.createObjectURL(blob);
-                const thumbBlob = await compressImageBlob(originalUrl, 300);
-                URL.revokeObjectURL(originalUrl);
-
-                // Save Thumb
-                // @ts-ignore
-                const thumbHandle = await thumbsDir.getFileHandle(filename, { create: true });
-                // @ts-ignore
-                const writable = await thumbHandle.createWritable();
-                await writable.write(thumbBlob);
-                await writable.close();
-            } catch (err) {
-                console.warn(`Failed to save thumbnail for ${id}`, err);
-            }
         }
 
         // 3. Save Project JSON (Clean state without base64)
@@ -135,6 +115,13 @@ export const fileSystemService = {
         let canvases: Canvas[] = [];
 
         logInfo('FileSystem', `Loading project from: ${handle.name}`);
+
+        // CLEANUP: Remove thumbnails folder if exists (User request)
+        try {
+            // @ts-ignore
+            await handle.removeEntry(DIRS.THUMBNAILS, { recursive: true });
+            logInfo('FileSystem', 'Removed thumbnails directory');
+        } catch (ignore) { }
 
         // 1. Load Project JSON
         try {
@@ -172,28 +159,18 @@ export const fileSystemService = {
                 let count = 0;
                 // @ts-ignore
                 for await (const entry of imagesDir.values()) {
-                    if (entry.kind === 'file' && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.webp'))) {
+                    if (entry.kind === 'file' && /\.(png|jpg|webp)$/i.test(entry.name)) {
                         count++;
-                        const id = entry.name.replace(/\.(png|jpg|webp)$/, '');
+                        const id = entry.name.replace(/\.(png|jpg|webp)$/i, '');
                         try {
                             // @ts-ignore
                             const file = await entry.getFile();
                             const originalUrl = URL.createObjectURL(file);
 
-                            // If file is large (> 1MB), generate thumbnail for UI performance
-                            if (file.size > 1024 * 1024) {
-                                try {
-                                    const thumbBlob = await compressImageBlob(originalUrl, 300); // Max 300px
-                                    const thumbUrl = URL.createObjectURL(thumbBlob);
-                                    images.set(id, { url: thumbUrl, originalUrl });
-                                } catch (err) {
-                                    console.warn(`Failed to generate thumb for ${id}, using original`, err);
-                                    images.set(id, { url: originalUrl, originalUrl });
-                                }
-                            } else {
-                                // Small enough, just use original
-                                images.set(id, { url: originalUrl, originalUrl });
-                            }
+                            // DIRECT LOAD: Use original image to ensure visibility
+                            // Skipping thumbnail generation prevents loading hangs/errors
+                            images.set(id, { url: originalUrl, originalUrl });
+
                         } catch (e) {
                             logError('FileSystem', e, `Failed to load image ${id}`);
                         }
@@ -286,54 +263,15 @@ export const fileSystemService = {
     },
 
     /**
-     * Cleanup local folder: Replace huge images with thumbnails
-     * Note: With new V2 structure, this might be less relevant or should target ORIGINALS?
-     * Actually, if we have ORIGINALS, we probably don't want to destroy them.
-     * Maybe this function should now just ensure thumbnails exist?
-     * For now, let's keep it but targeting ORIGINALS would be destructive.
-     * Let's change it to: Generate Missing Thumbnails.
+     * Cleanup local folder: Just remove thumbnails
      */
     async cleanupLocalFolder(handle: FileSystemDirectoryHandle): Promise<{ count: number, savedBytes: number }> {
-        // Renamed logic: Ensure Thumbs
-        let count = 0;
+        // Cleanup: Just ensure thumbnails dir is gone
         try {
             // @ts-ignore
-            const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS);
-            // @ts-ignore
-            const thumbsDir = await handle.getDirectoryHandle(DIRS.THUMBNAILS, { create: true });
-
-            // @ts-ignore
-            for await (const entry of originalsDir.values()) {
-                if (entry.kind === 'file' && entry.name.endsWith('.png')) {
-                    try {
-                        // Check if thumb exists
-                        try {
-                            // @ts-ignore
-                            await thumbsDir.getFileHandle(entry.name);
-                        } catch (e) {
-                            // Thumb missing, generate!
-                            // @ts-ignore
-                            const file = await entry.getFile();
-                            const url = URL.createObjectURL(file);
-                            const thumbBlob = await compressImageBlob(url, 300);
-                            URL.revokeObjectURL(url);
-
-                            // @ts-ignore
-                            const newThumb = await thumbsDir.getFileHandle(entry.name, { create: true });
-                            // @ts-ignore
-                            const writable = await newThumb.createWritable();
-                            await writable.write(thumbBlob);
-                            await writable.close();
-                            count++;
-                        }
-                    } catch (e) { }
-                }
-            }
-        } catch (e) {
-            logError('FileSystem', e, 'Cleanup/Thumb gen failed');
-        }
-
-        return { count, savedBytes: 0 }; // Bytes saved is N/A as we are generating new files
+            await handle.removeEntry(DIRS.THUMBNAILS, { recursive: true });
+        } catch (e) { }
+        return { count: 0, savedBytes: 0 };
     },
 
     /**
@@ -364,7 +302,7 @@ export const fileSystemService = {
                 console.warn('Project JSON not found or failed to move', e);
             }
 
-            // 2. Move Folders (Originals, Thumbs, etc)
+            // 2. Move Folders (Originals only, Thumbs are dead)
             // Helper to move a directory
             const moveDir = async (dirName: string) => {
                 try {
@@ -399,8 +337,8 @@ export const fileSystemService = {
             };
 
             await moveDir(DIRS.ORIGINALS);
-            await moveDir(DIRS.THUMBNAILS);
             await moveDir(DIRS.LEGACY); // Move legacy images if present too
+            // Note: We intentionally DO NOT move thumbnails.
 
         } catch (error) {
             console.error('Failed to move project:', error);
@@ -434,64 +372,9 @@ export const fileSystemService = {
             await writable.write(blob);
             await writable.close();
 
-            // Generate Thumb
-            try {
-                // @ts-ignore
-                const thumbsDir = await handle.getDirectoryHandle(DIRS.THUMBNAILS, { create: true });
-                const originalUrl = URL.createObjectURL(blob);
-                const thumbBlob = await compressImageBlob(originalUrl, 300);
-                URL.revokeObjectURL(originalUrl);
-                // @ts-ignore
-                const thumbHandle = await thumbsDir.getFileHandle(filename, { create: true });
-                // @ts-ignore
-                const thumbWritable = await thumbHandle.createWritable();
-                await thumbWritable.write(thumbBlob);
-                await thumbWritable.close();
-            } catch (ignore) { }
-
         } catch (e) {
             console.error('Failed to save image to handle', e);
             throw e;
         }
     }
 };
-
-// Helper: Compress to Blob
-function compressImageBlob(dataUrl: string, maxDimension: number): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-
-            if (width > height) {
-                if (width > maxDimension) {
-                    height *= maxDimension / width;
-                    width = maxDimension;
-                }
-            } else {
-                if (height > maxDimension) {
-                    width *= maxDimension / height;
-                    height = maxDimension;
-                }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                reject(new Error('Canvas context not available'));
-                return;
-            }
-            ctx.drawImage(img, 0, 0, width, height);
-
-            canvas.toBlob((blob) => {
-                if (blob) resolve(blob);
-                else reject(new Error('Blob creation failed'));
-            }, 'image/jpeg', 0.7);
-        };
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = dataUrl;
-    });
-}
