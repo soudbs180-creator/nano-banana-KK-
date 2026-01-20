@@ -62,7 +62,7 @@ const AppContent: React.FC = () => {
 
   const handleZoomIn = () => canvasRef.current?.zoomIn();
   const handleZoomOut = () => canvasRef.current?.zoomOut();
-  const handleResetView = () => canvasRef.current?.resetView();
+
   const handleToggleGrid = () => canvasRef.current?.toggleGrid();
 
   const { user, signOut } = useAuth();
@@ -126,14 +126,9 @@ const AppContent: React.FC = () => {
   });
 
   // Pending generation state
+  // Active source image for continuing conversation
+  const [activeSourceImage, setActiveSourceImage] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string>('');
-  const [pendingPosition, setPendingPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-
-  // Use ref to track pending position for async access (fixing jump on completion)
-  const pendingPositionRef = useRef(pendingPosition);
-  useEffect(() => {
-    pendingPositionRef.current = pendingPosition;
-  }, [pendingPosition]);
 
   // Canvas transform state (for positioning in visible area)
   const [canvasTransform, setCanvasTransform] = useState<{ x: number; y: number; scale: number }>({
@@ -141,6 +136,25 @@ const AppContent: React.FC = () => {
     y: window.innerHeight / 2,
     scale: 1
   });
+
+  // Derived Pending Position: Always Center (or linked to source)
+  const pendingPosition = React.useMemo(() => {
+    if (activeSourceImage && activeCanvas) {
+      const sourceImage = activeCanvas.imageNodes.find(img => img.id === activeSourceImage);
+      if (sourceImage) {
+        const { totalHeight } = getCardDimensions(sourceImage.aspectRatio, true);
+        return {
+          x: sourceImage.position.x,
+          y: sourceImage.position.y + totalHeight + 80
+        };
+      }
+    }
+    return {
+      x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
+      y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSourceImage, activeCanvas, canvasTransform]);
 
   // Right-Click Selection State
   const [selectionBox, setSelectionBox] = useState<{ start: { x: number; y: number }; current: { x: number; y: number }; active: boolean } | null>(null);
@@ -233,8 +247,7 @@ const AppContent: React.FC = () => {
     }
   }, [selectionBox, canvasTransform, activeCanvas, selectNodes, clearSelection]);
 
-  // Active source image for continuing conversation
-  const [activeSourceImage, setActiveSourceImage] = useState<string | null>(null);
+
 
   // Connection Dragging State
   const [dragConnection, setDragConnection] = useState<{
@@ -293,6 +306,37 @@ const AppContent: React.FC = () => {
       scale: targetScale
     });
   }, []);
+
+  const handleResetView = useCallback(() => {
+    if (!activeCanvas) return;
+    const prompts = activeCanvas.promptNodes;
+    if (prompts.length === 0) {
+      handleNavigateToNode(0, 0);
+      return;
+    }
+    // Sort by timestamp descending
+    const latestPrompt = [...prompts].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0];
+
+    if (latestPrompt) {
+      // Find associated images to calculate bounding box
+      const childImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === latestPrompt.id);
+
+      let targetX = latestPrompt.position.x;
+      let targetY = latestPrompt.position.y;
+
+      if (childImages.length > 0) {
+        // Find lowest image bottom (since Y is anchor bottom for images too)
+        const maxY = Math.max(...childImages.map(img => img.position.y));
+        // Target vertical center between Prompt Bottom and Image(s) Bottom
+        targetY = (latestPrompt.position.y + maxY) / 2;
+      } else {
+        // If no images yet, center roughly on the card body (Anchor is Bottom, so move Up)
+        targetY = latestPrompt.position.y - 100;
+      }
+
+      handleNavigateToNode(targetX, targetY);
+    }
+  }, [activeCanvas, handleNavigateToNode]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -360,93 +404,12 @@ const AppContent: React.FC = () => {
 
 
 
-  // Track if position has been set for current prompt session using ref (more stable than state)
-  const positionLockedRef = useRef(false);
-  const prevPromptRef = useRef('');
-
-  // Calculate pending position ONLY when starting a fresh prompt (first character)
-  useEffect(() => {
-    const prevPrompt = prevPromptRef.current;
-    prevPromptRef.current = config.prompt;
-
-    // If prompt is cleared, unlock position for next input
-    if (!config.prompt) {
-      positionLockedRef.current = false;
-      return;
-    }
-
-    // Only calculate position when going from empty to non-empty (first character)
-    // This ensures position is set once and never changes until prompt is cleared
-    if (prevPrompt !== '' || positionLockedRef.current) {
-      return; // Already have a position, don't recalculate
-    }
-
-    // Don't recalculate during generation
-    if (isGenerating) return;
-
-    // Lock position immediately
-    positionLockedRef.current = true;
-
-    // If there's an active source image, position below it
-    if (activeSourceImage) {
-      const sourceImage = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
-      if (sourceImage) {
-        // Calculate actual card height: image height + footer (~36px)
-        const footerHeight = 36;
-        let imageHeight = 280;
-        switch (sourceImage.aspectRatio) {
-          case AspectRatio.LANDSCAPE_16_9: imageHeight = 180; break;
-          case AspectRatio.PORTRAIT_9_16: imageHeight = 350; break;
-          default: imageHeight = 280;
-        }
-        const cardHeight = imageHeight + footerHeight;
-        // Position new prompt below the source image card with some spacing
-        // sourceImage.position.y is TOP of card (due to translate(-50%, 0))
-        setPendingPosition({
-          x: sourceImage.position.x, // Keep same horizontal center
-          y: sourceImage.position.y + cardHeight + 80 // Below card with gap
-        });
-        return;
-      }
-    }
-
-    // Calculate position in VISIBLE canvas area (upper-center)
-    const screenCenterX = window.innerWidth / 2;
-    const screenUpperY = window.innerHeight / 3;
-    const canvasCenterX = (screenCenterX - canvasTransform.x) / canvasTransform.scale;
-    const canvasCenterY = (screenUpperY - canvasTransform.y) / canvasTransform.scale;
-
-    // Check for overlaps with prompt cards only
-    const cardWidth = 350; // Reduced for tighter spacing
-    const cardHeight = 150;
-    const promptPositions = activeCanvas?.promptNodes.map(n => n.position) || [];
-
-    const hasOverlap = (testX: number, testY: number) => {
-      return promptPositions.some((pos: { x: number; y: number }) => {
-        const dx = Math.abs(pos.x - testX);
-        const dy = Math.abs(pos.y - testY);
-        return dx < cardWidth && dy < cardHeight;
-      });
-    };
-
-    let finalX = canvasCenterX;
-    const stepX = cardWidth + 20; // Smaller gap between cards
-    while (hasOverlap(finalX, canvasCenterY) && finalX < canvasCenterX + stepX * 10) {
-      finalX += stepX;
-    }
-
-    setPendingPosition({ x: finalX, y: canvasCenterY });
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps  
-  }, [config.prompt]);
-
   // Helper to estimate prompt card height based on text length
   const getPromptHeight = useCallback((text: string) => {
-    const baseHeight = 160; // Padding + Header + Footer
-    const charPerLine = 20; // Approx characters per line
+    const baseHeight = 160;
+    const charPerLine = 20;
     const lineHeight = 24;
     const lines = Math.ceil((text || '').length / charPerLine);
-    // Clamp min height to avoid too small cards
     return Math.max(200, baseHeight + (lines * lineHeight));
   }, []);
 
@@ -460,10 +423,8 @@ const AppContent: React.FC = () => {
 
     // 1. Create Persistent Prompt Node immediately
     const promptNodeId = Date.now().toString();
-    // Default to center of viewport if no position set
-    const currentPos = (pendingPosition.x === 0 && pendingPosition.y === 0)
-      ? { x: window.innerWidth / 2, y: 200 }
-      : pendingPosition;
+    // Use derived pendingPosition directly
+    const currentPos = pendingPosition;
 
     // If continuing from an image, auto-add it as reference (img2img)
     let finalReferenceImages = [...config.referenceImages];
@@ -528,7 +489,6 @@ const AppContent: React.FC = () => {
     const promptToUse = config.prompt; // Capture for API call
     setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
     setActiveSourceImage(null);
-    setPendingPosition({ x: 0, y: 0 });
     setIsGenerating(false);
 
     try {
@@ -627,23 +587,8 @@ const AppContent: React.FC = () => {
         throw new Error(firstError && 'error' in firstError ? firstError.error : 'All generated images failed');
       }
 
-      // Get the prompt node's CURRENT position (from REF to avoid stale closure)
-      // CRITICAL: Use pendingPositionRef because the PendingNode might have been dragged 
-      // while generation was running. The PromptNode created at start has stale pos.
-      const latestPendingPos = pendingPositionRef.current;
-      const livePromptNode = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-
-      // We should UPDATE the persistent prompt node to match where the user left the Pending Node
-      if (livePromptNode && (latestPendingPos.x !== 0 || latestPendingPos.y !== 0)) {
-        // Update local ref variable for calculation
-        livePromptNode.position = latestPendingPos;
-        // Also update global store? handleGenerate is inside App, so we might need a way to commit this.
-        // Since we are about to add images relative to this, we use this 'livePromptNode' for calculation.
-        // NOTE: We must actually update the canvas state for this to persist visually.
-        updatePromptNodePosition(promptNodeId, latestPendingPos);
-      }
-
-      const livePos = latestPendingPos.x !== 0 ? latestPendingPos : (livePromptNode?.position || currentPos);
+      // Use the stable position determined at start of generation
+      const livePos = currentPos;
 
       // Now calculate positions using the LIVE position
       const gapToImages = 80; // Increased to match visual style (dotted line)
@@ -1142,6 +1087,22 @@ const AppContent: React.FC = () => {
     }
   }, [config.parallelCount, isMobile, updatePromptNode, addImageNodes, config.enableGrounding]);
 
+  // Auto-Recover Interrupted Tasks
+  useEffect(() => {
+    if (activeCanvas) {
+      const interruptedNodes = activeCanvas.promptNodes.filter(n => n.error === '::INTERRUPTED::');
+      if (interruptedNodes.length > 0) {
+        console.log('[App] Auto-recovering interrupted nodes:', interruptedNodes.length);
+
+        interruptedNodes.forEach(node => {
+          handleRetryNode(node);
+        });
+
+        notify.info('恢复任务', `系统已自动重新开始 ${interruptedNodes.length} 个中断的任务`);
+      }
+    }
+  }, [activeCanvas, handleRetryNode]);
+
   return (
     <div className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
       onMouseDown={handleMouseDown}
@@ -1442,7 +1403,7 @@ const AppContent: React.FC = () => {
           isGenerating={isGenerating}
           position={pendingPosition}
           aspectRatio={config.aspectRatio}
-          onPositionChange={setPendingPosition}
+          // Position fixed to center, no drag needed
           isMobile={isMobile}
           canvasTransform={canvasTransform}
           referenceImages={config.referenceImages}

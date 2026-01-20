@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { Canvas, PromptNode, GeneratedImage, AspectRatio, ModelType } from '../types';
 import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '../services/imageStorage';
 import { syncService } from '../services/syncService';
@@ -89,7 +89,8 @@ const stripImageUrls = (canvases: Canvas[]): Canvas[] => {
         ...c,
         imageNodes: c.imageNodes.map(img => ({
             ...img,
-            url: '' // Clear URL for localStorage, will be loaded from IndexedDB
+            url: '', // Clear URL for localStorage, will be loaded from IndexedDB
+            originalUrl: '' // Clear Original URL to save space
         })),
         promptNodes: c.promptNodes.map(pn => ({
             ...pn,
@@ -133,8 +134,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         ...node,
                         referenceImages: node.referenceImages || [],
                         parallelCount: node.parallelCount || 1,
-                        isGenerating: false, // Reset generating state on reload
-                        error: undefined     // Clear old errors
+                        // Reset generating state on load. If reload page, process is dead.
+                        isGenerating: false,
+                        error: node.isGenerating ? '::INTERRUPTED::' : undefined
                     }))
                 }));
 
@@ -254,48 +256,50 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         init();
     }, []);
 
-    // Persistence with error handling AND Cloud Sync
+    // State Ref for stable access in event listeners
+    const stateRef = useRef(state);
+    const isLoadingRef = useRef(isLoading);
+
+    useLayoutEffect(() => {
+        stateRef.current = state;
+        isLoadingRef.current = isLoading;
+    }, [state, isLoading]);
+
+    // Persistence Mechanism
     useEffect(() => {
-        if (isLoading) return; // Don't save while loading
+        // 1. Debounced Auto-Save
+        if (isLoading) return;
 
         const saveState = async () => {
             try {
-                // 1. Local Storage Save (Backup/Offline)
                 const stateToSave = {
                     ...state,
                     canvases: stripImageUrls(state.canvases),
                     history: {}
                 };
                 const jsonStr = JSON.stringify(stateToSave);
-                if (jsonStr.length > 4500000) {
-                    console.warn('Canvas state approaching localStorage quota limit.');
-                }
+                if (jsonStr.length > 4500000) console.warn('Canvas state approaching localStorage quota limit.');
                 localStorage.setItem(STORAGE_KEY, jsonStr);
-
-                // 2. Cloud Sync (DISABLED)
-                /*
-                if (state.activeCanvasId) {
-                   // Cloud save disabled
-                }
-                */
             } catch (error: any) {
-                if (error.name === 'QuotaExceededError') {
-                    console.error('localStorage quota exceeded.');
-                } else {
-                    console.error('Failed to save state:', error);
-                }
+                if (error.name === 'QuotaExceededError') console.error('localStorage quota exceeded.');
+                else console.error('Failed to save state:', error);
             }
         };
 
-        // Debounce saving
-        const timer = setTimeout(saveState, 200); // Reduced to 200ms for snappier saves
+        const timer = setTimeout(saveState, 200);
 
-        // Save immediately on page unload or hidden (tab switch)
+        return () => clearTimeout(timer);
+    }, [state, isLoading]);
+
+    // 2. Stable Safety Save (Unload / Hidden) - Unmounts only once
+    useEffect(() => {
         const handleSave = () => {
+            if (isLoadingRef.current) return;
             try {
+                const currentState = stateRef.current;
                 const stateToSave = {
-                    ...state,
-                    canvases: stripImageUrls(state.canvases),
+                    ...currentState,
+                    canvases: stripImageUrls(currentState.canvases),
                     history: {}
                 };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
@@ -305,17 +309,16 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
 
         window.addEventListener('beforeunload', handleSave);
-        document.addEventListener('visibilitychange', () => {
+        const handleVisibilityChange = () => {
             if (document.visibilityState === 'hidden') handleSave();
-        });
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
 
         return () => {
-            clearTimeout(timer);
             window.removeEventListener('beforeunload', handleSave);
-            // Note: visibilitychange listener cleanup omitted for brevity in hot-reload, but ideally should be removed.
-            // Given the context key, we can rely on React's cleanup if we name the listener.
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [state, isLoading]);
+    }, []);
 
     // Initial Load: Merge Cloud Data - DISABLED (Local Only Mode)
     /*
@@ -436,18 +439,19 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return;
         }
 
-        // Save images to IndexedDB robustly
+        // 1. Optimistic Update: Add to State immediately so it's visible & persistable in LS
+        updateCanvas(c => ({
+            ...c,
+            imageNodes: [...c.imageNodes, ...validNodes]
+        }));
+
+        // 2. Save to IndexedDB in background
         try {
             await Promise.all(validNodes.map(node => saveImage(node.id, node.url)));
         } catch (error) {
             console.error('[CanvasContext] Failed to save images to IndexedDB:', error);
             // We continue to update state so UI shows standard image even if persistence failed temporarily
         }
-
-        updateCanvas(c => ({
-            ...c,
-            imageNodes: [...c.imageNodes, ...validNodes]
-        }));
     }, [updateCanvas]);
 
     const updatePromptNodePosition = useCallback((id: string, pos: { x: number; y: number }) => {
@@ -747,128 +751,158 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const GAP_X = 40; // Gap between projects
         const GAP_Y = 60; // Gap between prompt and images
 
-        setState(prev => {
-            const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
-            if (!currentCanvas) return prev;
+        // 1. Calculate New Layout synchronously using current state
+        const currentCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
+        if (!currentCanvas) return;
 
-            const promptPositions: { [id: string]: { x: number; y: number } } = {};
-            const imagePositions: { [id: string]: { x: number; y: number } } = {};
+        const promptPositions: { [id: string]: { x: number; y: number } } = {};
+        const imagePositions: { [id: string]: { x: number; y: number } } = {};
 
-            // Group: each prompt with its child images
-            interface ProjectGroup {
-                prompt: typeof currentCanvas.promptNodes[0];
-                images: typeof currentCanvas.imageNodes;
+        interface ProjectGroup {
+            prompt: typeof currentCanvas.promptNodes[0];
+            images: typeof currentCanvas.imageNodes;
+        }
+
+        const projects: ProjectGroup[] = currentCanvas.promptNodes
+            .map(pn => ({
+                prompt: pn,
+                images: currentCanvas.imageNodes.filter(img => img.parentPromptId === pn.id)
+            }))
+            .sort((a, b) => a.prompt.timestamp - b.prompt.timestamp);
+
+        // Orphan images (no parent)
+        const orphanImages = currentCanvas.imageNodes.filter(
+            img => !currentCanvas.promptNodes.some(pn => pn.id === img.parentPromptId)
+        );
+
+        // Start position
+        let currentX = 50;
+        let currentY = 50;
+        const MAX_PER_ROW = 10;
+        let projectIndex = 0;
+        let maxRowHeight = 0;
+        const ROW_GAP = 100;
+
+        // Layout each project
+        projects.forEach(project => {
+            // Calculate image dimensions and total width
+            const imageDims: { w: number; h: number }[] = [];
+            let totalImagesWidth = 0;
+            let maxImageHeight = 0;
+            const IMAGE_GAP = 15;
+
+            project.images.forEach(img => {
+                const dims = getImageDims(img.aspectRatio, img.dimensions);
+                imageDims.push(dims);
+                totalImagesWidth += dims.w;
+                maxImageHeight = Math.max(maxImageHeight, dims.h);
+            });
+
+            // Add gaps between images
+            if (project.images.length > 1) {
+                totalImagesWidth += (project.images.length - 1) * IMAGE_GAP;
             }
 
-            const projects: ProjectGroup[] = currentCanvas.promptNodes
-                .map(pn => ({
-                    prompt: pn,
-                    images: currentCanvas.imageNodes.filter(img => img.parentPromptId === pn.id)
-                }))
-                .sort((a, b) => a.prompt.timestamp - b.prompt.timestamp);
+            // Project width = max of prompt width and total images width
+            const projectWidth = Math.max(PROMPT_WIDTH, totalImagesWidth);
+            const projectHeight = PROMPT_HEIGHT + GAP_Y + maxImageHeight;
 
-            // Orphan images (no parent)
-            const orphanImages = currentCanvas.imageNodes.filter(
-                img => !currentCanvas.promptNodes.some(pn => pn.id === img.parentPromptId)
-            );
+            // WRAP LOGIC: Check if we need to start a new row
+            if (projectIndex > 0 && projectIndex % MAX_PER_ROW === 0) {
+                currentX = 50;
+                currentY += maxRowHeight + ROW_GAP;
+                maxRowHeight = 0;
+            }
 
-            // Start position
-            let currentX = 50;
-            let currentY = 50;
-            const MAX_PER_ROW = 10;
-            let projectIndex = 0;
-            let maxRowHeight = 0;
-            const ROW_GAP = 100;
+            maxRowHeight = Math.max(maxRowHeight, projectHeight);
 
-            // Layout each project
-            projects.forEach(project => {
-                // Calculate image dimensions and total width
-                const imageDims: { w: number; h: number }[] = [];
-                let totalImagesWidth = 0;
-                let maxImageHeight = 0;
-                const IMAGE_GAP = 15;
+            // Position prompt (anchor is center-bottom)
+            const promptX = currentX + projectWidth / 2;
+            const promptY = currentY + PROMPT_HEIGHT;
+            promptPositions[project.prompt.id] = { x: promptX, y: promptY };
 
-                project.images.forEach(img => {
-                    const dims = getImageDims(img.aspectRatio, img.dimensions);
-                    imageDims.push(dims);
-                    totalImagesWidth += dims.w;
-                    maxImageHeight = Math.max(maxImageHeight, dims.h);
+            // Position images horizontally below prompt
+            if (project.images.length > 0) {
+                const imagesStartX = currentX + (projectWidth - totalImagesWidth) / 2;
+                // Note: No longer using single imageY. Calculating per image to ensure uniform top-alignment.
+
+                let imgX = imagesStartX + (imageDims[0]?.w || 0) / 2; // Center first image X
+
+                project.images.forEach((img, idx) => {
+                    const dims = imageDims[idx];
+                    const thisImageY = promptY + GAP_Y + dims.h; // Y is Bottom. Top = Y - h = Prompt + Gap. Uniform Top!
+
+                    if (idx > 0) {
+                        const prevDims = imageDims[idx - 1];
+                        imgX += prevDims.w / 2 + IMAGE_GAP + dims.w / 2;
+                    }
+
+                    imagePositions[img.id] = { x: imgX, y: thisImageY };
                 });
+            }
 
-                // Add gaps between images
-                if (project.images.length > 1) {
-                    totalImagesWidth += (project.images.length - 1) * IMAGE_GAP;
-                }
-
-                // Project width = max of prompt width and total images width
-                const projectWidth = Math.max(PROMPT_WIDTH, totalImagesWidth);
-                const projectHeight = PROMPT_HEIGHT + GAP_Y + maxImageHeight;
-
-                // WRAP LOGIC: Check if we need to start a new row
-                if (projectIndex > 0 && projectIndex % MAX_PER_ROW === 0) {
-                    currentX = 50;
-                    currentY += maxRowHeight + ROW_GAP;
-                    maxRowHeight = 0;
-                }
-
-                maxRowHeight = Math.max(maxRowHeight, projectHeight);
-
-                // Position prompt (anchor is center-bottom)
-                const promptX = currentX + projectWidth / 2;
-                const promptY = currentY + PROMPT_HEIGHT;
-                promptPositions[project.prompt.id] = { x: promptX, y: promptY };
-
-                // Position images horizontally below prompt
-                if (project.images.length > 0) {
-                    const imagesStartX = currentX + (projectWidth - totalImagesWidth) / 2;
-                    // Note: No longer using single imageY. Calculating per image to ensure uniform top-alignment.
-
-                    let imgX = imagesStartX + (imageDims[0]?.w || 0) / 2; // Center first image X
-
-                    project.images.forEach((img, idx) => {
-                        const dims = imageDims[idx];
-                        const thisImageY = promptY + GAP_Y + dims.h; // Y is Bottom. Top = Y - h = Prompt + Gap. Uniform Top!
-
-                        if (idx > 0) {
-                            const prevDims = imageDims[idx - 1];
-                            imgX += prevDims.w / 2 + IMAGE_GAP + dims.w / 2;
-                        }
-
-                        imagePositions[img.id] = { x: imgX, y: thisImageY };
-                    });
-                }
-
-                // Move X for next project
-                currentX += projectWidth + GAP_X;
-                projectIndex++;
-            });
-
-            // Orphan images at the end
-            orphanImages.forEach((img, idx) => {
-                const dims = getImageDims(img.aspectRatio);
-                imagePositions[img.id] = { x: 50 + idx * 300, y: 500 }; // Simplified fallback
-            });
-
-            // Update all positions
-            return {
-                ...prev,
-                canvases: prev.canvases.map(c =>
-                    c.id === prev.activeCanvasId ? {
-                        ...c,
-                        promptNodes: c.promptNodes.map(pn => ({ ...pn, position: promptPositions[pn.id] || pn.position })),
-                        imageNodes: c.imageNodes.map(img => ({ ...img, position: imagePositions[img.id] || img.position })),
-                        lastModified: Date.now()
-                    } : c
-                )
-            };
+            // Move X for next project
+            currentX += projectWidth + GAP_X;
+            projectIndex++;
         });
-    }, [state.canvases, state.activeCanvasId]);
+
+        // Orphan images at the end
+        orphanImages.forEach((img, idx) => {
+            const dims = getImageDims(img.aspectRatio);
+            imagePositions[img.id] = { x: 50 + idx * 300, y: 500 }; // Simplified fallback
+        });
+
+        // 2. Construct New Canvases List synchronously
+        const newCanvases = state.canvases.map(c =>
+            c.id === state.activeCanvasId ? {
+                ...c,
+                promptNodes: c.promptNodes.map(pn => ({ ...pn, position: promptPositions[pn.id] || pn.position })),
+                imageNodes: c.imageNodes.map(img => ({ ...img, position: imagePositions[img.id] || img.position })),
+                lastModified: Date.now()
+            } : c
+        );
+
+        // 3. Update React State
+        setState(prev => ({
+            ...prev,
+            canvases: newCanvases
+        }));
+
+        // 4. FORCE SAVE synchronously (Critical Fix for immediate refresh)
+        // ONLY if NOT connected to a local folder.
+        if (!state.fileSystemHandle) {
+            try {
+                const stateToSave = {
+                    ...state,
+                    canvases: stripImageUrls(newCanvases),
+                    history: {} // Don't save history to avoid quota limits
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+            } catch (e) {
+                console.error('Failed to force save layout:', e);
+                alert('布局保存失败：存储空间不足或发生错误。请尝试删除不需要的项目。');
+            }
+        }
+
+    }, [state]);
 
     // --- File System Implementation ---
 
     const connectLocalFolder = useCallback(async () => {
         try {
-            const handle = await fileSystemService.selectDirectory();
+            let handle: FileSystemDirectoryHandle | null = null;
+
+            // 1. Try Optimized Restore (Permission Prompt instead of Picker)
+            try {
+                const { restoreLocalFolderConnection } = await import('../services/storagePreference');
+                handle = await restoreLocalFolderConnection();
+            } catch (ignore) { }
+
+            // 2. Fallback to Full Picker
+            if (!handle) {
+                handle = await fileSystemService.selectDirectory();
+            }
+
             const { canvases, images } = await fileSystemService.loadProjectWithThumbs(handle);
 
             // Hydrate images map to IndexedDB for performance/caching
@@ -950,13 +984,49 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
     }, [state.canvases]);
 
-    const disconnectLocalFolder = useCallback(() => {
+    const disconnectLocalFolder = useCallback(async () => {
+        // 1. Ensure all current images are cached in IndexedDB (Data Safety)
+        const currentCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
+        if (currentCanvas) {
+            // A. Cache Generated Images
+            currentCanvas.imageNodes.forEach(img => {
+                if (img.url && !img.url.startsWith('data:')) {
+                    fetch(img.url).then(r => r.blob()).then(blob => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            if (reader.result) saveImage(img.id, reader.result as string);
+                        };
+                        reader.readAsDataURL(blob);
+                    }).catch(e => console.warn('Background cache failed', e));
+                }
+            });
+
+            // B. Cache Reference Images (Fix for missing refs)
+            currentCanvas.promptNodes.forEach(pn => {
+                pn.referenceImages?.forEach(ref => {
+                    if (ref.data) {
+                        // Ensure it's a full data URL for storage
+                        const fullUrl = ref.data.startsWith('data:')
+                            ? ref.data
+                            : `data:${ref.mimeType || 'image/png'};base64,${ref.data}`;
+                        saveImage(ref.id, fullUrl).catch(e => console.warn('Ref cache failed', e));
+                    }
+                });
+            });
+        }
+
+        // 2. Switch Mode
         setState(prev => ({
             ...prev,
             fileSystemHandle: null,
             folderName: null
         }));
-    }, []);
+
+        // 3. Notify
+        const { notify } = await import('../services/notificationService');
+        notify.success('已切换到临时模式', '项目数据已保留');
+
+    }, [state.canvases, state.activeCanvasId]);
 
     const changeLocalFolder = useCallback(async () => {
         if (!state.fileSystemHandle) return;
@@ -1060,18 +1130,23 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (isLoading) return;
 
         const saveState = async () => {
-            // 1. Always save to LocalStorage (Backup)
-            try {
-                const stateToSave = {
-                    ...state,
-                    canvases: stripImageUrls(state.canvases),
-                    history: {},
-                    fileSystemHandle: undefined, // Do not stringify handle
-                    folderName: undefined
-                };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-            } catch (e) {
-                console.error('LS Save Failed', e);
+            // 1. Save to LocalStorage (Only if NOT using File System)
+            if (!state.fileSystemHandle) {
+                try {
+                    const stateToSave = {
+                        ...state,
+                        canvases: stripImageUrls(state.canvases),
+                        history: {},
+                        fileSystemHandle: undefined,
+                        folderName: undefined
+                    };
+                    const jsonStr = JSON.stringify(stateToSave);
+                    if (jsonStr.length > 4500000) console.warn('Canvas state approaching localStorage quota limit.');
+                    localStorage.setItem(STORAGE_KEY, jsonStr);
+                } catch (e: any) {
+                    if (e.name === 'QuotaExceededError') console.error('localStorage quota exceeded.');
+                    else console.error('Failed to save state:', e);
+                }
             }
 
             // 2. Save to File System if connected

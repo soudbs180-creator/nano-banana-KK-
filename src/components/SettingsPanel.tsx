@@ -717,6 +717,23 @@ const StorageSettingsView = () => {
         setLoading(false);
     };
 
+    const handleClearCache = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (confirm('确定要清理浏览器缓存吗？\n这将彻底删除缓存在浏览器中的所有临时图片。\n此操作不会影响“本地文件夹”中的文件。')) {
+            setLoading(true);
+            try {
+                const { clearAllImages } = await import('../services/imageStorage');
+                await clearAllImages();
+                const { notify } = await import('../services/notificationService');
+                notify.success('缓存已清理', '浏览器图片缓存已清空');
+                await loadStats();
+            } catch (e) {
+                console.error('Clear cache failed', e);
+            }
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-8 h-full flex flex-col px-1">
             <div className="hidden md:block">
@@ -773,16 +790,26 @@ const StorageSettingsView = () => {
                         </p>
                     </div>
 
-                    <div className="mt-6 pt-6 border-t border-white/5">
+                    <div className="mt-6 pt-6 border-t border-white/5 flex gap-3">
                         <button
                             disabled={!isConnectedToLocal}
-                            className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
+                            className={`flex-1 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
                             ${!isConnectedToLocal
                                     ? 'bg-blue-500/10 text-blue-400 cursor-default'
                                     : 'bg-zinc-800 text-zinc-300 hover:bg-blue-600 hover:text-white hover:shadow-lg'}`}
                         >
                             {isConnectedToLocal ? '切换到临时模式' : '当前已激活'}
                         </button>
+
+                        {isConnectedToLocal && (
+                            <button
+                                onClick={handleClearCache}
+                                className="px-4 py-3 rounded-xl bg-zinc-800 text-zinc-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 border border-transparent transition-all flex items-center justify-center cursor-pointer"
+                                title="清理浏览器缓存 (Clear Cache)"
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                        )}
                     </div>
                 </div>
 

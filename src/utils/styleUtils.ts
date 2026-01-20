@@ -6,7 +6,7 @@ export const CARD_WIDTHS = {
     PORTRAIT: 240, // Increased from 200 for better text fit
 };
 
-export const FOOTER_HEIGHT = 60; // Standard footer height for Image Cards
+export const FOOTER_HEIGHT = 40; // Standard footer height for Image Cards
 
 /**
  * Returns the dimensions for a card based on aspect ratio.

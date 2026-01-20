@@ -18,7 +18,7 @@ const UpdateNotification: React.FC = () => {
         <button
             onClick={(e) => { e.currentTarget.blur(); applyUpdate(); }}
             tabIndex={-1}
-            className="fixed bottom-6 right-6 z-[9998] group animate-in slide-in-from-bottom-4 fade-in duration-500 outline-none focus:outline-none"
+            className="fixed bottom-16 right-6 z-[9998] group animate-in slide-in-from-right-8 fade-in duration-500 outline-none focus:outline-none"
         >
             <div className="bg-[#18181b]/80 backdrop-blur-xl border border-white/10 rounded-full py-2 pl-3 pr-2 flex items-center gap-3 shadow-2xl hover:border-indigo-500/50 hover:bg-[#18181b] transition-all duration-300 active:scale-95 group-hover:shadow-[0_0_20px_rgba(99,102,241,0.3)]">
 

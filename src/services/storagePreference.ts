@@ -116,6 +116,32 @@ export async function setLocalFolderHandle(handle: FileSystemDirectoryHandle): P
 }
 
 /**
+ * Attempt to restore local folder handle with user permission
+ * Must be called inside a user gesture (e.g., button click)
+ */
+export async function restoreLocalFolderConnection(): Promise<FileSystemDirectoryHandle | null> {
+    if (!isFileSystemAccessSupported()) return null;
+
+    try {
+        const handle = await getLocalFolderHandle();
+        if (!handle) return null;
+
+        // "readwrite" permission is required for saving changes.
+        // requestPermission MUST be called in a user gesture context.
+        // If we are here, we assume the caller is wrapping this in a click handler.
+        const headerPermission = await (handle as any).requestPermission({ mode: 'readwrite' });
+
+        if (headerPermission === 'granted') {
+            return handle;
+        }
+        return null;
+    } catch (e) {
+        console.error('[StoragePreference] Permission restore failed:', e);
+        return null;
+    }
+}
+
+/**
  * Prompt user to select local folder
  */
 export async function selectLocalFolder(): Promise<FileSystemDirectoryHandle | null> {
