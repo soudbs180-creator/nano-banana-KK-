@@ -97,6 +97,9 @@ const AppContent: React.FC = () => {
   // Sync user with KeyManager and handle Modal Logic (Storage -> API)
   useEffect(() => {
     if (user) {
+      // Sync Costs
+      import('./services/costService').then(({ setUserId }) => setUserId(user.id));
+
       // First sync KeyManager
       keyManager.setUserId(user.id).then(async () => {
         // Check storage mode first

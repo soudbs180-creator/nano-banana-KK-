@@ -206,6 +206,9 @@ export function recordCost(
 
     saveDailyCosts(currentData);
     console.log(`[CostService] Recorded: $${cost.toFixed(4)} (${details})`);
+
+    // Trigger Sync
+    saveToCloud();
 }
 
 export function getTodayCosts(): DailyCostData {
@@ -263,10 +266,67 @@ const BUDGET_STORAGE_KEY = 'kk_studio_daily_budget';
 
 export function getDailyBudget(): number {
     const stored = localStorage.getItem(BUDGET_STORAGE_KEY);
-    // Default to -1 (Unlimited) if not set
     return stored ? parseFloat(stored) : -1;
 }
 
 export function setDailyBudget(amount: number): void {
     localStorage.setItem(BUDGET_STORAGE_KEY, amount.toString());
+    saveToCloud();
+}
+
+// --- Cloud Sync ---
+import { supabase } from '../lib/supabase';
+
+let currentUserId: string | null = null;
+let isSyncing = false;
+
+export async function setUserId(userId: string | null) {
+    if (currentUserId === userId) return;
+    currentUserId = userId;
+    if (userId) loadFromCloud();
+}
+
+async function loadFromCloud() {
+    if (!currentUserId || isSyncing) return;
+    isSyncing = true;
+    try {
+        const { data } = await supabase.from('user_settings').select('daily_budget, usage_stats').eq('user_id', currentUserId).single();
+        if (data) {
+            // Sync Budget
+            if (data.daily_budget !== null && data.daily_budget !== undefined) {
+                localStorage.setItem(BUDGET_STORAGE_KEY, String(data.daily_budget));
+            }
+
+            // Sync Usage Stats
+            if (data.usage_stats) {
+                const cloudStats = data.usage_stats as DailyCostData;
+                // Only sync if it's for today (CostService resets daily)
+                if (cloudStats.date === getTodayString()) {
+                    // Simple merge: keep whichever has higher cost (assuming accumulation)
+                    const local = loadDailyCosts();
+                    if (cloudStats.totalCostUsd > local.totalCostUsd) {
+                        try {
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudStats));
+                        } catch (e) { console.warn('Failed to save synced costs', e); }
+                    }
+                }
+            }
+        }
+    } catch (e) { console.warn('[CostService] Sync load failed', e); }
+    finally { isSyncing = false; }
+}
+
+async function saveToCloud() {
+    if (!currentUserId) return;
+    try {
+        // Use UPSERT to update cost fields without validating other columns (like api_keys)
+        await supabase.from('user_settings').upsert({
+            user_id: currentUserId,
+            daily_budget: getDailyBudget(),
+            usage_stats: loadDailyCosts(),
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+    } catch (e) {
+        console.warn('[CostService] Sync save failed', e);
+    }
 }

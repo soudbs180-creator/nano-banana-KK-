@@ -159,12 +159,19 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         try {
                             const handle = await getLocalFolderHandle();
                             if (handle) {
-                                logInfo('CanvasContext', `Restored local folder handle: ${handle.name}`);
-                                setState(prev => ({
-                                    ...prev,
-                                    fileSystemHandle: handle,
-                                    folderName: handle.name
-                                }));
+                                // Verify permission before setting state (Cloud/Web requirement)
+                                // @ts-ignore
+                                const perm = await handle.queryPermission({ mode: 'readwrite' });
+                                if (perm === 'granted') {
+                                    logInfo('CanvasContext', `Restored local folder handle: ${handle.name}`);
+                                    setState(prev => ({
+                                        ...prev,
+                                        fileSystemHandle: handle,
+                                        folderName: handle.name
+                                    }));
+                                } else {
+                                    logInfo('CanvasContext', `Local folder permission pending: ${perm}`);
+                                }
                             } else {
                                 logInfo('CanvasContext', 'No persisted local folder handle found.');
                             }
@@ -280,6 +287,22 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const jsonStr = JSON.stringify(stateToSave);
                 if (jsonStr.length > 4500000) console.warn('Canvas state approaching localStorage quota limit.');
                 localStorage.setItem(STORAGE_KEY, jsonStr);
+
+                // [NEW] Auto-save to Local File System if connected
+                if (state.fileSystemHandle) {
+                    try {
+                        // @ts-ignore
+                        const projectFile = await state.fileSystemHandle.getFileHandle('project.json', { create: true });
+                        // @ts-ignore
+                        const writable = await projectFile.createWritable();
+                        // Save minimal state (canvases only) to keep project.json clean compatible with other tools
+                        await writable.write(JSON.stringify({ canvases: stateToSave.canvases }, null, 2));
+                        await writable.close();
+                    } catch (e) {
+                        // Permission might be lost or handle invalid
+                    }
+                }
+
             } catch (error: any) {
                 if (error.name === 'QuotaExceededError') console.error('localStorage quota exceeded.');
                 else console.error('Failed to save state:', error);
@@ -445,11 +468,25 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             imageNodes: [...c.imageNodes, ...validNodes]
         }));
 
-        // 2. Save to IndexedDB in background
+        // 2. Save to IndexedDB (and FileSystem) in background
         try {
-            await Promise.all(validNodes.map(node => saveImage(node.id, node.url)));
+            await Promise.all(validNodes.map(async node => {
+                // A. IndexedDB (Fast Cache)
+                await saveImage(node.id, node.url);
+
+                // B. File System (Persistent Disk)
+                if (state.fileSystemHandle) {
+                    try {
+                        const res = await fetch(node.url);
+                        const blob = await res.blob();
+                        await fileSystemService.saveImageToHandle(state.fileSystemHandle, node.id, blob);
+                    } catch (e) {
+                        console.warn(`[CanvasContext] Failed to save image ${node.id} to disk`, e);
+                    }
+                }
+            }));
         } catch (error) {
-            console.error('[CanvasContext] Failed to save images to IndexedDB:', error);
+            console.error('[CanvasContext] Failed to save images:', error);
             // We continue to update state so UI shows standard image even if persistence failed temporarily
         }
     }, [updateCanvas]);
@@ -901,6 +938,54 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 2. Fallback to Full Picker
             if (!handle) {
                 handle = await fileSystemService.selectDirectory();
+            }
+
+            // [NEW] Migration: Save currently loaded images (Temp) to the new Local Folder
+            // This ensures work done in Temp mode is not lost/abandoned when switching
+            if (handle) {
+                const currentImages = await getAllImages(); // Map<id, base64/url>
+
+                // Helper to save base64/blob to disk
+                const saveToDisk = async (id: string, urlOrData: string) => {
+                    try {
+                        let blob: Blob;
+                        if (urlOrData.startsWith('data:')) {
+                            const res = await fetch(urlOrData);
+                            blob = await res.blob();
+                        } else {
+                            // It's a blob URL
+                            const res = await fetch(urlOrData);
+                            blob = await res.blob();
+                        }
+
+                        await fileSystemService.saveImageToHandle(handle!, id, blob);
+                    } catch (e) {
+                        console.warn(`Failed to migrate image ${id} to local folder`, e);
+                    }
+                };
+
+                // Identify images in current state
+                const promises: Promise<void>[] = [];
+                state.canvases.forEach(c => {
+                    c.imageNodes.forEach(img => {
+                        if (img.id) promises.push(saveToDisk(img.id, img.url || currentImages.get(img.id) || ''));
+                    });
+                    c.promptNodes.forEach(pn => {
+                        pn.referenceImages?.forEach(ref => {
+                            if (ref.id && ref.data) {
+                                const data = ref.data.startsWith('data:') ? ref.data : `data:${ref.mimeType};base64,${ref.data}`;
+                                promises.push(saveToDisk(ref.id, data));
+                            }
+                        });
+                    });
+                });
+
+                if (promises.length > 0) {
+                    await Promise.allSettled(promises);
+                    // eslint-disable-next-line @typescript-eslint/no-var-requires
+                    const { notify } = await import('../services/notificationService');
+                    notify.success('数据迁移', `已将 ${promises.length} 张临时图片保存到本地文件夹`);
+                }
             }
 
             const { canvases, images } = await fileSystemService.loadProjectWithThumbs(handle);

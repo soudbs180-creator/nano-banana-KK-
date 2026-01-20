@@ -208,54 +208,45 @@ export const fileSystemService = {
         return { canvases, images };
     },
     /**
-     * Get usage of images folder in bytes
+     * Get usage of images folder in bytes (Recursive)
      */
     async getFolderUsage(handle: FileSystemDirectoryHandle): Promise<number> {
-        let size = 0;
+        let totalSize = 0;
         let fileCount = 0;
 
-        // 1. Count files in the ROOT directory (Legacy behavior often saved here)
-        try {
-            // @ts-ignore
-            for await (const entry of handle.values()) {
-                if (entry.kind === 'file') {
-                    // @ts-ignore
-                    const file = await entry.getFile();
-                    size += file.size;
-                    fileCount++;
-                }
-            }
-        } catch (e) {
-            console.warn('Failed to count root files', e);
-        }
+        const processHandle = async (currentHandle: FileSystemDirectoryHandle, depth: number) => {
+            if (depth > 3) return; // Limit depth to avoid performance issues
 
-        // 2. Count specific subdirectories
-        const countDir = async (dirName: string) => {
             try {
                 // @ts-ignore
-                const dirHandle = await handle.getDirectoryHandle(dirName);
-                // @ts-ignore
-                for await (const entry of dirHandle.values()) {
+                for await (const entry of currentHandle.values()) {
                     if (entry.kind === 'file') {
-                        // @ts-ignore
-                        const file = await entry.getFile();
-                        size += file.size;
-                        fileCount++;
+                        try {
+                            // @ts-ignore
+                            const file = await entry.getFile();
+                            totalSize += file.size;
+                            fileCount++;
+                        } catch (e) {
+                            // Ignore file read error
+                        }
+                    } else if (entry.kind === 'directory') {
+                        // Exclude hidden or system folders if needed?
+                        if (!entry.name.startsWith('.')) {
+                            // @ts-ignore
+                            const subHandle = await currentHandle.getDirectoryHandle(entry.name);
+                            await processHandle(subHandle, depth + 1);
+                        }
                     }
                 }
             } catch (e) {
-                // Directory might not exist
+                console.warn(`Failed to read directory at depth ${depth}`, e);
             }
         };
 
-        await countDir(DIRS.ORIGINALS);
-        // await countDir(DIRS.LEGACY); // DIRS.LEGACY is 'images', only count if it exists as subfolder
-        // Note: If files are in root, step 1 covers them. If in 'images' folder, this covers them.
-        await countDir(DIRS.LEGACY);
-        await countDir(DIRS.THUMBNAILS);
+        await processHandle(handle, 0);
 
-        logInfo('FileSystem', `Calculated folder usage`, `${fileCount} files, ${size} bytes`);
-        return size;
+        logInfo('FileSystem', `Calculated folder usage (recursive)`, `${fileCount} files, ${totalSize} bytes`);
+        return totalSize;
     },
 
     /**
@@ -414,6 +405,53 @@ export const fileSystemService = {
         } catch (error) {
             console.error('Failed to move project:', error);
             throw new Error('Migration failed: ' + (error as any).message);
+        }
+    },
+
+    /**
+     * Save a single image to the directory handle
+     */
+    async saveImageToHandle(handle: FileSystemDirectoryHandle, id: string, blob: Blob): Promise<void> {
+        try {
+            // @ts-ignore
+            const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
+            const filename = `${id}.png`;
+
+            // Check existence
+            try {
+                // @ts-ignore
+                await originalsDir.getFileHandle(filename);
+                // If exists, skip to save time
+                return;
+            } catch {
+                // Not found, proceed
+            }
+
+            // @ts-ignore
+            const fileHandle = await originalsDir.getFileHandle(filename, { create: true });
+            // @ts-ignore
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+
+            // Generate Thumb
+            try {
+                // @ts-ignore
+                const thumbsDir = await handle.getDirectoryHandle(DIRS.THUMBNAILS, { create: true });
+                const originalUrl = URL.createObjectURL(blob);
+                const thumbBlob = await compressImageBlob(originalUrl, 300);
+                URL.revokeObjectURL(originalUrl);
+                // @ts-ignore
+                const thumbHandle = await thumbsDir.getFileHandle(filename, { create: true });
+                // @ts-ignore
+                const thumbWritable = await thumbHandle.createWritable();
+                await thumbWritable.write(thumbBlob);
+                await thumbWritable.close();
+            } catch (ignore) { }
+
+        } catch (e) {
+            console.error('Failed to save image to handle', e);
+            throw e;
         }
     }
 };
