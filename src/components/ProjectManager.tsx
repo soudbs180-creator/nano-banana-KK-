@@ -4,7 +4,7 @@ import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import {
     Loader2, Menu, Layers, Search, ZoomIn, ZoomOut,
-    Focus, Grid3x3, LayoutDashboard, GripVertical
+    Focus, Grid3x3, LayoutDashboard, GripVertical, Bot
 } from 'lucide-react';
 
 interface ProjectManagerProps {
@@ -17,6 +17,9 @@ interface ProjectManagerProps {
     onResetView: () => void;
     onToggleGrid: () => void;
     onAutoArrange: () => void;
+    // Chat toggle for mobile robot button
+    onToggleChat?: () => void;
+    isChatOpen?: boolean;
 }
 
 const ProjectManager: React.FC<ProjectManagerProps> = ({
@@ -28,7 +31,9 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     onZoomOut,
     onResetView,
     onToggleGrid,
-    onAutoArrange
+    onAutoArrange,
+    onToggleChat,
+    isChatOpen
 }) => {
     // ... existing state ...
     const { state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas, clearAllData, canCreateCanvas } = useCanvas();
@@ -37,6 +42,31 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
+
+    // Mobile keyboard offset for sidebar
+    const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+    // Track keyboard visibility using visualViewport API
+    useEffect(() => {
+        if (!isMobile) return;
+
+        const handleViewportResize = () => {
+            const vv = window.visualViewport;
+            if (vv) {
+                const heightDiff = window.innerHeight - vv.height;
+                // Only apply offset if keyboard is likely open (> 100px difference)
+                setKeyboardOffset(heightDiff > 100 ? heightDiff : 0);
+            }
+        };
+
+        window.visualViewport?.addEventListener('resize', handleViewportResize);
+        window.visualViewport?.addEventListener('scroll', handleViewportResize);
+
+        return () => {
+            window.visualViewport?.removeEventListener('resize', handleViewportResize);
+            window.visualViewport?.removeEventListener('scroll', handleViewportResize);
+        };
+    }, [isMobile]);
 
     // Dragging Logic
     const [topPosition, setTopPosition] = useState(() => {
@@ -226,8 +256,12 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
     return (
         <div
-            className={`fixed left-4 z-50 flex flex-col items-start gap-2 select-none transition-transform duration-500 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
-            style={{ top: isMobile ? 80 : topPosition }}
+            className={`fixed left-4 z-50 flex flex-col items-start gap-2 select-none transition-all duration-300 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
+            style={{
+                top: isMobile ? 80 : topPosition,
+                // Move sidebar up when keyboard is open on mobile
+                transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : undefined
+            }}
             onMouseEnter={() => setIsCollapsed(false)}
             onTouchStart={() => setIsCollapsed(false)}
         >
@@ -402,6 +436,26 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 >
                     <LayoutDashboard size={20} />
                 </button>
+
+                {/* Mobile Only: Robot Chat Button */}
+                {isMobile && onToggleChat && (
+                    <>
+                        <div className="w-full h-px bg-white/5 my-1" />
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onToggleChat(); }}
+                            className={`p-2 rounded-lg transition-all outline-none focus:outline-none relative ${isChatOpen
+                                ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
+                                : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            title="AI 助手"
+                            tabIndex={-1}
+                        >
+                            <Bot size={20} />
+                            {/* Status Dot */}
+                            <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-400 rounded-full border border-[#1c1c1e] animate-pulse" />
+                        </button>
+                    </>
+                )}
 
             </div>
 

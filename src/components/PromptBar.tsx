@@ -5,21 +5,19 @@ import { GenerationConfig, AspectRatio, ImageSize, ModelType, ReferenceImage } f
 const MobileMenu = ({ title, onClose, children }: { title: string, onClose: () => void, children: React.ReactNode }) => (
     <>
         <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md animate-fadeIn" onClick={onClose} />
-        <div className="fixed bottom-0 left-0 right-0 z-[201] bg-[#1c1c1e]/95 backdrop-blur-2xl border-t border-white/10 rounded-t-[32px] p-6 animate-slideUp pb-12 flex flex-col gap-6 shadow-[0_-8px_30px_rgba(0,0,0,0.5)] transform transition-transform">
-            <div className="w-12 h-1.5 bg-zinc-700/50 rounded-full mx-auto -mt-2 mb-1" />
-            <div className="flex items-center justify-between">
-                <span className="text-lg font-bold text-white tracking-tight">{title}</span>
+        <div className="fixed bottom-4 left-4 right-4 z-[201] bg-[#1c1c1e] border border-white/10 rounded-[32px] p-5 animate-slideUp shadow-2xl flex flex-col gap-5 max-h-[80vh] origin-bottom transform transition-transform">
+            <div className="w-10 h-1 bg-zinc-700/50 rounded-full mx-auto" />
+            <div className="flex items-center justify-between px-1">
+                <span className="text-base font-bold text-white tracking-wide">{title}</span>
                 <button
                     onClick={onClose}
-                    className="w-8 h-8 flex items-center justify-center bg-zinc-800/50 hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-white transition-colors"
+                    className="w-7 h-7 flex items-center justify-center bg-zinc-800/50 hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-white transition-colors"
                 >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
                 </button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto w-full custom-scrollbar overscroll-contain">
-                <div className="flex flex-col gap-3 w-full">
-                    {children}
-                </div>
+            <div className="overflow-y-auto custom-scrollbar px-1 pb-1">
+                {children}
             </div>
         </div>
     </>
@@ -304,23 +302,42 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         </button>
                         {activeMenu === 'ratio' && (
                             isMobile ? (
-                                <MobileMenu title="选择宽高比" onClose={() => setActiveMenu(null)}>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {availableRatios.map(ratio => (
-                                            <button
-                                                key={ratio}
-                                                className={`p-3 rounded-lg border text-xs font-medium transition-all ${config.aspectRatio === ratio
-                                                    ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400'
-                                                    : 'bg-white/5 border-white/5 text-zinc-300 hover:bg-white/10'
-                                                    }`}
-                                                onClick={() => {
-                                                    setConfig(prev => ({ ...prev, aspectRatio: ratio }));
-                                                    setActiveMenu(null);
-                                                }}
-                                            >
-                                                {ratio}
-                                            </button>
-                                        ))}
+                                <MobileMenu title="选择宽高比 (Aspect Ratio)" onClose={() => setActiveMenu(null)}>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {availableRatios.map(ratio => {
+                                            const [w, h] = ratio.split(':').map(Number);
+                                            return (
+                                                <button
+                                                    key={ratio}
+                                                    className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border transition-all active:scale-95 ${config.aspectRatio === ratio
+                                                        ? 'bg-indigo-500 text-white border-indigo-500 shadow-xl shadow-indigo-500/30 ring-1 ring-inset ring-white/20'
+                                                        : 'bg-[#27272a] border-white/5 text-zinc-400 hover:bg-zinc-800'
+                                                        }`}
+                                                    onClick={() => {
+                                                        setConfig(prev => ({ ...prev, aspectRatio: ratio }));
+                                                        setActiveMenu(null);
+                                                    }}
+                                                >
+                                                    {/* Visual Box Centered in fixed height container */}
+                                                    <div className="h-8 w-full flex items-center justify-center mb-1">
+                                                        <div
+                                                            className="transition-all"
+                                                            style={{
+                                                                aspectRatio: `${w}/${h}`,
+                                                                height: h >= w ? '24px' : 'auto',
+                                                                width: w > h ? '32px' : 'auto',
+                                                                maxHeight: '24px',
+                                                                maxWidth: '32px',
+                                                                border: '2px solid currentColor',
+                                                                borderRadius: '3px',
+                                                                backgroundColor: config.aspectRatio === ratio ? 'rgba(255,255,255,0.2)' : 'transparent'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <span className={`text-[11px] font-bold tracking-wider ${config.aspectRatio === ratio ? 'text-white' : 'text-zinc-500'}`}>{ratio}</span>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </MobileMenu>
                             ) : (
@@ -368,21 +385,26 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             </button>
                             {activeMenu === 'size' && (
                                 isMobile ? (
-                                    <MobileMenu title="选择分辨率" onClose={() => setActiveMenu(null)}>
-                                        <div className="flex flex-col gap-2">
+                                    <MobileMenu title="选择分辨率 (Resolution)" onClose={() => setActiveMenu(null)}>
+                                        <div className="grid grid-cols-3 gap-3">
                                             {availableSizes.map(size => (
                                                 <button
                                                     key={size}
-                                                    className={`p-3 rounded-lg border text-sm font-medium transition-all ${config.imageSize === size
-                                                        ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400'
-                                                        : 'bg-white/5 border-white/5 text-zinc-300 hover:bg-white/10'
+                                                    className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border transition-all active:scale-95 ${config.imageSize === size
+                                                        ? 'bg-indigo-500 text-white border-indigo-500 shadow-xl shadow-indigo-500/30 ring-1 ring-inset ring-white/20'
+                                                        : 'bg-[#27272a] border-white/5 text-zinc-400 hover:bg-zinc-800'
                                                         }`}
                                                     onClick={() => {
                                                         setConfig(prev => ({ ...prev, imageSize: size }));
                                                         setActiveMenu(null);
                                                     }}
                                                 >
-                                                    {size}
+                                                    <div className={`p-1.5 rounded-lg ${config.imageSize === size ? 'bg-white/20' : 'bg-white/5'}`}>
+                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                                                        </svg>
+                                                    </div>
+                                                    <span className={`text-xs font-bold ${config.imageSize === size ? 'text-white' : 'text-zinc-500'}`}>{size}</span>
                                                 </button>
                                             ))}
                                         </div>
@@ -485,31 +507,35 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             </button>
                             {activeMenu === 'model' && (
                                 isMobile ? (
-                                    <MobileMenu title="选择模型" onClose={() => setActiveMenu(null)}>
-                                        <div className="flex flex-col gap-2">
+                                    <MobileMenu title="选择模型 (Model)" onClose={() => setActiveMenu(null)}>
+                                        <div className="flex flex-col gap-3">
                                             {[
-                                                { id: ModelType.NANO_BANANA, label: 'Nano Banana', desc: '极速生成，适合快速验证灵感' },
-                                                { id: ModelType.NANO_BANANA_PRO, label: 'Nano Banana Pro', desc: '增强细节与构图，适合高质量预览' },
-                                                { id: ModelType.IMAGEN_4, label: 'Imagen 4.0', desc: '谷歌最新旗舰，写实感与光影极佳' },
-                                                { id: ModelType.IMAGEN_4_ULTRA, label: 'Imagen 4.0 Ultra', desc: '极致画质与分辨率，适合商业级输出' }
+                                                { id: ModelType.NANO_BANANA, label: 'Nano Banana', desc: '极速生成，适合快速验证灵感', iconColor: 'text-blue-400' },
+                                                { id: ModelType.NANO_BANANA_PRO, label: 'Nano Banana Pro', desc: '增强细节与构图，适合高质量预览', iconColor: 'text-yellow-400' },
+                                                { id: ModelType.IMAGEN_4, label: 'Imagen 4.0', desc: '谷歌最新旗舰，写实感与光影极佳', iconColor: 'text-indigo-400' },
+                                                { id: ModelType.IMAGEN_4_ULTRA, label: 'Imagen 4.0 Ultra', desc: '极致画质与分辨率，适合商业级输出', iconColor: 'text-purple-400' }
                                             ].map(model => (
                                                 <button
                                                     key={model.id}
-                                                    className={`w-full px-4 py-3 text-left flex flex-col gap-1 rounded-xl border transition-all ${config.model === model.id ? 'bg-indigo-500/10 border-indigo-500/50' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}
+                                                    className={`w-full px-4 py-4 text-left flex flex-col gap-1.5 rounded-2xl border transition-all active:scale-[0.98] ${config.model === model.id
+                                                        ? 'bg-[#18181b] border-indigo-500 shadow-[0_0_20px_-5px_rgba(99,102,241,0.3)]'
+                                                        : 'bg-[#27272a] border-white/5 hover:bg-zinc-800'}`}
                                                     onClick={() => {
                                                         setConfig(prev => ({ ...prev, model: model.id }));
                                                         setActiveMenu(null);
                                                     }}
                                                 >
                                                     <div className="flex items-center justify-between">
-                                                        <span className={`text-sm font-semibold ${config.model === model.id ? 'text-indigo-400' : 'text-slate-200'}`}>
+                                                        <span className={`text-base font-bold ${config.model === model.id ? 'text-indigo-400' : 'text-slate-200'}`}>
                                                             {model.label}
                                                         </span>
                                                         {config.model === model.id && (
-                                                            <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                                                            <div className="flex items-center justify-center w-5 h-5 rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/40">
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                                            </div>
                                                         )}
                                                     </div>
-                                                    <span className="text-xs text-zinc-500 leading-tight block">{model.desc}</span>
+                                                    <span className="text-xs text-zinc-500 leading-tight">{model.desc}</span>
                                                 </button>
                                             ))}
                                         </div>
@@ -569,9 +595,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             </button>
                             {activeMenu === 'tools' && (
                                 isMobile ? (
-                                    <MobileMenu title="工具与设置" onClose={() => setActiveMenu(null)}>
+                                    <MobileMenu title="工具与设置 (Tools)" onClose={() => setActiveMenu(null)}>
                                         <button
-                                            className={`w-full px-4 py-3 flex items-center justify-between rounded-xl border transition-all ${!config.model.includes('gemini') ? 'opacity-50 cursor-not-allowed bg-white/5 border-white/5' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}
+                                            className={`w-full px-4 py-4 flex items-center justify-between rounded-2xl border transition-all active:scale-[0.98] ${!config.model.includes('gemini')
+                                                ? 'opacity-50 cursor-not-allowed bg-[#27272a] border-white/5'
+                                                : config.enableGrounding
+                                                    ? 'bg-[#18181b] border-indigo-500 shadow-[0_0_20px_-5px_rgba(99,102,241,0.3)]'
+                                                    : 'bg-[#27272a] border-white/5 hover:bg-zinc-800'
+                                                }`}
                                             onClick={() => {
                                                 if (config.model.includes('gemini')) {
                                                     setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }));
@@ -580,9 +611,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 }
                                             }}
                                         >
-                                            <div className="flex flex-col items-start gap-1">
-                                                <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
+                                            <div className="flex flex-col items-start gap-1.5">
+                                                <div className="flex items-center gap-2 text-sm font-bold text-slate-200">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
                                                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                                                     </svg>
                                                     Grounding with Google Search
@@ -590,8 +621,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 <div className="text-xs text-zinc-500">使用谷歌搜索优化生成结果</div>
                                             </div>
 
-                                            <div className={`w-10 h-6 rounded-full relative transition-colors ${config.enableGrounding ? 'bg-indigo-500' : 'bg-zinc-700'}`}>
-                                                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${config.enableGrounding ? 'left-5' : 'left-1'}`} />
+                                            <div className={`w-12 h-7 rounded-full relative transition-all duration-300 ${config.enableGrounding ? 'bg-indigo-500 shadow-inner' : 'bg-zinc-700 shadow-inner'}`}>
+                                                <div
+                                                    className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300 ${config.enableGrounding ? 'left-[22px]' : 'left-1'}`}
+                                                />
                                             </div>
                                         </button>
                                     </MobileMenu>
@@ -650,21 +683,22 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             </button>
                             {activeMenu === 'count' && (
                                 isMobile ? (
-                                    <MobileMenu title="选择生成数量" onClose={() => setActiveMenu(null)}>
-                                        <div className="flex gap-2 justify-center">
+                                    <MobileMenu title="选择生成数量 (Count)" onClose={() => setActiveMenu(null)}>
+                                        <div className="grid grid-cols-4 gap-3">
                                             {[1, 2, 3, 4].map(num => (
                                                 <button
                                                     key={num}
-                                                    className={`flex-1 p-3 rounded-lg border text-base font-bold transition-all ${config.parallelCount === num
-                                                        ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400'
-                                                        : 'bg-white/5 border-white/5 text-zinc-300 hover:bg-white/10'
+                                                    className={`aspect-square flex flex-col items-center justify-center rounded-2xl border transition-all active:scale-95 ${config.parallelCount === num
+                                                        ? 'bg-indigo-500 text-white border-indigo-500 shadow-xl shadow-indigo-500/30 ring-1 ring-inset ring-white/20'
+                                                        : 'bg-[#27272a] border-white/5 text-zinc-400 hover:bg-zinc-800'
                                                         }`}
                                                     onClick={() => {
                                                         setConfig(prev => ({ ...prev, parallelCount: num }));
                                                         setActiveMenu(null);
                                                     }}
                                                 >
-                                                    {num}
+                                                    <span className={`text-2xl font-bold ${config.parallelCount === num ? 'text-white' : 'text-zinc-500'}`}>{num}</span>
+                                                    <span className="text-[10px] font-medium opacity-60">张</span>
                                                 </button>
                                             ))}
                                         </div>

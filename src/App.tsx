@@ -1509,6 +1509,8 @@ const AppContent: React.FC = () => {
         onResetView={handleResetView}
         onToggleGrid={handleToggleGrid}
         onAutoArrange={arrangeAllNodes}
+        onToggleChat={() => setIsChatOpen(prev => !prev)}
+        isChatOpen={isChatOpen}
       />
 
       {/* Search Palette */}

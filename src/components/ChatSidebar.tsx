@@ -60,6 +60,32 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0]); // Default Lite
     const [showModelMenu, setShowModelMenu] = useState(false);
 
+    // Mobile keyboard visibility state
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+
+    // Track keyboard visibility using visualViewport API
+    useEffect(() => {
+        if (!isMobile) return;
+
+        const handleViewportResize = () => {
+            const vv = window.visualViewport;
+            if (vv) {
+                const heightDiff = window.innerHeight - vv.height;
+                setKeyboardHeight(heightDiff > 100 ? heightDiff : 0);
+                setViewportHeight(vv.height);
+            }
+        };
+
+        window.visualViewport?.addEventListener('resize', handleViewportResize);
+        window.visualViewport?.addEventListener('scroll', handleViewportResize);
+
+        return () => {
+            window.visualViewport?.removeEventListener('resize', handleViewportResize);
+            window.visualViewport?.removeEventListener('scroll', handleViewportResize);
+        };
+    }, [isMobile]);
+
     // Auto-close timer ref
     const autoCloseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -248,46 +274,54 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
 
     return (
         <>
-            {/* 1. Draggable Floating Trigger (Purple Breathing) */}
-            <div
-                className={`fixed z-[90] transition-all duration-300 ease-in-out ${isOpen ? 'opacity-0 scale-50 pointer-events-none' : 'opacity-100 scale-100'}`}
-                style={{ left: position.x, bottom: position.y }}
-            >
+            {/* 1. Draggable Floating Trigger (Purple Breathing) - Desktop Only */}
+            {!isMobile && (
                 <div
-                    onMouseDown={startDrag}
-                    className={`group relative w-12 h-12 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-2xl animate-float-breathe cursor-move active:scale-95 transition-transform hover:brightness-110 ${isDragging ? 'cursor-grabbing scale-95' : ''}`}
-                    title="Open AI Assistant (Drag to move)"
+                    className={`fixed z-[90] transition-all duration-300 ease-in-out ${isOpen ? 'opacity-0 scale-50 pointer-events-none' : 'opacity-100 scale-100'}`}
+                    style={{ left: position.x, bottom: position.y }}
                 >
-                    {/* Inner Icon Breathing - Smaller now */}
-                    <Bot size={24} className="animate-icon-breathe drop-shadow-md pointer-events-none" />
+                    <div
+                        onMouseDown={startDrag}
+                        className={`group relative w-12 h-12 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-2xl animate-float-breathe cursor-move active:scale-95 transition-transform hover:brightness-110 ${isDragging ? 'cursor-grabbing scale-95' : ''}`}
+                        title="Open AI Assistant (Drag to move)"
+                    >
+                        {/* Inner Icon Breathing - Smaller now */}
+                        <Bot size={24} className="animate-icon-breathe drop-shadow-md pointer-events-none" />
 
-                    {/* Status Dot - Smaller */}
-                    <span className="absolute top-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#09090b] shadow-lg animate-pulse pointer-events-none" />
+                        {/* Status Dot - Smaller */}
+                        <span className="absolute top-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#09090b] shadow-lg animate-pulse pointer-events-none" />
 
-                    {/* Click handler strictly on a overlay to separate from drag?
+                        {/* Click handler strictly on a overlay to separate from drag?
                         Actually standard click works if no drag occurred.
                         But we need to distinguish click vs dragend.
                         Simple check: if moved > threshold.
                         For now, let's assume a clean click is quick.
                     */}
-                    <div
-                        className="absolute inset-0 rounded-full"
-                        onClick={(e) => {
-                            if (!isDragging) {
-                                e.stopPropagation();
-                                onToggle();
-                            }
-                        }}
-                    />
+                        <div
+                            className="absolute inset-0 rounded-full"
+                            onClick={(e) => {
+                                if (!isDragging) {
+                                    e.stopPropagation();
+                                    onToggle();
+                                }
+                            }}
+                        />
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* 2. Chat Card Popover (Morph Transformation) */}
+            {/* 2. Chat Card Popover (Morph Transformation) - Fullscreen on Mobile */}
             {isOpen && (
                 <div
                     onMouseEnter={handleMouseEnter}
-                    className="fixed z-[100] w-[380px] h-[600px] max-h-[80vh] flex flex-col bg-[#131316]/95 backdrop-blur-2xl border border-purple-500/30 rounded-3xl shadow-[0_0_50px_-12px_rgba(124,58,237,0.5)] animate-scale-up-corner overflow-hidden ring-1 ring-white/10 origin-bottom-left"
-                    style={{
+                    className={`fixed z-[100] flex flex-col bg-[#131316]/95 backdrop-blur-2xl border border-purple-500/30 shadow-[0_0_50px_-12px_rgba(124,58,237,0.5)] animate-scale-up-corner overflow-hidden ring-1 ring-white/10 ${isMobile
+                            ? 'inset-0 rounded-none'
+                            : 'w-[380px] h-[600px] max-h-[80vh] rounded-3xl origin-bottom-left'
+                        }`}
+                    style={isMobile ? {
+                        height: keyboardHeight > 0 ? `${viewportHeight}px` : '100dvh',
+                        transition: 'height 0.2s ease-out'
+                    } : {
                         left: Math.min(window.innerWidth - 390, Math.max(20, position.x)),
                         bottom: Math.max(20, position.y), // Align bottom with bubble to look like expansion
                         transformOrigin: getTransformOrigin()
