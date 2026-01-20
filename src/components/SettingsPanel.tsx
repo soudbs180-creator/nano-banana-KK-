@@ -19,7 +19,7 @@ interface SettingsPanelProps {
 // --- Sub-components ---
 
 const DashboardView = ({ keyStats }: { keyStats: any }) => {
-    const dailyCosts = getTodayCosts();
+    const [dailyCosts, setDailyCosts] = React.useState(getTodayCosts());
     const [budget, setBudget] = React.useState<number>(-1);
     const [isEditingBudget, setIsEditingBudget] = React.useState(false);
     const [newBudget, setNewBudget] = React.useState('');
@@ -27,6 +27,7 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
     useEffect(() => {
         import('../services/costService').then(mod => {
             setBudget(mod.getDailyBudget());
+            setDailyCosts(mod.getTodayCosts());
         });
     }, []);
 
@@ -57,15 +58,22 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
     };
 
     const [isSyncing, setIsSyncing] = React.useState(false);
+    const [isSuccess, setIsSuccess] = React.useState(false);
 
     const handleSync = async () => {
+        if (isSyncing) return;
         setIsSyncing(true);
+        setIsSuccess(false);
         try {
             const { forceSync } = await import('../services/costService');
             await forceSync();
-            // Reload budget after sync
+            // Reload budget and costs after sync to reflect merged data
             const mod = await import('../services/costService');
             setBudget(mod.getDailyBudget());
+            setDailyCosts(mod.getTodayCosts());
+
+            setIsSuccess(true);
+            setTimeout(() => setIsSuccess(false), 2000);
         } catch (e) {
             console.error(e);
         } finally {
@@ -88,21 +96,57 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-start mb-6 hidden md:flex">
-                <div>
-                    <h3 className="text-2xl font-bold text-white">
-                        仪表盘 (Dashboard)
-                    </h3>
-                    <span className="block text-xs text-zinc-500 font-normal mt-1">系统概览与偏好设置 (System Dashboard & Preferences)</span>
+            {/* Desktop Header */}
+            <div className="hidden md:block">
+                <div className="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 className="text-2xl font-bold text-white">
+                            仪表盘 (Dashboard)
+                        </h3>
+                        <span className="block text-xs text-zinc-500 font-normal mt-1">系统概览与偏好设置 (System Dashboard & Preferences)</span>
+                    </div>
+                    <button
+                        onClick={handleSync}
+                        disabled={isSyncing || isSuccess}
+                        className={`group relative flex items-center gap-2 px-4 py-2 bg-gradient-to-r bg-[length:200%_100%] hover:bg-right transition-all duration-500 text-white rounded-full shadow-lg active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed
+                            ${isSuccess
+                                ? 'from-emerald-500 via-green-500 to-emerald-500 shadow-emerald-500/20'
+                                : 'from-indigo-500 via-purple-500 to-indigo-500 shadow-indigo-500/20'}`}
+                    >
+                        {isSuccess ? (
+                            <Check size={16} className="animate-in zoom-in spin-in-90 duration-300" />
+                        ) : (
+                            <RefreshCw size={16} className={isSyncing ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"} />
+                        )}
+                        <span className="text-sm font-bold tracking-wide">
+                            {isSyncing ? '同步中...' : isSuccess ? '同步完成 (Synced)' : '同步数据 (Sync)'}
+                        </span>
+                    </button>
                 </div>
-                <button
-                    onClick={handleSync}
-                    disabled={isSyncing}
-                    className="group relative flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 bg-[length:200%_100%] hover:bg-right transition-all duration-500 text-white rounded-full shadow-lg shadow-indigo-500/20 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                    <RefreshCw size={16} className={isSyncing ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"} />
-                    <span className="text-sm font-bold tracking-wide">同步数据 (Sync)</span>
-                </button>
+            </div>
+
+            {/* Mobile Header */}
+            <div className="md:hidden block">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-bold text-white">仪表盘</h3>
+                    <button
+                        onClick={handleSync}
+                        disabled={isSyncing || isSuccess}
+                        className={`group relative flex items-center gap-2 px-3 py-2 bg-gradient-to-r bg-[length:200%_100%] hover:bg-right transition-all duration-500 text-white rounded-full shadow-lg active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed
+                            ${isSuccess
+                                ? 'from-emerald-500 via-green-500 to-emerald-500 shadow-emerald-500/20'
+                                : 'from-indigo-500 via-purple-500 to-indigo-500 shadow-indigo-500/20'}`}
+                    >
+                        {isSuccess ? (
+                            <Check size={14} className="animate-in zoom-in spin-in-90 duration-300" />
+                        ) : (
+                            <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
+                        )}
+                        <span className="text-xs font-bold tracking-wide">
+                            {isSyncing ? '同步中' : isSuccess ? '完成' : '同步'}
+                        </span>
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-4 h-auto md:h-[320px]">

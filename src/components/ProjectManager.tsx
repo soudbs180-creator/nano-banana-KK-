@@ -227,7 +227,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     return (
         <div
             className={`fixed left-4 z-50 flex flex-col items-start gap-2 select-none transition-transform duration-500 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
-            style={{ top: topPosition }}
+            style={{ top: isMobile ? 80 : topPosition }}
             onMouseEnter={() => setIsCollapsed(false)}
             onTouchStart={() => setIsCollapsed(false)}
         >
