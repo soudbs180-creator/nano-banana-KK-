@@ -12,110 +12,83 @@ export const syncService = {
     // --- Database Sync (Canvas State) ---
 
     async saveCanvas(canvas: Canvas) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return null;
-
-        // Strip heavy data if any remains (though IndexedDB handles images, we ensure JSON is light)
-        const lightCanvas = {
-            ...canvas,
-            // Ensure no base64 creeps in
-            imageNodes: canvas.imageNodes.map(img => ({
-                ...img,
-                url: img.url.startsWith('data:') ? '' : img.url // Only save remote URLs or empty (if local references exist)
-            }))
-        };
-
-        const { error } = await supabase
-            .from('user_canvases')
-            .upsert({
-                user_id: user.id,
-                canvas_id: canvas.id,
-                name: canvas.name,
-                data: lightCanvas,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'user_id, canvas_id' });
-
-        if (error) throw error;
+        // PERMITTED: Sync Metadata Only (if needed for user profile stats)
+        // BUT for "Local Only" request, we disable saving the heavy canvas data.
+        // We can optionally update a 'last_active' timestamp if we had a table for it,
+        // but for now, we simply do nothing to ensure data sovereignty.
+        return;
     },
 
     async loadCanvases(): Promise<Canvas[]> {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return [];
-
-        const { data, error } = await supabase
-            .from('user_canvases')
-            .select('data')
-            .eq('user_id', user.id);
-
-        if (error) throw error;
-        return data.map(row => row.data as Canvas);
+        // Return empty or fetch strictly metadata if we had it.
+        // Since we are moving to FileSystem/LocalStorage, cloud load is disabled.
+        return [];
     },
 
     // --- Storage Sync (Images) ---
 
     async uploadImagePair(id: string, blob: Blob): Promise<{ original: string, thumbnail: string }> {
+        // DISABLE CLOUD UPLOAD
+        // Return local blob URLs to satisfy interface, or empty strings.
+        // The app should handle 'blob:' URLs correctly (which it does).
+        // To be safe, we create a persistent ObjectURL if not already handled by caller,
+        // but typically the caller (CanvasContext) already has the blob URL.
+        const localUrl = URL.createObjectURL(blob);
+        return { original: localUrl, thumbnail: localUrl };
+    },
+
+    // --- Cleanup Utilities ---
+
+    /**
+     * Delete ALL files in the user's cloud storage folder.
+     * This allows users to wipe their cloud footprint for images.
+     */
+    async cleanupAllCloudImages(): Promise<{ count: number; success: boolean }> {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('User not logged in');
 
-        const pathOriginal = `${user.id}/${id}.png`;
-        const pathThumb = `${user.id}/${id}${THUMB_SUFFIX}`;
-
-        // 1. Generate Thumbnail
-        const thumbBlob = await compressImage(blob, { maxWidth: 512, quality: 0.7, type: 'image/jpeg' });
+        let totalDeleted = 0;
+        let hasMore = true;
 
         try {
-            // 2. Upload Both
-            await Promise.all([
-                this._uploadWithQuotaCheck(pathOriginal, blob),
-                this._uploadWithQuotaCheck(pathThumb, thumbBlob)
-            ]);
+            while (hasMore) {
+                // List files (Supabase list limit is usually 100)
+                const { data: files, error } = await supabase.storage
+                    .from(BUCKET_NAME)
+                    .list(user.id, { limit: 100 });
 
-            // 3. Get Public URLs
-            const { data: { publicUrl: originalUrl } } = supabase.storage.from(BUCKET_NAME).getPublicUrl(pathOriginal);
-            const { data: { publicUrl: thumbUrl } } = supabase.storage.from(BUCKET_NAME).getPublicUrl(pathThumb);
+                if (error) throw error;
+                if (!files || files.length === 0) {
+                    hasMore = false;
+                    break;
+                }
 
-            return { original: originalUrl, thumbnail: thumbUrl };
-        } catch (e: any) {
-            console.error('Upload failed:', e);
+                const filesToDelete = files.map(f => `${user.id}/${f.name}`);
+                const { error: deleteError } = await supabase.storage
+                    .from(BUCKET_NAME)
+                    .remove(filesToDelete);
+
+                if (deleteError) throw deleteError;
+
+                totalDeleted += filesToDelete.length;
+                console.log(`[Cloud Cleanup] Deleted batch of ${filesToDelete.length} files.`);
+            }
+
+            return { count: totalDeleted, success: true };
+        } catch (e) {
+            console.error('[Cloud Cleanup] Failed:', e);
             throw e;
         }
     },
 
-    // Internal: Upload with Auto-Cleanup logic
+    // Internal: Upload with Auto-Cleanup logic (Deprecated/Unused)
     async _uploadWithQuotaCheck(path: string, blob: Blob, retryCount = 0): Promise<void> {
-        const { error } = await supabase.storage.from(BUCKET_NAME).upload(path, blob, { upsert: true });
-
-        if (error) {
-            // Check for Quota Exceeded (Supabase returns 400 or specific error for limits)
-            // Note: Supabase error codes vary, assuming generic storage error implies potential full if not auth
-            if ((error.message.includes('Quota') || error.message.includes('Limit') || (error as any).statusCode === 413) && retryCount < 3) {
-                console.warn('Storage Quota exceeded. Triggering cleanup...');
-                await this._cleanupOldestImages(5); // Delete 5 oldest
-                return this._uploadWithQuotaCheck(path, blob, retryCount + 1);
-            }
-            throw error;
-        }
+        // No-op
+        return;
     },
 
-    // Internal: Cleanup Logic
+    // Internal: Cleanup Logic (Deprecated/Unused)
     async _cleanupOldestImages(count: number) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // List files
-        const { data: files, error } = await supabase.storage
-            .from(BUCKET_NAME)
-            .list(user.id, { sortBy: { column: 'created_at', order: 'asc' }, limit: 20 });
-
-        if (error || !files) return;
-
-        // Identify oldest files
-        // We delete both .png and _thumb.jpg pairs when possible, but simply deleting oldest items works too
-        const filesToDelete = files.slice(0, count * 2).map(f => `${user.id}/${f.name}`);
-
-        if (filesToDelete.length > 0) {
-            console.log(`Auto-Cleanup: Deleting ${filesToDelete.length} old files`, filesToDelete);
-            await supabase.storage.from(BUCKET_NAME).remove(filesToDelete);
-        }
+        // No-op
     }
 };

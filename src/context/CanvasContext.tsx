@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { Canvas, PromptNode, GeneratedImage, AspectRatio, ModelType } from '../types';
 import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '../services/imageStorage';
 import { syncService } from '../services/syncService';
+import { fileSystemService } from '../services/fileSystemService';
 
 const MAX_CANVASES = 10;
 
@@ -15,6 +16,9 @@ interface CanvasState {
             future: Canvas[];
         }
     };
+    // Local File System Support
+    fileSystemHandle: FileSystemDirectoryHandle | null;
+    folderName: string | null;
 }
 
 interface CanvasContextType {
@@ -43,6 +47,13 @@ interface CanvasContextType {
     canRedo: boolean;
     arrangeAllNodes: () => void; // Auto-layout cards in compact grid
     getNextCardPosition: () => { x: number; y: number }; // Get next available position for new card
+    // File System
+    connectLocalFolder: () => Promise<void>;
+    disconnectLocalFolder: () => void;
+    changeLocalFolder: () => Promise<void>;
+    refreshLocalFolder: () => Promise<void>;
+    isConnectedToLocal: boolean;
+    currentFolderName: string | null;
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -123,14 +134,38 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return {
             canvases: [DEFAULT_CANVAS],
             activeCanvasId: DEFAULT_CANVAS.id,
-            history: {}
+            history: {},
+            fileSystemHandle: null,
+            folderName: null
         };
     });
 
-    // Load image URLs from IndexedDB on mount, with migration support
+    // Load image URLs from IndexedDB AND Restore Folder Handle
     useEffect(() => {
-        const loadImages = async () => {
+        const init = async () => {
             try {
+                // 1. Restore Local Folder Handle (Fix for 0B issue)
+                import('../services/storagePreference').then(async ({ getLocalFolderHandle }) => {
+                    import('../services/systemLogService').then(async ({ logInfo, logError }) => {
+                        try {
+                            const handle = await getLocalFolderHandle();
+                            if (handle) {
+                                logInfo('CanvasContext', `Restored local folder handle: ${handle.name}`);
+                                setState(prev => ({
+                                    ...prev,
+                                    fileSystemHandle: handle,
+                                    folderName: handle.name
+                                }));
+                            } else {
+                                logInfo('CanvasContext', 'No persisted local folder handle found.');
+                            }
+                        } catch (e) {
+                            logError('CanvasContext', e, 'Failed to restore folder handle');
+                        }
+                    });
+                });
+
+                // 2. Load Images from IndexedDB
                 const imageMap = await getAllImages();
 
                 // Migrate old images: if localStorage has URLs but IndexedDB doesn't, save them
@@ -209,7 +244,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 setIsLoading(false);
             }
         };
-        loadImages();
+        init();
     }, []);
 
     // Persistence with error handling AND Cloud Sync
@@ -230,17 +265,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
                 localStorage.setItem(STORAGE_KEY, jsonStr);
 
-                // 2. Cloud Sync (if logged in)
+                // 2. Cloud Sync (DISABLED)
+                /*
                 if (state.activeCanvasId) {
-                    const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
-                    if (activeCanvas) {
-                        try {
-                            await syncService.saveCanvas(activeCanvas);
-                        } catch (e) {
-                            // Ignored
-                        }
-                    }
+                   // Cloud save disabled
                 }
+                */
             } catch (error: any) {
                 if (error.name === 'QuotaExceededError') {
                     console.error('localStorage quota exceeded.');
@@ -280,57 +310,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
     }, [state, isLoading]);
 
-    // Initial Load: Merge Cloud Data
+    // Initial Load: Merge Cloud Data - DISABLED (Local Only Mode)
+    /*
     useEffect(() => {
-        const loadCloud = async () => {
-            try {
-                const cloudCanvases = await syncService.loadCanvases();
-                if (cloudCanvases.length > 0) {
-                    setState(prev => {
-                        // Simple merge strategy: Cloud wins on ID match, append new
-                        const merged = [...prev.canvases];
-                        cloudCanvases.forEach(cloudC => {
-                            const idx = merged.findIndex(c => c.id === cloudC.id);
-                            if (idx >= 0) {
-                                // Conflict Resolution: Last Write Wins + Safety Heuristic
-                                const localC = merged[idx];
-                                const cloudTime = cloudC.lastModified || 0;
-                                const localTime = localC.lastModified || 0;
-
-                                // Safety: If local has MORE content (prompt nodes), assume it's newer/unsynced work
-                                // This prevents data loss if clock skew makes stale cloud data look "newer"
-                                const localHasMoreContent = (localC.promptNodes?.length || 0) > (cloudC.promptNodes?.length || 0);
-
-                                // Freshness Check: If local was modified recently (e.g. < 60 seconds), TRUST LOCAL.
-                                // This prevents "Refresh" from reverting changes made just seconds ago, even if Cloud timestamp is weird.
-                                const isLocalFresh = (Date.now() - localTime) < 60000;
-
-                                if (!isLocalFresh && !localHasMoreContent && cloudTime > localTime) {
-                                    // Cloud is newer AND local doesn't have extra unsynced nodes
-                                    console.log(`[Sync] Updating canvas ${cloudC.name} from cloud (Newer: ${new Date(cloudTime).toLocaleTimeString()})`);
-                                    merged[idx] = cloudC;
-                                } else {
-                                    // Local is newer OR has more content -> Keep Local
-                                    console.log(`[Sync] Keeping local canvas ${localC.name} (Newer/More Content: ${new Date(localTime).toLocaleTimeString()})`);
-                                }
-                            } else {
-                                merged.push(cloudC);
-                            }
-                        });
-                        return {
-                            ...prev,
-                            canvases: merged
-                        };
-                    });
-                }
-            } catch (e) {
-                console.log('No cloud data or not logged in');
-            }
-        };
-        // Wait a bit for auth to settle
-        const t = setTimeout(loadCloud, 2000);
-        return () => clearTimeout(t);
+        // Cloud sync disabled per user request
     }, []);
+    */
 
     const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
     const canCreateCanvas = state.canvases.length < MAX_CANVASES;
@@ -385,7 +370,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return {
                 canvases: newCanvases,
                 activeCanvasId: newActiveId,
-                history: prev.history
+                history: prev.history,
+                fileSystemHandle: prev.fileSystemHandle,
+                folderName: prev.folderName
             };
         });
     }, []);
@@ -659,7 +646,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setState({
             canvases: [DEFAULT_CANVAS],
             activeCanvasId: DEFAULT_CANVAS.id,
-            history: {}
+            history: {},
+            fileSystemHandle: null,
+            folderName: null
         });
     }, []);
 
@@ -697,7 +686,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const PROMPT_WIDTH = 320;
         const PROMPT_HEIGHT = 200;
         const GAP_X = 40; // Gap between projects
-        const GAP_Y = 20; // Gap between prompt and images
+        const GAP_Y = 60; // Gap between prompt and images
 
         setState(prev => {
             const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
@@ -798,52 +787,279 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Orphan images at the end
             orphanImages.forEach((img, idx) => {
                 const dims = getImageDims(img.aspectRatio);
-                const imgX = currentX + dims.w / 2;
-                const imgY = currentY + PROMPT_HEIGHT + GAP_Y + dims.h;
-                imagePositions[img.id] = { x: imgX, y: imgY };
-                currentX += dims.w + GAP_X;
+                imagePositions[img.id] = { x: 50 + idx * 300, y: 500 }; // Simplified fallback
             });
 
-            // 1. Construct new list of canvases with updated positions
-            const newCanvases = state.canvases.map(c => {
-                if (c.id !== state.activeCanvasId) return c;
-                return {
-                    ...c,
-                    promptNodes: c.promptNodes.map(n => ({
-                        ...n,
-                        position: promptPositions[n.id] || n.position
-                    })),
-                    imageNodes: c.imageNodes.map(n => ({
-                        ...n,
-                        position: imagePositions[n.id] || n.position
-                    })),
-                    lastModified: Date.now()
-                };
-            });
-
-            const newState = {
-                ...state,
-                canvases: newCanvases
+            // Update all positions
+            return {
+                ...prev,
+                canvases: prev.canvases.map(c =>
+                    c.id === prev.activeCanvasId ? {
+                        ...c,
+                        promptNodes: c.promptNodes.map(pn => ({ ...pn, position: promptPositions[pn.id] || pn.position })),
+                        imageNodes: c.imageNodes.map(img => ({ ...img, position: imagePositions[img.id] || img.position })),
+                        lastModified: Date.now()
+                    } : c
+                )
             };
+        });
+    }, [state.canvases, state.activeCanvasId]);
 
-            // 2. URGENT SAVE: Persist immediately to localStorage
-            // This bypasses the useEffect debounce to ensure "Auto Arrange" is never lost on quick refresh
-            try {
-                const stateToSave = {
-                    ...newState,
-                    canvases: stripImageUrls(newState.canvases),
-                    history: {}
-                };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-                // console.log('[AutoArrange] Layout saved immediately to localStorage');
-            } catch (e) {
-                console.error('[AutoArrange] Urgent save failed:', e);
+    // --- File System Implementation ---
+
+    const connectLocalFolder = useCallback(async () => {
+        try {
+            const handle = await fileSystemService.selectDirectory();
+            const { canvases, images } = await fileSystemService.loadProjectWithThumbs(handle);
+
+            // Hydrate images map to IndexedDB for performance/caching
+            for (const [id, data] of images.entries()) {
+                // Determine what to cache: the display URL (thumbnail or original if small)
+                const blobUrl = data.url;
+                if (blobUrl) {
+                    try {
+                        const res = await fetch(blobUrl);
+                        const blob = await res.blob();
+                        const reader = new FileReader();
+                        reader.onloadend = async () => {
+                            const base64data = reader.result as string;
+                            if (base64data) {
+                                await saveImage(id, base64data);
+                            }
+                        };
+                        reader.readAsDataURL(blob);
+                    } catch (e) {
+                        console.error(`Failed to cache image ${id}`, e);
+                    }
+                }
             }
 
-            // 3. Update React State
-            return newState;
-        });
-    }, [pushToHistory, state.canvases, state.activeCanvasId]); // Added dependencies for safety
+            // If found existing project in the folder, check if we need to warn user about overwriting current work
+            if (canvases.length > 0) {
+                // Check if current state has meaningful data
+                const hasUnsavedWork = state.canvases.length > 1 ||
+                    state.canvases.some(c => c.imageNodes.length > 0 || c.promptNodes.length > 0);
+
+                if (hasUnsavedWork) {
+                    const confirmed = window.confirm(
+                        `当前工作区包含未保存的数据。\n\n` +
+                        `所选文件夹 "${handle.name}" 包含现有的项目。\n` +
+                        `打开它将 替换 您当前的工作区。\n\n` +
+                        `您确定要继续并覆盖当前工作区吗？`
+                    );
+                    if (!confirmed) return; // Abort connection
+                }
+
+                setState(prev => ({
+                    ...prev,
+                    canvases: canvases.map(c => ({
+                        ...c,
+                        // Ensure images have URLs pointed to Blob/IDB
+                        imageNodes: c.imageNodes.map(img => {
+                            const localData = images.get(img.id);
+                            return {
+                                ...img,
+                                url: localData?.url || img.url || '',
+                                originalUrl: localData?.originalUrl || img.originalUrl
+                            };
+                        }),
+                        promptNodes: c.promptNodes.map(pn => ({
+                            ...pn,
+                            referenceImages: pn.referenceImages?.map(ref => ({
+                                ...ref,
+                            })) || []
+                        }))
+                    })),
+                    activeCanvasId: canvases[0].id,
+                    fileSystemHandle: handle,
+                    folderName: handle.name,
+                    history: {} // Clear history on new load
+                }));
+            } else {
+                // New folder (empty), just attach handle to current state (Save to Local)
+                setState(prev => ({
+                    ...prev,
+                    fileSystemHandle: handle,
+                    folderName: handle.name
+                }));
+            }
+
+        } catch (error) {
+            console.error('Failed to connect local folder:', error);
+            // If user likely cancelled, we can ignore. If error, maybe alert?
+            // For now console.error is enough as selectDirectory throws AbortError usually
+        }
+    }, [state.canvases]);
+
+    const disconnectLocalFolder = useCallback(() => {
+        setState(prev => ({
+            ...prev,
+            fileSystemHandle: null,
+            folderName: null
+        }));
+    }, []);
+
+    const changeLocalFolder = useCallback(async () => {
+        if (!state.fileSystemHandle) return;
+
+        try {
+            // 1. Pick new folder
+            const newHandle = await fileSystemService.selectDirectory();
+            if (newHandle.name === state.folderName) {
+                alert('您选择了同一个文件夹。');
+                return;
+            }
+
+            // 2. Confirm Migration
+            const confirmed = window.confirm(
+                `移动项目到 "${newHandle.name}"?\n\n` +
+                `这将 移动 (剪切 & 粘贴) 所有文件从 "${state.folderName}" 到新位置。`
+            );
+
+            if (!confirmed) return;
+
+            setIsLoading(true);
+            try {
+                // 3. Perform Move
+                await fileSystemService.moveProject(state.fileSystemHandle, newHandle);
+
+                // 4. Update State to new handle
+                setState(prev => ({
+                    ...prev,
+                    fileSystemHandle: newHandle,
+                    folderName: newHandle.name
+                }));
+
+                alert('项目移动成功！');
+
+            } catch (error: any) {
+                alert('迁移失败: ' + error.message);
+                console.error(error);
+            } finally {
+                setIsLoading(false);
+            }
+
+        } catch (error) {
+            // Cancelled picker
+        }
+    }, [state.fileSystemHandle, state.folderName]);
+
+    const refreshLocalFolder = useCallback(async () => {
+        if (!state.fileSystemHandle) return;
+        try {
+            const handle = state.fileSystemHandle;
+            const { canvases, images } = await fileSystemService.loadProjectWithThumbs(handle);
+
+            // Hydrate images map to IndexedDB
+            for (const [id, data] of images.entries()) {
+                const blobUrl = data.url;
+                if (blobUrl) {
+                    try {
+                        const res = await fetch(blobUrl);
+                        const blob = await res.blob();
+                        const reader = new FileReader();
+                        reader.onloadend = async () => {
+                            const base64data = reader.result as string;
+                            if (base64data) {
+                                await saveImage(id, base64data);
+                            }
+                        };
+                        reader.readAsDataURL(blob);
+                    } catch (e) {
+                        console.error(`Failed to cache image ${id}`, e);
+                    }
+                }
+            }
+
+            // Reload state
+            if (canvases.length > 0) {
+                setState(prev => ({
+                    ...prev,
+                    canvases: canvases.map(c => ({
+                        ...c,
+                        imageNodes: c.imageNodes.map(img => {
+                            const localData = images.get(img.id);
+                            return {
+                                ...img,
+                                url: localData?.url || img.url || '',
+                                originalUrl: localData?.originalUrl || img.originalUrl
+                            };
+                        })
+                    }))
+                }));
+            }
+            alert('本地文件夹刷新成功！');
+
+        } catch (error) {
+            console.error('Failed to refresh folder:', error);
+            alert('刷新文件夹失败。');
+        }
+    }, [state.fileSystemHandle]);
+
+    // Enhanced Persistence (Local Storage + File System)
+    useEffect(() => {
+        if (isLoading) return;
+
+        const saveState = async () => {
+            // 1. Always save to LocalStorage (Backup)
+            try {
+                const stateToSave = {
+                    ...state,
+                    canvases: stripImageUrls(state.canvases),
+                    history: {},
+                    fileSystemHandle: undefined, // Do not stringify handle
+                    folderName: undefined
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+            } catch (e) {
+                console.error('LS Save Failed', e);
+            }
+
+            // 2. Save to File System if connected
+            if (state.fileSystemHandle) {
+                try {
+                    // Gather all dirty/needed images
+                    const imagesToSave = new Map<string, Blob>();
+
+                    const allImages = new Map<string, string>();
+                    state.canvases.forEach(c => {
+                        c.imageNodes.forEach(img => {
+                            // PRIORITIZE ORIGINAL URL! otherwise we overwrite high-res with thumbnail blob
+                            if (img.originalUrl) {
+                                allImages.set(img.id, img.originalUrl);
+                            } else if (img.url) {
+                                allImages.set(img.id, img.url);
+                            }
+                        });
+                    });
+
+                    for (const [id, url] of allImages.entries()) {
+                        // Only fetch if it's a blob url (local)
+                        if (url.startsWith('blob:') || url.startsWith('data:')) {
+                            const res = await fetch(url);
+                            const blob = await res.blob();
+                            imagesToSave.set(id, blob);
+                        }
+                    }
+
+                    // Prepare Clean State for JSON
+                    const fsState = {
+                        canvases: stripImageUrls(state.canvases),
+                        version: 1
+                    };
+
+                    await fileSystemService.saveProject(state.fileSystemHandle, fsState as any, imagesToSave);
+
+                } catch (error) {
+                    console.error('File System Save Failed:', error);
+                }
+            }
+        };
+
+        const timer = setTimeout(saveState, 1000); // 1s debounce for FS operations
+        return () => clearTimeout(timer);
+    }, [state, isLoading]);
+
 
     /**
      * Get the next available position for a new card (to the right of existing cards)
@@ -873,7 +1089,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
             addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions,
             deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
-            undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition
+            undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition,
+            // File System
+            connectLocalFolder, disconnectLocalFolder, changeLocalFolder, refreshLocalFolder,
+            isConnectedToLocal: !!state.fileSystemHandle,
+            currentFolderName: state.folderName
         }}>
             {children}
         </CanvasContext.Provider>

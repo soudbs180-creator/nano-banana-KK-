@@ -3,6 +3,10 @@ import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, Che
 import { keyManager, KeySlot } from '../services/keyManager';
 import { getTodayCosts, getCostsByModel, CostBreakdownItem } from '../services/costService';
 import { getTodayLogs, LogLevel, exportLogsForAI, SystemLogEntry } from '../services/systemLogService';
+import { useCanvas } from '../context/CanvasContext';
+import { syncService } from '../services/syncService';
+import { getStorageUsage, cleanupOriginals } from '../services/imageStorage';
+import { fileSystemService } from '../services/fileSystemService';
 
 export type SettingsView = 'dashboard' | 'api-channels' | 'cost-estimation' | 'storage-settings' | 'system-logs';
 
@@ -206,7 +210,7 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">版本 (Version)</div>
-                        <div className="text-sm font-medium text-zinc-300">v1.1.7</div>
+                        <div className="text-sm font-medium text-zinc-300">v1.1.8</div>
                     </div>
                 </div>
             </div>
@@ -219,6 +223,7 @@ const ApiChannelsView = () => {
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [copiedId, setCopiedId] = useState<string | null>(null); // New State for copy feedback
 
     // Form State
     const [formKey, setFormKey] = useState('');
@@ -288,6 +293,12 @@ const ApiChannelsView = () => {
         }
     };
 
+    const handleCopy = (key: string, id: string) => {
+        navigator.clipboard.writeText(key);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
     return (
         <div className="space-y-6 h-full flex flex-col">
             {/* Header */}
@@ -309,91 +320,109 @@ const ApiChannelsView = () => {
                 </div>
             </div>
 
-            {/* Mobile Actions (Top Right Refresh Only) */}
-            <div className="md:hidden absolute top-4 right-16 z-30">
-                <button onClick={handleRefresh} className="w-8 h-8 flex items-center justify-center bg-zinc-800/80 rounded-full text-zinc-400 hover:text-white backdrop-blur-md">
-                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                </button>
-            </div>
-
             {/* List */}
-            <div className="flex-1 overflow-y-auto space-y-3 min-h-0 pr-1">
+            <div className="flex-1 overflow-y-auto space-y-4 min-h-0 pr-1 p-1">
                 {slots.length === 0 ? (
-                    <div className="text-center py-12 border border-dashed border-zinc-800 rounded-xl text-zinc-500">
-                        <Key size={32} className="mx-auto mb-3 opacity-20" />
+                    <div className="text-center py-12 border border-dashed border-zinc-800 rounded-xl text-zinc-500 flex flex-col items-center">
+                        <div className="p-4 bg-zinc-900/50 rounded-full mb-3">
+                            <Key size={32} className="opacity-30" />
+                        </div>
                         <p>暂无 API 密钥配置 (No API Keys Configured)</p>
-                        <button onClick={openAddModal} className="text-indigo-400 hover:text-indigo-300 text-sm mt-2">点击添加 (Click to Add)</button>
+                        <button onClick={openAddModal} className="text-indigo-400 hover:text-indigo-300 text-sm mt-2 border-b border-dashed border-indigo-400/50 hover:border-indigo-300">点击添加 (Click to Add)</button>
                     </div>
                 ) : (
                     slots.map(slot => (
-                        <div key={slot.id} className="group bg-[#1c1c1e] border border-zinc-800 hover:border-zinc-600 rounded-[32px] p-4 transition-all duration-200 shadow-sm relative overflow-hidden">
-                            {/* Status Indicator Bar */}
-                            <div className={`absolute left-0 top-0 bottom-0 w-1 ${slot.status === 'valid' ? 'bg-emerald-500' : slot.status === 'invalid' ? 'bg-red-500' : 'bg-zinc-700'}`} />
+                        <div key={slot.id} className="group relative bg-zinc-900/30 backdrop-blur-md border border-white/5 hover:border-white/10 rounded-[24px] p-5 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-black/20">
 
-                            <div className="pl-3 flex flex-col gap-3">
-                                {/* Top Row: Name, Provider, Status */}
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <h4 className="font-bold text-white text-base truncate max-w-[150px] md:max-w-none">{slot.name || 'API Key'}</h4>
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 uppercase">{slot.provider || 'Gemini'}</span>
-                                        {slot.status !== 'valid' && (
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${slot.status === 'invalid' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                                                'bg-orange-500/10 text-orange-400 border-orange-500/20'
-                                                }`}>
-                                                {slot.status === 'rate_limited' ? '速率限制 (Rate Limited)' : '无效 (Invalid)'}
-                                            </span>
-                                        )}
+                            <div className="flex flex-col gap-4">
+                                {/* Top Row: Header Info */}
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center bg-gradient-to-br ${slot.provider === 'Gemini' ? 'from-blue-500/20 to-indigo-500/20 text-blue-400' : 'from-zinc-700/50 to-zinc-800/50 text-zinc-400'}`}>
+                                            {/* Icon based on provider could go here */}
+                                            <span className="font-bold text-xs">{slot.provider.substring(0, 1)}</span>
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h4 className="font-bold text-white text-base">{slot.name || 'API Key'}</h4>
+                                                {/* Glowing Status Dot */}
+                                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/20 border border-white/5">
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' :
+                                                        slot.status === 'invalid' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' :
+                                                            'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]'}`}
+                                                    />
+                                                    <span className={`text-[10px] font-medium ${slot.status === 'valid' ? 'text-emerald-500' :
+                                                        slot.status === 'invalid' ? 'text-red-500' :
+                                                            'text-amber-500'
+                                                        }`}>
+                                                        {slot.status === 'valid' ? 'Active' : slot.status === 'invalid' ? 'Error' : 'Limit'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="text-xs text-zinc-500 font-mono mt-0.5 opacity-60">Provider: {slot.provider}</div>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
+
+                                    <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
                                             onClick={() => openEditModal(slot)}
-                                            className="p-1.5 text-zinc-600 hover:text-white rounded-md transition-colors"
-                                            title="编辑 / Edit"
+                                            className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
                                         >
                                             <Sparkles size={14} />
                                         </button>
                                         <button
                                             onClick={() => handleDelete(slot.id)}
-                                            className="p-1.5 text-zinc-600 hover:text-red-400 rounded-md transition-colors"
-                                            title="删除 / Delete"
+                                            className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
                                         >
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* Middle Row: Key Masked */}
-                                <div className="font-mono text-zinc-500 text-xs tracking-wider cursor-pointer hover:text-zinc-300 transition-colors" onClick={() => navigator.clipboard.writeText(slot.key)} title="Click to Copy Key">
-                                    {slot.key.substring(0, 8)} •••• •••• {slot.key.slice(-6)}
+                                {/* Middle Row: Key Display & Copy */}
+                                <div
+                                    onClick={() => handleCopy(slot.key, slot.id)}
+                                    className="relative flex items-center justify-between bg-black/20 hover:bg-black/30 border border-white/5 rounded-xl px-3 py-2.5 cursor-pointer group/key transition-colors"
+                                >
+                                    <div className="font-mono text-zinc-400 text-xs tracking-wider group-hover/key:text-zinc-200 transition-colors">
+                                        {slot.key.substring(0, 8)} •••• •••• {slot.key.slice(-6)}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-zinc-600 group-hover/key:text-zinc-300 transition-colors">
+                                        <span className="text-[10px] opacity-0 group-hover/key:opacity-100 transition-opacity uppercase tracking-widest font-bold">
+                                            {copiedId === slot.id ? 'Copied' : 'Copy'}
+                                        </span>
+                                        {copiedId === slot.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                                    </div>
                                 </div>
 
-                                {/* Bottom Row: Budget & Usage */}
-                                <div className="grid grid-cols-2 gap-4 mt-1">
-                                    {/* Cost / Budget */}
-                                    <div className="bg-zinc-900/50 rounded-lg p-2 border border-zinc-800/50">
-                                        <div className="flex justify-between items-end mb-1">
-                                            <span className="text-[10px] text-zinc-500">已用 / 预算 (Cost)</span>
-                                            <span className="text-[10px] text-zinc-400 font-mono">
+                                {/* Bottom Row: Stats */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    {/* Usage / Budget */}
+                                    <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+                                        <div className="flex justify-between items-end mb-2">
+                                            <span className="text-[10px] text-zinc-500">USAGE / BUDGET</span>
+                                            <span className="text-[10px] text-zinc-300 font-mono">
                                                 ${(slot.totalCost || 0).toFixed(4)} <span className="text-zinc-600">/</span> {slot.budgetLimit > 0 ? `$${slot.budgetLimit}` : '∞'}
                                             </span>
                                         </div>
-                                        <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
+                                        <div className="w-full h-1.5 bg-zinc-800/50 rounded-full overflow-hidden">
                                             <div
-                                                className={`h-full rounded-full transition-all ${slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit ? 'bg-red-500' : 'bg-indigo-500'}`}
+                                                className={`h-full rounded-full transition-all duration-500 ${slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-indigo-500'
+                                                    }`}
                                                 style={{ width: slot.budgetLimit > 0 ? `${Math.min(100, (slot.totalCost / slot.budgetLimit) * 100)}%` : '0%' }}
                                             />
                                         </div>
                                     </div>
 
-                                    {/* Quota / Tokens (if available) */}
-                                    <div className="bg-zinc-900/50 rounded-lg p-2 border border-zinc-800/50 flex items-center justify-between">
-                                        <div>
-                                            <div className="text-[10px] text-zinc-500">调用次数 (Calls)</div>
-                                            <div className="text-xs text-white font-mono mt-0.5">{slot.successCount} <span className="text-zinc-600 text-[10px]">成功 (Success)</span></div>
+                                    {/* Calls / Quota */}
+                                    <div className="bg-white/5 rounded-xl p-3 border border-white/5 flex flex-col justify-center">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[10px] text-zinc-500">SUCCESS</span>
+                                            <span className="text-xs text-indigo-400 font-mono font-bold">{slot.successCount}</span>
                                         </div>
-                                        <div className="text-right">
-                                            <div className="text-[10px] text-zinc-500">剩余请求 (Requests Left)</div>
-                                            <div className="text-xs text-zinc-300 font-mono mt-0.5">{slot.quota?.remainingRequests ?? '--'}</div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] text-zinc-500">REMAINING</span>
+                                            <span className="text-xs text-zinc-400 font-mono">{slot.quota?.remainingRequests ?? '--'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -403,11 +432,17 @@ const ApiChannelsView = () => {
                 )}
             </div>
 
-            {/* Mobile Floating Add Key Button (Middle Bottom) */}
-            <div className="md:hidden absolute bottom-40 left-1/2 -translate-x-1/2 z-30">
+            {/* Mobile Floating Actions (Middle Bottom) */}
+            <div className="hidden max-md:flex absolute bottom-24 inset-x-0 z-30 items-center justify-center gap-4 pointer-events-none">
+                <button
+                    onClick={handleRefresh}
+                    className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-zinc-800/90 hover:bg-zinc-700 text-white rounded-full shadow-lg backdrop-blur-md border border-white/10 active:scale-90 transition-all"
+                >
+                    <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                </button>
                 <button
                     onClick={openAddModal}
-                    className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-bold shadow-[0_8px_20px_rgba(79,70,229,0.4)] active:scale-95 transition-all backdrop-blur-sm border border-white/10"
+                    className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-bold shadow-[0_8px_20px_rgba(79,70,229,0.4)] active:scale-95 transition-all backdrop-blur-sm border border-white/10"
                 >
                     <Plus size={18} />
                     <span>添加密钥 (Add Key)</span>
@@ -422,7 +457,7 @@ const ApiChannelsView = () => {
                             <h4 className="text-lg font-bold text-white">{editingId ? '编辑 API 密钥 (Edit API Key)' : '添加新的 API 密钥 (Add API Key)'}</h4>
                             <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={18} /></button>
                         </div>
-
+                        {/* Form reuse same as before, simplified for brevity in this replace block */}
                         <div className="space-y-3">
                             <div>
                                 <label className="text-xs text-zinc-400 mb-1.5 block">备注名称 (Name)</label>
@@ -615,81 +650,223 @@ const CostEstimationView = () => {
 };
 
 const StorageSettingsView = () => {
-    const [currentMode, setCurrentMode] = useState<string>('loading');
+    const { connectLocalFolder, disconnectLocalFolder, changeLocalFolder, refreshLocalFolder, isConnectedToLocal, currentFolderName, state } = useCanvas();
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+
+    // Usage Stats
+    const [browserUsage, setBrowserUsage] = useState<number>(0);
+    const [localUsage, setLocalUsage] = useState<number>(0);
+
+    const loadStats = async () => {
+        try {
+            // Always load browser usage (it's the fallback/cache)
+            const bUsage = await getStorageUsage();
+            setBrowserUsage(bUsage);
+
+            // If local, load local usage
+            if (state.fileSystemHandle) {
+                const lUsage = await fileSystemService.getFolderUsage(state.fileSystemHandle);
+                setLocalUsage(lUsage);
+            } else {
+                setLocalUsage(0);
+            }
+        } catch (e) {
+            console.error('Failed to load stats', e);
+        }
+    };
 
     useEffect(() => {
-        import('../services/storagePreference').then(async mod => {
-            setCurrentMode(await mod.getStorageMode() || 'browser');
-        });
-    }, []);
+        loadStats();
+    }, [state.fileSystemHandle]);
 
-    const handleChange = async (mode: 'local' | 'browser') => {
-        setLoading(true);
-        const mod = await import('../services/storagePreference');
-        if (mode === 'local') {
-            const handle = await mod.selectLocalFolder();
-            if (handle) {
-                await mod.setStorageMode('local');
-                setCurrentMode('local');
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        try {
+            if (isConnectedToLocal) {
+                await refreshLocalFolder();
             }
-        } else {
-            await mod.setStorageMode('browser');
-            setCurrentMode('browser');
+            // Reload stats after refresh
+            await loadStats();
+        } finally {
+            setRefreshing(false);
+        }
+    };
+
+    const formatBytes = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    const handleConnectLocal = async () => {
+        setLoading(true);
+        try {
+            await connectLocalFolder();
+        } catch (e) {
+            console.error(e);
         }
         setLoading(false);
     };
 
+    const handleConnectBrowser = () => {
+        setLoading(true);
+        disconnectLocalFolder();
+        setLoading(false);
+    };
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-8 h-full flex flex-col px-1">
             <div className="hidden md:block">
-                <h3 className="text-2xl font-bold text-white">存储位置 (Storage Location)</h3>
-                <p className="text-zinc-400 text-sm mt-1">选择原图的保存方式 (缩略图始终同步至云端) / Cloud Sync</p>
+                <h3 className="text-2xl font-bold text-white flex items-center gap-3">
+                    存储管理
+                    <div className={`text-xs ml-2 font-normal px-2 py-0.5 rounded-full border ${isConnectedToLocal
+                        ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                        : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                        }`}>
+                        {isConnectedToLocal ? '本地模式 (Local)' : '临时模式 (Temp)'}
+                    </div>
+                </h3>
+                <p className="text-zinc-500 text-sm mt-1 max-w-2xl">
+                    数据存储偏好设置。可在临时浏览器存储和本地文件系统之间切换。
+                </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button
-                    onClick={() => handleChange('browser')}
-                    className={`relative p-6 rounded-[32px] border transition-all duration-200 group text-left ${currentMode === 'browser' ? 'bg-blue-600/10 border-blue-500 ring-1 ring-blue-500/50' : 'bg-[#1c1c1e] border-zinc-800 hover:border-zinc-600'}`}
-                >
-                    <div className="flex items-start justify-between mb-4">
-                        <div className={`p-3 rounded-xl ${currentMode === 'browser' ? 'bg-blue-500 text-white' : 'bg-zinc-800 text-zinc-400 group-hover:bg-zinc-700 group-hover:text-white transition-colors'}`}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
+
+
+                {/* Browser Storage Card */}
+                <div
+                    onClick={!isConnectedToLocal ? undefined : handleConnectBrowser}
+                    className={`relative p-8 rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
+                    ${!isConnectedToLocal
+                            ? 'bg-blue-600/5 border-blue-500/50 shadow-[0_0_40px_-10px_rgba(59,130,246,0.2)]'
+                            : 'bg-[#18181b] border-zinc-800/50 hover:border-blue-500/30 hover:bg-zinc-800/50 opacity-60 hover:opacity-100'
+                        }`}>
+
+                    <div className="flex justify-between items-start">
+                        <div className={`p-4 rounded-2xl ${!isConnectedToLocal ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
                             <Globe size={24} />
                         </div>
-                        {currentMode === 'browser' && <div className="p-1 bg-blue-500 rounded-full"><Check size={12} className="text-white" /></div>}
+                        {!isConnectedToLocal && (
+                            <div className="flex items-center gap-2 text-blue-400 text-xs font-bold px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                </span>
+                                使用中 (ACTIVE)
+                            </div>
+                        )}
                     </div>
 
-                    <span className={`text-lg font-bold block mb-1 ${currentMode === 'browser' ? 'text-white' : 'text-zinc-200'}`}>浏览器缓存 (Browser)</span>
-                    <span className="text-xs text-zinc-500 leading-relaxed block">
-                        临时存储。图片可能会被浏览器自动清除。适合快速测试。
-                        <br /><span className="opacity-80">Temporary storage. May be cleared by browser. Good for testing.</span>
-                    </span>
-                </button>
+                    <div className="mt-8">
+                        <h4 className={`text-lg font-bold ${!isConnectedToLocal ? 'text-white' : 'text-zinc-400'}`}>临时文件 (Temp)</h4>
+                        <div className={`text-4xl font-mono font-bold mt-2 ${!isConnectedToLocal ? 'text-blue-400' : 'text-zinc-600'}`}>
+                            {formatBytes(browserUsage)}
+                        </div>
+                        <p className="text-xs text-zinc-500 mt-4 leading-relaxed">
+                            数据存储在浏览器缓存中。
+                            <br />
+                            <span className="opacity-70">浏览器清理缓存时可能会丢失。</span>
+                        </p>
+                    </div>
 
-                <button
-                    onClick={() => handleChange('local')}
-                    className={`relative p-6 rounded-[32px] border transition-all duration-200 group text-left ${currentMode === 'local' ? 'bg-indigo-600/10 border-indigo-500 ring-1 ring-indigo-500/50' : 'bg-[#1c1c1e] border-zinc-800 hover:border-zinc-600'}`}
-                >
-                    <div className="flex items-start justify-between mb-4">
-                        <div className={`p-3 rounded-xl ${currentMode === 'local' ? 'bg-indigo-500 text-white' : 'bg-zinc-800 text-zinc-400 group-hover:bg-zinc-700 group-hover:text-white transition-colors'}`}>
+                    <div className="mt-6 pt-6 border-t border-white/5">
+                        <button
+                            disabled={!isConnectedToLocal}
+                            className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
+                            ${!isConnectedToLocal
+                                    ? 'bg-blue-500/10 text-blue-400 cursor-default'
+                                    : 'bg-zinc-800 text-zinc-300 hover:bg-blue-600 hover:text-white hover:shadow-lg'}`}
+                        >
+                            {isConnectedToLocal ? '切换到临时模式' : '当前已激活'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Local Storage Card */}
+                <div
+                    onClick={isConnectedToLocal ? undefined : handleConnectLocal}
+                    className={`relative p-8 rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
+                    ${isConnectedToLocal
+                            ? 'bg-indigo-600/5 border-indigo-500/50 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]'
+                            : 'bg-[#18181b] border-zinc-800/50 hover:border-indigo-500/30 hover:bg-zinc-800/50 opacity-60 hover:opacity-100'
+                        }`}>
+
+                    <div className="flex justify-between items-start">
+                        <div className={`p-4 rounded-2xl ${isConnectedToLocal ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
                             <FolderOpen size={24} />
                         </div>
-                        {currentMode === 'local' && <div className="p-1 bg-indigo-500 rounded-full"><Check size={12} className="text-white" /></div>}
+                        {isConnectedToLocal && (
+                            <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold px-3 py-1 bg-indigo-500/10 rounded-full border border-indigo-500/20">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                </span>
+                                使用中 (ACTIVE)
+                            </div>
+                        )}
                     </div>
 
-                    <span className={`text-lg font-bold block mb-1 ${currentMode === 'local' ? 'text-white' : 'text-zinc-200'}`}>本地文件夹 (Local)</span>
-                    <span className="text-xs text-zinc-500 leading-relaxed block">
-                        直接保存到电脑硬盘。推荐用于生产环境，安全且持久。
-                        <br /><span className="opacity-80">Save directly to disk. Recommended for production, secure & persistent.</span>
-                    </span>
-                </button>
-            </div>
-            {loading && (
-                <div className="flex items-center justify-center gap-2 p-4 bg-zinc-900/50 rounded-lg text-sm text-zinc-400 animate-pulse">
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>切换存储模式中... (Switching Storage Mode...)</span>
+                    <div className="mt-8">
+                        <h4 className={`text-lg font-bold ${isConnectedToLocal ? 'text-white' : 'text-zinc-400'}`}>本地文件夹 (Local)</h4>
+                        <div className={`text-4xl font-mono font-bold mt-2 ${isConnectedToLocal ? 'text-indigo-400' : 'text-zinc-600'}`}>
+                            {isConnectedToLocal ? formatBytes(localUsage) : '--'}
+                        </div>
+                        <div className="text-xs text-zinc-500 mt-4 leading-relaxed truncate">
+                            {isConnectedToLocal ? (
+                                <span className="flex items-center gap-1 text-indigo-300/80">
+                                    <Check size={12} /> 已连接: {currentFolderName}
+                                </span>
+                            ) : (
+                                "数据已保存到您的本地磁盘。"
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="mt-6 pt-6 border-t border-white/5 space-y-2">
+                        {isConnectedToLocal ? (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setLoading(true); changeLocalFolder().finally(() => setLoading(false)); }}
+                                    className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold transition-all border border-white/5"
+                                >
+                                    更改位置
+                                </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
+                                    className="px-4 py-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-xs font-bold transition-all border border-indigo-500/20 flex items-center justify-center"
+                                    title="刷新 & 重新扫描"
+                                >
+                                    <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                disabled={isConnectedToLocal}
+                                className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
+                                ${isConnectedToLocal
+                                        ? 'bg-indigo-500/10 text-indigo-400 cursor-default'
+                                        : 'bg-zinc-800 text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
+                            >
+                                切换到本地
+                            </button>
+                        )}
+                    </div>
                 </div>
-            )}
+            </div>
+            {
+                loading && (
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 rounded-[32px]">
+                        <div className="bg-[#18181b] p-6 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-4 animate-in zoom-in-95">
+                            <Loader2 size={40} className="text-blue-500 animate-spin" />
+                            <div className="text-white font-medium">正在切换存储模式...</div>
+                        </div>
+                    </div>
+                )
+            }
         </div>
     );
 };

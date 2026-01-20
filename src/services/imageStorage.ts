@@ -144,3 +144,111 @@ export async function clearAllImages(): Promise<void> {
         console.error('Failed to clear IndexedDB:', error);
     }
 }
+/**
+ * Calculate total storage usage in bytes (approximate)
+ */
+export async function getStorageUsage(): Promise<number> {
+    try {
+        const db = await openDB();
+        const transaction = db.transaction(IMAGES_STORE, 'readonly');
+        const store = transaction.objectStore(IMAGES_STORE);
+
+        return new Promise((resolve, reject) => {
+            let totalSize = 0;
+            const request = store.openCursor();
+
+            request.onsuccess = (event) => {
+                const cursor = (event.target as IDBRequest).result;
+                if (cursor) {
+                    const value = cursor.value;
+                    if (value.url) {
+                        totalSize += value.url.length; // Approximate size
+                    }
+                    cursor.continue();
+                } else {
+                    resolve(totalSize);
+                }
+            };
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        console.error('Failed to calculate storage usage:', error);
+        return 0;
+    }
+}
+
+/**
+ * Cleanup logic: Replace large images with thumbnails
+ */
+export async function cleanupOriginals(): Promise<{ count: number, savedBytes: number }> {
+    const MAX_THUMB_SIZE = 300; // Max dimension for thumbnail
+    const SIZE_THRESHOLD = 50 * 1024; // Only compress if > 50KB
+
+    let count = 0;
+    let savedBytes = 0;
+
+    try {
+        const images = await getAllImages();
+        const db = await openDB();
+
+        for (const [id, url] of images.entries()) {
+            if (url.length < SIZE_THRESHOLD) continue;
+
+            // Compress
+            try {
+                const compressedUrl = await compressImage(url, MAX_THUMB_SIZE);
+                if (compressedUrl.length < url.length) {
+                    // Update in DB
+                    await saveImage(id, compressedUrl);
+                    savedBytes += (url.length - compressedUrl.length);
+                    count++;
+                }
+            } catch (err) {
+                console.warn(`Failed to compress image ${id}:`, err);
+            }
+        }
+    } catch (error) {
+        console.error('Cleanup failed:', error);
+        throw error;
+    }
+
+    return { count, savedBytes };
+}
+
+// Helper: Compress image to thumbnail
+function compressImage(dataUrl: string, maxDimension: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+                if (width > maxDimension) {
+                    height *= maxDimension / width;
+                    width = maxDimension;
+                }
+            } else {
+                if (height > maxDimension) {
+                    width *= maxDimension / height;
+                    height = maxDimension;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                reject(new Error('Canvas context not available'));
+                return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Output as JPEG with medium-low quality for thumbnails
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = dataUrl;
+    });
+}

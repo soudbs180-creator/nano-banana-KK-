@@ -11,6 +11,7 @@ import { PromptNode, GeneratedImage, AspectRatio, ImageSize, ModelType, Generati
 import { User, LayoutDashboard, LogOut, Settings } from 'lucide-react'; // Added icons for User Menu
 import { generateImage, validateApiKey, cancelGeneration } from './services/geminiService';
 import { keyManager } from './services/keyManager';
+import { getCardDimensions } from './utils/styleUtils';
 // Lucide icons replaced with SVGs
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import ConnectionDot from './components/ConnectionDot';
@@ -491,8 +492,14 @@ const AppContent: React.FC = () => {
             const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
 
             // Success: Use Cloud URLs
-            originalUrl = original;
-            displayUrl = thumbnail;
+            // CHECK: If syncService returns a blob: URL (local mock), ignore it to keep Base64 for persistence
+            if (!thumbnail.startsWith('blob:')) {
+              originalUrl = original;
+              displayUrl = thumbnail;
+            } else {
+              // It's a local blob, so we stick to 'generatedBase64' (already set above)
+              // This ensures we save the full data to IndexedDB, not a temporary link
+            }
 
           } catch (e) {
             console.warn('Cloud upload failed, falling back to local base64:', e);
@@ -510,16 +517,20 @@ const AppContent: React.FC = () => {
           isFinished = true;
           clearTimeout(timeoutId);
           console.error(`Generation ${index} failed:`, error);
-          return null;
+          return { error: error.message || 'Unknown error' };
         }
       });
 
       const imageData = await Promise.all(imageDataPromises);
 
-      // Validate results
-      const validImageData = imageData.filter((d): d is NonNullable<typeof d> => !!d && !!d.url);
+      // Validate results and narrow type
+      type SuccessResult = { index: number; url: string; originalUrl: string; generationTime: number; base64: string };
+      const validImageData = imageData.filter((d): d is SuccessResult => !!d && !('error' in d) && !!d.url);
+
       if (validImageData.length === 0) {
-        throw new Error('All generated images were invalid');
+        // Find first error
+        const firstError = imageData.find(d => d && 'error' in d);
+        throw new Error(firstError && 'error' in firstError ? firstError.error : 'All generated images failed');
       }
 
       // Get the prompt node's CURRENT position (from REF to avoid stale closure)
@@ -543,24 +554,8 @@ const AppContent: React.FC = () => {
       // Now calculate positions using the LIVE position
       const gapToImages = 80; // Increased to match visual style (dotted line)
       const gap = 16;
-      const FOOTER_HEIGHT = 60;
 
-      let cardWidth = 280;
-      let cardHeight = 280;
-      switch (config.aspectRatio) {
-        case AspectRatio.LANDSCAPE_16_9:
-          cardWidth = 320;
-          cardHeight = 180;
-          break;
-        case AspectRatio.PORTRAIT_9_16:
-          cardWidth = 200;
-          cardHeight = 355;
-          break;
-        default:
-          cardWidth = 280;
-          cardHeight = 280;
-      }
-      cardHeight += FOOTER_HEIGHT;
+      const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(config.aspectRatio, true);
 
       // Note: Both prompt and image use translate(-50%, -100%), so position.y = BOTTOM
       // For image TOP to be 80px below prompt BOTTOM:
@@ -570,34 +565,40 @@ const AppContent: React.FC = () => {
       const validResults: GeneratedImage[] = validImageData.map(({ index, url, originalUrl, generationTime, base64 }) => {
         let x, y;
 
+        // Calculate offset based on device type
         if (isMobile) {
           const cols = Math.min(count, 2);
           const col = index % cols;
           const row = Math.floor(index / cols);
 
           const mobileCardWidth = 170;
-          const mobileCardHeight = 200 + FOOTER_HEIGHT;
+          const mobileCardHeight = 260;
           const mobileGap = 10;
 
           const itemsInRow = Math.min(cols, count - row * cols);
           const currentGridWidth = itemsInRow * mobileCardWidth + (itemsInRow - 1) * mobileGap;
+
           const startX = -currentGridWidth / 2;
           const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
           const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
 
+          // Apply to live position
           x = livePos.x + offsetX;
-          y = livePos.y + offsetY; // Image TOP is now 80px below prompt BOTTOM
+          y = livePos.y + offsetY;
         } else {
+          // Desktop Layout
           const columns = Math.min(count, 2);
           const col = index % columns;
           const row = Math.floor(index / columns);
 
           const itemsInRow = Math.min(columns, count - row * columns);
           const currentGridWidth = itemsInRow * cardWidth + (itemsInRow - 1) * gap;
+
           const startX = -currentGridWidth / 2;
           const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
           const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
 
+          // Apply to live position
           x = livePos.x + offsetX;
           y = livePos.y + offsetY;
         }
@@ -792,6 +793,14 @@ const AppContent: React.FC = () => {
         const cx = startX + colIndex * (350 + colGap);
 
         // Dynamic Height Calculation
+        // Prompt height is flexible based on text, but width depends on aspect ratio
+        // Actually PromptNodeComponent uses getCardDimensions(pn.aspectRatio).width now
+        // So we should respect that column width.
+        // But for grid layout we used a fixed 350px column width.
+        // We might need to adjust column info based on max width?
+        // Let's keep 3 Columns of fixed width for now, but ensure nodes are centered.
+        // Standard width is 320 for landscape, 280 square, 240 portrait. 350 column covers all.
+
         const promptHeight = getPromptHeight(pn.prompt);
 
         updatePromptNodePosition(pn.id, { x: cx, y: currentY });
@@ -804,8 +813,13 @@ const AppContent: React.FC = () => {
           // Images Layout: 2 Columns Grid under the prompt
           const imgCols = 2;
           const imgGap = 16;
-          const imgWidth = 280; // Standard card width
-          const imgHeight = 320; // Avg height including footer
+
+          // Determine dimensions for this batch (assuming same aspect ratio for children of same prompt)
+          // Use first image to decide dimensions
+          const firstImg = childImages[0];
+          const dim = getCardDimensions(firstImg.aspectRatio, true);
+          const imgWidth = dim.width;
+          const imgHeight = dim.totalHeight;
 
           childImages.forEach((img, i) => {
             const row = Math.floor(i / imgCols);
@@ -922,16 +936,8 @@ const AppContent: React.FC = () => {
       // Calculate Positions
       const gapToImages = 20; // Reduced to minimum for tight layout
       const gap = 16;
-      const FOOTER_HEIGHT = 40; // Reduced from 60 to match actual footer (~36px)
 
-      let cardWidth = 280;
-      let cardHeight = 280;
-      switch (node.aspectRatio) {
-        case AspectRatio.LANDSCAPE_16_9: cardWidth = 320; cardHeight = 180; break;
-        case AspectRatio.PORTRAIT_9_16: cardWidth = 200; cardHeight = 355; break;
-        default: cardWidth = 280; cardHeight = 280;
-      }
-      cardHeight += FOOTER_HEIGHT;
+      const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(node.aspectRatio, true);
 
       const newImageNodes = results.map((img, i) => {
         let x, y;
@@ -948,11 +954,9 @@ const AppContent: React.FC = () => {
           }
         } else {
           // Fallback
-          switch (node.aspectRatio) {
-            case AspectRatio.LANDSCAPE_16_9: exactImageHeight = 220; break; // 180 + 40
-            case AspectRatio.PORTRAIT_9_16: exactImageHeight = 395; break; // 355 + 40
-            default: exactImageHeight = 320; // 280 + 40
-          }
+          // Use shared utility
+          const { totalHeight } = getCardDimensions(node.aspectRatio, true);
+          exactImageHeight = totalHeight;
         }
 
         // 2. Position:
@@ -1207,33 +1211,8 @@ const AppContent: React.FC = () => {
               }
 
               // Flowith-style: Prompt Bottom → Image Top
-              // 1. Calculate Image Height to find Top anchor
-              // Flowith-style: Prompt Bottom → Image Top
               // 1. Calculate Image Height to find Top anchor (matching ImageCard2 width logic)
-              let cardWidth = 280;
-              switch (childNode.aspectRatio) {
-                case AspectRatio.LANDSCAPE_16_9: cardWidth = 320; break;
-                case AspectRatio.PORTRAIT_9_16: cardWidth = 200; break;
-                default: cardWidth = 280;
-              }
-
-              // Default height calculation
-              let imageHeight = (cardWidth / 1) + 40; // fallback 1:1 + footer
-
-              // Try to use actual dimensions for precise height
-              if (childNode.dimensions) {
-                const [w, h] = childNode.dimensions.split('x').map(Number);
-                if (w && h) {
-                  const ratio = w / h;
-                  imageHeight = (cardWidth / ratio) + 40;
-                }
-              } else {
-                // Fallback to AspectRatio enum approximation
-                switch (childNode.aspectRatio) {
-                  case AspectRatio.LANDSCAPE_16_9: imageHeight = 180 + 40; break;
-                  case AspectRatio.PORTRAIT_9_16: imageHeight = 355 + 40; break;
-                }
-              }
+              const { totalHeight: imageHeight } = getCardDimensions(childNode.aspectRatio, true);
 
               // Start: Prompt Bottom Center
               // Both use translate(-50%, -100%), so position.y is BOTTOM
@@ -1242,7 +1221,8 @@ const AppContent: React.FC = () => {
 
               // End: Image Top Center (Bottom - Height)
               const endX = childNode.position.x + 5000;
-              const endY = (childNode.position.y - imageHeight) + 5000;
+              // Add offset (+15) to ensure line touches the visual card top (gap fix)
+              const endY = (childNode.position.y - imageHeight) + 5015;
 
               // Bezier Logic
               const deltaX = endX - startX;
@@ -1377,6 +1357,7 @@ const AppContent: React.FC = () => {
       <ChatSidebar
         isOpen={isChatOpen}
         onToggle={() => setIsChatOpen(prev => !prev)}
+        onClose={() => setIsChatOpen(false)}
         isMobile={isMobile}
       />
 
@@ -1404,10 +1385,11 @@ const AppContent: React.FC = () => {
         onComplete={() => {
           setShowStorageModal(false);
           // After storage configured, check if API key is set
-          if (keyManager.getSlots().length === 0) {
+          // Using hasValidKeys to ensure we catch cases with no keys or only invalid ones
+          // If keys are missing, open settings but user can close it (Skip logic)
+          if (!keyManager.hasValidKeys()) {
             setShowSettingsPanel(true);
             setSettingsInitialView('api-channels');
-            return;
           }
         }}
       />
@@ -1431,7 +1413,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.1.7
+        v1.1.8
       </div>
 
       {/* Project Manager (Replaces Canvas Manager) */}

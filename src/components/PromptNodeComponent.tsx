@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PromptNode, AspectRatio } from '../types';
 import { Sparkles, Loader2 } from 'lucide-react';
+import { getCardDimensions } from '../utils/styleUtils';
 
 interface PromptNodeProps {
     node: PromptNode;
@@ -134,10 +135,11 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
             <div
                 ref={cardRef}
                 className={`
-                relative bg-[#18181b] border rounded-2xl p-3 shadow-xl w-[320px] max-w-[95vw] flex flex-col select-none
+                relative bg-[#18181b] border rounded-2xl p-3 shadow-xl max-w-[95vw] flex flex-col select-none
                 ${isDragging ? '' : 'transition-all duration-200'}
                 ${node.isGenerating ? 'border-indigo-500/30' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-white/10 hover:border-white/20'}
-            `}>
+            `}
+                style={{ width: getCardDimensions(node.aspectRatio).width }}>
                 {/* Header - Changes based on generating state */}
                 <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
                     {node.isGenerating ? (
@@ -271,18 +273,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                 const placeholderGap = 16;
                 const gapToPlaceholders = 80; // Must match handleGenerate gapToImages
 
-                // Calculate card dimensions based on aspect ratio AND mobile
-                const getDims = (ratio: AspectRatio) => {
-
-                    // Desktop dimensions
-                    switch (ratio) {
-                        case AspectRatio.SQUARE: return { w: 280, h: 280 + 60 };
-                        case AspectRatio.LANDSCAPE_16_9: return { w: 320, h: 180 + 60 };
-                        case AspectRatio.PORTRAIT_9_16: return { w: 200, h: 355 + 60 };
-                        default: return { w: 280, h: 280 + 60 };
-                    }
-                };
-                const { w, h } = getDims(node.aspectRatio);
+                // Calculate card dimensions based on usage
+                const { width: w, totalHeight: h } = getCardDimensions(node.aspectRatio, true);
 
                 return (
                     <div className="relative" style={{ height: 0 }}>

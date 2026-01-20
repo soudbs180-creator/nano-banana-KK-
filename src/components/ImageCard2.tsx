@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { GeneratedImage } from '../types';
+import { AspectRatio, GeneratedImage } from '../types';
 import { Download, Trash2 } from 'lucide-react';
+import { getCardDimensions } from '../utils/styleUtils';
 
 interface ImageNodeProps {
     image: GeneratedImage;
@@ -76,6 +77,28 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     setLightboxOriginalUrl(cached);
                     setIsLoadingOriginal(false);
                     return;
+                }
+
+                // Fallback: If local mode, try to load from local file system directly
+                // (Useful if IndexedDB was cleared or image is from a previous session)
+                const storageMode = await getStorageMode();
+                if (storageMode === 'local') {
+                    try {
+                        const { getLocalFolderHandle } = await import('../services/storagePreference');
+                        const { fileSystemService } = await import('../services/fileSystemService');
+                        const handle = await getLocalFolderHandle();
+                        if (handle) {
+                            const blob = await fileSystemService.loadOriginalFromDisk(handle, image.id);
+                            if (blob) {
+                                const blobUrl = URL.createObjectURL(blob);
+                                setLightboxOriginalUrl(blobUrl);
+                                setIsLoadingOriginal(false);
+                                return;
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('[ImageCard] Failed to load local original', err);
+                    }
                 }
 
                 // Need to fetch original from URL and save based on storage mode
@@ -190,11 +213,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const localPosRef = useRef(localPos);
     useEffect(() => { localPosRef.current = localPos; }, [localPos]);
 
+    const wasDraggingRef = useRef(false);
+
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         // e.preventDefault(); // Optional
         e.stopPropagation(); // Stop canvas panning
 
         setIsDragging(true);
+        wasDraggingRef.current = false; // Reset drag flag
 
         // Handle both Mouse and Touch events
         let clientX, clientY;
@@ -217,7 +243,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
     const handleMouseMove = (e: MouseEvent | TouchEvent) => {
         if (!isDragging) return;
-        e.preventDefault(); // Prevent scrolling while dragging card
+        // e.preventDefault(); // Prevent scrolling while dragging card
 
         let clientX, clientY;
         if ('touches' in e) {
@@ -226,6 +252,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         } else {
             clientX = (e as MouseEvent).clientX;
             clientY = (e as MouseEvent).clientY;
+        }
+
+        // Mark as dragged if moved more than threshold
+        if (Math.abs(clientX - dragStartPos.current.x) > 5 || Math.abs(clientY - dragStartPos.current.y) > 5) {
+            wasDraggingRef.current = true;
         }
 
         // Throttle updates using requestAnimationFrame
@@ -347,20 +378,18 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         }
     };
 
-    const handleImageDoubleClick = (e: React.MouseEvent) => {
+    const handleImageClick = (e: React.MouseEvent) => {
         e.stopPropagation();
+        if (wasDraggingRef.current) return; // Ignore click if dragging occurred
         setLightboxZoom(1); // Reset zoom on open
         setShowLightbox(true);
     };
 
     const getDims = () => {
-        // if (isMobile) return { w: 170, h: 260 }; // Disabled for consistent sizing
-        switch (image.aspectRatio) {
-            case '16:9': return { w: 320, h: 240 }; // 180 + 60
-            case '9:16': return { w: 200, h: 415 }; // 355 + 60
-            case '1:1':
-            default: return { w: 280, h: 340 }; // 280 + 60
-        }
+        // Use shared utility for consistent sizing
+        // Pass 'true' to include footer height
+        const { width, totalHeight } = getCardDimensions(image.aspectRatio, true);
+        return { w: width, h: totalHeight };
     };
     const { w: nodeWidth, h: nodeHeight } = getDims();
 
@@ -398,14 +427,31 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                     {/* Main Image - Click to enlarge (was double-click) */}
                     <div
                         className="relative aspect-auto cursor-pointer min-h-[100px] bg-zinc-900"
-                        onClick={handleImageDoubleClick}
+                        onClick={handleImageClick}
                     >
                         {!imgError ? (
                             <img
                                 src={image.url}
                                 alt={image.prompt}
-                                onError={() => setImgError(true)}
+                                onError={(e) => {
+                                    // Try to recover from IndexedDB if Blob URL fails (common on context switch or reload)
+                                    const imgElement = e.target as HTMLImageElement;
+                                    import('../services/imageStorage').then(async ({ getImage }) => {
+                                        try {
+                                            const cached = await getImage(image.id);
+                                            if (cached && imgElement.src !== cached) {
+                                                console.log(`[ImageCard] Recovered image ${image.id} from cache`);
+                                                imgElement.src = cached;
+                                                return;
+                                            }
+                                        } catch (err) {
+                                            console.warn('Failed to recover image', err);
+                                        }
+                                        setImgError(true);
+                                    });
+                                }}
                                 onLoad={(e) => {
+                                    setImgError(false); // Reset error if reload successful
                                     const img = e.target as HTMLImageElement;
                                     const dims = `${img.naturalWidth}x${img.naturalHeight}`;
                                     // Only update if dimensions are missing or different

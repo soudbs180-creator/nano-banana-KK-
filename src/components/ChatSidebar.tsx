@@ -6,6 +6,7 @@ import { notify } from '../services/notificationService';
 interface ChatSidebarProps {
     isOpen: boolean;
     onToggle: () => void;
+    onClose?: () => void;
     isMobile: boolean;
 }
 
@@ -26,7 +27,7 @@ const AVAILABLE_MODELS = [
         desc: '超高性价比，超低延迟 (Best Value)'
     },
     {
-        id: 'gemini-flash-latest',
+        id: 'gemini-flash-lite-latest',
         name: 'Gemini 3 Flash',
         icon: '🚀',
         desc: '性能均衡，高吞吐量 (Balanced)'
@@ -45,7 +46,7 @@ const AVAILABLE_MODELS = [
     },
 ];
 
-const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile }) => {
+const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, isMobile }) => {
     const [messages, setMessages] = useState<Message[]>([
         {
             id: 'welcome',
@@ -58,6 +59,42 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile })
     const [isThinking, setIsThinking] = useState(false);
     const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0]); // Default Lite
     const [showModelMenu, setShowModelMenu] = useState(false);
+
+    // Auto-close timer ref
+    const autoCloseTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleMouseEnter = () => {
+        if (autoCloseTimerRef.current) {
+            clearTimeout(autoCloseTimerRef.current);
+            autoCloseTimerRef.current = null;
+        }
+    };
+
+    const handleMouseLeave = () => {
+        if (isOpen && !isDragging) {
+            autoCloseTimerRef.current = setTimeout(() => {
+                if (isOpen && onClose) {
+                    onClose();
+                }
+            }, 5000); // 5 seconds
+        }
+    };
+
+    // Cleanup timer on unmount or when closed
+    useEffect(() => {
+        return () => {
+            if (autoCloseTimerRef.current) {
+                clearTimeout(autoCloseTimerRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen && autoCloseTimerRef.current) {
+            clearTimeout(autoCloseTimerRef.current);
+            autoCloseTimerRef.current = null;
+        }
+    }, [isOpen]);
 
     // Draggable Position State (Default Left-Bottom)
     // Using simple offset from bottom-left corner or restoration
@@ -137,6 +174,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile })
         setInput('');
         setIsThinking(true);
 
+        // Reset timer if user is typing/sending (activity)
+        handleMouseEnter();
+
         try {
             // Build history for context
             // Exclude the welcome message if it's just static, but here we include all for continuity
@@ -212,13 +252,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile })
             <div
                 className={`fixed z-[90] transition-all duration-300 ease-in-out ${isOpen ? 'opacity-0 scale-50 pointer-events-none' : 'opacity-100 scale-100'}`}
                 style={{ left: position.x, bottom: position.y }}
-                onMouseEnter={() => {
-                    if (!isOpen && !isDragging) {
-                        // Simple hover-to-open, maybe add small delay?
-                        // For "automatic expansion", usually instant or very quick is preferred.
-                        onToggle();
-                    }
-                }}
             >
                 <div
                     onMouseDown={startDrag}
@@ -252,6 +285,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, isMobile })
             {/* 2. Chat Card Popover (Morph Transformation) */}
             {isOpen && (
                 <div
+                    onMouseEnter={handleMouseEnter}
                     className="fixed z-[100] w-[380px] h-[600px] max-h-[80vh] flex flex-col bg-[#131316]/95 backdrop-blur-2xl border border-purple-500/30 rounded-3xl shadow-[0_0_50px_-12px_rgba(124,58,237,0.5)] animate-scale-up-corner overflow-hidden ring-1 ring-white/10 origin-bottom-left"
                     style={{
                         left: Math.min(window.innerWidth - 390, Math.max(20, position.x)),

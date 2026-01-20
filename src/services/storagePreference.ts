@@ -166,18 +166,23 @@ export async function saveOriginalToLocalFolder(
         const permission = await (handle as any).requestPermission({ mode: 'readwrite' });
         if (permission !== 'granted') return false;
 
-        // Generate filename
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const sanitizedPrompt = (prompt || 'image').slice(0, 30).replace(/[<>:"/\\|?*]/g, '');
-        const filename = `${sanitizedPrompt}_${timestamp}.png`;
+        // Ensure originals directory exists
+        const DIRS = { ORIGINALS: 'originals' }; // Match fileSystemService
+        // @ts-ignore
+        const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
+
+        // Use consistent naming: ID.png (prevents duplicates and confusion)
+        const filename = `${imageId}.png`;
 
         // Create file and write
-        const fileHandle = await handle.getFileHandle(filename, { create: true });
+        // @ts-ignore
+        const fileHandle = await originalsDir.getFileHandle(filename, { create: true });
+        // @ts-ignore
         const writable = await fileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
 
-        console.log(`[StoragePreference] Saved to local folder: ${filename}`);
+        console.log(`[StoragePreference] Saved to originals: ${filename}`);
         return true;
     } catch (e) {
         console.error('[StoragePreference] Failed to save to local folder:', e);

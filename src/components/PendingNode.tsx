@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { AspectRatio } from '../types';
+import { getCardDimensions } from '../utils/styleUtils';
 
 interface ReferenceImage {
     id?: string;
@@ -36,17 +37,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-    // Calculate dimensions based on aspect ratio for placeholders
-    const getDims = (ratio: AspectRatio) => {
-        switch (ratio) {
-            case AspectRatio.SQUARE: return { w: 280, h: 280 };
-            case AspectRatio.LANDSCAPE_16_9: return { w: 320, h: 180 };
-            case AspectRatio.PORTRAIT_9_16: return { w: 200, h: 355 };
-            default: return { w: 280, h: 280 };
-        }
-    };
-
-    const { w, h } = getDims(aspectRatio);
+    const { width: w, totalHeight: h } = getCardDimensions(aspectRatio, true); // Include footer for placeholder height
     const totalWidth = parallelCount * (w + 20) - 20;
     const startX = -(totalWidth / 2) + w / 2;
 
@@ -143,7 +134,10 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 onTouchStart={handleMouseDown}
             >
                 {/* Preview Card - matches PromptNodeComponent dimensions */}
-                <div className="bg-[#18181b] border border-indigo-500/30 rounded-2xl p-3 shadow-xl w-[320px] animate-scaleIn">
+                <div
+                    className="bg-[#18181b] border border-indigo-500/30 rounded-2xl p-3 shadow-xl animate-scaleIn"
+                    style={{ width: getCardDimensions(aspectRatio).width }}
+                >
                     <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
                         <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500/50 to-purple-500/50 flex items-center justify-center">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
@@ -250,7 +244,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
             {/* Main Prompt Node - Same structure as PromptNodeComponent */}
             <div
                 className="bg-[#1a1a1c] border-2 border-indigo-500/30 rounded-2xl p-4 shadow-xl flex flex-col gap-3 animate-fadeIn"
-                style={{ width: cardWidth }}
+                style={{ width: getCardDimensions(aspectRatio).width }}
             >
                 <div className="flex items-center gap-2 mb-1">
                     <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
@@ -282,9 +276,9 @@ const PendingNode: React.FC<PendingNodeProps> = ({
             {/* Placeholders need to be positioned below using absolute positioning from container bottom */}
             <div className="relative" style={{ height: 0 }}>
                 {Array.from({ length: parallelCount }).map((_, i) => {
+                    // Use calculated dimensions
                     const cardW = isMobile ? 170 : w;
-                    // Add 60px footer height to match final ImageCard2
-                    const cardH = (isMobile ? 200 : h) + 60;
+                    const cardH = isMobile ? 260 : h; // Use totalHeight from utils
 
                     const col = i % columns;
                     const row = Math.floor(i / columns);

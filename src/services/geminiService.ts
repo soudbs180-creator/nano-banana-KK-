@@ -148,7 +148,7 @@ async function generateImageDirect(
           referenceImages.forEach(img => parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } }));
         }
 
-        const imageConfig: any = { aspectRatio, sampleCount: 1 };
+        const imageConfig: any = { aspectRatio };
         // Pass imageSize if model supports it (experimental) or just for completeness
         if (model === ModelType.NANO_BANANA_PRO || (imageSize && imageSize !== '1K')) {
           imageConfig.imageSize = imageSize;

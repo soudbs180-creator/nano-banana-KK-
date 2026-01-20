@@ -137,12 +137,14 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
             let count = 0;
             const promises = activeCanvas.imageNodes.map(async (img, index) => {
                 try {
-                    if (!img.url) return;
+                    const downloadUrl = img.originalUrl || img.url;
+                    if (!downloadUrl) return;
+
                     let blob;
-                    if (img.url.startsWith('data:')) {
-                        blob = await (await fetch(img.url)).blob();
+                    if (downloadUrl.startsWith('data:')) {
+                        blob = await (await fetch(downloadUrl)).blob();
                     } else {
-                        const response = await fetch(img.url);
+                        const response = await fetch(downloadUrl);
                         blob = await response.blob();
                     }
                     const ext = blob.type.split('/')[1] || 'png';
