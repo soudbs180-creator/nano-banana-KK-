@@ -276,6 +276,9 @@ export function setDailyBudget(amount: number): void {
 
 // --- Cloud Sync ---
 import { supabase } from '../lib/supabase';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import { notify } from './notificationService';
 
 let currentUserId: string | null = null;
 let isSyncing = false;
@@ -283,14 +286,31 @@ let isSyncing = false;
 export async function setUserId(userId: string | null) {
     if (currentUserId === userId) return;
     currentUserId = userId;
-    if (userId) loadFromCloud();
+    if (userId) {
+        console.log('[CostService] Setting user and syncing:', userId);
+        await loadFromCloud();
+    }
+}
+
+export async function forceSync(): Promise<boolean> {
+    if (!currentUserId) return false;
+    console.log('[CostService] Force sync requested');
+    await loadFromCloud();
+    return true;
 }
 
 async function loadFromCloud() {
     if (!currentUserId || isSyncing) return;
     isSyncing = true;
     try {
-        const { data } = await supabase.from('user_settings').select('daily_budget, usage_stats').eq('user_id', currentUserId).single();
+        const { data, error } = await supabase.from('user_settings').select('daily_budget, usage_stats').eq('user_id', currentUserId).single();
+
+        if (error) {
+            if (error.code !== 'PGRST116') { // Ignore "Row not found" (new user)
+                throw error;
+            }
+        }
+
         if (data) {
             // Sync Budget
             if (data.daily_budget !== null && data.daily_budget !== undefined) {
@@ -300,33 +320,50 @@ async function loadFromCloud() {
             // Sync Usage Stats
             if (data.usage_stats) {
                 const cloudStats = data.usage_stats as DailyCostData;
+                const local = loadDailyCosts();
+
                 // Only sync if it's for today (CostService resets daily)
-                if (cloudStats.date === getTodayString()) {
+                const isToday = cloudStats.date === getTodayString();
+
+                if (isToday) {
                     // Simple merge: keep whichever has higher cost (assuming accumulation)
-                    const local = loadDailyCosts();
                     if (cloudStats.totalCostUsd > local.totalCostUsd) {
                         try {
                             localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudStats));
+                            console.log('[CostService] Synced from cloud (Higher cost found)');
                         } catch (e) { console.warn('Failed to save synced costs', e); }
+                    } else if (local.totalCostUsd > cloudStats.totalCostUsd) {
+                        // Local is ahead of cloud, push it
+                        saveToCloud();
                     }
                 }
             }
         }
-    } catch (e) { console.warn('[CostService] Sync load failed', e); }
-    finally { isSyncing = false; }
+    } catch (e: any) {
+        console.warn('[CostService] Sync load failed', e);
+    } finally {
+        isSyncing = false;
+    }
 }
 
 async function saveToCloud() {
     if (!currentUserId) return;
     try {
         // Use UPSERT to update cost fields without validating other columns (like api_keys)
-        await supabase.from('user_settings').upsert({
+        const { error } = await supabase.from('user_settings').upsert({
             user_id: currentUserId,
             daily_budget: getDailyBudget(),
             usage_stats: loadDailyCosts(),
             updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
-    } catch (e) {
+
+        if (error) throw error;
+
+    } catch (e: any) {
         console.warn('[CostService] Sync save failed', e);
+        // If table doesn't exist (42P01), notify user specifically about setup
+        if (e.code === '42P01') {
+            notify.error('同步配置缺失', '请在 Supabase 创建 user_settings 表以同步成本数据');
+        }
     }
 }

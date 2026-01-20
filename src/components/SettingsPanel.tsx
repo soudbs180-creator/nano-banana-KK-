@@ -540,16 +540,40 @@ const ApiChannelsView = () => {
 
 const CostEstimationView = () => {
     const [breakdown, setBreakdown] = useState<CostBreakdownItem[]>([]);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     useEffect(() => {
         setBreakdown(getCostsByModel());
     }, []);
 
+    const handleSync = async () => {
+        setIsSyncing(true);
+        try {
+            const { forceSync, getCostsByModel: refreshData } = await import('../services/costService');
+            await forceSync();
+            setBreakdown(refreshData());
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
-            <div className="hidden md:block">
-                <h3 className="text-2xl font-bold text-white">成本详情 (Cost Breakdown)</h3>
-                <p className="text-xs text-zinc-500 mt-1">按模型和规格统计的详细使用记录 (Detailed usage by model and size)</p>
+            <div className="hidden md:flex items-center justify-between">
+                <div>
+                    <h3 className="text-2xl font-bold text-white">成本详情 (Cost Breakdown)</h3>
+                    <p className="text-xs text-zinc-500 mt-1">按模型和规格统计的详细使用记录 (Detailed usage by model and size)</p>
+                </div>
+                <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors"
+                    title="从云端同步数据"
+                >
+                    <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+                </button>
             </div>
 
 

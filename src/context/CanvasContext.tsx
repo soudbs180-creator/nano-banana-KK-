@@ -164,11 +164,48 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 const perm = await handle.queryPermission({ mode: 'readwrite' });
                                 if (perm === 'granted') {
                                     logInfo('CanvasContext', `Restored local folder handle: ${handle.name}`);
-                                    setState(prev => ({
-                                        ...prev,
-                                        fileSystemHandle: handle,
-                                        folderName: handle.name
-                                    }));
+
+                                    // [NEW] Load actual project data from disk to ensure sync
+                                    // This overrides localStorage state with the true file state
+                                    try {
+                                        const { fileSystemService } = await import('../services/fileSystemService');
+                                        const { canvases, images } = await fileSystemService.loadProjectWithThumbs(handle);
+
+                                        // Hydrate IDB images (Background)
+                                        for (const [id, data] of images.entries()) {
+                                            if (data.url) saveImage(id, data.url).catch(e => console.warn('Cache failed', e));
+                                        }
+
+                                        if (canvases.length > 0) {
+                                            setState(prev => ({
+                                                ...prev,
+                                                canvases: canvases.map(c => ({
+                                                    ...c,
+                                                    imageNodes: c.imageNodes.map(img => ({
+                                                        ...img,
+                                                        url: images.get(img.id)?.url || img.url || '',
+                                                        originalUrl: images.get(img.id)?.originalUrl || img.originalUrl
+                                                    })),
+                                                    promptNodes: c.promptNodes.map(pn => ({
+                                                        ...pn,
+                                                        referenceImages: pn.referenceImages?.map(ref => ({
+                                                            ...ref,
+                                                        })) || []
+                                                    }))
+                                                })),
+                                                activeCanvasId: canvases[0].id,
+                                                fileSystemHandle: handle,
+                                                folderName: handle.name
+                                            }));
+                                        } else {
+                                            // Empty project on disk? Just connect.
+                                            setState(prev => ({ ...prev, fileSystemHandle: handle, folderName: handle.name }));
+                                        }
+                                    } catch (err) {
+                                        console.error('Failed to load project from restored handle', err);
+                                        // Fallback just connect
+                                        setState(prev => ({ ...prev, fileSystemHandle: handle, folderName: handle.name }));
+                                    }
                                 } else {
                                     logInfo('CanvasContext', `Local folder permission pending: ${perm}`);
                                 }
