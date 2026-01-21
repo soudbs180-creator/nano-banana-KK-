@@ -97,8 +97,11 @@ const AppContent: React.FC = () => {
   // Sync user with KeyManager and handle Modal Logic (Storage -> API)
   useEffect(() => {
     if (user) {
-      // Sync Costs
-      import('./services/costService').then(({ setUserId }) => setUserId(user.id));
+      // Sync Costs (properly await the sync)
+      import('./services/costService').then(async ({ setUserId }) => {
+        await setUserId(user.id);
+        console.log('[App] CostService sync completed for user:', user.id);
+      }).catch(err => console.error('[App] CostService sync failed:', err));
 
       // First sync KeyManager
       keyManager.setUserId(user.id).then(async () => {
@@ -1495,7 +1498,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.1.8
+        v1.1.9
       </div>
 
       {/* Project Manager (Replaces Canvas Manager) */}

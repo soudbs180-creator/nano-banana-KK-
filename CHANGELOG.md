@@ -1,5 +1,22 @@
 # 更新日志
 
+## v1.1.9 (2026-01-21)
+
+### ✨ 新功能
+- **第三方 API 代理支持**：支持 gemini-balance-lite 等中转服务，可在"添加密钥"时开启代理模式并输入 Base URL
+- **动态 API 路由**：自动根据 Key 配置选择官方 API 或代理端点
+
+### 🔧 改进
+- **计费精度更新**：Gemini 3 Pro / 2.5 Flash 图片生成价格已按 Google 官方文档校准
+- **超时时长调整**：图片生成 API 超时从 45 秒延长至 4 分钟，避免复杂任务中断
+
+### 🏗️ 技术改进
+- 新增 `apiConfig.ts` 统一管理 API 配置
+- `keyManager.ts` 支持 `baseUrl` / `authMethod` / `headerName` 字段
+- `geminiService.ts` / `chatService.ts` 使用 `buildApiUrl()` 动态构建请求
+
+---
+
 ## v1.1.6 (2026-01-19)
 
 ### 🐛 修复

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check } from 'lucide-react';
+import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap } from 'lucide-react';
 import { keyManager, KeySlot } from '../services/keyManager';
 import { getTodayCosts, getCostsByModel, CostBreakdownItem } from '../services/costService';
 import { getTodayLogs, LogLevel, exportLogsForAI, SystemLogEntry } from '../services/systemLogService';
@@ -283,7 +283,7 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">版本 (Version)</div>
-                        <div className="text-sm font-medium text-zinc-300">v1.1.8</div>
+                        <div className="text-sm font-medium text-zinc-300">v1.1.9</div>
                     </div>
                 </div>
             </div>
@@ -303,6 +303,9 @@ const ApiChannelsView = () => {
     const [formName, setFormName] = useState('');
     const [formProvider, setFormProvider] = useState('Gemini');
     const [formBudget, setFormBudget] = useState('');
+    // Proxy configuration
+    const [formUseProxy, setFormUseProxy] = useState(false);
+    const [formBaseUrl, setFormBaseUrl] = useState('');
 
     useEffect(() => {
         const unsub = keyManager.subscribe(() => setSlots(keyManager.getSlots()));
@@ -315,6 +318,8 @@ const ApiChannelsView = () => {
         setFormName('Google API');
         setFormProvider('Gemini');
         setFormBudget('');
+        setFormUseProxy(false);
+        setFormBaseUrl('');
         setIsModalOpen(true);
     };
 
@@ -324,6 +329,10 @@ const ApiChannelsView = () => {
         setFormName(slot.name);
         setFormProvider(slot.provider);
         setFormBudget(slot.budgetLimit > 0 ? slot.budgetLimit.toString() : '');
+        // Load proxy config (detect if it's a proxy based on baseUrl)
+        const isProxy = !!slot.baseUrl && !slot.baseUrl.includes('googleapis.com');
+        setFormUseProxy(isProxy);
+        setFormBaseUrl(slot.baseUrl || '');
         setIsModalOpen(true);
     };
 
@@ -331,10 +340,14 @@ const ApiChannelsView = () => {
         setLoading(true);
 
         if (editingId) {
-            // Edit Mode
+            // Edit Mode - now allows proxy config changes
+            const proxyBaseUrl = formUseProxy ? formBaseUrl.trim() : '';
             keyManager.updateKey(editingId, {
                 name: formName.trim() || 'API Key',
-                budgetLimit: formBudget ? parseFloat(formBudget) : -1
+                budgetLimit: formBudget ? parseFloat(formBudget) : -1,
+                baseUrl: proxyBaseUrl,
+                authMethod: formUseProxy ? 'header' : 'query',
+                headerName: 'x-goog-api-key'
             });
         } else {
             // Add Mode
@@ -342,10 +355,16 @@ const ApiChannelsView = () => {
                 setLoading(false);
                 return;
             }
+            // Determine proxy config
+            const proxyBaseUrl = formUseProxy ? formBaseUrl.trim() : '';
             await keyManager.addKey(formKey.trim(), {
-                name: formName.trim() || 'Google API',
+                name: formName.trim() || (formUseProxy ? '代理 API' : 'Google API'),
                 provider: formProvider,
-                budgetLimit: formBudget ? parseFloat(formBudget) : -1
+                budgetLimit: formBudget ? parseFloat(formBudget) : -1,
+                // Proxy configuration
+                baseUrl: proxyBaseUrl,
+                authMethod: formUseProxy ? 'header' : 'query',
+                headerName: 'x-goog-api-key'
             });
         }
 
@@ -420,15 +439,17 @@ const ApiChannelsView = () => {
                                                 <h4 className="font-bold text-white text-base">{slot.name || 'API Key'}</h4>
                                                 {/* Glowing Status Dot */}
                                                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/20 border border-white/5">
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' :
-                                                        slot.status === 'invalid' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' :
-                                                            'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]'}`}
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${slot.disabled ? 'bg-zinc-500' :
+                                                        slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' :
+                                                            slot.status === 'invalid' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' :
+                                                                'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]'}`}
                                                     />
-                                                    <span className={`text-[10px] font-medium ${slot.status === 'valid' ? 'text-emerald-500' :
-                                                        slot.status === 'invalid' ? 'text-red-500' :
-                                                            'text-amber-500'
+                                                    <span className={`text-[10px] font-medium ${slot.disabled ? 'text-zinc-500' :
+                                                        slot.status === 'valid' ? 'text-emerald-500' :
+                                                            slot.status === 'invalid' ? 'text-red-500' :
+                                                                'text-amber-500'
                                                         }`}>
-                                                        {slot.status === 'valid' ? 'Active' : slot.status === 'invalid' ? 'Error' : 'Limit'}
+                                                        {slot.disabled ? '已暂停' : slot.status === 'valid' ? 'Active' : slot.status === 'invalid' ? 'Error' : 'Limit'}
                                                     </span>
                                                 </div>
                                             </div>
@@ -437,6 +458,16 @@ const ApiChannelsView = () => {
                                     </div>
 
                                     <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {/* Pause/Resume Toggle */}
+                                        <button
+                                            onClick={() => keyManager.toggleDisabled(slot.id)}
+                                            className={`p-2 rounded-xl transition-colors ${slot.disabled
+                                                ? 'text-emerald-500 hover:bg-emerald-500/10'
+                                                : 'text-amber-500 hover:bg-amber-500/10'}`}
+                                            title={slot.disabled ? '恢复 (Resume)' : '暂停 (Pause)'}
+                                        >
+                                            {slot.disabled ? <Play size={14} /> : <Pause size={14} />}
+                                        </button>
                                         <button
                                             onClick={() => openEditModal(slot)}
                                             className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
@@ -470,32 +501,44 @@ const ApiChannelsView = () => {
 
                                 {/* Bottom Row: Stats */}
                                 <div className="grid grid-cols-2 gap-3">
-                                    {/* Usage / Budget */}
+                                    {/* Tokens Consumed */}
                                     <div className="bg-white/5 rounded-xl p-3 border border-white/5">
-                                        <div className="flex justify-between items-end mb-2">
-                                            <span className="text-[10px] text-zinc-500">USAGE / BUDGET</span>
-                                            <span className="text-[10px] text-zinc-300 font-mono">
-                                                ${(slot.totalCost || 0).toFixed(4)} <span className="text-zinc-600">/</span> {slot.budgetLimit > 0 ? `$${slot.budgetLimit}` : '∞'}
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                                                <Zap size={10} /> TOKENS
+                                            </span>
+                                            <span className="text-xs text-indigo-400 font-mono font-bold">
+                                                {((slot.usedTokens || 0) / 1000).toFixed(1)}k
                                             </span>
                                         </div>
-                                        <div className="w-full h-1.5 bg-zinc-800/50 rounded-full overflow-hidden">
-                                            <div
-                                                className={`h-full rounded-full transition-all duration-500 ${slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-indigo-500'
-                                                    }`}
-                                                style={{ width: slot.budgetLimit > 0 ? `${Math.min(100, (slot.totalCost / slot.budgetLimit) * 100)}%` : '0%' }}
-                                            />
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] text-zinc-500">成功调用</span>
+                                            <span className="text-xs text-zinc-400 font-mono">{slot.successCount}</span>
                                         </div>
                                     </div>
 
-                                    {/* Calls / Quota */}
-                                    <div className="bg-white/5 rounded-xl p-3 border border-white/5 flex flex-col justify-center">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-[10px] text-zinc-500">SUCCESS</span>
-                                            <span className="text-xs text-indigo-400 font-mono font-bold">{slot.successCount}</span>
+                                    {/* Usage / Budget with Blue Bar */}
+                                    <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+                                        <div className="flex justify-between items-end mb-2">
+                                            <span className="text-[10px] text-zinc-500">预算</span>
+                                            <span className="text-[10px] text-zinc-300 font-mono">
+                                                ${(slot.totalCost || 0).toFixed(3)} <span className="text-zinc-600">/</span> {slot.budgetLimit > 0 ? `$${slot.budgetLimit}` : '∞'}
+                                            </span>
                                         </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[10px] text-zinc-500">REMAINING</span>
-                                            <span className="text-xs text-zinc-400 font-mono">{slot.quota?.remainingRequests ?? '--'}</span>
+                                        {/* Blue Progress Bar: 100% for unlimited, remaining% for limited */}
+                                        <div className="w-full h-1.5 bg-zinc-800/50 rounded-full overflow-hidden">
+                                            {(() => {
+                                                const isUnlimited = slot.budgetLimit < 0 || slot.budgetLimit === 0;
+                                                const isOverBudget = !isUnlimited && slot.totalCost >= slot.budgetLimit;
+                                                const usedPercent = isUnlimited ? 0 : Math.min(100, (slot.totalCost / slot.budgetLimit) * 100);
+                                                const remainingPercent = isUnlimited ? 100 : Math.max(0, 100 - usedPercent);
+                                                return (
+                                                    <div
+                                                        className={`h-full rounded-full transition-all duration-500 ${isOverBudget ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-blue-400'}`}
+                                                        style={{ width: `${isUnlimited ? 100 : remainingPercent}%` }}
+                                                    />
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -586,6 +629,40 @@ const ApiChannelsView = () => {
                                 </div>
                                 <p className="text-[10px] text-zinc-500 mt-1">Leave empty for unlimited. 超过预算将自动停用此Key。</p>
                             </div>
+
+                            {/* Proxy Configuration Section */}
+                            <div className="border-t border-zinc-800 pt-4 mt-2">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div>
+                                        <label className="text-xs text-zinc-400 block">使用代理 (Use Proxy)</label>
+                                        <p className="text-[10px] text-zinc-600 mt-0.5">支持 gemini-balance-lite 等第三方中转服务</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormUseProxy(!formUseProxy)}
+                                        className={`relative w-11 h-6 rounded-full transition-colors ${formUseProxy ? 'bg-indigo-600' : 'bg-zinc-700'}`}
+                                    >
+                                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${formUseProxy ? 'left-6' : 'left-1'}`} />
+                                    </button>
+                                </div>
+
+                                {formUseProxy && (
+                                    <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                                        <label className="text-xs text-zinc-400 mb-1.5 block">
+                                            代理 Base URL <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors font-mono"
+                                            placeholder="https://your-proxy.com"
+                                            value={formBaseUrl}
+                                            onChange={e => setFormBaseUrl(e.target.value)}
+                                        />
+                                        <p className="text-[10px] text-zinc-500 mt-1">
+                                            例如: https://my-gemini-proxy.vercel.app
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="pt-2 flex gap-3">
@@ -614,17 +691,28 @@ const ApiChannelsView = () => {
 const CostEstimationView = () => {
     const [breakdown, setBreakdown] = useState<CostBreakdownItem[]>([]);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [activeTab, setActiveTab] = useState<'summary' | 'detailed'>('summary');
+    const [entries, setEntries] = useState<any[]>([]);
 
     useEffect(() => {
         setBreakdown(getCostsByModel());
+        // Load recent entries
+        const todayData = getTodayCosts();
+        if (todayData.entries) {
+            setEntries(todayData.entries.slice(-20).reverse()); // Last 20, newest first
+        }
     }, []);
 
     const handleSync = async () => {
         setIsSyncing(true);
         try {
-            const { forceSync, getCostsByModel: refreshData } = await import('../services/costService');
+            const { forceSync, getCostsByModel: refreshData, getTodayCosts: refreshCosts } = await import('../services/costService');
             await forceSync();
             setBreakdown(refreshData());
+            const todayData = refreshCosts();
+            if (todayData.entries) {
+                setEntries(todayData.entries.slice(-20).reverse());
+            }
         } catch (e) {
             console.error(e);
         } finally {
@@ -639,51 +727,109 @@ const CostEstimationView = () => {
                     <h3 className="text-2xl font-bold text-white">成本详情 (Cost Breakdown)</h3>
                     <p className="text-xs text-zinc-500 mt-1">按模型和规格统计的详细使用记录 (Detailed usage by model and size)</p>
                 </div>
-                <button
-                    onClick={handleSync}
-                    disabled={isSyncing}
-                    className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors"
-                    title="从云端同步数据"
-                >
-                    <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
-                </button>
+                <div className="flex items-center gap-2">
+                    {/* Tab Toggle */}
+                    <div className="flex bg-zinc-800/50 rounded-lg p-0.5">
+                        <button
+                            onClick={() => setActiveTab('summary')}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeTab === 'summary' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                        >
+                            模型汇总
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('detailed')}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeTab === 'detailed' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                        >
+                            详细记录
+                        </button>
+                    </div>
+                    <button
+                        onClick={handleSync}
+                        disabled={isSyncing}
+                        className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors"
+                        title="从云端同步数据"
+                    >
+                        <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+                    </button>
+                </div>
             </div>
 
+            {/* Desktop Table View - Summary */}
+            {activeTab === 'summary' && (
+                <div className="hidden md:block bg-[#1c1c1e] border border-zinc-800 rounded-[32px] overflow-x-auto shadow-sm">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-zinc-900 border-b border-zinc-800">
+                            <tr>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">模型 (Model)</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">规格 (Size)</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">数量 (Count)</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">Tokens</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">成本 (USD)</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/50">
+                            {breakdown.length === 0 ? (
+                                <tr><td colSpan={5} className="p-12 text-center text-zinc-500">今日暂无数据 (No Data Today)</td></tr>
+                            ) : (
+                                breakdown.map((item, idx) => (
+                                    <tr key={idx} className="hover:bg-zinc-800/30 transition-colors group">
+                                        <td className="px-5 py-4 text-white font-medium">{item.model}</td>
+                                        <td className="px-5 py-4 text-zinc-500 font-mono text-xs">{item.imageSize || 'Default'}</td>
+                                        <td className="px-5 py-4 text-right font-mono text-zinc-300">{item.count}</td>
+                                        <td className="px-5 py-4 text-right font-mono text-indigo-400 opacity-80 group-hover:opacity-100 transition-opacity">
+                                            {(item.tokens || 0).toLocaleString()}
+                                        </td>
+                                        <td className="px-5 py-4 text-right font-mono text-emerald-400 font-medium">
+                                            ${item.cost.toFixed(5)}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
-
-            {/* Desktop Table View */}
-            <div className="hidden md:block bg-[#1c1c1e] border border-zinc-800 rounded-[32px] overflow-x-auto shadow-sm">
-                <table className="w-full text-left text-sm">
-                    <thead className="bg-zinc-900 border-b border-zinc-800">
-                        <tr>
-                            <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">模型 (Model)</th>
-                            <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">规格 (Size)</th>
-                            <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">数量 (Count)</th>
-                            <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">Tokens</th>
-                            <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">成本 (USD)</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800/50">
-                        {breakdown.length === 0 ? (
-                            <tr><td colSpan={5} className="p-12 text-center text-zinc-500">今日暂无数据 (No Data Today)</td></tr>
-                        ) : (
-                            breakdown.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-zinc-800/30 transition-colors group">
-                                    <td className="px-5 py-4 text-white font-medium">{item.model}</td>
-                                    <td className="px-5 py-4 text-zinc-500 font-mono text-xs">{item.imageSize || 'Default'}</td>
-                                    <td className="px-5 py-4 text-right font-mono text-zinc-300">{item.count}</td>
-                                    <td className="px-5 py-4 text-right font-mono text-indigo-400 opacity-80 group-hover:opacity-100 transition-opacity">
-                                        {(item.tokens || 0).toLocaleString()}
-                                    </td>
-                                    <td className="px-5 py-4 text-right font-mono text-emerald-400 font-medium">
-                                        ${item.cost.toFixed(5)}
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
+            {/* Desktop Table View - Detailed Entries (Last 20) */}
+            {activeTab === 'detailed' && (
+                <div className="hidden md:block bg-[#1c1c1e] border border-zinc-800 rounded-[32px] overflow-x-auto shadow-sm">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-zinc-900 border-b border-zinc-800">
+                            <tr>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">时间</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">模型</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">规格</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">Tokens</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">成本</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/50">
+                            {entries.length === 0 ? (
+                                <tr><td colSpan={5} className="p-12 text-center text-zinc-500">今日暂无详细记录</td></tr>
+                            ) : (
+                                entries.map((entry, idx) => (
+                                    <tr key={idx} className="hover:bg-zinc-800/30 transition-colors">
+                                        <td className="px-5 py-3 text-zinc-400 font-mono text-xs">
+                                            {new Date(entry.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                        </td>
+                                        <td className="px-5 py-3 text-white text-sm">{entry.model}</td>
+                                        <td className="px-5 py-3 text-zinc-500 font-mono text-xs">{entry.imageSize || '-'}</td>
+                                        <td className="px-5 py-3 text-right font-mono text-indigo-400 text-sm">
+                                            {(entry.tokens || 0).toLocaleString()}
+                                        </td>
+                                        <td className="px-5 py-3 text-right font-mono text-emerald-400 text-sm">
+                                            ${entry.costUsd.toFixed(4)}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                    <div className="px-5 py-3 border-t border-zinc-800/50 text-xs text-zinc-500 text-center">
+                        显示最近 {entries.length} 条记录 (最多 20 条)
+                    </div>
+                </div>
+            )}
 
             {/* Mobile Vertical Card View */}
             <div className="md:hidden space-y-3">
@@ -730,16 +876,39 @@ const CostEstimationView = () => {
             </div>
 
             <div className="text-xs text-zinc-500 p-5 bg-zinc-900/50 rounded-[32px] border border-zinc-800/50">
-                <p className="font-medium text-zinc-400 mb-2">计费参考 (Pricing Reference)</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                        <span>Gemini: $0.075/百万输入, $0.3/百万输出</span>
+                <p className="font-medium text-zinc-400 mb-3">计费参考 (Pricing Reference - 2026 Official)</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Imagen */}
+                    <div className="space-y-1.5">
+                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1">Imagen 4</div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                            <span>Fast: <span className="text-emerald-400 font-mono">$0.02</span>/张</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                            <span>Ultra: <span className="text-emerald-400 font-mono">$0.06</span>/张</span>
+                        </div>
+                    </div>
+                    {/* Gemini */}
+                    <div className="space-y-1.5">
+                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1">Gemini Image</div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                            <span>2.5 Flash: <span className="text-indigo-400 font-mono">$0.039</span>/张 (1290 tokens)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                            <span>3 Pro (1K-2K): <span className="text-indigo-400 font-mono">$0.134</span>/张</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                            <span>3 Pro (4K): <span className="text-indigo-400 font-mono">$0.24</span>/张</span>
+                        </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                    <span>Imagen: 标准版 $0.04/张 (Approx)</span>
+                <div className="mt-3 pt-3 border-t border-zinc-800/50 text-[10px] text-zinc-600">
+                    Token 计费: Gemini 2.5 Flash Image 输出 $30/1M, Gemini 3 Pro Image 输出 $120/1M
                 </div>
             </div>
         </div >

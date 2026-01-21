@@ -3,15 +3,21 @@
  * 
  * Provides multi-key rotation, status monitoring, and automatic failover.
  * Similar to Gemini Balance but runs entirely on frontend.
- * NOW SUPPORTS: Supabase Cloud Sync
+ * NOW SUPPORTS: Supabase Cloud Sync & Third-Party API Proxies
  */
 import { supabase } from '../lib/supabase';
+import { AuthMethod, GOOGLE_API_BASE } from './apiConfig';
 
 export interface KeySlot {
     id: string;
     key: string;
     name: string; // User defined name
     provider: string; // e.g. 'Gemini', 'OpenAI'
+    // Proxy configuration
+    baseUrl?: string;        // Custom base URL for proxy (empty = Google official)
+    authMethod?: AuthMethod; // 'query' (Google) or 'header' (proxies)
+    headerName?: string;     // Custom header name (default: x-goog-api-key)
+    // Status fields
     status: 'valid' | 'invalid' | 'rate_limited' | 'unknown';
     failCount: number;
     successCount: number;
@@ -83,13 +89,17 @@ class KeyManager {
             const stored = localStorage.getItem(STORAGE_KEY);
             if (stored) {
                 const parsed = JSON.parse(stored);
-                // Migration for existing keys
+                // Migration for existing keys (add new proxy fields with defaults)
                 const slots = (parsed.slots || []).map((s: any) => ({
                     ...s,
                     name: s.name || 'Unnamed Key',
                     provider: s.provider || 'Gemini',
                     totalCost: s.totalCost || 0,
-                    budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1
+                    budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
+                    // Proxy config defaults
+                    baseUrl: s.baseUrl || '',
+                    authMethod: s.authMethod || 'query',
+                    headerName: s.headerName || 'x-goog-api-key'
                 }));
                 return {
                     slots: slots,
@@ -270,12 +280,41 @@ class KeyManager {
     }
 
     /**
+     * Update budgets and usage from Cloud (called by CostService)
+     */
+    updateBudgetsFromCloud(budgets: { id: string, budget: number, used?: number }[]): void {
+        const slots = this.state.slots;
+        let changed = false;
+
+        budgets.forEach(b => {
+            const slot = slots.find(s => s.id === b.id);
+            if (slot) {
+                if (b.budget !== undefined && slot.budgetLimit !== b.budget) {
+                    slot.budgetLimit = b.budget;
+                    changed = true;
+                }
+                if (b.used !== undefined && (slot.totalCost || 0) < b.used) {
+                    slot.totalCost = b.used;
+                    changed = true;
+                }
+            }
+        });
+
+        if (changed) {
+            this.saveState();
+            this.notifyListeners();
+        }
+    }
+
+
+    /**
      * Save state to Supabase
      */
     private async saveToCloud(state: KeyManagerState) {
         if (!this.userId) return;
 
         try {
+            // Sync full API keys to 'api_keys' column (associated with account)
             await supabase
                 .from('user_settings')
                 .upsert({
@@ -283,6 +322,11 @@ class KeyManager {
                     api_keys: state.slots,
                     updated_at: new Date().toISOString()
                 });
+
+            // Also trigger CostService sync to update profile/stats
+            const { forceSync } = await import('./costService');
+            forceSync().catch(console.error);
+
         } catch (e) {
             console.error('[KeyManager] Error saving to cloud:', e);
         }
@@ -306,13 +350,18 @@ class KeyManager {
     /**
      * Get the next available API key using round-robin rotation
      */
-    getNextKey(): { id: string; key: string } | null {
+    getNextKey(): {
+        id: string;
+        key: string;
+        baseUrl: string;
+        authMethod: AuthMethod;
+        headerName: string;
+    } | null {
         const availableSlots = this.state.slots.filter(
             s => !s.disabled && s.status !== 'invalid' && (s.budgetLimit < 0 || s.totalCost < s.budgetLimit)
         );
 
         if (availableSlots.length === 0) {
-            // Fallback: try any non-disabled key even if over budget (optional, maybe not?)
             // Strict budget enforcement: return null if all valid keys are over budget
             return null;
         }
@@ -332,7 +381,13 @@ class KeyManager {
 
         this.saveState();
 
-        return { id: slot.id, key: slot.key };
+        return {
+            id: slot.id,
+            key: slot.key,
+            baseUrl: slot.baseUrl || GOOGLE_API_BASE,
+            authMethod: slot.authMethod || 'query',
+            headerName: slot.headerName || 'x-goog-api-key'
+        };
     }
 
     /**
@@ -376,6 +431,24 @@ class KeyManager {
     }
 
     /**
+     * Toggle disabled state for manual pause/resume
+     */
+    toggleDisabled(keyId: string): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot) {
+            slot.disabled = !slot.disabled;
+            // If re-enabling, reset fail count to give it another chance
+            if (!slot.disabled) {
+                slot.failCount = 0;
+                slot.status = 'unknown';
+            }
+            this.saveState();
+            this.notifyListeners();
+            console.log(`[KeyManager] Key ${keyId} ${slot.disabled ? 'paused' : 'resumed'}`);
+        }
+    }
+
+    /**
      * Update quota information for a key
      */
     updateQuota(keyId: string, quota: KeySlot['quota']): void {
@@ -390,7 +463,15 @@ class KeyManager {
     /**
      * Add a new API key
      */
-    async addKey(key: string, options?: { name?: string, provider?: string, budgetLimit?: number }): Promise<{ success: boolean; error?: string }> {
+    async addKey(key: string, options?: {
+        name?: string;
+        provider?: string;
+        budgetLimit?: number;
+        // Proxy configuration
+        baseUrl?: string;
+        authMethod?: AuthMethod;
+        headerName?: string;
+    }): Promise<{ success: boolean; error?: string }> {
         const trimmedKey = key.trim();
 
         if (!trimmedKey) {
@@ -402,14 +483,22 @@ class KeyManager {
             return { success: false, error: '该 Key 已存在' };
         }
 
-        // Validate the key
-        const validation = await this.validateKey(trimmedKey, options?.provider);
+        // Validate the key (skip validation for proxies as they may have different endpoints)
+        const isProxy = options?.baseUrl && !options.baseUrl.includes('googleapis.com');
+        const validation = isProxy
+            ? { valid: true }
+            : await this.validateKey(trimmedKey, options?.provider);
 
         const newSlot: KeySlot = {
             id: `key_${Date.now()}`,
             key: trimmedKey,
             name: options?.name || 'My Key',
             provider: options?.provider || 'Gemini',
+            // Proxy configuration
+            baseUrl: options?.baseUrl || '',
+            authMethod: options?.authMethod || (isProxy ? 'header' : 'query'),
+            headerName: options?.headerName || 'x-goog-api-key',
+            // Status
             status: validation.valid ? 'valid' : 'invalid',
             failCount: 0,
             successCount: 0,
@@ -443,11 +532,20 @@ class KeyManager {
     /**
      * Update an existing API key
      */
-    updateKey(id: string, updates: { name?: string, budgetLimit?: number }): void {
+    updateKey(id: string, updates: {
+        name?: string,
+        budgetLimit?: number,
+        baseUrl?: string,
+        authMethod?: AuthMethod,
+        headerName?: string
+    }): void {
         const slot = this.state.slots.find(s => s.id === id);
         if (slot) {
             if (updates.name !== undefined) slot.name = updates.name;
             if (updates.budgetLimit !== undefined) slot.budgetLimit = updates.budgetLimit;
+            if (updates.baseUrl !== undefined) slot.baseUrl = updates.baseUrl;
+            if (updates.authMethod !== undefined) slot.authMethod = updates.authMethod;
+            if (updates.headerName !== undefined) slot.headerName = updates.headerName;
 
             this.saveState();
             this.notifyListeners();

@@ -3,10 +3,12 @@
  * 
  * Provides text-based conversation with Gemini API.
  * Uses keyManager for multi-key rotation.
+ * Supports third-party API proxies via baseUrl configuration.
  */
 
 import { keyManager } from './keyManager';
 import { ChatModelType } from '../types';
+import { buildApiUrl, buildHeaders, GOOGLE_API_BASE } from './apiConfig';
 
 export interface ChatMessage {
     id: string;
@@ -76,6 +78,7 @@ class ChatService {
 
     /**
      * Send a message and get a response from Gemini
+     * Supports third-party API proxies via keyManager configuration
      */
     async sendMessage(content: string, model: ChatModelType = ChatModelType.GEMINI_LITE): Promise<string> {
         const session = this.getCurrentSession();
@@ -93,7 +96,7 @@ class ChatService {
         session.messages.push(userMessage);
         this.saveSessions();
 
-        // Get API key from keyManager
+        // Get API key from keyManager (includes proxy config)
         const keyData = keyManager.getNextKey();
         if (!keyData) {
             throw new Error('请先配置 API Key');
@@ -108,12 +111,12 @@ class ChatService {
                     parts: [{ text: m.content }]
                 }));
 
-            // Call Gemini API
+            // Call Gemini API with dynamic URL (supports proxies)
             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyData.key}`,
+                buildApiUrl(keyData.baseUrl, model, 'generateContent', keyData.authMethod, keyData.key),
                 {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: buildHeaders(keyData.authMethod, keyData.key, keyData.headerName),
                     body: JSON.stringify({
                         contents: history,
                         generationConfig: {

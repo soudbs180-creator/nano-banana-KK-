@@ -2,13 +2,17 @@
  * Cost Estimation Service
  * Tracks daily API usage costs based on updated pricing models.
  * 
- * Pricing Reference:
- * - Imagen 4 ($0.02), Ultra ($0.04) (Fixed)
- * - Gemini 3 Pro (Token Based): Input $2/1M, Output $120/1M
- * - Gemini 2.5 Flash: Input $0.10/1M, Output $0.40/1M (Approx)
+ * Pricing Reference (Updated 2026-01-21):
+ * - Imagen 4 Fast: $0.02/img, Ultra: $0.06/img
+ * - Gemini 3 Pro Image: Input $0.0011/img (560 tokens), Output $120/1M tokens
+ *   - 1K-2K output: 1120 tokens = $0.134/img
+ *   - 4K output: 2000 tokens = $0.24/img
+ * - Gemini 2.5 Flash Image: Input $0.075/1M, Output $30/1M tokens
+ *   - 1024x1024: 1290 tokens = $0.039/img
  */
 
 import { ModelType, ImageSize } from '../types';
+import type { KeySlot } from './keyManager';
 import { supabase } from '../lib/supabase';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -46,18 +50,24 @@ const PRICING = {
         STD: 0.04,
         ULTRA: 0.06
     },
+    // Gemini 3 Pro Image: $120/1M output tokens
+    // - 1K-2K: 1120 tokens = $0.134/img
+    // - 4K: 2000 tokens = $0.24/img
+    // - Ref image input: 560 tokens = $0.0011/img
     GEMINI_3_PRO: {
         INPUT_1M: 3.50,
-        OUTPUT_1M: 10.50,
-        REF_IMG_TOKENS: 258,
+        OUTPUT_1M: 120.00,  // Updated: was 10.50
+        REF_IMG_TOKENS: 560, // Updated: was 258
         GEN_TOKENS_STD: 1120,
         GEN_TOKENS_HD: 2000
     },
+    // Gemini 2.5 Flash Image: $30/1M output tokens
+    // - 1024x1024: 1290 tokens = $0.039/img
     GEMINI_2_5: {
         INPUT_1M: 0.075,
-        OUTPUT_1M: 0.30,
-        REF_IMG_TOKENS: 258,
-        GEN_TOKENS_STD: 258
+        OUTPUT_1M: 30.00,    // Updated: was 0.30
+        REF_IMG_TOKENS: 560, // Updated: was 258
+        GEN_TOKENS_STD: 1290 // Updated: was 258
     }
 };
 
@@ -269,18 +279,35 @@ export function setDailyBudget(amount: number): void {
 /**
  * Sync Management
  */
-export async function setUserId(userId: string | null) {
-    if (currentUserId === userId) return;
+export async function setUserId(userId: string | null): Promise<void> {
+    console.log('[CostService] setUserId called with:', userId, 'Current:', currentUserId);
+    if (currentUserId === userId) {
+        console.log('[CostService] userId unchanged, skipping');
+        return;
+    }
     currentUserId = userId;
     if (userId) {
         console.log('[CostService] Setting user and syncing:', userId);
-        await syncWithCloud();
+        try {
+            await syncWithCloud();
+            console.log('[CostService] Initial sync completed for user:', userId);
+        } catch (e) {
+            console.error('[CostService] Initial sync failed:', e);
+        }
     }
 }
 
+export function getCurrentUserId(): string | null {
+    return currentUserId;
+}
+
 export async function forceSync(): Promise<boolean> {
-    if (!currentUserId) return false;
-    console.log('[CostService] Force sync requested');
+    console.log('[CostService] forceSync called, currentUserId:', currentUserId);
+    if (!currentUserId) {
+        console.warn('[CostService] forceSync: No user ID set, cannot sync');
+        return false;
+    }
+    console.log('[CostService] Force sync requested for user:', currentUserId);
     await syncWithCloud();
     return true;
 }
@@ -297,96 +324,108 @@ async function syncWithCloud() {
     isSyncing = true;
     try {
         // 1. Fetch Cloud State
-        const { data, error } = await supabase.from('user_settings').select('daily_budget, usage_stats').eq('user_id', currentUserId).single();
+        const { data, error } = await supabase.from('user_settings').select('*').eq('user_id', currentUserId).single();
 
-        if (error) {
-            // Ignore "Row not found" (new user), otherwise throw
-            if (error.code !== 'PGRST116') throw error;
-        }
-
-        // 2. Prepare Local State
-        const local = loadDailyCosts();
-        let finalData = local;
-        let needsPush = false;
+        // 2. Load & Merge Local State
+        let local = loadDailyCosts();
 
         if (data) {
-            // A. Sync Budget (Cloud wins if set)
-            if (data.daily_budget !== null && data.daily_budget !== undefined) {
-                const localBudget = getDailyBudget();
-                if (localBudget !== data.daily_budget) {
-                    localStorage.setItem(BUDGET_STORAGE_KEY, String(data.daily_budget));
+            // A. Sync Daily Stats
+            if (data.daily_date === getTodayString()) {
+                // Merge Logic: Take max values for counters to avoid decrementing
+                const newCost = Math.max(local.totalCostUsd, data.daily_cost || 0);
+                const newImages = Math.max(local.totalImages, data.daily_images || 0);
+                const newTokens = Math.max(local.totalTokens, data.daily_tokens || 0);
+
+                if (newCost !== local.totalCostUsd || newImages !== local.totalImages) {
+                    local.totalCostUsd = newCost;
+                    local.totalImages = newImages;
+                    local.totalTokens = newTokens;
+                    saveDailyCosts(local);
                 }
             }
 
-            // B. Sync Usage Stats (Deep Merge)
-            if (data.usage_stats) {
-                const cloudStats = data.usage_stats as DailyCostData;
-                const isToday = cloudStats.date === getTodayString();
+            // B. Sync API Budgets to KeyManager
+            if (data.api_budgets && Array.isArray(data.api_budgets)) {
+                const { keyManager } = await import('./keyManager');
+                const slots = keyManager.getSlots();
+                let changed = false;
 
-                if (isToday) {
-                    const entryMap = new Map<string, CostEntry>();
-
-                    // Add Cloud Entries
-                    if (Array.isArray(cloudStats.entries)) {
-                        cloudStats.entries.forEach(e => entryMap.set(e.id, e));
+                data.api_budgets.forEach((cb: any) => {
+                    const slot = slots.find(s => s.id === cb.id);
+                    if (slot) {
+                        // Sync Budget Limit
+                        if (cb.budget !== undefined && slot.budgetLimit !== cb.budget) {
+                            slot.budgetLimit = cb.budget;
+                            changed = true;
+                        }
+                        // Sync Total Cost/Usage (if cloud has more usage)
+                        if (cb.used !== undefined && (slot.totalCost || 0) < cb.used) {
+                            slot.totalCost = cb.used;
+                            changed = true;
+                        }
                     }
+                });
 
-                    // Add Local Entries (Local might have newer items)
-                    if (Array.isArray(local.entries)) {
-                        local.entries.forEach(e => entryMap.set(e.id, e));
-                    }
-
-                    const mergedEntries = Array.from(entryMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-
-                    // Recalc Totals
-                    const totalCostUsd = mergedEntries.reduce((sum, e) => sum + e.costUsd, 0);
-                    // Use a Set to count unique timestamps/ids? No, simple sum is better based on merged list
-                    // totalImages is sum of counts
-                    const totalImages = mergedEntries.reduce((sum, e) => sum + e.count, 0);
-                    const totalTokens = mergedEntries.reduce((sum, e) => sum + (e.tokens || 0), 0);
-
-                    finalData = {
-                        date: getTodayString(),
-                        entries: mergedEntries,
-                        totalCostUsd,
-                        totalImages,
-                        totalTokens
-                    };
-
-                    // Check if we need to push back to cloud
-                    // Logic: If Merged count > Cloud count, or Cost differs significantly
-                    const cloudCount = cloudStats.entries?.length || 0;
-                    if (mergedEntries.length > cloudCount || Math.abs(totalCostUsd - cloudStats.totalCostUsd) > 0.0001) {
-                        needsPush = true;
-                    }
+                if (changed) {
+                    // Update keyManager state with budgets from cloud
+                    keyManager.updateBudgetsFromCloud(data.api_budgets);
                 }
-            } else {
-                // Cloud has no stats, but we have local? Push it.
-                if (local.entries.length > 0) needsPush = true;
             }
-        } else {
-            // No data in cloud at all (new user), push local if exists
-            if (local.entries.length > 0) needsPush = true;
         }
 
-        // 3. Save Merged State Locally
-        saveDailyCosts(finalData);
+        // 3. Prepare Push
 
-        // 4. Push to Cloud if needed
-        if (needsPush) {
-            console.log('[CostService] Pushing merged stats to cloud...');
-            // Upsert with clean data
-            const { error: upsertError } = await supabase.from('user_settings').upsert({
-                user_id: currentUserId,
-                daily_budget: getDailyBudget(),
-                usage_stats: finalData,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'user_id' });
+        // Get latest keyManager state again (in case we just updated it)
+        const { keyManager } = await import('./keyManager');
+        const slots = keyManager.getSlots();
+        let totalBudget = 0;
+        let totalUsed = 0;
+        const apiBudgets = slots.map((slot: KeySlot) => ({
+            id: slot.id,
+            name: slot.name,
+            budget: slot.budgetLimit,
+            used: slot.totalCost || 0,
+            status: slot.status
+        }));
 
-            if (upsertError) throw upsertError;
-        } else {
-            console.log('[CostService] Sync complete (No cloud update needed)');
-        }
+        slots.forEach((slot: KeySlot) => {
+            if (slot.budgetLimit > 0) {
+                totalBudget += slot.budgetLimit;
+            }
+            totalUsed += slot.totalCost || 0;
+        });
+
+        // Simplified sync: only push daily summary
+        console.log('[CostService] Syncing daily summary to cloud...');
+
+        // Get user profile from Auth to sync to settings table for easy viewing
+        const { data: { user } } = await supabase.auth.getUser();
+        const profile = {
+            display_name: user?.user_metadata?.full_name || user?.user_metadata?.name || '',
+            avatar_url: user?.user_metadata?.avatar_url || ''
+        };
+
+        const { error: upsertError } = await supabase.from('user_settings').upsert({
+            user_id: currentUserId,
+            // Profile
+            display_name: profile.display_name,
+            avatar_url: profile.avatar_url,
+            // Daily summary
+            daily_cost: local.totalCostUsd,
+            daily_images: local.totalImages,
+            daily_tokens: local.totalTokens,
+            daily_date: local.date,
+            // Total budget from all API keys
+            total_budget: totalBudget > 0 ? totalBudget : -1,
+            total_used: totalUsed,
+            // API budgets detail
+            api_budgets: apiBudgets,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+        if (upsertError) throw upsertError;
+        console.log('[CostService] Sync complete');
 
     } catch (e: any) {
         console.warn('[CostService] Sync failed', e);
@@ -397,3 +436,4 @@ async function syncWithCloud() {
         isSyncing = false;
     }
 }
+

@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { AspectRatio, ImageSize, ModelType, ReferenceImage } from "../types";
 import { keyManager } from './keyManager';
+import { AuthMethod, buildApiUrl, buildHeaders, GOOGLE_API_BASE } from './apiConfig';
 
 // Detect environment
 const isLocalDev = typeof window !== 'undefined' &&
@@ -14,6 +15,7 @@ const API_ENDPOINT = "/api/generate";
  * - Local dev: Calls Gemini SDK directly (faster)
  * - Production: Routes through backend (secure)
  * - apiKey is optional: backend will use stored keys or env variable
+ * - Supports third-party API proxies via baseUrl configuration
  */
 
 // AbortController map to track active requests
@@ -68,6 +70,10 @@ async function generateImageDirect(
   let effectiveKey = apiKey;
   let keyId: string | undefined;
   let controller: AbortController | undefined;
+  // Proxy configuration (defaults to Google official)
+  let baseUrl = GOOGLE_API_BASE;
+  let authMethod: AuthMethod = 'query';
+  let headerName = 'x-goog-api-key';
 
   // Use provided requestId's controller if available
   if (requestId) {
@@ -80,6 +86,10 @@ async function generateImageDirect(
     if (keyData) {
       effectiveKey = keyData.key;
       keyId = keyData.id;
+      // Capture proxy configuration
+      baseUrl = keyData.baseUrl;
+      authMethod = keyData.authMethod;
+      headerName = keyData.headerName;
     } else {
       // Try env var failover
       effectiveKey = import.meta.env.VITE_GEMINI_API_KEY || '';
@@ -112,15 +122,18 @@ async function generateImageDirect(
         else if (aspectRatio === AspectRatio.STANDARD_2_3) safeAspectRatio = AspectRatio.PORTRAIT_9_16;
         else if (aspectRatio === AspectRatio.STANDARD_3_2) safeAspectRatio = AspectRatio.LANDSCAPE_16_9;
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${effectiveKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            instances: [{ prompt }],
-            parameters: { sampleCount: 1, aspectRatio: safeAspectRatio }
-          }),
-          signal: controller?.signal || AbortSignal.timeout(45000)
-        });
+        const response = await fetch(
+          buildApiUrl(baseUrl, model, 'predict', authMethod, effectiveKey),
+          {
+            method: 'POST',
+            headers: buildHeaders(authMethod, effectiveKey, headerName),
+            body: JSON.stringify({
+              instances: [{ prompt }],
+              parameters: { sampleCount: 1, aspectRatio: safeAspectRatio }
+            }),
+            signal: controller?.signal || AbortSignal.timeout(240000) // 4 minutes timeout
+          }
+        );
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -157,16 +170,19 @@ async function generateImageDirect(
         const tools: any[] = [];
         if (enableGrounding) tools.push({ googleSearch: {} });
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts }],
-            generationConfig: { imageConfig },
-            tools: tools.length > 0 ? tools : undefined
-          }),
-          signal: controller?.signal || AbortSignal.timeout(45000)
-        });
+        const response = await fetch(
+          buildApiUrl(baseUrl, model, 'generateContent', authMethod, effectiveKey),
+          {
+            method: 'POST',
+            headers: buildHeaders(authMethod, effectiveKey, headerName),
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts }],
+              generationConfig: { imageConfig },
+              tools: tools.length > 0 ? tools : undefined
+            }),
+            signal: controller?.signal || AbortSignal.timeout(240000) // 4 minutes timeout
+          }
+        );
 
         // Update Quota
         if (keyId) {
@@ -214,11 +230,15 @@ async function generateImageDirect(
         keyManager.reportFailure(keyId, error.message || 'Unknown error');
 
         // IMMEDIATE GLOBAL ROTATION:
-        // Get the NEXT available key
+        // Get the NEXT available key (with its proxy config)
         const nextKeyStruct = keyManager.getNextKey();
         if (nextKeyStruct) {
           effectiveKey = nextKeyStruct.key;
           keyId = nextKeyStruct.id;
+          // Update proxy config for next attempt
+          baseUrl = nextKeyStruct.baseUrl;
+          authMethod = nextKeyStruct.authMethod;
+          headerName = nextKeyStruct.headerName;
         } else {
           console.error('[Gemini] No more keys available!');
           break; // No valid keys left
@@ -333,6 +353,7 @@ export const validateApiKey = async (apiKey: string): Promise<boolean> => {
 
 /**
  * Generate text conversation (Chat) using Gemini API
+ * Supports third-party API proxies via baseUrl configuration
  */
 export const generateText = async (
   messages: { role: 'user' | 'assistant', content: string }[],
@@ -341,6 +362,10 @@ export const generateText = async (
 ): Promise<string> => {
   let effectiveKey = apiKey;
   let keyId: string | undefined;
+  // Proxy configuration (defaults to Google official)
+  let baseUrl = GOOGLE_API_BASE;
+  let authMethod: AuthMethod = 'query';
+  let headerName = 'x-goog-api-key';
 
   // Key Selection
   if (!effectiveKey) {
@@ -348,6 +373,10 @@ export const generateText = async (
     if (keyData) {
       effectiveKey = keyData.key;
       keyId = keyData.id;
+      // Capture proxy configuration
+      baseUrl = keyData.baseUrl;
+      authMethod = keyData.authMethod;
+      headerName = keyData.headerName;
     } else {
       effectiveKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     }
@@ -368,12 +397,15 @@ export const generateText = async (
         parts: [{ text: m.content }]
       }));
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents }),
-        signal: AbortSignal.timeout(30000) // 30s timeout for chat
-      });
+      const response = await fetch(
+        buildApiUrl(baseUrl, model, 'generateContent', authMethod, effectiveKey),
+        {
+          method: 'POST',
+          headers: buildHeaders(authMethod, effectiveKey, headerName),
+          body: JSON.stringify({ contents }),
+          signal: AbortSignal.timeout(30000) // 30s timeout for chat
+        }
+      );
 
       // Update Quota (if using managed key)
       if (keyId) {
@@ -420,11 +452,15 @@ export const generateText = async (
 
       if (keyId) {
         keyManager.reportFailure(keyId, error.message);
-        // Rotate key
+        // Rotate key (with proxy config)
         const nextKeyStruct = keyManager.getNextKey();
         if (nextKeyStruct) {
           effectiveKey = nextKeyStruct.key;
           keyId = nextKeyStruct.id;
+          // Update proxy config
+          baseUrl = nextKeyStruct.baseUrl;
+          authMethod = nextKeyStruct.authMethod;
+          headerName = nextKeyStruct.headerName;
         } else {
           break;
         }
