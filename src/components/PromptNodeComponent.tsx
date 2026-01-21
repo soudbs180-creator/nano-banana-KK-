@@ -310,7 +310,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
 
                             return (
                                 <React.Fragment key={i}>
-                                    {/* Dashed line from dot to placeholder */}
+                                    {/* Dashed line from dot to placeholder - subtle style */}
                                     <svg
                                         className="pointer-events-none"
                                         style={{
@@ -324,9 +324,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                                         <path
                                             d={`M0,0 L${offsetX},${offsetY}`}
                                             fill="none"
-                                            stroke="#52525b"
-                                            strokeWidth="1.5"
-                                            strokeDasharray="4 3"
+                                            stroke="#3f3f46"
+                                            strokeWidth="1"
+                                            strokeDasharray="3 4"
                                         />
                                     </svg>
 
@@ -355,7 +355,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                 );
             })()}
 
-            {/* Connection Line from Source Image (Flowith style: Image bottom → Prompt top) */}
+            {/* Connection Line from Source Image (Follow-up mode: Image bottom → Prompt top) */}
             {sourcePosition && (() => {
                 // Both cards use translate(-50%, -100%) so position.y is BOTTOM
 
@@ -371,7 +371,6 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                 const deltaX = endX - startX;
                 const deltaY = endY - startY;
                 const absDeltaX = Math.abs(deltaX);
-                const absDeltaY = Math.abs(deltaY);
 
                 // User requested Straight Line style
                 let d = '';
@@ -395,22 +394,32 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                             zIndex: -1
                         }}
                     >
-                        {/* Starting dot */}
+                        {/* Starting dot (source image) - indigo tint for follow-up */}
                         <circle
                             cx={startX}
                             cy={startY}
-                            r="3"
-                            fill="#D1D5DB"
+                            r="2.5"
+                            fill="#6366f1"
+                            opacity="0.6"
                         />
-                        {/* Smooth Bezier curve */}
+                        {/* Smooth Bezier curve - indigo tint for follow-up distinction */}
                         <path
                             d={d}
                             fill="none"
-                            stroke="#D1D5DB"
-                            strokeWidth="1.5"
-                            strokeDasharray="4 3"
+                            stroke="#6366f1"
+                            strokeWidth="1"
+                            strokeDasharray="2 3"
                             strokeLinecap="round"
+                            opacity="0.4"
                             className="transition-all duration-300 ease-in-out"
+                        />
+                        {/* Ending dot (prompt top) - shows clear connection target */}
+                        <circle
+                            cx={endX}
+                            cy={endY}
+                            r="2"
+                            fill="#6366f1"
+                            opacity="0.5"
                         />
                     </svg>
                 );

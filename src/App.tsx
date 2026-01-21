@@ -1321,15 +1321,15 @@ const AppContent: React.FC = () => {
 
               return (
                 <g key={`${pn.id}-${childId}-${Math.round(startX)}-${Math.round(endX)}`}>
-                  {/* Starting dot */}
-                  <circle cx={startX} cy={startY} r="3" fill="#D1D5DB" />
-                  {/* Smooth curve */}
+                  {/* Starting dot - subtle small circle */}
+                  <circle cx={startX} cy={startY} r="2" fill="#52525b" />
+                  {/* Smooth curve - refined subtle style */}
                   <path
                     d={d}
                     fill="none"
-                    stroke="#D1D5DB"
-                    strokeWidth="1.5"
-                    strokeDasharray="4 3"
+                    stroke="#3f3f46"
+                    strokeWidth="1"
+                    strokeDasharray="3 4"
                     strokeLinecap="round"
                     className="transition-all duration-300 ease-in-out"
                   />
