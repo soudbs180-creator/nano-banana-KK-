@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
-import { Canvas, PromptNode, GeneratedImage, AspectRatio, ModelType } from '../types';
+import { Canvas, PromptNode, GeneratedImage, AspectRatio, CanvasGroup } from '../types';
 import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '../services/imageStorage';
 import { syncService } from '../services/syncService';
 import { fileSystemService } from '../services/fileSystemService';
@@ -59,6 +59,11 @@ interface CanvasContextType {
     selectNodes: (ids: string[], exclusive?: boolean) => void;
     clearSelection: () => void;
     moveSelectedNodes: (delta: { x: number; y: number }) => void;
+    findSmartPosition: (x: number, y: number, width: number, height: number, buffer?: number) => { x: number; y: number };
+    findNextGroupPosition: () => { x: number; y: number }; // Grid-based Card Group placement
+    addGroup: (group: CanvasGroup) => void;
+    removeGroup: (id: string) => void;
+    updateGroup: (group: CanvasGroup) => void;
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -72,6 +77,8 @@ const DEFAULT_CANVAS: Canvas = {
     name: '项目1',
     promptNodes: [],
     imageNodes: [],
+    groups: [],
+    drawings: [],
     lastModified: Date.now()
 };
 const DEFAULT_STATE: CanvasState = {
@@ -127,7 +134,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         prompt: img.prompt || '',
                         dimensions: img.dimensions || "1024x1024", // Default string
                         aspectRatio: img.aspectRatio || AspectRatio.SQUARE,
-                        model: img.model || ModelType.IMAGEN_4 // Fallback valid enum
+                        model: img.model || 'imagen-3.0-generate-001' // Fallback to default model string
                     })),
                     // Fix Prompt Nodes
                     promptNodes: (canvas.promptNodes || []).map(node => ({
@@ -136,8 +143,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         parallelCount: node.parallelCount || 1,
                         // Reset generating state on load. If reload page, process is dead.
                         isGenerating: false,
-                        error: node.isGenerating ? '::INTERRUPTED::' : undefined
-                    }))
+                        error: node.isGenerating ? '::INTERRUPTED::' : undefined,
+                        tags: node.tags || []
+                    })),
+                    groups: canvas.groups || [],
+                    drawings: canvas.drawings || []
                 }));
 
                 return parsed;
@@ -163,7 +173,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 // @ts-ignore
                                 const perm = await handle.queryPermission({ mode: 'readwrite' });
                                 if (perm === 'granted') {
-                                    logInfo('CanvasContext', `Restored local folder handle: ${handle.name}`);
+                                    logInfo('CanvasContext', `已恢复本地文件夹`, `folder: ${handle.name}`);
 
                                     // [NEW] Load actual project data from disk to ensure sync
                                     // This overrides localStorage state with the true file state
@@ -207,13 +217,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                         setState(prev => ({ ...prev, fileSystemHandle: handle, folderName: handle.name }));
                                     }
                                 } else {
-                                    logInfo('CanvasContext', `Local folder permission pending: ${perm}`);
+                                    logInfo('CanvasContext', `本地文件夹权限等待中`, `permission: ${perm}`);
                                 }
-                            } else {
-                                logInfo('CanvasContext', 'No persisted local folder handle found.');
+                                logInfo('CanvasContext', '未找到已保存的本地文件夹', 'no persisted handle found');
                             }
                         } catch (e) {
-                            logError('CanvasContext', e, 'Failed to restore folder handle');
+                            logError('CanvasContext', e, '恢复文件夹句柄失败');
                         }
                     });
                 });
@@ -798,163 +807,540 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const arrangeAllNodes = useCallback(() => {
         pushToHistory(); // Allow undo
 
-        // Helper: Get image card dimensions based on aspectRatio (Must match App.tsx rendering)
+        // --- Configuration ---
+        const PROMPT_WIDTH = 320;
+        const PROMPT_HEIGHT = 160; // Base height, dynamic in reality but fixed for grid slot
+        const GAP_X = 60;  // Horizontal gap between branches
+        const GAP_Y = 80;  // Vertical gap between levels
+        const IMAGE_GAP = 20; // Gap between sibling images
+
+        // --- Helper: Get dimensions ---
         const getImageDims = (aspectRatio?: string, dimensions?: string) => {
-            // Priority: Try to use actual dimensions if available
             if (dimensions) {
                 const [w, h] = dimensions.split('x').map(Number);
                 if (w && h) {
                     const ratio = w / h;
                     const cardWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
-                    const imageHeight = (cardWidth / ratio) + 40; // +40 Footer
+                    const imageHeight = (cardWidth / ratio) + 40;
                     return { w: cardWidth, h: imageHeight };
                 }
             }
-
-            // Fallback to AspectRatio enum
             switch (aspectRatio) {
-                case '16:9': return { w: 320, h: 220 }; // 180 + 40
-                case '9:16': return { w: 200, h: 395 }; // 355 + 40
+                case '16:9': return { w: 320, h: 220 };
+                case '9:16': return { w: 200, h: 395 };
                 case '1:1':
-                default: return { w: 280, h: 320 }; // 280 + 40
+                default: return { w: 280, h: 320 };
             }
         };
 
-        const PROMPT_WIDTH = 320;
-        const PROMPT_HEIGHT = 200;
-        const GAP_X = 40; // Gap between projects
-        const GAP_Y = 60; // Gap between prompt and images
-
-        // 1. Calculate New Layout synchronously using current state
         const currentCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
         if (!currentCanvas) return;
 
-        const promptPositions: { [id: string]: { x: number; y: number } } = {};
-        const imagePositions: { [id: string]: { x: number; y: number } } = {};
+        // --- SCOPED ARRANGE: Selected Nodes Only (Smart Layout) ---
+        const selectedIds = state.selectedNodeIds || [];
+        if (selectedIds.length > 0) {
+            {
+                // 1. Analyze Selection Composition
+                const selectedPrompts = currentCanvas.promptNodes.filter(p => selectedIds.includes(p.id));
+                const selectedImages = currentCanvas.imageNodes.filter(img => selectedIds.includes(img.id));
 
-        interface ProjectGroup {
-            prompt: typeof currentCanvas.promptNodes[0];
-            images: typeof currentCanvas.imageNodes;
-        }
+                const isPromptOnly = selectedPrompts.length > 0 && selectedImages.length === 0;
+                const isImageOnly = selectedPrompts.length === 0 && selectedImages.length > 0;
 
-        const projects: ProjectGroup[] = currentCanvas.promptNodes
-            .map(pn => ({
-                prompt: pn,
-                images: currentCanvas.imageNodes.filter(img => img.parentPromptId === pn.id)
-            }))
-            .sort((a, b) => a.prompt.timestamp - b.prompt.timestamp);
+                // 2. Identify Roots & Sync Mode
+                let roots: any[] = [];
+                let syncChildren = false;
 
-        // Orphan images (no parent)
-        const orphanImages = currentCanvas.imageNodes.filter(
-            img => !currentCanvas.promptNodes.some(pn => pn.id === img.parentPromptId)
-        );
+                if (isPromptOnly) {
+                    // [MODE A] Prompt Only: Sort Prompts independent of children
+                    roots = selectedPrompts.map(p => ({
+                        id: p.id, type: 'prompt', obj: p,
+                        x: p.position.x, y: p.position.y,
+                        width: PROMPT_WIDTH, height: p.height || 200,
+                        visualCx: p.position.x, visualCy: p.position.y - (p.height || 200) / 2
+                    }));
+                    syncChildren = false;
+                }
+                else if (isImageOnly) {
+                    // [MODE B] Image Only: Sort Images independent of parents
+                    roots = selectedImages.map(img => {
+                        const dims = getImageDims(img.aspectRatio, img.dimensions);
+                        return {
+                            id: img.id, type: 'image', obj: img,
+                            x: img.position.x, y: img.position.y,
+                            width: dims.w, height: dims.h,
+                            visualCx: img.position.x, visualCy: img.position.y - dims.h / 2
+                        };
+                    });
+                    syncChildren = false;
+                }
+                else {
+                    // [MODE C] Mixed/Group: Use Group Logic
+                    syncChildren = true;
+                    const uniqueRootsMap = new Map<string, { id: string, type: 'prompt' | 'image', obj: any }>();
+                    const getPrompt = (id: string) => currentCanvas.promptNodes.find(p => p.id === id);
+                    const getImage = (id: string) => currentCanvas.imageNodes.find(img => img.id === id);
 
-        // Start position
-        let currentX = 50;
-        let currentY = 50;
-        const MAX_PER_ROW = 10;
-        let projectIndex = 0;
-        let maxRowHeight = 0;
-        const ROW_GAP = 100;
+                    selectedIds.forEach(id => {
+                        const p = getPrompt(id);
+                        if (p) {
+                            uniqueRootsMap.set(p.id, { id: p.id, type: 'prompt', obj: p });
+                            return;
+                        }
+                        const img = getImage(id);
+                        if (img) {
+                            if (img.parentPromptId) {
+                                const parent = getPrompt(img.parentPromptId);
+                                if (parent) uniqueRootsMap.set(parent.id, { id: parent.id, type: 'prompt', obj: parent });
+                                else uniqueRootsMap.set(img.id, { id: img.id, type: 'image', obj: img });
+                            } else {
+                                uniqueRootsMap.set(img.id, { id: img.id, type: 'image', obj: img });
+                            }
+                        }
+                    });
 
-        // Layout each project
-        projects.forEach(project => {
-            // Calculate image dimensions and total width
-            const imageDims: { w: number; h: number }[] = [];
-            let totalImagesWidth = 0;
-            let maxImageHeight = 0;
-            const IMAGE_GAP = 15;
+                    roots = Array.from(uniqueRootsMap.values()).map(r => {
+                        const node = r.obj;
+                        const width = r.type === 'prompt' ? PROMPT_WIDTH : getImageDims(node.aspectRatio, node.dimensions).w;
+                        const height = r.type === 'prompt' ? (node.height || 200) : getImageDims(node.aspectRatio, node.dimensions).h;
+                        return {
+                            ...r,
+                            x: node.position.x, y: node.position.y,
+                            width, height,
+                            visualCx: node.position.x, visualCy: node.position.y - height / 2,
+                        };
+                    });
+                }
 
-            project.images.forEach(img => {
-                const dims = getImageDims(img.aspectRatio, img.dimensions);
-                imageDims.push(dims);
-                totalImagesWidth += dims.w;
-                maxImageHeight = Math.max(maxImageHeight, dims.h);
-            });
+                if (roots.length >= 2) {
+                    // 2. Decide Strategy
+                    let strategy: 'matrix' | 'row' | 'column' = 'row';
+                    const GAP = 40; // Group Gap
 
-            // Add gaps between images
-            if (project.images.length > 1) {
-                totalImagesWidth += (project.images.length - 1) * IMAGE_GAP;
-            }
-
-            // Project width = max of prompt width and total images width
-            const projectWidth = Math.max(PROMPT_WIDTH, totalImagesWidth);
-            const projectHeight = PROMPT_HEIGHT + GAP_Y + maxImageHeight;
-
-            // WRAP LOGIC: Check if we need to start a new row
-            if (projectIndex > 0 && projectIndex % MAX_PER_ROW === 0) {
-                currentX = 50;
-                currentY += maxRowHeight + ROW_GAP;
-                maxRowHeight = 0;
-            }
-
-            maxRowHeight = Math.max(maxRowHeight, projectHeight);
-
-            // Position prompt (anchor is center-bottom)
-            const promptX = currentX + projectWidth / 2;
-            const promptY = currentY + PROMPT_HEIGHT;
-            promptPositions[project.prompt.id] = { x: promptX, y: promptY };
-
-            // Position images horizontally below prompt
-            if (project.images.length > 0) {
-                const imagesStartX = currentX + (projectWidth - totalImagesWidth) / 2;
-                // Note: No longer using single imageY. Calculating per image to ensure uniform top-alignment.
-
-                let imgX = imagesStartX + (imageDims[0]?.w || 0) / 2; // Center first image X
-
-                project.images.forEach((img, idx) => {
-                    const dims = imageDims[idx];
-                    const thisImageY = promptY + GAP_Y + dims.h; // Y is Bottom. Top = Y - h = Prompt + Gap. Uniform Top!
-
-                    if (idx > 0) {
-                        const prevDims = imageDims[idx - 1];
-                        imgX += prevDims.w / 2 + IMAGE_GAP + dims.w / 2;
+                    if (roots.length > 6) {
+                        strategy = 'matrix';
+                    } else {
+                        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                        roots.forEach(r => {
+                            minX = Math.min(minX, r.x);
+                            maxX = Math.max(maxX, r.x);
+                            minY = Math.min(minY, r.y);
+                            maxY = Math.max(maxY, r.y);
+                        });
+                        if ((maxY - minY) > (maxX - minX) * 1.5) { // Bias towards row unless clearly column
+                            strategy = 'column';
+                        }
                     }
 
-                    imagePositions[img.id] = { x: imgX, y: thisImageY };
-                });
+                    // 3. Arrange
+                    const newPositions: Record<string, { x: number, y: number }> = {};
+
+                    if (strategy === 'matrix') {
+                        // Grid Sort: Rough Row-Major
+                        roots.sort((a, b) => {
+                            if (Math.abs(a.visualCy - b.visualCy) > 200) return a.visualCy - b.visualCy;
+                            return a.visualCx - b.visualCx;
+                        });
+
+                        // Determine Grid Dimensions
+                        const columns = Math.ceil(Math.sqrt(roots.length));
+                        // Center around average center
+                        const avgX = roots.reduce((s, r) => s + r.x, 0) / roots.length;
+                        const avgY = roots.reduce((s, r) => s + r.y, 0) / roots.length;
+
+                        // Calculate grid total size
+                        const maxW = Math.max(...roots.map(r => r.width));
+                        const maxH = Math.max(...roots.map(r => r.height));
+                        const CELL_W = maxW + GAP;
+                        const CELL_H = maxH + GAP;
+
+                        const gridW = columns * CELL_W;
+                        const rows = Math.ceil(roots.length / columns);
+                        const gridH = rows * CELL_H;
+
+                        const startX = avgX - gridW / 2 + CELL_W / 2; // + Half cell because anchor is center
+                        const startY = avgY - gridH / 2 + CELL_H; // + Full cell H because anchor is bottom
+
+                        roots.forEach((r, i) => {
+                            const col = i % columns;
+                            const row = Math.floor(i / columns);
+                            newPositions[r.id] = {
+                                x: startX + col * CELL_W,
+                                y: startY + row * CELL_H
+                            };
+                        });
+
+                    } else if (strategy === 'column') {
+                        // Sort Top->Bottom
+                        roots.sort((a, b) => a.visualCy - b.visualCy);
+                        const avgX = roots.reduce((s, r) => s + r.x, 0) / roots.length;
+
+                        // Start Y = Top-most Top + First Height
+                        const topY = Math.min(...roots.map(r => r.visualCy - r.height / 2));
+                        let currentY = topY;
+
+                        roots.forEach((r) => {
+                            currentY += r.height; // Bottom Anchor
+                            newPositions[r.id] = { x: avgX, y: currentY };
+                            currentY += GAP;
+                        });
+
+                    } else {
+                        // Row (Default) - Sort Left->Right
+                        roots.sort((a, b) => a.visualCx - b.visualCx);
+                        // Align Centers Vertically
+                        const avgCy = roots.reduce((s, r) => s + r.visualCy, 0) / roots.length;
+
+                        let currentLeft = Math.min(...roots.map(r => r.visualCx - r.width / 2));
+
+                        roots.forEach((r) => {
+                            const newX = currentLeft + r.width / 2;
+                            newPositions[r.id] = { x: newX, y: avgCy + r.height / 2 };
+                            currentLeft += r.width + GAP;
+                        });
+                    }
+
+                    // 4. Apply & Sync Children
+                    const newCanvases = state.canvases.map(c => {
+                        if (c.id !== state.activeCanvasId) return c;
+
+                        const getRootDelta = (rid: string) => {
+                            const target = newPositions[rid];
+                            const original = roots.find(r => r.id === rid);
+                            if (!target || !original) return { x: 0, y: 0 };
+                            return { x: target.x - original.x, y: target.y - original.y };
+                        };
+
+                        return {
+                            ...c,
+                            promptNodes: c.promptNodes.map(pn => newPositions[pn.id] ? { ...pn, position: newPositions[pn.id] } : pn),
+                            imageNodes: c.imageNodes.map(img => {
+                                // If it's a Root
+                                if (newPositions[img.id]) return { ...img, position: newPositions[img.id] };
+                                // If it's a Child of a Root (Only if Sync Enabled)
+                                if (syncChildren && img.parentPromptId && newPositions[img.parentPromptId]) {
+                                    const delta = getRootDelta(img.parentPromptId);
+                                    return { ...img, position: { x: img.position.x + delta.x, y: img.position.y + delta.y } };
+                                }
+                                return img;
+                            }),
+                            lastModified: Date.now()
+                        };
+                    });
+
+                    setState(prev => ({ ...prev, canvases: newCanvases }));
+                    return;
+                }
             }
 
-            // Move X for next project
-            currentX += projectWidth + GAP_X;
-            projectIndex++;
+            // Filter selected nodes
+            const selectedPrompts = currentCanvas.promptNodes.filter(p => selectedIds.includes(p.id));
+            const selectedImages = currentCanvas.imageNodes.filter(img => selectedIds.includes(img.id));
+
+            if (selectedPrompts.length + selectedImages.length <= 1) return;
+
+            // 1. Prepare data with visual dimensions and centers
+            // Card Anchor is Bottom-Center (x, y). 
+            // Visual Center Y = y - height / 2.
+            const allSelected = [
+                ...selectedPrompts.map(p => ({
+                    id: p.id,
+                    type: 'prompt',
+                    obj: p,
+                    x: p.position.x,
+                    y: p.position.y,
+                    width: PROMPT_WIDTH,
+                    height: p.height || 200, // Use tracked height or fallback
+                    visualCy: p.position.y - (p.height || 200) / 2
+                })),
+                ...selectedImages.map(img => {
+                    const dims = getImageDims(img.aspectRatio, img.dimensions);
+                    return {
+                        id: img.id,
+                        type: 'image',
+                        obj: img,
+                        x: img.position.x,
+                        y: img.position.y,
+                        width: dims.w,
+                        height: dims.h,
+                        visualCy: img.position.y - dims.h / 2
+                    };
+                })
+            ];
+
+            // 2. Sort by current X to maintain relative left-to-right order
+            allSelected.sort((a, b) => a.x - b.x);
+
+            // 3. Calculate Visual Vertical Center Line (Average of visual centers)
+            const avgVisualCy = allSelected.reduce((sum, n) => sum + n.visualCy, 0) / allSelected.length;
+
+            // 4. Distribute Horizontally with Fixed Gap
+            const DISTRIBUTION_GAP = 40; // Fixed distance requested by user
+
+            // Start X: Keep the group centered around the same visual center X? 
+            // Or start from the leftmost item's X? 
+            // Let's preserve the "Leftmost Edge" of the group to avoid jumping too much.
+            // Leftmost Edge = allSelected[0].x - allSelected[0].width / 2
+            let currentLeftEdge = allSelected[0].x - allSelected[0].width / 2;
+
+            const newPositions: Record<string, { x: number, y: number }> = {};
+            const movedPrompts = new Set<string>();
+
+            // Calculate new positions for SELECTED nodes
+            allSelected.forEach((node) => {
+                // Horizontal: Place based on accumulated width
+                // Node Center X = currentLeftEdge + node.width / 2
+                const newX = currentLeftEdge + node.width / 2;
+
+                // Vertical: Align Visual Center
+                // New Bottom Y = avgVisualCy + height / 2
+                const newY = avgVisualCy + node.height / 2;
+
+                newPositions[node.id] = { x: newX, y: newY };
+
+                // Advance X cursor
+                currentLeftEdge += node.width + DISTRIBUTION_GAP;
+
+                // Track prompt moves to sync children later
+                if (node.type === 'prompt') movedPrompts.add(node.id);
+            });
+
+            // 5. Apply updates & Handle Implicit Child Movement
+            // If a prompt moved, its unselected child images should move with it.
+            const newCanvases = state.canvases.map(c => {
+                if (c.id !== state.activeCanvasId) return c;
+
+                // Helper to get delta for a specific prompt
+                const getPromptDelta = (pid: string) => {
+                    if (!newPositions[pid]) return { x: 0, y: 0 };
+                    // Find original pos
+                    const original = allSelected.find(s => s.id === pid);
+                    if (!original) return { x: 0, y: 0 };
+                    return {
+                        x: newPositions[pid].x - original.x,
+                        y: newPositions[pid].y - original.y
+                    };
+                };
+
+                return {
+                    ...c,
+                    promptNodes: c.promptNodes.map(pn => newPositions[pn.id] ? { ...pn, position: newPositions[pn.id] } : pn),
+                    imageNodes: c.imageNodes.map(img => {
+                        // Case 1: Image is explicitly selected and arranged
+                        if (newPositions[img.id]) {
+                            return { ...img, position: newPositions[img.id] };
+                        }
+                        // Case 2: Image is NOT selected, but its Parent Prompt moved
+                        if (img.parentPromptId && movedPrompts.has(img.parentPromptId)) {
+                            // Sync move
+                            const delta = getPromptDelta(img.parentPromptId);
+                            if (delta.x !== 0 || delta.y !== 0) {
+                                return {
+                                    ...img,
+                                    position: {
+                                        x: img.position.x + delta.x,
+                                        y: img.position.y + delta.y
+                                    }
+                                };
+                            }
+                        }
+                        return img;
+                    }),
+                    lastModified: Date.now()
+                };
+            });
+
+            setState(prev => ({ ...prev, canvases: newCanvases }));
+            return;
+        }
+
+        // --- 1. Build Data Structures (Original Full Layout) ---
+        const promptMap = new Map(currentCanvas.promptNodes.map(n => [n.id, n]));
+        const imageMap = new Map(currentCanvas.imageNodes.map(n => [n.id, n]));
+
+        // Track visited to prevent infinite loops (though DAG is expected)
+        const visited = new Set<string>();
+
+        // Tree Node Definition
+        interface TreeNode {
+            id: string;
+            type: 'prompt' | 'image';
+            width: number;
+            height: number;
+            children: TreeNode[]; // Images have Prompt children (follow-ups), Prompts have Image children
+            subtreeWidth: number;
+            x?: number;
+            y?: number;
+        }
+
+        // Recursive Build
+        const buildTree = (nodeId: string, type: 'prompt' | 'image'): TreeNode | null => {
+            if (visited.has(nodeId)) return null;
+            visited.add(nodeId);
+
+            let node: any;
+            let width = 0;
+            let height = 0;
+            let childrenIds: string[] = [];
+            let childType: 'prompt' | 'image';
+
+            if (type === 'prompt') {
+                node = promptMap.get(nodeId);
+                if (!node) return null;
+                width = PROMPT_WIDTH;
+                height = node.height || 200; // Use actual height if available
+                // Children are Images created by this prompt
+                childrenIds = currentCanvas.imageNodes
+                    .filter(img => img.parentPromptId === nodeId)
+                    .map(img => img.id);
+                childType = 'image';
+            } else {
+                node = imageMap.get(nodeId);
+                if (!node) return null;
+                const dims = getImageDims(node.aspectRatio, node.dimensions);
+                width = dims.w;
+                height = dims.h;
+                // Children are Prompts that use this image as source (Follow-ups)
+                childrenIds = currentCanvas.promptNodes
+                    .filter(p => p.sourceImageId === nodeId)
+                    .map(p => p.id);
+                childType = 'prompt';
+            }
+
+            const children = childrenIds
+                .map(id => buildTree(id, childType))
+                .filter((n): n is TreeNode => n !== null);
+
+            return { id: nodeId, type, width, height, children, subtreeWidth: 0 };
+        };
+
+        // --- 2. Identify Roots ---
+        // Root Prompts: No sourceImageId OR sourceImageId not found
+        const rootPrompts = currentCanvas.promptNodes.filter(p =>
+            !p.sourceImageId || !imageMap.has(p.sourceImageId)
+        );
+
+        // Root Images: No parentPromptId OR parentPromptId not found (Orphans)
+        const rootImages = currentCanvas.imageNodes.filter(img =>
+            !img.parentPromptId || !promptMap.has(img.parentPromptId)
+        );
+
+        const forest: TreeNode[] = [];
+        rootPrompts.forEach(p => {
+            const tree = buildTree(p.id, 'prompt');
+            if (tree) forest.push(tree);
+        });
+        rootImages.forEach(img => {
+            const tree = buildTree(img.id, 'image');
+            if (tree) forest.push(tree);
         });
 
-        // Orphan images at the end
-        orphanImages.forEach((img, idx) => {
-            const dims = getImageDims(img.aspectRatio);
-            imagePositions[img.id] = { x: 50 + idx * 300, y: 500 }; // Simplified fallback
+        // --- 3. Measure Subtrees (Bottom-Up) ---
+        // 副卡横向排列，计算子树宽度时需考虑居中对齐
+        const measureTree = (node: TreeNode) => {
+            if (node.children.length === 0) {
+                node.subtreeWidth = node.width;
+                return;
+            }
+
+            // Measure all children first
+            node.children.forEach(measureTree);
+
+            // 计算子节点行的总宽度
+            // 如果父节点是 prompt，子节点是 images：使用紧凑间距，横向居中
+            // 如果父节点是 image，子节点是 prompts：使用宽间距
+            const childGap = node.type === 'prompt' ? IMAGE_GAP : GAP_X;
+
+            const childrenTotalWidth = node.children.reduce((sum, child) => sum + child.subtreeWidth, 0)
+                + (node.children.length - 1) * childGap;
+
+            // 子树宽度取父节点宽度和子节点总宽度的较大值
+            node.subtreeWidth = Math.max(node.width, childrenTotalWidth);
+        };
+
+        forest.forEach(measureTree);
+
+        // --- 4. 布局（自顶向下）---
+        // Layout: Top-Down positioning with sub-cards centered under main cards
+        const positions: { [id: string]: { x: number; y: number } } = {};
+
+        const layoutTree = (node: TreeNode, x: number, y: number) => {
+            // 对于居中锚点的卡片（translate -50%）：
+            // X 应该是卡片的视觉中心
+            // 分配的子树宽度范围是 [x, x + node.subtreeWidth]
+            // 我们希望卡片中心位于此分配区域的中心
+            const nodeX = x + node.subtreeWidth / 2;
+            positions[node.id] = { x: nodeX, y };
+
+            // 如果没有子节点，无需进一步布局
+            if (node.children.length === 0) return;
+
+            // 计算子节点块的总宽度
+            const childGap = node.type === 'prompt' ? IMAGE_GAP : GAP_X;
+            const childrenBlockWidth = node.children.reduce((sum, c) => sum + c.subtreeWidth, 0)
+                + (node.children.length - 1) * childGap;
+
+            // 副卡居中对齐：计算起始X使子节点块在父节点子树中居中
+            let currentChildX = x;
+            if (childrenBlockWidth < node.subtreeWidth) {
+                currentChildX += (node.subtreeWidth - childrenBlockWidth) / 2;
+            }
+
+            // 底部锚点卡片（translate -50%, -100%）的Y计算：
+            // - node.position.y 是卡片的视觉底部
+            // - 子节点的视觉顶部应该在父节点底部 + 间距
+            // - 由于子节点也使用底部锚点：child.y = parentBottom + GAP + childHeight
+            const baseY = y + GAP_Y;
+
+            node.children.forEach(child => {
+                const childY = baseY + child.height;
+                layoutTree(child, currentChildX, childY);
+                currentChildX += child.subtreeWidth + childGap;
+            });
+        };
+
+        let currentRootX = 0; // Start from 0 for easier centering calculation
+        const baseRootY = 100;
+
+        // First pass: layout from X=0 to calculate total width
+        forest.forEach(root => {
+            const rootY = baseRootY + root.height;
+            layoutTree(root, currentRootX, rootY);
+            currentRootX += root.subtreeWidth + 100;
         });
 
-        // 2. Construct New Canvases List synchronously
+        // Calculate total width and center offset
+        const totalWidth = currentRootX - 100; // Remove trailing gap
+        const centerOffsetX = -totalWidth / 2; // Canvas uses 0,0 as center
+
+        // Shift all positions to center
+        Object.keys(positions).forEach(id => {
+            positions[id].x += centerOffsetX;
+        });
+
+
+        // --- 5. Apply & Save ---
         const newCanvases = state.canvases.map(c =>
             c.id === state.activeCanvasId ? {
                 ...c,
-                promptNodes: c.promptNodes.map(pn => ({ ...pn, position: promptPositions[pn.id] || pn.position })),
-                imageNodes: c.imageNodes.map(img => ({ ...img, position: imagePositions[img.id] || img.position })),
+                promptNodes: c.promptNodes.map(pn => ({ ...pn, position: positions[pn.id] || pn.position })),
+                imageNodes: c.imageNodes.map(img => ({ ...img, position: positions[img.id] || img.position })),
                 lastModified: Date.now()
             } : c
         );
 
-        // 3. Update React State
-        setState(prev => ({
-            ...prev,
-            canvases: newCanvases
-        }));
+        setState(prev => ({ ...prev, canvases: newCanvases }));
 
-        // 4. FORCE SAVE synchronously (Critical Fix for immediate refresh)
-        // ONLY if NOT connected to a local folder.
+        // Force Save
         if (!state.fileSystemHandle) {
             try {
-                const stateToSave = {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
                     ...state,
                     canvases: stripImageUrls(newCanvases),
-                    history: {} // Don't save history to avoid quota limits
-                };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+                    history: {}
+                }));
             } catch (e) {
-                console.error('Failed to force save layout:', e);
-                alert('布局保存失败：存储空间不足或发生错误。请尝试删除不需要的项目。');
+                console.error('Failed to save layout:', e);
             }
         }
 
@@ -1433,6 +1819,188 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { x: col * SLOT_WIDTH, y: row * SLOT_HEIGHT };
     }, [state]);
 
+    /**
+     * Find a smart position that doesn't overlap with existing nodes.
+     * Starts at target (x,y) and spirals/shifts out until free space found.
+     */
+    const findSmartPosition = useCallback((targetX: number, targetY: number, width: number, height: number, buffer = 20): { x: number; y: number } => {
+        const currentCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
+        if (!currentCanvas) return { x: targetX, y: targetY };
+
+        // Helper: Check collision
+        const checkCollision = (cx: number, cy: number) => {
+            // Check prompts
+            for (const p of currentCanvas.promptNodes) {
+                // Approximate prompt dimensions (default width 320, height ~160+)
+                // Origin is Bottom Center, but stored pos is card bottom center? 
+                // Wait, in `layoutTree`: "nodeX = x + width/2", "positions[node.id] = {x, y}"
+                // And App.tsx `getCardDimensions` logic implies stored pos is bottom center?
+                // Let's assume standard card calc:
+                const pW = 320;
+                const pH = 200; // Roughly
+                // Rect: [p.x - pW/2, p.y - pH, pW, pH]
+                const px = p.position.x - pW / 2;
+                const py = p.position.y - pH;
+
+                // My Candidate Rect: [cx - width/2, cy - height, width, height]
+                const myX = cx - width / 2;
+                const myY = cy - height;
+
+                if (myX < px + pW + buffer && myX + width + buffer > px &&
+                    myY < py + pH + buffer && myY + height + buffer > py) {
+                    return true;
+                }
+            }
+
+            // Check images
+            for (const img of currentCanvas.imageNodes) {
+                // Check dims
+                let iW = 280;
+                let iH = 320;
+                if (img.dimensions) {
+                    const [w, h] = img.dimensions.split('x').map(Number);
+                    if (w && h) {
+                        const ratio = w / h;
+                        iW = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
+                        iH = (iW / ratio) + 40;
+                    }
+                }
+                const ix = img.position.x - iW / 2;
+                const iy = img.position.y - iH;
+
+                const myX = cx - width / 2;
+                const myY = cy - height;
+
+                if (myX < ix + iW + buffer && myX + width + buffer > ix &&
+                    myY < iy + iH + buffer && myY + height + buffer > iy) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        // If no collision at target, return immediately
+        if (!checkCollision(targetX, targetY)) return { x: targetX, y: targetY };
+
+        // Simple Shift Strategy: Try moving Down, then Right, then Diagonal
+        // Iterating shifts
+        const shifts = [
+            { dx: 0, dy: height + buffer }, // Down 1 slot
+            { dx: width + buffer, dy: 0 },  // Right 1 slot
+            { dx: -(width + buffer), dy: 0 }, // Left 1 slot
+            { dx: 0, dy: -(height + buffer) }, // Up 1 slot
+
+            { dx: width + buffer, dy: height + buffer }, // Diagonal Right Down
+            { dx: -(width + buffer), dy: height + buffer }, // Diagonal Left Down
+
+            { dx: (width + buffer) * 2, dy: 0 }, // Right 2
+            { dx: 0, dy: (height + buffer) * 2 }, // Down 2
+        ];
+
+        for (const shift of shifts) {
+            const sx = targetX + shift.dx;
+            const sy = targetY + shift.dy;
+            if (!checkCollision(sx, sy)) return { x: sx, y: sy };
+        }
+
+        // Fallback: Just put it far below
+        return { x: targetX, y: targetY + height + buffer + 100 };
+    }, [state]);
+
+    /**
+     * 查找下一个卡组的网格位置
+     * 规则：优先向右排列，每排30个卡组后换行
+     * 返回主卡（提示词）的底部中心位置
+     * 
+     * Card Group Layout Strategy:
+     * - Each group consists of a Main Card (Prompt) and Sub Cards (Images)
+     * - Groups are arranged in a grid: 30 per row, then wrap to next row
+     * - Dynamic width calculation based on existing sub-cards
+     */
+    const findNextGroupPosition = useCallback((): { x: number; y: number } => {
+        // 卡组布局参数
+        const SUB_CARD_WIDTH = 280;      // 副卡宽度
+        const SUB_CARD_GAP = 16;         // 副卡之间间距
+        const GROUP_BASE_WIDTH = 380;   // 单副卡时的卡组基础宽度
+        const GROUP_HEIGHT = 600;        // 主卡 + 间距 + 副卡高度
+        const GAP_X = 40;                // 卡组水平间距
+        const GAP_Y = 80;                // 排间垂直间距
+        const GROUPS_PER_ROW = 30;       // 每排最大卡组数
+
+        const currentCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
+        if (!currentCanvas) return { x: 0, y: 200 };
+
+        const groupCount = currentCanvas.promptNodes.length;
+
+        // 如果没有现有卡组，返回初始位置
+        if (groupCount === 0) {
+            return { x: 0, y: 200 };
+        }
+
+        // 计算每个现有卡组的实际宽度（基于副卡数量）
+        const getGroupWidth = (promptId: string): number => {
+            const childCount = currentCanvas.imageNodes.filter(
+                img => img.parentPromptId === promptId
+            ).length;
+
+            // 副卡最多2列排列
+            const cols = Math.min(Math.max(childCount, 1), 2);
+            const width = cols * SUB_CARD_WIDTH + (cols - 1) * SUB_CARD_GAP + 40;
+            return Math.max(GROUP_BASE_WIDTH, width);
+        };
+
+        // 计算当前行号和列号
+        const row = Math.floor(groupCount / GROUPS_PER_ROW);
+        const col = groupCount % GROUPS_PER_ROW;
+
+        // 计算当前行的累积X偏移
+        const startRowIdx = row * GROUPS_PER_ROW;
+        let xOffset = 0;
+
+        // 累加当前行中所有已存在卡组的宽度
+        for (let i = startRowIdx; i < groupCount; i++) {
+            const prompt = currentCanvas.promptNodes[i];
+            if (prompt) {
+                xOffset += getGroupWidth(prompt.id) + GAP_X;
+            }
+        }
+
+        // 统一左对齐排布
+        const startX = 0;
+
+        // 新卡组X位置 = 起始X + 累积偏移 + 新卡组宽度的一半（居中锚点）
+        const newGroupWidth = GROUP_BASE_WIDTH;
+        const x = startX + xOffset + newGroupWidth / 2;
+
+        // Y位置根据行号计算
+        const y = 200 + row * (GROUP_HEIGHT + GAP_Y);
+
+        return { x, y };
+    }, [state]);
+
+    /** Group Management */
+    const addGroup = useCallback((group: CanvasGroup) => {
+        updateCanvas((canvas) => ({
+            ...canvas,
+            groups: [...(canvas.groups || []), group]
+        }));
+    }, [updateCanvas]);
+
+    const removeGroup = useCallback((id: string) => {
+        updateCanvas((canvas) => ({
+            ...canvas,
+            groups: (canvas.groups || []).filter(g => g.id !== id)
+        }));
+    }, [updateCanvas]);
+
+    const updateGroup = useCallback((group: CanvasGroup) => {
+        updateCanvas((canvas) => ({
+            ...canvas,
+            groups: (canvas.groups || []).map(g => g.id === group.id ? group : g)
+        }));
+    }, [updateCanvas]);
+
     return (
         <CanvasContext.Provider value={{
             state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
@@ -1447,7 +2015,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             selectedNodeIds: state.selectedNodeIds || [],
             selectNodes,
             clearSelection,
-            moveSelectedNodes
+            moveSelectedNodes,
+            findSmartPosition,
+            findNextGroupPosition,
+            addGroup,
+            removeGroup,
+            updateGroup
         }}>
             {children}
         </CanvasContext.Provider>

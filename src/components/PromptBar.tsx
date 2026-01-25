@@ -1,6 +1,8 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { GenerationConfig, AspectRatio, ImageSize, ModelType, ReferenceImage } from '../types';
-// Lucide icons replaced with SVGs
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { GenerationConfig, AspectRatio, ImageSize, GenerationMode, ModelType, ApiLineMode } from '../types';
+import { modelRegistry, ActiveModel } from '../services/modelRegistry';
+import { keyManager } from '../services/keyManager';
+import { getModelCapabilities, modelSupportsGrounding } from '../services/modelCapabilities';
 
 const MobileMenu = ({ title, onClose, children }: { title: string, onClose: () => void, children: React.ReactNode }) => (
     <>
@@ -31,57 +33,100 @@ interface PromptBarProps {
     onFilesDrop?: (files: File[]) => void;
     activeSourceImage?: { id: string; url: string; prompt: string } | null;
     onClearSource?: () => void;
+    onCancel?: () => void;
     isMobile?: boolean;
+    onOpenSettings?: (view?: 'api-channels') => void;
 }
 
-const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, isMobile = false }) => {
+const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
-    // Filter available aspect ratios based on model
-    const getAvailableAspectRatios = () => {
-        const ratios = [
-            AspectRatio.SQUARE,
-            AspectRatio.STANDARD_2_3,
-            AspectRatio.STANDARD_3_2,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
-            AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9,
-            AspectRatio.LANDSCAPE_21_9
-        ];
+    // Dynamic Model State
+    const [enabledModels, setEnabledModels] = useState<ActiveModel[]>(modelRegistry.getEnabledModels());
+    const [proxyModels, setProxyModels] = useState(keyManager.getAvailableProxyModels());
 
-        if (config.model === ModelType.IMAGEN_4) {
-            // Imagen 4.0 does not support 21:9
-            return ratios.filter(r => r !== AspectRatio.LANDSCAPE_21_9);
-        }
-        return ratios;
-    };
-
-    // Filter available image sizes based on model
-    const getAvailableImageSizes = () => {
-        const sizes = [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
-
-        if (config.model === ModelType.IMAGEN_4) {
-            // Imagen 4.0 supports max 2K usually (checking vs user request which says 4K not supported)
-            return sizes.filter(s => s !== ImageSize.SIZE_4K);
-        }
-        return sizes;
-    };
-
-    const availableRatios = getAvailableAspectRatios();
-    const availableSizes = getAvailableImageSizes();
-
-    // Auto-correct config if the selected option is no longer available
     useEffect(() => {
-        if (!availableRatios.includes(config.aspectRatio)) {
-            setConfig(prev => ({ ...prev, aspectRatio: AspectRatio.SQUARE }));
+        const unsubscribeRegistry = modelRegistry.subscribe(() => {
+            setEnabledModels(modelRegistry.getEnabledModels());
+        });
+        const unsubscribeKeyManager = keyManager.subscribe(() => {
+            setProxyModels(keyManager.getAvailableProxyModels());
+        });
+        return () => {
+            unsubscribeRegistry();
+            unsubscribeKeyManager();
+        };
+    }, []);
+
+    // Get available models based on line mode and generation type
+    const availableModels = useMemo(() => {
+        if (config.lineMode === 'google_direct') {
+            // Google direct mode: use models from model registry
+            return enabledModels.filter(m => (m.type || 'image') === config.mode);
+        } else {
+            // Proxy mode: use configured proxy models
+            const typeFilter = config.mode === 'image' ? 'image' : 'video';
+            return proxyModels
+                .filter(m => m.type === typeFilter)
+                .map(m => ({
+                    id: m.id,
+                    label: m.label,
+                    provider: m.provider || 'Proxy',
+                    type: m.type,
+                    description: m.description,
+                    enabled: true
+                } as ActiveModel));
         }
-        if (!availableSizes.includes(config.imageSize)) {
-            setConfig(prev => ({ ...prev, imageSize: ImageSize.SIZE_1K }));
+    }, [config.lineMode, config.mode, enabledModels, proxyModels]);
+
+    // Auto-select valid model when switching modes or line mode
+    useEffect(() => {
+        const currentModelValid = availableModels.find(m => m.id === config.model);
+        if (!currentModelValid && availableModels.length > 0) {
+            setConfig(prev => ({ ...prev, model: availableModels[0].id }));
         }
-    }, [config.model]); // Check when model changes
+    }, [config.mode, config.lineMode, availableModels, config.model, setConfig]);
+
+    // Get available ratios and sizes based on model capabilities
+    const modelCaps = useMemo(() => {
+        return getModelCapabilities(config.model, config.lineMode);
+    }, [config.model, config.lineMode]);
+
+    const availableRatios = useMemo(() => {
+        return modelCaps?.supportedRatios || Object.values(AspectRatio);
+    }, [modelCaps]);
+
+    const availableSizes = useMemo(() => {
+        return modelCaps?.supportedSizes || Object.values(ImageSize);
+    }, [modelCaps]);
+
+    const groundingSupported = useMemo(() => {
+        return modelSupportsGrounding(config.model, config.lineMode);
+    }, [config.model, config.lineMode]);
+
+    // Auto-reset grounding if not supported
+    useEffect(() => {
+        if (config.enableGrounding && !groundingSupported) {
+            setConfig(prev => ({ ...prev, enableGrounding: false }));
+        }
+    }, [groundingSupported, config.enableGrounding, setConfig]);
+
+    // Auto-adjust ratio/size if current selection not available
+    useEffect(() => {
+        if (!availableRatios.includes(config.aspectRatio) && availableRatios.length > 0) {
+            setConfig(prev => ({ ...prev, aspectRatio: availableRatios[0] }));
+        }
+    }, [availableRatios, config.aspectRatio, setConfig]);
+
+    useEffect(() => {
+        if (!availableSizes.includes(config.imageSize) && availableSizes.length > 0) {
+            setConfig(prev => ({ ...prev, imageSize: availableSizes[0] }));
+        }
+    }, [availableSizes, config.imageSize, setConfig]);
+
+    // NOTE: Legacy functions removed - now using modelCapabilities service
 
     const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setConfig(prev => ({ ...prev, prompt: e.target.value }));
@@ -89,7 +134,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
     }, [setConfig]);
 
-    // Reset height when prompt is cleared programmatically or manually
+    // Reset height when prompt is cleared programmatically
     useEffect(() => {
         if (!config.prompt && textareaRef.current) {
             textareaRef.current.style.height = 'auto';
@@ -104,6 +149,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
         const remainingSlots = 5 - config.referenceImages.length;
         const fileArray = Array.from(files).filter(f => f.type.startsWith('image/'));
+        // TODO: Video upload support for Video mode
 
         if (fileArray.length > remainingSlots) {
             alert(`最多只能上传 5 张参考图，已自动忽略 ${fileArray.length - remainingSlots} 张`);
@@ -144,9 +190,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            onGenerate();
+            if (isGenerating && onCancel) {
+                onCancel();
+            } else {
+                onGenerate();
+            }
         }
-    }, [onGenerate]);
+    }, [onGenerate, isGenerating, onCancel]);
 
     const handlePaste = useCallback((e: React.ClipboardEvent) => {
         const items = e.clipboardData?.items;
@@ -165,14 +215,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             const fileList = new DataTransfer();
             imageFiles.forEach(f => fileList.items.add(f));
             processFiles(fileList.files);
-            // Don't call onFilesDrop here - it would duplicate the images
         }
     }, [processFiles]);
 
     const dragCounter = useRef(0);
     const [isDragging, setIsDragging] = useState(false);
 
-    // Click outside to close menus
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             const target = event.target as Element;
@@ -184,6 +232,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Drag & Drop handlers...
     const handleDragEnter = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -192,13 +241,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             setIsDragging(true);
         }
     }, []);
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        // Necessary to allow dropping
-    }, []);
-
+    const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); }, []);
     const handleDragLeave = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -208,7 +251,6 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             setIsDragging(false);
         }
     }, []);
-
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -216,9 +258,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         setIsDragging(false);
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             processFiles(e.dataTransfer.files);
-            // Don't call onFilesDrop here - processFiles already handles the images
         }
     }, [processFiles]);
+
+    // Helper to get current model label
+    const isProxyEmpty = availableModels.length === 0 && config.lineMode === 'proxy';
+    const currentModelLabel = isProxyEmpty
+        ? '请到 API 设置模型'
+        : (availableModels.find(m => m.id === config.model)?.label || config.model);
 
     return (
         <div
@@ -228,30 +275,32 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             style={{
-                backgroundColor: 'var(--toolbar-bg-dark)',
-                backdropFilter: 'blur(20px) saturate(180%)',
-                borderColor: 'var(--border-medium)',
-                boxShadow: 'var(--shadow-xl)',
-                borderRadius: 'var(--radius-xl)'
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                backdropFilter: 'blur(40px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
+                borderRadius: '24px',
+                bottom: isMobile ? '84px' : '32px'
             }}
         >
             {/* Drag Overlay */}
             {isDragging && (
                 <div className="absolute inset-0 z-50 bg-indigo-500/20 backdrop-blur-md rounded-[inherit] flex items-center justify-center animate-fadeIn pointer-events-none">
-                    <div className="flex flex-col items-center gap-2 text-white drop-shadow-lg">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                            <circle cx="8.5" cy="8.5" r="1.5" />
-                            <polyline points="21 15 16 10 5 21" />
-                            <line x1="12" y1="8" x2="12" y2="16" strokeWidth="2" />
-                            <line x1="8" y1="12" x2="16" y2="12" strokeWidth="2" />
-                        </svg>
-                        <span className="font-bold text-sm">释放添加参考图</span>
-                    </div>
+                    <span className="font-bold text-sm text-white drop-shadow-md">释放添加参考图</span>
                 </div>
             )}
 
-            <div className="input-bar-inner">
+            <div className="input-bar-inner" style={{ position: 'relative' }}>
+
+                {/* Mode Toggle (Floating above on Desktop, or Integrated?)
+                     Design choice: Put it inside "Tools" or main bar?
+                     Main bar is better for visibility. 
+                     Let's add a small toggle at the top left of the input bar or left side.
+                  */}
+
+
+
                 {/* Active Source Image Banner */}
                 {activeSourceImage && (
                     <div className="flex items-center gap-3 px-3 py-2.5 mb-2 rounded-xl border transition-all animate-in slide-in-from-bottom-2"
@@ -273,165 +322,28 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             onClick={onClearSource}
                             className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-500/10 text-zinc-500 hover:text-red-500 transition-colors"
                         >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                         </button>
                     </div>
                 )}
 
                 {/* Quick Options Row */}
                 <div className="input-bar-options">
-                    {/* Aspect Ratio */}
-                    <div className="relative">
-                        <button
-                            className="input-bar-option group"
-                            onClick={() => toggleMenu('ratio')}
-                            title="宽高比"
-                            style={{
-                                backgroundColor: 'var(--bg-tertiary)',
-                                borderColor: 'var(--border-light)',
-                                color: 'var(--text-secondary)'
-                            }}
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-indigo-400 transition-colors">
-                                <rect x="3" y="5" width="18" height="14" rx="2" />
-                            </svg>
-                            <span className="text-xs font-medium">{config.aspectRatio}</span>
-                        </button>
-                        {activeMenu === 'ratio' && (
-                            isMobile ? (
-                                <MobileMenu title="选择宽高比 (Aspect Ratio)" onClose={() => setActiveMenu(null)}>
-                                    <div className="grid grid-cols-3 gap-3">
-                                        {availableRatios.map(ratio => {
-                                            const [w, h] = ratio.split(':').map(Number);
-                                            return (
-                                                <button
-                                                    key={ratio}
-                                                    className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border transition-all active:scale-95 ${config.aspectRatio === ratio
-                                                        ? 'bg-indigo-500 text-white border-indigo-500 shadow-xl shadow-indigo-500/30 ring-1 ring-inset ring-white/20'
-                                                        : 'bg-[#27272a] border-white/5 text-zinc-400 hover:bg-zinc-800'
-                                                        }`}
-                                                    onClick={() => {
-                                                        setConfig(prev => ({ ...prev, aspectRatio: ratio }));
-                                                        setActiveMenu(null);
-                                                    }}
-                                                >
-                                                    {/* Visual Box Centered in fixed height container */}
-                                                    <div className="h-8 w-full flex items-center justify-center mb-1">
-                                                        <div
-                                                            className="transition-all"
-                                                            style={{
-                                                                aspectRatio: `${w}/${h}`,
-                                                                height: h >= w ? '24px' : 'auto',
-                                                                width: w > h ? '32px' : 'auto',
-                                                                maxHeight: '24px',
-                                                                maxWidth: '32px',
-                                                                border: '2px solid currentColor',
-                                                                borderRadius: '3px',
-                                                                backgroundColor: config.aspectRatio === ratio ? 'rgba(255,255,255,0.2)' : 'transparent'
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    <span className={`text-[11px] font-bold tracking-wider ${config.aspectRatio === ratio ? 'text-white' : 'text-zinc-500'}`}>{ratio}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </MobileMenu>
-                            ) : (
-                                <div
-                                    className="absolute bottom-full mb-2 z-20"
-                                    style={{ left: '50%', transform: 'translateX(-50%)' }}
-                                >
-                                    <div className="dropdown static animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                        {availableRatios.map(ratio => (
-                                            <button
-                                                key={ratio}
-                                                className={`dropdown-item ${config.aspectRatio === ratio ? 'active' : ''}`}
-                                                onClick={() => {
-                                                    setConfig(prev => ({ ...prev, aspectRatio: ratio }));
-                                                    setActiveMenu(null);
-                                                }}
-                                                style={{ color: config.aspectRatio === ratio ? 'var(--accent-indigo-light)' : 'var(--text-secondary)' }}
-                                            >
-                                                {ratio}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )
-                        )}
-                    </div>
-
-                    {/* Image Size */}
-                    {(config.model === ModelType.NANO_BANANA_PRO || config.model === ModelType.IMAGEN_4 || config.model === ModelType.IMAGEN_4_ULTRA) && (
-                        <div className="relative">
+                    {/* Mode Toggle (Desktop Only - hidden on mobile) */}
+                    {!isMobile && (
+                        <div className="hidden md:flex items-center gap-1 mr-2 p-1 bg-zinc-800/50 rounded-lg">
                             <button
-                                className="input-bar-option group"
-                                onClick={() => toggleMenu('size')}
-                                title="分辨率"
-                                style={{
-                                    backgroundColor: 'var(--bg-tertiary)',
-                                    borderColor: 'var(--border-light)',
-                                    color: 'var(--text-secondary)'
-                                }}
+                                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${config.mode === GenerationMode.IMAGE ? 'bg-indigo-500/20 text-indigo-400' : 'text-zinc-400 hover:text-white'}`}
+                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
                             >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-indigo-400 transition-colors">
-                                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                                </svg>
-                                <span className="text-xs font-medium">{config.imageSize}</span>
+                                图片
                             </button>
-                            {activeMenu === 'size' && (
-                                isMobile ? (
-                                    <MobileMenu title="选择分辨率 (Resolution)" onClose={() => setActiveMenu(null)}>
-                                        <div className="grid grid-cols-3 gap-3">
-                                            {availableSizes.map(size => (
-                                                <button
-                                                    key={size}
-                                                    className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border transition-all active:scale-95 ${config.imageSize === size
-                                                        ? 'bg-indigo-500 text-white border-indigo-500 shadow-xl shadow-indigo-500/30 ring-1 ring-inset ring-white/20'
-                                                        : 'bg-[#27272a] border-white/5 text-zinc-400 hover:bg-zinc-800'
-                                                        }`}
-                                                    onClick={() => {
-                                                        setConfig(prev => ({ ...prev, imageSize: size }));
-                                                        setActiveMenu(null);
-                                                    }}
-                                                >
-                                                    <div className={`p-1.5 rounded-lg ${config.imageSize === size ? 'bg-white/20' : 'bg-white/5'}`}>
-                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                                                        </svg>
-                                                    </div>
-                                                    <span className={`text-xs font-bold ${config.imageSize === size ? 'text-white' : 'text-zinc-500'}`}>{size}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </MobileMenu>
-                                ) : (
-                                    <div
-                                        className="absolute bottom-full mb-2 z-20"
-                                        style={{ left: '50%', transform: 'translateX(-50%)' }}
-                                    >
-                                        <div className="dropdown static animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                            {availableSizes.map(size => (
-                                                <button
-                                                    key={size}
-                                                    className={`dropdown-item ${config.imageSize === size ? 'active' : ''}`}
-                                                    onClick={() => {
-                                                        setConfig(prev => ({ ...prev, imageSize: size }));
-                                                        setActiveMenu(null);
-                                                    }}
-                                                    style={{ color: config.imageSize === size ? 'var(--accent-indigo-light)' : 'var(--text-secondary)' }}
-                                                >
-                                                    {size}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )
-                            )}
+                            <button
+                                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${config.mode === GenerationMode.VIDEO ? 'bg-purple-500/20 text-purple-400' : 'text-zinc-400 hover:text-white'}`}
+                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
+                            >
+                                视频
+                            </button>
                         </div>
                     )}
                 </div>
@@ -441,20 +353,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     <div className="flex gap-2 flex-wrap mt-2">
                         {config.referenceImages.map(img => (
                             <div key={img.id} className="relative group">
-                                <img
-                                    src={`data:${img.mimeType};base64,${img.data}`}
-                                    className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm"
-                                    alt="Reference"
-                                />
-                                <button
-                                    onClick={() => removeReferenceImage(img.id)}
-                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                                >
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-                                        <line x1="18" y1="6" x2="6" y2="18" />
-                                        <line x1="6" y1="6" x2="18" y2="18" />
-                                    </svg>
-                                </button>
+                                <img src={`data:${img.mimeType};base64,${img.data}`} className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm" alt="Reference" />
+                                <button onClick={() => removeReferenceImage(img.id)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
                             </div>
                         ))}
                     </div>
@@ -468,296 +368,232 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                     onFocus={() => setActiveMenu(null)}
-                    placeholder="描述你想要生成的图片..."
+                    placeholder={config.mode === GenerationMode.VIDEO ? "描述你想要生成的视频..." : "描述你想要生成的图片..."}
                     className="input-bar-textarea w-full bg-transparent border-none outline-none text-sm resize-none mt-2"
-                    style={{
-                        color: 'var(--text-primary)',
-                        minHeight: '48px',
-                        maxHeight: '160px',
-                        lineHeight: '1.6',
-                        fontSize: '15px'
-                    }}
+                    style={{ color: 'var(--text-primary)', minHeight: '48px', maxHeight: '160px', lineHeight: '1.6', fontSize: '15px' }}
                     rows={1}
                 />
 
                 {/* Footer */}
                 <div className="input-bar-footer flex items-center justify-between pt-3 mt-1" style={{ borderTop: '1px solid var(--border-light)' }}>
-                    {/* Left: Model */}
-                    <div className="flex items-center gap-2">
-                        {/* Model Selector */}
+                    {/* Left: Model & Settings - Coalescing Animation */}
+                    <div className="flex items-center gap-2 min-w-[236px]">
+                        {/* Model Button */}
                         <div className="relative">
                             <button
-                                className="input-bar-model flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all hover:border-opacity-50"
-                                onClick={() => toggleMenu('model')}
-                                style={{
-                                    backgroundColor: 'var(--bg-tertiary)',
-                                    borderColor: 'var(--border-light)',
-                                    color: 'var(--text-secondary)'
+                                className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${isProxyEmpty
+                                    ? 'bg-purple-500/10 border-purple-500/30 text-purple-300 hover:bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.15)] min-w-[220px]'
+                                    : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50 min-w-0 w-auto'
+                                    }`}
+                                onClick={() => {
+                                    if (isProxyEmpty) {
+                                        onOpenSettings?.('api-channels');
+                                    } else {
+                                        toggleMenu('model');
+                                    }
                                 }}
                             >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={config.model === ModelType.NANO_BANANA ? 'text-blue-400' : 'text-yellow-500'}>
-                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                                </svg>
-                                <span className="text-xs flex-1 text-center truncate font-medium">
-                                    {config.model === ModelType.NANO_BANANA && 'Nano Banana'}
-                                    {config.model === ModelType.NANO_BANANA_PRO && 'Nano Banana Pro'}
-                                    {config.model === ModelType.IMAGEN_4 && 'Imagen 4.0'}
-                                    {config.model === ModelType.IMAGEN_4_ULTRA && 'Imagen 4.0 Ultra'}
+                                <span className={`w-2 h-2 rounded-full transition-colors duration-300 ${isProxyEmpty
+                                    ? 'bg-purple-500 animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.6)]'
+                                    : (config.mode === GenerationMode.VIDEO ? 'bg-purple-500' : 'bg-green-500')
+                                    }`}></span>
+                                <span className="text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300">
+                                    {currentModelLabel}
                                 </span>
                             </button>
-                            {activeMenu === 'model' && (
-                                isMobile ? (
-                                    <MobileMenu title="选择模型 (Model)" onClose={() => setActiveMenu(null)}>
-                                        <div className="flex flex-col gap-3">
-                                            {[
-                                                { id: ModelType.NANO_BANANA, label: 'Nano Banana', desc: '极速生成，适合快速验证灵感', iconColor: 'text-blue-400' },
-                                                { id: ModelType.NANO_BANANA_PRO, label: 'Nano Banana Pro', desc: '增强细节与构图，适合高质量预览', iconColor: 'text-yellow-400' },
-                                                { id: ModelType.IMAGEN_4, label: 'Imagen 4.0', desc: '谷歌最新旗舰，写实感与光影极佳', iconColor: 'text-indigo-400' },
-                                                { id: ModelType.IMAGEN_4_ULTRA, label: 'Imagen 4.0 Ultra', desc: '极致画质与分辨率，适合商业级输出', iconColor: 'text-purple-400' }
-                                            ].map(model => (
-                                                <button
-                                                    key={model.id}
-                                                    className={`w-full px-4 py-4 text-left flex flex-col gap-1.5 rounded-2xl border transition-all active:scale-[0.98] ${config.model === model.id
-                                                        ? 'bg-[#18181b] border-indigo-500 shadow-[0_0_20px_-5px_rgba(99,102,241,0.3)]'
-                                                        : 'bg-[#27272a] border-white/5 hover:bg-zinc-800'}`}
-                                                    onClick={() => {
-                                                        setConfig(prev => ({ ...prev, model: model.id }));
-                                                        setActiveMenu(null);
-                                                    }}
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <span className={`text-base font-bold ${config.model === model.id ? 'text-indigo-400' : 'text-slate-200'}`}>
-                                                            {model.label}
-                                                        </span>
-                                                        {config.model === model.id && (
-                                                            <div className="flex items-center justify-center w-5 h-5 rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/40">
-                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <span className="text-xs text-zinc-500 leading-tight">{model.desc}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </MobileMenu>
-                                ) : (
-                                    <div
-                                        className="absolute bottom-full mb-2 z-20"
-                                        style={{ left: '0' }}
-                                    >
-                                        <div className="dropdown static w-64 animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
-                                            {[
-                                                { id: ModelType.NANO_BANANA, label: 'Nano Banana', desc: '极速生成，适合快速验证灵感' },
-                                                { id: ModelType.NANO_BANANA_PRO, label: 'Nano Banana Pro', desc: '增强细节与构图，适合高质量预览' },
-                                                { id: ModelType.IMAGEN_4, label: 'Imagen 4.0', desc: '谷歌最新旗舰，写实感与光影极佳' },
-                                                { id: ModelType.IMAGEN_4_ULTRA, label: 'Imagen 4.0 Ultra', desc: '极致画质与分辨率，适合商业级输出' }
-                                            ].map(model => (
-                                                <button
-                                                    key={model.id}
-                                                    className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors ${config.model === model.id ? 'bg-white/5' : ''}`}
-                                                    onClick={() => {
-                                                        setConfig(prev => ({ ...prev, model: model.id }));
-                                                        setActiveMenu(null);
-                                                    }}
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <span className={`text-xs font-medium ${config.model === model.id ? 'text-indigo-400' : 'text-slate-200'}`}>
-                                                            {model.label}
-                                                        </span>
-                                                        {config.model === model.id && (
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
-                                                        )}
-                                                    </div>
-                                                    <span className="text-[10px] text-zinc-500 leading-tight">{model.desc}</span>
+
+                            {/* Dropdown Menu */}
+                            {!isProxyEmpty && activeMenu === 'model' && (
+                                <div className="absolute bottom-full mb-2 z-20" style={{ left: '0' }}>
+                                    <div className="dropdown static w-64 animate-scaleIn origin-bottom p-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
+                                        {availableModels.map(model => (
+                                            <button
+                                                key={model.id}
+                                                className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/5' : ''}`}
+                                                onClick={() => {
+                                                    setConfig(prev => ({ ...prev, model: model.id }));
+                                                    setActiveMenu(null);
+                                                }}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className={`text-xs font-medium ${config.model === model.id ? 'text-indigo-400' : 'text-slate-200'}`}>
+                                                        {model.label}
+                                                    </span>
+                                                    {config.model === model.id && (
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                                                    )}
+                                                </div>
+                                                <span className="text-[10px] text-zinc-500 leading-tight">{model.description || model.provider}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Aspect Ratio & Size - Slide Animation */}
+                        <div className={`flex items-center gap-2 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${isProxyEmpty
+                            ? 'max-w-0 opacity-0 -translate-x-4 pointer-events-none overflow-hidden'
+                            : 'max-w-[300px] opacity-100 translate-x-0 overflow-visible'
+                            }`}>
+                            {/* Aspect Ratio */}
+                            <div className="relative flex-shrink-0">
+                                <button
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800/60 border border-zinc-700/40 hover:border-amber-500/30 transition-all text-zinc-400 hover:text-amber-400"
+                                    onClick={() => toggleMenu('ratio')}
+                                    title="宽高比"
+                                >
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="3" y="5" width="18" height="14" rx="2" />
+                                    </svg>
+                                    <span className="text-[11px] font-medium">{config.aspectRatio}</span>
+                                </button>
+                                {activeMenu === 'ratio' && (
+                                    <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                        <div className="dropdown static animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
+                                            {availableRatios.map(ratio => (
+                                                <button key={ratio} className={`dropdown-item ${config.aspectRatio === ratio ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, aspectRatio: ratio })); setActiveMenu(null); }}>
+                                                    {ratio}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
-                                )
-                            )}
+                                )}
+                            </div>
+
+                            {/* Image Size */}
+                            <div className="relative flex-shrink-0">
+                                <button
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800/60 border border-zinc-700/40 hover:border-amber-500/30 transition-all text-zinc-400 hover:text-amber-400"
+                                    onClick={() => toggleMenu('size')}
+                                    title="分辨率"
+                                >
+                                    <span className="text-[11px] font-medium">{config.imageSize}</span>
+                                </button>
+                                {activeMenu === 'size' && (
+                                    <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                        <div className="dropdown static w-20 animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
+                                            {availableSizes.map(size => (
+                                                <button key={size} className={`dropdown-item ${config.imageSize === size ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, imageSize: size })); setActiveMenu(null); }}>
+                                                    {size}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Right: Actions */}
+                    {/* Right: Actions Group */}
                     <div className="input-bar-actions flex items-center gap-2">
-                        {/* Tools */}
-                        <div className="relative">
+
+                        {/* Group 1: Network & Provider Settings */}
+                        <div className="flex items-center gap-0.5 p-0.5 bg-zinc-800/60 rounded-full border border-zinc-700/50 h-[32px]">
+                            {/* Grounding Tool - Now with capability check */}
                             <button
-                                className={`input-bar-option group p-2 rounded-full transition-all ${config.enableGrounding ? 'bg-indigo-500/10' : 'bg-transparent hover:bg-white/5'}`}
-                                onClick={() => toggleMenu('tools')}
-                                title="工具与设置"
+                                className={`flex items-center gap-1.5 px-3 h-full rounded-full transition-all text-[11px] font-medium whitespace-nowrap ${!groundingSupported
+                                    ? 'opacity-40 cursor-not-allowed text-zinc-500'
+                                    : config.enableGrounding
+                                        ? 'bg-indigo-500/20 text-indigo-400 shadow-sm shadow-indigo-500/10'
+                                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                                    }`}
+                                onClick={() => groundingSupported && setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }))}
+                                disabled={!groundingSupported}
+                                title={groundingSupported ? "Grounding with Google Search" : "当前模型不支持联网模式"}
                             >
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors ${config.enableGrounding ? 'text-indigo-400' : 'text-zinc-400 group-hover:text-indigo-400'}`}>
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <circle cx="12" cy="12" r="10" />
                                     <line x1="2" y1="12" x2="22" y2="12" />
-                                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10 15.3 15.3 0 0 1 4-10z" />
                                 </svg>
+                                <span>联网</span>
                             </button>
-                            {activeMenu === 'tools' && (
-                                isMobile ? (
-                                    <MobileMenu title="工具与设置 (Tools)" onClose={() => setActiveMenu(null)}>
-                                        <button
-                                            className={`w-full px-4 py-4 flex items-center justify-between rounded-2xl border transition-all active:scale-[0.98] ${!config.model.includes('gemini')
-                                                ? 'opacity-50 cursor-not-allowed bg-[#27272a] border-white/5'
-                                                : config.enableGrounding
-                                                    ? 'bg-[#18181b] border-indigo-500 shadow-[0_0_20px_-5px_rgba(99,102,241,0.3)]'
-                                                    : 'bg-[#27272a] border-white/5 hover:bg-zinc-800'
-                                                }`}
-                                            onClick={() => {
-                                                if (config.model.includes('gemini')) {
-                                                    setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }));
-                                                } else {
-                                                    alert("Grounding 仅支持 Gemini 系列模型");
-                                                }
-                                            }}
-                                        >
-                                            <div className="flex flex-col items-start gap-1.5">
-                                                <div className="flex items-center gap-2 text-sm font-bold text-slate-200">
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
-                                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                                    </svg>
-                                                    Grounding with Google Search
-                                                </div>
-                                                <div className="text-xs text-zinc-500">使用谷歌搜索优化生成结果</div>
-                                            </div>
 
-                                            <div className={`w-12 h-7 rounded-full relative transition-all duration-300 ${config.enableGrounding ? 'bg-indigo-500 shadow-inner' : 'bg-zinc-700 shadow-inner'}`}>
-                                                <div
-                                                    className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300 ${config.enableGrounding ? 'left-[22px]' : 'left-1'}`}
-                                                />
-                                            </div>
-                                        </button>
-                                    </MobileMenu>
+                            {/* API Line Mode Toggle - Blue for Google, Purple for Proxy */}
+                            <button
+                                className={`flex items-center gap-1.5 px-3 h-full rounded-full transition-all text-[11px] font-medium whitespace-nowrap ${config.lineMode === 'google_direct'
+                                    ? 'bg-blue-500/20 text-blue-400 shadow-sm shadow-blue-500/10'
+                                    : 'bg-purple-500/20 text-purple-400 shadow-sm shadow-purple-500/10'
+                                    }`}
+                                onClick={() => setConfig(prev => ({
+                                    ...prev,
+                                    lineMode: prev.lineMode === 'google_direct' ? 'proxy' : 'google_direct'
+                                }))}
+                                title={config.lineMode === 'google_direct' ? "谷歌专线 (官方API)" : "中转代理 (第三方API)"}
+                            >
+                                {config.lineMode === 'google_direct' ? (
+                                    <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+                                    </svg>
                                 ) : (
-                                    <div
-                                        className="absolute bottom-full mb-2 z-20"
-                                        style={{ left: '50%', transform: 'translateX(-50%)' }}
-                                    >
-                                        <div className="dropdown static w-64 animate-scaleIn origin-bottom p-2" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                            <div className="text-[10px] font-bold text-zinc-500 px-2 py-1 uppercase tracking-wider">Tools</div>
-
-                                            <button
-                                                className={`w-full px-2 py-2 flex items-center justify-between rounded-lg hover:bg-white/5 transition-colors ${!config.model.includes('gemini') ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                onClick={() => {
-                                                    if (config.model.includes('gemini')) {
-                                                        setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }));
-                                                    } else {
-                                                        alert("Grounding 仅支持 Gemini 系列模型");
-                                                    }
-                                                }}
-                                            >
-                                                <div className="flex flex-col items-start gap-0.5">
-                                                    <div className="flex items-center gap-1.5 text-xs font-medium text-slate-200">
-                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
-                                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                                        </svg>
-                                                        Grounding with Google Search
-                                                    </div>
-                                                    <div className="text-[10px] text-zinc-500">使用谷歌搜索优化生成结果</div>
-                                                </div>
-
-                                                <div className={`w-8 h-4 rounded-full relative transition-colors ${config.enableGrounding ? 'bg-indigo-500' : 'bg-zinc-700'}`}>
-                                                    <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${config.enableGrounding ? 'left-4.5' : 'left-0.5'}`} style={{ left: config.enableGrounding ? '18px' : '2px' }} />
-                                                </div>
-                                            </button>
-                                        </div>
-                                    </div>
-                                )
-                            )}
+                                    <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+                                    </svg>
+                                )}
+                                <span>{config.lineMode === 'google_direct' ? '谷歌专线' : '中转代理'}</span>
+                            </button>
                         </div>
 
-                        {/* Parallel Count */}
-                        <div className="relative">
-                            <button
-                                className="input-bar-option group p-2 rounded-full bg-transparent hover:bg-white/5 transition-all"
-                                onClick={() => toggleMenu('count')}
-                                title="生成数量"
-                            >
-                                <div className="flex items-center gap-1">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-indigo-400 transition-colors">
-                                        <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-                                        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-                                    </svg>
-                                    <span className="text-xs font-medium text-zinc-400 group-hover:text-indigo-400">x{config.parallelCount}</span>
-                                </div>
-                            </button>
-                            {activeMenu === 'count' && (
-                                isMobile ? (
-                                    <MobileMenu title="选择生成数量 (Count)" onClose={() => setActiveMenu(null)}>
-                                        <div className="grid grid-cols-4 gap-3">
-                                            {[1, 2, 3, 4].map(num => (
-                                                <button
-                                                    key={num}
-                                                    className={`aspect-square flex flex-col items-center justify-center rounded-2xl border transition-all active:scale-95 ${config.parallelCount === num
-                                                        ? 'bg-indigo-500 text-white border-indigo-500 shadow-xl shadow-indigo-500/30 ring-1 ring-inset ring-white/20'
-                                                        : 'bg-[#27272a] border-white/5 text-zinc-400 hover:bg-zinc-800'
-                                                        }`}
-                                                    onClick={() => {
-                                                        setConfig(prev => ({ ...prev, parallelCount: num }));
-                                                        setActiveMenu(null);
-                                                    }}
-                                                >
-                                                    <span className={`text-2xl font-bold ${config.parallelCount === num ? 'text-white' : 'text-zinc-500'}`}>{num}</span>
-                                                    <span className="text-[10px] font-medium opacity-60">张</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </MobileMenu>
-                                ) : (
-                                    <div
-                                        className="absolute bottom-full mb-2 z-20"
-                                        style={{ left: '50%', transform: 'translateX(-50%)' }}
-                                    >
-                                        <div className="dropdown static w-20 animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                            {[1, 2, 3, 4].map(num => (
-                                                <button
-                                                    key={num}
-                                                    className={`dropdown-item ${config.parallelCount === num ? 'active' : ''}`}
-                                                    onClick={() => {
-                                                        setConfig(prev => ({ ...prev, parallelCount: num }));
-                                                        setActiveMenu(null);
-                                                    }}
-                                                    style={{ color: config.parallelCount === num ? 'var(--accent-indigo-light)' : 'var(--text-secondary)' }}
-                                                >
-                                                    x{num}
+                        {/* Group 2: Generation Settings */}
+                        <div className="flex items-center gap-0.5 p-0.5 bg-zinc-800/60 rounded-full border border-zinc-700/50 h-[32px]">
+                            {/* Parallel Count */}
+                            <div className="relative h-full">
+                                <button
+                                    className="flex items-center gap-1.5 px-3 h-full rounded-full hover:bg-white/5 transition-all text-zinc-400 hover:text-white whitespace-nowrap"
+                                    onClick={() => toggleMenu('count')}
+                                    title="并发数量"
+                                >
+                                    <span className="text-[11px] font-medium">数量 {config.parallelCount}</span>
+                                    <svg className="w-2.5 h-2.5 opacity-50 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+                                </button>
+                                {activeMenu === 'count' && (
+                                    <div className="absolute bottom-full mb-2 z-20 right-0">
+                                        <div className="dropdown static w-24 animate-scaleIn origin-bottom-right" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
+                                            {[1, 2, 3, 4].map(count => (
+                                                <button key={count} className={`dropdown-item justify-between ${config.parallelCount === count ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, parallelCount: count })); setActiveMenu(null); }}>
+                                                    <span>{count} 张</span>
+                                                    {config.parallelCount === count && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
-                                )
-                            )}
+                                )}
+                            </div>
                         </div>
 
                         {/* Upload Button */}
                         <button
-                            className="input-bar-option group p-2 rounded-full bg-transparent hover:bg-white/5 transition-all"
+                            className="p-2.5 rounded-full bg-zinc-800/60 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all border border-zinc-700/50 hover:border-zinc-600"
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={config.referenceImages.length >= 5}
                             title="上传参考图"
                         >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-indigo-400 transition-colors">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                                 <polyline points="17 8 12 3 7 8" />
                                 <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
                         </button>
 
-                        {/* Send Button */}
                         <div className="w-[1px] h-6 bg-white/10 mx-1"></div>
 
                         <button
-                            onClick={onGenerate}
-                            disabled={!config.prompt}
+                            onClick={isGenerating ? onCancel : onGenerate}
+                            disabled={!isGenerating && !config.prompt}
                             className={`input-bar-send ${isGenerating ? 'sending' : ''}`}
                             style={{
-                                background: 'var(--gradient-primary)',
-                                boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)',
+                                background: isGenerating
+                                    ? 'rgba(239, 68, 68, 0.9)'
+                                    : 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
+                                boxShadow: isGenerating
+                                    ? '0 0 20px rgba(239, 68, 68, 0.5)'
+                                    : '0 0 20px rgba(139, 92, 246, 0.4), 0 0 30px rgba(59, 130, 246, 0.3)',
                                 border: 'none'
                             }}
                         >
                             {isGenerating ? (
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="animate-spin text-white">
-                                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="31.4 31.4" />
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+                                    <rect x="6" y="6" width="12" height="12" rx="1" />
                                 </svg>
                             ) : (
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="send-icon text-white">
@@ -768,16 +604,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         </button>
                     </div>
                 </div>
-            </div >
+            </div>
 
-            <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                multiple
-                accept="image/*"
-                onChange={(e) => e.target.files && processFiles(e.target.files)}
-            />
+            <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={(e) => e.target.files && processFiles(e.target.files)} />
         </div >
     );
 };

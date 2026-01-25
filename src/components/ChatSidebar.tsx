@@ -1,13 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Send, Bot, User, X, Trash2, ChevronDown, GripVertical } from 'lucide-react';
 import { generateText } from '../services/geminiService';
 import { notify } from '../services/notificationService';
+import { keyManager } from '../services/keyManager';
+import { ApiLineMode } from '../types';
 
 interface ChatSidebarProps {
     isOpen: boolean;
     onToggle: () => void;
     onClose?: () => void;
     isMobile: boolean;
+    onOpenSettings?: (view?: 'api-channels') => void;
 }
 
 interface Message {
@@ -27,7 +30,7 @@ const AVAILABLE_MODELS = [
         desc: '超高性价比，超低延迟 (Best Value)'
     },
     {
-        id: 'gemini-flash-lite-latest',
+        id: 'gemini-flash-latest', // Fixed duplicate ID
         name: 'Gemini 3 Flash',
         icon: '🚀',
         desc: '性能均衡，高吞吐量 (Balanced)'
@@ -46,7 +49,7 @@ const AVAILABLE_MODELS = [
     },
 ];
 
-const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, isMobile }) => {
+const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, isMobile, onOpenSettings }) => {
     const [messages, setMessages] = useState<Message[]>([
         {
             id: 'welcome',
@@ -60,9 +63,45 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0]); // Default Lite
     const [showModelMenu, setShowModelMenu] = useState(false);
 
-    // Mobile keyboard visibility state
     const [keyboardHeight, setKeyboardHeight] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+    const [lineMode, setLineMode] = useState<ApiLineMode>('google_direct');
+    const [proxyModels, setProxyModels] = useState(() => keyManager.getAvailableProxyModels('chat'));
+
+    // Subscribe to proxy model changes
+    useEffect(() => {
+        const unsubscribe = keyManager.subscribe(() => {
+            setProxyModels(keyManager.getAvailableProxyModels('chat'));
+        });
+        return unsubscribe;
+    }, []);
+
+    // Get available models based on line mode
+    const availableModels = useMemo(() => {
+        if (lineMode === 'google_direct') {
+            return AVAILABLE_MODELS;
+        }
+        // Proxy mode: use configured chat models
+        if (proxyModels.length === 0) {
+            return [];
+        }
+        return proxyModels.map(m => ({
+            id: m.id,
+            name: m.label,
+            icon: '🔌',
+            desc: m.description || '中转代理模型'
+        }));
+    }, [lineMode, proxyModels]);
+
+    // Auto-select first model when line mode changes
+    useEffect(() => {
+        if (availableModels.length > 0) {
+            const currentValid = availableModels.find(m => m.id === selectedModel.id);
+            if (!currentValid) {
+                setSelectedModel(availableModels[0]);
+            }
+        }
+    }, [lineMode, availableModels]);
 
     // Track keyboard visibility using visualViewport API
     useEffect(() => {
@@ -315,8 +354,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                 <div
                     onMouseEnter={handleMouseEnter}
                     className={`fixed z-[100] flex flex-col bg-[#131316]/95 backdrop-blur-2xl border border-purple-500/30 shadow-[0_0_50px_-12px_rgba(124,58,237,0.5)] animate-scale-up-corner overflow-hidden ring-1 ring-white/10 ${isMobile
-                            ? 'inset-0 rounded-none'
-                            : 'w-[380px] h-[600px] max-h-[80vh] rounded-3xl origin-bottom-left'
+                        ? 'inset-0 rounded-none pb-0' // Reduced padding as bottom bar is hidden
+                        : 'w-[380px] h-[600px] max-h-[80vh] rounded-3xl origin-bottom-left'
                         }`}
                     style={isMobile ? {
                         height: keyboardHeight > 0 ? `${viewportHeight}px` : '100dvh',
@@ -331,33 +370,64 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     {/* Header */}
                     <div className="h-14 border-b border-white/10 flex items-center justify-between px-4 bg-gradient-to-r from-purple-900/40 to-indigo-900/20 shrink-0">
                         {/* Model Selector */}
-                        <div className="relative">
+                        <div className="relative flex items-center gap-2">
+                            {/* Line Mode Toggle */}
                             <button
-                                onClick={() => setShowModelMenu(!showModelMenu)}
-                                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-100 transition-colors text-xs font-medium group"
+                                onClick={() => setLineMode(prev => prev === 'google_direct' ? 'proxy' : 'google_direct')}
+                                className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all ${lineMode === 'google_direct'
+                                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                    : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                                    }`}
+                                title={lineMode === 'google_direct' ? '谷歌专线' : '中转代理'}
                             >
-                                <span className="text-base">{selectedModel.icon}</span>
-                                <span>{selectedModel.name}</span>
-                                <ChevronDown size={12} className={`text-zinc-500 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                                {lineMode === 'google_direct' ? '谷歌' : '代理'}
+                            </button>
+
+                            {/* Model Button */}
+                            <button
+                                onClick={() => {
+                                    if (lineMode === 'proxy' && proxyModels.length === 0) {
+                                        onOpenSettings?.('api-channels');
+                                    } else {
+                                        setShowModelMenu(!showModelMenu);
+                                    }
+                                }}
+                                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-colors text-xs font-medium group ${lineMode === 'proxy' && proxyModels.length === 0
+                                        ? 'bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300'
+                                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-zinc-100'
+                                    }`}
+                            >
+                                {lineMode === 'proxy' && proxyModels.length === 0 ? (
+                                    <>
+                                        <span className="text-base">⚙️</span>
+                                        <span className="underline underline-offset-2">请到API设置模型</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="text-base">{selectedModel.icon}</span>
+                                        <span>{selectedModel.name}</span>
+                                        <ChevronDown size={12} className={`text-zinc-500 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                                    </>
+                                )}
                             </button>
 
                             {/* Dropdown */}
                             {showModelMenu && (
                                 <>
-                                    <div className="fixed inset-0 z-10" onClick={() => setShowModelMenu(false)} />
-                                    <div className="absolute top-full left-0 mt-2 w-64 bg-[#18181b] border border-white/10 rounded-xl shadow-xl z-20 p-1 animate-in fade-in zoom-in-95 duration-100">
-                                        <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-zinc-500 font-bold border-b border-white/5 mb-1">Select Model</div>
+                                    <div className="fixed inset-0 z-10 bg-black/20 backdrop-blur-sm" onClick={() => setShowModelMenu(false)} />
+                                    <div className="absolute top-full left-0 mt-2 w-56 bg-[#18181b] border border-white/10 rounded-xl shadow-2xl shadow-black/50 z-20 p-1.5 animate-in fade-in zoom-in-95 duration-100 ring-1 ring-white/5">
+                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-zinc-500 font-bold border-b border-white/5 mb-1 select-none">Select Model</div>
                                         {AVAILABLE_MODELS.map(model => (
                                             <button
                                                 key={model.id}
                                                 onClick={() => { setSelectedModel(model); setShowModelMenu(false); }}
-                                                className={`w-full flex items-start gap-3 px-3 py-2 rounded-lg text-sm text-left transition-colors ${selectedModel.id === model.id ? 'bg-purple-500/20 text-purple-300' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+                                                className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-purple-600/20 text-purple-300 border border-purple-500/20 shadow-inner' : 'text-zinc-300 hover:bg-white/10 hover:text-white border border-transparent'
                                                     }`}
                                             >
-                                                <span className="mt-0.5">{model.icon}</span>
+                                                <span className="mt-0.5 text-base">{model.icon}</span>
                                                 <div className="flex flex-col gap-0.5">
-                                                    <span className="font-medium">{model.name}</span>
-                                                    <span className="text-[10px] opacity-60 leading-tight">{model.desc}</span>
+                                                    <span className={`font-medium ${selectedModel.id === model.id ? 'text-purple-200' : 'text-zinc-200'}`}>{model.name}</span>
+                                                    <span className="text-[10px] opacity-70 leading-tight">{model.desc}</span>
                                                 </div>
                                             </button>
                                         ))}
@@ -412,13 +482,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Input */}
-                    <div className="p-3 bg-[#18181b]/80 border-t border-purple-500/20 backdrop-blur-xl shrink-0">
-                        <div className="relative group/input">
-                            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-indigo-500/20 rounded-2xl blur-md opacity-0 group-hover/input:opacity-100 transition-opacity" />
-                            <div className="relative flex items-end gap-2 bg-[#09090b] border border-white/10 rounded-2xl p-1.5 focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
+                    {/* Input - Floating Capsule */}
+                    <div className="px-4 pb-2 pt-2 bg-transparent shrink-0 pointer-events-none">
+                        <div className="relative group/input max-w-[95%] mx-auto pointer-events-auto">
+                            <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500/30 to-indigo-500/30 rounded-[32px] blur opacity-0 group-hover/input:opacity-100 transition-opacity duration-500" />
+                            <div className="relative flex items-end gap-2 bg-[#131316] border border-white/10 rounded-[32px] p-2 shadow-2xl shadow-black/50 focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
                                 <textarea
-                                    className="flex-1 bg-transparent text-white text-sm px-3 py-2 outline-none resize-none scrollbar-hide max-h-32"
+                                    className="flex-1 bg-transparent text-white text-base px-4 py-2.5 outline-none resize-none scrollbar-hide max-h-32 placeholder:text-zinc-500"
                                     placeholder={`Message ${selectedModel.name.split(' ')[0]}...`}
                                     rows={1}
                                     value={input}
@@ -437,9 +507,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                 <button
                                     onClick={handleSend}
                                     disabled={!input.trim() || isThinking}
-                                    className="p-2 bg-gradient-to-tr from-purple-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                                    className="p-2.5 bg-gradient-to-tr from-purple-600 to-indigo-600 text-white rounded-full hover:shadow-lg hover:shadow-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shrink-0"
                                 >
-                                    <Send size={16} />
+                                    <Send size={18} />
                                 </button>
                             </div>
                         </div>

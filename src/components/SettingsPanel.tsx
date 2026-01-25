@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap } from 'lucide-react';
-import { keyManager, KeySlot } from '../services/keyManager';
+﻿import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap, Settings2 } from 'lucide-react';
+import { modelRegistry, ActiveModel } from '../services/modelRegistry';
+import { MODEL_PRESETS } from '../services/modelPresets';
+import { KeyManager, KeySlot, keyManager } from '../services/keyManager';
 import { getTodayCosts, getCostsByModel, CostBreakdownItem } from '../services/costService';
 import { getTodayLogs, LogLevel, exportLogsForAI, SystemLogEntry } from '../services/systemLogService';
 import { useCanvas } from '../context/CanvasContext';
 import { syncService } from '../services/syncService';
 import { getStorageUsage, cleanupOriginals } from '../services/imageStorage';
 import { fileSystemService } from '../services/fileSystemService';
+import { ApiChannelsView } from './ApiChannelsView';
 
 export type SettingsView = 'dashboard' | 'api-channels' | 'cost-estimation' | 'storage-settings' | 'system-logs';
 
@@ -18,17 +22,97 @@ interface SettingsPanelProps {
 
 // --- Sub-components ---
 
-const DashboardView = ({ keyStats }: { keyStats: any }) => {
+const BudgetAlerts = ({ totalRemaining, dailyRemaining, isTotalUnlimited, isDailyUnlimited }: { totalRemaining: number, dailyRemaining: number, isTotalUnlimited: boolean, isDailyUnlimited: boolean }) => {
+    // Determine Alert State
+    let alertType: 'none' | 'info' | 'warning' | 'critical' | 'daily' = 'none';
+    let message = '';
+    let subMessage = '';
+
+    // Priority: Critical Total > Warning Total > Daily Low > Info Total
+    if (!isTotalUnlimited && totalRemaining < 1) {
+        alertType = 'critical';
+        message = 'API 预算严重不足';
+        subMessage = '剩余 < 1%，请立即扩容';
+    } else if (!isTotalUnlimited && totalRemaining < 10) {
+        alertType = 'warning';
+        message = 'API 预算告急';
+        subMessage = '剩余 < 10%，请注意充值';
+    } else if (!isDailyUnlimited && dailyRemaining < 5) {
+        alertType = 'daily';
+        message = '今日预算即将耗尽';
+        subMessage = '今日剩余 < 5%';
+    } else if (!isTotalUnlimited && totalRemaining < 20) {
+        alertType = 'info';
+        message = 'API 预算提醒';
+        subMessage = '剩余 < 20%';
+    }
+
+    if (alertType === 'none') return null;
+
+    // Color Config
+    const config = {
+        critical: { icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/20', ping: 'bg-red-500' },
+        warning: { icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/20', ping: 'bg-orange-500' },
+        info: { icon: Activity, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20', ping: 'bg-blue-400' },
+        daily: { icon: Zap, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20', ping: 'bg-purple-500' }
+    }[alertType];
+
+    const Icon = config.icon;
+
+    return (
+        <div className={`fixed z-[10002] animate-in slide-in-from-bottom-4 fade-in duration-500 pointer-events-none
+            /* Mobile: Top Center */
+            top-6 left-1/2 -translate-x-1/2 w-max max-w-[90vw]
+            /* Desktop: Bottom Right */
+            md:top-auto md:left-auto md:bottom-6 md:right-6 md:transform-none
+        `}>
+            <div className="bg-[#18181b]/90 backdrop-blur-xl border border-white/10 rounded-full py-2 pl-3 pr-4 flex items-center gap-3 shadow-2xl">
+                {/* Icon & Pulse */}
+                <div className={`relative flex items-center justify-center w-8 h-8 rounded-full ${config.bg} ${config.color}`}>
+                    <Icon size={14} className="animate-pulse" />
+                    <span className={`absolute top-0 right-0 w-2 h-2 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)] animate-ping ${config.ping}`} />
+                    <span className={`absolute top-0 right-0 w-2 h-2 rounded-full ${config.ping}`} />
+                </div>
+
+                {/* Text */}
+                <div className="flex flex-col items-start mr-1">
+                    <span className="text-sm font-bold text-white leading-tight">{message}</span>
+                    <span className="text-[10px] text-zinc-400 font-mono leading-tight">{subMessage}</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any, totalConsumed: number, totalTokens: number }) => {
     const [dailyCosts, setDailyCosts] = React.useState(getTodayCosts());
     const [budget, setBudget] = React.useState<number>(-1);
     const [isEditingBudget, setIsEditingBudget] = React.useState(false);
     const [newBudget, setNewBudget] = React.useState('');
+    const [latency, setLatency] = React.useState<number>(0);
 
     useEffect(() => {
         import('../services/costService').then(mod => {
             setBudget(mod.getDailyBudget());
             setDailyCosts(mod.getTodayCosts());
         });
+
+        // Latency Check
+        const checkLatency = async () => {
+            const start = performance.now();
+            try {
+                // Pin a Google common endpoint
+                await fetch('https://www.gstatic.com/generate_204', { mode: 'no-cors', cache: 'no-cache' });
+                const end = performance.now();
+                setLatency(Math.round(end - start));
+            } catch (e) {
+                // Ignore errors
+            }
+        };
+        checkLatency();
+        const interval = setInterval(checkLatency, 5000);
+        return () => clearInterval(interval);
     }, []);
 
     const handleSaveBudget = async () => {
@@ -96,193 +180,184 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
 
     return (
         <div className="space-y-6">
-            {/* Desktop Header */}
-            <div className="hidden md:block">
-                <div className="flex justify-between items-start mb-6">
-                    <div>
-                        <h3 className="text-2xl font-bold text-white">
-                            仪表盘 (Dashboard)
-                        </h3>
-                        <span className="block text-xs text-zinc-500 font-normal mt-1">系统概览与偏好设置 (System Dashboard & Preferences)</span>
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-2xl font-bold text-white tracking-tight">仪表盘 (Dashboard)</h2>
+                    <p className="text-xs text-zinc-500 mt-1">实时监控 API 消耗与系统状态</p>
+                </div>
+                <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className={`
+                        relative overflow-hidden group px-4 py-2 rounded-full border transition-all duration-300
+                        ${isSuccess
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
+                            : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400 hover:text-white hover:border-zinc-600'
+                        }
+                    `}
+                >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent absolute-shine translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                    <div className="flex items-center gap-2 relative z-10">
+                        {isSuccess ? <Check size={14} /> : <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />}
+                        <span className="text-xs font-medium">{isSuccess ? '已同步' : '同步数据'}</span>
                     </div>
-                    <button
-                        onClick={handleSync}
-                        disabled={isSyncing || isSuccess}
-                        className={`group relative flex items-center gap-2 px-4 py-2 bg-gradient-to-r bg-[length:200%_100%] hover:bg-right transition-all duration-500 text-white rounded-full shadow-lg active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed
-                            ${isSuccess
-                                ? 'from-emerald-500 via-green-500 to-emerald-500 shadow-emerald-500/20'
-                                : 'from-indigo-500 via-purple-500 to-indigo-500 shadow-indigo-500/20'}`}
-                    >
-                        {isSuccess ? (
-                            <Check size={16} className="animate-in zoom-in spin-in-90 duration-300" />
-                        ) : (
-                            <RefreshCw size={16} className={isSyncing ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"} />
-                        )}
-                        <span className="text-sm font-bold tracking-wide">
-                            {isSyncing ? '同步中...' : isSuccess ? '同步完成 (Synced)' : '同步数据 (Sync)'}
-                        </span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Mobile Header */}
-            <div className="md:hidden block">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-2xl font-bold text-white">仪表盘</h3>
-                    <button
-                        onClick={handleSync}
-                        disabled={isSyncing || isSuccess}
-                        className={`group relative flex items-center gap-2 px-3 py-2 bg-gradient-to-r bg-[length:200%_100%] hover:bg-right transition-all duration-500 text-white rounded-full shadow-lg active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed
-                            ${isSuccess
-                                ? 'from-emerald-500 via-green-500 to-emerald-500 shadow-emerald-500/20'
-                                : 'from-indigo-500 via-purple-500 to-indigo-500 shadow-indigo-500/20'}`}
-                    >
-                        {isSuccess ? (
-                            <Check size={14} className="animate-in zoom-in spin-in-90 duration-300" />
-                        ) : (
-                            <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
-                        )}
-                        <span className="text-xs font-bold tracking-wide">
-                            {isSyncing ? '同步中' : isSuccess ? '完成' : '同步'}
-                        </span>
-                    </button>
-                </div>
+                </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-4 h-auto md:h-[320px]">
-                {/* Hero Card: Cost */}
-                <div className="col-span-1 md:col-span-2 md:row-span-2 bg-gradient-to-br from-indigo-500/10 via-[#1c1c1e] to-[#1c1c1e] p-5 md:p-6 rounded-[32px] border border-indigo-500/20 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-24 md:p-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/10" />
+                {/* 1. Hero Card: Today Consumption (Cost & Tokens) */}
+                {(() => {
+                    const dailyUsage = todayData.costUsd || 0;
+                    const dailyTokens = todayData.tokens || 0;
 
-                    <div className="flex flex-col h-full justify-between gap-4 md:gap-0 relative z-10">
-                        <div className="flex items-center gap-2 mb-2">
-                            <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400"><DollarSign size={24} /></div>
-                            <div>
-                                <span className="text-zinc-400 font-medium block">今日预估成本</span>
-                                <span className="text-xs text-zinc-600 block">Today's Estimated Cost</span>
-                            </div>
-                        </div>
+                    return (
+                        <div className="col-span-1 md:col-span-2 md:row-span-2 bg-gradient-to-br from-indigo-500/10 via-[#1c1c1e] to-[#1c1c1e] p-6 rounded-[32px] border border-indigo-500/20 relative overflow-hidden group flex flex-col justify-between">
+                            <div className="absolute top-0 right-0 p-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/10" />
 
-                        <div>
-                            <div className="text-4xl md:text-5xl font-bold text-white font-mono tracking-tight mb-2">
-                                ${todayData.costUsd.toFixed(4)}
-                            </div>
-                            <div className="text-sm text-zinc-500">
-                                ≈ ¥{(todayData.costUsd * 7.2).toFixed(2)} CNY
-                            </div>
-                        </div>
-
-                        <div className="w-full bg-zinc-800/50 h-1.5 rounded-full overflow-hidden mt-2 md:mt-4">
-                            <div
-                                className={`h-full transition-all duration-500 ${remainingPercent < 20 ? 'bg-red-500' : 'bg-indigo-500'}`}
-                                style={{ width: `${remainingPercent}%` }}
-                            />
-                        </div>
-                        <div className="flex justify-between items-center text-xs text-zinc-500 mt-2">
-                            <div className="flex items-center gap-2">
-                                <span>每日预算 (Daily Budget)</span>
-                            </div>
-
-                            {isEditingBudget ? (
-                                <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-200">
-                                    <input
-                                        autoFocus
-                                        className="w-20 bg-[#09090b] text-white rounded-lg px-2 py-1 text-right outline-none border border-zinc-800 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/10 placeholder:text-zinc-700 text-sm font-mono"
-                                        placeholder="$"
-                                        value={newBudget}
-                                        onChange={e => setNewBudget(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && handleSaveBudget()}
-                                    />
-                                    <button onClick={handleSaveBudget} className="text-emerald-500 hover:text-emerald-400"><Check size={14} /></button>
-                                    <button onClick={toggleInfinite} className="text-indigo-500 hover:text-indigo-400 text-[10px] whitespace-nowrap">无限 ∞</button>
-                                    <button onClick={() => setIsEditingBudget(false)} className="text-red-500 hover:text-red-400"><X size={14} /></button>
+                            <div className="relative z-10 flex items-center gap-2">
+                                <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400"><ScrollText size={20} /></div>
+                                <div>
+                                    <span className="text-zinc-400 font-medium">今日消耗</span>
+                                    <span className="text-[10px] text-zinc-600 ml-2">(每天0点重置)</span>
                                 </div>
-                            ) : (
-                                <button
-                                    onClick={() => { setNewBudget(budget > 0 ? budget.toString() : ''); setIsEditingBudget(true); }}
-                                    className="flex items-center gap-1 hover:text-white transition-colors group/btn"
-                                >
-                                    <span className="font-mono">
-                                        {budget < 0 ? '无限 (Unlimited)' : `$${budget.toFixed(2)}`}
-                                    </span>
-                                    <div className="opacity-0 group-hover/btn:opacity-100 transition-opacity"><ScrollText size={10} /></div>
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Secondary Card: Images */}
-                <div className="col-span-1 md:col-span-1 md:row-span-1 bg-[#1c1c1e] p-5 rounded-[32px] border border-zinc-800/50 flex flex-col justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
-                    <div className="absolute right-3 top-3 text-zinc-600 group-hover:text-emerald-500 transition-colors"><Sparkles size={20} /></div>
-                    <div>
-                        <div className="text-zinc-400 text-sm font-medium">今日生成</div>
-                        <div className="text-xs text-zinc-600">Images Generated</div>
-                    </div>
-                    <div className="flex items-baseline gap-1 mt-4 md:mt-0">
-                        <span className="text-3xl font-bold text-white font-mono">{todayData.count}</span>
-                        <span className="text-xs text-zinc-500">张 (Count)</span>
-                    </div>
-                </div>
-
-                {/* Secondary Card: Tokens */}
-                <div className="col-span-1 md:col-span-1 md:row-span-1 bg-[#1c1c1e] p-5 rounded-[32px] border border-zinc-800/50 flex flex-col justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
-                    <div className="absolute right-3 top-3 text-zinc-600 group-hover:text-blue-500 transition-colors"><Activity size={20} /></div>
-                    <div>
-                        <div className="text-zinc-400 text-sm font-medium">Token 消耗</div>
-                        <div className="text-xs text-zinc-600">Tokens Used</div>
-                    </div>
-                    <div className="flex items-baseline gap-1 mt-4 md:mt-0">
-                        <span className="text-2xl font-bold text-white font-mono">{(todayData.tokens / 1000).toFixed(1)}</span>
-                        <span className="text-xs text-zinc-500">k</span>
-                    </div>
-                </div>
-
-                {/* Wide Card: API Status */}
-                <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[#1c1c1e] p-5 rounded-[32px] border border-zinc-800/50 flex flex-col justify-center relative overflow-hidden hover:border-zinc-700 transition-colors">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg ${keyStats.valid > 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                                <Key size={20} />
                             </div>
-                            <div>
-                                <div className="text-sm font-medium text-zinc-300">API 渠道状态</div>
-                                <div className="text-xs text-zinc-600 hidden md:block">API Channels Status</div>
-                                <div className="text-xs text-zinc-500 flex flex-wrap gap-2 mt-1">
-                                    <span className="text-emerald-500">{keyStats.valid} 正常 (Active)</span>
-                                    <span className="text-zinc-600">|</span>
-                                    <span className={keyStats.invalid > 0 ? "text-red-500" : "text-zinc-600"}>{keyStats.invalid} 异常 (Error)</span>
+
+                            <div className="relative z-10">
+                                <div className="flex items-baseline gap-1 mb-1">
+                                    <span className="text-xl text-zinc-400 font-medium">$</span>
+                                    <span className="text-6xl font-bold text-white font-mono tracking-tight text-shadow-lg">{dailyUsage.toFixed(4)}</span>
+                                </div>
+                                <div className="text-sm text-zinc-500 flex items-center gap-2 mb-6">
+                                    <span>约 ¥{(dailyUsage * 7.2).toFixed(2)} CNY</span>
+                                </div>
+
+                                <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg"><Activity size={20} /></div>
+                                        <div>
+                                            <div className="text-xs text-zinc-500 uppercase tracking-wider">今日 Token 消耗</div>
+                                            <div className="text-white font-mono font-bold text-lg">
+                                                {dailyTokens.toLocaleString()} <span className="text-xs text-zinc-500 font-normal">Tokens</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="text-right">
-                            <div className="text-xs text-zinc-500 mb-1">密钥总数</div>
-                            <div className="text-xl font-bold text-white font-mono">{keyStats.total}</div>
+                    );
+                })()}
+
+                {/* 2. Global Status: Total Consumption Budget */}
+                {(() => {
+                    const slots = keyManager.getSlots();
+                    const totalBudget = slots.reduce((acc, s) => acc + (s.budgetLimit > 0 ? s.budgetLimit : 0), 0);
+                    const hasUnlimited = slots.some(s => s.budgetLimit < 0);
+                    const isTotalUnlimited = totalBudget === 0 && hasUnlimited;
+                    const remainingAmount = isTotalUnlimited ? 0 : Math.max(0, totalBudget - totalConsumed);
+                    const remainingPercent = isTotalUnlimited || totalBudget === 0
+                        ? 100
+                        : Math.max(0, ((totalBudget - totalConsumed) / totalBudget) * 100);
+
+                    // Color Logic: Blue (>50%) -> Yellow (>20%) -> Red (<20%)
+                    const progressBarColor = isTotalUnlimited || remainingPercent > 50
+                        ? 'bg-blue-500'
+                        : remainingPercent > 20
+                            ? 'bg-yellow-500'
+                            : 'bg-red-500';
+
+                    return (
+                        <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[#1c1c1e] p-6 rounded-[32px] border border-zinc-800/50 flex flex-col justify-center relative overflow-hidden hover:border-zinc-700 transition-colors group">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-emerald-500/10 rounded-md text-emerald-500"><DollarSign size={20} /></div>
+                                    <span className="text-zinc-400 text-sm font-medium">总消耗预算</span>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-xs text-zinc-500 uppercase">Token 总消耗</div>
+                                    <div className="text-white font-mono font-bold text-lg">{(totalTokens / 1000).toFixed(1)}k</div>
+                                </div>
+                            </div>
+
+                            {/* Budget Progress */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-xs text-zinc-500 font-mono">
+                                    <span>剩余: {isTotalUnlimited ? '∞' : `$${remainingAmount.toFixed(2)}`}</span>
+                                    <span>总额: {isTotalUnlimited ? '∞' : `$${totalBudget.toFixed(2)}`}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="h-3 flex-1 bg-zinc-800 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full transition-all duration-500 shadow-lg ${progressBarColor}`}
+                                            style={{ width: isTotalUnlimited ? '100%' : `${remainingPercent}%` }}
+                                        />
+                                    </div>
+                                    <div className="text-sm font-bold font-mono text-white text-right w-14">
+                                        {isTotalUnlimited ? '∞' : `${remainingPercent.toFixed(1)}%`}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
+                    );
+                })()}
+
+                {/* 3. API Status (Refined) */}
+                {(() => {
+                    const slots = keyManager.getSlots();
+                    const totalCount = slots.length;
+                    const activeCount = slots.filter(s => s.status === 'valid' && !s.disabled).length;
+                    const abnormalCount = totalCount - activeCount;
+
+                    return (
+                        <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[#1c1c1e] p-6 rounded-[32px] border border-zinc-800/50 flex items-center justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
+                            <div className="flex items-center gap-5">
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg ${activeCount > 0 ? 'bg-emerald-500/10 text-emerald-500 shadow-emerald-500/10' : 'bg-red-500/10 text-red-500 shadow-red-500/10'}`}>
+                                    <Key size={24} />
+                                </div>
+                                <div>
+                                    <div className="text-sm font-medium text-zinc-400 mb-1">API 管理状态</div>
+                                    <div className="flex gap-4 text-xs font-mono">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                            <span className="text-zinc-300">正常 <span className="text-emerald-500 font-bold ml-0.5">{activeCount}</span></span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className={`w-1.5 h-1.5 rounded-full ${abnormalCount > 0 ? 'bg-red-500' : 'bg-zinc-600'}`} />
+                                            <span className="text-zinc-300">异常 <span className={`${abnormalCount > 0 ? 'text-red-500' : 'text-zinc-500'} font-bold ml-0.5`}>{abnormalCount}</span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="text-right">
+                                <div className="text-xs text-zinc-500 mb-1">密钥总数</div>
+                                <div className="text-3xl font-bold text-zinc-300 font-mono tracking-tighter">{totalCount}</div>
+                            </div>
+                        </div>
+                    );
+                })()}
             </div>
 
-            {/* System Status Section - Compact */}
+            {/* System Status Section - Compact (Restored) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-[#1c1c1e] rounded-[32px] border border-zinc-800/50 p-4 flex items-center gap-3">
+                <div className="bg-[#1c1c1e] rounded-[24px] border border-zinc-800/50 p-4 flex items-center gap-3 hover:border-zinc-700 transition-colors">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
                     <div className="flex-1">
-                        <div className="text-xs text-zinc-500 uppercase tracking-wider">系统状态 (System Status)</div>
-                        <div className="text-sm font-medium text-zinc-300">运行正常 (Operational)</div>
+                        <div className="text-xs text-zinc-500 uppercase tracking-wider">系统状态</div>
+                        <div className="text-sm font-medium text-zinc-300">运行正常</div>
                     </div>
                 </div>
-                <div className="bg-[#1c1c1e] rounded-[32px] border border-zinc-800/50 p-4 flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                <div className="bg-[#1c1c1e] rounded-[24px] border border-zinc-800/50 p-4 flex items-center gap-3 hover:border-zinc-700 transition-colors">
+                    <div className={`w-2 h-2 rounded-full ${latency > 0 && latency < 200 ? 'bg-emerald-500' : latency > 0 ? 'bg-amber-500' : 'bg-zinc-600'}`} />
                     <div className="flex-1">
-                        <div className="text-xs text-zinc-500 uppercase tracking-wider">延迟 (Latency)</div>
-                        <div className="text-sm font-medium text-zinc-300 font-mono">45ms</div>
+                        <div className="text-xs text-zinc-500 uppercase tracking-wider">延迟</div>
+                        <div className="text-sm font-medium text-zinc-300 font-mono">{latency > 0 ? `${latency}ms` : 'Checking...'}</div>
                     </div>
                 </div>
-                <div className="bg-[#1c1c1e] rounded-[32px] border border-zinc-800/50 p-4 flex items-center gap-3">
+                <div className="bg-[#1c1c1e] rounded-[24px] border border-zinc-800/50 p-4 flex items-center gap-3 hover:border-zinc-700 transition-colors">
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
-                        <div className="text-xs text-zinc-500 uppercase tracking-wider">版本 (Version)</div>
+                        <div className="text-xs text-zinc-500 uppercase tracking-wider">版本</div>
                         <div className="text-sm font-medium text-zinc-300">v1.1.9</div>
                     </div>
                 </div>
@@ -291,402 +366,6 @@ const DashboardView = ({ keyStats }: { keyStats: any }) => {
     );
 };
 
-const ApiChannelsView = () => {
-    const [slots, setSlots] = useState<KeySlot[]>(keyManager.getSlots());
-    const [loading, setLoading] = useState(false);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [copiedId, setCopiedId] = useState<string | null>(null); // New State for copy feedback
-
-    // Form State
-    const [formKey, setFormKey] = useState('');
-    const [formName, setFormName] = useState('');
-    const [formProvider, setFormProvider] = useState('Gemini');
-    const [formBudget, setFormBudget] = useState('');
-    // Proxy configuration
-    const [formUseProxy, setFormUseProxy] = useState(false);
-    const [formBaseUrl, setFormBaseUrl] = useState('');
-
-    useEffect(() => {
-        const unsub = keyManager.subscribe(() => setSlots(keyManager.getSlots()));
-        return unsub;
-    }, []);
-
-    const openAddModal = () => {
-        setEditingId(null);
-        setFormKey('');
-        setFormName('Google API');
-        setFormProvider('Gemini');
-        setFormBudget('');
-        setFormUseProxy(false);
-        setFormBaseUrl('');
-        setIsModalOpen(true);
-    };
-
-    const openEditModal = (slot: KeySlot) => {
-        setEditingId(slot.id);
-        setFormKey(slot.key);
-        setFormName(slot.name);
-        setFormProvider(slot.provider);
-        setFormBudget(slot.budgetLimit > 0 ? slot.budgetLimit.toString() : '');
-        // Load proxy config (detect if it's a proxy based on baseUrl)
-        const isProxy = !!slot.baseUrl && !slot.baseUrl.includes('googleapis.com');
-        setFormUseProxy(isProxy);
-        setFormBaseUrl(slot.baseUrl || '');
-        setIsModalOpen(true);
-    };
-
-    const handleSubmit = async () => {
-        setLoading(true);
-
-        if (editingId) {
-            // Edit Mode - now allows proxy config changes
-            const proxyBaseUrl = formUseProxy ? formBaseUrl.trim() : '';
-            keyManager.updateKey(editingId, {
-                name: formName.trim() || 'API Key',
-                budgetLimit: formBudget ? parseFloat(formBudget) : -1,
-                baseUrl: proxyBaseUrl,
-                authMethod: formUseProxy ? 'header' : 'query',
-                headerName: 'x-goog-api-key'
-            });
-        } else {
-            // Add Mode
-            if (!formKey.trim()) {
-                setLoading(false);
-                return;
-            }
-            // Determine proxy config
-            const proxyBaseUrl = formUseProxy ? formBaseUrl.trim() : '';
-            await keyManager.addKey(formKey.trim(), {
-                name: formName.trim() || (formUseProxy ? '代理 API' : 'Google API'),
-                provider: formProvider,
-                budgetLimit: formBudget ? parseFloat(formBudget) : -1,
-                // Proxy configuration
-                baseUrl: proxyBaseUrl,
-                authMethod: formUseProxy ? 'header' : 'query',
-                headerName: 'x-goog-api-key'
-            });
-        }
-
-        // Reset
-        setIsModalOpen(false);
-        setLoading(false);
-    };
-
-    const handleRefresh = async () => {
-        setLoading(true);
-        await keyManager.revalidateAll();
-        setLoading(false);
-    }
-
-    const handleDelete = (id: string) => {
-        if (confirm('确定要删除此 API 密钥吗？')) {
-            keyManager.removeKey(id);
-        }
-    };
-
-    const handleCopy = (key: string, id: string) => {
-        navigator.clipboard.writeText(key);
-        setCopiedId(id);
-        setTimeout(() => setCopiedId(null), 2000);
-    };
-
-    return (
-        <div className="space-y-6 h-full flex flex-col">
-            {/* Header */}
-            <div className="flex justify-end md:justify-between items-center flex-shrink-0">
-                <div className="hidden md:block">
-                    <h3 className="text-2xl font-bold text-white">API 渠道管理 (API Channels)</h3>
-                    <p className="text-xs text-zinc-500 mt-1">云端同步 · 查看消耗 · 预算控制 (Cloud Sync & Budget)</p>
-                </div>
-                <div className="hidden md:flex gap-2">
-                    <button onClick={handleRefresh} className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 transition-colors" title="刷新所有状态 (Refresh)">
-                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                    </button>
-                    <button
-                        onClick={openAddModal}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
-                    >
-                        <Plus size={16} /> 添加密钥 (Add Key)
-                    </button>
-                </div>
-            </div>
-
-            {/* List */}
-            <div className="flex-1 overflow-y-auto space-y-4 min-h-0 pr-1 p-1">
-                {slots.length === 0 ? (
-                    <div className="text-center py-12 border border-dashed border-zinc-800 rounded-xl text-zinc-500 flex flex-col items-center">
-                        <div className="p-4 bg-zinc-900/50 rounded-full mb-3">
-                            <Key size={32} className="opacity-30" />
-                        </div>
-                        <p>暂无 API 密钥配置 (No API Keys Configured)</p>
-                        <button onClick={openAddModal} className="text-indigo-400 hover:text-indigo-300 text-sm mt-2 border-b border-dashed border-indigo-400/50 hover:border-indigo-300">点击添加 (Click to Add)</button>
-                    </div>
-                ) : (
-                    slots.map(slot => (
-                        <div key={slot.id} className="group relative bg-zinc-900/30 backdrop-blur-md border border-white/5 hover:border-white/10 rounded-[24px] p-5 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-black/20">
-
-                            <div className="flex flex-col gap-4">
-                                {/* Top Row: Header Info */}
-                                <div className="flex justify-between items-start">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center bg-gradient-to-br ${slot.provider === 'Gemini' ? 'from-blue-500/20 to-indigo-500/20 text-blue-400' : 'from-zinc-700/50 to-zinc-800/50 text-zinc-400'}`}>
-                                            {/* Icon based on provider could go here */}
-                                            <span className="font-bold text-xs">{slot.provider.substring(0, 1)}</span>
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <h4 className="font-bold text-white text-base">{slot.name || 'API Key'}</h4>
-                                                {/* Glowing Status Dot */}
-                                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/20 border border-white/5">
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${slot.disabled ? 'bg-zinc-500' :
-                                                        slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' :
-                                                            slot.status === 'invalid' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' :
-                                                                'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]'}`}
-                                                    />
-                                                    <span className={`text-[10px] font-medium ${slot.disabled ? 'text-zinc-500' :
-                                                        slot.status === 'valid' ? 'text-emerald-500' :
-                                                            slot.status === 'invalid' ? 'text-red-500' :
-                                                                'text-amber-500'
-                                                        }`}>
-                                                        {slot.disabled ? '已暂停' : slot.status === 'valid' ? 'Active' : slot.status === 'invalid' ? 'Error' : 'Limit'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="text-xs text-zinc-500 font-mono mt-0.5 opacity-60">Provider: {slot.provider}</div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {/* Pause/Resume Toggle */}
-                                        <button
-                                            onClick={() => keyManager.toggleDisabled(slot.id)}
-                                            className={`p-2 rounded-xl transition-colors ${slot.disabled
-                                                ? 'text-emerald-500 hover:bg-emerald-500/10'
-                                                : 'text-amber-500 hover:bg-amber-500/10'}`}
-                                            title={slot.disabled ? '恢复 (Resume)' : '暂停 (Pause)'}
-                                        >
-                                            {slot.disabled ? <Play size={14} /> : <Pause size={14} />}
-                                        </button>
-                                        <button
-                                            onClick={() => openEditModal(slot)}
-                                            className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
-                                        >
-                                            <Sparkles size={14} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDelete(slot.id)}
-                                            className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Middle Row: Key Display & Copy */}
-                                <div
-                                    onClick={() => handleCopy(slot.key, slot.id)}
-                                    className="relative flex items-center justify-between bg-black/20 hover:bg-black/30 border border-white/5 rounded-xl px-3 py-2.5 cursor-pointer group/key transition-colors"
-                                >
-                                    <div className="font-mono text-zinc-400 text-xs tracking-wider group-hover/key:text-zinc-200 transition-colors">
-                                        {slot.key.substring(0, 8)} •••• •••• {slot.key.slice(-6)}
-                                    </div>
-                                    <div className="flex items-center gap-1.5 text-zinc-600 group-hover/key:text-zinc-300 transition-colors">
-                                        <span className="text-[10px] opacity-0 group-hover/key:opacity-100 transition-opacity uppercase tracking-widest font-bold">
-                                            {copiedId === slot.id ? 'Copied' : 'Copy'}
-                                        </span>
-                                        {copiedId === slot.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                                    </div>
-                                </div>
-
-                                {/* Bottom Row: Stats */}
-                                <div className="grid grid-cols-2 gap-3">
-                                    {/* Tokens Consumed */}
-                                    <div className="bg-white/5 rounded-xl p-3 border border-white/5">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-[10px] text-zinc-500 flex items-center gap-1">
-                                                <Zap size={10} /> TOKENS
-                                            </span>
-                                            <span className="text-xs text-indigo-400 font-mono font-bold">
-                                                {((slot.usedTokens || 0) / 1000).toFixed(1)}k
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[10px] text-zinc-500">成功调用</span>
-                                            <span className="text-xs text-zinc-400 font-mono">{slot.successCount}</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Usage / Budget with Blue Bar */}
-                                    <div className="bg-white/5 rounded-xl p-3 border border-white/5">
-                                        <div className="flex justify-between items-end mb-2">
-                                            <span className="text-[10px] text-zinc-500">预算</span>
-                                            <span className="text-[10px] text-zinc-300 font-mono">
-                                                ${(slot.totalCost || 0).toFixed(3)} <span className="text-zinc-600">/</span> {slot.budgetLimit > 0 ? `$${slot.budgetLimit}` : '∞'}
-                                            </span>
-                                        </div>
-                                        {/* Blue Progress Bar: 100% for unlimited, remaining% for limited */}
-                                        <div className="w-full h-1.5 bg-zinc-800/50 rounded-full overflow-hidden">
-                                            {(() => {
-                                                const isUnlimited = slot.budgetLimit < 0 || slot.budgetLimit === 0;
-                                                const isOverBudget = !isUnlimited && slot.totalCost >= slot.budgetLimit;
-                                                const usedPercent = isUnlimited ? 0 : Math.min(100, (slot.totalCost / slot.budgetLimit) * 100);
-                                                const remainingPercent = isUnlimited ? 100 : Math.max(0, 100 - usedPercent);
-                                                return (
-                                                    <div
-                                                        className={`h-full rounded-full transition-all duration-500 ${isOverBudget ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-blue-400'}`}
-                                                        style={{ width: `${isUnlimited ? 100 : remainingPercent}%` }}
-                                                    />
-                                                );
-                                            })()}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
-
-            {/* Mobile Floating Actions (Middle Bottom) */}
-            <div className="hidden max-md:flex absolute bottom-24 inset-x-0 z-30 items-center justify-center gap-4 pointer-events-none">
-                <button
-                    onClick={handleRefresh}
-                    className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-zinc-800/90 hover:bg-zinc-700 text-white rounded-full shadow-lg backdrop-blur-md border border-white/10 active:scale-90 transition-all"
-                >
-                    <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-                </button>
-                <button
-                    onClick={openAddModal}
-                    className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-bold shadow-[0_8px_20px_rgba(79,70,229,0.4)] active:scale-95 transition-all backdrop-blur-sm border border-white/10"
-                >
-                    <Plus size={18} />
-                    <span>添加密钥 (Add Key)</span>
-                </button>
-            </div>
-
-            {/* Modal Overlay */}
-            {isModalOpen && (
-                <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200">
-                    <div className="bg-[#161618] w-full max-w-md rounded-2xl border border-zinc-700 shadow-2xl p-6 space-y-4 animate-in zoom-in-95 duration-200 text-left" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-2">
-                            <h4 className="text-lg font-bold text-white">{editingId ? '编辑 API 密钥 (Edit API Key)' : '添加新的 API 密钥 (Add API Key)'}</h4>
-                            <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={18} /></button>
-                        </div>
-                        {/* Form reuse same as before, simplified for brevity in this replace block */}
-                        <div className="space-y-3">
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 block">备注名称 (Name)</label>
-                                <input
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors"
-                                    placeholder="e.g. Google API"
-                                    value={formName}
-                                    onChange={e => setFormName(e.target.value)}
-                                    autoFocus
-                                />
-                            </div>
-
-                            {!editingId && (
-                                <div>
-                                    <label className="text-xs text-zinc-400 mb-1.5 block">平台供应商 (Provider)</label>
-                                    <select
-                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors"
-                                        value={formProvider}
-                                        onChange={e => setFormProvider(e.target.value)}
-                                    >
-                                        <option value="Gemini">Google Gemini</option>
-                                        <option value="OpenAI">OpenAI (暂未支持验证)</option>
-                                        <option value="Claude">Anthropic Claude (暂未支持验证)</option>
-                                        <option value="Other">Other</option>
-                                    </select>
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 block">API Key {editingId ? '(不可修改 / Read Only)' : <span className="text-red-500">*</span>}</label>
-                                <input
-                                    className={`w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors font-mono ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                    placeholder="sk-..."
-                                    value={formKey}
-                                    onChange={e => setFormKey(e.target.value)}
-                                    disabled={!!editingId} // Disable key editing
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 block">总预算限制 (Budget Limit in USD)</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-2 text-zinc-500 text-sm">$</div>
-                                    <input
-                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-6 pr-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors"
-                                        placeholder="No Limit (无限)"
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={formBudget}
-                                        onChange={e => setFormBudget(e.target.value)}
-                                    />
-                                </div>
-                                <p className="text-[10px] text-zinc-500 mt-1">Leave empty for unlimited. 超过预算将自动停用此Key。</p>
-                            </div>
-
-                            {/* Proxy Configuration Section */}
-                            <div className="border-t border-zinc-800 pt-4 mt-2">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div>
-                                        <label className="text-xs text-zinc-400 block">使用代理 (Use Proxy)</label>
-                                        <p className="text-[10px] text-zinc-600 mt-0.5">支持 gemini-balance-lite 等第三方中转服务</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setFormUseProxy(!formUseProxy)}
-                                        className={`relative w-11 h-6 rounded-full transition-colors ${formUseProxy ? 'bg-indigo-600' : 'bg-zinc-700'}`}
-                                    >
-                                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${formUseProxy ? 'left-6' : 'left-1'}`} />
-                                    </button>
-                                </div>
-
-                                {formUseProxy && (
-                                    <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-                                        <label className="text-xs text-zinc-400 mb-1.5 block">
-                                            代理 Base URL <span className="text-red-500">*</span>
-                                        </label>
-                                        <input
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors font-mono"
-                                            placeholder="https://your-proxy.com"
-                                            value={formBaseUrl}
-                                            onChange={e => setFormBaseUrl(e.target.value)}
-                                        />
-                                        <p className="text-[10px] text-zinc-500 mt-1">
-                                            例如: https://my-gemini-proxy.vercel.app
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="pt-2 flex gap-3">
-                            <button
-                                onClick={() => setIsModalOpen(false)}
-                                className="flex-1 py-2 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors text-sm font-medium"
-                            >
-                                取消 (Cancel)
-                            </button>
-                            <button
-                                onClick={handleSubmit}
-                                disabled={!formKey || loading}
-                                className="flex-1 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors text-sm font-medium flex items-center justify-center gap-2"
-                            >
-                                {loading && <Loader2 size={14} className="animate-spin" />}
-                                {editingId ? '保存修改 (Save)' : '确认添加 (Add)'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
 
 const CostEstimationView = () => {
     const [breakdown, setBreakdown] = useState<CostBreakdownItem[]>([]);
@@ -724,8 +403,8 @@ const CostEstimationView = () => {
         <div className="space-y-6">
             <div className="hidden md:flex items-center justify-between">
                 <div>
-                    <h3 className="text-2xl font-bold text-white">成本详情 (Cost Breakdown)</h3>
-                    <p className="text-xs text-zinc-500 mt-1">按模型和规格统计的详细使用记录 (Detailed usage by model and size)</p>
+                    <h3 className="text-2xl font-bold text-white">成本详情</h3>
+                    <p className="text-xs text-zinc-500 mt-1">按模型和规格统计的详细使用记录</p>
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Tab Toggle */}
@@ -760,16 +439,16 @@ const CostEstimationView = () => {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-zinc-900 border-b border-zinc-800">
                             <tr>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">模型 (Model)</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">规格 (Size)</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">数量 (Count)</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">模型</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">规格</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">数量</th>
                                 <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">Tokens</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">成本 (USD)</th>
+                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">成本</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800/50">
                             {breakdown.length === 0 ? (
-                                <tr><td colSpan={5} className="p-12 text-center text-zinc-500">今日暂无数据 (No Data Today)</td></tr>
+                                <tr><td colSpan={5} className="p-12 text-center text-zinc-500">今日暂无数据</td></tr>
                             ) : (
                                 breakdown.map((item, idx) => (
                                     <tr key={idx} className="hover:bg-zinc-800/30 transition-colors group">
@@ -835,7 +514,7 @@ const CostEstimationView = () => {
             <div className="md:hidden space-y-3">
                 {breakdown.length === 0 ? (
                     <div className="p-8 text-center text-zinc-500 bg-[#1c1c1e] rounded-[32px] border border-zinc-800">
-                        今日暂无数据 (No Data Today)
+                        今日暂无数据
                     </div>
                 ) : (
                     breakdown.map((item, idx) => (
@@ -876,7 +555,7 @@ const CostEstimationView = () => {
             </div>
 
             <div className="text-xs text-zinc-500 p-5 bg-zinc-900/50 rounded-[32px] border border-zinc-800/50">
-                <p className="font-medium text-zinc-400 mb-3">计费参考 (Pricing Reference - 2026 Official)</p>
+                <p className="font-medium text-zinc-400 mb-3">计费参考</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Imagen */}
                     <div className="space-y-1.5">
@@ -895,7 +574,7 @@ const CostEstimationView = () => {
                         <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1">Gemini Image</div>
                         <div className="flex items-center gap-2">
                             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                            <span>2.5 Flash: <span className="text-indigo-400 font-mono">$0.039</span>/张 (1290 tokens)</span>
+                            <span>2.5 Flash: <span className="text-indigo-400 font-mono">$0.039</span>/张(1290 tokens)</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
@@ -985,7 +664,7 @@ const StorageSettingsView = () => {
 
     const handleClearCache = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (confirm('确定要清理浏览器缓存吗？\n这将彻底删除缓存在浏览器中的所有临时图片。\n此操作不会影响“本地文件夹”中的文件。')) {
+        if (confirm('确定要清理浏览器缓存吗？\n这将彻底删除缓存在浏览器中的所有临时图片。\n此操作不会影响「本地文件夹」中的文件。')) {
             setLoading(true);
             try {
                 const { clearAllImages } = await import('../services/imageStorage');
@@ -1009,7 +688,7 @@ const StorageSettingsView = () => {
                         ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
                         : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
                         }`}>
-                        {isConnectedToLocal ? '本地模式 (Local)' : '临时模式 (Temp)'}
+                        {isConnectedToLocal ? '本地 (Local)' : '临时 (Temp)'}
                     </div>
                 </h3>
                 <p className="text-zinc-500 text-sm mt-1 max-w-2xl">
@@ -1022,7 +701,7 @@ const StorageSettingsView = () => {
 
                 <div
                     onClick={!isConnectedToLocal ? undefined : handleConnectBrowser}
-                    className={`relative p-8 rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
+                    className={`relative p-5 md:p-8 rounded-[24px] md:rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
                     ${!isConnectedToLocal
                             ? 'bg-indigo-600/5 border-indigo-500/50 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]'
                             : 'bg-[#18181b] border-zinc-800/50 hover:border-indigo-500/30 hover:bg-zinc-800/50 opacity-60 hover:opacity-100'
@@ -1038,7 +717,7 @@ const StorageSettingsView = () => {
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
                                 </span>
-                                使用中 (ACTIVE)
+                                已激活 (ACTIVE)
                             </div>
                         )}
                     </div>
@@ -1063,14 +742,14 @@ const StorageSettingsView = () => {
                                     ? 'bg-indigo-500/10 text-indigo-400 cursor-default'
                                     : 'bg-zinc-800 text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
                         >
-                            {isConnectedToLocal ? '切换到临时模式' : '当前已激活'}
+                            {isConnectedToLocal ? '切换至临时模式' : '当前已激活'}
                         </button>
 
                         {isConnectedToLocal && (
                             <button
                                 onClick={handleClearCache}
                                 className="px-4 py-3 rounded-xl bg-zinc-800 text-zinc-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 border border-transparent transition-all flex items-center justify-center cursor-pointer"
-                                title="清理浏览器缓存 (Clear Cache)"
+                                title="清理浏览器缓存(Clear Cache)"
                             >
                                 <Trash2 size={18} />
                             </button>
@@ -1081,7 +760,7 @@ const StorageSettingsView = () => {
                 {/* Local Storage Card */}
                 <div
                     onClick={isConnectedToLocal ? undefined : handleConnectLocal}
-                    className={`relative p-8 rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
+                    className={`relative p-5 md:p-8 rounded-[24px] md:rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
                     ${isConnectedToLocal
                             ? 'bg-indigo-600/5 border-indigo-500/50 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]'
                             : 'bg-[#18181b] border-zinc-800/50 hover:border-indigo-500/30 hover:bg-zinc-800/50 opacity-60 hover:opacity-100'
@@ -1097,13 +776,13 @@ const StorageSettingsView = () => {
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
                                 </span>
-                                使用中 (ACTIVE)
+                                已激活 (ACTIVE)
                             </div>
                         )}
                     </div>
 
                     <div className="mt-8">
-                        <h4 className={`text-lg font-bold ${isConnectedToLocal ? 'text-white' : 'text-zinc-400'}`}>本地文件夹 (Local)</h4>
+                        <h4 className={`text-lg font-bold ${isConnectedToLocal ? 'text-white' : 'text-zinc-400'}`}>本地文件夹(Local)</h4>
                         <div className={`text-4xl font-mono font-bold mt-2 ${isConnectedToLocal ? 'text-indigo-400' : 'text-zinc-600'}`}>
                             {isConnectedToLocal ? formatBytes(localUsage) : '--'}
                         </div>
@@ -1143,7 +822,7 @@ const StorageSettingsView = () => {
                                         ? 'bg-indigo-500/10 text-indigo-400 cursor-default'
                                         : 'bg-zinc-800 text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
                             >
-                                切换到本地
+                                切换至本地
                             </button>
                         )}
                     </div>
@@ -1183,11 +862,11 @@ const SystemLogsView = () => {
             <div className="flex justify-end md:justify-between items-center mb-2">
                 <div className="hidden md:block">
                     <h3 className="text-2xl font-bold text-white">系统日志 (System Logs)</h3>
-                    <p className="text-xs text-zinc-500 mt-1">调试信息与错误追踪 (Debug & Trace)</p>
+                    <p className="text-xs text-zinc-500 mt-1">调试信息与错误追踪(Debug & Trace)</p>
                 </div>
                 <button onClick={handleCopy} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 hover:text-white rounded-lg text-sm text-zinc-400 transition-colors border border-transparent hover:border-zinc-600">
                     {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                    {copied ? '已复制 (Copied)' : '导出日志 (Export Logs)'}
+                    {copied ? '已复制(Copied)' : '导出日志 (Export Logs)'}
                 </button>
             </div>
 
@@ -1207,7 +886,7 @@ const SystemLogsView = () => {
                     </div>
                 ) : (
                     <div className="overflow-y-auto p-4 space-y-2 scrollbar-thin font-mono text-xs">
-                        {logs.map((log) => (
+                        {logs.slice().reverse().map((log) => (
                             <div key={log.id} className="group relative pl-4 border-l-2 border-zinc-800 hover:border-zinc-600 transition-colors py-1">
                                 <div className="flex items-center gap-2 mb-1 opacity-60 group-hover:opacity-100 transition-opacity">
                                     <span className="text-zinc-500 select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
@@ -1237,17 +916,23 @@ const SystemLogsView = () => {
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialView = 'dashboard' }) => {
     const [activeView, setActiveView] = useState<SettingsView>(initialView);
     const [keyStats, setKeyStats] = useState(keyManager.getStats());
+    const [slots, setSlots] = useState(keyManager.getSlots());
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    const totalConsumed = slots.reduce((sum, s) => sum + (s.totalCost || 0), 0);
+    const totalTokens = slots.reduce((sum, s) => sum + (s.usedTokens || 0), 0);
 
     useEffect(() => {
         setActiveView(initialView);
     }, [initialView, isOpen]);
 
     useEffect(() => {
-        const unsub = keyManager.subscribe(() => setKeyStats(keyManager.getStats()));
+        const unsub = keyManager.subscribe(() => {
+            setKeyStats(keyManager.getStats());
+            setSlots(keyManager.getSlots());
+        });
         return unsub;
     }, []);
-
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
     useEffect(() => {
         const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -1259,27 +944,34 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
 
     const navItems: { id: SettingsView; label: string; icon: any }[] = [
         { id: 'dashboard', label: '仪表盘', icon: LayoutDashboard },
-        { id: 'api-channels', label: 'API 渠道', icon: Key },
+        { id: 'api-channels', label: 'API 管理', icon: Key },
         { id: 'cost-estimation', label: '成本', icon: DollarSign },
         { id: 'storage-settings', label: '存储', icon: HardDrive },
         { id: 'system-logs', label: '日志', icon: ScrollText },
     ];
 
     return (
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200" onClick={onClose}>
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/70 backdrop-blur-xl animate-in fade-in duration-200" onClick={onClose}>
             {!isMobile ? (
-                /* --- Desktop Layout (Strictly Preserved) --- */
+                /* --- Desktop Layout - VisionOS Style --- */
                 <div
-                    className="hidden md:flex w-[980px] h-[640px] bg-[#0d0d0e] rounded-2xl shadow-2xl border border-zinc-800/50 overflow-hidden animate-in zoom-in-95 duration-200"
+                    className="hidden md:flex w-[980px] h-[640px] rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+                    style={{
+                        backgroundColor: 'rgba(13, 13, 14, 0.85)',
+                        backdropFilter: 'blur(40px) saturate(180%)',
+                        WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        boxShadow: '0 32px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.05) inset'
+                    }}
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Desktop Sidebar */}
-                    <div className="w-64 bg-[#161618] border-r border-white/5 flex flex-col p-4 shrink-0">
+                    <div className="w-64 border-r border-white/5 flex flex-col p-4 shrink-0" style={{ backgroundColor: 'rgba(22, 22, 24, 0.5)' }}>
                         <div className="flex items-center gap-3 px-2 mb-8 mt-2">
                             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
                                 <LayoutDashboard size={18} />
                             </div>
-                            <span className="font-bold text-white tracking-tight">系统设置 (System Settings)</span>
+                            <span className="font-bold text-white tracking-tight">系统设置</span>
                         </div>
 
                         <div className="space-y-1">
@@ -1290,8 +982,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeView === item.id ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
                                 >
                                     <item.icon size={16} />
-                                    {item.label === '仪表盘' ? '仪表盘 (Dashboard)' :
-                                        item.label === 'API 渠道' ? 'API 渠道 (Channels)' :
+                                    {item.label === '仪表盘' ? '仪表盘(Dashboard)' :
+                                        item.label === 'API 管理' ? 'API 管理 (Management)' :
                                             item.label === '成本' ? '成本估算 (Cost)' :
                                                 item.label === '存储' ? '存储位置 (Storage)' :
                                                     '系统日志 (Logs)'}
@@ -1302,8 +994,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
 
                         <div className="mt-auto pt-4 border-t border-white/5">
                             <div className="px-3 py-2 bg-zinc-900 rounded-lg">
-                                <div className="text-xs text-zinc-500 mb-1">总消耗 (Total Consumption)</div>
-                                <div className="text-lg font-bold text-white font-mono">${getTodayCosts().entries.reduce((a, b) => a + b.costUsd, 0).toFixed(4)}</div>
+                                <div className="text-xs text-zinc-500 mb-1">总消耗(Total Consumption)</div>
+                                <div className="text-lg font-bold text-white font-mono">${totalConsumed.toFixed(4)}</div>
                             </div>
                         </div>
                     </div>
@@ -1318,7 +1010,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
 
                         <div className="flex-1 overflow-y-auto p-8 scrollbar-thin">
                             <div className="max-w-4xl mx-auto">
-                                {activeView === 'dashboard' && <DashboardView keyStats={keyStats} />}
+                                {activeView === 'dashboard' && <DashboardView keyStats={keyStats} totalConsumed={totalConsumed} totalTokens={totalTokens} />}
                                 {activeView === 'api-channels' && <ApiChannelsView />}
                                 {activeView === 'cost-estimation' && <CostEstimationView />}
                                 {activeView === 'storage-settings' && <StorageSettingsView />}
@@ -1345,7 +1037,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                                     if (!item) return '设置';
                                     const map: Record<string, string> = {
                                         '仪表盘': '仪表盘',
-                                        'API 渠道': 'API 渠道',
+                                        'API 管理': 'API 管理',
                                         '成本': '成本估算',
                                         '存储': '存储位置',
                                         '日志': '系统日志'
@@ -1363,10 +1055,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                     </div>
 
                     {/* Mobile Content (Scrollable) */}
-                    <div className="flex-1 overflow-y-auto p-4 scrollbar-none space-y-4 pb-32 bg-[#000000]">
+                    <div className="flex-1 overflow-y-auto p-4 scrollbar-hide space-y-4 pb-32 bg-black">
                         {/* Dynamic Content based on activeView */}
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            {activeView === 'dashboard' && <DashboardView keyStats={keyStats} />}
+                            {activeView === 'dashboard' && <DashboardView keyStats={keyStats} totalConsumed={totalConsumed} totalTokens={totalTokens} />}
                             {activeView === 'api-channels' && <ApiChannelsView />}
                             {activeView === 'cost-estimation' && <CostEstimationView />}
                             {activeView === 'storage-settings' && <StorageSettingsView />}
@@ -1376,19 +1068,24 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
 
                     {/* Mobile Bottom Navigation Bar (iOS Tab Bar Style) */}
                     {/* Mobile Bottom Navigation Bar (Floating Glass Pill - iOS 26 Style) */}
-                    <div className="absolute bottom-6 left-0 right-0 mx-auto w-[90%] max-w-[360px] bg-[#161618]/80 backdrop-blur-2xl border border-white/10 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex items-center justify-around h-[64px] px-2 z-[10002]">
+                    <div
+                        className="absolute bottom-4 mx-4 left-0 right-0 h-14 rounded-[24px] flex items-center justify-around px-2 z-[10002] liquid-glass"
+                        style={{
+                            // Handled by CSS class
+                        }}
+                    >
                         {navItems.map(item => (
                             <button
                                 key={item.id}
                                 onClick={() => setActiveView(item.id)}
                                 className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-90
                                     ${activeView === item.id
-                                        ? 'text-blue-500'
-                                        : 'text-zinc-400 hover:text-zinc-200'
+                                        ? 'text-white'
+                                        : 'text-zinc-500 hover:text-zinc-300'
                                     }`}
                             >
-                                <div className={`p-1.5 rounded-full transition-all duration-300 ${activeView === item.id ? 'bg-blue-500/15 translate-y-[-2px]' : ''}`}>
-                                    <item.icon size={22} strokeWidth={activeView === item.id ? 2.5 : 2} />
+                                <div className={`p-1.5 rounded-xl transition-all duration-300 ${activeView === item.id ? 'bg-white/10' : ''}`}>
+                                    <item.icon size={22} strokeWidth={activeView === item.id ? 2 : 2} />
                                 </div>
                                 <span className={`text-[9px] font-medium tracking-tight transform ${activeView === item.id ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>{item.label}</span>
                             </button>

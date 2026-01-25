@@ -43,13 +43,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                 />
             )}
 
-            {/* Sidebar */}
+            {/* Sidebar - VisionOS Floating Panel */}
             <aside
-                className={`sidebar fixed inset-y-0 left-0 z-50 transition-all duration-300 md:translate-x-0 ${isOpen ? 'translate-x-0 w-[280px]' : '-translate-x-full w-[280px] md:w-0 md:opacity-0'
-                    }`}
+                className={`sidebar fixed z-50 transition-all duration-300 md:translate-x-0 hidden md:flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
                 style={{
-                    backgroundColor: 'var(--bg-secondary)',
-                    borderRight: '1px solid var(--border-light)'
+                    top: '16px',
+                    left: '16px',
+                    height: 'calc(100vh - 32px)',
+                    width: '260px',
+                    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                    backdropFilter: 'blur(40px) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '24px',
+                    boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5)'
                 }}
             >
                 {/* Header */}

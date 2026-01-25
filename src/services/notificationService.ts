@@ -4,6 +4,8 @@
  * Error messages are formatted to be AI-readable for debugging
  */
 
+import { addLog, LogLevel } from './systemLogService';
+
 export type NotificationType = 'success' | 'error' | 'warning' | 'info';
 
 export interface Notification {
@@ -22,6 +24,7 @@ class NotificationService {
     private notifications: Notification[] = [];
     private listeners: Set<NotificationListener> = new Set();
     private maxNotifications = 5;
+    private timers: Map<string, NodeJS.Timeout> = new Map();
 
     /**
      * Show a notification
@@ -33,7 +36,7 @@ class NotificationService {
         options?: { details?: string; duration?: number }
     ): string {
         const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const duration = options?.duration ?? (type === 'error' ? 8000 : 4000);
+        const duration = options?.duration ?? 10000; // Default 10s for all types
 
         const notification: Notification = {
             id,
@@ -50,10 +53,22 @@ class NotificationService {
 
         // Auto-dismiss after duration (unless 0)
         if (duration > 0) {
-            setTimeout(() => this.dismiss(id), duration);
+            this.startTimer(id, duration);
         }
 
-        // Log for debugging (AI-readable format)
+        // 记录到系统日志 (直接调用，确保同步记录)
+        let level = LogLevel.INFO;
+        if (type === 'error') level = LogLevel.ERROR;
+        if (type === 'warning') level = LogLevel.WARNING;
+
+        addLog(
+            level,
+            'NotificationSystem',
+            `${title}: ${message}`,
+            options?.details || (type === 'error' ? 'No technical details provided' : 'User Notification'),
+        );
+
+        // Console Log
         const logPrefix = `[Notification/${type.toUpperCase()}]`;
         const logMessage = `${logPrefix} ${title}: ${message}`;
         if (options?.details) {
@@ -65,6 +80,35 @@ class NotificationService {
         return id;
     }
 
+    private startTimer(id: string, duration: number) {
+        if (this.timers.has(id)) {
+            clearTimeout(this.timers.get(id)!);
+        }
+        const timer = setTimeout(() => this.dismiss(id), duration);
+        this.timers.set(id, timer);
+    }
+
+    /**
+     * Pause auto-dismiss timer (e.g. on hover)
+     */
+    pauseTimer(id: string) {
+        if (this.timers.has(id)) {
+            clearTimeout(this.timers.get(id)!);
+            this.timers.delete(id);
+        }
+    }
+
+    /**
+     * Resume auto-dismiss timer (e.g. on mouse leave)
+     * Resets to full duration for better UX
+     */
+    resumeTimer(id: string) {
+        const notification = this.notifications.find(n => n.id === id);
+        if (notification && (notification.duration || 0) > 0) {
+            this.startTimer(id, notification.duration!);
+        }
+    }
+
     /**
      * Helper methods for different notification types
      */
@@ -73,6 +117,7 @@ class NotificationService {
     }
 
     error(title: string, message: string, details?: string) {
+        // Errors usually 10s, but let's keep it consistent
         return this.show('error', title, message, { details, duration: 10000 });
     }
 
@@ -88,6 +133,12 @@ class NotificationService {
      * Dismiss a notification
      */
     dismiss(id: string) {
+        // Clear timer
+        if (this.timers.has(id)) {
+            clearTimeout(this.timers.get(id)!);
+            this.timers.delete(id);
+        }
+
         this.notifications = this.notifications.filter(n => n.id !== id);
         this.notifyListeners();
     }
@@ -96,6 +147,10 @@ class NotificationService {
      * Dismiss all notifications
      */
     dismissAll() {
+        // Clear all timers
+        this.timers.forEach(timer => clearTimeout(timer));
+        this.timers.clear();
+
         this.notifications = [];
         this.notifyListeners();
     }
@@ -135,5 +190,7 @@ export const notify = {
     info: (title: string, message: string, details?: string) =>
         notificationService.info(title, message, details),
     dismiss: (id: string) => notificationService.dismiss(id),
-    dismissAll: () => notificationService.dismissAll()
+    dismissAll: () => notificationService.dismissAll(),
+    pause: (id: string) => notificationService.pauseTimer(id),
+    resume: (id: string) => notificationService.resumeTimer(id)
 };

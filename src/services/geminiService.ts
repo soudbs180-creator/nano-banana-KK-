@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
-import { AspectRatio, ImageSize, ModelType, ReferenceImage } from "../types";
+import { AspectRatio, ImageSize, ModelType, ReferenceImage, GenerationMode, ApiLineMode } from "../types";
 import { keyManager } from './keyManager';
+import * as costService from './costService';
 import { AuthMethod, buildApiUrl, buildHeaders, GOOGLE_API_BASE } from './apiConfig';
 
 // Detect environment
@@ -33,12 +34,62 @@ export const cancelGeneration = (id: string) => {
 };
 
 /**
+ * 模型 ID 映射表
+ * 将内部模型名称映射到 Google API 实际模型 ID
+ * 
+ * 参考官方文档: https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn
+ * 
+ * Gemini 原生图像生成模型:
+ * - gemini-2.5-flash-image (Nano Banana) - 快速图像生成
+ * - gemini-3-pro-image-preview (Nano Banana Pro) - 高质量图像生成
+ * 
+ * Imagen 系列:
+ * - imagen-4.0-generate-001 (标准)
+ * - imagen-4.0-ultra-generate-001 (超高质量)
+ * - imagen-4.0-fast-generate-001 (快速)
+ */
+function mapToApiModelId(internalId: string, isProxyApi: boolean = false): string {
+  // 如果是第三方代理 API (如 NewAPI)，可能需要不同的模型名称
+  if (isProxyApi) {
+    // 第三方代理通常直接使用原始模型名称
+    return internalId;
+  }
+
+  // Google 官方 API 模型映射
+  const modelMap: Record<string, string> = {
+    // Nano Banana 系列 - 内部代号映射到 Google 官方模型
+    'nano-banana': 'gemini-2.5-flash-image',          // 快速图像生成
+    'nano-banana-pro': 'gemini-3-pro-image-preview',  // 高质量图像生成
+
+    // 标准 Gemini Image 模型 (直接透传)
+    'gemini-2.5-flash-image': 'gemini-2.5-flash-image',
+    'gemini-3-pro-image-preview': 'gemini-3-pro-image-preview',
+
+    // Imagen 4 系列 (直接透传)
+    'imagen-4.0-generate-001': 'imagen-4.0-generate-001',
+    'imagen-4.0-ultra-generate-001': 'imagen-4.0-ultra-generate-001',
+    'imagen-4.0-fast-generate-001': 'imagen-4.0-fast-generate-001',
+  };
+
+  return modelMap[internalId] || internalId; // 未匹配的直接透传
+}
+
+/**
  * Calculate estimated token usage for image generation
+ * 参考: https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn
  */
 function calculateImageTokens(model: ModelType): number {
-  if (model === ModelType.NANO_BANANA) return 1290;
-  if (model === ModelType.NANO_BANANA_PRO) return 1120;
-  return 0;
+  const tokenMap: Record<string, number> = {
+    // Nano Banana (Flash) - 1290 tokens/张
+    'nano-banana': 1290,
+    'gemini-2.5-flash-image': 1290,
+
+    // Nano Banana Pro - 1120 tokens/张 (1K-2K)
+    'nano-banana-pro': 1120,
+    'gemini-3-pro-image-preview': 1120,
+  };
+
+  return tokenMap[model] || 0;
 }
 
 /**
@@ -57,6 +108,276 @@ function normalizeError(error: any): Error {
   return new Error(`生成失败: ${error.message || '未知错误'}`);
 }
 
+/**
+ * Map aspect ratio and size to OpenAI-compatible size string
+ * Reference: https://docs.newapi.pro/zh/docs
+ */
+// Helper to map aspect ratio to DALL-E 3 supported sizes
+function getDallE3Size(aspectRatio: AspectRatio): string {
+  switch (aspectRatio) {
+    case AspectRatio.SQUARE: return '1024x1024';
+    case AspectRatio.LANDSCAPE_16_9: return '1792x1024';
+    case AspectRatio.PORTRAIT_9_16: return '1024x1792';
+    // Approximate others to nearest standard DALL-E 3 size
+    case AspectRatio.LANDSCAPE_4_3: return '1024x1024'; // Or 1792x1024
+    case AspectRatio.PORTRAIT_3_4: return '1024x1024'; // Or 1024x1792
+    case AspectRatio.LANDSCAPE_21_9: return '1792x1024';
+    default: return '1024x1024';
+  }
+}
+
+function mapToOpenAISize(aspectRatio: AspectRatio, imageSize: ImageSize, model: string = ''): string {
+  // strict DALL-E 3 handling
+  if (model.toLowerCase().includes('dall-e-3')) {
+    return getDallE3Size(aspectRatio);
+  }
+
+  // Size mapping based on aspect ratio and target resolution
+  const sizeMap: Record<string, Record<string, string>> = {
+    '1K': {
+      [AspectRatio.SQUARE]: '1024x1024',
+      [AspectRatio.PORTRAIT_3_4]: '768x1024',
+      [AspectRatio.LANDSCAPE_4_3]: '1024x768',
+      [AspectRatio.PORTRAIT_9_16]: '576x1024',
+      [AspectRatio.LANDSCAPE_16_9]: '1024x576',
+      [AspectRatio.LANDSCAPE_21_9]: '1024x440',
+      [AspectRatio.PORTRAIT_9_21]: '648x1512',
+      [AspectRatio.LANDSCAPE_3_2]: '1024x683',
+      [AspectRatio.PORTRAIT_2_3]: '683x1024',
+    },
+    '2K': {
+      [AspectRatio.SQUARE]: '1792x1792',
+      [AspectRatio.PORTRAIT_3_4]: '1344x1792',
+      [AspectRatio.LANDSCAPE_4_3]: '1792x1344',
+      [AspectRatio.PORTRAIT_9_16]: '1024x1792',
+      [AspectRatio.LANDSCAPE_16_9]: '1792x1024',
+      [AspectRatio.LANDSCAPE_21_9]: '1792x768',
+      [AspectRatio.PORTRAIT_9_21]: '960x2240',
+      [AspectRatio.LANDSCAPE_3_2]: '1792x1195',
+      [AspectRatio.PORTRAIT_2_3]: '1195x1792',
+    },
+    '4K': {
+      [AspectRatio.SQUARE]: '2048x2048',
+      [AspectRatio.LANDSCAPE_16_9]: '2048x1152',
+      [AspectRatio.PORTRAIT_9_16]: '1152x2048',
+      [AspectRatio.PORTRAIT_9_21]: '1080x2520',
+    }
+  };
+
+  return sizeMap[imageSize]?.[aspectRatio] || sizeMap['1K'][aspectRatio] || '1024x1024';
+}
+
+/**
+ * Generate image via Proxy API (supports OpenAI or Gemini format)
+ */
+async function generateImageViaProxy(
+  prompt: string,
+  aspectRatio: AspectRatio,
+  imageSize: ImageSize,
+  model: string,
+  requestId?: string
+): Promise<string> {
+  // Get proxy key from keyManager
+  const keyData = keyManager.getNextKey('proxy');
+  if (!keyData) {
+    throw new Error("没有可用的中转代理 API Key，请在设置中添加并配置模型");
+  }
+
+  // Lookup model config to determine API Format
+  const proxyModels = keyManager.getAvailableProxyModels();
+  const modelConfig = proxyModels.find(m => m.id === model);
+  if (!modelConfig) {
+    throw new Error('代理模型未配置：请在 API 设置中添加该模型后再试');
+  }
+  const proxyBaseUrl = keyData.baseUrl.trim();
+  const isGoogleBase = proxyBaseUrl.includes('googleapis.com');
+  const isProxyBase = !!proxyBaseUrl && !isGoogleBase;
+  const isGoogleFamily = /gemini|imagen|veo|nano-banana/i.test(model);
+  const apiFormat = isProxyBase
+    ? 'openai'
+    : (modelConfig.apiFormat || (isGoogleBase ? 'gemini' : 'openai'));
+
+  if (isProxyBase && isGoogleFamily && modelConfig.type !== 'chat') {
+    throw new Error('中转代理暂不支持 Gemini/Imagen/Veo 原生图像/视频接口，请切换谷歌专线或更换支持 OpenAI 图像/视频的模型');
+  }
+
+  const controller = requestId ? abortControllers.get(requestId) : undefined;
+  if (controller?.signal.aborted) {
+    throw new Error('Generation cancelled');
+  }
+
+  // Build base URL (remove trailing slash and whitespace)
+  let baseUrl = keyData.baseUrl.trim().replace(/\/$/, '');
+
+  // For Gemini format, we need the root domain, not the /v1 suffix that users often copy
+  // Example: user enters "https://api.example.com/v1", we need "https://api.example.com/v1beta/..."
+  if (apiFormat === 'gemini') {
+    if (baseUrl.endsWith('/v1')) {
+      baseUrl = baseUrl.substring(0, baseUrl.length - 3);
+    } else if (baseUrl.endsWith('/v1beta')) {
+      baseUrl = baseUrl.substring(0, baseUrl.length - 7);
+    }
+  }
+
+  if (!baseUrl) {
+    throw new Error("代理服务器地址 (Base URL) 未配置，请在设置中完善");
+  }
+  if (!baseUrl.startsWith('http')) {
+    baseUrl = `https://${baseUrl}`;
+  }
+
+  // Decide Endpoint and Body based on Format
+  let apiUrl = '';
+  let requestMethod = 'POST';
+  let requestHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${keyData.key}` // Standard Proxy Auth
+  };
+  let requestBody: any = {};
+
+  if (apiFormat === 'gemini') {
+    // Gemini Format: /v1beta/models/{model}:generateContent
+    apiUrl = `${baseUrl}/v1beta/models/${model}:generateContent`;
+
+    // Construct Generation Config with Image params
+    const generationConfig: any = {
+      responseMimeType: "image/jpeg"
+    };
+
+    // Inject Aspect Ratio / Size if applicable
+    if (aspectRatio && aspectRatio !== AspectRatio.SQUARE) {
+      if (!generationConfig.imageConfig) generationConfig.imageConfig = {};
+      generationConfig.imageConfig.aspectRatio = aspectRatio;
+    }
+
+    if (imageSize && imageSize !== '1K') {
+      if (!generationConfig.imageConfig) generationConfig.imageConfig = {};
+      generationConfig.imageConfig.imageSize = imageSize;
+    }
+
+    requestBody = {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig
+    };
+
+    // Some proxies might require x-goog-api-key header instead/also
+    requestHeaders['x-goog-api-key'] = keyData.key;
+
+    console.log(`[Proxy] Generating image via Gemini format: ${apiUrl}`);
+  } else {
+    // OpenAI Format (Default): /v1/images/generations
+    apiUrl = `${baseUrl}/v1/images/generations`;
+    const size = mapToOpenAISize(aspectRatio, imageSize, model);
+
+    requestBody = {
+      model,
+      prompt,
+      n: 1,
+      size,
+      response_format: 'b64_json'
+    };
+
+    console.log(`[Proxy] Generating image via OpenAI format: ${apiUrl}`);
+    console.log(`[Proxy] Model: ${model}, Size: ${size}`);
+  }
+
+  const MAX_ATTEMPTS = 3;
+  let lastError: any = null;
+  let currentKeyData = keyData;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(apiUrl, {
+        method: requestMethod,
+        headers: {
+          ...requestHeaders,
+          'Authorization': `Bearer ${currentKeyData.key}` // Ensure fresh key on rotate
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller?.signal || AbortSignal.timeout(180000) // 3 minutes timeout
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      // Handle Response based on Format
+      let imageData: string | undefined;
+
+      if (apiFormat === 'gemini') {
+        // Gemini Response
+        imageData = result.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
+
+        if (!imageData && result.data?.[0]?.b64_json) {
+          imageData = result.data[0].b64_json;
+        }
+      } else {
+        // OpenAI Response
+        imageData = result.data?.[0]?.b64_json;
+
+        // Handle URL response (NewAPI/MJ fallback)
+        if (!imageData && result.data?.[0]?.url) {
+          console.log("Got URL response, fetching image...");
+          const imageUrl = result.data[0].url;
+          try {
+            const imgRes = await fetch(imageUrl);
+            const blob = await imgRes.blob();
+            // Convert blob to base64
+            imageData = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                resolve(base64);
+              };
+              reader.readAsDataURL(blob);
+            });
+          } catch (err) {
+            console.error("Failed to fetch image from URL:", err);
+          }
+        }
+      }
+
+      if (imageData) {
+        // Report success
+        keyManager.reportSuccess(currentKeyData.id);
+        return `data:image/png;base64,${imageData}`;
+      }
+
+      throw new Error("未能从代理获取图片数据 (No Image Data)");
+
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.message === 'Generation cancelled') {
+        throw new Error('任务已取消');
+      }
+
+      console.warn(`[Proxy] Attempt ${attempt + 1} failed:`, error.message);
+      keyManager.reportFailure(currentKeyData.id, error.message);
+
+      // Try to get next proxy key
+      const nextKey = keyManager.getNextKey('proxy');
+      if (nextKey && nextKey.id !== currentKeyData.id) {
+        currentKeyData = nextKey;
+        // Should really update apiUrl base base if key changes, but we assume same proxy provider for simplicity OR we should rebuild apiUrl
+        // Rebuilding apiUrl:
+        const newBase = currentKeyData.baseUrl.replace(/\/$/, '');
+        if (apiFormat === 'gemini') apiUrl = `${newBase}/v1beta/models/${model}:generateContent`;
+        else apiUrl = `${newBase}/v1/images/generations`;
+      } else {
+        lastError = error;
+        break;
+      }
+
+      lastError = error;
+    }
+  }
+
+  throw normalizeError(lastError || new Error("代理图片生成失败"));
+}
+
+
 async function generateImageDirect(
   prompt: string,
   aspectRatio: AspectRatio,
@@ -65,8 +386,14 @@ async function generateImageDirect(
   model: ModelType,
   apiKey: string,
   requestId?: string,
-  enableGrounding: boolean = false
+  enableGrounding: boolean = false,
+  lineMode: ApiLineMode = 'google_direct'
 ): Promise<string> {
+  // Route to proxy if lineMode is 'proxy'
+  if (lineMode === 'proxy') {
+    return generateImageViaProxy(prompt, aspectRatio, imageSize, model, requestId);
+  }
+
   let effectiveKey = apiKey;
   let keyId: string | undefined;
   let controller: AbortController | undefined;
@@ -82,7 +409,9 @@ async function generateImageDirect(
 
   // Key Rotation Logic if no specific key provided
   if (!effectiveKey) {
-    const keyData = keyManager.getNextKey();
+    // For google_direct mode, only use Google official keys
+    const keyData = keyManager.getNextKey('google');
+
     if (keyData) {
       effectiveKey = keyData.key;
       keyId = keyData.id;
@@ -91,8 +420,7 @@ async function generateImageDirect(
       authMethod = keyData.authMethod;
       headerName = keyData.headerName;
     } else {
-      // Try env var failover
-      effectiveKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+      throw new Error("没有可用的 Google 官方 API Key，请检查设置");
     }
   }
 
@@ -114,6 +442,7 @@ async function generateImageDirect(
 
       console.log(`[Gemini] Attempt ${attempt + 1}/${MAX_ATTEMPTS} using key ${keyId || 'env'}`);
 
+      // 检查是否为 Imagen (通过 predict 接口)
       const isImagen = model.startsWith('imagen-');
 
       if (isImagen) {
@@ -155,34 +484,94 @@ async function generateImageDirect(
 
       } else {
         // Gemini Models
+        // Gemini models (generateContent) do NOT support aspectRatio/imageSize in generationConfig
+        // We must inject them into the prompt instead.
+        // Gemini models (generateContent) DO support imageConfig since recent updates
+        // so we don't need prompt injection anymore.
+        const finalPrompt = prompt;
+
         const parts: any[] = [];
-        if (prompt) parts.push({ text: prompt });
+        if (finalPrompt) parts.push({ text: finalPrompt });
         if (referenceImages?.length > 0) {
           referenceImages.forEach(img => parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } }));
         }
 
-        const imageConfig: any = { aspectRatio };
-        // Pass imageSize if model supports it (experimental) or just for completeness
-        if (model === ModelType.NANO_BANANA_PRO || (imageSize && imageSize !== '1K')) {
-          imageConfig.imageSize = imageSize;
-        }
+        // Removed unsupported imageConfig logic for generateContent
+        const imageConfig: any = {};
 
         const tools: any[] = [];
-        if (enableGrounding) tools.push({ googleSearch: {} });
+        // Gemini 2.5 Flash Image (Nano Banana) 不支持 Tools (Grounding)，会导致超时
+        // 只有 Gemini 3 Pro / Nano Banana Pro 支持
+        const supportsTools = !model.includes('gemini-2.5-flash-image') && !model.includes('nano-banana') && model !== 'gemini-2.0-flash-exp';
 
-        const response = await fetch(
-          buildApiUrl(baseUrl, model, 'generateContent', authMethod, effectiveKey),
-          {
+        if (enableGrounding && supportsTools) {
+          tools.push({ googleSearch: {} });
+        }
+
+        // 检测是否使用第三方代理 API (非 Google 官方)
+        const isProxyApi = !!(baseUrl && !baseUrl.includes('googleapis.com') && !baseUrl.includes('google.com'));
+
+        // 使用映射后的 API 模型 ID
+        const apiModelId = mapToApiModelId(model, isProxyApi);
+        console.log(`[Gemini] Mapping model '${model}' -> '${apiModelId}' (Proxy: ${isProxyApi})`);
+
+        // 构建 generationConfig - 必须包含 responseModalities 才能生成图像
+        // 参考: https://ai.google.dev/gemini-api/docs/image-generation
+        const generationConfig: any = {
+          responseModalities: ['TEXT', 'IMAGE'],
+        };
+
+        // Gemini 3 Pro / Nano Banana Pro 及 Flash 等都支持 imageConfig 的 aspectRatio
+        // 参考: https://ai.google.dev/gemini-api/docs/image-generation
+        generationConfig.imageConfig = {};
+
+        if (aspectRatio && aspectRatio !== AspectRatio.SQUARE) {
+          generationConfig.imageConfig.aspectRatio = aspectRatio;
+        }
+
+        // 仅 Pro / Ultra 模型支持 imageSize (Flash/Nano Banana 只有 1K)
+        // 修复: 使用严格判断避免 nano-banana-pro 被误伤
+        const isFlashModel = model === 'nano-banana' || model.includes('gemini-2.5-flash-image');
+
+        if (!isFlashModel) {
+          if (imageSize && imageSize !== '1K') {
+            generationConfig.imageConfig.imageSize = imageSize; // 支持 "2K", "4K"
+          }
+        }
+
+        const apiUrl = buildApiUrl(baseUrl, apiModelId, 'generateContent', authMethod, effectiveKey);
+        console.log(`[Gemini] Requesting URL: ${apiUrl}`);
+
+        let response: Response;
+        try {
+          response = await fetch(apiUrl, {
             method: 'POST',
             headers: buildHeaders(authMethod, effectiveKey, headerName),
             body: JSON.stringify({
               contents: [{ role: 'user', parts }],
-              generationConfig: { imageConfig },
+              generationConfig,
               tools: tools.length > 0 ? tools : undefined
             }),
             signal: controller?.signal || AbortSignal.timeout(240000) // 4 minutes timeout
-          }
-        );
+          });
+        } catch (e) {
+          // 超时或网络错误，尝试降级重试 (去掉 tools 或降低分辨率)
+          console.warn("[Gemini] Request failed, retrying with simplified config...", e);
+
+          // 降级配置：去掉 tools，强制 1K
+          const simplifiedConfig = { ...generationConfig, imageSize: '1K' };
+
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: buildHeaders(authMethod, effectiveKey, headerName),
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts }],
+              generationConfig: simplifiedConfig,
+              // tools: undefined // 移除 tools
+            }),
+            signal: controller?.signal || AbortSignal.timeout(240000)
+          });
+        }
 
         // Update Quota
         if (keyId) {
@@ -213,7 +602,28 @@ async function generateImageDirect(
           if (keyId) {
             keyManager.reportSuccess(keyId);
             const tokens = calculateImageTokens(model);
-            keyManager.addUsage(keyId, tokens);
+
+            // Calculate cost details using CostService (Single Source of Truth)
+            const { cost, tokens: calculatedTokens } = costService.calculateCost(
+              model,
+              imageSize || ImageSize.SIZE_1K,
+              1,
+              prompt.length,
+              referenceImages?.length || 0
+            );
+
+            // 1. Sync to Key Usage
+            keyManager.addUsage(keyId, calculatedTokens);
+            keyManager.addCost(keyId, cost);
+
+            // 2. Record Transaction (Global History)
+            costService.recordCost(
+              model,
+              imageSize || ImageSize.SIZE_1K,
+              1,
+              prompt,
+              referenceImages?.length || 0
+            );
           }
           return `data:image/png;base64,${inlineData.data}`;
         }
@@ -307,8 +717,15 @@ async function generateImageViaBackend(
 }
 
 export const generateImage = async (
-  prompt: string, aspectRatio: AspectRatio, imageSize: ImageSize, referenceImages: ReferenceImage[],
-  model: ModelType, apiKey: string = '', requestId?: string, enableGrounding: boolean = false
+  prompt: string,
+  aspectRatio: AspectRatio,
+  imageSize: ImageSize,
+  referenceImages: ReferenceImage[],
+  model: ModelType,
+  apiKey: string = '',
+  requestId?: string,
+  enableGrounding: boolean = false,
+  lineMode: ApiLineMode = 'google_direct'
 ): Promise<string> => {
   // Create AbortController if requestId provided
   if (requestId) {
@@ -317,16 +734,32 @@ export const generateImage = async (
     }
   }
 
+  // Route to proxy if lineMode is 'proxy'
+  if (lineMode === 'proxy') {
+    return generateImageViaProxy(prompt, aspectRatio, imageSize, model, requestId);
+  }
+
   const hasClientKeys = keyManager.hasValidKeys() || !!apiKey || !!import.meta.env.VITE_GEMINI_API_KEY;
 
   if (hasClientKeys) {
-    return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId, enableGrounding);
+    return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId, enableGrounding, lineMode);
   } else {
     // Fallback to backend only if no client keys
-    // But usually we prefer direct if possible.
-    // If purely backend needed, we call backend.
     return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId);
   }
+};
+
+export const generateVideo = async (
+  prompt: string,
+  model: string,
+  apiKey: string = '',
+  requestId?: string
+): Promise<string> => {
+  // Placeholder for Video Generation
+  console.log('[GeminiService] generateVideo called', { prompt, model });
+  // Simulate delay
+  await new Promise(r => setTimeout(r, 2000));
+  throw new Error("Video generation is not yet fully implemented for model: " + model);
 };
 
 export const validateApiKey = async (apiKey: string): Promise<boolean> => {

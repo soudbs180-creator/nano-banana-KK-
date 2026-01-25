@@ -2,13 +2,30 @@
  * Cost Estimation Service
  * Tracks daily API usage costs based on updated pricing models.
  * 
- * Pricing Reference (Updated 2026-01-21):
- * - Imagen 4 Fast: $0.02/img, Ultra: $0.06/img
- * - Gemini 3 Pro Image: Input $0.0011/img (560 tokens), Output $120/1M tokens
- *   - 1K-2K output: 1120 tokens = $0.134/img
- *   - 4K output: 2000 tokens = $0.24/img
- * - Gemini 2.5 Flash Image: Input $0.075/1M, Output $30/1M tokens
- *   - 1024x1024: 1290 tokens = $0.039/img
+ * ============================================
+ * 定价参考 - Google 官方文档
+ * https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn
+ * 更新日期: 2026-01-22
+ * ============================================
+ * 
+ * Imagen 4 系列 (固定每张计费):
+ * - imagen-4.0-fast-generate-001: $0.02/张
+ * - imagen-4.0-generate-001: $0.04/张 (估计)
+ * - imagen-4.0-ultra-generate-001: $0.06/张
+ * 
+ * Imagen 3 系列:
+ * - imagen-3.0-generate-002: 与 Imagen 4 类似定价
+ * 
+ * Gemini 3 Pro Image (gemini-3-pro-image-preview):
+ * - 输入: $3.50/1M tokens, 图片输入 560 tokens = $0.00196/张
+ * - 输出: $120/1M tokens
+ *   - 1K-2K 输出: 1120 tokens = $0.134/张
+ *   - 4K 输出: 2000 tokens = $0.24/张
+ * 
+ * Gemini 2.5 Flash Image (gemini-2.5-flash-image):
+ * - 输入: $0.075/1M tokens
+ * - 输出: $30/1M tokens
+ *   - 1024x1024: 1290 tokens = $0.039/张
  */
 
 import { ModelType, ImageSize } from '../types';
@@ -44,30 +61,45 @@ let currentUserId: string | null = null;
 let isSyncing = false;
 let syncTimer: any = null;
 
+/**
+ * 定价常量
+ * 参考: https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn
+ */
 const PRICING = {
+    // ============================================
+    // Imagen 系列 - 固定每张计费
+    // ============================================
     IMAGEN: {
-        FAST: 0.02,
-        STD: 0.04,
-        ULTRA: 0.06
+        FAST: 0.02,     // imagen-4.0-fast-generate-001
+        STD: 0.04,      // imagen-4.0-generate-001, imagen-3.0-generate-002
+        ULTRA: 0.06     // imagen-4.0-ultra-generate-001
     },
-    // Gemini 3 Pro Image: $120/1M output tokens
-    // - 1K-2K: 1120 tokens = $0.134/img
-    // - 4K: 2000 tokens = $0.24/img
-    // - Ref image input: 560 tokens = $0.0011/img
+
+    // ============================================
+    // Gemini 3 Pro Image (gemini-3-pro-image-preview)
+    // 输出: $120/1M tokens
+    // - 1K-2K: 1120 tokens = $0.134/张
+    // - 4K: 2000 tokens = $0.24/张
+    // - 图片输入: 560 tokens = $0.00196/张
+    // ============================================
     GEMINI_3_PRO: {
         INPUT_1M: 3.50,
-        OUTPUT_1M: 120.00,  // Updated: was 10.50
-        REF_IMG_TOKENS: 560, // Updated: was 258
-        GEN_TOKENS_STD: 1120,
-        GEN_TOKENS_HD: 2000
+        OUTPUT_1M: 120.00,
+        REF_IMG_TOKENS: 560,
+        GEN_TOKENS_STD: 1120,  // 1K-2K 输出
+        GEN_TOKENS_HD: 2000    // 4K 输出
     },
-    // Gemini 2.5 Flash Image: $30/1M output tokens
-    // - 1024x1024: 1290 tokens = $0.039/img
+
+    // ============================================
+    // Gemini 2.5 Flash Image (gemini-2.5-flash-image)
+    // 输出: $30/1M tokens
+    // - 1024x1024: 1290 tokens = $0.039/张
+    // ============================================
     GEMINI_2_5: {
         INPUT_1M: 0.075,
-        OUTPUT_1M: 30.00,    // Updated: was 0.30
-        REF_IMG_TOKENS: 560, // Updated: was 258
-        GEN_TOKENS_STD: 1290 // Updated: was 258
+        OUTPUT_1M: 30.00,
+        REF_IMG_TOKENS: 560,
+        GEN_TOKENS_STD: 1290  // 1024x1024 输出
     }
 };
 
@@ -252,12 +284,24 @@ export function getCostsByModel(): CostBreakdownItem[] {
 }
 
 export function getModelDisplayName(model: string): string {
-    if (model.includes('imagen-3.0-generate-001')) return 'Imagen 3 Fast';
+    // Nano Banana 系列 - 使用 UI 显示名称
+    if (model === 'nano-banana') return 'Nano Banana';
+    if (model === 'nano-banana-pro') return 'Nano Banana Pro';
+
+    // Imagen 4 系列
+    if (model.includes('imagen-4.0-ultra')) return 'Imagen 4 Ultra';
+    if (model.includes('imagen-4.0-fast')) return 'Imagen 4 Fast';
+    if (model.includes('imagen-4.0')) return 'Imagen 4';
+
+    // Imagen 3 系列
     if (model.includes('imagen-3.0-generate-002')) return 'Imagen 3';
+    if (model.includes('imagen-3.0-generate-001')) return 'Imagen 3.0 (Legacy)';
+
+    // Gemini 系列
+    if (model.includes('gemini-2.5-flash-image')) return 'Gemini 2.5 Flash Image';
+    if (model.includes('gemini-3-pro-image')) return 'Gemini 3 Pro Image';
     if (model.includes('gemini-2.0-flash-exp')) return 'Gemini 2.0 Flash';
-    if (model.includes('gemini-2.0-pro-exp')) return 'Gemini 2.0 Pro'; // Common name if applicable
-    if (model.includes('nano-banana')) return 'Gemini 2.5 Flash'; // Mapping internal ID
-    if (model.includes('nano-banana-pro')) return 'Gemini 3 Pro'; // Mapping internal ID
+    if (model.includes('gemini-2.0-pro-exp')) return 'Gemini 2.0 Pro';
 
     // Fallback cleanup
     return model
@@ -406,20 +450,32 @@ async function syncWithCloud() {
             avatar_url: user?.user_metadata?.avatar_url || ''
         };
 
+        // 计算总 token 消耗 (所有 API keys)
+        let totalTokensAllTime = 0;
+        slots.forEach((slot: KeySlot) => {
+            totalTokensAllTime += slot.usedTokens || 0;
+        });
+
+        // 美元转人民币汇率 (估算)
+        const USD_TO_CNY_RATE = 7.2;
+        const dailyCostCny = local.totalCostUsd * USD_TO_CNY_RATE;
+
         const { error: upsertError } = await supabase.from('user_settings').upsert({
             user_id: currentUserId,
-            // Profile
+            // 用户信息
             display_name: profile.display_name,
             avatar_url: profile.avatar_url,
-            // Daily summary
+            // 今日统计
             daily_cost: local.totalCostUsd,
+            daily_cost_cny: dailyCostCny,  // 今日消耗人民币
             daily_images: local.totalImages,
             daily_tokens: local.totalTokens,
             daily_date: local.date,
-            // Total budget from all API keys
+            // 全部 API 预算汇总
             total_budget: totalBudget > 0 ? totalBudget : -1,
             total_used: totalUsed,
-            // API budgets detail
+            total_tokens: totalTokensAllTime,  // 累计 token 消耗
+            // 单个 API 详情
             api_budgets: apiBudgets,
             updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
@@ -436,4 +492,5 @@ async function syncWithCloud() {
         isSyncing = false;
     }
 }
+
 

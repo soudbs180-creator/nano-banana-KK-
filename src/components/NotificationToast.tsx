@@ -5,6 +5,9 @@ import { notificationService, Notification, NotificationType } from '../services
 const NotificationToast: React.FC = () => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [hoveredId, setHoveredId] = useState<string | null>(null);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const leaveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         // Initial load
@@ -40,94 +43,79 @@ const NotificationToast: React.FC = () => {
         }
     };
 
-    const systemNotifications = notifications.filter(n => n.type === 'error' || n.type === 'warning');
-    const messageNotifications = notifications.filter(n => n.type === 'success' || n.type === 'info');
+    const sortedNotifications = [...notifications].sort((a, b) => {
+        const score = (t: string) => t === 'error' ? 3 : t === 'warning' ? 2 : 1;
+        return score(a.type) - score(b.type) || a.timestamp - b.timestamp;
+    });
 
     return (
         <>
-            {/* System Notifications (Top Center) - For Errors & Debugging */}
-            {systemNotifications.length > 0 && (
-                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none max-w-[90vw] w-[600px]">
-                    {systemNotifications.map(notification => (
-                        <div
-                            key={notification.id}
-                            className={`pointer-events-auto backdrop-blur-xl border rounded-xl shadow-2xl animate-in slide-in-from-top-2 fade-in duration-200 ${getStyles(notification.type)}`}
-                        >
-                            <div className="flex items-start gap-3 p-4">
-                                <div className="shrink-0 mt-0.5">
-                                    {getIcon(notification.type)}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-white text-sm flex items-center gap-2">
-                                        {notification.title}
-                                        {/* Error Code Badge if present in title or explicitly needed */}
-                                        <span className="px-1.5 py-0.5 rounded-md bg-white/10 text-[10px] font-mono text-zinc-400">
-                                            {notification.type.toUpperCase()}
-                                        </span>
+            {/* 统一通知消息 - 右下角弹出 (All Notifications) */}
+            {sortedNotifications.length > 0 && (
+                <div
+                    className="fixed z-[9999] flex gap-3 pointer-events-none w-full max-w-[400px]
+                    /* Mobile: Top Centered / Full Width */
+                    top-4 left-4 right-4 bottom-auto flex-col
+                    /* Desktop: Bottom Right */
+                    md:top-auto md:bottom-36 md:right-6 md:left-auto md:flex-col-reverse"
+                >
+                    <div
+                        className="flex gap-3 flex-col md:flex-col-reverse pointer-events-auto"
+                        onMouseEnter={() => setIsExpanded(true)}
+                        onMouseLeave={() => setIsExpanded(false)}
+                    >
+                        {sortedNotifications.map((notification, index) => {
+                            const isTop = index === sortedNotifications.length - 1;
+                            const isCollapsed = !isExpanded && !isTop;
+                            return (
+                                <div
+                                    key={notification.id}
+                                    className={`backdrop-blur-xl border rounded-2xl shadow-xl 
+                                        animate-in slide-in-from-right-1/2 fade-in duration-300 zoom-in-95
+                                        transition-all duration-300 ease-out
+                                        ${isCollapsed ? '-mb-20 scale-[0.95] opacity-85 pointer-events-none' : 'mb-2 scale-100 opacity-100'}
+                                        ${isTop && !isExpanded ? '!mb-0 !opacity-100 !scale-100 pointer-events-auto' : ''}
+                                        hover:!scale-[1.02] hover:shadow-2xl brightness-100
+                                        ${getStyles(notification.type)}`}
+                                >
+                                <div className="flex items-start p-4 gap-3 bg-gradient-to-b from-white/5 to-transparent">
+                                    <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-white/10 mt-0.5 shadow-inner`}>
+                                        {getIcon(notification.type)}
                                     </div>
-                                    <div className="text-zinc-400 text-xs mt-1 break-words">{notification.message}</div>
-                                    {notification.details && (
-                                        <div className="mt-3">
-                                            <div className="text-[10px] text-zinc-500 mb-1 flex items-center gap-1">
-                                                <AlertCircle size={10} />
-                                                DEBUG INFO / STACK TRACE
-                                            </div>
-                                            <div className="p-2.5 bg-black/40 rounded-lg text-[10px] text-zinc-400 font-mono break-all max-h-32 overflow-auto border border-white/5 select-text">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="font-bold text-white text-sm leading-snug tracking-wide">{notification.title}</div>
+                                        <div className="text-zinc-300 text-xs mt-1.5 leading-relaxed break-words font-medium opacity-90">
+                                            {notification.message}
+                                        </div>
+                                        {notification.details && (
+                                            <div className="mt-2 text-[10px] font-mono bg-black/40 rounded p-2 text-zinc-400 overflow-hidden line-clamp-3 border border-white/5">
                                                 {notification.details}
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                        onClick={() => handleCopyDetails(notification)}
-                                        className="p-1.5 hover:bg-white/10 rounded-lg transition-colors group"
-                                        title="复制调试信息 (Copy Debug Info)"
-                                    >
-                                        {copiedId === notification.id ? (
-                                            <Check size={14} className="text-green-400" />
-                                        ) : (
-                                            <Copy size={14} className="text-zinc-500 group-hover:text-white" />
                                         )}
-                                    </button>
-                                    <button
-                                        onClick={() => notificationService.dismiss(notification.id)}
-                                        className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
-                                    >
-                                        <X size={14} className="text-zinc-500 hover:text-white" />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+                                    </div>
 
-            {/* Message Notifications (Bottom Right on Desktop, Bottom Center on Mobile) - For Success & Info */}
-            {messageNotifications.length > 0 && (
-                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-8 md:right-8 z-[2000] flex flex-col-reverse gap-2 pointer-events-none max-w-[90vw] md:max-w-[320px] w-full">
-                    {messageNotifications.map(notification => (
-                        <div
-                            key={notification.id}
-                            className={`pointer-events-auto backdrop-blur-md border rounded-xl shadow-lg animate-in slide-in-from-right-4 fade-in duration-200 ${getStyles(notification.type)}`}
-                        >
-                            <div className="flex items-center p-3 gap-3">
-                                <div className="shrink-0">
-                                    {getIcon(notification.type)}
+                                    <div className="flex flex-col gap-1 shrink-0">
+                                        <button
+                                            onClick={() => notificationService.dismiss(notification.id)}
+                                            className="p-1.5 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                        {notification.details && (
+                                            <button
+                                                onClick={() => handleCopyDetails(notification)}
+                                                className="p-1.5 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                                                title="复制详细信息"
+                                            >
+                                                {copiedId === notification.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-white text-sm">{notification.title}</div>
-                                    {notification.message && <div className="text-zinc-400 text-xs mt-0.5">{notification.message}</div>}
                                 </div>
-                                <button
-                                    onClick={() => notificationService.dismiss(notification.id)}
-                                    className="shrink-0 p-1 hover:bg-white/10 rounded-md text-zinc-500 hover:text-white transition-colors"
-                                >
-                                    <X size={14} />
-                                </button>
-                            </div>
-                        </div>
-                    ))}
+                            );
+                        })}
+                    </div>
                 </div>
             )}
         </>

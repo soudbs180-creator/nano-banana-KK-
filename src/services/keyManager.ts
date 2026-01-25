@@ -7,6 +7,7 @@
  */
 import { supabase } from '../lib/supabase';
 import { AuthMethod, GOOGLE_API_BASE } from './apiConfig';
+import { ProxyModelConfig } from './proxyModelConfig';
 
 export interface KeySlot {
     id: string;
@@ -35,12 +36,18 @@ export interface KeySlot {
         resetTime: number; // timestamp when it resets
         updatedAt: number;
     };
+    // New Strategy Fields
+    strategy: 'load_balance' | 'sequential'; // Default: sequential
+    priority: number; // For manual ordering (lower = higher priority)
+    // Proxy-specific: Configured models for this API key
+    proxyModels?: ProxyModelConfig[];
 }
 
 interface KeyManagerState {
     slots: KeySlot[];
     currentIndex: number;
     maxFailures: number;
+    activeStrategy: 'concurrent' | 'sequential'; // Global strategy preference
 }
 
 const STORAGE_KEY = 'kk_studio_key_manager';
@@ -48,7 +55,7 @@ const DEFAULT_MAX_FAILURES = 3;
 // Simple pricing estimation (avg between input/output for simplicity, or 0.15/1M)
 const COST_PER_TOKEN = 0.00000015;
 
-class KeyManager {
+export class KeyManager {
     private state: KeyManagerState;
     private listeners: Set<() => void> = new Set();
     private userId: string | null = null;
@@ -60,18 +67,20 @@ class KeyManager {
 
     /**
      * Add token usage to a key and update cost
+     * 预算耗尽时自动将 key 移到队列末尾
      */
     addUsage(keyId: string, tokens: number): void {
         const slot = this.state.slots.find(s => s.id === keyId);
         if (slot) {
             slot.usedTokens = (slot.usedTokens || 0) + tokens;
-            // Update cost
-            const cost = tokens * COST_PER_TOKEN;
-            slot.totalCost = (slot.totalCost || 0) + cost;
 
-            // Check budget auto-disable
+
+            // Check budget - 预算耗尽时自动轮换
             if (slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit) {
-                console.warn(`[KeyManager] Key ${slot.name} exceeded budget.`);
+                console.log(`[KeyManager] API ${slot.name} 预算已耗尽 ($${slot.totalCost.toFixed(2)}/$${slot.budgetLimit})`);
+                if (slot.strategy === 'sequential') {
+                    this.rotateToBottom(keyId);
+                }
             }
 
             this.saveState();
@@ -99,12 +108,17 @@ class KeyManager {
                     // Proxy config defaults
                     baseUrl: s.baseUrl || '',
                     authMethod: s.authMethod || 'query',
-                    headerName: s.headerName || 'x-goog-api-key'
+
+                    headerName: s.headerName || 'x-goog-api-key',
+                    // Default strategy
+                    strategy: s.strategy || 'sequential',
+                    priority: s.priority || 0
                 }));
                 return {
                     slots: slots,
                     currentIndex: parsed.currentIndex || 0,
-                    maxFailures: parsed.maxFailures || DEFAULT_MAX_FAILURES
+                    maxFailures: parsed.maxFailures || DEFAULT_MAX_FAILURES,
+                    activeStrategy: parsed.activeStrategy || 'concurrent'
                 };
             }
         } catch (e) {
@@ -138,15 +152,19 @@ class KeyManager {
                         disabled: false,
                         createdAt: Date.now(),
                         totalCost: 0,
-                        budgetLimit: -1
+
+                        budgetLimit: -1,
+                        strategy: 'sequential',
+                        priority: 0
                     }));
 
                 if (slots.length > 0) {
                     console.log(`[KeyManager] Migrated ${slots.length} keys from old format`);
-                    const state = {
+                    const state: KeyManagerState = {
                         slots,
                         currentIndex: 0,
-                        maxFailures: DEFAULT_MAX_FAILURES
+                        maxFailures: DEFAULT_MAX_FAILURES,
+                        activeStrategy: 'concurrent'
                     };
                     this.saveState(state);
                     return state;
@@ -159,7 +177,8 @@ class KeyManager {
         return {
             slots: [],
             currentIndex: 0,
-            maxFailures: DEFAULT_MAX_FAILURES
+            maxFailures: DEFAULT_MAX_FAILURES,
+            activeStrategy: 'concurrent'
         };
     }
 
@@ -239,7 +258,10 @@ class KeyManager {
                         name: s.name || 'Cloud Key',
                         provider: s.provider || 'Gemini',
                         totalCost: s.totalCost || 0,
-                        budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1
+
+                        budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
+                        strategy: s.strategy || 'sequential',
+                        priority: s.priority || 0
                     }));
 
                     // Merge: cloud keys take priority, add unique local keys
@@ -348,38 +370,168 @@ class KeyManager {
     }
 
     /**
-     * Get the next available API key using round-robin rotation
+     * Set Global Strategy Mode
      */
-    getNextKey(): {
+    setStrategyMode(mode: 'concurrent' | 'sequential') {
+        this.state.activeStrategy = mode;
+        this.saveState();
+        this.notifyListeners();
+    }
+
+    getStrategyMode() {
+        return this.state.activeStrategy;
+    }
+
+    /**
+     * Auto Sort Sequential Keys
+     * Rules: Active > Budget Desc (Unlimited Top) > Google > Others
+     */
+    autoSortSequentialKeys() {
+        const sequentialSlots = this.state.slots.filter(s => (s.strategy || 'sequential') === 'sequential');
+
+        // Sorting Logic
+        sequentialSlots.sort((a, b) => {
+            // 1. Status: Active First (Disabled at bottom)
+            if (!a.disabled && b.disabled) return -1;
+            if (a.disabled && !b.disabled) return 1;
+
+            // 1.5 Sub-Status: Valid (Green) First
+            // Prioritize explicitly 'valid' keys over 'unknown'/'rate_limited'/'invalid'
+            const aValid = a.status === 'valid';
+            const bValid = b.status === 'valid';
+            if (aValid && !bValid) return -1;
+            if (!aValid && bValid) return 1;
+
+            // Prefer Unknown over Invalid/RateLimited
+            const aBad = a.status === 'invalid' || a.status === 'rate_limited';
+            const bBad = b.status === 'invalid' || b.status === 'rate_limited';
+            if (!aBad && bBad) return -1;
+            if (aBad && !bBad) return 1;
+
+            // 2. Budget: Unlimited (-1) First, then Higher Limits
+            const aUnlimited = a.budgetLimit < 0;
+            const bUnlimited = b.budgetLimit < 0;
+            if (aUnlimited && !bUnlimited) return -1;
+            if (!aUnlimited && bUnlimited) return 1;
+
+            // Both limited: Higher limit first
+            if (!aUnlimited && !bUnlimited) {
+                if (a.budgetLimit !== b.budgetLimit) return b.budgetLimit - a.budgetLimit;
+            }
+
+            // 3. Provider: Google First (REMOVED as per user request to treat them equally)
+            // const aIsGoogle = !a.baseUrl || a.baseUrl.includes('googleapis.com');
+            // const bIsGoogle = !b.baseUrl || b.baseUrl.includes('googleapis.com');
+            // if (aIsGoogle && !bIsGoogle) return -1;
+            // if (!aIsGoogle && bIsGoogle) return 1;
+
+            // 4. Stable sort (preserve index if available, or name)
+            return 0;
+        });
+
+        // Re-assign priorities
+        sequentialSlots.forEach((slot, index) => {
+            slot.priority = index;
+        });
+
+        this.saveState();
+        this.notifyListeners();
+    }
+
+    /**
+     * Get the next available API key using a hierarchical strategy:
+     * Respects KeyManager.state.activeStrategy as the primary selector.
+     * 
+     * @param providerMode - Optional filter: 'google' (Official Only), 'proxy' (Third-Party Only), or 'all' (default)
+     */
+    getNextKey(providerMode: 'google' | 'proxy' | 'all' = 'all'): {
         id: string;
         key: string;
         baseUrl: string;
         authMethod: AuthMethod;
         headerName: string;
     } | null {
-        const availableSlots = this.state.slots.filter(
-            s => !s.disabled && s.status !== 'invalid' && (s.budgetLimit < 0 || s.totalCost < s.budgetLimit)
-        );
+        // Filter healthy slots: not disabled, not manually marked invalid, and within budget
+        const isHealthy = (s: KeySlot) => !s.disabled && s.status !== 'invalid' && (s.budgetLimit < 0 || s.totalCost < s.budgetLimit);
 
-        if (availableSlots.length === 0) {
-            // Strict budget enforcement: return null if all valid keys are over budget
-            return null;
+        // Filter by provider mode if specified
+        const matchesProvider = (s: KeySlot) => {
+            const isGoogle = !s.baseUrl || s.baseUrl.includes('googleapis.com');
+            if (providerMode === 'google') return isGoogle;
+            if (providerMode === 'proxy') return !isGoogle;
+            return true;
+        };
+
+        const allAvailable = this.state.slots.filter(s => isHealthy(s) && matchesProvider(s));
+        if (allAvailable.length === 0) return null;
+
+        // --- Determine Target Pool based on Active Strategy ---
+        const preferredStrategy = this.state.activeStrategy;
+
+        let targetPool = allAvailable.filter(s => {
+            const strategy = s.strategy || 'sequential';
+            return strategy === (preferredStrategy === 'concurrent' ? 'load_balance' : 'sequential');
+        });
+
+        // Fallback: If preferred pool is empty, try the other one
+        if (targetPool.length === 0) {
+            targetPool = allAvailable.filter(s => {
+                const strategy = s.strategy || 'sequential';
+                return strategy !== (preferredStrategy === 'concurrent' ? 'load_balance' : 'sequential');
+            });
         }
 
-        // Round-robin selection
-        const index = this.state.currentIndex % availableSlots.length;
-        const slot = availableSlots[index];
+        if (targetPool.length === 0) return null;
 
-        // Update index for next call
-        this.state.currentIndex = (this.state.currentIndex + 1) % availableSlots.length;
+        // --- Selection Logic ---
 
-        // Update last used
-        const slotIndex = this.state.slots.findIndex(s => s.id === slot.id);
-        if (slotIndex >= 0) {
-            this.state.slots[slotIndex].lastUsed = Date.now();
+        // Case A: Concurrent (Load Balance)
+        if (targetPool.some(s => s.strategy === 'load_balance')) {
+            // 排序优先级：
+            // 1. 无限预算优先 (budgetLimit < 0)
+            // 2. 剩余预算多的优先
+            // 3. Round Robin (Least Recently Used) for equal tiers
+
+            const sortedSlots = targetPool.sort((a, b) => {
+                // 1. 无限预算优先
+                if (a.budgetLimit < 0 && b.budgetLimit >= 0) return -1;
+                if (b.budgetLimit < 0 && a.budgetLimit >= 0) return 1;
+
+                // 2. If both unlimited (or both limited), Prefer "Least Recently Used" to balance load
+                // (Simulates Round Robin)
+                // Use random for now as lastUsed updates are async/not guaranteed on selection immediately
+                return 0;
+            });
+
+            // Re-sort for weighted random among best candidates
+            // Picking from the top tier (e.g. all unlimited ones)
+            const bestCandidates = sortedSlots.filter(s => {
+                if (sortedSlots[0].budgetLimit < 0) return s.budgetLimit < 0; // All unlimited
+                return true; // Or just take top few
+            });
+
+            // Pick random from best candidates to distribute load
+            const winner = bestCandidates[Math.floor(Math.random() * bestCandidates.length)];
+
+            return this.prepareKeyResult(winner);
         }
 
-        this.saveState();
+        // Case B: Sequential
+        // Simply Sort by priority
+        const sequentialSlots = targetPool.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+        return this.prepareKeyResult(sequentialSlots[0]);
+    }
+
+    /**
+     * Helper to format the key result and update metadata
+     */
+    private prepareKeyResult(slot: KeySlot) {
+        // Update last used timestamp
+        const actualSlot = this.state.slots.find(s => s.id === slot.id);
+        if (actualSlot) {
+            actualSlot.lastUsed = Date.now();
+            this.saveState();
+        }
 
         return {
             id: slot.id,
@@ -406,23 +558,46 @@ class KeyManager {
     }
 
     /**
-     * Report failed API call
+     * Report failed API call - 失败后将该 key 移到顺序队列末尾
      */
     reportFailure(keyId: string, error: string): void {
         const slot = this.state.slots.find(s => s.id === keyId);
         if (slot) {
             slot.failCount++;
             slot.lastError = error;
+            slot.lastUsed = Date.now();
 
-            // Check if key should be disabled
-            if (slot.failCount >= this.state.maxFailures) {
-                slot.disabled = true;
-                slot.status = 'invalid';
-                console.warn(`[KeyManager] Key ${keyId} disabled after ${slot.failCount} failures`);
-            } else if (error.includes('429') || error.includes('rate limit')) {
+            // 判断错误类型
+            if (error.includes('429') || error.includes('rate limit')) {
                 slot.status = 'rate_limited';
             } else if (error.includes('401') || error.includes('403') || error.includes('invalid')) {
                 slot.status = 'invalid';
+            }
+
+            // 将失败的 key 移到顺序队列末尾
+            if (slot.strategy === 'sequential') {
+                this.rotateToBottom(keyId);
+            }
+
+            // 多路并发模式：10-30秒快速重试
+            // 顺序模式：5分钟后重试
+            if (slot.failCount >= this.state.maxFailures || slot.status === 'rate_limited') {
+                const retryDelay = slot.strategy === 'load_balance'
+                    ? (10 + Math.random() * 20) * 1000  // 多路并发: 10-30秒随机重试
+                    : 5 * 60 * 1000;  // 顺序: 5分钟
+
+                console.warn(`[KeyManager] API ${slot.name} 连续失败 ${slot.failCount} 次，${Math.round(retryDelay / 1000)}秒后重试`);
+
+                setTimeout(() => {
+                    const s = this.state.slots.find(ss => ss.id === keyId);
+                    if (s && (s.status === 'invalid' || s.status === 'rate_limited')) {
+                        s.failCount = 0;
+                        s.status = 'unknown';
+                        console.log(`[KeyManager] API ${s.name} 自动重试中...`);
+                        this.saveState();
+                        this.notifyListeners();
+                    }
+                }, retryDelay);
             }
 
             this.saveState();
@@ -431,22 +606,117 @@ class KeyManager {
     }
 
     /**
-     * Toggle disabled state for manual pause/resume
+     * 将指定 key 移到顺序队列末尾（预算耗尽或失败时调用）
      */
-    toggleDisabled(keyId: string): void {
+    rotateToBottom(keyId: string): void {
+        const sequentialSlots = this.state.slots
+            .filter(s => (s.strategy || 'sequential') === 'sequential')
+            .sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+        if (sequentialSlots.length <= 1) return;
+
+        const targetSlot = sequentialSlots.find(s => s.id === keyId);
+        if (!targetSlot) return;
+
+        // 获取当前最大优先级
+        const maxPriority = Math.max(...sequentialSlots.map(s => s.priority || 0));
+
+        // 将目标 key 移到末尾
+        targetSlot.priority = maxPriority + 1;
+
+        // 重新排序并重置优先级（0, 1, 2, 3...）
+        const reordered = this.state.slots
+            .filter(s => (s.strategy || 'sequential') === 'sequential')
+            .sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+        reordered.forEach((s, i) => {
+            s.priority = i;
+        });
+
+        console.log(`[KeyManager] API ${targetSlot.name} 已移至顺序队列末尾`);
+        this.saveState();
+        this.notifyListeners();
+    }
+
+    /**
+     * 检查预算是否耗尽，耗尽则自动轮换
+     */
+    checkBudgetAndRotate(keyId: string): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot && slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit) {
+            console.log(`[KeyManager] API ${slot.name} 预算已耗尽，移至末尾`);
+            if (slot.strategy === 'sequential') {
+                this.rotateToBottom(keyId);
+            }
+        }
+    }
+
+    /**
+     * Toggle disabled state for manual pause/resume
+     * 暂停的 key 会移到顺序队列末尾
+     */
+    toggleKey(keyId: string): void {
         const slot = this.state.slots.find(s => s.id === keyId);
         if (slot) {
             slot.disabled = !slot.disabled;
-            // If re-enabling, reset fail count to give it another chance
-            if (!slot.disabled) {
+
+            if (slot.disabled) {
+                // 暂停时移到队列末尾
+                if (slot.strategy === 'sequential') {
+                    this.rotateToBottom(keyId);
+                }
+                console.log(`[KeyManager] API ${slot.name} 已暂停并移至末尾`);
+            } else {
+                // 恢复时重置失败计数
                 slot.failCount = 0;
                 slot.status = 'unknown';
+                // 手动开启时，自动提升到顶部
+                if (slot.strategy === 'sequential') {
+                    this.rotateToTop(keyId);
+                }
+                console.log(`[KeyManager] API ${slot.name} 已恢复`);
             }
+
             this.saveState();
             this.notifyListeners();
-            console.log(`[KeyManager] Key ${keyId} ${slot.disabled ? 'paused' : 'resumed'}`);
         }
     }
+
+    /**
+     * 将指定 key 移到顺序队列顶部（手动启用时调用）
+     */
+    rotateToTop(keyId: string): void {
+        const sequentialSlots = this.state.slots
+            .filter(s => (s.strategy || 'sequential') === 'sequential')
+            .sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+        if (sequentialSlots.length <= 1) return;
+
+        const targetSlot = sequentialSlots.find(s => s.id === keyId);
+        if (!targetSlot) return;
+
+        // Shuffle everyone down by 1
+        sequentialSlots.forEach(s => {
+            if (s.id !== keyId) {
+                s.priority = (s.priority || 0) + 1;
+            }
+        });
+
+        // Set target to 0
+        targetSlot.priority = 0;
+
+        // Re-normalize to Ensure clean 0, 1, 2... order
+        const reordered = this.state.slots
+            .filter(s => (s.strategy || 'sequential') === 'sequential')
+            .sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+        reordered.forEach((s, i) => {
+            s.priority = i;
+        });
+
+        this.saveState();
+    }
+
 
     /**
      * Update quota information for a key
@@ -461,6 +731,21 @@ class KeyManager {
     }
 
     /**
+     * Add exact cost usage to a key (syncs with CostService)
+     */
+    addCost(keyId: string, cost: number): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot) {
+            slot.totalCost = (slot.totalCost || 0) + cost;
+            this.saveState();
+            this.notifyListeners();
+            this.checkBudgetAndRotate(keyId);
+        }
+    }
+
+
+
+    /**
      * Add a new API key
      */
     async addKey(key: string, options?: {
@@ -470,7 +755,12 @@ class KeyManager {
         // Proxy configuration
         baseUrl?: string;
         authMethod?: AuthMethod;
+
         headerName?: string;
+        // Strategy
+        strategy?: 'load_balance' | 'sequential';
+        priority?: number;
+        totalCost?: number;
     }): Promise<{ success: boolean; error?: string }> {
         const trimmedKey = key.trim();
 
@@ -506,11 +796,19 @@ class KeyManager {
             lastError: validation.error || null,
             disabled: !validation.valid,
             createdAt: Date.now(),
-            totalCost: 0,
-            budgetLimit: options?.budgetLimit ?? -1
+            totalCost: options?.totalCost || 0,
+            budgetLimit: options?.budgetLimit ?? -1,
+            strategy: options?.strategy || 'sequential',
+            priority: options?.priority ?? -1 // Default to -1 (top) then normalize
         };
 
         this.state.slots.push(newSlot);
+
+        // Normalize priority if sequential
+        if (newSlot.strategy === 'sequential') {
+            this.rotateToTop(newSlot.id);
+        }
+
         this.saveState();
         this.notifyListeners();
 
@@ -537,35 +835,30 @@ class KeyManager {
         budgetLimit?: number,
         baseUrl?: string,
         authMethod?: AuthMethod,
-        headerName?: string
+
+        headerName?: string,
+        strategy?: 'load_balance' | 'sequential',
+        priority?: number,
+        totalCost?: number
     }): void {
         const slot = this.state.slots.find(s => s.id === id);
         if (slot) {
             if (updates.name !== undefined) slot.name = updates.name;
             if (updates.budgetLimit !== undefined) slot.budgetLimit = updates.budgetLimit;
+            if (updates.totalCost !== undefined) slot.totalCost = updates.totalCost;
             if (updates.baseUrl !== undefined) slot.baseUrl = updates.baseUrl;
             if (updates.authMethod !== undefined) slot.authMethod = updates.authMethod;
+
             if (updates.headerName !== undefined) slot.headerName = updates.headerName;
+            if (updates.strategy !== undefined) slot.strategy = updates.strategy;
+            if (updates.priority !== undefined) slot.priority = updates.priority;
 
             this.saveState();
             this.notifyListeners();
         }
     }
 
-    /**
-     * Toggle key enabled/disabled
-     */
-    toggleKey(keyId: string): void {
-        const slot = this.state.slots.find(s => s.id === keyId);
-        if (slot) {
-            slot.disabled = !slot.disabled;
-            if (!slot.disabled) {
-                slot.failCount = 0; // Reset fail count when re-enabling
-            }
-            this.saveState();
-            this.notifyListeners();
-        }
-    }
+
 
     /**
      * Validate an API key by making a test request
@@ -613,6 +906,26 @@ class KeyManager {
         }
     }
 
+
+
+    /**
+     * Refresh a single key
+     */
+    async refreshKey(id: string): Promise<void> {
+        const slot = this.state.slots.find(s => s.id === id);
+        if (slot) {
+            const result = await this.validateKey(slot.key, slot.provider);
+            slot.status = result.valid ? 'valid' : 'invalid';
+            slot.lastError = result.error || null;
+            if (result.valid) {
+                slot.disabled = false;
+                slot.failCount = 0;
+            }
+            this.saveState();
+            this.notifyListeners();
+        }
+    }
+
     /**
      * Re-validate all keys
      */
@@ -621,6 +934,10 @@ class KeyManager {
             const result = await this.validateKey(slot.key, slot.provider);
             slot.status = result.valid ? 'valid' : 'invalid';
             slot.lastError = result.error || null;
+            if (result.valid) {
+                slot.disabled = false;
+                slot.failCount = 0;
+            }
         }
         this.saveState();
         this.notifyListeners();
@@ -677,9 +994,124 @@ class KeyManager {
         this.saveState();
         this.notifyListeners();
     }
+
+    // ============================================
+    // Proxy Model Configuration Methods
+    // ============================================
+
+    /**
+     * Update proxy models for a specific API key
+     */
+    updateProxyModels(keyId: string, models: ProxyModelConfig[]): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot) {
+            slot.proxyModels = models;
+            this.saveState();
+            this.notifyListeners();
+        }
+    }
+
+    /**
+     * Add a single proxy model to an API key
+     */
+    addProxyModel(keyId: string, model: ProxyModelConfig): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot) {
+            if (!slot.proxyModels) {
+                slot.proxyModels = [];
+            }
+            // Check for duplicate
+            if (!slot.proxyModels.some(m => m.id === model.id)) {
+                slot.proxyModels.push(model);
+                this.saveState();
+                this.notifyListeners();
+            }
+        }
+    }
+
+    /**
+     * Remove a proxy model from an API key
+     */
+    removeProxyModel(keyId: string, modelId: string): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot && slot.proxyModels) {
+            slot.proxyModels = slot.proxyModels.filter(m => m.id !== modelId);
+            this.saveState();
+            this.notifyListeners();
+        }
+    }
+
+    /**
+     * Update a single proxy model
+     */
+    updateProxyModel(keyId: string, oldModelId: string, model: ProxyModelConfig): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot && slot.proxyModels) {
+            // Remove old if ID changed, or just find index
+            const index = slot.proxyModels.findIndex(m => m.id === oldModelId);
+            if (index !== -1) {
+                // Check if new ID collides with another existing model (if ID changed)
+                if (model.id !== oldModelId && slot.proxyModels.some(m => m.id === model.id)) {
+                    // Start override or Error? User probably wants to rename.
+                    // If conflict, we overwrite the other one? Or fail?
+                    // Let's just overwrite the index. If duplicate ID exists else where, it effectively merges?
+                    // Better to just update at index.
+                }
+                slot.proxyModels[index] = model;
+                this.saveState();
+                this.notifyListeners();
+            }
+        }
+    }
+
+    /**
+     * Get all available proxy models from all enabled proxy API keys
+     * Aggregates models from all proxy keys (non-Google)
+     *
+     * @param type Optional filter by model type ('image', 'video', 'chat')
+     */
+    getAvailableProxyModels(type?: 'image' | 'video' | 'chat'): ProxyModelConfig[] {
+        const allModels: ProxyModelConfig[] = [];
+        const seenIds = new Set<string>();
+
+        for (const slot of this.state.slots) {
+            // Skip disabled keys
+            if (slot.disabled) continue;
+
+            // Only include proxy keys (non-Google)
+            const isProxy = slot.baseUrl && !slot.baseUrl.includes('googleapis.com');
+            if (!isProxy) continue;
+
+            // Skip keys without configured models
+            if (!slot.proxyModels || slot.proxyModels.length === 0) continue;
+
+            for (const model of slot.proxyModels) {
+                // Skip duplicates
+                if (seenIds.has(model.id)) continue;
+
+                // Filter by type if specified
+                if (type && model.type !== type) continue;
+
+                allModels.push(model);
+                seenIds.add(model.id);
+            }
+        }
+
+        return allModels;
+    }
+
+    /**
+     * Check if there are any proxy keys with configured models
+     */
+    hasConfiguredProxyModels(type?: 'image' | 'video' | 'chat'): boolean {
+        return this.getAvailableProxyModels(type).length > 0;
+    }
 }
 
 // Singleton instance
 export const keyManager = new KeyManager();
 
 export default KeyManager;
+
+// Re-export ProxyModelConfig for convenience
+export type { ProxyModelConfig } from './proxyModelConfig';

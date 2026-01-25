@@ -4,7 +4,7 @@ import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import {
     Loader2, Menu, Layers, Search, ZoomIn, ZoomOut,
-    Focus, Grid3x3, LayoutDashboard, GripVertical, Bot
+    Focus, CircleDot, LayoutDashboard, GripVertical, Bot, Grid3x3, Square
 } from 'lucide-react';
 
 interface ProjectManagerProps {
@@ -18,8 +18,10 @@ interface ProjectManagerProps {
     onToggleGrid: () => void;
     onAutoArrange: () => void;
     // Chat toggle for mobile robot button
+    // Chat toggle for mobile robot button
     onToggleChat?: () => void;
     isChatOpen?: boolean;
+    showGrid?: boolean;
 }
 
 const ProjectManager: React.FC<ProjectManagerProps> = ({
@@ -33,7 +35,8 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     onToggleGrid,
     onAutoArrange,
     onToggleChat,
-    isChatOpen
+    isChatOpen,
+    showGrid = true
 }) => {
     // ... existing state ...
     const { state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas, clearAllData, canCreateCanvas } = useCanvas();
@@ -72,11 +75,12 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     const [topPosition, setTopPosition] = useState(() => {
         const saved = localStorage.getItem('kk_pm_pos');
         return saved ? parseFloat(saved) : 80;
-    }); // Initial top: 28 * 4 = 112px or saved -> Adjusted to 80px
+    });
 
     useEffect(() => {
         localStorage.setItem('kk_pm_pos', topPosition.toString());
     }, [topPosition]);
+
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef({ y: 0, startTop: 0 });
     const hasDraggedRef = useRef(false);
@@ -86,8 +90,9 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     useEffect(() => {
         if (!isDragging) return;
 
-        const handleMouseMove = (e: MouseEvent) => {
-            const deltaY = e.clientY - dragStartRef.current.y;
+        const handleMove = (e: MouseEvent | TouchEvent) => {
+            const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+            const deltaY = clientY - dragStartRef.current.y;
             let newTop = dragStartRef.current.startTop + deltaY;
 
             // Constraints
@@ -101,31 +106,41 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
             setTopPosition(newTop);
         };
 
-        const handleMouseUp = () => {
+        const handleEnd = () => {
             setIsDragging(false);
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+            document.body.style.touchAction = '';
         };
 
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-        document.body.style.cursor = 'grab'; // Vertical drag cursor
+        document.addEventListener('mousemove', handleMove);
+        document.addEventListener('mouseup', handleEnd);
+        document.addEventListener('touchmove', handleMove, { passive: false });
+        document.addEventListener('touchend', handleEnd);
+
+        document.body.style.cursor = 'grab';
         document.body.style.userSelect = 'none';
+        document.body.style.touchAction = 'none'; // Prevent scrolling while dragging
 
         return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('mousemove', handleMove);
+            document.removeEventListener('mouseup', handleEnd);
+            document.removeEventListener('touchmove', handleMove);
+            document.removeEventListener('touchend', handleEnd);
         };
     }, [isDragging]);
 
-    const handleMouseDown = (e: React.MouseEvent) => {
-        // Prevent drag if clicking a button (handled by e.stopPropagation in buttons if needed, but easier to check target)
-        // Actually, we'll make the container draggable but buttons stop propagation? 
-        // Or check if target is a button.
+    const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+        // Prevent drag if clicking a button
         if ((e.target as HTMLElement).closest('button')) return;
 
-        e.preventDefault();
-        dragStartRef.current = { y: e.clientY, startTop: topPosition };
+        // For touch, we might want to prevent default to stop scrolling,
+        // but only if we are sure we are dragging.
+        // e.preventDefault(); // This is handled in style for touchAction usually, but here specific event
+
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+        dragStartRef.current = { y: clientY, startTop: topPosition };
         hasDraggedRef.current = false;
         setIsDragging(true);
     };
@@ -258,7 +273,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
         <div
             className={`fixed left-4 z-50 flex flex-col items-start gap-2 select-none transition-all duration-300 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
             style={{
-                top: isMobile ? 80 : topPosition,
+                top: isMobile ? 20 : topPosition,
                 // Move sidebar up when keyboard is open on mobile
                 transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : undefined
             }}
@@ -268,7 +283,8 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
             {/* Project Module Container */}
             <div
                 className={`flex flex-col gap-2 p-1.5 glass-strong rounded-2xl border border-white/5 shadow-xl transition-colors hover:bg-[#1c1c1e]/90 cursor-grab active:cursor-grabbing ${isDragging ? 'scale-[0.98]' : ''}`}
-                onMouseDown={handleMouseDown}
+                onMouseDown={handleDragStart}
+                onTouchStart={handleDragStart}
             >
                 {/* Drag Handle Indicator */}
                 <div className="w-full flex justify-center py-0.5 opacity-20 hover:opacity-50">
@@ -422,10 +438,10 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 <button
                     onClick={(e) => { e.stopPropagation(); onToggleGrid(); }}
                     className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
-                    title="显示/隐藏网格"
+                    title="显示/隐藏网点"
                     tabIndex={-1}
                 >
-                    <Grid3x3 size={20} />
+                    {showGrid ? <Grid3x3 size={20} /> : <Square size={20} />}
                 </button>
 
                 <button

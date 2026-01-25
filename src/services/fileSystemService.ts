@@ -29,7 +29,7 @@ export const fileSystemService = {
         const handle = await window.showDirectoryPicker({
             mode: 'readwrite'
         });
-        logInfo('FileSystem', `User selected directory: ${handle.name}`);
+        logInfo('FileSystem', `用户选择了文件夹`, `directory: ${handle.name}`);
         return handle;
     },
 
@@ -93,7 +93,7 @@ export const fileSystemService = {
                     await writable.close();
                 }
             } catch (err) {
-                logError('FileSystem', err, `Failed to save original ${id}`);
+                logError('FileSystem', err, `保存图片失败: ${id}`);
             }
         }
 
@@ -114,13 +114,13 @@ export const fileSystemService = {
         const images = new Map<string, { url: string, originalUrl?: string }>();
         let canvases: Canvas[] = [];
 
-        logInfo('FileSystem', `Loading project from: ${handle.name}`);
+        logInfo('FileSystem', `正在加载项目`, `folder: ${handle.name}`);
 
         // CLEANUP: Remove thumbnails folder if exists (User request)
         try {
             // @ts-ignore
             await handle.removeEntry(DIRS.THUMBNAILS, { recursive: true });
-            logInfo('FileSystem', 'Removed thumbnails directory');
+            logInfo('FileSystem', '已清理缩略图目录', 'thumbnails dir removed');
         } catch (ignore) { }
 
         // 1. Load Project JSON
@@ -132,9 +132,9 @@ export const fileSystemService = {
             const text = await file.text();
             const data = JSON.parse(text);
             canvases = data.canvases || [];
-            logInfo('FileSystem', `Loaded project.json`, `${canvases.length} canvases found`);
+            logInfo('FileSystem', `已加载项目配置`, `${canvases.length} 个画布`);
         } catch (e) {
-            logInfo('FileSystem', 'No existing project.json found, starting fresh.');
+            logInfo('FileSystem', '暂无项目文件，将创建新项目', 'project.json not found');
         }
 
         // 2. Load All Images & Generate Thumbs if needed
@@ -142,15 +142,15 @@ export const fileSystemService = {
         try {
             // @ts-ignore
             imagesDir = await handle.getDirectoryHandle(DIRS.ORIGINALS);
-            logInfo('FileSystem', `Found originals directory`);
+            logInfo('FileSystem', `找到原图目录`, 'originals dir exists');
         } catch (e) {
             try {
                 // Fallback to legacy 'images' folder
                 // @ts-ignore
                 imagesDir = await handle.getDirectoryHandle(DIRS.LEGACY);
-                logWarning('FileSystem', `Using legacy 'images' directory`);
+                logWarning('FileSystem', `使用旧版图片目录`, 'fallback to legacy images dir');
             } catch (e2) {
-                logWarning('FileSystem', `No images directory found (originals/images)`);
+                logWarning('FileSystem', `未找到图片目录`, 'no originals or images dir found');
             }
         }
 
@@ -172,13 +172,13 @@ export const fileSystemService = {
                             images.set(id, { url: originalUrl, originalUrl });
 
                         } catch (e) {
-                            logError('FileSystem', e, `Failed to load image ${id}`);
+                            logError('FileSystem', e, `加载图片失败: ${id}`);
                         }
                     }
                 }
-                logInfo('FileSystem', `Loaded ${count} images from disk`);
+                logInfo('FileSystem', `已加载 ${count} 张图片`, `from disk`);
             } catch (e) {
-                logError('FileSystem', e, "Error iterating images directory");
+                logError('FileSystem', e, "遍历图片目录失败");
             }
         }
 
@@ -222,7 +222,7 @@ export const fileSystemService = {
 
         await processHandle(handle, 0);
 
-        logInfo('FileSystem', `Calculated folder usage (recursive)`, `${fileCount} files, ${totalSize} bytes`);
+        logInfo('FileSystem', `已计算文件夹大小`, `${fileCount} 个文件, ${totalSize} 字节`);
         return totalSize;
     },
 

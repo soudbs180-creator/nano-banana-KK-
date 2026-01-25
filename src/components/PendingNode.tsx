@@ -20,6 +20,7 @@ interface PendingNodeProps {
     canvasTransform?: { x: number; y: number; scale: number };
     referenceImages?: ReferenceImage[];
     sourcePosition?: { x: number; y: number };
+    onDisconnect?: () => void;
 }
 
 const PendingNode: React.FC<PendingNodeProps> = ({
@@ -32,14 +33,16 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     isMobile = false,
     canvasTransform = { x: 0, y: 0, scale: 1 },
     referenceImages = [],
-    sourcePosition
+    sourcePosition,
+    onDisconnect
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+    const dragStartPos = useRef({ x: 0, y: 0 });
 
     const { width: w, totalHeight: h } = getCardDimensions(aspectRatio, true); // Include footer for placeholder height
     const totalWidth = parallelCount * (w + 20) - 20;
-    const startX = -(totalWidth / 2) + w / 2;
+    // const startX = -(totalWidth / 2) + w / 2; // Unused in final layout logic
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         // Allow dragging on mobile too (consistency across platforms)
@@ -65,9 +68,6 @@ const PendingNode: React.FC<PendingNodeProps> = ({
         // Store the starting position of the card
         dragStartPos.current = { x: position.x, y: position.y };
     };
-
-    // Reference to store starting card position
-    const dragStartPos = useRef({ x: 0, y: 0 });
 
     // MUST be called unconditionally - moved before any conditional returns
     useEffect(() => {
@@ -119,7 +119,6 @@ const PendingNode: React.FC<PendingNodeProps> = ({
 
     // 如果只是在输入中，显示一个跟随的输入气泡
     // Uses same transform as PromptNodeComponent: translate(-50%, -100%)
-    // This ensures the position matches before and after generation
     if (!isGenerating) {
         return (
             <div
@@ -133,10 +132,15 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 onMouseDown={handleMouseDown}
                 onTouchStart={handleMouseDown}
             >
-                {/* Preview Card - matches PromptNodeComponent dimensions */}
+                {/* Preview Card */}
                 <div
-                    className="bg-[#18181b] border border-indigo-500/30 rounded-2xl p-3 shadow-xl animate-scaleIn"
-                    style={{ width: getCardDimensions(aspectRatio).width }}
+                    className="rounded-2xl p-3 shadow-xl animate-scaleIn"
+                    style={{
+                        width: getCardDimensions(aspectRatio).width,
+                        backgroundColor: 'rgba(24, 24, 27, 0.6)',
+                        backdropFilter: 'blur(20px) saturate(180%)',
+                        border: '1px solid rgba(99, 102, 241, 0.2)'
+                    }}
                 >
                     <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
                         <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500/50 to-purple-500/50 flex items-center justify-center">
@@ -156,14 +160,11 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     }
 
     // 如果正在生成中，显示主卡片和连接的子占位符
-    // 使用与 PromptNodeComponent 相同的 transform: translate(-50%, -100%)
-    const cardWidth = w; // Use dynamic width from styleUtils
-    const cardHeight = h; // Use totalHeight (image + footer) from styleUtils
-    const dotSize = 12;
-    const dotMarginTop = 12; // Same as PromptNodeComponent: mt-3 = 12px
-    const gapToPlaceholders = 80; // Must match handleGenerate gapToImages
+    const cardWidth = w;
+    const cardHeight = h;
+    const gapToPlaceholders = 80;
 
-    // Calculate placeholder grid - use actual count for columns calculation
+    // Calculate placeholder grid
     const columns = isMobile ? Math.min(parallelCount, 2) : Math.min(parallelCount, 2);
     const placeholderGap = isMobile ? 10 : 16;
 
@@ -173,93 +174,28 @@ const PendingNode: React.FC<PendingNodeProps> = ({
             style={{
                 left: position.x,
                 top: position.y,
-                transform: 'translate(-50%, -100%)', // SAME AS PromptNodeComponent
+                transform: 'translate(-50%, -100%)',
                 cursor: isDragging ? 'grabbing' : 'grab'
             }}
             onMouseDown={handleMouseDown}
             onTouchStart={handleMouseDown}
         >
-            {/* Connection Line from Source Image (Follow-up mode: Image bottom → Prompt top) */}
-            {sourcePosition && (() => {
-                // Both cards use translate(-50%, -100%) so position.y is BOTTOM
 
-                // Start: Image bottom center
-                const startX = sourcePosition.x - position.x;
-                const startY = sourcePosition.y - position.y;
 
-                // End: Prompt Top Center (approx 140px height)
-                const promptHeightApprox = 140;
-                const endX = 0;
-                const endY = -promptHeightApprox; // Target TOP of this card
-
-                // Bezier Logic
-                const deltaX = endX - startX;
-                const deltaY = endY - startY;
-                const absDeltaX = Math.abs(deltaX);
-
-                // User requested Straight Line style (matching the "Generating" look)
-                let d = '';
-                if (absDeltaX < 20) {
-                    // Strictly straight if aligned
-                    d = `M${startX},${startY} L${endX},${endY}`;
-                } else {
-                    // Minimal curve if offset
-                    const controlY1 = startY + deltaY * 0.5;
-                    const controlY2 = endY - deltaY * 0.5;
-                    d = `M${startX},${startY} C${startX},${controlY1} ${endX},${controlY2} ${endX},${endY}`;
-                }
-
-                return (
-                    <svg
-                        className="absolute pointer-events-none"
-                        style={{
-                            overflow: 'visible',
-                            left: '50%',
-                            bottom: 0,
-                            zIndex: -1
-                        }}
-                    >
-                        {/* Starting dot (source image) - indigo tint for follow-up */}
-                        <circle
-                            cx={startX}
-                            cy={startY}
-                            r="2.5"
-                            fill="#6366f1"
-                            opacity="0.6"
-                        />
-                        {/* Smooth Bezier curve - indigo tint for follow-up distinction */}
-                        <path
-                            d={d}
-                            fill="none"
-                            stroke="#6366f1"
-                            strokeWidth="1"
-                            strokeDasharray="2 3"
-                            strokeLinecap="round"
-                            opacity="0.4"
-                            className="transition-all duration-300 ease-in-out"
-                        />
-                        {/* Ending dot (prompt top) - shows clear connection target */}
-                        <circle
-                            cx={endX}
-                            cy={endY}
-                            r="2"
-                            fill="#6366f1"
-                            opacity="0.5"
-                        />
-                    </svg>
-                );
-            })()}
-
-            {/* Main Prompt Node - Same structure as PromptNodeComponent */}
+            {/* Main Prompt Node */}
             <div
-                className="bg-[#1a1a1c] border-2 border-indigo-500/30 rounded-2xl p-4 shadow-xl flex flex-col gap-3 animate-fadeIn"
-                style={{ width: getCardDimensions(aspectRatio).width }}
+                className="rounded-2xl p-4 shadow-xl flex flex-col gap-3 animate-fadeIn"
+                style={{
+                    width: getCardDimensions(aspectRatio).width,
+                    backgroundColor: 'rgba(26, 26, 28, 0.6)',
+                    backdropFilter: 'blur(40px) saturate(180%)',
+                    border: '1px solid rgba(99, 102, 241, 0.2)'
+                }}
             >
                 <div className="flex items-center gap-2 mb-1">
                     <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
                     <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Generating x{parallelCount}</span>
                 </div>
-                {/* Reference Images Thumbnails */}
                 {referenceImages && referenceImages.length > 0 && (
                     <div className="flex gap-1 mb-1 flex-wrap">
                         {referenceImages.slice(0, 3).map((img, idx) => (
@@ -280,53 +216,33 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                 <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3">{prompt}</p>
             </div>
 
-            {/* Placeholders - Positioned BELOW the card bottom */}
-            {/* Since container uses translate(-50%, -100%), 'bottom' of container is at position.y */}
-            {/* Placeholders need to be positioned below using absolute positioning from container bottom */}
+            {/* Placeholders */}
             <div className="relative" style={{ height: 0 }}>
                 {Array.from({ length: parallelCount }).map((_, i) => {
-                    // Use calculated dimensions
                     const cardW = isMobile ? 170 : w;
-                    const cardH = isMobile ? 260 : h; // Use totalHeight from utils
+                    const cardH = isMobile ? 260 : h;
 
                     const col = i % columns;
                     const row = Math.floor(i / columns);
 
-                    // Calculate actual grid width based on items in current row
                     const itemsInRow = Math.min(columns, parallelCount - row * columns);
                     const currentGridWidth = itemsInRow * cardW + (itemsInRow - 1) * placeholderGap;
                     const startX = -currentGridWidth / 2;
 
-                    // For single item, center it; for multiple, position in grid
                     const offsetX = startX + col * (cardW + placeholderGap) + cardW / 2;
                     const offsetY = gapToPlaceholders + cardH + row * (cardH + placeholderGap);
 
                     return (
                         <React.Fragment key={i}>
-                            {/* Dashed line from dot to placeholder center - subtle style */}
-                            <svg
-                                className="pointer-events-none"
-                                style={{
-                                    position: 'absolute',
-                                    left: '50%',
-                                    top: 0,
-                                    overflow: 'visible',
-                                    zIndex: 10
-                                }}
-                            >
-                                <path
-                                    d={`M0,0 L${offsetX},${offsetY}`}
-                                    fill="none"
-                                    stroke="#3f3f46"
-                                    strokeWidth="1"
-                                    strokeDasharray="3 4"
-                                />
+                            <svg className="pointer-events-none" style={{ position: 'absolute', left: '50%', top: 0, overflow: 'visible', zIndex: 10 }}>
+                                <path d={`M0,0 L${offsetX},${offsetY}`} fill="none" stroke="#3f3f46" strokeWidth="1" strokeDasharray="3 4" />
                             </svg>
-
-                            {/* Placeholder Card */}
                             <div
-                                className="absolute bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
+                                className="absolute rounded-2xl overflow-hidden shadow-lg flex items-center justify-center"
                                 style={{
+                                    backgroundColor: 'rgba(26, 26, 28, 0.5)',
+                                    backdropFilter: 'blur(20px)',
+                                    border: '1px solid rgba(255, 255, 255, 0.08)',
                                     width: cardW,
                                     height: cardH,
                                     left: `calc(50% + ${offsetX}px)`,

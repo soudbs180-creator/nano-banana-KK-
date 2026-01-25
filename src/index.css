@@ -87,14 +87,82 @@ body,
   overflow: hidden;
 }
 
+/* VisionOS Aurora Glow Backdrop */
+#root {
+  position: relative;
+}
+
+#root::before {
+  content: '';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 800px;
+  height: 800px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(30, 27, 75, 0.2) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
 body {
   font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
   letter-spacing: -0.015em;
+}
+
+/* ============================================
+   Global Scrollbar & Input Styles 
+   Description: Fixes "White Bar" issues on Windows
+   ============================================ */
+
+/* 1. Hide Number Input Spinners */
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* 2. Global Dark Scrollbar (Webkit) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 3. Utility: Hide Scrollbar completely */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 /* ============================================
@@ -410,7 +478,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  max-width: 540px;
+  max-width: 640px;
   background: var(--toolbar-bg-dark);
   backdrop-filter: blur(100px);
   -webkit-backdrop-filter: blur(100px);
@@ -1253,4 +1321,64 @@ body {
 
 .animate-scale-up-corner {
   animation: scale-up-corner 0.4s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+/* User Requested "Liquid Glass" Style (Distortion Removed) */
+.liquid-glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-top: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.liquid-glass:hover,
+.liquid-glass:active {
+  /* filter: url(#liquidFilter);  <-- Removed per user request "Too weird" */
+  /* Slight lighten on hover instead */
+}
+
+/* Utility to hide scrollbar */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Animation Keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes progress {
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
 }

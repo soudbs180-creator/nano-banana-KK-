@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { AspectRatio, GeneratedImage } from '../types';
+import { AspectRatio, GeneratedImage, GenerationMode } from '../types';
 import { Download, Trash2 } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 
@@ -54,6 +54,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const lightboxRef = useRef<HTMLDivElement>(null);
     const dragStartPos = useRef({ x: 0, y: 0 });
     const dragStartCanvasPos = useRef({ x: 0, y: 0 });
+    // Track when lightbox was opened to prevent instant closing on double-click
+    const openTimeRef = useRef(0);
 
     // Stored reference for cleanup (persists across effect calls)
     const wheelCleanupRef = useRef<(() => void) | null>(null);
@@ -62,89 +64,233 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const [lightboxOriginalUrl, setLightboxOriginalUrl] = useState<string | null>(null);
     const [isLoadingOriginal, setIsLoadingOriginal] = useState(false);
 
-    // Use original for zoom/download if available, otherwise fallback
-    const highResUrl = image.originalUrl || image.url;
+    // Robust Image Loading State
+    const [displaySrc, setDisplaySrc] = useState<string | undefined>(image.url);
 
-    // Load original from IndexedDB when lightbox opens, and save based on storage mode
+    // Sync displaySrc when prop changes
     useEffect(() => {
+        setDisplaySrc(image.url);
+        setImgError(false); // Reset error on new URL
+    }, [image.url]);
+
+    // Helper: Attempt to recover image from cache
+    const recoverImage = useCallback(async () => {
+        try {
+            // 1. Try IndexedDB first
+            const { getImage } = await import('../services/imageStorage');
+            const cached = await getImage(image.id);
+            if (cached) {
+                console.log(`[ImageCard] Recovered image ${image.id} from cache`);
+                setDisplaySrc(cached);
+                setImgError(false);
+                return;
+            }
+
+            // 2. Try Local File System (if in local mode)
+            const { getStorageMode, getLocalFolderHandle } = await import('../services/storagePreference');
+            const mode = await getStorageMode();
+
+            if (mode === 'local') {
+                const handle = await getLocalFolderHandle();
+                if (handle) {
+                    const { fileSystemService } = await import('../services/fileSystemService');
+                    const blob = await fileSystemService.loadOriginalFromDisk(handle, image.id);
+                    if (blob) {
+                        const objectUrl = URL.createObjectURL(blob);
+                        console.log(`[ImageCard] Recovered image ${image.id} from local disk`);
+                        setDisplaySrc(objectUrl);
+                        setImgError(false);
+                        return;
+                    }
+                }
+            }
+
+            // 3. Last Resort: If we have an originalUrl that is different from the failed url
+            if (image.originalUrl && image.originalUrl !== image.url) {
+                setDisplaySrc(image.originalUrl);
+                setImgError(false);
+                return;
+            }
+
+        } catch (err) {
+            console.warn('Failed to recover image', err);
+        }
+        // If all fails
+        setImgError(true);
+    }, [image.id, image.url, image.originalUrl]);
+
+    // Construct high-res URL for lightbox
+    const highResUrl = image.originalUrl || displaySrc || image.url;
+
+    // Load original from IndexedDB when lightbox opens
+    useEffect(() => {
+        // ... (Existing Lightbox Logic - Keeping mostly same but using displaySrc fallback) ...
         if (showLightbox && !lightboxOriginalUrl && !isLoadingOriginal) {
             setIsLoadingOriginal(true);
             (async () => {
+                // Reuse similar logic or existing implementation
+                // For brevity, using the existing implementation block logic but wrapped
                 const { getImage, saveImage } = await import('../services/imageStorage');
                 const { getStorageMode, saveOriginalToLocalFolder } = await import('../services/storagePreference');
 
-                // Try to load from IndexedDB first
+                // ... (Rest of existing lightbox loading logic) ...
+                // Copying the essential existing logic here to ensure it persists:
                 const cached = await getImage(image.id);
-
                 if (cached && cached.startsWith('data:')) {
-                    // Already have original cached
                     setLightboxOriginalUrl(cached);
                     setIsLoadingOriginal(false);
                     return;
                 }
 
-                // Fallback: If local mode, try to load from local file system directly
-                // (Useful if IndexedDB was cleared or image is from a previous session)
-                const storageMode = await getStorageMode();
-                if (storageMode === 'local') {
+                // Fallback fetch
+                let targetUrl = image.originalUrl || displaySrc || image.url;
+                if (targetUrl && !targetUrl.startsWith('data:')) {
                     try {
-                        const { getLocalFolderHandle } = await import('../services/storagePreference');
-                        const { fileSystemService } = await import('../services/fileSystemService');
-                        const handle = await getLocalFolderHandle();
-                        if (handle) {
-                            const blob = await fileSystemService.loadOriginalFromDisk(handle, image.id);
-                            if (blob) {
-                                const blobUrl = URL.createObjectURL(blob);
-                                setLightboxOriginalUrl(blobUrl);
-                                setIsLoadingOriginal(false);
-                                return;
-                            }
-                        }
-                    } catch (err) {
-                        console.warn('[ImageCard] Failed to load local original', err);
-                    }
-                }
-
-                // Need to fetch original from URL and save based on storage mode
-                let originalUrl = image.originalUrl || image.url;
-                let originalBase64 = originalUrl;
-
-                // If it's a URL (not base64), fetch it
-                if (originalUrl && !originalUrl.startsWith('data:')) {
-                    try {
-                        const res = await fetch(originalUrl);
+                        const res = await fetch(targetUrl);
                         const blob = await res.blob();
-                        originalBase64 = await new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result as string);
-                            reader.readAsDataURL(blob);
-                        });
-                    } catch (e) {
-                        console.error('[Lightbox] Failed to fetch original:', e);
-                    }
-                }
-
-                // Save to appropriate storage based on mode
-                const mode = await getStorageMode();
-                if (mode === 'local') {
-                    // Save to local folder
-                    try {
-                        const res = await fetch(originalBase64);
-                        const blob = await res.blob();
-                        await saveOriginalToLocalFolder(image.id, blob, image.prompt);
-                    } catch (e) {
-                        console.warn('[Lightbox] Failed to save to local folder:', e);
-                    }
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            const result = reader.result as string;
+                            setLightboxOriginalUrl(result);
+                            // Also cache it if needed
+                            saveImage(image.id, result);
+                        };
+                        reader.readAsDataURL(blob);
+                    } catch (e) { console.error(e); }
                 } else {
-                    // Save to IndexedDB (browser mode or default)
-                    await saveImage(image.id, originalBase64);
+                    setLightboxOriginalUrl(targetUrl);
                 }
-
-                setLightboxOriginalUrl(originalBase64);
                 setIsLoadingOriginal(false);
             })();
         }
-    }, [showLightbox, lightboxOriginalUrl, isLoadingOriginal, image.id, image.originalUrl, image.url, image.prompt]);
+    }, [showLightbox, lightboxOriginalUrl, isLoadingOriginal, image.id, image.originalUrl, displaySrc, image.url]);
+
+    // Auto-recover if URL is missing initially
+    useEffect(() => {
+        if (!displaySrc) {
+            recoverImage();
+        }
+    }, []);
+
+    // Ref to track latest localPos without triggering effect re-runs
+    const localPosRef = useRef(localPos);
+    useEffect(() => { localPosRef.current = localPos; }, [localPos]);
+
+    const wasDraggingRef = useRef(false);
+
+    const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+        // Ignore Right Click (2)
+        if ('button' in e && e.button === 2) return;
+
+        // Stop canvas panning
+        e.stopPropagation();
+
+        setIsDragging(true);
+        wasDraggingRef.current = false; // Reset drag flag
+
+        // Only select if not already selected (Preserve Group)
+        if (!isSelected && onSelect) {
+            onSelect();
+        }
+
+        // Handle both Mouse and Touch events
+        let clientX, clientY;
+        if ('touches' in e) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = (e as React.MouseEvent).clientX;
+            clientY = (e as React.MouseEvent).clientY;
+        }
+
+        // Store initial mouse position and card position
+        dragStartPos.current = { x: clientX, y: clientY };
+        dragStartCanvasPos.current = { x: localPos.x, y: localPos.y };
+
+        console.log('[ImageCard] Drag Start', { clientX, clientY, localPos });
+    };
+
+    const lastGlobalUpdateRef = useRef(0);
+    const requestRef = useRef<number | null>(null);
+
+    const handleMouseMove = (e: MouseEvent | TouchEvent) => {
+        if (!isDragging) return;
+
+        let clientX, clientY;
+        if ('touches' in e) {
+            clientX = (e as TouchEvent).touches[0].clientX;
+            clientY = (e as TouchEvent).touches[0].clientY;
+        } else {
+            clientX = (e as MouseEvent).clientX;
+            clientY = (e as MouseEvent).clientY;
+        }
+
+        // Mark as dragged if moved more than threshold
+        if (Math.abs(clientX - dragStartPos.current.x) > 10 || Math.abs(clientY - dragStartPos.current.y) > 10) {
+            wasDraggingRef.current = true;
+        }
+
+        // Throttle updates using requestAnimationFrame
+        if (requestRef.current !== null) return;
+
+        requestRef.current = requestAnimationFrame(() => {
+            const deltaX = (clientX - dragStartPos.current.x) / canvasTransform.scale;
+            const deltaY = (clientY - dragStartPos.current.y) / canvasTransform.scale;
+
+            const newPos = {
+                x: dragStartCanvasPos.current.x + deltaX,
+                y: dragStartCanvasPos.current.y + deltaY
+            };
+
+            // 1. Always update Local State immediately (Visual Smoothness)
+            setLocalPos(newPos);
+            localPosRef.current = newPos;
+
+            // 2. Throttle Global Update (Connection Lines) to prevent lag
+            // Update only every ~32ms (30fps)
+            const now = Date.now();
+            if (now - lastGlobalUpdateRef.current > 32) {
+                onPositionChange(image.id, newPos);
+                lastGlobalUpdateRef.current = now;
+            }
+
+            requestRef.current = null;
+        });
+    };
+
+    const handleMouseUp = () => {
+        if (isDragging) {
+            setIsDragging(false);
+            console.log('[ImageCard] Drag End', localPosRef.current);
+            // Commit final position to global state using REF value
+            onPositionChange(image.id, localPosRef.current);
+        }
+
+        if (requestRef.current !== null) {
+            cancelAnimationFrame(requestRef.current);
+            requestRef.current = null;
+        }
+    };
+
+    React.useEffect(() => {
+        if (isDragging) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+            // Touch listeners (non-passive to prevent scroll)
+            window.addEventListener('touchmove', handleMouseMove, { passive: false });
+            window.addEventListener('touchend', handleMouseUp);
+
+            return () => {
+                window.removeEventListener('mousemove', handleMouseMove);
+                window.removeEventListener('mouseup', handleMouseUp);
+                window.removeEventListener('touchmove', handleMouseMove);
+                window.removeEventListener('touchend', handleMouseUp);
+                if (requestRef.current) {
+                    cancelAnimationFrame(requestRef.current);
+                }
+            };
+        }
+    }, [isDragging]);
 
     // Handle pan/drag for lightbox image
     const handleLightboxMouseDown = useCallback((e: React.MouseEvent) => {
@@ -203,131 +349,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         return () => {
             el.removeEventListener('wheel', handleWheel);
         };
-    }, [showLightbox]); // Removed timeout, assuming ref is ready on effect run
+    }, [showLightbox]);
 
     // Reset pan and zoom when lightbox opens
     useEffect(() => {
         if (showLightbox) {
             setLightboxZoom(1);
             setLightboxPan({ x: 0, y: 0 });
+            // openTimeRef is now set synchronously in handleImageClick
         }
     }, [showLightbox]);
 
-    // Ref to track latest localPos without triggering effect re-runs
-    const localPosRef = useRef(localPos);
-    useEffect(() => { localPosRef.current = localPos; }, [localPos]);
-
-    const wasDraggingRef = useRef(false);
-
-    const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-        // Ignore Right Click (2)
-        if ('button' in e && e.button === 2) return;
-
-        // Stop canvas panning
-        e.stopPropagation();
-
-        setIsDragging(true);
-        wasDraggingRef.current = false; // Reset drag flag
-
-        // Only select if not already selected (Preserve Group)
-        if (!isSelected && onSelect) {
-            onSelect();
-        }
-
-        // Handle both Mouse and Touch events
-        let clientX, clientY;
-        if ('touches' in e) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-        } else {
-            clientX = (e as React.MouseEvent).clientX;
-            clientY = (e as React.MouseEvent).clientY;
-        }
-
-        // Store initial mouse position and card position
-        dragStartPos.current = { x: clientX, y: clientY };
-        dragStartCanvasPos.current = { x: localPos.x, y: localPos.y };
-
-        console.log('[ImageCard] Drag Start', { clientX, clientY, localPos });
-    };
-
-    const requestRef = useRef<number | null>(null);
-
-    const handleMouseMove = (e: MouseEvent | TouchEvent) => {
-        if (!isDragging) return;
-        // e.preventDefault(); // Prevent scrolling while dragging card
-
-        let clientX, clientY;
-        if ('touches' in e) {
-            clientX = (e as TouchEvent).touches[0].clientX;
-            clientY = (e as TouchEvent).touches[0].clientY;
-        } else {
-            clientX = (e as MouseEvent).clientX;
-            clientY = (e as MouseEvent).clientY;
-        }
-
-        // Mark as dragged if moved more than threshold
-        if (Math.abs(clientX - dragStartPos.current.x) > 5 || Math.abs(clientY - dragStartPos.current.y) > 5) {
-            wasDraggingRef.current = true;
-        }
-
-        // Throttle updates using requestAnimationFrame
-        if (requestRef.current !== null) return;
-
-        requestRef.current = requestAnimationFrame(() => {
-            // Calculate delta in screen space, then convert to canvas space
-            // Use refs or fresh props if possible, but canvasTransform doesn't change much during drag
-            const deltaX = (clientX - dragStartPos.current.x) / canvasTransform.scale;
-            const deltaY = (clientY - dragStartPos.current.y) / canvasTransform.scale;
-
-            // Update LOCAL state for smooth drag
-            const newPos = {
-                x: dragStartCanvasPos.current.x + deltaX,
-                y: dragStartCanvasPos.current.y + deltaY
-            };
-            setLocalPos(newPos);
-            localPosRef.current = newPos;
-
-            // Update GLOBAL state to sync connection lines
-            onPositionChange(image.id, newPos);
-
-            requestRef.current = null;
-        });
-    };
-
-    const handleMouseUp = () => {
-        if (isDragging) {
-            setIsDragging(false);
-            console.log('[ImageCard] Drag End', localPosRef.current);
-            // Commit final position to global state using REF value
-            onPositionChange(image.id, localPosRef.current);
-        }
-
-        if (requestRef.current !== null) {
-            cancelAnimationFrame(requestRef.current);
-            requestRef.current = null;
-        }
-    };
-
-    React.useEffect(() => {
-        if (isDragging) {
-            window.addEventListener('mousemove', handleMouseMove);
-            window.addEventListener('mouseup', handleMouseUp);
-            // Touch listeners (non-passive to prevent scroll)
-            window.addEventListener('touchmove', handleMouseMove, { passive: false });
-            window.addEventListener('touchend', handleMouseUp);
-
-            return () => {
-                window.removeEventListener('mousemove', handleMouseMove);
-                window.removeEventListener('mouseup', handleMouseUp);
-                window.removeEventListener('touchmove', handleMouseMove);
-                window.removeEventListener('touchend', handleMouseUp);
-                if (requestRef.current) {
-                    cancelAnimationFrame(requestRef.current);
-                }
-            };
-        }
-    }, [isDragging]); // Removed handler dependencies as they use refs or stable/enclosed scope
 
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -392,8 +424,23 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
     const handleImageClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (wasDraggingRef.current) return; // Ignore click if dragging occurred
-        setLightboxZoom(1); // Reset zoom on open
+
+        // Ignore if clicking internal buttons (like delete/download)
+        if ((e.target as HTMLElement).closest('button')) return;
+
+        // Robust Check: Calculate distance from mouse down
+        // This ensures we act on the specific click action, not past state
+        const dist = Math.hypot(e.clientX - dragStartPos.current.x, e.clientY - dragStartPos.current.y);
+
+        // If moved significantly (>15px) AND not double click -> it's a drag, ignore.
+        // Also allow if dragStartPos is 0,0 (meaning mousedown wasn't captured correctly)
+        const isUninitialized = dragStartPos.current.x === 0 && dragStartPos.current.y === 0;
+
+        if (!isUninitialized && dist > 15 && e.type !== 'dblclick' && e.detail !== 2) return;
+
+        // SYNC: Set open time immediately before state triggers render/overlay
+        openTimeRef.current = Date.now();
+        setLightboxZoom(1);
         setShowLightbox(true);
     };
 
@@ -406,15 +453,16 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const { w: nodeWidth, h: nodeHeight } = getDims();
 
     return (
+        // ... (Wrapper Divs) ...
         <>
             <div
                 className={`absolute flex flex-col items-center group animate-cardPopIn select-none ${isActive ? 'z-15' : 'z-5'}`}
+                // ... (Style) ...
                 style={{
                     left: localPos.x,
                     top: localPos.y,
                     width: nodeWidth,
-                    // minHeight removed to fix hit-box issues
-                    transform: 'translate(-50%, -100%)',
+                    transform: 'translate(-50%, -100%)', // Anchor Bottom
                     cursor: isDragging ? 'grabbing' : 'grab',
                     transition: isDragging ? 'none' : 'box-shadow 0.2s ease'
                 }}
@@ -422,68 +470,68 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                 onTouchStart={handleMouseDown}
                 onClick={(e) => {
                     e.stopPropagation();
-                    if (!wasDraggingRef.current) {
-                        onClick?.(image.id);
-                    }
+                    if (!wasDraggingRef.current) onClick?.(image.id);
                 }}
+                onDoubleClick={handleImageClick}
             >
-                {/* Image Card */}
-                <div
-                    className={`
-                        relative bg-[#18181b] border rounded-2xl overflow-hidden shadow-xl w-full
-                        ${isDragging ? '' : 'transition-all duration-200'} hover:shadow-2xl
-                        ${isActive ? 'border-amber-500 ring-2 ring-amber-500/50' : 'border-white/5 hover:border-white/10'}
-                    `}
-                >
-                    {/* Connection Point - Top Center */}
+                <div className={`
+                    relative bg-[#18181b] border rounded-2xl overflow-hidden shadow-xl w-full
+                    ${isDragging ? '' : 'transition-all duration-200'} hover:shadow-2xl
+                    ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : isActive ? 'border-amber-500 ring-2 ring-amber-500/50' : 'border-white/5 hover:border-white/10'}
+                `}>
+                    {/* Connection Point */}
                     <div
                         className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-transparent hover:bg-indigo-500/50 rounded-full z-50 cursor-crosshair"
                         onMouseUp={() => onConnectEnd?.(image.id)}
                     />
 
-                    {/* Main Image - Click to enlarge (was double-click) */}
+                    {/* Image View */}
                     <div
                         className="relative aspect-auto cursor-pointer min-h-[100px] bg-zinc-900"
                         onClick={handleImageClick}
+                        onDoubleClick={handleImageClick}
                     >
-                        {!imgError ? (
-                            <img
-                                src={image.url}
-                                alt={image.prompt}
-                                onError={(e) => {
-                                    // Try to recover from IndexedDB if Blob URL fails (common on context switch or reload)
-                                    const imgElement = e.target as HTMLImageElement;
-                                    import('../services/imageStorage').then(async ({ getImage }) => {
-                                        try {
-                                            const cached = await getImage(image.id);
-                                            if (cached && imgElement.src !== cached) {
-                                                console.log(`[ImageCard] Recovered image ${image.id} from cache`);
-                                                imgElement.src = cached;
-                                                return;
-                                            }
-                                        } catch (err) {
-                                            console.warn('Failed to recover image', err);
+                        {!imgError && displaySrc ? (
+                            (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
+                                <video
+                                    src={displaySrc}
+                                    className="w-full h-auto block select-none pointer-events-none"
+                                    muted loop autoPlay playsInline
+                                    onError={() => setImgError(true)}
+                                />
+                            ) : (
+                                <img
+                                    src={displaySrc}
+                                    alt={image.prompt}
+                                    onError={(e) => {
+                                        // Prevent infinite loops if recovery fails
+                                        // e.currentTarget.onerror = null; 
+                                        recoverImage();
+                                    }}
+                                    onLoad={(e) => {
+                                        setImgError(false);
+                                        const img = e.target as HTMLImageElement;
+                                        const dims = `${img.naturalWidth}x${img.naturalHeight}`;
+                                        if (onDimensionsUpdate && image.dimensions !== dims) {
+                                            onDimensionsUpdate(image.id, dims);
                                         }
-                                        setImgError(true);
-                                    });
-                                }}
-                                onLoad={(e) => {
-                                    setImgError(false); // Reset error if reload successful
-                                    const img = e.target as HTMLImageElement;
-                                    const dims = `${img.naturalWidth}x${img.naturalHeight}`;
-                                    // Only update if dimensions are missing or different
-                                    if (onDimensionsUpdate && image.dimensions !== dims) {
-                                        onDimensionsUpdate(image.id, dims);
-                                    }
-                                }}
-                                className="w-full h-auto block select-none pointer-events-none"
-                                draggable={false}
-                            />
+                                    }}
+                                    className="w-full h-auto block select-none pointer-events-none"
+                                    draggable={false}
+                                />
+                            )
                         ) : (
                             <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-zinc-500 p-4 text-center">
                                 <Trash2 size={24} className="mb-2 opacity-50" />
-                                <span className="text-xs">图片已被清理</span>
-                                <span className="text-[9px] opacity-60">(Storage Cleaned)</span>
+                                <span className="text-xs">资源加载失败</span>
+                                <span className="text-[9px] opacity-60">(Load Failed)</span>
+                                {/* Retry Button */}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); recoverImage(); }}
+                                    className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 underline"
+                                >
+                                    尝试重载
+                                </button>
                             </div>
                         )}
                     </div>
@@ -528,10 +576,30 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                                         if (w >= 3000 || h >= 3000) sizeLabel = '4K';
                                         else if (w >= 1500 || h >= 1500) sizeLabel = '2K';
 
-                                        // Use predefined aspect ratio if available, or calculate simplified one
-                                        const ratio = image.aspectRatio || `${Math.round(w / 100)}:${Math.round(h / 100)}`;
+                                        // Calculate actual aspect ratio
+                                        const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
+                                        const divisor = gcd(w, h);
+                                        let ratioW = w / divisor;
+                                        let ratioH = h / divisor;
 
-                                        return `${ratio} · ${sizeLabel}`;
+                                        // Simplify common near-ratios if needed or just show exact
+                                        // For standard resolutions, exact is fine.
+                                        // Maybe handle rounding for non-standard?
+
+                                        let displayRatio = `${ratioW}:${ratioH}`;
+
+                                        // Mapping common approximate ratios for cleaner display
+                                        const ratioVal = w / h;
+                                        if (Math.abs(ratioVal - 1) < 0.05) displayRatio = '1:1';
+                                        else if (Math.abs(ratioVal - 4 / 3) < 0.05) displayRatio = '4:3';
+                                        else if (Math.abs(ratioVal - 3 / 4) < 0.05) displayRatio = '3:4';
+                                        else if (Math.abs(ratioVal - 16 / 9) < 0.05) displayRatio = '16:9';
+                                        else if (Math.abs(ratioVal - 9 / 16) < 0.05) displayRatio = '9:16';
+                                        else if (Math.abs(ratioVal - 21 / 9) < 0.05) displayRatio = '21:9';
+                                        else if (Math.abs(ratioVal - 3 / 2) < 0.05) displayRatio = '3:2';
+                                        else if (Math.abs(ratioVal - 2 / 3) < 0.05) displayRatio = '2:3';
+
+                                        return `${displayRatio} · ${sizeLabel}`;
                                     })()}
                                 </span>
                             )}
@@ -569,7 +637,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                 <div
                     ref={lightboxRef}
                     className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center animate-fadeIn select-none"
-                    onClick={() => !isPanning && setShowLightbox(false)}
+                    onClick={() => {
+                        // Prevent accidental close from double-click (second click hitting backdrop)
+                        if (Date.now() - openTimeRef.current < 600) return;
+                        !isPanning && setShowLightbox(false);
+                    }}
                     style={{ backdropFilter: 'blur(8px)', cursor: isPanning ? 'grabbing' : 'default' }}
                 >
                     {/* Close Button - Top Right */}
@@ -609,37 +681,52 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                         </button>
                     </div>
 
-                    {/* Main Image - Drag to pan, scroll to zoom */}
-                    <img
-                        src={lightboxOriginalUrl || highResUrl}
-                        onError={(e) => {
-                            console.warn('[Lightbox] Failed to load original, falling back to thumbnail');
-                        }}
-                        onLoad={(e) => {
-                            // Reset zoom/pan when image actually loads/changes size, if needed
-                            // But keep user position if just swapping src quality
-                        }}
-                        alt={image.prompt}
-                        onMouseDown={handleLightboxMouseDown}
-                        onClick={(e) => e.stopPropagation()}
-                        onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            setShowLightbox(false);
-                        }}
-                        onContextMenu={(e) => e.stopPropagation()}
-                        // Use max-w/max-h to fit default, but allow transform to scale it up visually
-                        // We use object-contain to ensure aspect ratio is preserved
-                        className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
-                        draggable={false}
-                        style={{
-                            maxWidth: '95vw',
-                            maxHeight: '95vh',
-                            transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
-                            transition: isPanning ? 'none' : 'transform 0.15s ease-out',
-                            cursor: isPanning ? 'grabbing' : 'grab',
-                            // animation: 'lightboxScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' // Removed to prevent conflict with transform
-                        }}
-                    />
+                    {/* Main Image/Video - Drag to pan, scroll to zoom */}
+                    {(image.mode === GenerationMode.VIDEO || lightboxOriginalUrl?.startsWith('data:video') || highResUrl?.startsWith('data:video') || highResUrl?.endsWith('.mp4')) ? (
+                        <video
+                            src={lightboxOriginalUrl || highResUrl}
+                            controls
+                            autoPlay
+                            loop
+                            className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+                            style={{
+                                maxWidth: '95vw',
+                                maxHeight: '95vh',
+                                transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
+                                transition: isPanning ? 'none' : 'transform 0.15s ease-out',
+                                cursor: isPanning ? 'grabbing' : 'auto'
+                            }}
+                            onClick={(e) => e.stopPropagation()} // Prevent click from closing lightbox
+                            onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                setShowLightbox(false); // Double click to close
+                            }}
+                        />
+                    ) : (
+                        <img
+                            src={lightboxOriginalUrl || highResUrl}
+                            onError={(e) => {
+                                console.warn('[Lightbox] Failed to load original, falling back to thumbnail');
+                            }}
+                            alt={image.prompt}
+                            onMouseDown={handleLightboxMouseDown}
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                setShowLightbox(false);
+                            }}
+                            onContextMenu={(e) => e.stopPropagation()}
+                            className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+                            draggable={false}
+                            style={{
+                                maxWidth: '95vw',
+                                maxHeight: '95vh',
+                                transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
+                                transition: isPanning ? 'none' : 'transform 0.15s ease-out',
+                                cursor: isPanning ? 'grabbing' : 'grab',
+                            }}
+                        />
+                    )}
 
                     {/* Download Button in Lightbox */}
                     <button

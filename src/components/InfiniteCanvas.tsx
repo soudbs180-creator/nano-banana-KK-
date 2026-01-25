@@ -4,12 +4,12 @@ export interface InfiniteCanvasHandle {
     zoomIn: () => void;
     zoomOut: () => void;
     resetView: () => void;
-    toggleGrid: () => void;
     setView: (x: number, y: number, scale: number) => void;
 }
 
 interface InfiniteCanvasProps {
     children: React.ReactNode;
+    showGrid?: boolean;
     onTransformChange?: (transform: { x: number; y: number; scale: number }) => void;
     onCanvasClick?: () => void; // Called when clicking empty canvas area
     onAutoArrange?: () => void; // Called when arrange button is clicked
@@ -22,11 +22,10 @@ interface Transform {
     scale: number;
 }
 
-const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, onTransformChange, onCanvasClick, onAutoArrange }, ref) => {
+const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onAutoArrange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
     const [isDragging, setIsDragging] = useState(false);
-    const [showGrid, setShowGrid] = useState(true);
     const dragStart = useRef({ x: 0, y: 0 });
     const lastTransform = useRef({ x: 0, y: 0 });
 
@@ -138,7 +137,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
     // Zoom controls
     const zoomIn = useCallback(() => {
-        const newScale = Math.min(3, transform.scale * 1.2);
+        const newScale = Math.min(3, transform.scale * 1.1);
         const container = containerRef.current;
         if (!container) return;
 
@@ -156,7 +155,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     }, [transform, onTransformChange]);
 
     const zoomOut = useCallback(() => {
-        const newScale = Math.max(0.1, transform.scale / 1.2);
+        const newScale = Math.max(0.1, transform.scale / 1.1);
         const container = containerRef.current;
         if (!container) return;
 
@@ -187,16 +186,11 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         onTransformChange?.(newTransform);
     }, [onTransformChange]);
 
-    const toggleGrid = useCallback(() => {
-        setShowGrid(prev => !prev);
-    }, []);
-
     // Expose methods to parent
     useImperativeHandle(ref, () => ({
         zoomIn,
         zoomOut,
         resetView,
-        toggleGrid,
         setView: (x: number, y: number, scale: number) => {
             const newTransform = { x, y, scale };
             setTransform(newTransform);
@@ -206,6 +200,11 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
     // Handle keyboard shortcuts
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
+        // Ignore if input/textarea is focused
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement).isContentEditable) {
+            return;
+        }
+
         // Prevent default space action (scrolling/button press)
         // Check for both 'Space' code and ' ' key to be robust
         if (e.code === 'Space' || e.key === ' ') {
