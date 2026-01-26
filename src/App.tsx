@@ -644,23 +644,18 @@ const AppContent: React.FC = () => {
         .find(m => !isGoogleFamilyModel(m.id)) || null;
     };
 
-    const hasGoogleDirectKey = keyManager.getSlots().some(s => {
-      const isGoogle = !s.baseUrl || s.baseUrl.includes('googleapis.com');
-      const isHealthy = !s.disabled && s.status !== 'invalid' && (s.budgetLimit < 0 || s.totalCost < s.budgetLimit);
-      return isGoogle && isHealthy;
-    });
-
     let effectiveLineMode = config.lineMode;
     let effectiveModel = config.model;
+
     if (isProxyGoogleImageOrVideo) {
-      if (hasGoogleDirectKey) {
-        effectiveLineMode = 'google_direct';
-        notify.info('自动切换线路', '当前模型中转不支持，已切换谷歌专线。');
-        setConfig(prev => ({ ...prev, lineMode: 'google_direct' }));
-      } else {
+      const type = config.mode === GenerationMode.VIDEO ? 'video' : 'image';
+      const currentProxyModel = keyManager.getAvailableProxyModels(type)
+        .find(m => m.id === config.model);
+
+      if (currentProxyModel?.apiFormat !== 'gemini') {
         const fallback = findProxyFallbackModel();
         if (!fallback) {
-          notify.warning('中转模型不可用', '当前模型中转不支持且没有可用替代模型');
+          notify.warning('中转模型不可用', '当前模型协议为 OpenAI 标准且不支持 Gemini 原生，请在模型设置改为 Google 原生或添加可用替代模型');
           return;
         }
         effectiveModel = fallback.id;
@@ -752,8 +747,21 @@ const AppContent: React.FC = () => {
 
     try {
       const count = config.parallelCount;
+      const isProxyMode = effectiveLineMode === 'proxy';
+      const healthyProxyCount = isProxyMode
+        ? keyManager.getSlots().filter(s => {
+          const isProxy = !!s.baseUrl && !s.baseUrl.includes('googleapis.com');
+          const isHealthy = !s.disabled && s.status !== 'invalid' && (s.budgetLimit < 0 || s.totalCost < s.budgetLimit);
+          return isProxy && isHealthy;
+        }).length
+        : count;
 
-      const imageDataPromises = Array.from({ length: count }).map(async (_, index) => {
+      const concurrencyLimit = isProxyMode ? Math.max(1, Math.min(count, healthyProxyCount)) : count;
+      if (isProxyMode && concurrencyLimit < count) {
+        notify.info('中转并发调整', `可用中转 Key 数量为 ${healthyProxyCount}，已自动分批生成`);
+      }
+
+      const buildTask = (index: number) => async () => {
         const startTime = Date.now();
         const currentRequestId = `${promptNodeId}-${index}`;
 
@@ -890,9 +898,25 @@ const AppContent: React.FC = () => {
           console.error(`Generation ${index} failed:`, error);
           return { error: error.message || 'Unknown error' };
         }
-      });
+      };
 
-      const imageData = await Promise.all(imageDataPromises);
+      const tasks = Array.from({ length: count }).map((_, index) => buildTask(index));
+
+      const runWithConcurrency = async <T,>(taskList: Array<() => Promise<T>>, limit: number): Promise<T[]> => {
+        const results: T[] = new Array(taskList.length);
+        let nextIndex = 0;
+        const workers = Array.from({ length: Math.max(1, limit) }).map(async () => {
+          while (nextIndex < taskList.length) {
+            const current = nextIndex;
+            nextIndex += 1;
+            results[current] = await taskList[current]();
+          }
+        });
+        await Promise.all(workers);
+        return results;
+      };
+
+      const imageData = await runWithConcurrency(tasks, concurrencyLimit);
 
       // Validate results and narrow type
       type SuccessResult = { index: number; url: string; originalUrl: string; generationTime: number; base64: string; mode: GenerationMode };

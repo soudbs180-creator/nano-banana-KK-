@@ -194,15 +194,7 @@ async function generateImageViaProxy(
   }
   const proxyBaseUrl = keyData.baseUrl.trim();
   const isGoogleBase = proxyBaseUrl.includes('googleapis.com');
-  const isProxyBase = !!proxyBaseUrl && !isGoogleBase;
-  const isGoogleFamily = /gemini|imagen|veo|nano-banana/i.test(model);
-  const apiFormat = isProxyBase
-    ? 'openai'
-    : (modelConfig.apiFormat || (isGoogleBase ? 'gemini' : 'openai'));
-
-  if (isProxyBase && isGoogleFamily && modelConfig.type !== 'chat') {
-    throw new Error('中转代理暂不支持 Gemini/Imagen/Veo 原生图像/视频接口，请切换谷歌专线或更换支持 OpenAI 图像/视频的模型');
-  }
+  const apiFormat = modelConfig.apiFormat || (isGoogleBase ? 'gemini' : 'openai');
 
   const controller = requestId ? abortControllers.get(requestId) : undefined;
   if (controller?.signal.aborted) {

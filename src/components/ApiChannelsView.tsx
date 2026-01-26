@@ -129,8 +129,8 @@ export const ApiChannelsView = () => {
         const isProxyBase = !!baseUrl && !isGoogleBase;
         const id = modelId.toLowerCase();
         const isGoogleFamily = id.includes('gemini') || id.includes('imagen') || id.includes('veo') || id.includes('nano-banana');
-        if (isProxyBase) return 'openai';
         if (isGoogleBase) return 'gemini';
+        if (isProxyBase) return fallback || (isGoogleFamily && type !== 'chat' ? 'gemini' : 'openai');
         if (isGoogleFamily && type !== 'chat') return 'gemini';
         if (!fallback) return 'openai';
         return fallback;
@@ -778,14 +778,10 @@ export const ApiChannelsView = () => {
                                 <div className="relative">
                                     <input
                                         className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono"
-                                        type="text"
-                                        value={isKeyEditing ? formKey : maskApiKey(formKey)}
+                                        type="password"
+                                        value={formKey}
                                         onChange={e => setFormKey(e.target.value)}
-                                        onFocus={(e) => {
-                                            setIsKeyEditing(true);
-                                            requestAnimationFrame(() => e.currentTarget.select());
-                                        }}
-                                        onBlur={() => setIsKeyEditing(false)}
+                                        onFocus={(e) => e.target.select()}
                                         placeholder="sk-..."
                                         autoComplete="off"
                                     />
