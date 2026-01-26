@@ -267,6 +267,16 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         ? '请到 API 设置模型'
         : (availableModels.find(m => m.id === config.model)?.label || config.model);
 
+    const truncateModelLabel = useCallback((label: string) => {
+        const max = isMobile ? 14 : 18;
+        if (label.length <= max) return label;
+        const head = Math.max(6, Math.floor(max * 0.6));
+        const tail = Math.max(3, max - head - 3);
+        return `${label.slice(0, head)}...${label.slice(-tail)}`;
+    }, [isMobile]);
+
+    const displayModelLabel = truncateModelLabel(currentModelLabel);
+
     return (
         <div
             className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
@@ -398,7 +408,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     : (config.mode === GenerationMode.VIDEO ? 'bg-purple-500' : 'bg-green-500')
                                     }`}></span>
                                 <span className="text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300">
-                                    {currentModelLabel}
+                                    {displayModelLabel}
                                 </span>
                             </button>
 

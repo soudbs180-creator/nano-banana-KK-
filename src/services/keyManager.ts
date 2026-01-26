@@ -831,6 +831,7 @@ export class KeyManager {
      * Update an existing API key
      */
     updateKey(id: string, updates: {
+        key?: string,
         name?: string,
         budgetLimit?: number,
         baseUrl?: string,
@@ -843,6 +844,7 @@ export class KeyManager {
     }): void {
         const slot = this.state.slots.find(s => s.id === id);
         if (slot) {
+            if (updates.key !== undefined) slot.key = updates.key;
             if (updates.name !== undefined) slot.name = updates.name;
             if (updates.budgetLimit !== undefined) slot.budgetLimit = updates.budgetLimit;
             if (updates.totalCost !== undefined) slot.totalCost = updates.totalCost;

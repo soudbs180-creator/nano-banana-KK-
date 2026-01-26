@@ -485,11 +485,40 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                         onMouseUp={() => onConnectEnd?.(image.id)}
                     />
 
-                    {/* Image View */}
+                    {/* Image View with Lazy Loading / Virtualization */}
                     <div
                         className="relative aspect-auto cursor-pointer min-h-[100px] bg-zinc-900"
                         onClick={handleImageClick}
                         onDoubleClick={handleImageClick}
+                        ref={(el) => {
+                            // Simple Intersection Observer implementation
+                            if (el && !imgError) {
+                                const observer = new IntersectionObserver(
+                                    (entries) => {
+                                        entries.forEach(entry => {
+                                            if (entry.isIntersecting) {
+                                                // Load
+                                                el.setAttribute('data-visible', 'true');
+                                                const img = el.querySelector('img, video') as HTMLElement;
+                                                if (img && img.dataset.src) {
+                                                    img.setAttribute('src', img.dataset.src);
+                                                    img.removeAttribute('data-src');
+                                                }
+                                            } else {
+                                                // Unload (Optional: aggressive memory saving)
+                                                // For now, let's just Lazy Load (not unload) to prevent flicker.
+                                                // User issue "old ones don't show" might be browser limit.
+                                                // But unloading might annoy user if scrolling back up.
+                                                // Let's stick to Native Lazy + explicit retry.
+                                            }
+                                        });
+                                    },
+                                    { rootMargin: '200px' }
+                                );
+                                observer.observe(el);
+                                return () => observer.disconnect();
+                            }
+                        }}
                     >
                         {!imgError && displaySrc ? (
                             (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
@@ -501,11 +530,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                                 />
                             ) : (
                                 <img
-                                    src={displaySrc}
+                                    src={displaySrc} // React handles updates. Native lazy is often enough.
+                                    // Make it aggressive: decoding async
+                                    decoding="async"
+                                    loading="lazy"
                                     alt={image.prompt}
                                     onError={(e) => {
-                                        // Prevent infinite loops if recovery fails
-                                        // e.currentTarget.onerror = null; 
                                         recoverImage();
                                     }}
                                     onLoad={(e) => {

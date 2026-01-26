@@ -633,15 +633,56 @@ const AppContent: React.FC = () => {
     if (!config.prompt.trim()) return;
     // Note: API key is now managed server-side, no need to pass from frontend
 
+    const isGoogleFamilyModel = (modelId: string) => /gemini|imagen|veo|nano-banana/i.test(modelId);
+    const isProxyGoogleImageOrVideo = config.lineMode === 'proxy'
+      && (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.VIDEO)
+      && isGoogleFamilyModel(config.model);
+
+    const findProxyFallbackModel = () => {
+      const type = config.mode === GenerationMode.VIDEO ? 'video' : 'image';
+      return keyManager.getAvailableProxyModels(type)
+        .find(m => !isGoogleFamilyModel(m.id)) || null;
+    };
+
+    const hasGoogleDirectKey = keyManager.getSlots().some(s => {
+      const isGoogle = !s.baseUrl || s.baseUrl.includes('googleapis.com');
+      const isHealthy = !s.disabled && s.status !== 'invalid' && (s.budgetLimit < 0 || s.totalCost < s.budgetLimit);
+      return isGoogle && isHealthy;
+    });
+
+    let effectiveLineMode = config.lineMode;
+    let effectiveModel = config.model;
+    if (isProxyGoogleImageOrVideo) {
+      if (hasGoogleDirectKey) {
+        effectiveLineMode = 'google_direct';
+        notify.info('自动切换线路', '当前模型中转不支持，已切换谷歌专线。');
+        setConfig(prev => ({ ...prev, lineMode: 'google_direct' }));
+      } else {
+        const fallback = findProxyFallbackModel();
+        if (!fallback) {
+          notify.warning('中转模型不可用', '当前模型中转不支持且没有可用替代模型');
+          return;
+        }
+        effectiveModel = fallback.id;
+        notify.info('自动切换模型', `当前模型中转不支持，已切换为 ${fallback.label || fallback.id}`);
+        setConfig(prev => ({ ...prev, model: fallback.id }));
+      }
+    }
+
     setIsGenerating(true);
 
     // 1. Create Persistent Prompt Node immediately
     const promptNodeId = Date.now().toString();
 
 
-    // Card Group Placement Strategy
-    const groupPos = findNextGroupPosition();
-    const currentPos = groupPos;
+    // Card Group Placement Strategy: center of current view, avoid collisions
+    const viewCenter = {
+      x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
+      y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
+    };
+    const promptHeight = getPromptHeight(config.prompt);
+    const targetY = viewCenter.y + promptHeight / 2;
+    const currentPos = findSmartPosition(viewCenter.x, targetY, 380, promptHeight, 40);
 
     // If continuing from an image, auto-add it as reference (img2img)
     let finalReferenceImages = [...config.referenceImages];
@@ -688,7 +729,7 @@ const AppContent: React.FC = () => {
       position: currentPos,
       aspectRatio: config.aspectRatio,
       imageSize: config.imageSize,
-      model: config.model,
+      model: effectiveModel,
       childImageIds: [], // Will fill after generation
       referenceImages: finalReferenceImages,
       timestamp: Date.now(),
@@ -741,7 +782,7 @@ const AppContent: React.FC = () => {
           if (config.mode === GenerationMode.VIDEO) {
             videoUrl = await generateVideo(
               promptToUse,
-              config.model,
+              effectiveModel,
               '',
               currentRequestId
             );
@@ -752,15 +793,15 @@ const AppContent: React.FC = () => {
                 config.aspectRatio,
                 config.imageSize,
                 finalReferenceImages,
-                config.model,
+                effectiveModel,
                 '', // apiKey (handled internally)
                 currentRequestId, // Unique requestId for cancellation
                 config.enableGrounding, // Pass grounding config
-                config.lineMode // Pass line mode (google_direct or proxy)
+                effectiveLineMode // Pass line mode (google_direct or proxy)
               );
             } catch (err: any) {
               // Auto-fallback for "not supported model" error
-              if (config.lineMode !== 'proxy' && err.message && (err.message.includes("not supported model") || err.message.includes("model_not_found"))) {
+              if (effectiveLineMode !== 'proxy' && err.message && (err.message.includes("not supported model") || err.message.includes("model_not_found"))) {
                 notify.info("自动切换模型", "当前模型不支持，正在尝试 DALL-E 3...");
                 generatedBase64 = await generateImage(
                   promptToUse,
@@ -771,8 +812,27 @@ const AppContent: React.FC = () => {
                   '',
                   currentRequestId,
                   false,
-                  config.lineMode
+                  effectiveLineMode
                 );
+              } else if (effectiveLineMode === 'proxy' && err.message && (err.message.includes('not supported model') || err.message.includes('model_not_found') || err.message.includes('Invalid URL'))) {
+                const fallback = findProxyFallbackModel();
+                if (fallback && fallback.id !== effectiveModel) {
+                  notify.info('自动切换模型', `当前模型中转不支持，已切换为 ${fallback.label || fallback.id}`);
+                  setConfig(prev => ({ ...prev, model: fallback.id }));
+                  generatedBase64 = await generateImage(
+                    promptToUse,
+                    config.aspectRatio,
+                    config.imageSize,
+                    finalReferenceImages,
+                    fallback.id,
+                    '',
+                    currentRequestId,
+                    config.enableGrounding,
+                    effectiveLineMode
+                  );
+                } else {
+                  throw err;
+                }
               } else {
                 throw err;
               }
@@ -984,7 +1044,7 @@ const AppContent: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [config, pendingPosition, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, isGenerating, isMobile]);
+  }, [config, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, isGenerating, isMobile, canvasTransform, findSmartPosition, getPromptHeight]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
@@ -1176,7 +1236,6 @@ const AppContent: React.FC = () => {
         (thread: { nodes: PromptNode[] }, x, y) => {
         // Render Thread
         const PROMPT_WIDTH = 380;
-        const promptToImageGap = 24;
         const nodeGap = 20;
         const colGap = 12;
         const rowGap = 12;
@@ -1218,13 +1277,18 @@ const AppContent: React.FC = () => {
           ...nodeLayouts.map(layout => layout.maxRowWidth)
         );
 
-        let currentY = y;
+        let blockTop = y;
         nodeLayouts.forEach((layout) => {
           const centerX = x + threadW / 2;
-          updatePromptNodePosition(layout.pn.id, { x: centerX, y: currentY });
+          const promptToImageGap = layout.rows.length > 0
+            ? Math.max(16, Math.min(36, Math.round(layout.promptHeight * 0.12)))
+            : 0;
+          const promptBottom = blockTop + layout.promptHeight;
+
+          updatePromptNodePosition(layout.pn.id, { x: centerX, y: promptBottom });
 
           if (layout.rows.length > 0) {
-            let rowTop = currentY + layout.promptHeight + promptToImageGap;
+            let rowTop = promptBottom + promptToImageGap;
             layout.rows.forEach((row) => {
               let cursorX = centerX - row.rowWidth / 2;
               row.images.forEach((img, idx) => {
@@ -1239,12 +1303,15 @@ const AppContent: React.FC = () => {
             });
           }
 
-          currentY += layout.promptHeight + promptToImageGap + layout.imgBlockH + nodeGap;
+          const blockHeight = layout.promptHeight
+            + (layout.rows.length > 0 ? promptToImageGap + layout.imgBlockH : 0)
+            + nodeGap;
+          blockTop += blockHeight;
         });
 
         maxNormalRight = Math.max(maxNormalRight, x + threadW);
 
-        return { width: threadW, height: currentY - y };
+        return { width: threadW, height: blockTop - y };
         }
       );
 

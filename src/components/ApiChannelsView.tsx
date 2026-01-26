@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
     X, Key, Plus, Trash2, Globe, RefreshCw, Copy, Check,
-    Pause, Play, Activity, Pencil, List, AlertTriangle, ChevronRight, Zap, DollarSign, GripVertical, Image, Video, MessageCircle, ListFilter, Eye, EyeOff
+    Pause, Play, Activity, Pencil, List, AlertTriangle, ChevronRight, Zap, DollarSign, GripVertical, Image, Video, MessageCircle, ListFilter
 } from 'lucide-react';
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
 import { MODEL_PRESETS } from '../services/modelPresets';
@@ -64,7 +64,7 @@ export const ApiChannelsView = () => {
     const [formUsedCost, setFormUsedCost] = useState('');
     const [formUseProxy, setFormUseProxy] = useState(false);
     const [formBaseUrl, setFormBaseUrl] = useState('');
-    const [showKey, setShowKey] = useState(false);
+    const [isKeyEditing, setIsKeyEditing] = useState(false);
 
     useEffect(() => {
         const update = () => {
@@ -193,6 +193,7 @@ export const ApiChannelsView = () => {
         setFormUsedCost('');
         setFormUseProxy(false);
         setFormBaseUrl('');
+        setIsKeyEditing(true);
         setIsModalOpen(true);
     };
 
@@ -206,7 +207,16 @@ export const ApiChannelsView = () => {
         const isProxy = !!slot.baseUrl && !slot.baseUrl.includes('googleapis.com');
         setFormUseProxy(isProxy);
         setFormBaseUrl(slot.baseUrl || '');
+        setIsKeyEditing(false);
         setIsModalOpen(true);
+    };
+
+    const maskApiKey = (key: string) => {
+        const value = key.trim();
+        if (value.length <= 8) return value;
+        const head = value.slice(0, 4);
+        const tail = value.slice(-4);
+        return `${head}...${tail}`;
     };
 
     const cleanBaseUrl = (url: string) => {
@@ -227,6 +237,7 @@ export const ApiChannelsView = () => {
         if (editingId) {
             keyManager.updateKey(editingId, {
                 name: formName.trim() || 'API Key',
+                key: formKey.trim(),
                 budgetLimit: formBudget ? parseFloat(formBudget) : -1,
                 totalCost: formUsedCost ? parseFloat(formUsedCost) : 0,
                 baseUrl: proxyBaseUrl,
@@ -762,23 +773,19 @@ export const ApiChannelsView = () => {
                             )}
                             <div>
                                 <label className="text-xs text-zinc-400 mb-1.5 flex justify-between items-center">
-                                    <span>API Key {editingId && '(不可修改)'}</span>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowKey(!showKey)}
-                                        className="text-zinc-500 hover:text-zinc-300 focus:outline-none transition-colors"
-                                        title={showKey ? "隐藏密钥" : "显示密钥"}
-                                    >
-                                        {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                                    </button>
+                                    <span>API Key</span>
                                 </label>
                                 <div className="relative">
                                     <input
-                                        className={`w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono ${editingId ? 'opacity-50' : ''}`}
-                                        type={showKey ? "text" : "password"}
-                                        value={formKey}
+                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono"
+                                        type="text"
+                                        value={isKeyEditing ? formKey : maskApiKey(formKey)}
                                         onChange={e => setFormKey(e.target.value)}
-                                        disabled={!!editingId} // Key is immutable once added (design choice)
+                                        onFocus={(e) => {
+                                            setIsKeyEditing(true);
+                                            requestAnimationFrame(() => e.currentTarget.select());
+                                        }}
+                                        onBlur={() => setIsKeyEditing(false)}
                                         placeholder="sk-..."
                                         autoComplete="off"
                                     />

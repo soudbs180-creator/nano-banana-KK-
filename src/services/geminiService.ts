@@ -71,7 +71,10 @@ function mapToApiModelId(internalId: string, isProxyApi: boolean = false): strin
     'imagen-4.0-fast-generate-001': 'imagen-4.0-fast-generate-001',
   };
 
-  return modelMap[internalId] || internalId; // 未匹配的直接透传
+  // Defensive: Strip '-4k' suffix if present (case insensitive)
+  const normalizedId = internalId.replace(/-4k$/i, '');
+
+  return modelMap[normalizedId] || normalizedId; // 未匹配的直接透传
 }
 
 /**
@@ -284,6 +287,26 @@ async function generateImageViaProxy(
   const MAX_ATTEMPTS = 3;
   let lastError: any = null;
   let currentKeyData = keyData;
+
+  // Defensive: Strip '-4k' suffix if present in model ID (case insensitive)
+  // This prevents issues where '4K' size selection might have inadvertently leaked into the model ID
+  if (apiUrl.includes(model)) {
+    const cleanModel = model.replace(/-4k$/i, '');
+    if (cleanModel !== model) {
+      console.log(`[Proxy] Auto-corrected model ID: ${model} -> ${cleanModel}`);
+      apiUrl = apiUrl.replace(model, cleanModel);
+      // Also update body if needed
+      if (requestBody.model === model) {
+        requestBody.model = cleanModel;
+      }
+    }
+  } else if (requestBody.model) {
+    const cleanModel = requestBody.model.replace(/-4k$/i, '');
+    if (cleanModel !== requestBody.model) {
+      console.log(`[Proxy] Auto-corrected model ID body: ${requestBody.model} -> ${cleanModel}`);
+      requestBody.model = cleanModel;
+    }
+  }
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
@@ -525,7 +548,7 @@ async function generateImageDirect(
         // 参考: https://ai.google.dev/gemini-api/docs/image-generation
         generationConfig.imageConfig = {};
 
-        if (aspectRatio && aspectRatio !== AspectRatio.SQUARE) {
+        if (aspectRatio) {
           generationConfig.imageConfig.aspectRatio = aspectRatio;
         }
 
@@ -727,6 +750,13 @@ export const generateImage = async (
   enableGrounding: boolean = false,
   lineMode: ApiLineMode = 'google_direct'
 ): Promise<string> => {
+  // Defensive: Strip '-4k' suffix globally if present
+  // This ensures checking for '4K' size doesn't leak into model ID
+  if (model.toLowerCase().endsWith('-4k')) {
+    console.warn(`[GeminiService] Detected invalid suffix in model ID '${model}', stripping it.`);
+    model = model.replace(/-4k$/i, '');
+  }
+
   // Create AbortController if requestId provided
   if (requestId) {
     if (!abortControllers.has(requestId)) {
