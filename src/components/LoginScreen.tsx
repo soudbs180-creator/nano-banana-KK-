@@ -79,7 +79,7 @@ const LoginScreen: React.FC = () => {
 
             {/* Version Badge - Bottom Right */}
             <div className="absolute bottom-6 right-8 text-[10px] text-zinc-600 font-mono tracking-widest z-50 select-none opacity-50 hover:opacity-100 transition-opacity">
-                KK STUDIO v1.1.9 BUILD 2026.01
+                KK STUDIO v1.2.0 BUILD 2026.01
             </div>
 
             {/* Main Card */}

@@ -358,7 +358,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">版本</div>
-                        <div className="text-sm font-medium text-zinc-300">v1.1.9</div>
+                        <div className="text-sm font-medium text-zinc-300">v1.2.0</div>
                     </div>
                 </div>
             </div>

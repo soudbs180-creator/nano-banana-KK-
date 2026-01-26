@@ -1234,84 +1234,84 @@ const AppContent: React.FC = () => {
         () => 0,
         (_rowIndex, previousRow) => previousRow ? previousRow.startY + previousRow.height + ROW_GAP : startY,
         (thread: { nodes: PromptNode[] }, x, y) => {
-        // Render Thread
-        const PROMPT_WIDTH = 380;
-        const nodeGap = 20;
-        const colGap = 12;
-        const rowGap = 12;
+          // Render Thread
+          const PROMPT_WIDTH = 380;
+          const nodeGap = 20;
+          const colGap = 12;
+          const rowGap = 12;
 
-        const nodeLayouts = thread.nodes.map((pn: PromptNode) => {
-          const childImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === pn.id);
-          const rows: Array<{
-            images: typeof childImages;
-            dims: ReturnType<typeof getCardDimensions>[];
-            rowWidth: number;
-            rowHeight: number;
-          }> = [];
-          let maxRowWidth = 0;
-          let imgBlockH = 0;
+          const nodeLayouts = thread.nodes.map((pn: PromptNode) => {
+            const childImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === pn.id);
+            const rows: Array<{
+              images: typeof childImages;
+              dims: ReturnType<typeof getCardDimensions>[];
+              rowWidth: number;
+              rowHeight: number;
+            }> = [];
+            let maxRowWidth = 0;
+            let imgBlockH = 0;
 
-          if (childImages.length > 0) {
-            const rowImages = childImages;
-            const rowDims = rowImages.map((img) => getCardDimensions(img.aspectRatio, true));
-            const rowWidths = rowDims.map(dim => dim.width);
-            const rowHeights = rowDims.map(dim => dim.totalHeight);
-            const rowHeight = Math.max(...rowHeights);
-            const rowWidth = rowWidths.reduce((sum, w) => sum + w, 0) + colGap * (rowWidths.length - 1);
-            maxRowWidth = rowWidth;
-            imgBlockH = rowHeight;
-            rows.push({ images: rowImages, dims: rowDims, rowWidth, rowHeight });
-          }
+            if (childImages.length > 0) {
+              const rowImages = childImages;
+              const rowDims = rowImages.map((img) => getCardDimensions(img.aspectRatio, true));
+              const rowWidths = rowDims.map(dim => dim.width);
+              const rowHeights = rowDims.map(dim => dim.totalHeight);
+              const rowHeight = Math.max(...rowHeights);
+              const rowWidth = rowWidths.reduce((sum, w) => sum + w, 0) + colGap * (rowWidths.length - 1);
+              maxRowWidth = rowWidth;
+              imgBlockH = rowHeight;
+              rows.push({ images: rowImages, dims: rowDims, rowWidth, rowHeight });
+            }
 
-          return {
-            pn,
-            rows,
-            maxRowWidth,
-            imgBlockH,
-            promptHeight: getPromptHeight(pn.prompt)
-          };
-        });
+            return {
+              pn,
+              rows,
+              maxRowWidth,
+              imgBlockH,
+              promptHeight: getPromptHeight(pn.prompt)
+            };
+          });
 
-        const threadW = Math.max(
-          PROMPT_WIDTH,
-          ...nodeLayouts.map(layout => layout.maxRowWidth)
-        );
+          const threadW = Math.max(
+            PROMPT_WIDTH,
+            ...nodeLayouts.map(layout => layout.maxRowWidth)
+          );
 
-        let blockTop = y;
-        nodeLayouts.forEach((layout) => {
-          const centerX = x + threadW / 2;
-          const promptToImageGap = layout.rows.length > 0
-            ? Math.max(16, Math.min(36, Math.round(layout.promptHeight * 0.12)))
-            : 0;
-          const promptBottom = blockTop + layout.promptHeight;
+          let blockTop = y;
+          nodeLayouts.forEach((layout) => {
+            const centerX = x + threadW / 2;
+            const promptToImageGap = layout.rows.length > 0
+              ? Math.max(16, Math.min(36, Math.round(layout.promptHeight * 0.12)))
+              : 0;
+            const promptBottom = blockTop + layout.promptHeight;
 
-          updatePromptNodePosition(layout.pn.id, { x: centerX, y: promptBottom });
+            updatePromptNodePosition(layout.pn.id, { x: centerX, y: promptBottom });
 
-          if (layout.rows.length > 0) {
-            let rowTop = promptBottom + promptToImageGap;
-            layout.rows.forEach((row) => {
-              let cursorX = centerX - row.rowWidth / 2;
-              row.images.forEach((img, idx) => {
-                const dim = row.dims[idx];
-                updateImageNodePosition(img.id, {
-                  x: cursorX + dim.width / 2,
-                  y: rowTop + dim.totalHeight
+            if (layout.rows.length > 0) {
+              let rowTop = promptBottom + promptToImageGap;
+              layout.rows.forEach((row) => {
+                let cursorX = centerX - row.rowWidth / 2;
+                row.images.forEach((img, idx) => {
+                  const dim = row.dims[idx];
+                  updateImageNodePosition(img.id, {
+                    x: cursorX + dim.width / 2,
+                    y: rowTop + dim.totalHeight
+                  });
+                  cursorX += dim.width + colGap;
                 });
-                cursorX += dim.width + colGap;
+                rowTop += row.rowHeight + rowGap;
               });
-              rowTop += row.rowHeight + rowGap;
-            });
-          }
+            }
 
-          const blockHeight = layout.promptHeight
-            + (layout.rows.length > 0 ? promptToImageGap + layout.imgBlockH : 0)
-            + nodeGap;
-          blockTop += blockHeight;
-        });
+            const blockHeight = layout.promptHeight
+              + (layout.rows.length > 0 ? promptToImageGap + layout.imgBlockH : 0)
+              + nodeGap;
+            blockTop += blockHeight;
+          });
 
-        maxNormalRight = Math.max(maxNormalRight, x + threadW);
+          maxNormalRight = Math.max(maxNormalRight, x + threadW);
 
-        return { width: threadW, height: blockTop - y };
+          return { width: threadW, height: blockTop - y };
         }
       );
 
@@ -2235,7 +2235,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.1.9
+        v1.2.0
       </div>
 
       {/* Project Manager (Replaces Canvas Manager) */}
