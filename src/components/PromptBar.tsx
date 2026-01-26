@@ -281,7 +281,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 border: '1px solid rgba(255, 255, 255, 0.15)',
                 boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
                 borderRadius: '24px',
-                bottom: isMobile ? '84px' : '32px'
+                bottom: isMobile ? 'calc(96px + env(safe-area-inset-bottom))' : '32px'
             }}
         >
             {/* Drag Overlay */}
@@ -375,14 +375,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 />
 
                 {/* Footer */}
-                <div className="input-bar-footer flex items-center justify-between pt-3 mt-1" style={{ borderTop: '1px solid var(--border-light)' }}>
+                <div className="input-bar-footer flex items-center justify-start sm:justify-between pt-3 mt-1" style={{ borderTop: '1px solid var(--border-light)' }}>
                     {/* Left: Model & Settings - Coalescing Animation */}
-                    <div className="flex items-center gap-2 min-w-[236px]">
+                    <div className="flex items-center gap-2 min-w-0 sm:min-w-[236px] w-full sm:w-auto flex-wrap sm:flex-nowrap">
                         {/* Model Button */}
                         <div className="relative">
                             <button
-                                className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${isProxyEmpty
-                                    ? 'bg-purple-500/10 border-purple-500/30 text-purple-300 hover:bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.15)] min-w-[220px]'
+                                className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] max-w-[70vw] sm:max-w-none ${isProxyEmpty
+                                    ? 'bg-purple-500/10 border-purple-500/30 text-purple-300 hover:bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.15)] min-w-0 sm:min-w-[220px]'
                                     : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50 min-w-0 w-auto'
                                     }`}
                                 onClick={() => {
@@ -405,7 +405,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             {/* Dropdown Menu */}
                             {!isProxyEmpty && activeMenu === 'model' && (
                                 <div className="absolute bottom-full mb-2 z-20" style={{ left: '0' }}>
-                                    <div className="dropdown static w-64 animate-scaleIn origin-bottom p-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
+                                    <div className="dropdown static w-[min(16rem,90vw)] max-w-[90vw] animate-scaleIn origin-bottom p-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
                                         {availableModels.map(model => (
                                             <button
                                                 key={model.id}

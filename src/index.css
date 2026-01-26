@@ -165,6 +165,11 @@ input[type=number] {
   display: none;
 }
 
+/* Safe area helpers (mobile) */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* ============================================
    Glass Effect & Toolbar Styles
    ============================================ */
@@ -671,6 +676,8 @@ input[type=number] {
   .input-bar-footer {
     flex-wrap: wrap;
     gap: 8px;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .input-bar-model {
@@ -681,6 +688,13 @@ input[type=number] {
   .input-bar-send {
     width: 36px;
     height: 36px;
+  }
+
+  .input-bar-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 8px;
   }
 }
 
