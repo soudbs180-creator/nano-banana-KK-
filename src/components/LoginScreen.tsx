@@ -94,7 +94,16 @@ const LoginScreen: React.FC = () => {
             } else if (err.message?.includes('Email not confirmed')) {
                 setError('请先前往邮箱激活您的账号');
             } else if (err.message?.includes('Failed to fetch')) {
-                setError('网络连接失败，请检查您的网络设置或是否开启了代理 (VPN)');
+                // Auto Fallback to Offline Mode
+                console.log('Network failed, switching to Offline Mode');
+                // notify.info('无法连接服务器', '已为您自动切换至离线模式'); // If notify service is available here, otherwise use setError
+
+                // We use a temporary workaround to wait 1s then bypass
+                setError('网络连接超时，正在切换至离线模式...');
+                setTimeout(async () => {
+                    await bypassAuth();
+                }, 1000);
+
             } else {
                 setError(err.message || '操作失败，请重试');
             }
