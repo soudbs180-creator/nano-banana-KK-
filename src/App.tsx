@@ -120,10 +120,17 @@ const AppContent: React.FC = () => {
     if (isStorageChecked && !showStorageModal) {
       const seen = localStorage.getItem('kk_tutorial_seen');
       if (!seen) {
-        setTimeout(() => setShowTutorial(true), 1500);
+        // Wait for potential redirect/settings panel to close or settle
+        const timer = setTimeout(() => {
+          // If we are in API management, don't show tutorial yet
+          if (!showSettingsPanel) {
+            setShowTutorial(true);
+          }
+        }, 2000);
+        return () => clearTimeout(timer);
       }
     }
-  }, [isStorageChecked, showStorageModal]);
+  }, [isStorageChecked, showStorageModal, showSettingsPanel]);
 
   const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs'>('dashboard');
   const [showGrid, setShowGrid] = useState(true);
@@ -2016,7 +2023,7 @@ const AppContent: React.FC = () => {
       {/* Mobile Top Right Avatar - Removed by user request */}
 
       {/* Prompt Bar */}
-      <div className="contents">
+      <div id="prompt-bar-container" className="contents">
         <PromptBar
           config={config}
           setConfig={setConfig}
@@ -2043,6 +2050,7 @@ const AppContent: React.FC = () => {
       {/* Liquid Glass SVG Filter Definition */}
       {/* Liquid Glass SVG Filter Removed (User Request) */}
       {/* Chat Sidebar (Left) */}
+      <div id="sidebar-container">
       <ChatSidebar
         isOpen={isChatOpen}
         onToggle={() => setIsChatOpen(prev => !prev)}
@@ -2053,6 +2061,7 @@ const AppContent: React.FC = () => {
           setShowSettingsPanel(true);
         }}
       />
+      </div>
 
       {/* Legacy KeyManagerModal removed - integrated into UserProfileModal */}
 

@@ -314,6 +314,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 {/* 2. Project Selector */}
                 <div className="relative">
                     <button
+                        id="project-manager-trigger"
                         onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown); }}
                         className="p-2 rounded-lg transition-all group relative flex items-center justify-center outline-none focus:outline-none"
                         style={{ color: 'var(--text-secondary)' }}
