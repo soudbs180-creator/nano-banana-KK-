@@ -89,26 +89,24 @@ const LoginScreen: React.FC = () => {
     };
 
     return (
-        <div className="fixed inset-0 bg-[#03050b] flex overflow-hidden text-white font-sans">
+        <div className="fixed inset-0 bg-[#000000] flex overflow-hidden text-white font-sans">
             {/* LEFT SIDE: Visual / Artistic (Desktop Only) */}
             <div className="hidden lg:flex w-1/2 relative overflow-hidden items-center justify-center bg-[#05081a]">
                 {/* Dynamic Background */}
                 <div className="absolute inset-0">
-                    <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-indigo-600/20 rounded-full blur-[120px] mix-blend-screen animate-blob" />
-                    <div className="absolute bottom-[-10%] right-[-10%] w-[80%] h-[80%] bg-purple-600/20 rounded-full blur-[120px] mix-blend-screen animate-blob animation-delay-2000" />
-                    <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-20 bg-[size:50px_50px]" />
+                    <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-indigo-600/15 rounded-full blur-[120px] mix-blend-screen animate-blob" />
+                    <div className="absolute bottom-[-10%] right-[-10%] w-[80%] h-[80%] bg-purple-600/15 rounded-full blur-[120px] mix-blend-screen animate-blob animation-delay-2000" />
                 </div>
 
                 {/* Content */}
                 <div className="relative z-10 p-12 max-w-lg text-center">
-                    <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-indigo-500 to-purple-500 mx-auto mb-8 shadow-2xl shadow-indigo-500/30 flex items-center justify-center">
-                        {/* Placeholder Logo Icon */}
-                        <Sparkles size={48} className="text-white" />
+                    <div className="w-24 h-24 rounded-[32px] bg-gradient-to-tr from-indigo-500 to-purple-500 mx-auto mb-8 shadow-2xl shadow-indigo-500/30 flex items-center justify-center ring-1 ring-white/20 animate-float-breathe">
+                        <Sparkles size={48} className="text-white" strokeWidth={2.5} />
                     </div>
-                    <h1 className="text-4xl font-bold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-400">
+                    <h1 className="text-5xl font-black tracking-tighter mb-4 text-white">
                         KK Studio
                     </h1>
-                    <p className="text-lg text-zinc-400 leading-relaxed">
+                    <p className="text-lg text-zinc-400 font-medium leading-relaxed">
                         新一代 AI 内容创作工作站。<br />
                         无限画布，无限创意。
                     </p>
@@ -120,19 +118,20 @@ const LoginScreen: React.FC = () => {
             </div>
 
             {/* RIGHT SIDE: Form */}
-            <div className="w-full lg:w-1/2 relative flex items-center justify-center p-6 sm:p-12 bg-[#03050b]">
+            <div className="w-full lg:w-1/2 relative flex items-center justify-center p-6 sm:p-12 bg-[#000000]">
                 {/* iOS-like subtle background for mobile */}
                 <div className="lg:hidden absolute inset-0 overflow-hidden z-0">
-                    <div className="absolute top-[-10%] right-[-10%] w-[300px] h-[300px] bg-purple-500/20 rounded-full blur-[80px]" />
+                    <div className="absolute top-[-10%] right-[-10%] w-[300px] h-[300px] bg-purple-500/10 rounded-full blur-[80px]" />
+                    <div className="absolute bottom-[-10%] left-[-10%] w-[300px] h-[300px] bg-indigo-500/10 rounded-full blur-[80px]" />
                 </div>
 
                 <div className="w-full max-w-md relative z-10">
                     {/* Mobile Logo Header */}
-                    <div className="lg:hidden text-center mb-10">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-500 mx-auto mb-4 flex items-center justify-center shadow-lg">
-                            <Sparkles size={32} className="text-white" />
+                    <div className="lg:hidden text-center mb-12">
+                        <div className="w-20 h-20 rounded-[24px] bg-gradient-to-tr from-indigo-500 to-purple-500 mx-auto mb-6 flex items-center justify-center shadow-2xl ring-1 ring-white/20 animate-float-breathe">
+                            <Sparkles size={40} className="text-white" strokeWidth={2.5} />
                         </div>
-                        <h1 className="text-2xl font-bold">KK Studio</h1>
+                        <h1 className="text-3xl font-black tracking-tighter">KK Studio</h1>
                     </div>
 
                     {/* Back Button */}
@@ -186,7 +185,7 @@ const LoginScreen: React.FC = () => {
                                         type="email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        className="w-full h-11 bg-zinc-900/50 border border-white/10 rounded-lg pl-10 pr-4 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-zinc-600"
+                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all placeholder:text-zinc-600 text-base"
                                         placeholder="name@example.com"
                                         required
                                     />
@@ -216,7 +215,7 @@ const LoginScreen: React.FC = () => {
                                             type={showPassword ? "text" : "password"}
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
-                                            className="w-full h-11 bg-zinc-900/50 border border-white/10 rounded-lg pl-10 pr-10 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-zinc-600"
+                                            className="w-full h-12 bg-white/5 border border-white/10 rounded-2xl pl-11 pr-10 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all placeholder:text-zinc-600 text-base"
                                             placeholder="••••••••"
                                             required
                                             minLength={6}
@@ -256,7 +255,7 @@ const LoginScreen: React.FC = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full h-11 mt-6 bg-white text-black font-semibold rounded-lg hover:bg-zinc-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full h-14 mt-8 bg-white text-black font-black text-lg rounded-[20px] hover:bg-zinc-200 active-scale transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl"
                         >
                             {loading ? (
                                 <Loader2 size={18} className="animate-spin" />

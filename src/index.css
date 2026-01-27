@@ -235,6 +235,81 @@ input[type=number] {
 }
 
 /* ============================================
+   iOS Style Animations & Interactions
+   ============================================ */
+
+.active-scale {
+  @apply transition-transform duration-150 active:scale-95;
+}
+
+.ios-transition {
+  @apply transition-all duration-500 cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.touch-target {
+  @apply min-h-[44px] min-w-[44px] flex items-center justify-center;
+}
+
+.haptic-press {
+  @apply active:scale-95 active:opacity-80 transition-all duration-75;
+}
+
+.smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.safe-area-top {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+.safe-area-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.fab {
+  @apply w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 active:scale-90;
+}
+
+.bottom-sheet {
+  @apply fixed bottom-0 left-0 right-0 bg-[#1c1c1e]/95 backdrop-blur-3xl rounded-t-[32px] border-t border-white/10 animate-in slide-in-from-bottom duration-300;
+}
+
+.blur-transition {
+  @apply transition-all duration-500;
+}
+
+.ios-list-item {
+  @apply flex items-center justify-between px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors active:bg-white/10;
+}
+
+.gpu-accelerated {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+@media (max-width: 768px) {
+  button, a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  input, textarea, select {
+    font-size: 16px;
+  }
+  .smooth-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+  button {
+    touch-action: manipulation;
+  }
+  .mobile-optimized {
+    @apply px-4 py-3;
+  }
+}
+
+/* ============================================
    Glass Effect & Toolbar Styles
    ============================================ */
 .glass {
