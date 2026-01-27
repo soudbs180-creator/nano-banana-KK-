@@ -274,8 +274,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </button>
                     </div>
                 </div>
-            </div >
-        </aside >
+            </aside>
         </>
     );
 };

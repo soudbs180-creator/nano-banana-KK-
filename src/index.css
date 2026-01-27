@@ -1475,9 +1475,7 @@ body:not(.dark-mode) .settings-panel .text-zinc-500 {
 }
 
 body:not(.dark-mode) .settings-panel .bg-zinc-900,
-body:not(.dark-mode) .settings-panel .bg-zinc-800,
-body:not(.dark-mode) .settings-panel .bg-[#121214],
-body:not(.dark-mode) .settings-panel .bg-[#0F0F10] {
+body:not(.dark-mode) .settings-panel .bg-zinc-800 {
   background-color: var(--bg-tertiary) !important;
 }
 

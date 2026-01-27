@@ -97,7 +97,7 @@ class ChatService {
         this.saveSessions();
 
         // Get API key from keyManager (includes proxy config)
-        const keyData = keyManager.getNextKey();
+        const keyData = keyManager.getNextKey(model);
         if (!keyData) {
             throw new Error('请先配置 API Key');
         }

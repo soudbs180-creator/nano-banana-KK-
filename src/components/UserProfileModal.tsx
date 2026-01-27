@@ -56,7 +56,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
     useEffect(() => {
         if (isOpen) {
             // Map legacy views to main if they don't exist anymore
-            if (initialView === 'api-settings' || initialView === ('storage-settings' as any)) {
+            if ((initialView as string) === 'api-settings' || (initialView as string) === 'storage-settings') {
                 setView('main');
             } else {
                 setView(initialView);
@@ -110,22 +110,22 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
 
     return (
         <ProfileErrorBoundary onClose={onClose}>
-                <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200" onClick={handleClose}>
-                    <div
-                        className="w-full max-w-sm rounded-2xl shadow-2xl border animate-in zoom-in-95 duration-200 overflow-hidden"
-                        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="w-full p-5">
-                            <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center gap-2">
-                                    {view !== 'main' && <button onClick={() => setView('main')}><ChevronLeft size={20} className="text-blue-500" /></button>}
-                                    <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                                        {view === 'main' ? '个人中心' : view === 'edit-profile' ? '编辑资料' : '修改密码'}
-                                    </h2>
-                                </div>
-                                <button onClick={handleClose} className="p-1.5 rounded-full" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}><X size={16} /></button>
+            <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200" onClick={handleClose}>
+                <div
+                    className="w-full max-w-sm rounded-2xl shadow-2xl border animate-in zoom-in-95 duration-200 overflow-hidden"
+                    style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="w-full p-5">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-2">
+                                {view !== 'main' && <button onClick={() => setView('main')}><ChevronLeft size={20} className="text-blue-500" /></button>}
+                                <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                                    {view === 'main' ? '个人中心' : view === 'edit-profile' ? '编辑资料' : '修改密码'}
+                                </h2>
                             </div>
+                            <button onClick={handleClose} className="p-1.5 rounded-full" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}><X size={16} /></button>
+                        </div>
 
                         {message && (
                             <div className={`mb-4 p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
