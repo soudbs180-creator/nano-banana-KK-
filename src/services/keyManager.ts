@@ -19,7 +19,10 @@ import { MODEL_PRESETS, CHAT_MODEL_PRESETS } from './modelPresets';
  * Helper: Parse "id(name, description)" format
  */
 export function parseModelString(input: string): { id: string; name?: string; description?: string } {
-    const match = input.match(/^([^()]+)(?:\(([^/]+)(?:\/\s*(.+))?\))?$/);
+    // Normalize full-width parentheses to standard ones
+    const normalized = input.replace(/（/g, '(').replace(/）/g, ')');
+    const match = normalized.match(/^([^()]+)(?:\(([^/]+)(?:\/\s*(.+))?\))?$/);
+
     if (!match) return { id: input.trim() };
 
     return {
@@ -656,6 +659,7 @@ export class KeyManager {
         authMethod: AuthMethod;
         headerName: string;
         group?: string;
+        provider: string;
     } | null {
         // 1. Filter by Model Support
         const candidates = this.state.slots.filter(s =>
@@ -749,7 +753,8 @@ export class KeyManager {
             baseUrl: slot.baseUrl || GOOGLE_API_BASE,
             authMethod: slot.authMethod || 'query',
             headerName: slot.headerName || 'x-goog-api-key',
-            group: slot.group
+            group: slot.group,
+            provider: slot.provider || 'Google'
         };
     }
 

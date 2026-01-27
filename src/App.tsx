@@ -81,7 +81,8 @@ const AppContent: React.FC = () => {
     removeGroup,
     updateGroup,
     setNodeTags,
-    arrangeAllNodes
+    arrangeAllNodes,
+    moveSelectedNodes
   } = useCanvas();
 
   // Canvas Ref for Zoom/Pan Controls
@@ -1462,6 +1463,54 @@ const AppContent: React.FC = () => {
     setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
   }, [selectNodes, setConfig]);
 
+  // Dynamic Group Bounds Calculation
+  const getComputedGroupBounds = useCallback((group: CanvasGroup) => {
+    if (!activeCanvas) return undefined;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let hasNodes = false;
+    const PADDING = 20;
+
+    // Helper to merge rect into bounds
+    const addRect = (x: number, y: number, w: number, h: number) => {
+      // Anchored at Bottom Center (x, y)
+      const left = x - w / 2;
+      const right = x + w / 2;
+      const top = y - h;
+      const bottom = y;
+
+      minX = Math.min(minX, left);
+      maxX = Math.max(maxX, right);
+      minY = Math.min(minY, top);
+      maxY = Math.max(maxY, bottom);
+      hasNodes = true;
+    };
+
+    group.nodeIds.forEach(id => {
+      // 1. Check Prompts
+      const prompt = activeCanvas.promptNodes.find(p => p.id === id);
+      if (prompt) {
+        addRect(prompt.position.x, prompt.position.y, 380, prompt.height || 200);
+        return;
+      }
+      // 2. Check Images
+      const img = activeCanvas.imageNodes.find(n => n.id === id);
+      if (img) {
+        const { width, totalHeight } = getCardDimensions(img.aspectRatio, true);
+        addRect(img.position.x, img.position.y, width, totalHeight);
+      }
+    });
+
+    if (!hasNodes) return undefined;
+
+    return {
+      x: minX - PADDING,
+      y: minY - PADDING,
+      width: (maxX - minX) + PADDING * 2,
+      height: (maxY - minY) + PADDING * 2
+    };
+  }, [activeCanvas]);
+
   return (
     <div id="canvas-container" className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
       onMouseDown={handleMouseDown}
@@ -1942,21 +1991,28 @@ const AppContent: React.FC = () => {
             highlighted={highlightedId === group.id}
             onUngroup={removeGroup}
             onDragStart={(id, e) => {
-              // Logic to handle group dragging could be added here
-              // For now, we might just rely on selection moving? 
-              // Or implement specific group drag. 
-              // Usually dragging the group background should move all items.
-              // Let's defer complex group dragging for now or check if handled.
-              // Actually, let's just enable selecting the group to move it?
-              // CanvasGroupComponent calls onDragStart prop.
-              // We can implement a simple handler or reuse a placeholder.
-              // For now, let's just update selection to include all group nodes?
-              // Better: implement a simple handleGroupDragStart if needed, 
-              // but for visual box, just rendering is step 1.
-              // Let's pass a handler that selects all nodes in the group.
               const nodeIds = group.nodeIds;
-              selectNodes(nodeIds);
+              const isMultiSelect = e.shiftKey || e.ctrlKey || e.metaKey;
+              const alreadySelected = selectedNodeIds || [];
+
+              // If dragging an already selected group (part of a multi-selection), ensure we don't wipe selection
+              // Unless we are holding shift (toggling)
+              const allNodesSelected = nodeIds.every(nid => alreadySelected.includes(nid));
+
+              if (isMultiSelect) {
+                selectNodes(nodeIds, true);
+                return;
+              }
+
+              if (alreadySelected.length > 0 && allNodesSelected) {
+                return;
+              }
+
+              selectNodes(nodeIds, false);
             }}
+            onGroupDrag={(delta) => moveSelectedNodes(delta)}
+            onUpdateGroup={updateGroup}
+            computedBounds={getComputedGroupBounds(group)}
           />
         ))}
 

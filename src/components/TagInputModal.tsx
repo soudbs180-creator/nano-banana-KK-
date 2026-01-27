@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Tag, X, Plus } from 'lucide-react';
+import { generateTagColor } from '../utils/colorUtils';
 
 interface TagInputModalProps {
     isOpen: boolean;
@@ -61,14 +62,19 @@ const TagInputModal: React.FC<TagInputModalProps> = ({ isOpen, onClose, initialT
                 <div className="p-4 space-y-4">
                     {/* Tag List */}
                     <div className="flex flex-wrap gap-2 min-h-[40px]">
-                        {tags.map(tag => (
-                            <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs border border-emerald-500/20">
-                                {tag}
-                                <button onClick={() => removeTag(tag)} className="hover:text-emerald-300">
-                                    <X size={12} />
-                                </button>
-                            </span>
-                        ))}
+
+
+                        {tags.map(tag => {
+                            const colors = generateTagColor(tag);
+                            return (
+                                <span key={tag} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${colors.bg} ${colors.border} ${colors.text}`}>
+                                    #{tag}
+                                    <button onClick={() => removeTag(tag)} className={`hover:opacity-75 transition-opacity`}>
+                                        <X size={12} />
+                                    </button>
+                                </span>
+                            );
+                        })}
                         {tags.length === 0 && (
                             <span className="text-zinc-500 text-sm italic">暂无标签 (No tags)</span>
                         )}

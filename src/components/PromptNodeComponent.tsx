@@ -47,14 +47,18 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
     const hasMoved = useRef(false);
 
+    const containerRef = useRef<HTMLDivElement>(null);
     const cardRef = useRef<HTMLDivElement>(null);
+    const localPosRef = useRef(node.position);
 
-    const [localPos, setLocalPos] = useState(node.position);
-
-    // Sync local position when global position changes (and not dragging)
+    // Sync ref when node.position updates externally (and not dragging)
     useEffect(() => {
         if (!isDragging) {
-            setLocalPos(node.position);
+            localPosRef.current = node.position;
+            // Force update DOM to match new prop position if needed
+            if (containerRef.current) {
+                containerRef.current.style.transform = `translate3d(${node.position.x}px, ${node.position.y}px, 0) translate(-50%, -100%)`;
+            }
         }
     }, [node.position.x, node.position.y, isDragging]);
 
@@ -102,7 +106,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
         // Store initial positions
         dragStartPos.current = { x: clientX, y: clientY };
-        dragStartCanvasPos.current = { x: localPos.x, y: localPos.y };
+        dragStartCanvasPos.current = { x: localPosRef.current.x, y: localPosRef.current.y };
     };
 
     const requestRef = useRef<number | null>(null);
@@ -140,8 +144,11 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 y: dragStartCanvasPos.current.y + deltaY
             };
 
-            // 1. Local Update (Fast)
-            setLocalPos(newPos);
+            // 1. Direct DOM Update (Zero React Overhead for 120fps smooth drag)
+            if (containerRef.current) {
+                containerRef.current.style.transform = `translate3d(${newPos.x}px, ${newPos.y}px, 0) translate(-50%, -100%)`;
+            }
+            localPosRef.current = newPos;
 
             // 2. Global Update (Throttled)
             const now = Date.now();
@@ -158,8 +165,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         if (isDragging) {
             setIsDragging(false);
             // Commit final position
-            // We rely on the throttled update having been reasonably close, 
-            // or effectively "snapping" to the last throttled position.
+            onPositionChange(node.id, localPosRef.current);
         }
         if (requestRef.current) {
             cancelAnimationFrame(requestRef.current);
@@ -185,13 +191,18 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
     return (
         <div
+            ref={containerRef}
             className={`absolute z-20 flex flex-col items-center group animate-cardPopIn ${isSelected ? 'z-30' : ''}`}
             style={{
-                left: localPos.x,
-                top: localPos.y,
-                transform: 'translate(-50%, -100%)',
+                left: 0,
+                top: 0,
+                // Initial transform from prop (or ref)
+                transform: `translate3d(${node.position.x}px, ${node.position.y}px, 0) translate(-50%, -100%)`,
+                willChange: isDragging || isSelected ? 'transform' : 'auto', // GPU hint for drag OR selection
                 cursor: isDragging ? 'grabbing' : 'grab',
-                transition: isDragging ? 'none' : 'box-shadow 0.2s ease'
+                // Disable transition during drag to prevent fighting with JS updates
+                transition: isDragging ? 'none' : 'transform 0.1s linear, box-shadow 0.2s ease',
+                backfaceVisibility: 'hidden' // Anti-aliasing help
             }}
             onMouseDown={handleMouseDown}
             onTouchStart={handleMouseDown}

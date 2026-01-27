@@ -278,6 +278,7 @@ export const generateImage = async (
   let authMethod: AuthMethod = 'query';
   let headerName = 'x-goog-api-key';
   let provider: string = 'Google';
+  let group: string | undefined;
 
   // If no explicit API key, ask KeyManager
   if (!effectiveKey) {
@@ -288,9 +289,8 @@ export const generateImage = async (
       baseUrl = keyData.baseUrl || GOOGLE_API_BASE;
       authMethod = keyData.authMethod;
       headerName = keyData.headerName;
-      // provider is not in the minimal result, but we can infer or if we updated getNextKey to return it (recommended)
-      // For now, assume if baseUrl is default -> Google, else -> Custom/Proxy
-      provider = (baseUrl.includes('googleapis.com') || !baseUrl) ? 'Google' : 'Custom';
+      group = keyData.group;
+      provider = keyData.provider;
     } else {
       // Fallback: Check env var (only for basic local setup)
       if (import.meta.env.VITE_GEMINI_API_KEY) {
@@ -314,7 +314,12 @@ export const generateImage = async (
       if (controller?.signal.aborted) throw new Error('Generation cancelled');
 
       // Determine API Format
-      const apiFormat = detectApiFormat(baseUrl);
+      // STRICT RULE: If provider is explicitly Google, ALWAYS use gemini format
+      // This supports custom proxies like "gemini-api.cn" that don't match googleapis.com but wrap the native API
+      let apiFormat = detectApiFormat(baseUrl);
+      if (provider === 'Google') {
+        apiFormat = 'gemini';
+      }
 
       console.log(`[GenService] Attempt ${attempt + 1} | Model: ${model} | Format: ${apiFormat} | BaseURL: ${baseUrl}`);
 
@@ -475,6 +480,8 @@ export const generateImage = async (
           baseUrl = nextKey.baseUrl || GOOGLE_API_BASE;
           authMethod = nextKey.authMethod;
           headerName = nextKey.headerName;
+          provider = nextKey.provider || provider;
+          group = nextKey.group;
         } else {
           // No more keys
           break;

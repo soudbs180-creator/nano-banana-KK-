@@ -37,17 +37,13 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     onSelect,
     highlighted
 }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+
     const [isDragging, setIsDragging] = useState(false);
 
     // Local display position to avoid global re-renders during drag
-    const [localPos, setLocalPos] = useState(position);
-
-    // Sync local position with prop position when NOT dragging
-    useEffect(() => {
-        if (!isDragging) {
-            setLocalPos(position);
-        }
-    }, [position.x, position.y, isDragging]);
+    // Ref to track latest localPos without triggering effect re-runs
+    const localPosRef = useRef(position);
 
     const [showLightbox, setShowLightbox] = useState(false);
     const [lightboxZoom, setLightboxZoom] = useState(1);
@@ -191,8 +187,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     }, []);
 
     // Ref to track latest localPos without triggering effect re-runs
-    const localPosRef = useRef(localPos);
-    useEffect(() => { localPosRef.current = localPos; }, [localPos]);
+    // (localPosRef is defined at top level)
 
     const wasDraggingRef = useRef(false);
 
@@ -223,9 +218,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
         // Store initial mouse position and card position
         dragStartPos.current = { x: clientX, y: clientY };
-        dragStartCanvasPos.current = { x: localPos.x, y: localPos.y };
+        dragStartCanvasPos.current = { x: localPosRef.current.x, y: localPosRef.current.y };
 
-        console.log('[ImageCard] Drag Start', { clientX, clientY, localPos });
+        console.log('[ImageCard] Drag Start', { clientX, clientY, localPos: localPosRef.current });
     };
 
     const lastGlobalUpdateRef = useRef(0);
@@ -261,8 +256,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 y: dragStartCanvasPos.current.y + deltaY
             };
 
-            // 1. Always update Local State immediately (Visual Smoothness)
-            setLocalPos(newPos);
+            // 1. Direct DOM Update (Zero React Overhead)
+            if (containerRef.current) {
+                containerRef.current.style.transform = `translate3d(${newPos.x}px, ${newPos.y}px, 0) translate(-50%, -100%)`;
+            }
             localPosRef.current = newPos;
 
             // 2. Throttle Global Update (Connection Lines) to prevent lag
@@ -475,15 +472,18 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         // ... (Wrapper Divs) ...
         <>
             <div
+                ref={containerRef}
                 className={`absolute flex flex-col items-center group animate-cardPopIn select-none ${isActive ? 'z-15' : 'z-5'}`}
                 // ... (Style) ...
                 style={{
-                    left: localPos.x,
-                    top: localPos.y,
+                    left: 0,
+                    top: 0,
                     width: nodeWidth,
-                    transform: 'translate(-50%, -100%)', // Anchor Bottom
+                    transform: `translate3d(${position.x}px, ${position.y}px, 0) translate(-50%, -100%)`, // Anchor Bottom
                     cursor: isDragging ? 'grabbing' : 'grab',
-                    transition: isDragging ? 'none' : 'box-shadow 0.2s ease'
+                    transition: isDragging ? 'none' : 'box-shadow 0.2s ease',
+                    willChange: isDragging || isSelected ? 'transform' : 'auto',
+                    backfaceVisibility: 'hidden'
                 }}
                 onMouseDown={handleMouseDown}
                 onTouchStart={handleMouseDown}

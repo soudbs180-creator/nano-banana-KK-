@@ -48,6 +48,23 @@ const NotificationToast: React.FC = () => {
         return score(a.type) - score(b.type) || a.timestamp - b.timestamp;
     });
 
+    // Force explicit theme detection for inline styles
+    const [isDarkMode, setIsDarkMode] = useState(false);
+
+    useEffect(() => {
+        const checkTheme = () => {
+            const isDark = document.body.classList.contains('dark-mode') || document.documentElement.className.includes('dark');
+            setIsDarkMode(isDark);
+        };
+
+        checkTheme();
+        const observer = new MutationObserver(checkTheme);
+        observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+        return () => observer.disconnect();
+    }, []);
+
     return (
         <>
             {/* 统一通知消息 - 右下角弹出 (All Notifications) */}
@@ -67,6 +84,12 @@ const NotificationToast: React.FC = () => {
                         {sortedNotifications.map((notification, index) => {
                             const isTop = index === sortedNotifications.length - 1;
                             const isCollapsed = !isExpanded && !isTop;
+
+                            // Inline styles to guarantee contrast regardless of CSS conflicts
+                            const textColor = isDarkMode ? '#FFFFFF' : '#000000';
+                            const secondaryColor = isDarkMode ? '#d4d4d8' : '#3f3f46';
+                            const mutedColor = isDarkMode ? '#a1a1aa' : '#52525b';
+
                             return (
                                 <div
                                     key={notification.id}
@@ -78,40 +101,53 @@ const NotificationToast: React.FC = () => {
                                         hover:!scale-[1.02] hover:shadow-2xl brightness-100
                                         ${getStyles(notification.type)}`}
                                 >
-                                <div className="flex items-start p-4 gap-3 bg-gradient-to-b from-white/5 to-transparent">
-                                    <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-white/10 mt-0.5 shadow-inner`}>
-                                        {getIcon(notification.type)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-bold text-white text-sm leading-snug tracking-wide">{notification.title}</div>
-                                        <div className="text-zinc-300 text-xs mt-1.5 leading-relaxed break-words font-medium opacity-90">
-                                            {notification.message}
+                                    <div className="flex items-start p-4 gap-3 bg-gradient-to-b from-white/5 to-transparent">
+                                        <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-white/10 mt-0.5 shadow-inner`}>
+                                            {getIcon(notification.type)}
                                         </div>
-                                        {notification.details && (
-                                            <div className="mt-2 text-[10px] font-mono bg-black/40 rounded p-2 text-zinc-400 overflow-hidden line-clamp-3 border border-white/5">
-                                                {notification.details}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="flex flex-col gap-1 shrink-0">
-                                        <button
-                                            onClick={() => notificationService.dismiss(notification.id)}
-                                            className="p-1.5 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                        {notification.details && (
-                                            <button
-                                                onClick={() => handleCopyDetails(notification)}
-                                                className="p-1.5 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
-                                                title="复制详细信息"
+                                        <div className="flex-1 min-w-0">
+                                            <div
+                                                className="font-bold text-sm leading-snug tracking-wide"
+                                                style={{ color: textColor }}
                                             >
-                                                {copiedId === notification.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                                                {notification.title}
+                                            </div>
+                                            <div
+                                                className="text-xs mt-1.5 leading-relaxed break-words font-medium opacity-90"
+                                                style={{ color: secondaryColor }}
+                                            >
+                                                {notification.message}
+                                            </div>
+                                            {notification.details && (
+                                                <div
+                                                    className="mt-2 text-[10px] font-mono bg-black/5 dark:bg-black/40 rounded p-2 overflow-hidden line-clamp-3 border border-black/5 dark:border-white/5"
+                                                    style={{ color: mutedColor }}
+                                                >
+                                                    {notification.details}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="flex flex-col gap-1 shrink-0">
+                                            <button
+                                                onClick={() => notificationService.dismiss(notification.id)}
+                                                className="p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"
+                                                style={{ color: mutedColor }}
+                                            >
+                                                <X size={14} />
                                             </button>
-                                        )}
+                                            {notification.details && (
+                                                <button
+                                                    onClick={() => handleCopyDetails(notification)}
+                                                    className="p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"
+                                                    style={{ color: mutedColor }}
+                                                    title="复制详细信息"
+                                                >
+                                                    {copiedId === notification.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
                                 </div>
                             );
                         })}
