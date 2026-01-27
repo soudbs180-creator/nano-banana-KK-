@@ -364,7 +364,13 @@ function scheduleSync() {
 }
 
 async function syncWithCloud() {
-    if (!currentUserId || isSyncing) return;
+    // Skip sync for Dev/Offline users
+    if (!currentUserId || isSyncing || currentUserId.startsWith('dev-user-')) {
+        if (currentUserId?.startsWith('dev-user-')) {
+            console.log('[CostService] Dev user detected, skipping cloud sync.');
+        }
+        return;
+    }
     isSyncing = true;
     try {
         // 1. Fetch Cloud State

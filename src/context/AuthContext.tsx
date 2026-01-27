@@ -31,6 +31,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(session);
             setUser(session?.user ?? null);
             setLoading(false);
+        }).catch((err) => {
+            console.error('[AuthContext] Failed to get session:', err);
+            setSession(null);
+            setUser(null);
+            setLoading(false);
         });
 
         // Listen for changes

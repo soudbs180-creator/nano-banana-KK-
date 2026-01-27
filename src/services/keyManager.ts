@@ -337,6 +337,16 @@ export class KeyManager {
     private async loadFromCloud(localKeys: KeySlot[] = []) {
         if (!this.userId) return;
 
+        // Skip cloud load for Dev User
+        if (this.userId.startsWith('dev-user-')) {
+            console.log('[KeyManager] Dev user detected, skipping cloud load. Using local keys.');
+            if (localKeys.length > 0 && this.state.slots.length === 0) {
+                this.state.slots = localKeys;
+                this.saveState();
+            }
+            return;
+        }
+
         try {
             this.isSyncing = true;
             const { data, error } = await supabase
@@ -439,7 +449,7 @@ export class KeyManager {
      * Save state to Supabase
      */
     private async saveToCloud(state: KeyManagerState) {
-        if (!this.userId) return;
+        if (!this.userId || this.userId.startsWith('dev-user-')) return;
 
         try {
             // Sync full API keys to 'api_keys' column (associated with account)

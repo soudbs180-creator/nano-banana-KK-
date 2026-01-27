@@ -86,13 +86,15 @@ const LoginScreen: React.FC = () => {
                 setMessage('重置链接已发送！请检查您的邮箱。');
             }
         } catch (err: any) {
-            console.error(err);
+            console.error('Login Error:', err);
             if (view === 'register' && (err.message?.includes('User already registered') || err.status === 400)) {
                 setError('该邮箱已被注册，请直接登录');
             } else if (err.message?.includes('Invalid login credentials') || (view === 'login' && err.status === 400)) {
                 setError('邮箱或密码错误');
             } else if (err.message?.includes('Email not confirmed')) {
                 setError('请先前往邮箱激活您的账号');
+            } else if (err.message?.includes('Failed to fetch')) {
+                setError('网络连接失败，请检查您的网络设置或是否开启了代理 (VPN)');
             } else {
                 setError(err.message || '操作失败，请重试');
             }
