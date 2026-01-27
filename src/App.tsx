@@ -765,7 +765,7 @@ const AppContent: React.FC = () => {
             // Show system notification
             notify.warning('生成超时', '已超过4分钟，任务已自动停止。请检查网络后重试。');
           }
-        }, 240000); // 4 minutes
+        }, 360000); // 6 minutes
 
         try {
           let generatedBase64 = '';
@@ -1181,7 +1181,7 @@ const AppContent: React.FC = () => {
             cancelGeneration(requestId);
             updatePromptNode({ ...node, isGenerating: false, error: '生成超时' });
           }
-        }, 240000);
+        }, 360000);
 
         try {
           let b64 = '';

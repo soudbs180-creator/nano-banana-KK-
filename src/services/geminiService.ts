@@ -355,7 +355,7 @@ export const generateImage = async (
             generationConfig,
             tools
           }),
-          signal: controller?.signal || AbortSignal.timeout(180000)
+          signal: controller?.signal || AbortSignal.timeout(300000)
         });
 
         // Update Quota
@@ -417,7 +417,7 @@ export const generateImage = async (
             'x-goog-api-key': effectiveKey // Sometimes needed
           },
           body: JSON.stringify(requestBody),
-          signal: controller?.signal || AbortSignal.timeout(180000)
+          signal: controller?.signal || AbortSignal.timeout(300000)
         });
 
         if (!response.ok) {
