@@ -15,6 +15,21 @@ import { supabase } from '../lib/supabase';
 import { AuthMethod, GOOGLE_API_BASE } from './apiConfig';
 import { MODEL_PRESETS, CHAT_MODEL_PRESETS } from './modelPresets';
 
+/**
+ * Helper: Parse "id(name, description)" format
+ */
+export function parseModelString(input: string): { id: string; name?: string; description?: string } {
+    const match = input.match(/^([^()]+)(?:\(([^/]+)(?:\/\s*(.+))?\))?$/);
+    if (!match) return { id: input.trim() };
+
+    return {
+        id: match[1].trim(),
+        name: match[2]?.trim(),
+        description: match[3]?.trim()
+    };
+}
+
+
 
 export interface KeySlot {
     id: string;
@@ -577,7 +592,7 @@ export class KeyManager {
     } | null {
         // 1. Filter by Model Support
         const candidates = this.state.slots.filter(s =>
-            (s.supportedModels || []).includes(modelId)
+            (s.supportedModels || []).some(m => parseModelString(m).id === modelId)
         );
 
         if (candidates.length === 0) return null;
@@ -941,63 +956,80 @@ export class KeyManager {
     /**
      * Get validated global model list from all channels (Standard + Custom)
      */
+    /**
+     * Get validated global model list from all channels (Standard + Custom)
+     * SORTING ORDER: User Custom Models (Top) -> Standard Google Models (Bottom)
+     */
     getGlobalModelList(): { id: string; name: string; provider: string; isCustom: boolean; type: GlobalModelType; icon?: string; description?: string }[] {
         const uniqueModels = new Map<string, { id: string; name: string; provider: string; isCustom: boolean; type: GlobalModelType; icon?: string; description?: string }>();
         const chatModelIds = new Set(GOOGLE_CHAT_MODELS.map(model => model.id));
 
-        // 1. Add Standard Google Models if any Google key exists
-        const hasGoogleKey = this.state.slots.some(s => s.provider === 'Google' && !s.disabled && s.status !== 'invalid');
-        if (hasGoogleKey) {
-            GOOGLE_CHAT_MODELS.forEach(model => {
-                uniqueModels.set(model.id, {
-                    id: model.id,
-                    name: model.name,
-                    provider: 'Google',
-                    isCustom: false,
-                    type: 'chat',
-                    icon: model.icon,
-                    description: model.description
-                });
-            });
-        }
-
-        // 2. Add models from all active keys (Proxies)
+        // 1. Add models from all active keys (Proxies/Custom) - THESE GO FIRST
         this.state.slots.forEach(slot => {
             if (slot.disabled || slot.status === 'invalid') return;
             if (slot.supportedModels && slot.supportedModels.length > 0) {
-                slot.supportedModels.forEach(mid => {
-                    // Only add if not already present (Standard models take precedence for metadata)
-                    if (!uniqueModels.has(mid)) {
-                        const meta = GOOGLE_MODEL_METADATA.get(mid);
-                        const mappedType = MODEL_TYPE_MAP.get(mid);
-                        const isGoogleProvider = slot.provider === 'Google' || chatModelIds.has(mid);
-                        const inferredType = mappedType || inferModelType(mid);
+                slot.supportedModels.forEach(rawModelStr => {
+                    const { id, name, description } = parseModelString(rawModelStr);
+
+                    // Only add if not already present
+                    if (!uniqueModels.has(id)) {
+                        const meta = GOOGLE_MODEL_METADATA.get(id);
+                        const mappedType = MODEL_TYPE_MAP.get(id);
+                        const isGoogleProvider = slot.provider === 'Google' || chatModelIds.has(id);
+                        const inferredType = mappedType || inferModelType(id);
+
+                        // Use parsed name/desc if available, otherwise fallback to metadata or default
+                        const finalName = name || (meta ? meta.name : (slot.provider ? `${slot.provider} 模型` : '自定义模型'));
+                        const finalDesc = description || (meta ? meta.description : `通过 ${slot.name || slot.provider} 调用`);
+
                         if (meta) {
-                            uniqueModels.set(mid, {
-                                id: mid,
-                                name: meta.name,
+                            // If we have metadata (it's a known model), we still want to use User's Name/Desc overrides if provided
+                            // But distinct "isCustom" based on provider
+                            uniqueModels.set(id, {
+                                id: id,
+                                name: finalName,
                                 provider: slot.provider || 'Google',
                                 isCustom: !isGoogleProvider,
                                 type: inferredType,
                                 icon: meta.icon,
-                                description: meta.description
+                                description: finalDesc
                             });
                             return;
                         }
 
-                        uniqueModels.set(mid, {
-                            id: mid,
-                            name: slot.provider ? `${slot.provider} 模型` : '自定义模型',
+                        uniqueModels.set(id, {
+                            id: id,
+                            name: finalName,
                             provider: slot.name || slot.provider,
                             isCustom: true,
                             type: inferredType,
                             icon: '🔌',
-                            description: `通过 ${slot.name || slot.provider} 调用`
+                            description: finalDesc
                         });
                     }
                 });
             }
         });
+
+        // 2. Add Standard Google Models if any Google key exists - THESE GO LAST
+        // Only add if NOT already added by user custom list
+        const hasGoogleKey = this.state.slots.some(s => s.provider === 'Google' && !s.disabled && s.status !== 'invalid');
+        if (hasGoogleKey) {
+            GOOGLE_CHAT_MODELS.forEach(model => {
+                if (!uniqueModels.has(model.id)) {
+                    uniqueModels.set(model.id, {
+                        id: model.id,
+                        name: model.name,
+                        provider: 'Google',
+                        isCustom: false,
+                        type: 'chat',
+                        icon: model.icon,
+                        description: model.description
+                    });
+                }
+            });
+        }
+
 
         return Array.from(uniqueModels.values());
     }

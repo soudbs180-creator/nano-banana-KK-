@@ -5,12 +5,39 @@ import {
     DollarSign, Check, Pause, Play, RefreshCw, Server,
     Globe, Shield, Box, Key
 } from 'lucide-react';
-import { KeySlot, keyManager, DEFAULT_GOOGLE_MODELS } from '../services/keyManager';
+import { KeySlot, keyManager, DEFAULT_GOOGLE_MODELS, parseModelString } from '../services/keyManager';
 import { CHAT_MODEL_PRESETS } from '../services/modelPresets';
+
+// Helper to split model strings respecting parentheses
+const splitModelStrings = (input: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let depth = 0;
+
+    for (let i = 0; i < input.length; i++) {
+        const char = input[i];
+        if (char === '(') depth++;
+        if (char === ')') depth--;
+
+        if ((char === ',' || char === '，' || char === '\n') && depth === 0) {
+            if (current.trim()) result.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    if (current.trim()) result.push(current.trim());
+    return result;
+};
 
 export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'assets' }) => {
     const [slots, setSlots] = useState<KeySlot[]>(keyManager.getSlots());
     const [strategy, setStrategy] = useState(keyManager.getStrategy());
+
+    const clampAndFormat = (value?: number) => {
+        const v = Math.min(Math.max(value || 0, 0), 999999.999);
+        return v.toFixed(3);
+    };
     const [loading, setLoading] = useState(false);
     const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set());
     // DnD State
@@ -147,7 +174,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         if (!formKey.trim()) return;
         setLoading(true);
 
-        const modelsArray = formModels.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+        const modelsArray = splitModelStrings(formModels);
         // If no models specified, and it's Google, default to standard.
         // But logic is handled in KeyManager mostly. 
         // If user explicitly leaves it empty, KeyManager might backfill default google models 
@@ -321,12 +348,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                     </div>
 
                                     {/* Stats & Actions (Horizontal in Sequential, Bottom in Grid) */}
-                                    <div className={`
-                                        ${isSequential
-                                            ? 'flex items-center gap-6 shrink-0'
-                                            : 'mt-4 pt-4 border-t border-[var(--border-light)] flex items-center justify-between'
-                                        }
-                                    `}>
+                                    <div className={`${isSequential ? 'flex items-center gap-6 shrink-0' : 'mt-4 pt-4 border-t border-[var(--border-light)] grid grid-cols-[1fr_auto] items-center gap-3'}`}>
                                         {/* Usage Stats */}
                                         <div className="flex items-center gap-3 text-xs text-zinc-500">
                                             <div className="flex items-center gap-1" title="调用成功次数">
@@ -340,12 +362,11 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         </div>
 
                                         {/* Action Buttons */}
-                                        <div className="flex items-center gap-1">
+                                        <div className="flex items-center gap-1 justify-end">
                                             <button
                                                 onClick={(e) => handleRefresh(slot.id, e)}
                                                 disabled={refreshingIds.has(slot.id)}
-                                                className={`p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors ${refreshingIds.has(slot.id) ? 'animate-spin text-indigo-500' : ''
-                                                    }`}
+                                                className={`p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors ${refreshingIds.has(slot.id) ? 'animate-spin text-indigo-500' : ''}`}
                                                 title="验证连通性"
                                             >
                                                 <RefreshCw size={14} />
@@ -370,22 +391,14 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         </div>
                                     </div>
                                     {/* Stats */}
-                                    <div className="grid grid-cols-3 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)]">
+                                    <div className="grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)]">
                                         <div className="text-center">
-                                            <div className="text-[10px] text-zinc-500">成/败</div>
-                                            <div className="text-xs font-mono text-zinc-300">
-                                                <span className="text-emerald-400">{slot.successCount}</span>
-                                                <span className="text-zinc-600">/</span>
-                                                <span className="text-red-400">{slot.failCount}</span>
-                                            </div>
+                                            <div className="text-[10px] text-zinc-500">Tokens消耗</div>
+                                            <div className="text-xs font-mono text-emerald-300 overflow-hidden text-ellipsis whitespace-nowrap">{clampAndFormat(slot.usedTokens)}</div>
                                         </div>
                                         <div className="text-center border-l border-white/5">
-                                            <div className="text-[10px] text-zinc-500">延迟</div>
-                                            <div className="text-xs font-mono text-zinc-300">-</div>
-                                        </div>
-                                        <div className="text-center border-l border-white/5">
-                                            <div className="text-[10px] text-zinc-500">消耗</div>
-                                            <div className="text-xs font-mono text-amber-400">${(slot.totalCost || 0).toFixed(3)}</div>
+                                            <div className="text-[10px] text-zinc-500">费用消耗</div>
+                                            <div className="text-xs font-mono text-amber-400 overflow-hidden text-ellipsis whitespace-nowrap">${clampAndFormat(slot.totalCost)}</div>
                                         </div>
                                     </div>
 
@@ -545,71 +558,77 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                 <div>
                                     <label className="text-xs text-zinc-400 mb-1.5 flex justify-between items-center">
                                         <span>可用模型 ID (逗号分隔)</span>
-                                        <div className="flex gap-2 flex-wrap justify-end">
-                                            {formProvider === 'Google' ? (
-                                                <>
-                                                    <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-3-pro-preview')}>+ Gemini 3 Pro</span>
-                                                    <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-3-flash-preview')}>+ Gemini 3 Flash</span>
-                                                    <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(DEFAULT_GOOGLE_MODELS.join(', '))}>填入热门模型</span>
-                                                </>
-                                            ) : (
-                                                <div className="flex flex-wrap gap-2 justify-end max-w-[200px]">
-                                                    {CHAT_MODEL_PRESETS.slice(0, 4).map(preset => (
-                                                        <span
-                                                            key={preset.id}
-                                                            className="text-indigo-400 cursor-pointer hover:underline text-[10px]"
-                                                            onClick={() => setFormModels(prev => {
-                                                                const current = prev.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
-                                                                if (current.includes(preset.id)) return prev;
-                                                                return (prev ? prev + ', ' : '') + preset.id;
-                                                            })}
-                                                        >
-                                                            + {preset.label.split(' ')[0]}
-                                                        </span>
-                                                    ))}
-                                                    <span className="text-zinc-500 text-[10px] cursor-help" title="更多模型请手动输入或自动获取">...</span>
-                                                </div>
-                                            )}
-                                        </div>
                                     </label>
                                     <textarea
                                         className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-indigo-500/50 min-h-[100px] leading-relaxed resize-none"
-                                        placeholder="模型 ID 列表，例如: deepseek-chat, deepseek-coder..."
+                                        placeholder="模型 ID 列表，例如: gemini-pro(My Gemini/强力模型), deepseek-chat..."
                                         value={formModels}
                                         onChange={e => setFormModels(e.target.value)}
                                     />
-                                    <div className="mt-2 flex flex-wrap gap-1">
-                                        {formModels.split(/[,，\n]/).filter(Boolean).slice(0, 5).map((m, i) => (
-                                            <span key={i} className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded text-zinc-400">{m.trim()}</span>
-                                        ))}
-                                        {formModels.split(/[,，\n]/).filter(Boolean).length > 5 && <span className="text-[10px] text-zinc-600">...</span>}
-                                    </div>
-                                    {formProvider === 'Google' && (
-                                        <p className="text-[10px] text-zinc-500 mt-1">Google 通道默认已填热门模型，可按需增删。</p>
+                                </div>
+
+                                {/* Preset Tags - Moved Below Input */}
+                                <div className="mt-2 flex flex-wrap gap-2 justify-end">
+                                    {formProvider === 'Google' ? (
+                                        <>
+                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-3-pro-preview')}>+ Gemini 3 Pro</span>
+                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-3-flash-preview')}>+ Gemini 3 Flash</span>
+                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(DEFAULT_GOOGLE_MODELS.join(', '))}>填入热门模型</span>
+                                        </>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-2 justify-end max-w-full">
+                                            {CHAT_MODEL_PRESETS.slice(0, 4).map(preset => (
+                                                <span
+                                                    key={preset.id}
+                                                    className="text-indigo-400 cursor-pointer hover:underline text-[10px]"
+                                                    onClick={() => setFormModels(prev => {
+                                                        const current = splitModelStrings(prev);
+                                                        if (current.some(s => parseModelString(s).id === preset.id)) return prev;
+                                                        return (prev ? prev + ', ' : '') + preset.id;
+                                                    })}
+                                                >
+                                                    + {preset.label.split(' ')[0]}
+                                                </span>
+                                            ))}
+                                            <span className="text-zinc-500 text-[10px] cursor-help" title="更多模型请手动输入或自动获取">...</span>
+                                        </div>
                                     )}
                                 </div>
+
+                                {/* Parsed Preview Tags */}
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                    {formModels.split(/[,，\n]/).filter(Boolean).slice(0, 5).map((m, i) => (
+                                        <span key={i} className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded text-zinc-400">{m.trim()}</span>
+                                    ))}
+                                    {formModels.split(/[,，\n]/).filter(Boolean).length > 5 && <span className="text-[10px] text-zinc-600">...</span>}
+                                </div>
+                                {formProvider === 'Google' && (
+                                    <p className="text-[10px] text-zinc-500 mt-1">Google 通道默认已填热门模型，可按需增删。</p>
+                                )}
                             </div>
                         </div>
-
-                        <div className="p-5 border-t border-[var(--border-light)] flex justify-end gap-3 bg-[var(--bg-secondary)]">
-                            <button
-                                onClick={() => setIsModalOpen(false)}
-                                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={handleSubmit}
-                                disabled={loading}
-                                className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
-                            >
-                                {loading ? '处理中...' : (editingId ? '保存修改' : '添加通道')}
-                            </button>
-                        </div>
                     </div>
+
+                    <div className="p-5 border-t border-[var(--border-light)] flex justify-end gap-3 bg-[var(--bg-secondary)]">
+                        <button
+                            onClick={() => setIsModalOpen(false)}
+                            className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={loading}
+                            className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
+                        >
+                            {loading ? '处理中...' : (editingId ? '保存修改' : '添加通道')}
+                        </button>
+                    </div>
+                </div>
                 </div>,
-                document.body
-            )}
-        </div>
+        document.body
+    )
+}
+        </div >
     );
 };
