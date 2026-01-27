@@ -45,6 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Sidebar - VisionOS Floating Panel */}
             <aside
+                id="sidebar-container"
                 className={`sidebar fixed z-50 transition-all duration-300 md:translate-x-0 hidden md:flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
                 style={{
                     top: '16px',
@@ -180,6 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             <button
                                 onClick={(e) => { e.currentTarget.blur(); onOpenSettings(); }}
                                 tabIndex={-1}
+                                id="settings-button"
                                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all hover:brightness-110 active:scale-95 outline-none focus:outline-none"
                                 style={{
                                     backgroundColor: hasApiKey ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',

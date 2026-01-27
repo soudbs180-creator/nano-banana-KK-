@@ -39,8 +39,25 @@ import SearchPalette from './components/SearchPalette';
 import { Search } from 'lucide-react'; // Import Search icon
 import MobileTabBar from './components/MobileTabBar';
 import TagInputModal from './components/TagInputModal';
+import TutorialOverlay from './components/TutorialOverlay';
 
 const AppContent: React.FC = () => {
+  const {
+    user,
+    loading: authLoading,
+    signOut
+  } = useAuth();
+
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  useEffect(() => {
+    const seen = localStorage.getItem('kk_tutorial_seen');
+    if (!seen) {
+      // Small delay to ensure UI is ready
+      setTimeout(() => setShowTutorial(true), 1500);
+    }
+  }, []);
+
   const {
     activeCanvas,
     addPromptNode,
@@ -75,7 +92,7 @@ const AppContent: React.FC = () => {
 
   const handleToggleGrid = () => setShowGrid(prev => !prev);
 
-  const { user, signOut } = useAuth();
+
 
   // Ref to access fresh state in async functions (fixing Stale Closure issue)
   const activeCanvasRef = useRef(activeCanvas);
@@ -1411,7 +1428,7 @@ const AppContent: React.FC = () => {
   }, [selectNodes, setConfig]);
 
   return (
-    <div className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
+    <div id="canvas-container" className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
       onMouseMove={(e) => {
@@ -1941,27 +1958,29 @@ const AppContent: React.FC = () => {
       {/* Mobile Top Right Avatar - Removed by user request */}
 
       {/* Prompt Bar */}
-      <PromptBar
-        config={config}
-        setConfig={setConfig}
-        isGenerating={isGenerating}
-        onGenerate={handleGenerate}
-        onCancel={handleCancelGeneration}
-        onFilesDrop={handleFilesDrop}
-        activeSourceImage={activeSourceImage ?
-          (activeCanvas?.imageNodes.find(n => n.id === activeSourceImage) ? {
-            id: activeSourceImage,
-            url: activeCanvas.imageNodes.find(n => n.id === activeSourceImage)!.url,
-            prompt: activeCanvas.imageNodes.find(n => n.id === activeSourceImage)!.prompt
-          } : null) : null
-        }
-        onClearSource={() => setActiveSourceImage(null)}
-        isMobile={isMobile}
-        onOpenSettings={(view) => {
-          setSettingsInitialView(view || 'api-management');
-          setShowSettingsPanel(true);
-        }}
-      />
+      <div id="prompt-bar-container" className="contents">
+        <PromptBar
+          config={config}
+          setConfig={setConfig}
+          isGenerating={isGenerating}
+          onGenerate={handleGenerate}
+          onCancel={handleCancelGeneration}
+          onFilesDrop={handleFilesDrop}
+          activeSourceImage={activeSourceImage ?
+            (activeCanvas?.imageNodes.find(n => n.id === activeSourceImage) ? {
+              id: activeSourceImage,
+              url: activeCanvas.imageNodes.find(n => n.id === activeSourceImage)!.url,
+              prompt: activeCanvas.imageNodes.find(n => n.id === activeSourceImage)!.prompt
+            } : null) : null
+          }
+          onClearSource={() => setActiveSourceImage(null)}
+          isMobile={isMobile}
+          onOpenSettings={(view) => {
+            setSettingsInitialView(view || 'api-management');
+            setShowSettingsPanel(true);
+          }}
+        />
+      </div>
 
       {/* Liquid Glass SVG Filter Definition */}
       {/* Liquid Glass SVG Filter Removed (User Request) */}
@@ -2067,6 +2086,14 @@ const AppContent: React.FC = () => {
               showSettingsPanel ? 'settings' :
                 isSidebarOpen ? 'gallery' : 'home'
           }
+        />
+      )}
+      {showTutorial && (
+        <TutorialOverlay
+          onComplete={() => {
+            setShowTutorial(false);
+            localStorage.setItem('kk_tutorial_seen', 'true');
+          }}
         />
       )}
     </div>

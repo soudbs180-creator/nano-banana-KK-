@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Loader2, AlertCircle, CheckCircle2, ChevronLeft, ArrowRight, Mail, Lock } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, ChevronLeft, ArrowRight, Mail, Lock, Sparkles } from 'lucide-react';
 
 type AuthView = 'login' | 'register' | 'forgot-password';
 
@@ -8,7 +8,7 @@ const LoginScreen: React.FC = () => {
     const [view, setView] = useState<AuthView>('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState(''); // For registration
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
@@ -33,17 +33,31 @@ const LoginScreen: React.FC = () => {
                 if (password !== confirmPassword) {
                     throw new Error("两次输入的密码不一致");
                 }
+                if (password.length < 6) {
+                    throw new Error("密码长度至少需要6位");
+                }
+
+                // Auto-generate display name from email
+                const displayName = email.split('@')[0];
+
                 const { data, error } = await supabase.auth.signUp({
                     email,
                     password,
+                    options: {
+                        data: {
+                            display_name: displayName,
+                        }
+                    }
                 });
                 if (error) throw error;
 
                 if (data.session) {
-                    // Start auto-login immediately if session is returned
-                    // AuthContext will handle the state change
+                    // Immediate login successful (Email confirm OFF)
                 } else {
-                    setMessage('注册成功！请检查您的邮箱完成验证，验证后即可登录。');
+                    // Email confirm ON
+                    setMessage('注册成功！请前往邮箱查收验证邮件，验证后即可登录。');
+                    // Optional: Switch to login view after delay
+                    setTimeout(() => setView('login'), 3000);
                 }
             } else if (view === 'login') {
                 const { error } = await supabase.auth.signInWithPassword({
@@ -56,131 +70,159 @@ const LoginScreen: React.FC = () => {
                     redirectTo: window.location.origin,
                 });
                 if (error) throw error;
-                setMessage('重置链接已发送！请检查您的邮箱（包括垃圾邮件文件夹）。点击链接即可重置密码。');
+                setMessage('重置链接已发送！请检查您的邮箱。');
             }
         } catch (err: any) {
             console.error(err);
-            setError(err.message === 'User already registered' ? '该邮箱已被注册' : (err.message || '操作失败，请重试'));
+            if (err.message.includes('User already registered') || err.status === 400) {
+                setError('该邮箱已被注册，请直接登录');
+            } else if (err.message.includes('Invalid login credentials')) {
+                setError('邮箱或密码错误');
+            } else {
+                setError(err.message || '操作失败，请重试');
+            }
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 bg-[#04060b] flex items-center justify-center p-4 overflow-hidden text-white">
-            {/* Background Layer inspired by ref */}
-            <div className="absolute inset-0 z-0 overflow-hidden">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_-10%,rgba(71,198,255,0.25),transparent_45%),radial-gradient(circle_at_85%_0%,rgba(140,140,255,0.28),transparent_38%),linear-gradient(140deg,#02040a,#050816,#03040a)]" />
-                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:32px_32px] opacity-60 mix-blend-screen" />
-                {/* Lens arc */}
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[620px] pointer-events-none" aria-hidden>
-                    <div className="absolute inset-0 rounded-[38%] bg-[radial-gradient(ellipse_at_center,#0a1324_0%,#050812_60%,#020307_100%)]" />
-                    <div className="absolute inset-[-6px] rounded-[38%] bg-[conic-gradient(from_160deg_at_50%_50%,rgba(111,199,255,0.65),rgba(176,196,255,0.05),rgba(111,199,255,0.85),rgba(176,196,255,0.05))] blur-[1px] opacity-70" />
+        <div className="fixed inset-0 bg-[#03050b] flex overflow-hidden text-white font-sans">
+            {/* LEFT SIDE: Visual / Artistic (Desktop Only) */}
+            <div className="hidden lg:flex w-1/2 relative overflow-hidden items-center justify-center bg-[#05081a]">
+                {/* Dynamic Background */}
+                <div className="absolute inset-0">
+                    <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-indigo-600/20 rounded-full blur-[120px] mix-blend-screen animate-blob" />
+                    <div className="absolute bottom-[-10%] right-[-10%] w-[80%] h-[80%] bg-purple-600/20 rounded-full blur-[120px] mix-blend-screen animate-blob animation-delay-2000" />
+                    <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-20 bg-[size:50px_50px]" />
+                </div>
+
+                {/* Content */}
+                <div className="relative z-10 p-12 max-w-lg text-center">
+                    <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-indigo-500 to-purple-500 mx-auto mb-8 shadow-2xl shadow-indigo-500/30 flex items-center justify-center">
+                        {/* Placeholder Logo Icon */}
+                        <Sparkles size={48} className="text-white" />
+                    </div>
+                    <h1 className="text-4xl font-bold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-400">
+                        KK Studio
+                    </h1>
+                    <p className="text-lg text-zinc-400 leading-relaxed">
+                        新一代 AI 内容创作工作站。<br />
+                        无限画布，无限创意。
+                    </p>
+                    {/* Version Badge */}
+                    <div className="absolute bottom-8 left-0 right-0 text-center opacity-30 text-xs font-mono">
+                        v1.2.1 BUILD 2026.01
+                    </div>
                 </div>
             </div>
 
-            {/* Version Badge - Bottom Right */}
-            <div className="absolute bottom-6 right-8 text-[10px] text-zinc-500 font-mono tracking-widest z-50 select-none opacity-60 hover:opacity-100 transition-opacity">
-                KK STUDIO v1.2.1 BUILD 2026.01
-            </div>
-
-            {/* Header Brand & CTA */}
-            <div className="absolute top-6 left-8 z-20 space-y-2">
-                <div className="flex items-center gap-2 text-sm font-semibold tracking-wide text-white/80">
-                    <div className="w-3 h-3 rounded-full border border-white/40" />
-                    Create360
+            {/* RIGHT SIDE: Form */}
+            <div className="w-full lg:w-1/2 relative flex items-center justify-center p-6 sm:p-12 bg-[#03050b]">
+                {/* iOS-like subtle background for mobile */}
+                <div className="lg:hidden absolute inset-0 overflow-hidden z-0">
+                    <div className="absolute top-[-10%] right-[-10%] w-[300px] h-[300px] bg-purple-500/20 rounded-full blur-[80px]" />
                 </div>
-                <p className="text-xs text-white/60 max-w-xs leading-relaxed">
-                    我们提供系统化课程，帮助设计师掌握工业设计的技能与思维。
-                </p>
-            </div>
 
-            {/* Main Card */}
-            <div className="w-full max-w-[440px] relative z-10 perspective-1000">
-                <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-[30px] p-8 shadow-[0_25px_80px_rgba(0,0,0,0.45)] overflow-hidden relative group">
-                    <div className="absolute inset-px rounded-[28px] border border-white/5" />
-                    <div className="absolute inset-0 bg-gradient-to-tr from-white/8 via-transparent to-transparent opacity-60 pointer-events-none" />
+                <div className="w-full max-w-md relative z-10">
+                    {/* Mobile Logo Header */}
+                    <div className="lg:hidden text-center mb-10">
+                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-500 mx-auto mb-4 flex items-center justify-center shadow-lg">
+                            <Sparkles size={32} className="text-white" />
+                        </div>
+                        <h1 className="text-2xl font-bold">KK Studio</h1>
+                    </div>
 
-                    {/* Logo & Title */}
-                    <div className="text-center mb-10 relative">
-                        {view !== 'login' && (
-                            <button
-                                onClick={() => setView('login')}
-                                className="absolute left-0 top-0 p-2 -ml-2 text-zinc-500 hover:text-white transition-colors"
-                            >
-                                <ChevronLeft size={20} />
-                            </button>
-                        )}
+                    {/* Back Button */}
+                    {view !== 'login' && (
+                        <button
+                            onClick={() => setView('login')}
+                            className="absolute top-[-40px] left-0 flex items-center gap-1 text-sm text-zinc-500 hover:text-white transition-colors"
+                        >
+                            <ChevronLeft size={16} />
+                            返回登录
+                        </button>
+                    )}
 
-                        <img
-                            src="/icon.svg"
-                            alt="KK Studio"
-                            className="w-16 h-16 mx-auto mb-5 drop-shadow-[0_12px_32px_rgba(91,177,255,0.4)]"
-                        />
-                        <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">
-                            {view === 'login' && '登录 KK Studio'}
-                            {view === 'register' && '加入 KK Studio'}
-                            {view === 'forgot-password' && '重置密码'}
-                        </h1>
-                        <p className="text-zinc-400 text-sm">
-                            {view === 'login' && '开启你的创意工作流'}
-                            {view === 'register' && '注册即可使用更多 AI 能力'}
-                            {view === 'forgot-password' && '填写邮箱以获取重置链接'}
+                    <div className="text-left mb-8">
+                        <h2 className="text-3xl font-bold tracking-tight mb-2">
+                            {view === 'login' && '欢迎回来'}
+                            {view === 'register' && '创建新账号'}
+                            {view === 'forgot-password' && '找回密码'}
+                        </h2>
+                        <p className="text-zinc-500">
+                            {view === 'login' && '请输入您的账号以继续'}
+                            {view === 'register' && '免费注册，开启您的 AI 之旅'}
+                            {view === 'forgot-password' && '我们将向您发送重置链接'}
                         </p>
                     </div>
 
-                    <form onSubmit={handleAuth} className="space-y-5 relative z-10">
-                        {/* Error / Success Messages */}
+                    <form onSubmit={handleAuth} className="space-y-4">
+                        {/* Status Messages */}
                         {error && (
-                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 text-red-400 text-sm animate-in fade-in slide-in-from-top-2">
-                                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                                <span className="flex-1">{error}</span>
+                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex gap-3 text-red-400 text-sm animate-in fade-in slide-in-from-top-1">
+                                <AlertCircle size={18} className="shrink-0" />
+                                <span>{error}</span>
                             </div>
                         )}
                         {message && (
-                            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl flex items-start gap-3 text-green-400 text-sm animate-in fade-in slide-in-from-top-2">
-                                <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-                                <span className="flex-1">{message}</span>
+                            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex gap-3 text-green-400 text-sm animate-in fade-in slide-in-from-top-1">
+                                <CheckCircle2 size={18} className="shrink-0" />
+                                <span>{message}</span>
                             </div>
                         )}
 
-                        {/* Input Fields */}
                         <div className="space-y-4">
-                            <div className="group">
-                                <div className="relative">
-                                    <div className="absolute left-4 top-0 bottom-0 flex items-center justify-center text-zinc-500 group-focus-within:text-indigo-400 transition-colors pointer-events-none">
+                            {/* Email */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-medium text-zinc-400 ml-1">电子邮箱</label>
+                                <div className="relative group">
+                                    <div className="absolute left-3 top-0 bottom-0 flex items-center text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
                                         <Mail size={18} />
                                     </div>
                                     <input
                                         type="email"
-                                        placeholder="电子邮箱"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        className="w-full h-12 bg-[#1c1c1e] text-white placeholder-zinc-500 border border-white/5 rounded-xl pl-11 pr-4 focus:outline-none focus:border-indigo-500/50 focus:bg-[#222225] transition-all"
+                                        className="w-full h-11 bg-zinc-900/50 border border-white/10 rounded-lg pl-10 pr-4 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-zinc-600"
+                                        placeholder="name@example.com"
                                         required
                                     />
                                 </div>
                             </div>
 
+                            {/* Password */}
                             {view !== 'forgot-password' && (
-                                <div className="group">
-                                    <div className="relative">
-                                        <div className="absolute left-4 top-0 bottom-0 flex items-center justify-center text-zinc-500 group-focus-within:text-indigo-400 transition-colors pointer-events-none">
+                                <div className="space-y-1">
+                                    <div className="flex justify-between items-center ml-1">
+                                        <label className="text-xs font-medium text-zinc-400">密码</label>
+                                        {view === 'login' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setView('forgot-password')}
+                                                className="text-xs text-indigo-400 hover:text-indigo-300"
+                                            >
+                                                忘记密码？
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="relative group">
+                                        <div className="absolute left-3 top-0 bottom-0 flex items-center text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
                                             <Lock size={18} />
                                         </div>
                                         <input
                                             type={showPassword ? "text" : "password"}
-                                            placeholder="密码"
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
-                                            className="w-full h-12 bg-[#1c1c1e] text-white placeholder-zinc-500 border border-white/5 rounded-xl pl-11 pr-4 focus:outline-none focus:border-indigo-500/50 focus:bg-[#222225] transition-all"
+                                            className="w-full h-11 bg-zinc-900/50 border border-white/10 rounded-lg pl-10 pr-10 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-zinc-600"
+                                            placeholder="••••••••"
                                             required
                                             minLength={6}
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute right-4 top-0 bottom-0 flex items-center text-xs text-zinc-600 hover:text-zinc-400 font-medium transition-colors"
+                                            className="absolute right-3 top-0 bottom-0 flex items-center text-zinc-600 hover:text-zinc-400"
                                         >
                                             {showPassword ? "隐藏" : "显示"}
                                         </button>
@@ -188,18 +230,20 @@ const LoginScreen: React.FC = () => {
                                 </div>
                             )}
 
+                            {/* Confirm Password */}
                             {view === 'register' && (
-                                <div className="group animate-in fade-in slide-in-from-top-2">
-                                    <div className="relative">
-                                        <div className="absolute left-4 top-0 bottom-0 flex items-center justify-center text-zinc-500 group-focus-within:text-indigo-400 transition-colors pointer-events-none">
+                                <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
+                                    <label className="text-xs font-medium text-zinc-400 ml-1">确认密码</label>
+                                    <div className="relative group">
+                                        <div className="absolute left-3 top-0 bottom-0 flex items-center text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
                                             <CheckCircle2 size={18} />
                                         </div>
                                         <input
                                             type="password"
-                                            placeholder="确认密码"
                                             value={confirmPassword}
                                             onChange={(e) => setConfirmPassword(e.target.value)}
-                                            className="w-full h-12 bg-[#1c1c1e] text-white placeholder-zinc-500 border border-white/5 rounded-xl pl-11 pr-4 focus:outline-none focus:border-indigo-500/50 focus:bg-[#222225] transition-all"
+                                            className="w-full h-11 bg-zinc-900/50 border border-white/10 rounded-lg pl-10 pr-4 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-zinc-600"
+                                            placeholder="再次输入密码"
                                             required
                                         />
                                     </div>
@@ -207,50 +251,31 @@ const LoginScreen: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Extra Actions */}
-                        {view === 'login' && (
-                            <div className="flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => setView('forgot-password')}
-                                    className="text-xs text-zinc-500 hover:text-indigo-400 transition-colors"
-                                >
-                                    忘记密码？
-                                </button>
-                            </div>
-                        )}
-
-                        {/* Submit Button */}
                         <button
                             type="submit"
-                            disabled={loading || (view === 'register' && (!password || password !== confirmPassword))}
-                            className="w-full h-12 rounded-xl overflow-hidden relative group text-white font-semibold tracking-wide border border-white/10 bg-gradient-to-r from-[#1b89ff] via-[#7b7bff] to-[#5bd7ff] shadow-[0_20px_50px_rgba(16,102,255,0.35)] hover:shadow-[0_24px_60px_rgba(91,215,255,0.45)] hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={loading}
+                            className="w-full h-11 mt-6 bg-white text-black font-semibold rounded-lg hover:bg-zinc-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <div className="absolute inset-0 opacity-70 group-hover:opacity-100 transition-opacity bg-[radial-gradient(circle_at_20%_50%,rgba(255,255,255,0.22),transparent_35%),radial-gradient(circle_at_80%_50%,rgba(255,255,255,0.18),transparent_32%)]" />
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:animate-shimmer" />
-                            <span className="relative z-10 flex items-center justify-center gap-2">
-                                {loading ? (
-                                    <Loader2 size={20} className="animate-spin" />
-                                ) : (
-                                    <>
-                                        {view === 'login' && '立即登录'}
-                                        {view === 'register' && '创建账号'}
-                                        {view === 'forgot-password' && '发送重置链接'}
-                                        {!loading && <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform stroke-[2.5]" />}
-                                    </>
-                                )}
-                            </span>
+                            {loading ? (
+                                <Loader2 size={18} className="animate-spin" />
+                            ) : (
+                                <>
+                                    {view === 'login' && '登录'}
+                                    {view === 'register' && '创建账号'}
+                                    {view === 'forgot-password' && '发送链接'}
+                                    {!loading && <ArrowRight size={16} />}
+                                </>
+                            )}
                         </button>
                     </form>
 
-                    {/* Footer Switcher */}
-                    <div className="mt-8 text-center border-t border-white/5 pt-6">
+                    <div className="mt-8 text-center">
                         {view === 'login' ? (
                             <p className="text-zinc-500 text-sm">
                                 还没有账号？{' '}
                                 <button
                                     onClick={() => setView('register')}
-                                    className="text-white font-medium hover:text-indigo-400 transition-colors"
+                                    className="text-white hover:underline underline-offset-4 decoration-zinc-700"
                                 >
                                     立即注册
                                 </button>
@@ -260,7 +285,7 @@ const LoginScreen: React.FC = () => {
                                 已有账号？{' '}
                                 <button
                                     onClick={() => setView('login')}
-                                    className="text-white font-medium hover:text-indigo-400 transition-colors"
+                                    className="text-white hover:underline underline-offset-4 decoration-zinc-700"
                                 >
                                     返回登录
                                 </button>
