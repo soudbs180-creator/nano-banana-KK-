@@ -20,6 +20,7 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
         <div className="fixed bottom-0 left-0 right-0 z-[1000] md:hidden pb-safe">
             <div
                 className="mx-4 mb-4 h-14 rounded-[24px] flex items-center justify-around px-2 relative overflow-hidden liquid-glass"
+                id="mobile-tab-bar"
                 style={{
                     // Removing inline styles handled by .liquid-glass class
                     // Only keeping overrides if necessary (none needed as class covers all)

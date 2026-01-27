@@ -9,44 +9,6 @@ interface TutorialStep {
     position?: 'left' | 'right' | 'top' | 'bottom' | 'center';
 }
 
-const STEPS: TutorialStep[] = [
-    {
-        title: "欢迎来到 KK Studio",
-        description: "这是您的新一代 AI 创作工作站。存储配置已完成，现在让我们花一分钟熟悉一下核心功能。",
-        position: "center"
-    },
-    {
-        targetId: "sidebar-container",
-        title: "侧边栏 & 导航",
-        description: "在此切换生成模式、查看历史记录或调整系统设置。手机端可通过左侧边缘向右滑动或点击图标唤起。",
-        position: "right"
-    },
-    {
-        targetId: "project-manager-trigger",
-        title: "项目管理",
-        description: "点击这里切换、重命名或创建新项目。每个项目都是一个独立的无限画布。",
-        position: "right"
-    },
-    {
-        targetId: "canvas-container",
-        title: "无限画布",
-        description: "双击空白处创建图像卡片，双击已有图像查看大图。支持自由拖拽和缩放。手机端支持双指缩放。",
-        position: "center"
-    },
-    {
-        targetId: "prompt-bar-container",
-        title: "指令输入",
-        description: "在此输入创意指令。点击左侧模型名称可切换模型，右侧可配置并发数量或上传参考图。",
-        position: "top"
-    },
-    {
-        targetId: "models-dropdown-trigger",
-        title: "模型切换",
-        description: "在这里您可以快速切换不同的 AI 模型。如果列表为空，请前往设置配置您的 API 密钥。",
-        position: "top"
-    }
-];
-
 interface TutorialOverlayProps {
     onComplete: () => void;
 }
@@ -55,6 +17,44 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [rect, setRect] = useState<DOMRect | null>(null);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    const STEPS: TutorialStep[] = React.useMemo(() => [
+        {
+            title: "欢迎来到 KK Studio",
+            description: "这是您的新一代 AI 创作工作站。存储配置已完成，现在让我们花一分钟熟悉一下核心功能。",
+            position: "center"
+        },
+        {
+            targetId: isMobile ? "mobile-tab-bar" : "sidebar-container",
+            title: "侧边栏 & 导航",
+            description: "在此切换生成模式、查看历史记录或调整系统设置。手机端可通过左侧边缘向右滑动或点击图标唤起。",
+            position: isMobile ? "top" : "right"
+        },
+        {
+            targetId: "project-manager-trigger",
+            title: "项目管理",
+            description: "点击这里切换、重命名或创建新项目。每个项目都是一个独立的无限画布。",
+            position: "right"
+        },
+        {
+            targetId: "canvas-container",
+            title: "无限画布",
+            description: "双击空白处创建图像卡片，双击已有图像查看大图。支持自由拖拽和缩放。手机端支持双指缩放。",
+            position: "center"
+        },
+        {
+            targetId: "prompt-bar-container",
+            title: "指令输入",
+            description: "在此输入创意指令。点击左侧模型名称可切换模型，右侧可配置并发数量或上传参考图。",
+            position: "top"
+        },
+        {
+            targetId: "models-dropdown-trigger",
+            title: "模型切换",
+            description: "在这里您可以快速切换不同的 AI 模型。如果列表为空，请前往设置配置您的 API 密钥。",
+            position: "top"
+        }
+    ], [isMobile]);
 
     const step = STEPS[currentStepIndex];
 
@@ -74,7 +74,12 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
             const el = document.getElementById(step.targetId!);
             if (el) {
                 const r = el.getBoundingClientRect();
-                setRect(r);
+                // Check if element is effectively visible
+                if (r.width === 0 && r.height === 0) {
+                    setRect(null);
+                } else {
+                    setRect(r);
+                }
             } else {
                 setRect(null);
             }
@@ -83,11 +88,15 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
         // Delay slightly to ensure UI is rendered and stable
         const timer = setTimeout(updateRect, 200);
         window.addEventListener('resize', updateRect);
+        window.addEventListener('scroll', updateRect, true); // Listen to capture scroll
+
         return () => {
             clearTimeout(timer);
             window.removeEventListener('resize', updateRect);
+            window.removeEventListener('scroll', updateRect, true);
         };
     }, [currentStepIndex, step.targetId]);
+
 
     const handleNext = () => {
         if (currentStepIndex < STEPS.length - 1) {
@@ -105,7 +114,9 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
 
     // Calculate position for the tooltip
     const getTooltipStyle = (): React.CSSProperties => {
-        if (!rect || step.position === 'center' || isMobile) {
+        // Fallback to center if no rect or position is explicitly center
+        // NOTE: removed isMobile check to allow mobile elements to be targeted
+        if (!rect || step.position === 'center') {
             return {
                 top: '50%',
                 left: '50%',
@@ -132,6 +143,12 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
             left = rect.right + padding;
             transform = 'translate(0, -50%)';
         }
+
+        // Constraints to keep tooltip on screen
+        const safePadding = 10;
+        // Ideally we would measure the tooltip size, but this is a simple heuristic
+        // We can use calc/clamp in CSS, or just let it float.
+        // For now, let's trust the calculated position but maybe prevent negative top/left?
 
         return { top, left, transform, position: 'absolute' };
     };
@@ -179,8 +196,8 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
                                 Step {currentStepIndex + 1} of {STEPS.length}
                             </span>
                         </div>
-                        <button 
-                            onClick={onComplete} 
+                        <button
+                            onClick={onComplete}
                             className="p-1.5 rounded-full hover:bg-white/5 text-zinc-500 hover:text-white transition-all"
                         >
                             <X size={16} />
@@ -196,11 +213,10 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
                         <button
                             onClick={handlePrev}
                             disabled={currentStepIndex === 0}
-                            className={`flex items-center justify-center w-10 h-10 rounded-full border border-white/5 transition-all ${
-                                currentStepIndex === 0 
-                                ? 'opacity-20 cursor-not-allowed' 
+                            className={`flex items-center justify-center w-10 h-10 rounded-full border border-white/5 transition-all ${currentStepIndex === 0
+                                ? 'opacity-20 cursor-not-allowed'
                                 : 'bg-white/5 text-white hover:bg-white/10 active:scale-90'
-                            }`}
+                                }`}
                         >
                             <ArrowLeft size={18} />
                         </button>
