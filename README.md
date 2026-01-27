@@ -1,8 +1,8 @@
-# KK Studio v1.1.7 - AI 智能图像创作工坊
+# KK Studio v1.2.1 - AI 智能图像创作工坊
 
 > 基于 Google Gemini API 的无限画布图像生成工具，集成本地与云端同步的高级创作平台。
 
-![Version](https://img.shields.io/badge/version-1.1.7-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)
 
 ## 🌟 核心功能 (Core Features)
 
