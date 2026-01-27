@@ -74,10 +74,12 @@ const LoginScreen: React.FC = () => {
             }
         } catch (err: any) {
             console.error(err);
-            if (err.message.includes('User already registered') || err.status === 400) {
+            if (view === 'register' && (err.message?.includes('User already registered') || err.status === 400)) {
                 setError('该邮箱已被注册，请直接登录');
-            } else if (err.message.includes('Invalid login credentials')) {
+            } else if (err.message?.includes('Invalid login credentials') || (view === 'login' && err.status === 400)) {
                 setError('邮箱或密码错误');
+            } else if (err.message?.includes('Email not confirmed')) {
+                setError('请先前往邮箱激活您的账号');
             } else {
                 setError(err.message || '操作失败，请重试');
             }
