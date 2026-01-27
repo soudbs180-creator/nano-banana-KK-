@@ -10,7 +10,8 @@ interface PromptNodeProps {
     onSelect: () => void;
     onClickPrompt?: (node: PromptNode) => void;
     onConnectStart?: (id: string, startPos: { x: number; y: number }) => void;
-    canvasTransform?: { x: number; y: number; scale: number };
+    canvasTransform?: { x: number; y: number; scale: number }; // Deprecated
+    zoomScale?: number;
     isMobile?: boolean;
     sourcePosition?: { x: number; y: number };
     onCancel?: (id: string) => void;
@@ -20,14 +21,15 @@ interface PromptNodeProps {
     onHeightChange?: (id: string, height: number) => void;
 }
 
-const PromptNodeComponent: React.FC<PromptNodeProps> = ({
+const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     node,
     onPositionChange,
     isSelected,
     onSelect,
     onClickPrompt,
     onConnectStart,
-    canvasTransform = { x: 0, y: 0, scale: 1 },
+    canvasTransform, // Optional now
+    zoomScale = 1,
     isMobile = false,
     sourcePosition,
     onCancel,
@@ -59,7 +61,6 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
 
         const observer = new ResizeObserver((entries) => {
             for (const entry of entries) {
-                const h = entry.contentRect.height + 26; // +26 for borders/padding adjustment if needed (contentRect excludes border)
                 // Actually offsetHeight is safer for visual boundaries
                 const offsetHeight = (entry.target as HTMLElement).offsetHeight;
                 if (offsetHeight && Math.abs(offsetHeight - (node.height || 0)) > 2) {
@@ -127,8 +128,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
         if (requestRef.current !== null) return;
 
         requestRef.current = requestAnimationFrame(() => {
-            const deltaX = (clientX - dragStartPos.current.x) / canvasTransform.scale;
-            const deltaY = (clientY - dragStartPos.current.y) / canvasTransform.scale;
+            const scale = zoomScale; // Use zoomScale directly
+            const deltaX = (clientX - dragStartPos.current.x) / scale;
+            const deltaY = (clientY - dragStartPos.current.y) / scale;
 
             const newPos = {
                 x: dragStartCanvasPos.current.x + deltaX,
@@ -155,18 +157,6 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
             // Commit final position
             // We rely on the throttled update having been reasonably close, 
             // or effectively "snapping" to the last throttled position.
-            // Ideally we would capture the FINAL position here but we lack the 'e' event cleanly.
-            // But since localPos IS updated, the visual is correct. 
-            // The global state will catch up on next sync if we add one, or simply stay at last throttled.
-            // If the user drags fast and lets go, the global state might be 32ms behind.
-            // This is "snap back" risk.
-            // However, since we setLocalPos to newPos in rAF, localPos IS current.
-            // We should sync localPos to global one last time?
-            // But `localPos` state variable is stale in this closure!
-            // We need a ref for localPos to access it here.
-            // But I didn't add localPosRef in this reconstruction.
-            // I'll accept the <32ms discrepancy for now as acceptable "snap" vs "lag".
-            // The user wants "follow hand". Visual follows hand.
         }
         if (requestRef.current) {
             cancelAnimationFrame(requestRef.current);
@@ -188,7 +178,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
             window.removeEventListener('touchmove', handleMouseMove);
             window.removeEventListener('touchend', handleMouseUp);
         };
-    }, [isDragging, canvasTransform.scale]);
+    }, [isDragging, zoomScale]); // Use zoomScale here
 
     return (
         <div
@@ -218,10 +208,10 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
             <div
                 ref={cardRef}
                 className={`
-                relative bg-[#18181b] border rounded-2xl p-3 shadow-xl max-w-[95vw] flex flex-col select-none
-                ${isDragging ? '' : 'transition-all duration-200'}
-                ${node.isGenerating ? 'border-indigo-500/30' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-white/10 hover:border-white/20'}
-            `}
+                    relative bg-[#18181b] border rounded-2xl p-3 shadow-xl max-w-[95vw] flex flex-col select-none
+                    ${isDragging ? '' : 'transition-all duration-200'}
+                    ${node.isGenerating ? 'border-indigo-500/30' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-white/10 hover:border-white/20'}
+                `}
                 style={{ width: getCardDimensions(node.aspectRatio).width }}>
                 {/* Header - Changes based on generating state */}
                 <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
@@ -435,6 +425,6 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
             {/* Visual Guide Line (optional, only when dragging maybe?) */}
         </div >
     );
-};
+});
 
 export default PromptNodeComponent;

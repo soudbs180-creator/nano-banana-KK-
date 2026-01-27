@@ -13,13 +13,14 @@ interface ImageNodeProps {
     onClick?: (imageId: string) => void;
     onDimensionsUpdate?: (id: string, dimensions: string) => void;
     isActive?: boolean;
-    canvasTransform?: { x: number; y: number; scale: number };
+    canvasTransform?: { x: number; y: number; scale: number }; // Deprecated in favor of zoomScale
+    zoomScale?: number;
     isMobile?: boolean;
     isSelected?: boolean;
     onSelect?: () => void;
 }
 
-const ImageNodeComponent: React.FC<ImageNodeProps> = ({
+const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     image,
     position,
     onPositionChange,
@@ -28,7 +29,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     onClick,
     onDimensionsUpdate,
     isActive = false,
-    canvasTransform = { x: 0, y: 0, scale: 1 },
+    zoomScale = 1,
     isMobile = false,
     isSelected = false,
     onSelect
@@ -39,7 +40,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     const [localPos, setLocalPos] = useState(position);
 
     // Sync local position with prop position when NOT dragging
-    React.useEffect(() => {
+    useEffect(() => {
         if (!isDragging) {
             setLocalPos(position);
         }
@@ -143,17 +144,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
     // Load original from IndexedDB when lightbox opens
     useEffect(() => {
-        // ... (Existing Lightbox Logic - Keeping mostly same but using displaySrc fallback) ...
         if (showLightbox && !lightboxOriginalUrl && !isLoadingOriginal) {
             setIsLoadingOriginal(true);
             (async () => {
-                // Reuse similar logic or existing implementation
-                // For brevity, using the existing implementation block logic but wrapped
                 const { getImage, saveImage } = await import('../services/imageStorage');
-                const { getStorageMode, saveOriginalToLocalFolder } = await import('../services/storagePreference');
+                // const { getStorageMode, saveOriginalToLocalFolder } = await import('../services/storagePreference');
 
-                // ... (Rest of existing lightbox loading logic) ...
-                // Copying the essential existing logic here to ensure it persists:
                 const cached = await getImage(image.id);
                 if (cached && cached.startsWith('data:')) {
                     setLightboxOriginalUrl(cached);
@@ -253,8 +249,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         if (requestRef.current !== null) return;
 
         requestRef.current = requestAnimationFrame(() => {
-            const deltaX = (clientX - dragStartPos.current.x) / canvasTransform.scale;
-            const deltaY = (clientY - dragStartPos.current.y) / canvasTransform.scale;
+            const scale = zoomScale;
+            const deltaX = (clientX - dragStartPos.current.x) / scale;
+            const deltaY = (clientY - dragStartPos.current.y) / scale;
 
             const newPos = {
                 x: dragStartCanvasPos.current.x + deltaX,
@@ -291,7 +288,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         }
     };
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (isDragging) {
             window.addEventListener('mousemove', handleMouseMove);
             window.addEventListener('mouseup', handleMouseUp);
@@ -309,7 +306,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                 }
             };
         }
-    }, [isDragging]);
+    }, [isDragging, zoomScale]);
 
     // Handle pan/drag for lightbox image
     const handleLightboxMouseDown = useCallback((e: React.MouseEvent) => {
@@ -415,7 +412,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
             // Generate filename
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const sanitizedPrompt = (image.prompt || 'image').slice(0, 30).replace(/[<>:"/\\|?*]/g, '');
+            const sanitizedPrompt = (image.prompt || 'image').slice(0, 30).replace(/[<>;\"/\\\\|?*]/g, '');
             const filename = `${sanitizedPrompt}_${timestamp}.png`;
 
             // Browser download - saves to user's Downloads folder
@@ -494,10 +491,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                 onDoubleClick={handleImageClick}
             >
                 <div className={`
-                    relative bg-[#18181b] border rounded-2xl overflow-hidden shadow-xl w-full
-                    ${isDragging ? '' : 'transition-all duration-200'} hover:shadow-2xl
-                    ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : isActive ? 'border-amber-500 ring-2 ring-amber-500/50' : 'border-white/5 hover:border-white/10'}
-                `}>
+                        relative bg-[#18181b] border rounded-2xl overflow-hidden shadow-xl w-full
+                        ${isDragging ? '' : 'transition-all duration-200'} hover:shadow-2xl
+                        ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : isActive ? 'border-amber-500 ring-2 ring-amber-500/50' : 'border-white/5 hover:border-white/10'}
+                    `}>
                     {/* Connection Point */}
                     <div
                         className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-transparent hover:bg-indigo-500/50 rounded-full z-50 cursor-crosshair"
@@ -642,10 +639,6 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                                         const divisor = gcd(w, h);
                                         let ratioW = w / divisor;
                                         let ratioH = h / divisor;
-
-                                        // Simplify common near-ratios if needed or just show exact
-                                        // For standard resolutions, exact is fine.
-                                        // Maybe handle rounding for non-standard?
 
                                         let displayRatio = `${ratioW}:${ratioH}`;
 
@@ -807,14 +800,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                                 ? '正在查看原图 (Viewing Original)'
                                 : '正在查看预览 (Viewing Preview - Original Not Found)'}
                         </span>
-                        {/* Debug Info */}
-                        {/* <div className="text-[9px] opacity-30 mt-1">Zoom: {Math.round(lightboxZoom * 100)}%</div> */}
                     </div>
                 </div>,
                 document.body
             )}
         </>
     );
-};
+});
 
 export default ImageNodeComponent;

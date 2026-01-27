@@ -1387,6 +1387,29 @@ const AppContent: React.FC = () => {
     }
   }, [activeCanvas, handleRetryNode]);
 
+  // Optimization: Stable handlers for Node Clicks
+  const handlePromptClick = useCallback((clickedNode: PromptNode) => {
+    setActiveSourceImage(null);
+    setConfig(prev => ({
+      ...prev,
+      prompt: clickedNode.prompt,
+      aspectRatio: clickedNode.aspectRatio,
+      imageSize: clickedNode.imageSize,
+      model: clickedNode.model,
+      referenceImages: clickedNode.referenceImages || []
+    }));
+  }, [setConfig]);
+
+  const handleImageClick = useCallback((imageId: string) => {
+    // Click to select
+    selectNodes([imageId], !(window.event as any)?.shiftKey);
+
+    // Set this image as source for continuing conversation
+    setActiveSourceImage(imageId);
+    // Clear prompt and existing references to start fresh continue-conversation
+    setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
+  }, [selectNodes, setConfig]);
+
   return (
     <div className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
       onMouseDown={handleMouseDown}
@@ -1854,21 +1877,9 @@ const AppContent: React.FC = () => {
             onPositionChange={updatePromptNodePosition}
             isSelected={selectedNodeIds.includes(node.id)}
             onSelect={() => selectNodes([node.id], !(window.event as any)?.shiftKey)}
-            onClickPrompt={(clickedNode) => {
-              // Clear continue mode - clicking prompt = start NEW conversation
-              setActiveSourceImage(null);
-              // ... (existing config update logic) ...
-              setConfig(prev => ({
-                ...prev,
-                prompt: clickedNode.prompt,
-                aspectRatio: clickedNode.aspectRatio,
-                imageSize: clickedNode.imageSize,
-                model: clickedNode.model,
-                referenceImages: clickedNode.referenceImages || []
-              }));
-            }}
+            onClickPrompt={handlePromptClick}
             onConnectStart={handleConnectStart}
-            canvasTransform={canvasTransform}
+            zoomScale={canvasTransform.scale}
             isMobile={isMobile}
             sourcePosition={node.sourceImageId
               ? activeCanvas?.imageNodes.find(n => n.id === node.sourceImageId)?.position
@@ -1896,19 +1907,11 @@ const AppContent: React.FC = () => {
             onDimensionsUpdate={updateImageNodeDimensions}
             onDelete={deleteImageNode}
             onConnectEnd={handleConnectEnd}
-            onClick={(imageId) => {
-              // Click to select
-              selectNodes([imageId], !(window.event as any)?.shiftKey);
-
-              // Set this image as source for continuing conversation
-              setActiveSourceImage(imageId);
-              // Clear prompt and existing references to start fresh continue-conversation
-              setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
-            }}
+            onClick={handleImageClick}
             isActive={node.id === activeSourceImage}
             isSelected={selectedNodeIds.includes(node.id)}
             onSelect={() => selectNodes([node.id], !(window.event as any)?.shiftKey)}
-            canvasTransform={canvasTransform}
+            zoomScale={canvasTransform.scale}
             isMobile={isMobile}
           />
         ))}
