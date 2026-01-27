@@ -607,28 +607,28 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                 )}
                             </div>
                         </div>
-                    </div>
 
-                    <div className="p-5 border-t border-[var(--border-light)] flex justify-end gap-3 bg-[var(--bg-secondary)]">
-                        <button
-                            onClick={() => setIsModalOpen(false)}
-                            className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-                        >
-                            取消
-                        </button>
-                        <button
-                            onClick={handleSubmit}
-                            disabled={loading}
-                            className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
-                        >
-                            {loading ? '处理中...' : (editingId ? '保存修改' : '添加通道')}
-                        </button>
+
+                        <div className="p-5 border-t border-[var(--border-light)] flex justify-end gap-3 bg-[var(--bg-secondary)]">
+                            <button
+                                onClick={() => setIsModalOpen(false)}
+                                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={loading}
+                                className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
+                            >
+                                {loading ? '处理中...' : (editingId ? '保存修改' : '添加通道')}
+                            </button>
+                        </div>
                     </div>
-                </div>
                 </div>,
-        document.body
-    )
-}
+                document.body
+            )
+            }
         </div >
     );
 };
