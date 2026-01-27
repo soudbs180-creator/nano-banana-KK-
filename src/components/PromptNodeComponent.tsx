@@ -344,83 +344,96 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = ({
                 <p className="text-zinc-100 text-[15px] leading-7 line-clamp-4 font-normal flex-1 tracking-wide">
                     {node.prompt}
                 </p>
+
+
+                {node.tags && node.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2 mb-1 px-3">
+                        {node.tags.map(tag => (
+                            <span key={tag} className="px-1.5 py-0.5 bg-white/5 border border-white/10 rounded text-[10px] text-zinc-400">
+                                #{tag}
+                            </span>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Spacer (formerly connection dot - removed per user request) */}
             <div className="h-3 mt-3" />
 
             {/* Loading Placeholders - Only shown when generating */}
-            {node.isGenerating && node.parallelCount && (() => {
-                const count = node.parallelCount;
-                const columns = Math.min(count, 2);
-                const placeholderGap = 16;
-                const gapToPlaceholders = 80; // Must match handleGenerate gapToImages
+            {
+                node.isGenerating && node.parallelCount && (() => {
+                    const count = node.parallelCount;
+                    const columns = Math.min(count, 2);
+                    const placeholderGap = 16;
+                    const gapToPlaceholders = 80; // Must match handleGenerate gapToImages
 
-                // Calculate card dimensions based on usage
-                const { width: w, totalHeight: h } = getCardDimensions(node.aspectRatio, true);
+                    // Calculate card dimensions based on usage
+                    const { width: w, totalHeight: h } = getCardDimensions(node.aspectRatio, true);
 
-                return (
-                    <div className="relative" style={{ height: 0 }}>
-                        {Array.from({ length: count }).map((_, i) => {
-                            const col = i % columns;
-                            const row = Math.floor(i / columns);
+                    return (
+                        <div className="relative" style={{ height: 0 }}>
+                            {Array.from({ length: count }).map((_, i) => {
+                                const col = i % columns;
+                                const row = Math.floor(i / columns);
 
-                            // Calculate grid positioning
-                            const itemsInRow = Math.min(columns, count - row * columns);
-                            const currentGridWidth = itemsInRow * w + (itemsInRow - 1) * placeholderGap;
-                            const startX = -currentGridWidth / 2;
-                            const offsetX = startX + col * (w + placeholderGap) + w / 2;
-                            const offsetY = gapToPlaceholders + row * (h + placeholderGap);
+                                // Calculate grid positioning
+                                const itemsInRow = Math.min(columns, count - row * columns);
+                                const currentGridWidth = itemsInRow * w + (itemsInRow - 1) * placeholderGap;
+                                const startX = -currentGridWidth / 2;
+                                const offsetX = startX + col * (w + placeholderGap) + w / 2;
+                                const offsetY = gapToPlaceholders + row * (h + placeholderGap);
 
-                            return (
-                                <React.Fragment key={i}>
-                                    {/* Dashed line from dot to placeholder - subtle style */}
-                                    <svg
-                                        className="pointer-events-none"
-                                        style={{
-                                            position: 'absolute',
-                                            left: '50%',
-                                            top: 0,
-                                            overflow: 'visible',
-                                            zIndex: 10
-                                        }}
-                                    >
-                                        <path
-                                            d={`M0,0 L${offsetX},${offsetY}`}
-                                            fill="none"
-                                            stroke="#3f3f46"
-                                            strokeWidth="1"
-                                            strokeDasharray="3 4"
-                                        />
-                                    </svg>
+                                return (
+                                    <React.Fragment key={i}>
+                                        {/* Dashed line from dot to placeholder - subtle style */}
+                                        <svg
+                                            className="pointer-events-none"
+                                            style={{
+                                                position: 'absolute',
+                                                left: '50%',
+                                                top: 0,
+                                                overflow: 'visible',
+                                                zIndex: 10
+                                            }}
+                                        >
+                                            <path
+                                                d={`M0,0 L${offsetX},${offsetY}`}
+                                                fill="none"
+                                                stroke="#3f3f46"
+                                                strokeWidth="1"
+                                                strokeDasharray="3 4"
+                                            />
+                                        </svg>
 
-                                    {/* Placeholder Card */}
-                                    <div
-                                        className="absolute bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
-                                        style={{
-                                            width: w,
-                                            height: h,
-                                            left: `calc(50% + ${offsetX}px)`,
-                                            top: offsetY,
-                                            transform: 'translateX(-50%)',
-                                            zIndex: 0
-                                        }}
-                                    >
-                                        <div className="flex flex-col items-center gap-3 opacity-50">
-                                            <Loader2 size={24} className="text-indigo-400 animate-spin" />
-                                            <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
+                                        {/* Placeholder Card */}
+                                        <div
+                                            className="absolute bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
+                                            style={{
+                                                width: w,
+                                                height: h,
+                                                left: `calc(50% + ${offsetX}px)`,
+                                                top: offsetY,
+                                                transform: 'translateX(-50%)',
+                                                zIndex: 0
+                                            }}
+                                        >
+                                            <div className="flex flex-col items-center gap-3 opacity-50">
+                                                <Loader2 size={24} className="text-indigo-400 animate-spin" />
+                                                <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
+                                            </div>
+                                            <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
                                         </div>
-                                        <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
-                                    </div>
-                                </React.Fragment>
-                            );
-                        })}
-                    </div>
-                );
-            })()}
+                                    </React.Fragment>
+                                );
+                            })}
+                        </div>
+                    );
+                })()
+            }
 
             {/* Visual Guide Line (optional, only when dragging maybe?) */}
-        </div>
+        </div >
     );
 };
 

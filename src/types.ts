@@ -12,12 +12,7 @@ export enum AspectRatio {
   STANDARD_3_2 = '3:2', // Alias/Legacy
 }
 
-/**
- * API Line Mode - determines which API endpoint to use
- * - google_direct: Use Google official API (default, blue color)
- * - proxy: Use third-party proxy API with OpenAI-compatible format (purple color)
- */
-export type ApiLineMode = 'google_direct' | 'proxy';
+
 
 export enum ImageSize {
   SIZE_1K = '1K',
@@ -106,6 +101,7 @@ export interface GeneratedImage {
   generationTime?: number; // Duration in ms
   dimensions?: string; // e.g. "1024x1024"
   mode?: GenerationMode; // New: track creation mode
+  tags?: string[]; // Search tags
 }
 
 export interface PromptNode {
@@ -163,6 +159,4 @@ export interface GenerationConfig {
   model: ModelType;
   enableGrounding: boolean;
   mode: GenerationMode;
-  /** API line mode: google_direct (default) or proxy */
-  lineMode: ApiLineMode;
 }

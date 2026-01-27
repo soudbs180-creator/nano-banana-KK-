@@ -14,6 +14,10 @@ interface InfiniteCanvasProps {
     onCanvasClick?: () => void; // Called when clicking empty canvas area
     onAutoArrange?: () => void; // Called when arrange button is clicked
     cardPositions?: { x: number; y: number }[]; // For auto-arrange calculation
+    onMouseDown?: (e: React.MouseEvent) => void;
+    onMouseMove?: (e: React.MouseEvent) => void;
+    onMouseUp?: (e: React.MouseEvent) => void;
+    onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 interface Transform {
@@ -22,7 +26,7 @@ interface Transform {
     scale: number;
 }
 
-const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onAutoArrange }, ref) => {
+const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onAutoArrange, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
     const [isDragging, setIsDragging] = useState(false);
@@ -98,6 +102,9 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         const isEmptyCanvas = e.target === containerRef.current || (e.target as HTMLElement).classList.contains('canvas-grid');
 
+        // Call parent handler first
+        onMouseDown?.(e);
+
         // Pan on Middle Button (1) OR Left Button (0) on empty background
         // IGNORE Right Button (2) to allow external handling (Selection)
         if (e.button === 1 || (isEmptyCanvas && e.button === 0)) {
@@ -106,7 +113,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             dragStart.current = { x: e.clientX, y: e.clientY };
             lastTransform.current = { x: transform.x, y: transform.y };
         }
-    }, [transform]);
+    }, [transform, onMouseDown]);
 
     // Handle mouse move for panning
     const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -289,9 +296,15 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 className="canvas-container outline-none focus:outline-none"
                 tabIndex={-1}
                 onMouseDown={handleMouseDown}
+                onMouseMove={onMouseMove}
+                onMouseUp={onMouseUp}
                 onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                    if (onContextMenu) {
+                        onContextMenu(e);
+                    } else {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
                 }}
                 style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
             >

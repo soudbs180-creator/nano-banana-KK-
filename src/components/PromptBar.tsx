@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { GenerationConfig, AspectRatio, ImageSize, GenerationMode, ModelType, ApiLineMode } from '../types';
+import { GenerationConfig, AspectRatio, ImageSize, GenerationMode, ModelType } from '../types';
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
 import { keyManager } from '../services/keyManager';
 import { getModelCapabilities, modelSupportsGrounding } from '../services/modelCapabilities';
@@ -35,7 +35,7 @@ interface PromptBarProps {
     onClearSource?: () => void;
     onCancel?: () => void;
     isMobile?: boolean;
-    onOpenSettings?: (view?: 'api-channels') => void;
+    onOpenSettings?: (view?: 'api-management') => void;
 }
 
 const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings }) => {
@@ -44,67 +44,72 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
     // Dynamic Model State
-    const [enabledModels, setEnabledModels] = useState<ActiveModel[]>(modelRegistry.getEnabledModels());
-    const [proxyModels, setProxyModels] = useState(keyManager.getAvailableProxyModels());
+    const [globalModels, setGlobalModels] = useState(keyManager.getGlobalModelList());
 
     useEffect(() => {
-        const unsubscribeRegistry = modelRegistry.subscribe(() => {
-            setEnabledModels(modelRegistry.getEnabledModels());
-        });
         const unsubscribeKeyManager = keyManager.subscribe(() => {
-            setProxyModels(keyManager.getAvailableProxyModels());
+            setGlobalModels(keyManager.getGlobalModelList());
         });
         return () => {
-            unsubscribeRegistry();
             unsubscribeKeyManager();
         };
     }, []);
 
-    // Get available models based on line mode and generation type
+    // Get available models based on global list and current mode
     const availableModels = useMemo(() => {
-        if (config.lineMode === 'google_direct') {
-            // Google direct mode: use models from model registry
-            return enabledModels.filter(m => (m.type || 'image') === config.mode);
-        } else {
-            // Proxy mode: use configured proxy models
-            const typeFilter = config.mode === 'image' ? 'image' : 'video';
-            return proxyModels
-                .filter(m => m.type === typeFilter)
-                .map(m => ({
-                    id: m.id,
-                    label: m.label,
-                    provider: m.provider || 'Proxy',
-                    type: m.type,
-                    description: m.description,
-                    enabled: true
-                } as ActiveModel));
-        }
-    }, [config.lineMode, config.mode, enabledModels, proxyModels]);
+        return globalModels
+            .filter(m => m.type !== 'chat')
+            .map(m => {
+                // Check if explicitly in registry (for overrides)
+                const registryModel = modelRegistry.getModels().find(r => r.id === m.id);
+                if (registryModel) return registryModel;
 
-    // Auto-select valid model when switching modes or line mode
+                // Infer type for custom models
+                const isVideo = m.id.toLowerCase().includes('video') ||
+                    m.id.toLowerCase().includes('runway') ||
+                    m.id.toLowerCase().includes('kling') ||
+                    m.id.toLowerCase().includes('luma') ||
+                    m.id.toLowerCase().includes('veo');
+                const modelType = m.type || (isVideo ? 'video' : 'image');
+
+                return {
+                    id: m.id,
+                    label: m.name || m.id,
+                    provider: m.provider,
+                    type: modelType,
+                    enabled: true,
+                    description: m.description
+                } as ActiveModel;
+            })
+            .filter(m => (m.type || 'image') === config.mode);
+    }, [globalModels, config.mode]);
+
+    // Auto-select valid model when switching modes
     useEffect(() => {
         const currentModelValid = availableModels.find(m => m.id === config.model);
         if (!currentModelValid && availableModels.length > 0) {
             setConfig(prev => ({ ...prev, model: availableModels[0].id }));
         }
-    }, [config.mode, config.lineMode, availableModels, config.model, setConfig]);
+    }, [config.mode, availableModels, config.model, setConfig]);
 
     // Get available ratios and sizes based on model capabilities
     const modelCaps = useMemo(() => {
-        return getModelCapabilities(config.model, config.lineMode);
-    }, [config.model, config.lineMode]);
+        return getModelCapabilities(config.model);
+    }, [config.model]);
 
     const availableRatios = useMemo(() => {
-        return modelCaps?.supportedRatios || Object.values(AspectRatio);
+        const ratios = modelCaps?.supportedRatios;
+        return ratios && ratios.length > 0 ? ratios : Object.values(AspectRatio);
     }, [modelCaps]);
 
     const availableSizes = useMemo(() => {
-        return modelCaps?.supportedSizes || Object.values(ImageSize);
+        const sizes = modelCaps?.supportedSizes;
+        return sizes && sizes.length > 0 ? sizes : Object.values(ImageSize);
     }, [modelCaps]);
 
     const groundingSupported = useMemo(() => {
-        return modelSupportsGrounding(config.model, config.lineMode);
-    }, [config.model, config.lineMode]);
+        return modelSupportsGrounding(config.model);
+    }, [config.model]);
 
     // Auto-reset grounding if not supported
     useEffect(() => {
@@ -261,11 +266,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         }
     }, [processFiles]);
 
-    // Helper to get current model label
-    const isProxyEmpty = availableModels.length === 0 && config.lineMode === 'proxy';
-    const currentModelLabel = isProxyEmpty
-        ? '请到 API 设置模型'
-        : (availableModels.find(m => m.id === config.model)?.label || config.model);
+    const isModelListEmpty = availableModels.length === 0;
+
+
+    const currentModel = availableModels.find(m => m.id === config.model);
+    const currentModelLabel = isModelListEmpty
+        ? '无可用模型 (请配置 API)'
+        : (currentModel?.label || currentModel?.id || '未知模型');
 
     const truncateModelLabel = useCallback((label: string) => {
         const max = isMobile ? 14 : 18;
@@ -391,20 +398,20 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         {/* Model Button */}
                         <div className="relative">
                             <button
-                                className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] max-w-[70vw] sm:max-w-none ${isProxyEmpty
-                                    ? 'bg-purple-500/10 border-purple-500/30 text-purple-300 hover:bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.15)] min-w-0 sm:min-w-[220px]'
+                                className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] max-w-[70vw] sm:max-w-none ${isModelListEmpty
+                                    ? 'bg-zinc-800/50 border-zinc-700 text-zinc-500 min-w-0 sm:min-w-[220px] cursor-not-allowed'
                                     : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50 min-w-0 w-auto'
                                     }`}
                                 onClick={() => {
-                                    if (isProxyEmpty) {
-                                        onOpenSettings?.('api-channels');
+                                    if (isModelListEmpty) {
+                                        onOpenSettings?.('api-management');
                                     } else {
                                         toggleMenu('model');
                                     }
                                 }}
                             >
-                                <span className={`w-2 h-2 rounded-full transition-colors duration-300 ${isProxyEmpty
-                                    ? 'bg-purple-500 animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.6)]'
+                                <span className={`w-2 h-2 rounded-full transition-colors duration-300 ${isModelListEmpty
+                                    ? 'bg-zinc-600'
                                     : (config.mode === GenerationMode.VIDEO ? 'bg-purple-500' : 'bg-green-500')
                                     }`}></span>
                                 <span className="text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300">
@@ -413,36 +420,41 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             </button>
 
                             {/* Dropdown Menu */}
-                            {!isProxyEmpty && activeMenu === 'model' && (
+                            {!isModelListEmpty && activeMenu === 'model' && (
                                 <div className="absolute bottom-full mb-2 z-20" style={{ left: '0' }}>
                                     <div className="dropdown static w-[min(16rem,90vw)] max-w-[90vw] animate-scaleIn origin-bottom p-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
-                                        {availableModels.map(model => (
-                                            <button
-                                                key={model.id}
-                                                className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/5' : ''}`}
-                                                onClick={() => {
-                                                    setConfig(prev => ({ ...prev, model: model.id }));
-                                                    setActiveMenu(null);
-                                                }}
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <span className={`text-xs font-medium ${config.model === model.id ? 'text-indigo-400' : 'text-slate-200'}`}>
-                                                        {model.label}
-                                                    </span>
-                                                    {config.model === model.id && (
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
-                                                    )}
-                                                </div>
-                                                <span className="text-[10px] text-zinc-500 leading-tight">{model.description || model.provider}</span>
-                                            </button>
-                                        ))}
+                                        {availableModels.map(model => {
+                                            const displayName = model.label || model.id;
+                                            const advantage = model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                            return (
+                                                <button
+                                                    key={model.id}
+                                                    className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/5' : ''}`}
+                                                    onClick={() => {
+                                                        setConfig(prev => ({ ...prev, model: model.id }));
+                                                        setActiveMenu(null);
+                                                    }}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`text-xs font-medium ${config.model === model.id ? 'text-indigo-400' : 'text-slate-200'}`}>
+                                                            {displayName}
+                                                        </span>
+                                                        {config.model === model.id && (
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[10px] text-zinc-500 leading-tight break-all">ID: {model.id}</span>
+                                                    <span className="text-[10px] text-zinc-500 leading-tight">{advantage}</span>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
                         </div>
 
                         {/* Aspect Ratio & Size - Slide Animation */}
-                        <div className={`flex items-center gap-2 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${isProxyEmpty
+                        <div className={`flex items-center gap-2 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${isModelListEmpty
                             ? 'max-w-0 opacity-0 -translate-x-4 pointer-events-none overflow-hidden'
                             : 'max-w-[300px] opacity-100 translate-x-0 overflow-visible'
                             }`}>
@@ -520,29 +532,6 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <span>联网</span>
                             </button>
 
-                            {/* API Line Mode Toggle - Blue for Google, Purple for Proxy */}
-                            <button
-                                className={`flex items-center gap-1.5 px-3 h-full rounded-full transition-all text-[11px] font-medium whitespace-nowrap ${config.lineMode === 'google_direct'
-                                    ? 'bg-blue-500/20 text-blue-400 shadow-sm shadow-blue-500/10'
-                                    : 'bg-purple-500/20 text-purple-400 shadow-sm shadow-purple-500/10'
-                                    }`}
-                                onClick={() => setConfig(prev => ({
-                                    ...prev,
-                                    lineMode: prev.lineMode === 'google_direct' ? 'proxy' : 'google_direct'
-                                }))}
-                                title={config.lineMode === 'google_direct' ? "谷歌专线 (官方API)" : "中转代理 (第三方API)"}
-                            >
-                                {config.lineMode === 'google_direct' ? (
-                                    <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-                                    </svg>
-                                ) : (
-                                    <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
-                                    </svg>
-                                )}
-                                <span>{config.lineMode === 'google_direct' ? '谷歌专线' : '中转代理'}</span>
-                            </button>
                         </div>
 
                         {/* Group 2: Generation Settings */}

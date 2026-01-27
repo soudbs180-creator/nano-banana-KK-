@@ -8,10 +8,10 @@ export interface ActiveModel extends ModelPreset {
 }
 
 // Default models that are enabled out of the box
-// 使用 Nano Banana 系列作为默认模型
+// Prefer official Gemini/Imagen model IDs
 const DEFAULT_MODELS: ActiveModel[] = [
-    { ...MODEL_PRESETS.find(m => m.id === 'nano-banana')!, enabled: true },
-    { ...MODEL_PRESETS.find(m => m.id === 'nano-banana-pro')!, enabled: true },
+    { ...MODEL_PRESETS.find(m => m.id === 'gemini-2.5-flash-image')!, enabled: true },
+    { ...MODEL_PRESETS.find(m => m.id === 'gemini-3-pro-image-preview')!, enabled: true },
     { ...MODEL_PRESETS.find(m => m.id === 'imagen-4.0-generate-001')!, enabled: true },
     { ...MODEL_PRESETS.find(m => m.id === 'imagen-4.0-ultra-generate-001')!, enabled: true },
 ];

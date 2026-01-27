@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
-import { Canvas, PromptNode, GeneratedImage, AspectRatio, CanvasGroup } from '../types';
+import { Canvas, PromptNode, GeneratedImage, AspectRatio, CanvasGroup, CanvasDrawing } from '../types';
 import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '../services/imageStorage';
 import { syncService } from '../services/syncService';
 import { fileSystemService } from '../services/fileSystemService';
@@ -32,8 +32,8 @@ interface CanvasContextType {
     addPromptNode: (node: PromptNode) => void;
     updatePromptNode: (node: PromptNode) => void;
     addImageNodes: (nodes: GeneratedImage[]) => void;
-    updatePromptNodePosition: (id: string, pos: { x: number; y: number }) => void;
-    updateImageNodePosition: (id: string, pos: { x: number; y: number }) => void;
+    updatePromptNodePosition: (id: string, pos: { x: number; y: number }, options?: { moveChildren?: boolean; ignoreSelection?: boolean }) => void;
+    updateImageNodePosition: (id: string, pos: { x: number; y: number }, options?: { ignoreSelection?: boolean }) => void;
     updateImageNodeDimensions: (id: string, dimensions: string) => void;
     deleteImageNode: (id: string) => void;
     deletePromptNode: (id: string) => void;
@@ -64,6 +64,7 @@ interface CanvasContextType {
     addGroup: (group: CanvasGroup) => void;
     removeGroup: (id: string) => void;
     updateGroup: (group: CanvasGroup) => void;
+    setNodeTags: (ids: string[], tags: string[]) => void;
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -77,8 +78,8 @@ const DEFAULT_CANVAS: Canvas = {
     name: '项目1',
     promptNodes: [],
     imageNodes: [],
-    groups: [],
-    drawings: [],
+    groups: [] as CanvasGroup[],
+    drawings: [] as CanvasDrawing[],
     lastModified: Date.now()
 };
 const DEFAULT_STATE: CanvasState = {
@@ -418,6 +419,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             name: `项目${nextNumber}`,
             promptNodes: [],
             imageNodes: [],
+            groups: [] as CanvasGroup[],
+            drawings: [] as CanvasDrawing[],
             lastModified: Date.now()
         };
         setState(prev => ({
@@ -537,33 +540,48 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
     }, [updateCanvas]);
 
-    const updatePromptNodePosition = useCallback((id: string, pos: { x: number; y: number }) => {
+    const updatePromptNodePosition = useCallback((
+        id: string,
+        pos: { x: number; y: number },
+        options?: { moveChildren?: boolean; ignoreSelection?: boolean }
+    ) => {
         updateCanvas(c => {
             const node = c.promptNodes.find(n => n.id === id);
             if (!node) return c;
 
             const dx = pos.x - node.position.x;
             const dy = pos.y - node.position.y;
+            const moveChildren = options?.moveChildren !== false;
+            const ignoreSelection = options?.ignoreSelection === true;
 
             // GROUP MOVE LOGIC
-            const selectedIds = new Set(state.selectedNodeIds || []);
-            if (selectedIds.has(id)) {
-                const newPromptNodes = c.promptNodes.map(n => {
-                    if (selectedIds.has(n.id)) {
-                        return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
-                    }
-                    return n;
-                });
+            if (!ignoreSelection) {
+                const selectedIds = new Set(state.selectedNodeIds || []);
+                if (selectedIds.has(id)) {
+                    const newPromptNodes = c.promptNodes.map(n => {
+                        if (selectedIds.has(n.id)) {
+                            return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+                        }
+                        return n;
+                    });
 
-                const movedPromptIds = new Set(c.promptNodes.filter(n => selectedIds.has(n.id)).map(n => n.id));
-                const newImageNodes = c.imageNodes.map(img => {
-                    if (selectedIds.has(img.id) || (img.parentPromptId && movedPromptIds.has(img.parentPromptId))) {
-                        return { ...img, position: { x: img.position.x + dx, y: img.position.y + dy } };
-                    }
-                    return img;
-                });
+                    const movedPromptIds = new Set(c.promptNodes.filter(n => selectedIds.has(n.id)).map(n => n.id));
+                    const newImageNodes = c.imageNodes.map(img => {
+                        if (selectedIds.has(img.id) || (img.parentPromptId && movedPromptIds.has(img.parentPromptId))) {
+                            return { ...img, position: { x: img.position.x + dx, y: img.position.y + dy } };
+                        }
+                        return img;
+                    });
 
-                return { ...c, promptNodes: newPromptNodes, imageNodes: newImageNodes };
+                    return { ...c, promptNodes: newPromptNodes, imageNodes: newImageNodes };
+                }
+            }
+
+            if (!moveChildren) {
+                return {
+                    ...c,
+                    promptNodes: c.promptNodes.map(n => n.id === id ? { ...n, position: pos } : n)
+                };
             }
 
             // SINGLE MOVE LOGIC
@@ -588,33 +606,40 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
     }, [updateCanvas, state.selectedNodeIds]);
 
-    const updateImageNodePosition = useCallback((id: string, pos: { x: number; y: number }) => {
+    const updateImageNodePosition = useCallback((
+        id: string,
+        pos: { x: number; y: number },
+        options?: { ignoreSelection?: boolean }
+    ) => {
         updateCanvas(c => {
             const node = c.imageNodes.find(n => n.id === id);
             if (!node) return c;
 
             const dx = pos.x - node.position.x;
             const dy = pos.y - node.position.y;
+            const ignoreSelection = options?.ignoreSelection === true;
 
             // GROUP MOVE LOGIC
-            const selectedIds = new Set(state.selectedNodeIds || []);
-            if (selectedIds.has(id)) {
-                const newPromptNodes = c.promptNodes.map(n => {
-                    if (selectedIds.has(n.id)) {
-                        return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
-                    }
-                    return n;
-                });
+            if (!ignoreSelection) {
+                const selectedIds = new Set(state.selectedNodeIds || []);
+                if (selectedIds.has(id)) {
+                    const newPromptNodes = c.promptNodes.map(n => {
+                        if (selectedIds.has(n.id)) {
+                            return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+                        }
+                        return n;
+                    });
 
-                const movedPromptIds = new Set(c.promptNodes.filter(n => selectedIds.has(n.id)).map(n => n.id));
-                const newImageNodes = c.imageNodes.map(img => {
-                    if (selectedIds.has(img.id) || (img.parentPromptId && movedPromptIds.has(img.parentPromptId))) {
-                        return { ...img, position: { x: img.position.x + dx, y: img.position.y + dy } };
-                    }
-                    return img;
-                });
+                    const movedPromptIds = new Set(c.promptNodes.filter(n => selectedIds.has(n.id)).map(n => n.id));
+                    const newImageNodes = c.imageNodes.map(img => {
+                        if (selectedIds.has(img.id) || (img.parentPromptId && movedPromptIds.has(img.parentPromptId))) {
+                            return { ...img, position: { x: img.position.x + dx, y: img.position.y + dy } };
+                        }
+                        return img;
+                    });
 
-                return { ...c, promptNodes: newPromptNodes, imageNodes: newImageNodes };
+                    return { ...c, promptNodes: newPromptNodes, imageNodes: newImageNodes };
+                }
             }
 
             return {
@@ -1036,127 +1061,133 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Filter selected nodes
             const selectedPrompts = currentCanvas.promptNodes.filter(p => selectedIds.includes(p.id));
             const selectedImages = currentCanvas.imageNodes.filter(img => selectedIds.includes(img.id));
+            const selectedCount = selectedPrompts.length + selectedImages.length;
 
-            if (selectedPrompts.length + selectedImages.length <= 1) return;
+            if (selectedCount > 1) {
+                // 1. Prepare data with visual dimensions and centers
+                // Card Anchor is Bottom-Center (x, y). 
+                // Visual Center Y = y - height / 2.
+                const allSelected = [
+                    ...selectedPrompts.map(p => ({
+                        id: p.id,
+                        type: 'prompt',
+                        obj: p,
+                        x: p.position.x,
+                        y: p.position.y,
+                        width: PROMPT_WIDTH,
+                        height: p.height || 200, // Use tracked height or fallback
+                        visualCy: p.position.y - (p.height || 200) / 2
+                    })),
+                    ...selectedImages.map(img => {
+                        const dims = getImageDims(img.aspectRatio, img.dimensions);
+                        return {
+                            id: img.id,
+                            type: 'image',
+                            obj: img,
+                            x: img.position.x,
+                            y: img.position.y,
+                            width: dims.w,
+                            height: dims.h,
+                            visualCy: img.position.y - dims.h / 2
+                        };
+                    })
+                ];
 
-            // 1. Prepare data with visual dimensions and centers
-            // Card Anchor is Bottom-Center (x, y). 
-            // Visual Center Y = y - height / 2.
-            const allSelected = [
-                ...selectedPrompts.map(p => ({
-                    id: p.id,
-                    type: 'prompt',
-                    obj: p,
-                    x: p.position.x,
-                    y: p.position.y,
-                    width: PROMPT_WIDTH,
-                    height: p.height || 200, // Use tracked height or fallback
-                    visualCy: p.position.y - (p.height || 200) / 2
-                })),
-                ...selectedImages.map(img => {
-                    const dims = getImageDims(img.aspectRatio, img.dimensions);
-                    return {
-                        id: img.id,
-                        type: 'image',
-                        obj: img,
-                        x: img.position.x,
-                        y: img.position.y,
-                        width: dims.w,
-                        height: dims.h,
-                        visualCy: img.position.y - dims.h / 2
+                // 2. Sort by current X to maintain relative left-to-right order
+                allSelected.sort((a, b) => a.x - b.x);
+
+                // 3. Calculate Visual Vertical Center Line (Average of visual centers)
+                const avgVisualCy = allSelected.reduce((sum, n) => sum + n.visualCy, 0) / allSelected.length;
+
+                // 4. Distribute Horizontally with Fixed Gap
+                const DISTRIBUTION_GAP = 40; // Fixed distance requested by user
+
+                // Start X: Keep the group centered around the same visual center X? 
+                // Or start from the leftmost item's X? 
+                // Let's preserve the "Leftmost Edge" of the group to avoid jumping too much.
+                // Leftmost Edge = allSelected[0].x - allSelected[0].width / 2
+                let currentLeftEdge = allSelected[0].x - allSelected[0].width / 2;
+
+                const newPositions: Record<string, { x: number, y: number }> = {};
+                const movedPrompts = new Set<string>();
+
+                // Calculate new positions for SELECTED nodes
+                allSelected.forEach((node) => {
+                    // Horizontal: Place based on accumulated width
+                    // Node Center X = currentLeftEdge + node.width / 2
+                    const newX = currentLeftEdge + node.width / 2;
+
+                    // Vertical: Align Visual Center
+                    // New Bottom Y = avgVisualCy + height / 2
+                    const newY = avgVisualCy + node.height / 2;
+
+                    newPositions[node.id] = { x: newX, y: newY };
+
+                    // Advance X cursor
+                    currentLeftEdge += node.width + DISTRIBUTION_GAP;
+
+                    // Track prompt moves to sync children later
+                    if (node.type === 'prompt') movedPrompts.add(node.id);
+                });
+
+                // 5. Apply updates & Handle Implicit Child Movement
+                // If a prompt moved, its unselected child images should move with it.
+                const newCanvases = state.canvases.map(c => {
+                    if (c.id !== state.activeCanvasId) return c;
+
+                    // Helper to get delta for a specific prompt
+                    const getPromptDelta = (pid: string) => {
+                        if (!newPositions[pid]) return { x: 0, y: 0 };
+                        // Find original pos
+                        const original = allSelected.find(s => s.id === pid);
+                        if (!original) return { x: 0, y: 0 };
+                        return {
+                            x: newPositions[pid].x - original.x,
+                            y: newPositions[pid].y - original.y
+                        };
                     };
-                })
-            ];
 
-            // 2. Sort by current X to maintain relative left-to-right order
-            allSelected.sort((a, b) => a.x - b.x);
-
-            // 3. Calculate Visual Vertical Center Line (Average of visual centers)
-            const avgVisualCy = allSelected.reduce((sum, n) => sum + n.visualCy, 0) / allSelected.length;
-
-            // 4. Distribute Horizontally with Fixed Gap
-            const DISTRIBUTION_GAP = 40; // Fixed distance requested by user
-
-            // Start X: Keep the group centered around the same visual center X? 
-            // Or start from the leftmost item's X? 
-            // Let's preserve the "Leftmost Edge" of the group to avoid jumping too much.
-            // Leftmost Edge = allSelected[0].x - allSelected[0].width / 2
-            let currentLeftEdge = allSelected[0].x - allSelected[0].width / 2;
-
-            const newPositions: Record<string, { x: number, y: number }> = {};
-            const movedPrompts = new Set<string>();
-
-            // Calculate new positions for SELECTED nodes
-            allSelected.forEach((node) => {
-                // Horizontal: Place based on accumulated width
-                // Node Center X = currentLeftEdge + node.width / 2
-                const newX = currentLeftEdge + node.width / 2;
-
-                // Vertical: Align Visual Center
-                // New Bottom Y = avgVisualCy + height / 2
-                const newY = avgVisualCy + node.height / 2;
-
-                newPositions[node.id] = { x: newX, y: newY };
-
-                // Advance X cursor
-                currentLeftEdge += node.width + DISTRIBUTION_GAP;
-
-                // Track prompt moves to sync children later
-                if (node.type === 'prompt') movedPrompts.add(node.id);
-            });
-
-            // 5. Apply updates & Handle Implicit Child Movement
-            // If a prompt moved, its unselected child images should move with it.
-            const newCanvases = state.canvases.map(c => {
-                if (c.id !== state.activeCanvasId) return c;
-
-                // Helper to get delta for a specific prompt
-                const getPromptDelta = (pid: string) => {
-                    if (!newPositions[pid]) return { x: 0, y: 0 };
-                    // Find original pos
-                    const original = allSelected.find(s => s.id === pid);
-                    if (!original) return { x: 0, y: 0 };
                     return {
-                        x: newPositions[pid].x - original.x,
-                        y: newPositions[pid].y - original.y
-                    };
-                };
-
-                return {
-                    ...c,
-                    promptNodes: c.promptNodes.map(pn => newPositions[pn.id] ? { ...pn, position: newPositions[pn.id] } : pn),
-                    imageNodes: c.imageNodes.map(img => {
-                        // Case 1: Image is explicitly selected and arranged
-                        if (newPositions[img.id]) {
-                            return { ...img, position: newPositions[img.id] };
-                        }
-                        // Case 2: Image is NOT selected, but its Parent Prompt moved
-                        if (img.parentPromptId && movedPrompts.has(img.parentPromptId)) {
-                            // Sync move
-                            const delta = getPromptDelta(img.parentPromptId);
-                            if (delta.x !== 0 || delta.y !== 0) {
-                                return {
-                                    ...img,
-                                    position: {
-                                        x: img.position.x + delta.x,
-                                        y: img.position.y + delta.y
-                                    }
-                                };
+                        ...c,
+                        promptNodes: c.promptNodes.map(pn => newPositions[pn.id] ? { ...pn, position: newPositions[pn.id] } : pn),
+                        imageNodes: c.imageNodes.map(img => {
+                            // Case 1: Image is explicitly selected and arranged
+                            if (newPositions[img.id]) {
+                                return { ...img, position: newPositions[img.id] };
                             }
-                        }
-                        return img;
-                    }),
-                    lastModified: Date.now()
-                };
-            });
+                            // Case 2: Image is NOT selected, but its Parent Prompt moved
+                            if (img.parentPromptId && movedPrompts.has(img.parentPromptId)) {
+                                // Sync move
+                                const delta = getPromptDelta(img.parentPromptId);
+                                if (delta.x !== 0 || delta.y !== 0) {
+                                    return {
+                                        ...img,
+                                        position: {
+                                            x: img.position.x + delta.x,
+                                            y: img.position.y + delta.y
+                                        }
+                                    };
+                                }
+                            }
+                            return img;
+                        }),
+                        lastModified: Date.now()
+                    };
+                });
 
-            setState(prev => ({ ...prev, canvases: newCanvases }));
-            return;
+                setState(prev => ({ ...prev, canvases: newCanvases }));
+                return;
+            }
         }
 
         // --- 1. Build Data Structures (Original Full Layout) ---
-        const promptMap = new Map(currentCanvas.promptNodes.map(n => [n.id, n]));
-        const imageMap = new Map(currentCanvas.imageNodes.map(n => [n.id, n]));
+        const errorPrompts = currentCanvas.promptNodes.filter(p => p.error);
+        const errorPromptIds = new Set(errorPrompts.map(p => p.id));
+        const normalPrompts = currentCanvas.promptNodes.filter(p => !errorPromptIds.has(p.id));
+        const normalImages = currentCanvas.imageNodes.filter(img => !img.parentPromptId || !errorPromptIds.has(img.parentPromptId));
+
+        const promptMap = new Map(normalPrompts.map(n => [n.id, n]));
+        const imageMap = new Map(normalImages.map(n => [n.id, n]));
 
         // Track visited to prevent infinite loops (though DAG is expected)
         const visited = new Set<string>();
@@ -1190,7 +1221,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 width = PROMPT_WIDTH;
                 height = node.height || 200; // Use actual height if available
                 // Children are Images created by this prompt
-                childrenIds = currentCanvas.imageNodes
+                childrenIds = normalImages
                     .filter(img => img.parentPromptId === nodeId)
                     .map(img => img.id);
                 childType = 'image';
@@ -1201,7 +1232,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 width = dims.w;
                 height = dims.h;
                 // Children are Prompts that use this image as source (Follow-ups)
-                childrenIds = currentCanvas.promptNodes
+                childrenIds = normalPrompts
                     .filter(p => p.sourceImageId === nodeId)
                     .map(p => p.id);
                 childType = 'prompt';
@@ -1216,12 +1247,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // --- 2. Identify Roots ---
         // Root Prompts: No sourceImageId OR sourceImageId not found
-        const rootPrompts = currentCanvas.promptNodes.filter(p =>
+        const rootPrompts = normalPrompts.filter(p =>
             !p.sourceImageId || !imageMap.has(p.sourceImageId)
         );
 
         // Root Images: No parentPromptId OR parentPromptId not found (Orphans)
-        const rootImages = currentCanvas.imageNodes.filter(img =>
+        const rootImages = normalImages.filter(img =>
             !img.parentPromptId || !promptMap.has(img.parentPromptId)
         );
 
@@ -1319,7 +1350,63 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
 
 
-        // --- 5. Apply & Save ---
+        // --- 5. Error Prompt Layout (Right of Normal Groups) ---
+        if (errorPrompts.length > 0) {
+            const errorGapX = 80;
+            const errorGapY = 40;
+            const errorImageGap = 16;
+
+            let maxRight = 0;
+            normalPrompts.forEach(p => {
+                const pos = positions[p.id];
+                if (!pos) return;
+                maxRight = Math.max(maxRight, pos.x + PROMPT_WIDTH / 2);
+            });
+            normalImages.forEach(img => {
+                const pos = positions[img.id];
+                if (!pos) return;
+                const dims = getImageDims(img.aspectRatio, img.dimensions);
+                maxRight = Math.max(maxRight, pos.x + dims.w / 2);
+            });
+            (currentCanvas.groups || []).forEach(group => {
+                maxRight = Math.max(maxRight, group.bounds.x + group.bounds.width);
+            });
+
+            const errorStartX = maxRight + errorGapX;
+            let cursorY = baseRootY;
+
+            const sortedErrors = [...errorPrompts].sort((a, b) => parseInt(a.id) - parseInt(b.id));
+            sortedErrors.forEach(prompt => {
+                const promptHeight = prompt.height || PROMPT_HEIGHT;
+                const childImages = currentCanvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
+                const imageDims = childImages.map(img => getImageDims(img.aspectRatio, img.dimensions));
+                const rowWidth = imageDims.reduce((sum, dim) => sum + dim.w, 0) + Math.max(0, childImages.length - 1) * errorImageGap;
+                const rowHeight = imageDims.length > 0 ? Math.max(...imageDims.map(dim => dim.h)) : 0;
+                const blockWidth = Math.max(PROMPT_WIDTH, rowWidth);
+                const promptToImageGap = childImages.length > 0 ? 20 : 0;
+
+                const promptX = errorStartX + blockWidth / 2;
+                const promptBottom = cursorY + promptHeight;
+                positions[prompt.id] = { x: promptX, y: promptBottom };
+
+                if (childImages.length > 0) {
+                    let imgCursorX = errorStartX + (blockWidth - rowWidth) / 2;
+                    const rowTop = cursorY + promptHeight + promptToImageGap;
+                    childImages.forEach((img, index) => {
+                        const dims = imageDims[index];
+                        positions[img.id] = {
+                            x: imgCursorX + dims.w / 2,
+                            y: rowTop + dims.h
+                        };
+                        imgCursorX += dims.w + errorImageGap;
+                    });
+                }
+
+                cursorY += promptHeight + promptToImageGap + rowHeight + errorGapY;
+            });
+        }
+
+        // --- 6. Apply & Save ---
         const newCanvases = state.canvases.map(c =>
             c.id === state.activeCanvasId ? {
                 ...c,
@@ -2001,6 +2088,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
     }, [updateCanvas]);
 
+    const setNodeTags = useCallback((ids: string[], tags: string[]) => {
+        updateCanvas((canvas) => ({
+            ...canvas,
+            promptNodes: canvas.promptNodes.map(n => ids.includes(n.id) ? { ...n, tags } : n),
+            imageNodes: canvas.imageNodes.map(n => ids.includes(n.id) ? { ...n, tags } : n)
+        }));
+    }, [updateCanvas]);
+
     return (
         <CanvasContext.Provider value={{
             state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
@@ -2020,7 +2115,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             findNextGroupPosition,
             addGroup,
             removeGroup,
-            updateGroup
+            updateGroup,
+            setNodeTags
         }}>
             {children}
         </CanvasContext.Provider>

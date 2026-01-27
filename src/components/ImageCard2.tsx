@@ -74,7 +74,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
     }, [image.url]);
 
     // Helper: Attempt to recover image from cache
-    const recoverImage = useCallback(async () => {
+    const recoverImage = useCallback(async (retryCount = 0) => {
         try {
             // 1. Try IndexedDB first
             const { getImage } = await import('../services/imageStorage');
@@ -107,7 +107,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
 
             // 3. Last Resort: If we have an originalUrl that is different from the failed url
             if (image.originalUrl && image.originalUrl !== image.url) {
-                setDisplaySrc(image.originalUrl);
+                const separator = image.originalUrl.includes('?') ? '&' : '?';
+                const url = retryCount > 0 ? `${image.originalUrl}${separator}retry=${retryCount}-${Date.now()}` : image.originalUrl;
+                setDisplaySrc(url);
+                setImgError(false);
+                return;
+            }
+            // Fallback retry for main URL if we are in a retry loop
+            if (retryCount > 0) {
+                const separator = image.url.includes('?') ? '&' : '?';
+                const url = `${image.url}${separator}retry=${retryCount}-${Date.now()}`;
+                setDisplaySrc(url);
                 setImgError(false);
                 return;
             }
@@ -115,8 +125,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
         } catch (err) {
             console.warn('Failed to recover image', err);
         }
-        // If all fails
-        setImgError(true);
+
+        // If failed, auto-retry with exponential backoff (up to 3 times)
+        if (retryCount < 3) {
+            console.log(`[ImageCard] Load failed, retrying (${retryCount + 1}/3) for ${image.id}...`);
+            setTimeout(() => {
+                recoverImage(retryCount + 1);
+            }, 1000 * Math.pow(2, retryCount)); // 1000ms, 2000ms, 4000ms
+        } else {
+            // If all retries fail, show error state
+            setImgError(true);
+        }
     }, [image.id, image.url, image.originalUrl]);
 
     // Construct high-res URL for lightbox
@@ -526,7 +545,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                                     src={displaySrc}
                                     className="w-full h-auto block select-none pointer-events-none"
                                     muted loop autoPlay playsInline
-                                    onError={() => setImgError(true)}
+                                    onError={() => recoverImage()}
                                 />
                             ) : (
                                 <img
@@ -566,8 +585,20 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = ({
                         )}
                     </div>
 
+
+                    {/* Tags Layer */}
+                    {image.tags && image.tags.length > 0 && (
+                        <div className="absolute bottom-[36px] left-0 right-0 p-2 flex flex-wrap gap-1 justify-end pointer-events-none">
+                            {image.tags.map(tag => (
+                                <span key={tag} className="px-1.5 py-0.5 bg-black/60 backdrop-blur-sm border border-white/10 rounded text-[9px] text-zinc-300 shadow-sm">
+                                    #{tag}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Footer - Model badge + Continue + Download + Delete */}
-                    <div className="px-3 py-2 bg-[#121212]/50 flex items-center justify-between border-t border-white/5">
+                    <div className="px-3 py-2 bg-[#121212]/50 flex items-center justify-between border-t border-white/5 relative z-10">
                         {(() => {
                             const model = image.model || '';
                             let label = 'AI';

@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap, Settings2 } from 'lucide-react';
+import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap } from 'lucide-react';
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
 import { MODEL_PRESETS } from '../services/modelPresets';
 import { KeyManager, KeySlot, keyManager } from '../services/keyManager';
@@ -10,9 +10,9 @@ import { useCanvas } from '../context/CanvasContext';
 import { syncService } from '../services/syncService';
 import { getStorageUsage, cleanupOriginals } from '../services/imageStorage';
 import { fileSystemService } from '../services/fileSystemService';
-import { ApiChannelsView } from './ApiChannelsView';
+import ApiManagementView from './ApiManagementView';
 
-export type SettingsView = 'dashboard' | 'api-channels' | 'cost-estimation' | 'storage-settings' | 'system-logs';
+export type SettingsView = 'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs';
 
 interface SettingsPanelProps {
     isOpen: boolean;
@@ -66,7 +66,7 @@ const BudgetAlerts = ({ totalRemaining, dailyRemaining, isTotalUnlimited, isDail
             /* Desktop: Bottom Right */
             md:top-auto md:left-auto md:bottom-6 md:right-6 md:transform-none
         `}>
-            <div className="bg-[#18181b]/90 backdrop-blur-xl border border-white/10 rounded-full py-2 pl-3 pr-4 flex items-center gap-3 shadow-2xl">
+            <div className="bg-[rgba(24,24,27,0.92)] backdrop-blur-xl border border-white/10 rounded-full py-2 pl-3 pr-4 flex items-center gap-3 shadow-2xl">
                 {/* Icon & Pulse */}
                 <div className={`relative flex items-center justify-center w-8 h-8 rounded-full ${config.bg} ${config.color}`}>
                     <Icon size={14} className="animate-pulse" />
@@ -193,7 +193,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                         relative overflow-hidden group px-4 py-2 rounded-full border transition-all duration-300
                         ${isSuccess
                             ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
-                            : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400 hover:text-white hover:border-zinc-600'
+                            : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-zinc-300 hover:text-white hover:border-[var(--border-medium)]'
                         }
                     `}
                 >
@@ -212,7 +212,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     const dailyTokens = todayData.tokens || 0;
 
                     return (
-                        <div className="col-span-1 md:col-span-2 md:row-span-2 bg-gradient-to-br from-indigo-500/10 via-[#1c1c1e] to-[#1c1c1e] p-6 rounded-[32px] border border-indigo-500/20 relative overflow-hidden group flex flex-col justify-between">
+                        <div className="col-span-1 md:col-span-2 md:row-span-2 bg-gradient-to-br from-indigo-500/10 via-[var(--bg-secondary)] to-[var(--bg-secondary)] p-6 rounded-[32px] border border-[var(--border-light)] relative overflow-hidden group flex flex-col justify-between">
                             <div className="absolute top-0 right-0 p-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/10" />
 
                             <div className="relative z-10 flex items-center gap-2">
@@ -232,7 +232,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                                     <span>约 ¥{(dailyUsage * 7.2).toFixed(2)} CNY</span>
                                 </div>
 
-                                <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 flex items-center justify-between">
+                                <div className="p-4 bg-[var(--bg-tertiary)] rounded-2xl border border-[var(--border-light)] flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg"><Activity size={20} /></div>
                                         <div>
@@ -267,7 +267,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                             : 'bg-red-500';
 
                     return (
-                        <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[#1c1c1e] p-6 rounded-[32px] border border-zinc-800/50 flex flex-col justify-center relative overflow-hidden hover:border-zinc-700 transition-colors group">
+                        <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[var(--bg-secondary)] p-6 rounded-[32px] border border-[var(--border-light)] flex flex-col justify-center relative overflow-hidden hover:border-[var(--border-medium)] transition-colors group">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex items-center gap-2">
                                     <div className="p-1.5 bg-emerald-500/10 rounded-md text-emerald-500"><DollarSign size={20} /></div>
@@ -286,7 +286,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                                     <span>总额: {isTotalUnlimited ? '∞' : `$${totalBudget.toFixed(2)}`}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <div className="h-3 flex-1 bg-zinc-800 rounded-full overflow-hidden">
+                                    <div className="h-3 flex-1 bg-white/10 rounded-full overflow-hidden">
                                         <div
                                             className={`h-full rounded-full transition-all duration-500 shadow-lg ${progressBarColor}`}
                                             style={{ width: isTotalUnlimited ? '100%' : `${remainingPercent}%` }}
@@ -309,7 +309,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     const abnormalCount = totalCount - activeCount;
 
                     return (
-                        <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[#1c1c1e] p-6 rounded-[32px] border border-zinc-800/50 flex items-center justify-between relative overflow-hidden hover:border-zinc-700 transition-colors group">
+                        <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[var(--bg-secondary)] p-6 rounded-[32px] border border-[var(--border-light)] flex items-center justify-between relative overflow-hidden hover:border-[var(--border-medium)] transition-colors group">
                             <div className="flex items-center gap-5">
                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg ${activeCount > 0 ? 'bg-emerald-500/10 text-emerald-500 shadow-emerald-500/10' : 'bg-red-500/10 text-red-500 shadow-red-500/10'}`}>
                                     <Key size={24} />
@@ -340,25 +340,25 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
 
             {/* System Status Section - Compact (Restored) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-[#1c1c1e] rounded-[24px] border border-zinc-800/50 p-4 flex items-center gap-3 hover:border-zinc-700 transition-colors">
+                <div className="bg-[var(--bg-secondary)] rounded-[24px] border border-[var(--border-light)] p-4 flex items-center gap-3 hover:border-[var(--border-medium)] transition-colors">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">系统状态</div>
                         <div className="text-sm font-medium text-zinc-300">运行正常</div>
                     </div>
                 </div>
-                <div className="bg-[#1c1c1e] rounded-[24px] border border-zinc-800/50 p-4 flex items-center gap-3 hover:border-zinc-700 transition-colors">
+                <div className="bg-[var(--bg-secondary)] rounded-[24px] border border-[var(--border-light)] p-4 flex items-center gap-3 hover:border-[var(--border-medium)] transition-colors">
                     <div className={`w-2 h-2 rounded-full ${latency > 0 && latency < 200 ? 'bg-emerald-500' : latency > 0 ? 'bg-amber-500' : 'bg-zinc-600'}`} />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">延迟</div>
                         <div className="text-sm font-medium text-zinc-300 font-mono">{latency > 0 ? `${latency}ms` : 'Checking...'}</div>
                     </div>
                 </div>
-                <div className="bg-[#1c1c1e] rounded-[24px] border border-zinc-800/50 p-4 flex items-center gap-3 hover:border-zinc-700 transition-colors">
+                <div className="bg-[var(--bg-secondary)] rounded-[24px] border border-[var(--border-light)] p-4 flex items-center gap-3 hover:border-[var(--border-medium)] transition-colors">
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 uppercase tracking-wider">版本</div>
-                        <div className="text-sm font-medium text-zinc-300">v1.2.0</div>
+                        <div className="text-sm font-medium text-zinc-300">v1.2.1</div>
                     </div>
                 </div>
             </div>
@@ -401,43 +401,42 @@ const CostEstimationView = () => {
 
     return (
         <div className="space-y-6">
-            <div className="hidden md:flex items-center justify-between">
-                <div>
-                    <h3 className="text-2xl font-bold text-white">成本详情</h3>
-                    <p className="text-xs text-zinc-500 mt-1">按模型和规格统计的详细使用记录</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    {/* Tab Toggle */}
-                    <div className="flex bg-zinc-800/50 rounded-lg p-0.5">
+            <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-2xl font-bold text-white text-left">成本详情</h3>
+                    <div className="flex items-center gap-2">
+                        <div className="flex bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg p-0.5">
+                            <button
+                                onClick={() => setActiveTab('summary')}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeTab === 'summary' ? 'bg-indigo-500/20 text-white' : 'text-zinc-400 hover:text-white'}`}
+                            >
+                                模型汇总
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('detailed')}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeTab === 'detailed' ? 'bg-indigo-500/20 text-white' : 'text-zinc-400 hover:text-white'}`}
+                            >
+                                详细记录
+                            </button>
+                        </div>
                         <button
-                            onClick={() => setActiveTab('summary')}
-                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeTab === 'summary' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                            onClick={handleSync}
+                            disabled={isSyncing}
+                            className="p-2 bg-[var(--bg-tertiary)] border border-[var(--border-light)] hover:bg-white/5 text-zinc-400 hover:text-white rounded-lg transition-colors"
+                            title="从云端同步数据"
                         >
-                            模型汇总
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('detailed')}
-                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeTab === 'detailed' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
-                        >
-                            详细记录
+                            <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
                         </button>
                     </div>
-                    <button
-                        onClick={handleSync}
-                        disabled={isSyncing}
-                        className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg transition-colors"
-                        title="从云端同步数据"
-                    >
-                        <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
-                    </button>
                 </div>
+                <p className="text-xs text-zinc-500 text-center w-full">按模型和规格统计的详细使用记录</p>
             </div>
 
             {/* Desktop Table View - Summary */}
             {activeTab === 'summary' && (
-                <div className="hidden md:block bg-[#1c1c1e] border border-zinc-800 rounded-[32px] overflow-x-auto shadow-sm">
+                <div className="hidden md:block bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-[32px] overflow-x-auto shadow-sm">
                     <table className="w-full text-left text-sm">
-                        <thead className="bg-zinc-900 border-b border-zinc-800">
+                        <thead className="bg-[var(--bg-tertiary)] border-b border-[var(--border-light)]">
                             <tr>
                                 <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">模型</th>
                                 <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">规格</th>
@@ -451,7 +450,7 @@ const CostEstimationView = () => {
                                 <tr><td colSpan={5} className="p-12 text-center text-zinc-500">今日暂无数据</td></tr>
                             ) : (
                                 breakdown.map((item, idx) => (
-                                    <tr key={idx} className="hover:bg-zinc-800/30 transition-colors group">
+                                    <tr key={idx} className="hover:bg-white/5 transition-colors group">
                                         <td className="px-5 py-4 text-white font-medium">{item.model}</td>
                                         <td className="px-5 py-4 text-zinc-500 font-mono text-xs">{item.imageSize || 'Default'}</td>
                                         <td className="px-5 py-4 text-right font-mono text-zinc-300">{item.count}</td>
@@ -471,9 +470,9 @@ const CostEstimationView = () => {
 
             {/* Desktop Table View - Detailed Entries (Last 20) */}
             {activeTab === 'detailed' && (
-                <div className="hidden md:block bg-[#1c1c1e] border border-zinc-800 rounded-[32px] overflow-x-auto shadow-sm">
+                <div className="hidden md:block bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-[32px] overflow-x-auto shadow-sm">
                     <table className="w-full text-left text-sm">
-                        <thead className="bg-zinc-900 border-b border-zinc-800">
+                        <thead className="bg-[var(--bg-tertiary)] border-b border-[var(--border-light)]">
                             <tr>
                                 <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">时间</th>
                                 <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">模型</th>
@@ -487,7 +486,7 @@ const CostEstimationView = () => {
                                 <tr><td colSpan={5} className="p-12 text-center text-zinc-500">今日暂无详细记录</td></tr>
                             ) : (
                                 entries.map((entry, idx) => (
-                                    <tr key={idx} className="hover:bg-zinc-800/30 transition-colors">
+                                    <tr key={idx} className="hover:bg-white/5 transition-colors">
                                         <td className="px-5 py-3 text-zinc-400 font-mono text-xs">
                                             {new Date(entry.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                         </td>
@@ -504,7 +503,7 @@ const CostEstimationView = () => {
                             )}
                         </tbody>
                     </table>
-                    <div className="px-5 py-3 border-t border-zinc-800/50 text-xs text-zinc-500 text-center">
+                    <div className="px-5 py-3 border-t border-[var(--border-light)] text-xs text-zinc-500 text-center">
                         显示最近 {entries.length} 条记录 (最多 20 条)
                     </div>
                 </div>
@@ -513,12 +512,12 @@ const CostEstimationView = () => {
             {/* Mobile Vertical Card View */}
             <div className="md:hidden space-y-3">
                 {breakdown.length === 0 ? (
-                    <div className="p-8 text-center text-zinc-500 bg-[#1c1c1e] rounded-[32px] border border-zinc-800">
+                    <div className="p-8 text-center text-zinc-500 bg-[var(--bg-secondary)] rounded-[32px] border border-[var(--border-light)]">
                         今日暂无数据
                     </div>
                 ) : (
                     breakdown.map((item, idx) => (
-                        <div key={idx} className="bg-[#1c1c1e] border border-zinc-800 rounded-[32px] p-5 shadow-sm space-y-3">
+                        <div key={idx} className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-[32px] p-5 shadow-sm space-y-3">
                             {/* Header: Model Name */}
                             <div className="flex justify-between items-start">
                                 <div className="space-y-1">
@@ -536,15 +535,15 @@ const CostEstimationView = () => {
 
                             {/* Stats Grid */}
                             <div className="grid grid-cols-3 gap-2 text-center">
-                                <div className="bg-zinc-900/50 rounded-2xl p-2">
+                                <div className="bg-[var(--bg-tertiary)] rounded-2xl p-2">
                                     <div className="text-[10px] text-zinc-500 uppercase mb-1">Size</div>
                                     <div className="text-zinc-300 font-mono text-xs">{item.imageSize || 'Default'}</div>
                                 </div>
-                                <div className="bg-zinc-900/50 rounded-2xl p-2">
+                                <div className="bg-[var(--bg-tertiary)] rounded-2xl p-2">
                                     <div className="text-[10px] text-zinc-500 uppercase mb-1">Count</div>
                                     <div className="text-zinc-300 font-mono text-xs">{item.count}</div>
                                 </div>
-                                <div className="bg-zinc-900/50 rounded-2xl p-2">
+                                <div className="bg-[var(--bg-tertiary)] rounded-2xl p-2">
                                     <div className="text-[10px] text-zinc-500 uppercase mb-1">Tokens</div>
                                     <div className="text-indigo-400 font-mono text-xs">{(item.tokens || 0).toLocaleString()}</div>
                                 </div>
@@ -554,7 +553,7 @@ const CostEstimationView = () => {
                 )}
             </div>
 
-            <div className="text-xs text-zinc-500 p-5 bg-zinc-900/50 rounded-[32px] border border-zinc-800/50">
+            <div className="text-xs text-zinc-500 p-5 bg-[var(--bg-tertiary)] rounded-[32px] border border-[var(--border-light)]">
                 <p className="font-medium text-zinc-400 mb-3">计费参考</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Imagen */}
@@ -586,7 +585,7 @@ const CostEstimationView = () => {
                         </div>
                     </div>
                 </div>
-                <div className="mt-3 pt-3 border-t border-zinc-800/50 text-[10px] text-zinc-600">
+                <div className="mt-3 pt-3 border-t border-[var(--border-light)] text-[10px] text-zinc-600">
                     Token 计费: Gemini 2.5 Flash Image 输出 $30/1M, Gemini 3 Pro Image 输出 $120/1M
                 </div>
             </div>
@@ -681,20 +680,20 @@ const StorageSettingsView = () => {
 
     return (
         <div className="space-y-8 h-full flex flex-col px-1">
-            <div className="hidden md:block">
-                <h3 className="text-2xl font-bold text-white flex items-center gap-3">
+            <div className="flex-1">
+                <h3 className="text-2xl font-bold text-white flex items-center gap-3 text-left">
                     存储管理
                     <div className={`text-xs ml-2 font-normal px-2 py-0.5 rounded-full border ${isConnectedToLocal
                         ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                        : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                        : 'bg-[var(--bg-tertiary)] text-zinc-300 border-[var(--border-light)]'
                         }`}>
                         {isConnectedToLocal ? '本地 (Local)' : '临时 (Temp)'}
                     </div>
                 </h3>
-                <p className="text-zinc-500 text-sm mt-1 max-w-2xl">
-                    数据存储偏好设置。可在临时浏览器存储和本地文件系统之间切换。
-                </p>
             </div>
+            <p className="text-zinc-500 text-sm mt-1 text-left w-full">
+                数据存储偏好设置。可在临时浏览器存储和本地文件系统之间切换。
+            </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
 
@@ -704,11 +703,11 @@ const StorageSettingsView = () => {
                     className={`relative p-5 md:p-8 rounded-[24px] md:rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
                     ${!isConnectedToLocal
                             ? 'bg-indigo-600/5 border-indigo-500/50 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]'
-                            : 'bg-[#18181b] border-zinc-800/50 hover:border-indigo-500/30 hover:bg-zinc-800/50 opacity-60 hover:opacity-100'
+                            : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-indigo-500/30 hover:bg-white/5 opacity-60 hover:opacity-100'
                         }`}>
 
                     <div className="flex justify-between items-start">
-                        <div className={`p-4 rounded-2xl ${!isConnectedToLocal ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
+                        <div className={`p-4 rounded-2xl ${!isConnectedToLocal ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-[var(--bg-tertiary)] text-zinc-500'}`}>
                             <Globe size={24} />
                         </div>
                         {!isConnectedToLocal && (
@@ -740,7 +739,7 @@ const StorageSettingsView = () => {
                             className={`flex-1 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
                             ${!isConnectedToLocal
                                     ? 'bg-indigo-500/10 text-indigo-400 cursor-default'
-                                    : 'bg-zinc-800 text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
+                                    : 'bg-[var(--bg-tertiary)] text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
                         >
                             {isConnectedToLocal ? '切换至临时模式' : '当前已激活'}
                         </button>
@@ -748,7 +747,7 @@ const StorageSettingsView = () => {
                         {isConnectedToLocal && (
                             <button
                                 onClick={handleClearCache}
-                                className="px-4 py-3 rounded-xl bg-zinc-800 text-zinc-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 border border-transparent transition-all flex items-center justify-center cursor-pointer"
+                                className="px-4 py-3 rounded-xl bg-[var(--bg-tertiary)] text-zinc-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 border border-transparent transition-all flex items-center justify-center cursor-pointer"
                                 title="清理浏览器缓存(Clear Cache)"
                             >
                                 <Trash2 size={18} />
@@ -763,11 +762,11 @@ const StorageSettingsView = () => {
                     className={`relative p-5 md:p-8 rounded-[24px] md:rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
                     ${isConnectedToLocal
                             ? 'bg-indigo-600/5 border-indigo-500/50 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]'
-                            : 'bg-[#18181b] border-zinc-800/50 hover:border-indigo-500/30 hover:bg-zinc-800/50 opacity-60 hover:opacity-100'
+                            : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-indigo-500/30 hover:bg-white/5 opacity-60 hover:opacity-100'
                         }`}>
 
                     <div className="flex justify-between items-start">
-                        <div className={`p-4 rounded-2xl ${isConnectedToLocal ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
+                        <div className={`p-4 rounded-2xl ${isConnectedToLocal ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-[var(--bg-tertiary)] text-zinc-500'}`}>
                             <FolderOpen size={24} />
                         </div>
                         {isConnectedToLocal && (
@@ -802,7 +801,7 @@ const StorageSettingsView = () => {
                             <div className="flex gap-2">
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setLoading(true); changeLocalFolder().finally(() => setLoading(false)); }}
-                                    className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold transition-all border border-white/5"
+                                    className="flex-1 py-3 bg-[var(--bg-tertiary)] hover:bg-white/5 text-zinc-300 rounded-xl text-xs font-bold transition-all border border-[var(--border-light)]"
                                 >
                                     更改位置
                                 </button>
@@ -820,7 +819,7 @@ const StorageSettingsView = () => {
                                 className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
                                 ${isConnectedToLocal
                                         ? 'bg-indigo-500/10 text-indigo-400 cursor-default'
-                                        : 'bg-zinc-800 text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
+                                        : 'bg-[var(--bg-tertiary)] text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
                             >
                                 切换至本地
                             </button>
@@ -831,7 +830,7 @@ const StorageSettingsView = () => {
             {
                 loading && (
                     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 rounded-[32px]">
-                        <div className="bg-[#18181b] p-6 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-4 animate-in zoom-in-95">
+                        <div className="bg-[var(--bg-tertiary)] p-6 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-4 animate-in zoom-in-95">
                             <Loader2 size={40} className="text-indigo-500 animate-spin" />
                             <div className="text-white font-medium">正在切换存储模式...</div>
                         </div>
@@ -859,23 +858,23 @@ const SystemLogsView = () => {
 
     return (
         <div className="space-y-6 h-full flex flex-col">
-            <div className="flex justify-end md:justify-between items-center mb-2">
-                <div className="hidden md:block">
-                    <h3 className="text-2xl font-bold text-white">系统日志 (System Logs)</h3>
-                    <p className="text-xs text-zinc-500 mt-1">调试信息与错误追踪(Debug & Trace)</p>
+            <div className="flex flex-col gap-3 items-start sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex-1">
+                    <h3 className="text-2xl font-bold text-white text-left">系统日志</h3>
                 </div>
-                <button onClick={handleCopy} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 hover:text-white rounded-lg text-sm text-zinc-400 transition-colors border border-transparent hover:border-zinc-600">
+                <button onClick={handleCopy} className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-tertiary)] border border-[var(--border-light)] hover:bg-white/5 hover:text-white rounded-lg text-sm text-zinc-400 transition-colors">
                     {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                    {copied ? '已复制(Copied)' : '导出日志 (Export Logs)'}
+                    {copied ? '已复制' : '导出日志'}
                 </button>
             </div>
+            <p className="text-xs text-zinc-500 text-left w-full">调试信息与错误追踪</p>
 
 
 
-            <div className="bg-[#0f0f10] border border-zinc-800 rounded-[32px] flex-1 overflow-hidden flex flex-col shadow-inner relative">
+            <div className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-[32px] flex-1 overflow-hidden flex flex-col shadow-inner relative">
                 {logs.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 gap-3">
-                        <div className="p-4 bg-zinc-900 rounded-full mb-2">
+                        <div className="p-4 bg-[var(--bg-tertiary)] rounded-full mb-2">
                             <ScrollText size={32} className="opacity-50" />
                         </div>
                         <p className="font-mono text-sm">暂无关键日志 (No Critical Logs)</p>
@@ -887,7 +886,7 @@ const SystemLogsView = () => {
                 ) : (
                     <div className="overflow-y-auto p-4 space-y-2 scrollbar-thin font-mono text-xs">
                         {logs.slice().reverse().map((log) => (
-                            <div key={log.id} className="group relative pl-4 border-l-2 border-zinc-800 hover:border-zinc-600 transition-colors py-1">
+                            <div key={log.id} className="group relative pl-4 border-l-2 border-[var(--border-light)] hover:border-[var(--border-medium)] transition-colors py-1">
                                 <div className="flex items-center gap-2 mb-1 opacity-60 group-hover:opacity-100 transition-opacity">
                                     <span className="text-zinc-500 select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
                                     <span className={`px-1.5 rounded text-[10px] font-bold ${log.level === LogLevel.ERROR ? 'text-red-400 bg-red-500/10' :
@@ -944,14 +943,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
 
     const navItems: { id: SettingsView; label: string; icon: any }[] = [
         { id: 'dashboard', label: '仪表盘', icon: LayoutDashboard },
-        { id: 'api-channels', label: 'API 管理', icon: Key },
+        { id: 'api-management', label: 'API 管理', icon: Key },
         { id: 'cost-estimation', label: '成本', icon: DollarSign },
         { id: 'storage-settings', label: '存储', icon: HardDrive },
         { id: 'system-logs', label: '日志', icon: ScrollText },
     ];
 
     return (
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/70 backdrop-blur-xl animate-in fade-in duration-200" onClick={onClose}>
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/70 backdrop-blur-xl animate-in fade-in duration-200 settings-panel" onClick={onClose}>
             {!isMobile ? (
                 /* --- Desktop Layout - VisionOS Style --- */
                 <div
@@ -968,7 +967,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                     {/* Desktop Sidebar */}
                     <div className="w-64 border-r border-white/5 flex flex-col p-4 shrink-0" style={{ backgroundColor: 'rgba(22, 22, 24, 0.5)' }}>
                         <div className="flex items-center gap-3 px-2 mb-8 mt-2">
-                            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
                                 <LayoutDashboard size={18} />
                             </div>
                             <span className="font-bold text-white tracking-tight">系统设置</span>
@@ -979,7 +978,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                                 <button
                                     key={item.id}
                                     onClick={() => setActiveView(item.id)}
-                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeView === item.id ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeView === item.id ? 'bg-indigo-600/80 text-white shadow-[0_8px_20px_rgba(99,102,241,0.25)]' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}`}
                                 >
                                     <item.icon size={16} />
                                     {item.label === '仪表盘' ? '仪表盘(Dashboard)' :
@@ -993,7 +992,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                         </div>
 
                         <div className="mt-auto pt-4 border-t border-white/5">
-                            <div className="px-3 py-2 bg-zinc-900 rounded-lg">
+                            <div className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg">
                                 <div className="text-xs text-zinc-500 mb-1">总消耗(Total Consumption)</div>
                                 <div className="text-lg font-bold text-white font-mono">${totalConsumed.toFixed(4)}</div>
                             </div>
@@ -1001,8 +1000,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                     </div>
 
                     {/* Desktop Content */}
-                    <div className="flex-1 flex flex-col min-w-0 bg-[#0d0d0e]">
-                        <div className="h-14 border-b border-white/5 flex items-center justify-end px-6 bg-[#0d0d0e]/50 backdrop-blur-xl sticky top-0 z-10">
+                    <div className="flex-1 flex flex-col min-w-0 bg-[var(--bg-secondary)]">
+                        <div className="h-14 border-b border-white/5 flex items-center justify-end px-6 bg-[rgba(15,15,16,0.6)] backdrop-blur-xl sticky top-0 z-10">
                             <button onClick={onClose} className="p-2 text-zinc-400 hover:text-white hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-colors">
                                 <X size={18} />
                             </button>
@@ -1011,7 +1010,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                         <div className="flex-1 overflow-y-auto p-8 scrollbar-thin">
                             <div className="max-w-4xl mx-auto">
                                 {activeView === 'dashboard' && <DashboardView keyStats={keyStats} totalConsumed={totalConsumed} totalTokens={totalTokens} />}
-                                {activeView === 'api-channels' && <ApiChannelsView />}
+                                {activeView === 'api-management' && <ApiManagementView />}
                                 {activeView === 'cost-estimation' && <CostEstimationView />}
                                 {activeView === 'storage-settings' && <StorageSettingsView />}
                                 {activeView === 'system-logs' && <SystemLogsView />}
@@ -1026,9 +1025,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Mobile Header (iOS Style) */}
-                    <div className="h-14 border-b border-white/5 flex items-center justify-between px-5 bg-[#161618]/80 backdrop-blur-xl sticky top-0 z-20 shrink-0">
+                    <div className="h-14 border-b border-white/5 flex items-center justify-between px-5 bg-[rgba(24,24,27,0.85)] backdrop-blur-xl sticky top-0 z-20 shrink-0">
                         <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-900/20">
+                            <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-900/20">
                                 <LayoutDashboard size={14} />
                             </div>
                             <span className="text-white font-bold text-[17px] tracking-tight truncate">
@@ -1048,7 +1047,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                         </div>
                         <button
                             onClick={onClose}
-                            className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-white bg-zinc-800/80 rounded-full transition-all active:scale-90"
+                            className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-white bg-[var(--bg-tertiary)] rounded-full transition-all active:scale-90"
                         >
                             <X size={18} />
                         </button>
@@ -1059,7 +1058,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                         {/* Dynamic Content based on activeView */}
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                             {activeView === 'dashboard' && <DashboardView keyStats={keyStats} totalConsumed={totalConsumed} totalTokens={totalTokens} />}
-                            {activeView === 'api-channels' && <ApiChannelsView />}
+                            {activeView === 'api-management' && <ApiManagementView />}
                             {activeView === 'cost-estimation' && <CostEstimationView />}
                             {activeView === 'storage-settings' && <StorageSettingsView />}
                             {activeView === 'system-logs' && <SystemLogsView />}

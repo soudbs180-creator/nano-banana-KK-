@@ -7,7 +7,7 @@
  * This is the Single Source of Truth for model capabilities.
  */
 
-import { AspectRatio, ImageSize, ApiLineMode } from '../types';
+import { AspectRatio, ImageSize } from '../types';
 import { keyManager } from './keyManager';
 
 /**
@@ -229,48 +229,20 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
 };
 
 /**
- * Get model capabilities based on model ID and line mode
+ * Get model capabilities based on model ID
  *
  * @param modelId - The model ID to query
- * @param lineMode - API line mode (google_direct or proxy)
  * @returns Model capabilities or null if not found
  */
 export function getModelCapabilities(
-    modelId: string,
-    lineMode: ApiLineMode
+    modelId: string
 ): ModelCapability | null {
-    if (lineMode === 'google_direct') {
-        // Check exact match first
-        if (GOOGLE_MODEL_CAPABILITIES[modelId]) {
-            return GOOGLE_MODEL_CAPABILITIES[modelId];
-        }
-
-        // Fallback: check if model ID contains known patterns
-        const lowerModelId = modelId.toLowerCase();
-        if (lowerModelId.includes('nano-banana-pro') ||
-            lowerModelId.includes('gemini-3-pro')) {
-            return GOOGLE_MODEL_CAPABILITIES['gemini-3-pro-image-preview'];
-        }
-        if (lowerModelId.includes('nano-banana') ||
-            lowerModelId.includes('gemini-2.5-flash-image')) {
-            return GOOGLE_MODEL_CAPABILITIES['gemini-2.5-flash-image'];
-        }
-        if (lowerModelId.includes('imagen')) {
-            return GOOGLE_MODEL_CAPABILITIES['imagen-4.0-generate-001'];
-        }
-        if (lowerModelId.includes('veo')) {
-            return GOOGLE_MODEL_CAPABILITIES['veo-3.0-generate-001'];
-        }
-
-        // Default fallback: allow all options
-        return {
-            supportedRatios: Object.values(AspectRatio),
-            supportedSizes: Object.values(ImageSize),
-            supportsGrounding: false
-        };
+    // 1. Check exact match in Google Standard Models
+    if (GOOGLE_MODEL_CAPABILITIES[modelId]) {
+        return GOOGLE_MODEL_CAPABILITIES[modelId];
     }
 
-    // Proxy mode: get capabilities from keyManager's proxy model configs
+    // 2. Check Proxy Models via KeyManager
     const proxyModels = keyManager.getAvailableProxyModels();
     const proxyModel = proxyModels.find(m => m.id === modelId);
 
@@ -282,7 +254,26 @@ export function getModelCapabilities(
         };
     }
 
-    // Not found in proxy models - return all options as fallback
+    // 3. Fallback: check if model ID contains known patterns (for Google models not in exact list)
+    const lowerModelId = modelId.toLowerCase();
+
+    // Google Model Fallback Logic
+    if (lowerModelId.includes('nano-banana-pro') ||
+        lowerModelId.includes('gemini-3-pro')) {
+        return GOOGLE_MODEL_CAPABILITIES['gemini-3-pro-image-preview'];
+    }
+    if (lowerModelId.includes('nano-banana') ||
+        lowerModelId.includes('gemini-2.5-flash-image')) {
+        return GOOGLE_MODEL_CAPABILITIES['gemini-2.5-flash-image'];
+    }
+    if (lowerModelId.includes('imagen')) {
+        return GOOGLE_MODEL_CAPABILITIES['imagen-4.0-generate-001'];
+    }
+    if (lowerModelId.includes('veo')) {
+        return GOOGLE_MODEL_CAPABILITIES['veo-3.0-generate-001'];
+    }
+
+    // 4. Default fallback: allow all options (Assume Custom Proxy with full capabilities if unknown)
     return {
         supportedRatios: Object.values(AspectRatio),
         supportedSizes: Object.values(ImageSize),
@@ -294,10 +285,9 @@ export function getModelCapabilities(
  * Check if a specific model supports grounding
  */
 export function modelSupportsGrounding(
-    modelId: string,
-    lineMode: ApiLineMode
+    modelId: string
 ): boolean {
-    const caps = getModelCapabilities(modelId, lineMode);
+    const caps = getModelCapabilities(modelId);
     return caps?.supportsGrounding ?? false;
 }
 
@@ -305,20 +295,22 @@ export function modelSupportsGrounding(
  * Get available aspect ratios for a model
  */
 export function getAvailableRatios(
-    modelId: string,
-    lineMode: ApiLineMode
+    modelId: string
 ): AspectRatio[] {
-    const caps = getModelCapabilities(modelId, lineMode);
-    return caps?.supportedRatios ?? Object.values(AspectRatio);
+    const caps = getModelCapabilities(modelId);
+    return caps?.supportedRatios && caps.supportedRatios.length > 0
+        ? caps.supportedRatios
+        : Object.values(AspectRatio);
 }
 
 /**
  * Get available sizes for a model
  */
 export function getAvailableSizes(
-    modelId: string,
-    lineMode: ApiLineMode
+    modelId: string
 ): ImageSize[] {
-    const caps = getModelCapabilities(modelId, lineMode);
-    return caps?.supportedSizes ?? Object.values(ImageSize);
+    const caps = getModelCapabilities(modelId);
+    return caps?.supportedSizes && caps.supportedSizes.length > 0
+        ? caps.supportedSizes
+        : Object.values(ImageSize);
 }

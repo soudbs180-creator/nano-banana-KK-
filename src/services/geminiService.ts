@@ -1,8 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
-import { AspectRatio, ImageSize, ModelType, ReferenceImage, GenerationMode, ApiLineMode } from "../types";
+import { AspectRatio, ImageSize, ModelType, ReferenceImage, GenerationMode } from "../types";
 import { keyManager } from './keyManager';
 import * as costService from './costService';
 import { AuthMethod, buildApiUrl, buildHeaders, GOOGLE_API_BASE } from './apiConfig';
+import { ProxyModelConfig } from './proxyModelConfig';
 
 // Detect environment
 const isLocalDev = typeof window !== 'undefined' &&
@@ -11,16 +12,20 @@ const isLocalDev = typeof window !== 'undefined' &&
 // Backend API endpoint for cloud deployment
 const API_ENDPOINT = "/api/generate";
 
-/**
- * Generate image using Gemini API
- * - Local dev: Calls Gemini SDK directly (faster)
- * - Production: Routes through backend (secure)
- * - apiKey is optional: backend will use stored keys or env variable
- * - Supports third-party API proxies via baseUrl configuration
- */
-
 // AbortController map to track active requests
 const abortControllers = new Map<string, AbortController>();
+
+/**
+ * Determine API Format based on Base URL
+ */
+function detectApiFormat(baseUrl: string): 'openai' | 'gemini' {
+  const url = baseUrl.toLowerCase();
+  if (url.includes('googleapis.com') || url.includes('google.com')) return 'gemini';
+  // Check for common OpenAI-compatible proxy signatures or explicit newapi/oneapi patterns
+  if (url.includes('newapi') || url.includes('oneapi') || url.includes('v1/images')) return 'openai';
+  // Default to OpenAI format for custom proxies unless it looks like Gemini
+  return 'openai';
+}
 
 /**
  * Cancel a specific generation request
@@ -36,25 +41,9 @@ export const cancelGeneration = (id: string) => {
 /**
  * 模型 ID 映射表
  * 将内部模型名称映射到 Google API 实际模型 ID
- * 
- * 参考官方文档: https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn
- * 
- * Gemini 原生图像生成模型:
- * - gemini-2.5-flash-image (Nano Banana) - 快速图像生成
- * - gemini-3-pro-image-preview (Nano Banana Pro) - 高质量图像生成
- * 
- * Imagen 系列:
- * - imagen-4.0-generate-001 (标准)
- * - imagen-4.0-ultra-generate-001 (超高质量)
- * - imagen-4.0-fast-generate-001 (快速)
  */
 function mapToApiModelId(internalId: string, isProxyApi: boolean = false): string {
   // 如果是第三方代理 API (如 NewAPI)，可能需要不同的模型名称
-  if (isProxyApi) {
-    // 第三方代理通常直接使用原始模型名称
-    return internalId;
-  }
-
   // Google 官方 API 模型映射
   const modelMap: Record<string, string> = {
     // Nano Banana 系列 - 内部代号映射到 Google 官方模型
@@ -74,12 +63,17 @@ function mapToApiModelId(internalId: string, isProxyApi: boolean = false): strin
   // Defensive: Strip '-4k' suffix if present (case insensitive)
   const normalizedId = internalId.replace(/-4k$/i, '');
 
-  return modelMap[normalizedId] || normalizedId; // 未匹配的直接透传
+  // 优先匹配映射表 (即使是 Proxy，也应该发送真实的 Gemini 模型 ID，而不是内部代号)
+  if (modelMap[normalizedId]) {
+    return modelMap[normalizedId];
+  }
+
+  // 如果没有匹配到 (例如 dall-e-3, flux-pro)，直接返回原 ID
+  return normalizedId;
 }
 
 /**
  * Calculate estimated token usage for image generation
- * 参考: https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn
  */
 function calculateImageTokens(model: ModelType): number {
   const tokenMap: Record<string, number> = {
@@ -94,6 +88,41 @@ function calculateImageTokens(model: ModelType): number {
 
   return tokenMap[model] || 0;
 }
+
+const buildAutoProxyModelConfig = (modelId: string, baseUrl: string): ProxyModelConfig => {
+  const idLower = modelId.toLowerCase();
+  const isVideo = idLower.includes('video') || idLower.includes('veo') || idLower.includes('kling') || idLower.includes('runway') || idLower.includes('luma') || idLower.includes('sora') || idLower.includes('pika') || idLower.includes('gen-3');
+  const isChat = idLower.includes('chat') || idLower.includes('gpt') || idLower.includes('claude') || idLower.includes('qwen') || idLower.includes('llama') || idLower.includes('mixtral') || idLower.includes('mistral');
+  const isGoogleFamily = /gemini|imagen|veo|nano-banana/i.test(modelId);
+  const isGoogleBase = baseUrl.includes('googleapis.com');
+  const isAggregatorOpenAI = baseUrl.includes('newapi') || baseUrl.includes('oneapi') || baseUrl.includes('one-api');
+  const isLikelyGeminiProxy = baseUrl.includes('gemini') || baseUrl.includes('google');
+
+  const type: ProxyModelConfig['type'] = isVideo ? 'video' : isChat ? 'chat' : 'image';
+  const apiFormat: ProxyModelConfig['apiFormat'] = isGoogleBase
+    ? 'gemini'
+    : isAggregatorOpenAI
+      ? 'openai'
+      : (isLikelyGeminiProxy && isGoogleFamily && type !== 'chat') ? 'gemini' : 'openai';
+
+  return {
+    id: modelId,
+    label: modelId,
+    type,
+    provider: isGoogleFamily ? 'Google' : 'Custom',
+    apiFormat,
+    supportedAspectRatios: type === 'chat' ? [] : Object.values(AspectRatio),
+    supportedSizes: type === 'chat' ? [] : Object.values(ImageSize),
+    supportsGrounding: false,
+    videoCapabilities: type === 'video' ? {
+      supportsDuration: true,
+      supportsFirstFrame: true,
+      supportsLastFrame: false,
+      supportsFps: false
+    } : undefined,
+    description: 'Auto-detected'
+  };
+};
 
 /**
  * Normalize error messages
@@ -113,9 +142,7 @@ function normalizeError(error: any): Error {
 
 /**
  * Map aspect ratio and size to OpenAI-compatible size string
- * Reference: https://docs.newapi.pro/zh/docs
  */
-// Helper to map aspect ratio to DALL-E 3 supported sizes
 function getDallE3Size(aspectRatio: AspectRatio): string {
   switch (aspectRatio) {
     case AspectRatio.SQUARE: return '1024x1024';
@@ -170,520 +197,6 @@ function mapToOpenAISize(aspectRatio: AspectRatio, imageSize: ImageSize, model: 
   return sizeMap[imageSize]?.[aspectRatio] || sizeMap['1K'][aspectRatio] || '1024x1024';
 }
 
-/**
- * Generate image via Proxy API (supports OpenAI or Gemini format)
- */
-async function generateImageViaProxy(
-  prompt: string,
-  aspectRatio: AspectRatio,
-  imageSize: ImageSize,
-  model: string,
-  requestId?: string
-): Promise<string> {
-  // Get proxy key from keyManager
-  const keyData = keyManager.getNextKey('proxy');
-  if (!keyData) {
-    throw new Error("没有可用的中转代理 API Key，请在设置中添加并配置模型");
-  }
-
-  // Lookup model config to determine API Format
-  const proxyModels = keyManager.getAvailableProxyModels();
-  const modelConfig = proxyModels.find(m => m.id === model);
-  if (!modelConfig) {
-    throw new Error('代理模型未配置：请在 API 设置中添加该模型后再试');
-  }
-  const proxyBaseUrl = keyData.baseUrl.trim();
-  const isGoogleBase = proxyBaseUrl.includes('googleapis.com');
-  const apiFormat = modelConfig.apiFormat || (isGoogleBase ? 'gemini' : 'openai');
-
-  const controller = requestId ? abortControllers.get(requestId) : undefined;
-  if (controller?.signal.aborted) {
-    throw new Error('Generation cancelled');
-  }
-
-  // Build base URL (remove trailing slash and whitespace)
-  let baseUrl = keyData.baseUrl.trim().replace(/\/$/, '');
-
-  // For Gemini format, we need the root domain, not the /v1 suffix that users often copy
-  // Example: user enters "https://api.example.com/v1", we need "https://api.example.com/v1beta/..."
-  if (apiFormat === 'gemini') {
-    if (baseUrl.endsWith('/v1')) {
-      baseUrl = baseUrl.substring(0, baseUrl.length - 3);
-    } else if (baseUrl.endsWith('/v1beta')) {
-      baseUrl = baseUrl.substring(0, baseUrl.length - 7);
-    }
-  }
-
-  if (!baseUrl) {
-    throw new Error("代理服务器地址 (Base URL) 未配置，请在设置中完善");
-  }
-  if (!baseUrl.startsWith('http')) {
-    baseUrl = `https://${baseUrl}`;
-  }
-
-  // Decide Endpoint and Body based on Format
-  let apiUrl = '';
-  let requestMethod = 'POST';
-  let requestHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${keyData.key}` // Standard Proxy Auth
-  };
-  let requestBody: any = {};
-
-  if (apiFormat === 'gemini') {
-    // Gemini Format: /v1beta/models/{model}:generateContent
-    apiUrl = `${baseUrl}/v1beta/models/${model}:generateContent`;
-
-    // Construct Generation Config with Image params
-    const generationConfig: any = {
-      responseMimeType: "image/jpeg"
-    };
-
-    // Inject Aspect Ratio / Size if applicable
-    if (aspectRatio && aspectRatio !== AspectRatio.SQUARE) {
-      if (!generationConfig.imageConfig) generationConfig.imageConfig = {};
-      generationConfig.imageConfig.aspectRatio = aspectRatio;
-    }
-
-    if (imageSize && imageSize !== '1K') {
-      if (!generationConfig.imageConfig) generationConfig.imageConfig = {};
-      generationConfig.imageConfig.imageSize = imageSize;
-    }
-
-    requestBody = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig
-    };
-
-    // Some proxies might require x-goog-api-key header instead/also
-    requestHeaders['x-goog-api-key'] = keyData.key;
-
-    console.log(`[Proxy] Generating image via Gemini format: ${apiUrl}`);
-  } else {
-    // OpenAI Format (Default): /v1/images/generations
-    apiUrl = `${baseUrl}/v1/images/generations`;
-    const size = mapToOpenAISize(aspectRatio, imageSize, model);
-
-    requestBody = {
-      model,
-      prompt,
-      n: 1,
-      size,
-      response_format: 'b64_json'
-    };
-
-    console.log(`[Proxy] Generating image via OpenAI format: ${apiUrl}`);
-    console.log(`[Proxy] Model: ${model}, Size: ${size}`);
-  }
-
-  const MAX_ATTEMPTS = 3;
-  let lastError: any = null;
-  let currentKeyData = keyData;
-
-  // Defensive: Strip '-4k' suffix if present in model ID (case insensitive)
-  // This prevents issues where '4K' size selection might have inadvertently leaked into the model ID
-  if (apiUrl.includes(model)) {
-    const cleanModel = model.replace(/-4k$/i, '');
-    if (cleanModel !== model) {
-      console.log(`[Proxy] Auto-corrected model ID: ${model} -> ${cleanModel}`);
-      apiUrl = apiUrl.replace(model, cleanModel);
-      // Also update body if needed
-      if (requestBody.model === model) {
-        requestBody.model = cleanModel;
-      }
-    }
-  } else if (requestBody.model) {
-    const cleanModel = requestBody.model.replace(/-4k$/i, '');
-    if (cleanModel !== requestBody.model) {
-      console.log(`[Proxy] Auto-corrected model ID body: ${requestBody.model} -> ${cleanModel}`);
-      requestBody.model = cleanModel;
-    }
-  }
-
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    try {
-      const response = await fetch(apiUrl, {
-        method: requestMethod,
-        headers: {
-          ...requestHeaders,
-          'Authorization': `Bearer ${currentKeyData.key}` // Ensure fresh key on rotate
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller?.signal || AbortSignal.timeout(180000) // 3 minutes timeout
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      // Handle Response based on Format
-      let imageData: string | undefined;
-
-      if (apiFormat === 'gemini') {
-        // Gemini Response
-        imageData = result.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
-
-        if (!imageData && result.data?.[0]?.b64_json) {
-          imageData = result.data[0].b64_json;
-        }
-      } else {
-        // OpenAI Response
-        imageData = result.data?.[0]?.b64_json;
-
-        // Handle URL response (NewAPI/MJ fallback)
-        if (!imageData && result.data?.[0]?.url) {
-          console.log("Got URL response, fetching image...");
-          const imageUrl = result.data[0].url;
-          try {
-            const imgRes = await fetch(imageUrl);
-            const blob = await imgRes.blob();
-            // Convert blob to base64
-            imageData = await new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                const base64 = (reader.result as string).split(',')[1];
-                resolve(base64);
-              };
-              reader.readAsDataURL(blob);
-            });
-          } catch (err) {
-            console.error("Failed to fetch image from URL:", err);
-          }
-        }
-      }
-
-      if (imageData) {
-        // Report success
-        keyManager.reportSuccess(currentKeyData.id);
-        return `data:image/png;base64,${imageData}`;
-      }
-
-      throw new Error("未能从代理获取图片数据 (No Image Data)");
-
-    } catch (error: any) {
-      if (error.name === 'AbortError' || error.message === 'Generation cancelled') {
-        throw new Error('任务已取消');
-      }
-
-      console.warn(`[Proxy] Attempt ${attempt + 1} failed:`, error.message);
-      keyManager.reportFailure(currentKeyData.id, error.message);
-
-      // Try to get next proxy key
-      const nextKey = keyManager.getNextKey('proxy');
-      if (nextKey && nextKey.id !== currentKeyData.id) {
-        currentKeyData = nextKey;
-        // Should really update apiUrl base base if key changes, but we assume same proxy provider for simplicity OR we should rebuild apiUrl
-        // Rebuilding apiUrl:
-        const newBase = currentKeyData.baseUrl.replace(/\/$/, '');
-        if (apiFormat === 'gemini') apiUrl = `${newBase}/v1beta/models/${model}:generateContent`;
-        else apiUrl = `${newBase}/v1/images/generations`;
-      } else {
-        lastError = error;
-        break;
-      }
-
-      lastError = error;
-    }
-  }
-
-  throw normalizeError(lastError || new Error("代理图片生成失败"));
-}
-
-
-async function generateImageDirect(
-  prompt: string,
-  aspectRatio: AspectRatio,
-  imageSize: ImageSize,
-  referenceImages: ReferenceImage[],
-  model: ModelType,
-  apiKey: string,
-  requestId?: string,
-  enableGrounding: boolean = false,
-  lineMode: ApiLineMode = 'google_direct'
-): Promise<string> {
-  // Route to proxy if lineMode is 'proxy'
-  if (lineMode === 'proxy') {
-    return generateImageViaProxy(prompt, aspectRatio, imageSize, model, requestId);
-  }
-
-  let effectiveKey = apiKey;
-  let keyId: string | undefined;
-  let controller: AbortController | undefined;
-  // Proxy configuration (defaults to Google official)
-  let baseUrl = GOOGLE_API_BASE;
-  let authMethod: AuthMethod = 'query';
-  let headerName = 'x-goog-api-key';
-
-  // Use provided requestId's controller if available
-  if (requestId) {
-    controller = abortControllers.get(requestId);
-  }
-
-  // Key Rotation Logic if no specific key provided
-  if (!effectiveKey) {
-    // For google_direct mode, only use Google official keys
-    const keyData = keyManager.getNextKey('google');
-
-    if (keyData) {
-      effectiveKey = keyData.key;
-      keyId = keyData.id;
-      // Capture proxy configuration
-      baseUrl = keyData.baseUrl;
-      authMethod = keyData.authMethod;
-      headerName = keyData.headerName;
-    } else {
-      throw new Error("没有可用的 Google 官方 API Key，请检查设置");
-    }
-  }
-
-  if (!effectiveKey) throw new Error("MISSING_API_KEY");
-
-  // Robust Failover: Try up to 50 times (effectively "infinite" for typical key counts)
-  // keyManager will automatically disable keys after X failures, ensuring we eventually rotate through all or fail.
-  const MAX_ATTEMPTS = 50;
-  let lastError: any = null;
-
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    // If we don't have a key (and logic above didn't find one), break.
-    if (!effectiveKey) break;
-
-    try {
-      if (requestId && controller?.signal.aborted) {
-        throw new Error('Generation cancelled');
-      }
-
-      console.log(`[Gemini] Attempt ${attempt + 1}/${MAX_ATTEMPTS} using key ${keyId || 'env'}`);
-
-      // 检查是否为 Imagen (通过 predict 接口)
-      const isImagen = model.startsWith('imagen-');
-
-      if (isImagen) {
-        let safeAspectRatio = aspectRatio;
-        if (aspectRatio === AspectRatio.LANDSCAPE_21_9) safeAspectRatio = AspectRatio.LANDSCAPE_16_9;
-        else if (aspectRatio === AspectRatio.STANDARD_2_3) safeAspectRatio = AspectRatio.PORTRAIT_9_16;
-        else if (aspectRatio === AspectRatio.STANDARD_3_2) safeAspectRatio = AspectRatio.LANDSCAPE_16_9;
-
-        const response = await fetch(
-          buildApiUrl(baseUrl, model, 'predict', authMethod, effectiveKey),
-          {
-            method: 'POST',
-            headers: buildHeaders(authMethod, effectiveKey, headerName),
-            body: JSON.stringify({
-              instances: [{ prompt }],
-              parameters: { sampleCount: 1, aspectRatio: safeAspectRatio }
-            }),
-            signal: controller?.signal || AbortSignal.timeout(240000) // 4 minutes timeout
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          // If 429/403, we should definitely retry
-          throw new Error(errorData.error?.message || `HTTP ${response.status}`);
-        }
-
-        const result = await response.json();
-        const prediction = result.predictions?.[0];
-
-        if (prediction?.bytesBase64Encoded) {
-          if (keyId) {
-            keyManager.reportSuccess(keyId);
-          }
-          return `data:image/png;base64,${prediction.bytesBase64Encoded}`;
-        }
-
-        throw new Error("未能生成图片 (No Image Data)");
-
-      } else {
-        // Gemini Models
-        // Gemini models (generateContent) do NOT support aspectRatio/imageSize in generationConfig
-        // We must inject them into the prompt instead.
-        // Gemini models (generateContent) DO support imageConfig since recent updates
-        // so we don't need prompt injection anymore.
-        const finalPrompt = prompt;
-
-        const parts: any[] = [];
-        if (finalPrompt) parts.push({ text: finalPrompt });
-        if (referenceImages?.length > 0) {
-          referenceImages.forEach(img => parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } }));
-        }
-
-        // Removed unsupported imageConfig logic for generateContent
-        const imageConfig: any = {};
-
-        const tools: any[] = [];
-        // Gemini 2.5 Flash Image (Nano Banana) 不支持 Tools (Grounding)，会导致超时
-        // 只有 Gemini 3 Pro / Nano Banana Pro 支持
-        const supportsTools = !model.includes('gemini-2.5-flash-image') && !model.includes('nano-banana') && model !== 'gemini-2.0-flash-exp';
-
-        if (enableGrounding && supportsTools) {
-          tools.push({ googleSearch: {} });
-        }
-
-        // 检测是否使用第三方代理 API (非 Google 官方)
-        const isProxyApi = !!(baseUrl && !baseUrl.includes('googleapis.com') && !baseUrl.includes('google.com'));
-
-        // 使用映射后的 API 模型 ID
-        const apiModelId = mapToApiModelId(model, isProxyApi);
-        console.log(`[Gemini] Mapping model '${model}' -> '${apiModelId}' (Proxy: ${isProxyApi})`);
-
-        // 构建 generationConfig - 必须包含 responseModalities 才能生成图像
-        // 参考: https://ai.google.dev/gemini-api/docs/image-generation
-        const generationConfig: any = {
-          responseModalities: ['TEXT', 'IMAGE'],
-        };
-
-        // Gemini 3 Pro / Nano Banana Pro 及 Flash 等都支持 imageConfig 的 aspectRatio
-        // 参考: https://ai.google.dev/gemini-api/docs/image-generation
-        generationConfig.imageConfig = {};
-
-        if (aspectRatio) {
-          generationConfig.imageConfig.aspectRatio = aspectRatio;
-        }
-
-        // 仅 Pro / Ultra 模型支持 imageSize (Flash/Nano Banana 只有 1K)
-        // 修复: 使用严格判断避免 nano-banana-pro 被误伤
-        const isFlashModel = model === 'nano-banana' || model.includes('gemini-2.5-flash-image');
-
-        if (!isFlashModel) {
-          if (imageSize && imageSize !== '1K') {
-            generationConfig.imageConfig.imageSize = imageSize; // 支持 "2K", "4K"
-          }
-        }
-
-        const apiUrl = buildApiUrl(baseUrl, apiModelId, 'generateContent', authMethod, effectiveKey);
-        console.log(`[Gemini] Requesting URL: ${apiUrl}`);
-
-        let response: Response;
-        try {
-          response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: buildHeaders(authMethod, effectiveKey, headerName),
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts }],
-              generationConfig,
-              tools: tools.length > 0 ? tools : undefined
-            }),
-            signal: controller?.signal || AbortSignal.timeout(240000) // 4 minutes timeout
-          });
-        } catch (e) {
-          // 超时或网络错误，尝试降级重试 (去掉 tools 或降低分辨率)
-          console.warn("[Gemini] Request failed, retrying with simplified config...", e);
-
-          // 降级配置：去掉 tools，强制 1K
-          const simplifiedConfig = { ...generationConfig, imageSize: '1K' };
-
-          response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: buildHeaders(authMethod, effectiveKey, headerName),
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts }],
-              generationConfig: simplifiedConfig,
-              // tools: undefined // 移除 tools
-            }),
-            signal: controller?.signal || AbortSignal.timeout(240000)
-          });
-        }
-
-        // Update Quota
-        if (keyId) {
-          const limit = response.headers.get('x-ratelimit-limit-requests');
-          const remaining = response.headers.get('x-ratelimit-remaining-requests');
-          const reset = response.headers.get('x-ratelimit-reset-requests');
-          if (limit || remaining) {
-            keyManager.updateQuota(keyId, {
-              limitRequests: parseInt(limit || '0'),
-              remainingRequests: parseInt(remaining || '0'),
-              resetConstant: reset || '',
-              resetTime: Date.now() + ((parseInt(reset || '0')) * 1000),
-              updatedAt: Date.now()
-            });
-          }
-        }
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || `HTTP ${response.status}`);
-        }
-
-        const result = await response.json();
-        const candidate = result.candidates?.[0];
-        const inlineData = candidate?.content?.parts?.find((p: any) => p.inlineData)?.inlineData;
-
-        if (inlineData) {
-          if (keyId) {
-            keyManager.reportSuccess(keyId);
-            const tokens = calculateImageTokens(model);
-
-            // Calculate cost details using CostService (Single Source of Truth)
-            const { cost, tokens: calculatedTokens } = costService.calculateCost(
-              model,
-              imageSize || ImageSize.SIZE_1K,
-              1,
-              prompt.length,
-              referenceImages?.length || 0
-            );
-
-            // 1. Sync to Key Usage
-            keyManager.addUsage(keyId, calculatedTokens);
-            keyManager.addCost(keyId, cost);
-
-            // 2. Record Transaction (Global History)
-            costService.recordCost(
-              model,
-              imageSize || ImageSize.SIZE_1K,
-              1,
-              prompt,
-              referenceImages?.length || 0
-            );
-          }
-          return `data:image/png;base64,${inlineData.data}`;
-        }
-
-        throw new Error("未能生成图片 (No Image Data)");
-      }
-
-    } catch (error: any) {
-      if (error.name === 'AbortError' || error.message === 'Generation cancelled') throw new Error('Generation cancelled');
-
-      console.warn(`[Gemini] Attempt ${attempt + 1} failed with key ${keyId || 'env'}:`, error.message);
-
-      if (keyId) {
-        keyManager.reportFailure(keyId, error.message || 'Unknown error');
-
-        // IMMEDIATE GLOBAL ROTATION:
-        // Get the NEXT available key (with its proxy config)
-        const nextKeyStruct = keyManager.getNextKey();
-        if (nextKeyStruct) {
-          effectiveKey = nextKeyStruct.key;
-          keyId = nextKeyStruct.id;
-          // Update proxy config for next attempt
-          baseUrl = nextKeyStruct.baseUrl;
-          authMethod = nextKeyStruct.authMethod;
-          headerName = nextKeyStruct.headerName;
-        } else {
-          console.error('[Gemini] No more keys available!');
-          break; // No valid keys left
-        }
-      } else {
-        // If using env key and it failed, we can't switch to anything else unless we have managed keys
-        // If we had managed keys, we would have started with them.
-        // So just break or retry logic? 
-        // If we are here, it means we don't have managed keys. 
-        break;
-      }
-
-      lastError = error;
-    }
-  }
-
-  if (lastError) throw normalizeError(lastError);
-  throw new Error("Unable to generate image after retries (All keys exhausted)");
-}
-
 async function generateImageViaBackend(
   prompt: string, aspectRatio: AspectRatio, imageSize: ImageSize, referenceImages: ReferenceImage[],
   model: ModelType, apiKey: string, requestId?: string
@@ -731,6 +244,10 @@ async function generateImageViaBackend(
   }
 }
 
+/**
+ * Unified Image Generation Function
+ * Automatically routes based on KeyManager channels
+ */
 export const generateImage = async (
   prompt: string,
   aspectRatio: AspectRatio,
@@ -739,36 +256,237 @@ export const generateImage = async (
   model: ModelType,
   apiKey: string = '',
   requestId?: string,
-  enableGrounding: boolean = false,
-  lineMode: ApiLineMode = 'google_direct'
+  enableGrounding: boolean = false
 ): Promise<string> => {
   // Defensive: Strip '-4k' suffix globally if present
-  // This ensures checking for '4K' size doesn't leak into model ID
   if (model.toLowerCase().endsWith('-4k')) {
-    console.warn(`[GeminiService] Detected invalid suffix in model ID '${model}', stripping it.`);
-    model = model.replace(/-4k$/i, '');
+    model = model.replace(/-4k$/i, '') as ModelType;
   }
 
   // Create AbortController if requestId provided
-  if (requestId) {
-    if (!abortControllers.has(requestId)) {
-      abortControllers.set(requestId, new AbortController());
+  if (requestId && !abortControllers.has(requestId)) {
+    abortControllers.set(requestId, new AbortController());
+  }
+
+  const controller = requestId ? abortControllers.get(requestId) : undefined;
+  if (controller?.signal.aborted) throw new Error('Generation cancelled');
+
+  // 1. Resolve Effective Key & Setup
+  let effectiveKey = apiKey;
+  let keyId: string | undefined;
+  let baseUrl = GOOGLE_API_BASE;
+  let authMethod: AuthMethod = 'query';
+  let headerName = 'x-goog-api-key';
+  let provider: string = 'Google';
+
+  // If no explicit API key, ask KeyManager
+  if (!effectiveKey) {
+    const keyData = keyManager.getNextKey(model);
+    if (keyData) {
+      effectiveKey = keyData.key;
+      keyId = keyData.id;
+      baseUrl = keyData.baseUrl || GOOGLE_API_BASE;
+      authMethod = keyData.authMethod;
+      headerName = keyData.headerName;
+      // provider is not in the minimal result, but we can infer or if we updated getNextKey to return it (recommended)
+      // For now, assume if baseUrl is default -> Google, else -> Custom/Proxy
+      provider = (baseUrl.includes('googleapis.com') || !baseUrl) ? 'Google' : 'Custom';
+    } else {
+      // Fallback: Check env var (only for basic local setup)
+      if (import.meta.env.VITE_GEMINI_API_KEY) {
+        effectiveKey = import.meta.env.VITE_GEMINI_API_KEY;
+        // Provider stays Google default
+      }
     }
   }
 
-  // Route to proxy if lineMode is 'proxy'
-  if (lineMode === 'proxy') {
-    return generateImageViaProxy(prompt, aspectRatio, imageSize, model, requestId);
-  }
-
-  const hasClientKeys = keyManager.hasValidKeys() || !!apiKey || !!import.meta.env.VITE_GEMINI_API_KEY;
-
-  if (hasClientKeys) {
-    return await generateImageDirect(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId, enableGrounding, lineMode);
-  } else {
-    // Fallback to backend only if no client keys
+  // If still no key, fallback to backend (if not local dev with no key)
+  if (!effectiveKey) {
     return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId);
   }
+
+  // 2. Retry Loop
+  const MAX_ATTEMPTS = 3;
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      if (controller?.signal.aborted) throw new Error('Generation cancelled');
+
+      // Determine API Format
+      const apiFormat = detectApiFormat(baseUrl);
+
+      console.log(`[GenService] Attempt ${attempt + 1} | Model: ${model} | Format: ${apiFormat} | BaseURL: ${baseUrl}`);
+
+      if (apiFormat === 'gemini') {
+        // --- GEMINI FORMAT (Official / Vertex / Gemini Proxy) ---
+
+        // Prepare contents
+        const parts: any[] = [{ text: prompt }];
+        referenceImages?.forEach(img => parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } }));
+
+        // Prepare Config
+        const generationConfig: any = { responseModalities: ['TEXT', 'IMAGE'] };
+
+        // Tools (Grounding)
+        const supportsTools = !model.includes('gemini-2.5-flash-image') && !model.includes('nano-banana');
+        const tools = (enableGrounding && supportsTools) ? [{ googleSearch: {} }] : undefined;
+
+        // Image Config
+        generationConfig.imageConfig = {};
+        if (aspectRatio) generationConfig.imageConfig.aspectRatio = aspectRatio;
+        const isFlashModel = model === 'nano-banana' || model.includes('gemini-2.5-flash-image');
+        if (!isFlashModel && imageSize && imageSize !== '1K') {
+          generationConfig.imageConfig.imageSize = imageSize;
+        }
+
+        // Map Model ID (important for aliases like nano-banana)
+        // If it's a proxy (custom base url), we usually keep original ID unless we have specific mapping logic
+        const isProxy = provider !== 'Google';
+        const apiModelId = mapToApiModelId(model, isProxy);
+
+        const apiUrl = buildApiUrl(baseUrl, apiModelId, 'generateContent', authMethod, effectiveKey);
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: buildHeaders(authMethod, effectiveKey, headerName),
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts }],
+            generationConfig,
+            tools
+          }),
+          signal: controller?.signal || AbortSignal.timeout(180000)
+        });
+
+        // Update Quota
+        if (keyId) {
+          const limit = response.headers.get('x-ratelimit-limit-requests');
+          const remaining = response.headers.get('x-ratelimit-remaining-requests');
+          if (limit || remaining) {
+            keyManager.updateQuota(keyId, {
+              limitRequests: parseInt(limit || '0'),
+              remainingRequests: parseInt(remaining || '0'),
+              resetTime: Date.now() + 60000, // Estimate 1 min reset if not provided
+              updatedAt: Date.now()
+            });
+          }
+        }
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        const inlineData = result.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData;
+
+        if (inlineData) {
+          if (keyId) {
+            keyManager.reportSuccess(keyId);
+            const { cost, tokens } = costService.calculateCost(model, imageSize || '1K', 1, prompt.length, referenceImages?.length || 0);
+            keyManager.addUsage(keyId, tokens);
+            keyManager.addCost(keyId, cost);
+            costService.recordCost(model, imageSize || '1K', 1, prompt, referenceImages?.length || 0);
+          }
+          return `data:image/png;base64,${inlineData.data}`;
+        }
+        throw new Error("No image data in Gemini response");
+
+      } else {
+        // --- OPENAI FORMAT (NewAPI / OneAPI / OpenAI) ---
+        // Clean URL
+        let cleanBase = baseUrl.trim().replace(/\/$/, '');
+        if (cleanBase.endsWith('/v1')) cleanBase = cleanBase.substring(0, cleanBase.length - 3);
+        const apiUrl = `${cleanBase}/v1/images/generations`;
+
+        const size = mapToOpenAISize(aspectRatio, imageSize, model);
+
+        const requestBody = {
+          model: model,
+          prompt: prompt,
+          n: 1,
+          size: size,
+          response_format: 'b64_json'
+        };
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${effectiveKey}`,
+            'x-goog-api-key': effectiveKey // Sometimes needed
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller?.signal || AbortSignal.timeout(180000)
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        const b64 = result.data?.[0]?.b64_json;
+        if (b64) {
+          if (keyId) {
+            keyManager.reportSuccess(keyId);
+            // Assume similar price logging for compatibility
+            const { cost, tokens } = costService.calculateCost(model, imageSize || '1K', 1, prompt.length, 0);
+            keyManager.addUsage(keyId, tokens);
+            keyManager.addCost(keyId, cost);
+            costService.recordCost(model, imageSize || '1K', 1, prompt, 0);
+          }
+          return `data:image/png;base64,${b64}`;
+        }
+
+        // Handle URL fallback
+        if (result.data?.[0]?.url) {
+          // ... fetch url logic ...
+          // For brevity, assuming B64 preferred or simple fetch
+          const imgRes = await fetch(result.data[0].url);
+          const blob = await imgRes.blob();
+          const reader = new FileReader();
+          return new Promise((resolve, reject) => {
+            reader.onloadend = () => {
+              const base64 = (reader.result as string).split(',')[1];
+              if (keyId) keyManager.reportSuccess(keyId);
+              resolve(`data:image/png;base64,${base64}`);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+
+        throw new Error("No image data in OpenAI response");
+      }
+
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.message === 'Generation cancelled') throw error;
+
+      console.warn(`[GenService] Error attempt ${attempt + 1}:`, error.message);
+
+      if (keyId) {
+        keyManager.reportFailure(keyId, error.message);
+        // Rotate Key
+        const nextKey = keyManager.getNextKey(model);
+        if (nextKey && nextKey.id !== keyId) {
+          keyId = nextKey.id;
+          effectiveKey = nextKey.key;
+          baseUrl = nextKey.baseUrl || GOOGLE_API_BASE;
+          authMethod = nextKey.authMethod;
+          headerName = nextKey.headerName;
+        } else {
+          // No more keys
+          break;
+        }
+      } else {
+        break; // Env key failed, no rotation
+      }
+      lastError = error;
+    }
+  }
+
+  throw normalizeError(lastError || new Error("Image generation failed"));
 };
 
 export const generateVideo = async (
@@ -821,17 +539,19 @@ export const generateText = async (
   let baseUrl = GOOGLE_API_BASE;
   let authMethod: AuthMethod = 'query';
   let headerName = 'x-goog-api-key';
+  let group: string | undefined;
 
   // Key Selection
   if (!effectiveKey) {
-    const keyData = keyManager.getNextKey();
+    const keyData = keyManager.getNextKey(model);
     if (keyData) {
       effectiveKey = keyData.key;
       keyId = keyData.id;
       // Capture proxy configuration
-      baseUrl = keyData.baseUrl;
+      baseUrl = keyData.baseUrl || GOOGLE_API_BASE;
       authMethod = keyData.authMethod;
       headerName = keyData.headerName;
+      group = keyData.group;
     } else {
       effectiveKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     }
@@ -852,13 +572,17 @@ export const generateText = async (
         parts: [{ text: m.content }]
       }));
 
+      const headers = buildHeaders(authMethod, effectiveKey, headerName);
+      if (group) {
+        headers['X-Group'] = group;
+      }
       const response = await fetch(
         buildApiUrl(baseUrl, model, 'generateContent', authMethod, effectiveKey),
         {
           method: 'POST',
-          headers: buildHeaders(authMethod, effectiveKey, headerName),
+          headers,
           body: JSON.stringify({ contents }),
-          signal: AbortSignal.timeout(30000) // 30s timeout for chat
+          signal: AbortSignal.timeout(120000) // 120s timeout for chat (Increased for complex tasks)
         }
       );
 
@@ -908,14 +632,15 @@ export const generateText = async (
       if (keyId) {
         keyManager.reportFailure(keyId, error.message);
         // Rotate key (with proxy config)
-        const nextKeyStruct = keyManager.getNextKey();
+        const nextKeyStruct = keyManager.getNextKey(model);
         if (nextKeyStruct) {
           effectiveKey = nextKeyStruct.key;
           keyId = nextKeyStruct.id;
           // Update proxy config
-          baseUrl = nextKeyStruct.baseUrl;
+          baseUrl = nextKeyStruct.baseUrl || GOOGLE_API_BASE;
           authMethod = nextKeyStruct.authMethod;
           headerName = nextKeyStruct.headerName;
+          group = nextKeyStruct.group;
         } else {
           break;
         }

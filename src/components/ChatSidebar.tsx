@@ -1,16 +1,15 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Send, Bot, User, X, Trash2, ChevronDown, GripVertical } from 'lucide-react';
 import { generateText } from '../services/geminiService';
 import { notify } from '../services/notificationService';
 import { keyManager } from '../services/keyManager';
-import { ApiLineMode } from '../types';
 
 interface ChatSidebarProps {
     isOpen: boolean;
     onToggle: () => void;
     onClose?: () => void;
     isMobile: boolean;
-    onOpenSettings?: (view?: 'api-channels') => void;
+    onOpenSettings?: (view?: 'api-management') => void;
 }
 
 interface Message {
@@ -20,36 +19,52 @@ interface Message {
     timestamp: number;
 }
 
-// Models as requested by user with descriptions
-// Models as requested by user with descriptions
-const AVAILABLE_MODELS = [
-    {
-        id: 'gemini-flash-lite-latest',
-        name: 'Gemini 3 Flash Lite',
-        icon: '⚡',
-        desc: '超高性价比，超低延迟 (Best Value)'
-    },
-    {
-        id: 'gemini-flash-latest', // Fixed duplicate ID
-        name: 'Gemini 3 Flash',
-        icon: '🚀',
-        desc: '性能均衡，高吞吐量 (Balanced)'
-    },
-    {
-        id: 'gemini-3-flash-preview',
-        name: 'Gemini 3 Flash (Preview)',
-        icon: '🌟',
-        desc: '最新预览版，更强逻辑 (Preview)'
-    },
-    {
-        id: 'gemini-3-pro-preview',
-        name: 'Gemini 3 Pro (Preview)',
-        icon: '🧠',
-        desc: '顶级推理能力，适合复杂任务 (Top Tier)'
-    },
-];
+interface ChatModel {
+    id: string;
+    name: string;
+    provider: string;
+    isCustom: boolean;
+    type?: 'chat' | 'image' | 'video';
+    icon?: string;
+    displayName?: string; // Optional override
+    description?: string;
+}
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, isMobile, onOpenSettings }) => {
+    // 1. Model State Management
+    const [availableModels, setAvailableModels] = useState<ChatModel[]>(() => keyManager.getGlobalModelList().filter(model => model.type === 'chat'));
+    const [selectedModel, setSelectedModel] = useState<ChatModel>(() => availableModels[0] || { id: 'gemini-flash-latest', name: 'Gemini Flash', provider: 'Google', isCustom: false });
+    const [showModelMenu, setShowModelMenu] = useState(false);
+
+
+
+    // Subscribe to keyManager updates
+    useEffect(() => {
+        const updateModels = () => {
+            const models = keyManager.getGlobalModelList().filter(model => model.type === 'chat');
+            setAvailableModels(models);
+
+            // Validate current selection
+            if (models.length > 0) {
+                // Check if current selected model still exists
+                const exists = models.find(m => m.id === selectedModel.id);
+                if (!exists) {
+                    setSelectedModel(models[0]);
+                } else {
+                    // Update metadata if changed
+                    if (exists.name !== selectedModel.name || exists.description !== selectedModel.description) {
+                        setSelectedModel(exists);
+                    }
+                }
+            }
+        };
+
+        const unsubscribe = keyManager.subscribe(updateModels);
+        return unsubscribe;
+    }, [selectedModel.id]);
+
+
+    // 2. Chat State
     const [messages, setMessages] = useState<Message[]>([
         {
             id: 'welcome',
@@ -60,48 +75,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     ]);
     const [input, setInput] = useState('');
     const [isThinking, setIsThinking] = useState(false);
-    const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0]); // Default Lite
-    const [showModelMenu, setShowModelMenu] = useState(false);
 
+    // 3. Layout State
     const [keyboardHeight, setKeyboardHeight] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
-    const [lineMode, setLineMode] = useState<ApiLineMode>('google_direct');
-    const [proxyModels, setProxyModels] = useState(() => keyManager.getAvailableProxyModels('chat'));
-
-    // Subscribe to proxy model changes
-    useEffect(() => {
-        const unsubscribe = keyManager.subscribe(() => {
-            setProxyModels(keyManager.getAvailableProxyModels('chat'));
-        });
-        return unsubscribe;
-    }, []);
-
-    // Get available models based on line mode
-    const availableModels = useMemo(() => {
-        if (lineMode === 'google_direct') {
-            return AVAILABLE_MODELS;
-        }
-        // Proxy mode: use configured chat models
-        if (proxyModels.length === 0) {
-            return [];
-        }
-        return proxyModels.map(m => ({
-            id: m.id,
-            name: m.label,
-            icon: '🔌',
-            desc: m.description || '中转代理模型'
-        }));
-    }, [lineMode, proxyModels]);
-
-    // Auto-select first model when line mode changes
-    useEffect(() => {
-        if (availableModels.length > 0) {
-            const currentValid = availableModels.find(m => m.id === selectedModel.id);
-            if (!currentValid) {
-                setSelectedModel(availableModels[0]);
-            }
-        }
-    }, [lineMode, availableModels]);
 
     // Track keyboard visibility using visualViewport API
     useEffect(() => {
@@ -162,14 +139,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     }, [isOpen]);
 
     // Draggable Position State (Default Left-Bottom)
-    // Using simple offset from bottom-left corner or restoration
     const [position, setPosition] = useState(() => {
         try {
             const saved = localStorage.getItem('kk_chat_pos');
             if (saved) return JSON.parse(saved);
         } catch (e) { }
 
-        // Mobile Default: Top-Left (High Y value because Y is distance from bottom)
         if (isMobile) {
             return { x: 20, y: (window.innerHeight - 180) };
         }
@@ -184,7 +159,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef({ x: 0, y: 0 });
     const startPosRef = useRef({ x: 0, y: 0 });
-    const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -198,7 +172,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             const dx = e.clientX - dragStartRef.current.x;
             const dy = e.clientY - dragStartRef.current.y;
 
-            // Calculate new position (inverted Y because bottom-based)
             setPosition({
                 x: Math.max(0, startPosRef.current.x + dx),
                 y: Math.max(0, startPosRef.current.y - dy)
@@ -221,7 +194,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     }, [isDragging]);
 
     const startDrag = (e: React.MouseEvent) => {
-        if (isOpen) return; // Disable drag when open (or maybe allow? usually bubble is draggable)
+        if (isOpen) return;
         e.preventDefault();
         setIsDragging(true);
         dragStartRef.current = { x: e.clientX, y: e.clientY };
@@ -234,26 +207,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         const userText = input.trim();
         const userMsg: Message = { id: Date.now().toString(), role: 'user', content: userText, timestamp: Date.now() };
 
-        // Optimistic update
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setIsThinking(true);
-
-        // Reset timer if user is typing/sending (activity)
         handleMouseEnter();
 
         try {
             // Build history for context
-            // Exclude the welcome message if it's just static, but here we include all for continuity
-            // Map to the simple format expected by generateText
             const history = messages
-                .filter(m => m.id !== 'welcome') // Optional: exclude welcome msg from prompt context
+                .filter(m => m.id !== 'welcome')
                 .map(m => ({ role: m.role, content: m.content }));
 
-            // Add current user message
             history.push({ role: 'user', content: userText });
 
-            // Call API
+            // Call API with selected model ID
             const responseText = await generateText(history, selectedModel.id);
 
             const aiMsg: Message = {
@@ -264,19 +231,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             };
             setMessages(prev => [...prev, aiMsg]);
 
-            // Record Cost (Estimation)
-            // We treat both input and output as 'context' for simplicity in this version, 
-            // casting to '1K' size logic just for rate lookup
+            // Record Cost (Estimation) in background
             import('../services/costService').then(({ recordCost }) => {
                 const fullText = history.map(m => m.content).join('') + userText + responseText;
-                // Pass 0 images, but long prompt. 
-                // Note: costService currently calculates cost based on Image Count mainly for output.
-                // To track text cost properly, we'd need a dedicated Text API in costService.
-                // For now, we log the prompt length which triggers Input Token cost.
                 recordCost(
-                    selectedModel.id as any, // Cast to ModelType
+                    selectedModel.id as any,
                     '1K' as any,
-                    0, // 0 Images
+                    0,
                     fullText
                 );
             });
@@ -285,7 +246,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             console.error('Chat Error:', error);
             notify.error('AI 生成失败', error.message || '请检查网络或 API Key');
 
-            // Add error message to chat for visibility
             setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 role: 'assistant',
@@ -303,11 +263,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         }
     };
 
-    // Calculate transform origin based on bubble position (approximate corner)
-    // If bubble is on left/right half, anchor X. If top/bottom half, anchor Y.
     const getTransformOrigin = () => {
         const x = position.x < window.innerWidth / 2 ? 'left' : 'right';
-        const y = position.y < window.innerHeight / 2 ? 'bottom' : 'bottom'; // Usually bottom since it's a bubble
+        const y = position.y < window.innerHeight / 2 ? 'bottom' : 'bottom';
         return `${x} ${y}`;
     };
 
@@ -324,18 +282,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                         className={`group relative w-12 h-12 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-2xl animate-float-breathe cursor-move active:scale-95 transition-transform hover:brightness-110 ${isDragging ? 'cursor-grabbing scale-95' : ''}`}
                         title="Open AI Assistant (Drag to move)"
                     >
-                        {/* Inner Icon Breathing - Smaller now */}
                         <Bot size={24} className="animate-icon-breathe drop-shadow-md pointer-events-none" />
-
-                        {/* Status Dot - Smaller */}
                         <span className="absolute top-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#09090b] shadow-lg animate-pulse pointer-events-none" />
-
-                        {/* Click handler strictly on a overlay to separate from drag?
-                        Actually standard click works if no drag occurred.
-                        But we need to distinguish click vs dragend.
-                        Simple check: if moved > threshold.
-                        For now, let's assume a clean click is quick.
-                    */}
                         <div
                             className="absolute inset-0 rounded-full"
                             onClick={(e) => {
@@ -349,12 +297,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                 </div>
             )}
 
-            {/* 2. Chat Card Popover (Morph Transformation) - Fullscreen on Mobile */}
+            {/* 2. Chat Card Popover (Morph Transformation) */}
             {isOpen && (
                 <div
                     onMouseEnter={handleMouseEnter}
                     className={`fixed z-[100] flex flex-col bg-[#131316]/95 backdrop-blur-2xl border border-purple-500/30 shadow-[0_0_50px_-12px_rgba(124,58,237,0.5)] animate-scale-up-corner overflow-hidden ring-1 ring-white/10 ${isMobile
-                        ? 'inset-0 rounded-none pb-0' // Reduced padding as bottom bar is hidden
+                        ? 'inset-0 rounded-none pb-0'
                         : 'w-[380px] h-[600px] max-h-[80vh] rounded-3xl origin-bottom-left'
                         }`}
                     style={isMobile ? {
@@ -362,50 +310,39 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                         transition: 'height 0.2s ease-out'
                     } : {
                         left: Math.min(window.innerWidth - 390, Math.max(20, position.x)),
-                        bottom: Math.max(20, position.y), // Align bottom with bubble to look like expansion
+                        bottom: Math.max(20, position.y),
                         transformOrigin: getTransformOrigin()
                     }}
                 >
 
                     {/* Header */}
                     <div className="h-14 border-b border-white/10 flex items-center justify-between px-4 bg-gradient-to-r from-purple-900/40 to-indigo-900/20 shrink-0">
-                        {/* Model Selector */}
+                        {/* Model Selector - NOW UNIFIED */}
                         <div className="relative flex items-center gap-2">
-                            {/* Line Mode Toggle */}
-                            <button
-                                onClick={() => setLineMode(prev => prev === 'google_direct' ? 'proxy' : 'google_direct')}
-                                className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all ${lineMode === 'google_direct'
-                                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                    : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                                    }`}
-                                title={lineMode === 'google_direct' ? '谷歌专线' : '中转代理'}
-                            >
-                                {lineMode === 'google_direct' ? '谷歌' : '代理'}
-                            </button>
 
                             {/* Model Button */}
                             <button
                                 onClick={() => {
-                                    if (lineMode === 'proxy' && proxyModels.length === 0) {
-                                        onOpenSettings?.('api-channels');
+                                    if (availableModels.length === 0) {
+                                        onOpenSettings?.('api-management');
                                     } else {
                                         setShowModelMenu(!showModelMenu);
                                     }
                                 }}
-                                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-colors text-xs font-medium group ${lineMode === 'proxy' && proxyModels.length === 0
-                                        ? 'bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300'
-                                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-zinc-100'
+                                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-colors text-xs font-medium group ${availableModels.length === 0
+                                    ? 'bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300'
+                                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-zinc-100'
                                     }`}
                             >
-                                {lineMode === 'proxy' && proxyModels.length === 0 ? (
+                                {availableModels.length === 0 ? (
                                     <>
                                         <span className="text-base">⚙️</span>
-                                        <span className="underline underline-offset-2">请到API设置模型</span>
+                                        <span className="underline underline-offset-2">请配置模型</span>
                                     </>
                                 ) : (
                                     <>
-                                        <span className="text-base">{selectedModel.icon}</span>
-                                        <span>{selectedModel.name}</span>
+                                        <span className="text-base">{selectedModel.icon || '🤖'}</span>
+                                        <span>{selectedModel.name || selectedModel.id}</span>
                                         <ChevronDown size={12} className={`text-zinc-500 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                                     </>
                                 )}
@@ -415,22 +352,27 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                             {showModelMenu && (
                                 <>
                                     <div className="fixed inset-0 z-10 bg-black/20 backdrop-blur-sm" onClick={() => setShowModelMenu(false)} />
-                                    <div className="absolute top-full left-0 mt-2 w-56 bg-[#18181b] border border-white/10 rounded-xl shadow-2xl shadow-black/50 z-20 p-1.5 animate-in fade-in zoom-in-95 duration-100 ring-1 ring-white/5">
+                                    <div className="absolute top-full left-0 mt-2 w-56 bg-[#18181b] border border-white/10 rounded-xl shadow-2xl shadow-black/50 z-20 p-1.5 animate-in fade-in zoom-in-95 duration-100 ring-1 ring-white/5 max-h-[300px] overflow-y-auto scrollbar-thin">
                                         <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-zinc-500 font-bold border-b border-white/5 mb-1 select-none">Select Model</div>
-                                        {AVAILABLE_MODELS.map(model => (
-                                            <button
-                                                key={model.id}
-                                                onClick={() => { setSelectedModel(model); setShowModelMenu(false); }}
-                                                className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-purple-600/20 text-purple-300 border border-purple-500/20 shadow-inner' : 'text-zinc-300 hover:bg-white/10 hover:text-white border border-transparent'
-                                                    }`}
-                                            >
-                                                <span className="mt-0.5 text-base">{model.icon}</span>
-                                                <div className="flex flex-col gap-0.5">
-                                                    <span className={`font-medium ${selectedModel.id === model.id ? 'text-purple-200' : 'text-zinc-200'}`}>{model.name}</span>
-                                                    <span className="text-[10px] opacity-70 leading-tight">{model.desc}</span>
-                                                </div>
-                                            </button>
-                                        ))}
+                                        {availableModels.map(model => {
+                                            const displayName = model.name || model.id;
+                                            const advantage = model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                            return (
+                                                <button
+                                                    key={model.id}
+                                                    onClick={() => { setSelectedModel(model); setShowModelMenu(false); }}
+                                                    className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-purple-600/20 text-purple-300 border border-purple-500/20 shadow-inner' : 'text-zinc-300 hover:bg-white/10 hover:text-white border border-transparent'
+                                                        }`}
+                                                >
+                                                    <span className="mt-0.5 text-base">{model.icon || '🤖'}</span>
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className={`font-medium ${selectedModel.id === model.id ? 'text-purple-200' : 'text-zinc-200'}`}>{displayName}</span>
+                                                        <span className="text-[10px] opacity-70 leading-tight break-all">ID: {model.id}</span>
+                                                        <span className="text-[10px] opacity-70 leading-tight">{advantage}</span>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </>
                             )}
@@ -438,8 +380,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
 
                         {/* Actions */}
                         <div className="flex items-center gap-1">
-                            {/* Drag Handle for Card? (Optional) */}
-                            {/* <div className="p-2 text-zinc-600 cursor-move"><GripVertical size={18} /></div> */}
                             <button onClick={handleClear} className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 size={16} /></button>
                             <button onClick={onToggle} className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><X size={18} /></button>
                         </div>
@@ -489,7 +429,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                             <div className="relative flex items-end gap-2 bg-[#131316] border border-white/10 rounded-[32px] p-2 shadow-2xl shadow-black/50 focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
                                 <textarea
                                     className="flex-1 bg-transparent text-white text-base px-4 py-2.5 outline-none resize-none scrollbar-hide max-h-32 placeholder:text-zinc-500"
-                                    placeholder={`Message ${selectedModel.name.split(' ')[0]}...`}
+                                    placeholder={`Message ${selectedModel?.name?.split(' ')[0] || 'AI'}...`}
                                     rows={1}
                                     value={input}
                                     onChange={e => {

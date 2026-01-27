@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, PenTool, Tag, Layers } from 'lucide-react';
+import { Trash2, Group, Tag, Layers } from 'lucide-react';
 
 interface SelectionMenuProps {
     position: { x: number; y: number };
@@ -34,9 +34,9 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
             <button
                 onClick={onGroup}
                 className="p-2 hover:bg-white/10 rounded text-indigo-400 hover:text-indigo-300 transition-colors tooltip-trigger"
-                title="编组 / 画笔 (Group)"
+                title="编组 (Group)"
             >
-                <PenTool size={16} />
+                <Group size={16} />
             </button>
 
             <button

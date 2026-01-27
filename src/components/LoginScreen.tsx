@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Loader2, AlertCircle, CheckCircle2, ChevronLeft, ArrowRight, Mail, Lock, Sparkles } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, ChevronLeft, ArrowRight, Mail, Lock } from 'lucide-react';
 
 type AuthView = 'login' | 'register' | 'forgot-password';
 
@@ -79,7 +79,7 @@ const LoginScreen: React.FC = () => {
 
             {/* Version Badge - Bottom Right */}
             <div className="absolute bottom-6 right-8 text-[10px] text-zinc-600 font-mono tracking-widest z-50 select-none opacity-50 hover:opacity-100 transition-opacity">
-                KK STUDIO v1.2.0 BUILD 2026.01
+                KK STUDIO v1.2.1 BUILD 2026.01
             </div>
 
             {/* Main Card */}
@@ -100,10 +100,11 @@ const LoginScreen: React.FC = () => {
                             </button>
                         )}
 
-                        <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-2xl mx-auto mb-5 flex items-center justify-center shadow-lg shadow-purple-500/25 relative overflow-hidden">
-                            <Sparkles className="text-white relative z-10" size={32} />
-                            <div className="absolute inset-0 bg-white/20 blur-lg" />
-                        </div>
+                        <img
+                            src="/icon.svg"
+                            alt="KK Studio"
+                            className="w-16 h-16 mx-auto mb-5 drop-shadow-[0_14px_28px_rgba(56,189,248,0.35)]"
+                        />
                         <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">
                             {view === 'login' && '欢迎回来'}
                             {view === 'register' && '创建账号'}

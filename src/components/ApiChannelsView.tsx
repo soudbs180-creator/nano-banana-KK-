@@ -1,214 +1,184 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    X, Key, Plus, Trash2, Globe, RefreshCw, Copy, Check,
-    Pause, Play, Activity, Pencil, List, AlertTriangle, ChevronRight, Zap, DollarSign, GripVertical, Image, Video, MessageCircle, ListFilter
+    X, Plus, Trash2, Activity, Pencil, Zap,
+    DollarSign, Check, Pause, Play, RefreshCw, Server,
+    Globe, Shield, Box, Key
 } from 'lucide-react';
-import { modelRegistry, ActiveModel } from '../services/modelRegistry';
-import { MODEL_PRESETS } from '../services/modelPresets';
-import { KeySlot, keyManager } from '../services/keyManager';
-import { ProxyModelConfig, PROXY_MODEL_PRESETS, createEmptyProxyModel, validateProxyModel } from '../services/proxyModelConfig';
-import { GOOGLE_MODEL_CAPABILITIES } from '../services/modelCapabilities';
-import { AspectRatio, ImageSize } from '../types';
+import { KeySlot, keyManager, DEFAULT_GOOGLE_MODELS } from '../services/keyManager';
+import { CHAT_MODEL_PRESETS } from '../services/modelPresets';
 
-export const ApiChannelsView = () => {
+export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'assets' }) => {
     const [slots, setSlots] = useState<KeySlot[]>(keyManager.getSlots());
-    const [activeStrategy, setActiveStrategy] = useState<'concurrent' | 'sequential'>(keyManager.getStrategyMode());
-    const [draggingId, setDraggingId] = useState<string | null>(null);
-    const [dropTarget, setDropTarget] = useState<{ id: string, position: 'before' | 'after' | 'column', strategy: 'load_balance' | 'sequential' } | null>(null);
-    const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set());
+    const [strategy, setStrategy] = useState(keyManager.getStrategy());
     const [loading, setLoading] = useState(false);
+    const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set());
+    // DnD State
+    const [draggedId, setDraggedId] = useState<string | null>(null);
 
-    // Model Management State
-    const [activeModels, setActiveModels] = useState<ActiveModel[]>([]);
-    const [modelForm, setModelForm] = useState({ input: '', showSuggestions: false });
-
-    useEffect(() => {
-        setActiveModels(modelRegistry.getModels());
-        return modelRegistry.subscribe(() => setActiveModels(modelRegistry.getModels()));
-    }, []);
-
-    const handleAddModel = (id: string) => {
-        if (!id.trim()) return;
-        const preset = MODEL_PRESETS.find(p => p.id === id);
-        if (preset) {
-            modelRegistry.addModel({ ...preset, enabled: true });
-        } else {
-            modelRegistry.addModel({
-                id: id.trim(),
-                label: id.trim(),
-                provider: 'Custom',
-                type: 'image',
-                enabled: true,
-                custom: true
-            });
-        }
-        setModelForm({ input: '', showSuggestions: false });
-    };
-
-    const handleRemoveModel = (id: string) => modelRegistry.removeModel(id);
-    const toggleModel = (id: string) => {
-        const model = activeModels.find(m => m.id === id);
-        if (model) modelRegistry.updateModel(id, { enabled: !model.enabled });
-    };
-
+    // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     // Form State
-    const [formKey, setFormKey] = useState('');
     const [formName, setFormName] = useState('');
-    const [formProvider, setFormProvider] = useState('Gemini');
-    const [formBudget, setFormBudget] = useState('');
-    const [formUsedCost, setFormUsedCost] = useState('');
-    const [formUseProxy, setFormUseProxy] = useState(false);
+    const [formProvider, setFormProvider] = useState('Google');
+    const [formKey, setFormKey] = useState('');
     const [formBaseUrl, setFormBaseUrl] = useState('');
+    const [formModels, setFormModels] = useState(''); // Comma separated strings
     const [isKeyEditing, setIsKeyEditing] = useState(false);
 
     useEffect(() => {
         const update = () => {
             setSlots([...keyManager.getSlots()]);
-            setActiveStrategy(keyManager.getStrategyMode());
+            setStrategy(keyManager.getStrategy());
         };
         const unsub = keyManager.subscribe(update);
         return unsub;
     }, []);
 
-    // Proxy Model Configuration State
-    const [showProxyModelModal, setShowProxyModelModal] = useState(false);
-    const [editingProxyKeyId, setEditingProxyKeyId] = useState<string | null>(null);
-    const [editingModelId, setEditingModelId] = useState<string | null>(null);
-    const [newProxyModel, setNewProxyModel] = useState<ProxyModelConfig>(() => createEmptyProxyModel('image'));
-    const [proxyModelError, setProxyModelError] = useState<string | null>(null);
-    const [showAdvanced, setShowAdvanced] = useState(false);
-
-    const getProxySlot = (id: string | null) => slots.find(slot => slot.id === id) || null;
-
-    const detectProvider = (modelId: string) => {
-        const id = modelId.toLowerCase();
-        if (id.includes('gemini') || id.includes('imagen') || id.includes('veo') || id.includes('nano-banana')) return 'Google';
-        if (id.includes('dall-e') || id.includes('gpt-image') || id.includes('sora')) return 'OpenAI';
-        if (id.includes('gpt-') || id === 'gpt' || id.includes('o1') || id.includes('o3')) return 'OpenAI';
-        if (id.includes('midjourney') || id.includes('mj-')) return 'Midjourney';
-        if (id.includes('flux')) return 'Black Forest Labs';
-        if (id.includes('ideogram')) return 'Ideogram';
-        if (id.includes('recraft')) return 'Recraft';
-        if (id.includes('kling')) return 'Kuaishou';
-        if (id.includes('runway') || id.includes('gen-3')) return 'Runway';
-        if (id.includes('luma')) return 'Luma';
-        if (id.includes('pika')) return 'Pika';
-        if (id.includes('deepseek')) return 'DeepSeek';
-        if (id.includes('claude')) return 'Anthropic';
-        if (id.includes('qwen')) return 'Qwen';
-        if (id.includes('glm')) return 'Zhipu';
-        if (id.includes('llama') || id.includes('mixtral') || id.includes('mistral')) return 'Mistral';
-        return '';
+    const handleStrategyChange = (newStrategy: 'round-robin' | 'sequential') => {
+        keyManager.setStrategy(newStrategy);
+        setStrategy(newStrategy);
     };
-
-    const detectType = (modelId: string, fallback: ProxyModelConfig['type']) => {
-        const id = modelId.toLowerCase();
-        if (id.includes('video') || id.includes('veo') || id.includes('kling') || id.includes('runway') || id.includes('luma') || id.includes('sora') || id.includes('pika') || id.includes('gen-3')) return 'video';
-        if (id.includes('image') || id.includes('dall-e') || id.includes('flux') || id.includes('midjourney') || id.includes('ideogram') || id.includes('recraft') || id.includes('sd') || id.includes('stable') || id.includes('pixart')) return 'image';
-        if (id.includes('chat') || id.includes('gpt') || id.includes('claude') || id.includes('gemini') || id.includes('deepseek') || id.includes('qwen') || id.includes('llama') || id.includes('mixtral') || id.includes('mistral')) return 'chat';
-        return fallback || 'chat';
-    };
-
-    const detectVideoCapabilities = (modelId: string) => {
-        const id = modelId.toLowerCase();
-        const supportsDuration = true;
-        const supportsFirstFrame = !(id.includes('veo') || id.includes('sora'));
-        const supportsLastFrame = id.includes('kling');
-        const supportsFps = id.includes('kling') || id.includes('runway');
-        return { supportsDuration, supportsFirstFrame, supportsLastFrame, supportsFps };
-    };
-
-    const detectApiFormat = (modelId: string, slot: KeySlot | null, type: ProxyModelConfig['type'], fallback: ProxyModelConfig['apiFormat']) => {
-        const baseUrl = slot?.baseUrl || '';
-        const isGoogleBase = baseUrl.includes('googleapis.com');
-        const isProxyBase = !!baseUrl && !isGoogleBase;
-        const id = modelId.toLowerCase();
-        const isGoogleFamily = id.includes('gemini') || id.includes('imagen') || id.includes('veo') || id.includes('nano-banana');
-        if (isGoogleBase) return 'gemini';
-        if (isProxyBase) return fallback || (isGoogleFamily && type !== 'chat' ? 'gemini' : 'openai');
-        if (isGoogleFamily && type !== 'chat') return 'gemini';
-        if (!fallback) return 'openai';
-        return fallback;
-    };
-
-    const hydrateProxyModel = (model: ProxyModelConfig, slot: KeySlot | null): ProxyModelConfig => {
-        const trimmedId = model.id.trim();
-        if (!trimmedId) return model;
-        const preset = PROXY_MODEL_PRESETS.find(p => p.id === trimmedId);
-        if (preset) {
-            return {
-                ...model,
-                ...preset,
-                id: trimmedId,
-                label: model.label?.trim() || preset.label || trimmedId
-            };
-        }
-
-        const caps = GOOGLE_MODEL_CAPABILITIES[trimmedId];
-        const type = detectType(trimmedId, model.type);
-        const label = model.label?.trim() || trimmedId;
-        const provider = model.provider?.trim() || detectProvider(trimmedId);
-        const apiFormat = detectApiFormat(trimmedId, slot, type, model.apiFormat);
-
-        const supportedAspectRatios = type === 'chat'
-            ? []
-            : caps?.supportedRatios || Object.values(AspectRatio);
-        const supportedSizes = type === 'chat'
-            ? []
-            : caps?.supportedSizes || Object.values(ImageSize);
-        const supportsGrounding = caps?.supportsGrounding || false;
-        const videoCapabilities = type === 'video' ? detectVideoCapabilities(trimmedId) : undefined;
-
-        return {
-            ...model,
-            id: trimmedId,
-            label,
-            provider,
-            type,
-            apiFormat,
-            supportedAspectRatios,
-            supportedSizes,
-            supportsGrounding,
-            videoCapabilities
-        };
-    };
-
-    // Calculate totals
-    const totalBudget = slots.reduce((sum, s) => sum + (s.budgetLimit > 0 ? s.budgetLimit : 0), 0);
-    const totalConsumed = slots.reduce((sum, s) => sum + (s.totalCost || 0), 0);
-    const totalTokens = slots.reduce((sum, s) => sum + (s.usedTokens || 0), 0);
-    const remainingBudget = totalBudget - totalConsumed;
 
     const openAddModal = () => {
         setEditingId(null);
+        setFormName('New Channel');
+        setFormProvider('Google');
         setFormKey('');
-        setFormName('Google API');
-        setFormProvider('Gemini');
-        setFormBudget('');
-        setFormUsedCost('');
-        setFormUseProxy(false);
         setFormBaseUrl('');
-        setIsKeyEditing(true);
+        setFormModels(DEFAULT_GOOGLE_MODELS.join(', '));
         setIsModalOpen(true);
+        setIsKeyEditing(true);
     };
 
     const openEditModal = (slot: KeySlot) => {
         setEditingId(slot.id);
-        setFormKey(slot.key);
         setFormName(slot.name);
         setFormProvider(slot.provider);
-        setFormBudget(slot.budgetLimit > 0 ? slot.budgetLimit.toString() : '');
-        setFormUsedCost(slot.totalCost.toString());
-        const isProxy = !!slot.baseUrl && !slot.baseUrl.includes('googleapis.com');
-        setFormUseProxy(isProxy);
+        setFormKey(slot.key);
         setFormBaseUrl(slot.baseUrl || '');
-        setIsKeyEditing(false);
+        setFormModels((slot.supportedModels || []).join(', '));
         setIsModalOpen(true);
+        setIsKeyEditing(false);
+    };
+
+    const handleDelete = (id: string, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        if (confirm('确定要删除此通道吗?')) {
+            keyManager.removeKey(id);
+        }
+    };
+
+    const handleToggle = (id: string, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        keyManager.toggleKey(id);
+    };
+
+    const handleRefresh = async (id: string, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setRefreshingIds(prev => new Set(prev).add(id));
+
+        const slot = slots.find(s => s.id === id);
+        if (slot) {
+            const targetUrl = slot.baseUrl || 'https://generativelanguage.googleapis.com'; // Default to Google if empty
+            const result = await keyManager.testChannel(targetUrl, slot.key);
+
+            if (result.success) {
+                keyManager.reportSuccess(id);
+            } else {
+                keyManager.reportFailure(id, result.message || 'Validation failed');
+            }
+        }
+
+        setRefreshingIds(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+        });
+    };
+
+    const handleDragStart = (e: React.DragEvent, id: string) => {
+        setDraggedId(id);
+        e.dataTransfer.effectAllowed = 'move';
+        // Optimize ghost image if needed, but default is usually fine
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault(); // Necessary to allow dropping
+    };
+
+    const handleDragEnter = (e: React.DragEvent, targetId: string) => {
+        e.preventDefault();
+        if (!draggedId || draggedId === targetId) return;
+
+        const fromIndex = slots.findIndex(s => s.id === draggedId);
+        const toIndex = slots.findIndex(s => s.id === targetId);
+
+        if (fromIndex !== -1 && toIndex !== -1) {
+            // Live Reorder (Optimistic Swap in UI only)
+            const newSlots = [...slots];
+            const [moved] = newSlots.splice(fromIndex, 1);
+            newSlots.splice(toIndex, 0, moved);
+            setSlots(newSlots);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        // Persistence happens here based on the final order in 'slots'
+        if (draggedId) {
+            const finalFromIndex = keyManager.getSlots().findIndex(s => s.id === draggedId);
+            const finalToIndex = slots.findIndex(s => s.id === draggedId);
+
+            if (finalFromIndex !== -1 && finalToIndex !== -1 && finalFromIndex !== finalToIndex) {
+                keyManager.reorderSlots(finalFromIndex, finalToIndex);
+            }
+        }
+        setDraggedId(null);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedId(null);
+    };
+
+    const handleSubmit = async () => {
+        if (!formKey.trim()) return;
+        setLoading(true);
+
+        const modelsArray = formModels.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+        // If no models specified, and it's Google, default to standard.
+        // But logic is handled in KeyManager mostly. 
+        // If user explicitly leaves it empty, KeyManager might backfill default google models 
+        // ONLY IF it's a legacy migration. 
+        // For new keys, if empty, it might mean "no models" or "all models"? 
+        // Let's assume empty means "Default Google Models" if provider is Google, 
+        // or "Auto-detect" if proxy? 
+        // For now, let's just pass what user typed. If empty, KeyManager defaults to Gemini models in loadState logic, 
+        // but for addKey we should probably handle defaults if empty.
+
+        let finalModels = modelsArray;
+        if (finalModels.length === 0 && (formProvider === 'Google' || !formBaseUrl)) {
+            finalModels = [...DEFAULT_GOOGLE_MODELS];
+        }
+
+        const keyData = {
+            name: formName.trim() || 'API Channel',
+            key: formKey.trim(),
+            provider: formProvider,
+            baseUrl: formBaseUrl.trim(),
+            supportedModels: finalModels
+        };
+
+        if (editingId) {
+            keyManager.updateKey(editingId, keyData);
+        } else {
+            await keyManager.addKey(formKey.trim(), keyData);
+        }
+
+        setLoading(false);
+        setIsModalOpen(false);
     };
 
     const maskApiKey = (key: string) => {
@@ -219,880 +189,421 @@ export const ApiChannelsView = () => {
         return `${head}...${tail}`;
     };
 
-    const cleanBaseUrl = (url: string) => {
-        if (!url) return '';
-        let cleaned = url.trim();
-        if (cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1);
-        if (cleaned.endsWith('/v1')) cleaned = cleaned.replace(/\/v1$/, '');
-        if (cleaned.endsWith('/v1beta')) cleaned = cleaned.replace(/\/v1beta$/, '');
-        if (cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1);
-        return cleaned;
-    };
-
-    const handleSubmit = async () => {
-        setLoading(true);
-        const rawProxyUrl = formUseProxy ? formBaseUrl : '';
-        const proxyBaseUrl = cleanBaseUrl(rawProxyUrl);
-
-        if (editingId) {
-            keyManager.updateKey(editingId, {
-                name: formName.trim() || 'API Key',
-                key: formKey.trim(),
-                budgetLimit: formBudget ? parseFloat(formBudget) : -1,
-                totalCost: formUsedCost ? parseFloat(formUsedCost) : 0,
-                baseUrl: proxyBaseUrl,
-                authMethod: formUseProxy ? 'header' : 'query',
-                headerName: 'x-goog-api-key'
-            });
-        } else {
-            if (!formKey.trim()) {
-                setLoading(false);
-                return;
-            }
-            await keyManager.addKey(formKey.trim(), {
-                name: formName.trim() || (() => {
-                    if (!formUseProxy) return 'Google Official';
-                    if (formProvider !== 'Other') return formProvider === 'Gemini' ? 'Google Gemini' : formProvider;
-                    try { return new URL(proxyBaseUrl).hostname; } catch { return 'Custom Proxy'; }
-                })(),
-                provider: formProvider,
-                budgetLimit: formBudget ? parseFloat(formBudget) : -1,
-                totalCost: formUsedCost ? parseFloat(formUsedCost) : 0,
-                baseUrl: proxyBaseUrl,
-                authMethod: formUseProxy ? 'header' : 'query',
-                headerName: 'x-goog-api-key',
-                strategy: 'sequential',
-                priority: -1
-            });
-        }
-        setIsModalOpen(false);
-        setLoading(false);
-    };
-
-    // Proxy Model Handlers
-    const openProxyModelModal = (keyId: string) => {
-        setEditingProxyKeyId(keyId);
-        setEditingModelId(null); // Reset edit mode
-        setNewProxyModel(createEmptyProxyModel('image'));
-        setProxyModelError(null);
-        setShowProxyModelModal(true);
-    };
-
-    const handleEditProxyModel = (keyId: string, model: ProxyModelConfig) => {
-        setEditingProxyKeyId(keyId);
-        setEditingModelId(model.id); // Set edit mode
-        setNewProxyModel({ ...model }); // Load data
-        setProxyModelError(null);
-        setShowProxyModelModal(true);
-    };
-
-    const handleAddProxyModel = () => {
-        const slot = getProxySlot(editingProxyKeyId);
-        const hydratedModel = hydrateProxyModel(newProxyModel, slot);
-        setNewProxyModel(hydratedModel);
-        const error = validateProxyModel(hydratedModel);
-        if (error) {
-            setProxyModelError(error);
-            return;
-        }
-        if (editingProxyKeyId) {
-            if (editingModelId) {
-                keyManager.updateProxyModel(editingProxyKeyId, editingModelId, hydratedModel);
-            } else {
-                keyManager.addProxyModel(editingProxyKeyId, hydratedModel);
-            }
-            setShowProxyModelModal(false);
-            setNewProxyModel(createEmptyProxyModel('image'));
-            setEditingModelId(null);
-        }
-    };
-
-    const handleRemoveProxyModel = (keyId: string, modelId: string) => {
-        keyManager.removeProxyModel(keyId, modelId);
-    };
-
-    const handleAddPresetModel = (keyId: string, preset: ProxyModelConfig) => {
-        keyManager.addProxyModel(keyId, preset);
-    };
-
-    const handleDelete = (id: string, e?: React.MouseEvent) => {
-        e?.stopPropagation();
-        if (confirm('确定要删除此 API 密钥吗?')) {
-            keyManager.removeKey(id);
-        }
-    };
-
-    const handleCopy = (key: string, id: string) => {
-        navigator.clipboard.writeText(key);
-        setCopiedId(id);
-        setTimeout(() => setCopiedId(null), 2000);
-    };
-
-    const handleRefreshKey = async (id: string) => {
-        setRefreshingIds(prev => new Set(prev).add(id));
-        await keyManager.refreshKey(id);
-        setRefreshingIds(prev => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-        });
-    };
-
-    const handleAutoSort = () => {
-        keyManager.autoSortSequentialKeys();
-    };
-
-    const handleStrategyToggle = (mode: 'concurrent' | 'sequential') => {
-        keyManager.setStrategyMode(mode);
-    };
-
-    // Columns Logic
-    const concurrentSlots = slots.filter(s => s.strategy === 'load_balance');
-    const sequentialSlots = slots.filter(s => (s.strategy || 'sequential') === 'sequential')
-        .sort((a, b) => (a.priority || 0) - (b.priority || 0));
-
-    const handleDragStart = (e: React.DragEvent, id: string) => {
-        // Set data first
-        e.dataTransfer.setData('text/plain', id);
-        e.dataTransfer.effectAllowed = 'move';
-
-        // Delay the state update to next tick
-        // This prevents React from re-rendering the element IN the same frame as drag start,
-        // which often cancels the native drag operation in many browsers.
-        setTimeout(() => {
-            setDraggingId(id);
-        }, 0);
-    };
-
-    const handleDragOver = (e: React.DragEvent, strategy: 'load_balance' | 'sequential', id?: string, position?: 'before' | 'after') => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Use a simpler check to avoid constant state updates if target hasn't changed
-        if (dropTarget?.id === id && dropTarget?.position === position && dropTarget?.strategy === strategy) {
-            return;
-        }
-
-        if (id && position) {
-            setDropTarget({ id, position, strategy });
-        } else {
-            setDropTarget({ id: '', position: 'column', strategy });
-        }
-    };
-
-    const handleDragLeave = (e: React.DragEvent) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX;
-        const y = e.clientY;
-        if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
-            setDropTarget(null);
-        }
-    };
-
-    const handleDropAction = (e: React.DragEvent, targetStrategy: 'load_balance' | 'sequential', targetIndex?: number) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDropTarget(null);
-        const id = e.dataTransfer.getData('text/plain');
-        if (!id) return;
-
-        const slot = slots.find(s => s.id === id);
-        if (!slot) return;
-
-        if (targetStrategy === 'load_balance') {
-            keyManager.updateKey(id, { strategy: 'load_balance' });
-        } else {
-            const otherSlots = slots
-                .filter(s => s.id !== id && (s.strategy || 'sequential') === 'sequential')
-                .sort((a, b) => (a.priority || 0) - (b.priority || 0));
-
-            if (targetIndex !== undefined) {
-                otherSlots.splice(targetIndex, 0, slot);
-            } else if (dropTarget?.id) {
-                // Determine actual target index based on dropTarget
-                const targetIdx = otherSlots.findIndex(s => s.id === dropTarget.id);
-                if (targetIdx !== -1) {
-                    otherSlots.splice(dropTarget.position === 'before' ? targetIdx : targetIdx + 1, 0, slot);
-                } else {
-                    otherSlots.push(slot);
-                }
-            } else {
-                otherSlots.push(slot);
-            }
-
-            otherSlots.forEach((s, i) => {
-                keyManager.updateKey(s.id, { strategy: 'sequential', priority: i });
-            });
-        }
-        setDraggingId(null);
-    };
-
-    // Improved API Card with vertical stacked layout to prevent overlap
-    const ApiCard = ({ slot, index, showPriority }: { slot: KeySlot, index?: number, showPriority?: boolean }) => {
-        const isRefreshing = refreshingIds.has(slot.id);
-        const budgetPercent = slot.budgetLimit > 0 ? Math.min(100, (slot.totalCost / slot.budgetLimit) * 100) : 0;
-        const remaining = slot.budgetLimit > 0 ? Math.max(0, slot.budgetLimit - slot.totalCost) : -1;
-        const isOverBudget = slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit;
-
-        const isDropTargetBefore = dropTarget?.id === slot.id && dropTarget?.position === 'before';
-        const isDropTargetAfter = dropTarget?.id === slot.id && dropTarget?.position === 'after';
-
-        return (
-            <div className="relative">
-                {/* Drag Feedback Insertion Line (Before) */}
-                {isDropTargetBefore && (
-                    <div className="absolute -top-1.5 left-0 right-0 h-1 bg-indigo-500 rounded-full z-10 animate-pulse" />
-                )}
-
-                <div
-                    draggable={true}
-                    onDragStart={(e) => handleDragStart(e, slot.id)}
-                    onDragEnd={() => { setDraggingId(null); setDropTarget(null); }}
-                    onDragOver={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const mid = rect.top + rect.height / 2;
-                        const strategy = slot.strategy || 'sequential';
-                        handleDragOver(e, strategy, slot.id, e.clientY < mid ? 'before' : 'after');
-                    }}
-                    className={`group bg-[#1c1c1e] rounded-xl border select-none relative overflow-hidden flex flex-col
-                        ${draggingId === slot.id ? 'opacity-40 border-indigo-500/50' : 'border-zinc-800/50 hover:border-zinc-600 transition-colors'}
-                    `}
-                >
-                    {/* Progress bar at bottom */}
-                    {slot.budgetLimit > 0 && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-zinc-800/50 z-10">
-                            <div
-                                className={`h-full transition-all ${isOverBudget ? 'bg-red-500' : budgetPercent > 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                                style={{ width: `${budgetPercent}%` }}
-                            />
-                        </div>
-                    )}
-
-                    <div className="p-3">
-                        {/* Header: Grip + Name & Actions */}
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <div className="p-0.5 cursor-move text-zinc-600 hover:text-zinc-400 shrink-0">
-                                    <GripVertical size={14} />
-                                </div>
-                                <div className={`shrink-0 w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]
-                                    ${slot.disabled ? 'bg-zinc-600 text-zinc-600' :
-                                        slot.status === 'valid' ? 'bg-emerald-500 text-emerald-500' :
-                                            slot.status === 'invalid' ? 'bg-red-500 text-red-500' :
-                                                slot.status === 'rate_limited' ? 'bg-amber-500 text-amber-500' : 'bg-zinc-600 text-zinc-600'}
-                                `} />
-                                <div className={`truncate font-bold text-sm flex-1 ${slot.disabled ? 'text-zinc-500' : 'text-white'}`}>{slot.name}</div>
-                                {showPriority && index !== undefined && (
-                                    <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded font-mono shrink-0">
-                                        #{index + 1}
-                                    </span>
-                                )}
-                            </div>
-
-                            {/* Actions Overlay (visible on hover) */}
-                            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); keyManager.toggleKey(slot.id); }}
-                                    className={`p-1.5 rounded-lg transition-colors ${slot.disabled ? 'text-emerald-500 hover:bg-emerald-500/10' : 'text-zinc-500 hover:text-amber-400 hover:bg-white/10'}`}
-                                    title={slot.disabled ? '启用' : '暂停'}
-                                >
-                                    {slot.disabled ? <Play size={13} /> : <Pause size={13} />}
-                                </button>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleRefreshKey(slot.id); }}
-                                    disabled={isRefreshing}
-                                    className={`p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/10 transition-colors ${isRefreshing ? 'animate-spin text-indigo-500' : ''}`}
-                                    title="刷新"
-                                >
-                                    <RefreshCw size={13} />
-                                </button>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); openEditModal(slot); }}
-                                    className="p-1.5 rounded-lg text-zinc-500 hover:text-indigo-400 hover:bg-white/10 transition-colors"
-                                    title="编辑"
-                                >
-                                    <Pencil size={13} />
-                                </button>
-                                <button
-                                    onClick={(e) => handleDelete(slot.id, e)}
-                                    className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-white/10 transition-colors"
-                                    title="删除"
-                                >
-                                    <Trash2 size={13} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Stats Grid */}
-                        <div className="grid grid-cols-3 gap-px bg-zinc-800/30 rounded-lg overflow-hidden border border-zinc-800/30">
-                            {/* Budget */}
-                            <div className="bg-[#1c1c1e]/50 p-2 text-center">
-                                <div className="text-[10px] text-zinc-500 mb-0.5">预算</div>
-                                <div className="text-xs font-mono font-bold text-white truncate">
-                                    {slot.budgetLimit > 0 ? `$${slot.budgetLimit}` : '∞'}
-                                </div>
-                            </div>
-                            {/* Used */}
-                            <div className="bg-[#1c1c1e]/50 p-2 text-center relative">
-                                <div className="text-[10px] text-zinc-500 mb-0.5">已用</div>
-                                <div className={`text-xs font-mono font-bold truncate ${isOverBudget ? 'text-red-400' : 'text-amber-400'}`}>
-                                    ${slot.totalCost.toFixed(3)}
-                                </div>
-                                {/* Vertical Dividers */}
-                                <div className="absolute left-0 top-2 bottom-2 w-px bg-zinc-800/50"></div>
-                                <div className="absolute right-0 top-2 bottom-2 w-px bg-zinc-800/50"></div>
-                            </div>
-                            {/* Remaining */}
-                            <div className="bg-[#1c1c1e]/50 p-2 text-center">
-                                <div className="text-[10px] text-zinc-500 mb-0.5">剩余</div>
-                                <div className={`text-xs font-mono font-bold truncate ${remaining < 1 && remaining >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                                    {remaining >= 0 ? `$${remaining.toFixed(2)}` : '∞'}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Drag Feedback Insertion Line (After) */}
-                {isDropTargetAfter && (
-                    <div className="absolute -bottom-1.5 left-0 right-0 h-1 bg-indigo-500 rounded-full z-10 animate-pulse" />
-                )}
-            </div>
-        );
-    };
+    // Render Logic
+    const isSequential = strategy === 'sequential';
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
-            {/* Header Area */}
-            <div className="flex flex-col gap-4 px-1 py-2 shrink-0">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h3 className="text-2xl font-bold text-white">API 调度策略</h3>
-                        <p className="text-xs text-zinc-500 mt-1">拖动卡片调整优先级与并发策略</p>
-                    </div>
-
+            {/* Header */}
+            <div className="flex items-center justify-between flex-wrap gap-4 px-1 py-4 shrink-0">
+                <div>
+                    <h3 className="text-2xl font-bold text-white text-left">API 通道</h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                        {isSequential ? '顺序优先: 按列表顺序依次调用' : '并发优先: 随机/负载均衡调用'}
+                    </p>
                 </div>
 
-                {/* Strategy Toggle */}
-                <div className="flex justify-end px-1">
-                    <div className="bg-black/40 p-1 rounded-lg flex items-center gap-1 border border-zinc-800">
+                <div className="flex items-center gap-3">
+                    {/* Strategy Switcher */}
+                    <div className="bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-xl p-1 flex items-center">
                         <button
-                            onClick={() => handleStrategyToggle('concurrent')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
-                                ${activeStrategy === 'concurrent' ? 'bg-indigo-500 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}
-                            `}
+                            onClick={() => handleStrategyChange('round-robin')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${strategy === 'round-robin'
+                                ? 'bg-zinc-700 text-white shadow-sm'
+                                : 'text-zinc-500 hover:text-zinc-300'
+                                }`}
+                            title="随机/负载均衡"
                         >
-                            <Activity size={12} />
                             并发优先
                         </button>
                         <button
-                            onClick={() => handleStrategyToggle('sequential')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
-                                ${activeStrategy === 'sequential' ? 'bg-emerald-500 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}
-                            `}
+                            onClick={() => handleStrategyChange('sequential')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${strategy === 'sequential'
+                                ? 'bg-zinc-700 text-white shadow-sm'
+                                : 'text-zinc-500 hover:text-zinc-300'
+                                }`}
+                            title="顺序优先"
                         >
-                            <List size={12} />
                             顺序优先
                         </button>
                     </div>
-                </div>
 
-                {/* Main Stats Bar - Centered Content */}
-                <div className="flex items-center justify-between bg-zinc-900/40 rounded-2xl p-1 border border-zinc-800/50">
-                    <div className="flex items-center gap-2 px-4 py-2">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                                <DollarSign size={14} className="text-emerald-500" />
-                            </div>
-                            <div>
-                                <div className="text-[10px] text-zinc-500">总预算</div>
-                                <div className="text-sm font-mono font-bold text-white">${totalBudget > 0 ? totalBudget.toFixed(2) : '∞'}</div>
-                            </div>
-                        </div>
-                        <div className="w-px h-8 bg-zinc-800 mx-2" />
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-                                <Activity size={14} className="text-amber-500" />
-                            </div>
-                            <div>
-                                <div className="text-[10px] text-zinc-500">已消耗</div>
-                                <div className="text-sm font-mono font-bold text-amber-400">${totalConsumed.toFixed(4)}</div>
-                            </div>
-                        </div>
-                        <div className="w-px h-8 bg-zinc-800 mx-2" />
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
-                                <Zap size={14} className="text-indigo-500" />
-                            </div>
-                            <div>
-                                <div className="text-[10px] text-zinc-500">Token</div>
-                                <div className="text-sm font-mono font-bold text-indigo-400">{(totalTokens / 1000).toFixed(1)}k</div>
-                            </div>
-                        </div>
-                        {totalBudget > 0 && (
-                            <>
-                                <div className="w-px h-8 bg-zinc-800 mx-2" />
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${remainingBudget < 1 ? 'bg-red-500/10 border-red-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
-                                        <Check size={14} className={remainingBudget < 1 ? 'text-red-500' : 'text-emerald-500'} />
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] text-zinc-500">剩余</div>
-                                        <div className={`text-sm font-mono font-bold ${remainingBudget < 1 ? 'text-red-400' : 'text-emerald-400'}`}>
-                                            ${remainingBudget.toFixed(2)}
-                                        </div>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-                    </div>
                     <button
                         onClick={openAddModal}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all mr-1"
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
                     >
                         <Plus size={14} />
-                        <span>添加密钥</span>
+                        <span className="hidden sm:inline">添加通道</span>
+                        <span className="sm:hidden">添加</span>
                     </button>
                 </div>
             </div>
 
-            {/* Horizontal Split View - 移动端需要更多底部内边距以避免被导航栏遮挡 */}
-            <div className="flex flex-row gap-4 flex-1 min-h-0 pb-24 md:pb-4 overflow-hidden mt-2">
-                {/* Left: Load Balance */}
-                <div
-                    className={`flex-1 bg-zinc-900/30 rounded-2xl border transition-all flex flex-col overflow-hidden min-w-0
-                        ${dropTarget?.strategy === 'load_balance' ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-zinc-800/50'}
-                    `}
-                    onDragOver={e => handleDragOver(e, 'load_balance')}
-                    onDragLeave={handleDragLeave}
-                    onDrop={e => handleDropAction(e, 'load_balance')}
-                >
-                    <div className="p-4 bg-gradient-to-r from-indigo-500/5 to-transparent border-b border-zinc-800 flex items-center justify-between shrink-0">
-                        <div>
-                            <div className="text-sm font-bold text-indigo-400 flex items-center gap-2">
-                                <Activity size={14} />
-                                多路并发
-                            </div>
-                            <div className="text-[11px] text-zinc-500 mt-0.5">无限预算优先 · 自动调配 · 10s重试</div>
+            {/* Channels Grid/List */}
+            <div className="flex-1 overflow-y-auto px-1 pb-4 min-h-0 custom-scrollbar">
+                {slots.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-4">
+                        <div className="w-16 h-16 rounded-2xl bg-zinc-800/50 flex items-center justify-center">
+                            <Key className="w-8 h-8 opacity-50" />
                         </div>
-                        <div className="text-lg font-mono font-bold text-zinc-600">{concurrentSlots.length}</div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
-                        {concurrentSlots.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-zinc-600 gap-3 border-2 border-dashed border-zinc-800 rounded-xl min-h-[150px]">
-                                <div className="w-12 h-12 rounded-full bg-zinc-800/50 flex items-center justify-center">
-                                    <Activity size={20} className="opacity-30" />
-                                </div>
-                                <span className="text-xs text-center px-4">拖拽密钥至此开启并发模式</span>
-                            </div>
-                        ) : (
-                            concurrentSlots.map((slot) => (
-                                <ApiCard key={slot.id} slot={slot} />
-                            ))
-                        )}
-                    </div>
-                </div>
-
-                {/* Right: Sequential */}
-                <div
-                    className={`flex-1 bg-zinc-900/30 rounded-2xl border transition-all flex flex-col overflow-hidden min-w-0
-                        ${dropTarget?.strategy === 'sequential' ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-zinc-800/50'}
-                    `}
-                    onDragOver={e => handleDragOver(e, 'sequential')}
-                    onDragLeave={handleDragLeave}
-                    onDrop={e => handleDropAction(e, 'sequential')}
-                >
-                    <div className="p-4 bg-gradient-to-r from-emerald-500/5 to-transparent border-b border-zinc-800 flex items-center justify-between shrink-0">
-                        <div>
-                            <div className="text-sm font-bold text-emerald-400 flex items-center gap-2">
-                                <List size={14} />
-                                顺序优先消耗
-                            </div>
-                            <div className="text-[11px] text-zinc-500 mt-0.5">按顺序使用 · 耗尽切换</div>
-                        </div>
-                        <div className="text-lg font-mono font-bold text-zinc-600">{sequentialSlots.length}</div>
-                    </div>
-                    {/* Auto Sort Header Action */}
-                    <div className="px-3 py-2 bg-zinc-900/50 border-b border-zinc-800 flex justify-end">
+                        <p>暂无 API 通道</p>
                         <button
-                            onClick={handleAutoSort}
-                            className="text-[10px] flex items-center gap-1 text-zinc-500 hover:text-emerald-400 transition-colors px-2 py-1 rounded hover:bg-zinc-800"
-                            title="自动排序: 启用 > 预算 > Google > 其他"
+                            onClick={openAddModal}
+                            className="text-indigo-400 hover:text-indigo-300 text-sm hover:underline"
                         >
-                            <ListFilter size={12} />
-                            按规则整理
+                            点击添加第一个通道
                         </button>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar relative">
-                        {sequentialSlots.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-zinc-600 gap-3 border-2 border-dashed border-zinc-800 rounded-xl min-h-[150px]">
-                                <div className="w-12 h-12 rounded-full bg-zinc-800/50 flex items-center justify-center">
-                                    <List size={20} className="opacity-30" />
+                ) : (
+                    <div className={isSequential
+                        ? "flex flex-col gap-3 max-w-3xl mx-0 w-full"
+                        : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                    }>
+                        {slots.map((slot, index) => (
+                            <div
+                                key={slot.id}
+                                draggable={true}
+                                onDragStart={(e) => handleDragStart(e, slot.id)}
+                                onDragOver={handleDragOver}
+                                onDragEnter={(e) => handleDragEnter(e, slot.id)}
+                                onDrop={handleDrop}
+                                onDragEnd={handleDragEnd}
+                                onClick={() => openEditModal(slot)}
+                                className={`
+                                    group relative rounded-xl border cursor-move
+                                    transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                                    ${slot.disabled
+                                        ? 'bg-zinc-900/30 border-zinc-800/50 opacity-60'
+                                        : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/5'
+                                    }
+                                    ${isSequential ? 'flex items-center gap-4 p-3' : 'p-4'}
+                                    ${draggedId === slot.id ? 'opacity-20 border-dashed border-indigo-500 scale-[0.98]' : 'hover:-translate-y-0.5'}
+                                `}
+                            >
+                                {/* Sequential Order Badge */}
+                                {isSequential && (
+                                    <div className="shrink-0 w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-mono text-zinc-400">
+                                        {index + 1}
+                                    </div>
+                                )}
+
+                                {/* Card Content Container */}
+                                <div className={`flex-1 min-w-0 ${isSequential ? 'flex items-center justify-between gap-4' : ''}`}>
+
+                                    {/* Main Info */}
+                                    <div className="min-w-0">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <div className={`w-2 h-2 rounded-full shrink-0 ${refreshingIds.has(slot.id) ? 'bg-blue-500 animate-pulse' :
+                                                    slot.disabled ? 'bg-zinc-600' :
+                                                        slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
+                                                            (slot.status === 'invalid' || slot.status === 'rate_limited') ? 'bg-red-500' :
+                                                                'bg-zinc-600'
+                                                    }`} />
+                                                <h4 className="font-medium text-zinc-200 truncate pr-2" title={slot.name}>
+                                                    {slot.name}
+                                                </h4>
+                                            </div>
+                                            {!isSequential && (
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${slot.provider === 'Google'
+                                                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                    : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                                    }`}>
+                                                    {slot.provider}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
+                                            <Key size={12} />
+                                            <span className="truncate">{maskApiKey(slot.key)}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Stats & Actions (Horizontal in Sequential, Bottom in Grid) */}
+                                    <div className={`
+                                        ${isSequential
+                                            ? 'flex items-center gap-6 shrink-0'
+                                            : 'mt-4 pt-4 border-t border-[var(--border-light)] flex items-center justify-between'
+                                        }
+                                    `}>
+                                        {/* Usage Stats */}
+                                        <div className="flex items-center gap-3 text-xs text-zinc-500">
+                                            <div className="flex items-center gap-1" title="调用成功次数">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50" />
+                                                {slot.successCount || 0}
+                                            </div>
+                                            <div className="flex items-center gap-1" title="调用失败次数">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500/50" />
+                                                {slot.failCount || 0}
+                                            </div>
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={(e) => handleRefresh(slot.id, e)}
+                                                disabled={refreshingIds.has(slot.id)}
+                                                className={`p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors ${refreshingIds.has(slot.id) ? 'animate-spin text-indigo-500' : ''
+                                                    }`}
+                                                title="验证连通性"
+                                            >
+                                                <RefreshCw size={14} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => handleToggle(slot.id, e)}
+                                                className={`p-1.5 rounded-lg transition-colors ${slot.disabled
+                                                    ? 'hover:bg-emerald-500/10 text-zinc-500 hover:text-emerald-500'
+                                                    : 'hover:bg-amber-500/10 text-emerald-500 hover:text-amber-500'
+                                                    }`}
+                                                title={slot.disabled ? "启用通道" : "禁用通道"}
+                                            >
+                                                {slot.disabled ? <Play size={14} /> : <Pause size={14} />}
+                                            </button>
+                                            <button
+                                                onClick={(e) => handleDelete(slot.id, e)}
+                                                className="p-1.5 hover:bg-red-500/10 text-zinc-400 hover:text-red-500 rounded-lg transition-colors"
+                                                title="删除通道"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {/* Stats */}
+                                    <div className="grid grid-cols-3 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)]">
+                                        <div className="text-center">
+                                            <div className="text-[10px] text-zinc-500">成/败</div>
+                                            <div className="text-xs font-mono text-zinc-300">
+                                                <span className="text-emerald-400">{slot.successCount}</span>
+                                                <span className="text-zinc-600">/</span>
+                                                <span className="text-red-400">{slot.failCount}</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-center border-l border-white/5">
+                                            <div className="text-[10px] text-zinc-500">延迟</div>
+                                            <div className="text-xs font-mono text-zinc-300">-</div>
+                                        </div>
+                                        <div className="text-center border-l border-white/5">
+                                            <div className="text-[10px] text-zinc-500">消耗</div>
+                                            <div className="text-xs font-mono text-amber-400">${(slot.totalCost || 0).toFixed(3)}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Models Tags */}
+
                                 </div>
-                                <span className="text-xs text-center px-4">暂无备用密钥</span>
                             </div>
-                        ) : (
-                            sequentialSlots.map((slot, i) => (
-                                <div key={slot.id} className="relative">
-                                    <ApiCard slot={slot} index={i} showPriority />
-                                </div>
-                            ))
-                        )}
-                        <div
-                            className="h-12 w-full shrink-0"
-                            onDragOver={e => handleDragOver(e, 'sequential')}
-                            onDrop={e => handleDropAction(e, 'sequential')}
-                        />
+                        ))}
                     </div>
-                </div>
+                )}
             </div>
 
             {/* Modal */}
             {isModalOpen && createPortal(
                 <div className="fixed inset-0 z-[10050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-[#161618] w-full max-w-md rounded-2xl border border-zinc-700 shadow-2xl animate-in zoom-in-95 duration-200 text-left flex flex-col max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center p-5 border-b border-zinc-800 shrink-0">
-                            <h4 className="text-lg font-bold text-white">{editingId ? '编辑密钥' : '添加密钥'}</h4>
-                            <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white transition-colors"><X size={20} /></button>
+                    <div className="bg-[var(--bg-secondary)] w-full max-w-md rounded-2xl border border-[var(--border-light)] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="flex justify-between items-center p-5 border-b border-[var(--border-light)]">
+                            <h4 className="text-lg font-bold text-white">{editingId ? '编辑通道' : '添加通道'}</h4>
+                            <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={20} /></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-4">
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 block">备注名称</label>
-                                <input className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none"
-                                    value={formName} onChange={e => setFormName(e.target.value)} autoFocus />
-                            </div>
-                            {!editingId && (
-                                <div>
-                                    <label className="text-xs text-zinc-400 mb-1.5 block">平台供应商</label>
-                                    <select className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white outline-none"
-                                        value={formProvider} onChange={e => setFormProvider(e.target.value)}>
-                                        <option value="Gemini">Google Gemini</option>
-                                        <option value="Other">其他平台</option>
-                                    </select>
+
+                        {/* Modal Content */}
+                        <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar">
+
+                            {/* Step 1: Connection Details */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between text-xs text-zinc-500 uppercase tracking-wider font-bold">
+                                    连接配置
                                 </div>
-                            )}
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 flex justify-between items-center">
-                                    <span>API Key</span>
-                                </label>
-                                <div className="relative">
-                                    <input
-                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono"
-                                        type="password"
-                                        value={formKey}
-                                        onChange={e => setFormKey(e.target.value)}
-                                        onFocus={(e) => e.target.select()}
-                                        placeholder="sk-..."
-                                        autoComplete="off"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 block">预算限制 (美元)</label>
-                                <input className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white outline-none"
-                                    type="number" min="0" step="0.01" value={formBudget} onChange={e => setFormBudget(e.target.value)} placeholder="留空为无限制" />
-                            </div>
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 block">已消耗金额 (美元)</label>
-                                <input className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white outline-none"
-                                    type="number" min="0" step="0.0001" value={formUsedCost} onChange={e => setFormUsedCost(e.target.value)} placeholder="0" />
-                            </div>
 
-                            {formProvider !== 'Gemini' && (
-                                <div className="border-t border-zinc-800 pt-4 mt-2">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <label className="text-xs text-zinc-400">使用代理</label>
-                                        <button onClick={() => setFormUseProxy(!formUseProxy)} className={`w-8 h-4 rounded-full ${formUseProxy ? 'bg-indigo-600' : 'bg-zinc-700'} relative`}>
-                                            <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${formUseProxy ? 'left-4.5' : 'left-0.5'}`} />
-                                        </button>
-                                    </div>
-                                    {formUseProxy && (
-                                        <>
-                                            <input className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono mb-2"
-                                                placeholder="https://api.proxy.com" value={formBaseUrl} onChange={e => setFormBaseUrl(e.target.value)} />
-                                            <p className="text-[10px] text-zinc-500">
-                                                *请使用支持 OpenAI 格式或 Google 原生格式的中转服务商
-                                            </p>
-                                        </>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Proxy Model Configuration Section - Only for proxy keys */}
-                            {editingId && formUseProxy && (
-                                <div className="border-t border-zinc-800 pt-4 mt-2">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h5 className="text-sm font-bold text-purple-300">代理模型配置</h5>
-                                        <button
-                                            onClick={() => openProxyModelModal(editingId)}
-                                            className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300"
-                                        >
-                                            <Plus size={12} /> 添加模型
-                                        </button>
-                                    </div>
-                                    <p className="text-[10px] text-zinc-500 mb-3">
-                                        配置此 API 支持的模型及其能力（比例、像素、联网）
-                                    </p>
-
-                                    {/* Configured Models List */}
-                                    {(() => {
-                                        const slot = slots.find(s => s.id === editingId);
-                                        const models = slot?.proxyModels || [];
-                                        if (models.length === 0) {
-                                            return (
-                                                <div className="text-center py-4 text-zinc-500 text-xs border border-dashed border-zinc-700 rounded-lg">
-                                                    尚未配置模型，点击上方"添加模型"开始
-                                                </div>
-                                            );
-                                        }
-                                        return (
-                                            <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-                                                {models.map((model) => (
-                                                    <div key={model.id} className="flex items-center gap-2 p-2 bg-zinc-800/50 rounded-lg group">
-                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${model.type === 'image' ? 'bg-green-500/20 text-green-400' :
-                                                            model.type === 'video' ? 'bg-purple-500/20 text-purple-400' :
-                                                                'bg-blue-500/20 text-blue-400'
-                                                            }`}>
-                                                            {model.type === 'image' ? '图片' : model.type === 'video' ? '视频' : '对话'}
-                                                        </span>
-                                                        <span className="text-sm text-white flex-1 truncate">{model.label}</span>
-                                                        <span className="text-[10px] text-zinc-500 font-mono truncate max-w-[80px]">{model.id}</span>
-                                                        <button
-                                                            onClick={() => handleEditProxyModel(editingId, model)}
-                                                            className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-white transition-opacity mr-1"
-                                                            title="编辑模型"
-                                                        >
-                                                            <Pencil size={12} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleRemoveProxyModel(editingId, model.id)}
-                                                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        );
-                                    })()}
-
-                                    {/* Quick Add Presets */}
-                                    <div className="mt-3">
-                                        <div className="text-[10px] text-zinc-500 mb-2">快速添加预设模型:</div>
-                                        <div className="flex flex-wrap gap-1">
-                                            {PROXY_MODEL_PRESETS.map(preset => (
-                                                <button
-                                                    key={preset.id}
-                                                    onClick={() => editingId && handleAddPresetModel(editingId, preset)}
-                                                    disabled={slots.find(s => s.id === editingId)?.proxyModels?.some(m => m.id === preset.id)}
-                                                    className="px-2 py-1 text-[10px] bg-zinc-800 hover:bg-purple-600/30 text-zinc-300 hover:text-purple-300 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                                                    title={preset.description}
-                                                >
-                                                    {preset.label}
-                                                </button>
-                                            ))}
+                                {formProvider !== 'Google' && (
+                                    <div>
+                                        <label className="text-xs text-zinc-400 mb-1.5 block">接口地址 (Base URL)</label>
+                                        <div className="relative">
+                                            <input
+                                                className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-white font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 placeholder-zinc-600 transition-all"
+                                                placeholder={formProvider === 'Google' ? "https://generativelanguage.googleapis.com" : "https://api.openai.com/v1"}
+                                                value={formBaseUrl}
+                                                onChange={e => {
+                                                    setFormBaseUrl(e.target.value);
+                                                    // Auto-set provider if recognized
+                                                    const val = e.target.value.toLowerCase();
+                                                    if (val.includes('deepseek')) { setFormName(n => n === 'New Channel' || !n ? 'DeepSeek' : n); setFormProvider('OpenAI'); }
+                                                    else if (val.includes('silicon')) { setFormName(n => n === 'New Channel' || !n ? 'SiliconFlow' : n); setFormProvider('OpenAI'); }
+                                                    else if (val.includes('openrouter')) { setFormName(n => n === 'New Channel' || !n ? 'OpenRouter' : n); setFormProvider('OpenAI'); }
+                                                }}
+                                            />
+                                            <Globe className="absolute left-3 top-2.5 text-zinc-600 pointer-events-none" size={14} />
                                         </div>
                                     </div>
+                                )}
+
+                                {/* API Key */}
+                                <div>
+                                    <label className="text-xs text-zinc-400 mb-1.5 block">API Key</label>
+                                    <div className="relative">
+                                        <input
+                                            className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-10 py-2.5 text-sm text-white font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
+                                            type={isKeyEditing ? "text" : "password"}
+                                            value={isKeyEditing ? formKey : maskApiKey(formKey)}
+                                            onChange={e => setFormKey(e.target.value)}
+                                            onFocus={() => setIsKeyEditing(true)}
+                                            onBlur={() => setIsKeyEditing(false)}
+                                            placeholder="sk-..."
+                                            autoComplete="off"
+                                        />
+                                        <Key className="absolute left-3 top-2.5 text-zinc-600 pointer-events-none" size={14} />
+                                    </div>
                                 </div>
-                            )}
-                        </div>
-                        <div className="p-5 border-t border-zinc-800 flex justify-end gap-3 bg-[#161618]">
-                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5">取消</button>
-                            <button onClick={handleSubmit} disabled={loading} className="px-5 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/30">
-                                {loading ? '处理中...' : (editingId ? '保存' : '添加')}
-                            </button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
 
-            {/* Proxy Model Add Modal */}
-            {showProxyModelModal && createPortal(
-                <div className="fixed inset-0 z-[10060] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-[#161618] w-full max-w-lg rounded-2xl border border-purple-500/30 shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh] overflow-hidden">
-                        <div className="flex justify-between items-center p-5 border-b border-zinc-800 bg-gradient-to-r from-purple-900/20 to-transparent shrink-0">
-                            <h4 className="text-lg font-bold text-purple-300">添加代理模型</h4>
-                            <button onClick={() => setShowProxyModelModal(false)} className="text-zinc-500 hover:text-white transition-colors"><X size={20} /></button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-4">
-                            {proxyModelError && (
-                                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-xs">
-                                    {proxyModelError}
-                                </div>
-                            )}
-
-                            {/* Model Type */}
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 block">模型类型</label>
-                                <div className="flex gap-2">
-                                    {(['image', 'video', 'chat'] as const).map(type => (
-                                        <button
-                                            key={type}
-                                            onClick={() => setNewProxyModel(prev => ({ ...prev, type }))}
-                                            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${newProxyModel.type === type
-                                                ? type === 'image' ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                                    : type === 'video' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                                                        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                                : 'bg-zinc-800 text-zinc-400 border border-transparent hover:border-zinc-600'
-                                                }`}
-                                        >
-                                            {type === 'image' ? <Image size={14} /> : type === 'video' ? <Video size={14} /> : <MessageCircle size={14} />}
-                                            {type === 'image' ? '图片' : type === 'video' ? '视频' : '对话'}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Model ID - Smart Input */}
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 flex justify-between">
-                                    <span>模型 ID (API 参数)</span>
-                                    <span className="text-indigo-400 cursor-pointer hover:text-indigo-300" onClick={() => {
-                                        const slot = getProxySlot(editingProxyKeyId);
-                                        setNewProxyModel(prev => hydrateProxyModel(prev, slot));
-                                    }}>
-                                        ✨ 自动识别
-                                    </span>
-                                </label>
-                                <input
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-purple-500 outline-none placeholder-zinc-600"
-                                    placeholder="粘贴模型 ID (如 gemini-3-pro-image-preview)"
-                                    value={newProxyModel.id}
-                                    onChange={e => {
-                                        const newId = e.target.value;
-                                        setNewProxyModel(prev => {
-                                            const updated = { ...prev, id: newId };
-                                            const slot = getProxySlot(editingProxyKeyId);
-                                            return hydrateProxyModel(updated, slot);
-                                        });
-                                    }}
-                                />
-                            </div>
-
-                            {/* Display Name */}
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1.5 block">显示名称</label>
-                                <input
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-purple-500 outline-none"
-                                    placeholder="自动生成或自定义"
-                                    value={newProxyModel.label}
-                                    onChange={e => setNewProxyModel(prev => ({ ...prev, label: e.target.value }))}
-                                />
-                            </div>
-
-                            {/* Simple Mode: Capabilities Summary */}
-                            <div className="p-3 bg-zinc-800/40 rounded-lg border border-zinc-700/50">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-sm text-zinc-300 font-medium">✨ 智能配置已启用</span>
+                                {/* Auto Fetch Button */}
+                                <div>
                                     <button
-                                        onClick={() => setShowAdvanced(!showAdvanced)}
-                                        className="text-xs text-indigo-400 hover:text-indigo-300 underline"
+                                        onClick={async () => {
+                                            if (!formBaseUrl && !formKey) return;
+                                            setLoading(true);
+
+                                            // Default URL if empty
+                                            const targetUrl = formBaseUrl || 'https://api.openai.com/v1';
+
+                                            try {
+                                                const models = await keyManager.fetchRemoteModels(targetUrl, formKey);
+                                                if (models.length > 0) {
+                                                    setFormModels(models.join(', '));
+                                                    // Auto-name if still default
+                                                    if (formName === 'New Channel' || !formName) {
+                                                        try {
+                                                            const url = new URL(targetUrl);
+                                                            const domain = url.hostname.split('.').slice(-2).join('.').split('.')[0];
+                                                            setFormName(domain.charAt(0).toUpperCase() + domain.slice(1));
+                                                        } catch (e) {
+                                                            setFormName('Custom API');
+                                                        }
+                                                    }
+                                                    alert(`成功获取 ${models.length} 个模型！`);
+                                                } else {
+                                                    alert('未发现模型，请检查 URL 和 Key，或手动输入模型。');
+                                                }
+                                            } catch (e) {
+                                                alert('连接失败');
+                                            } finally {
+                                                setLoading(false);
+                                            }
+                                        }}
+                                        disabled={loading || !formKey}
+                                        className={`w-full py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${loading || !formKey
+                                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                            : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 border border-indigo-500/20'
+                                            }`}
                                     >
-                                        {showAdvanced ? '收起高级设置' : '展开高级设置'}
+                                        {loading ? <RefreshCw className="animate-spin" size={14} /> : <Zap size={14} />}
+                                        {loading ? '正在获取...' : '自动获取模型列表 (Auto-Fetch)'}
                                     </button>
                                 </div>
-                                <p className="text-xs text-zinc-500 leading-relaxed">
-                                    系统会根据模型 ID 自动匹配能力、比例、分辨率与视频功能。
-                                    {newProxyModel.apiFormat === 'openai' ? '使用 OpenAI 标准协议。' : '使用 Google 原生协议。'}
-                                </p>
                             </div>
 
-                            {/* Advanced Settings (Hidden by default) */}
-                            {showAdvanced && (
-                                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 pt-2">
+                            <div className="border-t border-[var(--border-light)]" />
 
-                                    {/* API Format */}
-                                    <div>
-                                        <label className="text-xs text-zinc-400 mb-1.5 block">API 协议格式</label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button
-                                                onClick={() => setNewProxyModel(prev => ({ ...prev, apiFormat: 'openai' }))}
-                                                className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${newProxyModel.apiFormat !== 'gemini'
-                                                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                                                    : 'bg-zinc-800 text-zinc-500 border-transparent hover:border-zinc-700'}`}
-                                            >
-                                                OpenAI 标准 (通用)
-                                            </button>
-                                            <button
-                                                onClick={() => setNewProxyModel(prev => ({ ...prev, apiFormat: 'gemini' }))}
-                                                className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${newProxyModel.apiFormat === 'gemini'
-                                                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                                    : 'bg-zinc-800 text-zinc-500 border-transparent hover:border-zinc-700'}`}
-                                            >
-                                                Google 原生
-                                            </button>
-                                        </div>
-                                        <p className="text-[10px] text-zinc-500 mt-1.5">* NewAPI / OneAPI 等中转商请务必选择 <b>OpenAI 标准</b></p>
-                                    </div>
+                            {/* Step 2: Meta Info */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between text-xs text-zinc-500 uppercase tracking-wider font-bold">
+                                    基础信息 & 模型
+                                </div>
 
-                                    {/* Provider */}
+                                <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-xs text-zinc-400 mb-1.5 block">提供商</label>
+                                        <label className="text-xs text-zinc-400 mb-1.5 block">通道名称</label>
                                         <input
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-purple-500 outline-none"
-                                            value={newProxyModel.provider || ''}
-                                            onChange={e => setNewProxyModel(prev => ({ ...prev, provider: e.target.value }))}
+                                            className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50"
+                                            placeholder="My Channel"
+                                            value={formName}
+                                            onChange={e => setFormName(e.target.value)}
                                         />
                                     </div>
+                                    <div>
+                                        <label className="text-xs text-zinc-400 mb-1.5 block">供应商类型</label>
+                                        <select
+                                            className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50"
+                                            value={formProvider}
+                                            onChange={e => {
+                                                const nextProvider = e.target.value;
+                                                setFormProvider(nextProvider);
+                                                if (nextProvider === 'Google' && !formModels.trim()) {
+                                                    setFormModels(DEFAULT_GOOGLE_MODELS.join(', '));
+                                                }
+                                            }}
+                                        >
+                                            <option value="Google">Google / Gemini</option>
+                                            <option value="OpenAI">OpenAI Compatible</option>
+                                            <option value="Anthropic">Anthropic</option>
+                                            <option value="Custom">Custom</option>
+                                        </select>
+                                    </div>
+                                </div>
 
-                                    {/* Aspect Ratios & Sizes */}
-                                    {newProxyModel.type !== 'chat' && (
-                                        <>
-                                            <div>
-                                                <label className="text-xs text-zinc-400 mb-1.5 block">支持的宽高比</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {Object.values(AspectRatio).map(ratio => (
-                                                        <label key={ratio} className={`px-2 py-1 rounded cursor-pointer text-[10px] border transition-all ${newProxyModel.supportedAspectRatios.includes(ratio)
-                                                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                                                            : 'bg-zinc-800 text-zinc-500 border-zinc-700'
-                                                            }`}>
-                                                            <input
-                                                                type="checkbox"
-                                                                className="hidden"
-                                                                checked={newProxyModel.supportedAspectRatios.includes(ratio)}
-                                                                onChange={e => {
-                                                                    if (e.target.checked) setNewProxyModel(prev => ({ ...prev, supportedAspectRatios: [...prev.supportedAspectRatios, ratio] }));
-                                                                    else setNewProxyModel(prev => ({ ...prev, supportedAspectRatios: prev.supportedAspectRatios.filter(r => r !== ratio) }));
-                                                                }}
-                                                            />
-                                                            {ratio}
-                                                        </label>
+                                {/* Models */}
+                                <div>
+                                    <label className="text-xs text-zinc-400 mb-1.5 flex justify-between items-center">
+                                        <span>可用模型 ID (逗号分隔)</span>
+                                        <div className="flex gap-2 flex-wrap justify-end">
+                                            {formProvider === 'Google' ? (
+                                                <>
+                                                    <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-3-pro-preview')}>+ Gemini 3 Pro</span>
+                                                    <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-3-flash-preview')}>+ Gemini 3 Flash</span>
+                                                    <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(DEFAULT_GOOGLE_MODELS.join(', '))}>填入热门模型</span>
+                                                </>
+                                            ) : (
+                                                <div className="flex flex-wrap gap-2 justify-end max-w-[200px]">
+                                                    {CHAT_MODEL_PRESETS.slice(0, 4).map(preset => (
+                                                        <span
+                                                            key={preset.id}
+                                                            className="text-indigo-400 cursor-pointer hover:underline text-[10px]"
+                                                            onClick={() => setFormModels(prev => {
+                                                                const current = prev.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+                                                                if (current.includes(preset.id)) return prev;
+                                                                return (prev ? prev + ', ' : '') + preset.id;
+                                                            })}
+                                                        >
+                                                            + {preset.label.split(' ')[0]}
+                                                        </span>
                                                     ))}
+                                                    <span className="text-zinc-500 text-[10px] cursor-help" title="更多模型请手动输入或自动获取">...</span>
                                                 </div>
-                                            </div>
-
-                                            <div>
-                                                <label className="text-xs text-zinc-400 mb-1.5 block">支持的分辨率</label>
-                                                <div className="flex gap-2">
-                                                    {Object.values(ImageSize).map(size => (
-                                                        <label key={size} className={`px-2 py-1 rounded cursor-pointer text-[10px] border transition-all ${newProxyModel.supportedSizes.includes(size)
-                                                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                                                            : 'bg-zinc-800 text-zinc-500 border-zinc-700'
-                                                            }`}>
-                                                            <input
-                                                                type="checkbox"
-                                                                className="hidden"
-                                                                checked={newProxyModel.supportedSizes.includes(size)}
-                                                                onChange={e => {
-                                                                    if (e.target.checked) setNewProxyModel(prev => ({ ...prev, supportedSizes: [...prev.supportedSizes, size] }));
-                                                                    else setNewProxyModel(prev => ({ ...prev, supportedSizes: prev.supportedSizes.filter(s => s !== size) }));
-                                                                }}
-                                                            />
-                                                            {size}
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </>
+                                            )}
+                                        </div>
+                                    </label>
+                                    <textarea
+                                        className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-indigo-500/50 min-h-[100px] leading-relaxed resize-none"
+                                        placeholder="模型 ID 列表，例如: deepseek-chat, deepseek-coder..."
+                                        value={formModels}
+                                        onChange={e => setFormModels(e.target.value)}
+                                    />
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                        {formModels.split(/[,，\n]/).filter(Boolean).slice(0, 5).map((m, i) => (
+                                            <span key={i} className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded text-zinc-400">{m.trim()}</span>
+                                        ))}
+                                        {formModels.split(/[,，\n]/).filter(Boolean).length > 5 && <span className="text-[10px] text-zinc-600">...</span>}
+                                    </div>
+                                    {formProvider === 'Google' && (
+                                        <p className="text-[10px] text-zinc-500 mt-1">Google 通道默认已填热门模型，可按需增删。</p>
                                     )}
                                 </div>
-                            )}
+                            </div>
                         </div>
-                        <div className="p-5 border-t border-zinc-800 flex justify-end gap-3 bg-[#161618]">
-                            <button onClick={() => setShowProxyModelModal(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5">取消</button>
-                            <button onClick={handleAddProxyModel} className="px-5 py-2 rounded-lg text-sm font-bold bg-white text-black hover:bg-gray-200 shadow-lg">
-                                添加
+
+                        <div className="p-5 border-t border-[var(--border-light)] flex justify-end gap-3 bg-[var(--bg-secondary)]">
+                            <button
+                                onClick={() => setIsModalOpen(false)}
+                                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={loading}
+                                className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
+                            >
+                                {loading ? '处理中...' : (editingId ? '保存修改' : '添加通道')}
                             </button>
                         </div>
                     </div>

@@ -4,21 +4,34 @@
  * Provides multi-key rotation, status monitoring, and automatic failover.
  * Similar to Gemini Balance but runs entirely on frontend.
  * NOW SUPPORTS: Supabase Cloud Sync & Third-Party API Proxies
+/**
+ * API Key Manager Service
+ * 
+ * Provides multi-key rotation, status monitoring, and automatic failover.
+ * Similar to Gemini Balance but runs entirely on frontend.
+ * NOW SUPPORTS: Supabase Cloud Sync & Third-Party API Proxies
  */
 import { supabase } from '../lib/supabase';
 import { AuthMethod, GOOGLE_API_BASE } from './apiConfig';
-import { ProxyModelConfig } from './proxyModelConfig';
+import { MODEL_PRESETS, CHAT_MODEL_PRESETS } from './modelPresets';
+
 
 export interface KeySlot {
     id: string;
     key: string;
-    name: string; // User defined name
-    provider: string; // e.g. 'Gemini', 'OpenAI'
-    // Proxy configuration
-    baseUrl?: string;        // Custom base URL for proxy (empty = Google official)
-    authMethod?: AuthMethod; // 'query' (Google) or 'header' (proxies)
+    name: string;
+    provider: string; // 'Google', 'OpenAI', 'Anthropic', etc.
+
+    // Channel Configuration
+    baseUrl?: string;        // Custom base URL (e.g. for proxies)
+    group?: string;          // Group selection for proxies
+    supportedModels: string[]; // List of model IDs this channel supports
+
+    // Auth Configuration
+    authMethod?: AuthMethod; // 'query' | 'header'
     headerName?: string;     // Custom header name (default: x-goog-api-key)
-    // Status fields
+
+    // Status & Usage
     status: 'valid' | 'invalid' | 'rate_limited' | 'unknown';
     failCount: number;
     successCount: number;
@@ -26,34 +39,96 @@ export interface KeySlot {
     lastError: string | null;
     disabled: boolean;
     createdAt: number;
-    usedTokens?: number; // Total tokens consumed
-    totalCost: number; // Total cost in USD
-    budgetLimit: number; // Budget limit in USD (-1 for unlimited)
+
+    // Metrics
+    usedTokens?: number;
+    totalCost: number;
+    budgetLimit: number; // -1 for unlimited
     quota?: {
         limitRequests: number;
         remainingRequests: number;
-        resetConstant?: string; // e.g. "1m"
-        resetTime: number; // timestamp when it resets
+        resetConstant?: string;
+        resetTime: number;
         updatedAt: number;
     };
-    // New Strategy Fields
-    strategy: 'load_balance' | 'sequential'; // Default: sequential
-    priority: number; // For manual ordering (lower = higher priority)
-    // Proxy-specific: Configured models for this API key
-    proxyModels?: ProxyModelConfig[];
 }
 
 interface KeyManagerState {
     slots: KeySlot[];
     currentIndex: number;
     maxFailures: number;
-    activeStrategy: 'concurrent' | 'sequential'; // Global strategy preference
+    rotationStrategy: 'round-robin' | 'sequential'; // New strategy field
 }
 
 const STORAGE_KEY = 'kk_studio_key_manager';
 const DEFAULT_MAX_FAILURES = 3;
 // Simple pricing estimation (avg between input/output for simplicity, or 0.15/1M)
 const COST_PER_TOKEN = 0.00000015;
+
+const LEGACY_GOOGLE_MODELS = ['gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+export const DEFAULT_GOOGLE_MODELS = [
+    'gemini-flash-lite-latest',
+    'gemini-flash-latest',
+    'gemini-3-flash-preview',
+    'gemini-3-pro-preview',
+    'gemini-2.5-flash-image',
+    'gemini-3-pro-image-preview',
+    'imagen-4.0-generate-001',
+    'imagen-4.0-ultra-generate-001',
+    'imagen-4.0-fast-generate-001'
+];
+
+const isLegacyGoogleModelList = (models: string[]) => {
+    if (models.length !== LEGACY_GOOGLE_MODELS.length) return false;
+    return models.every(m => LEGACY_GOOGLE_MODELS.includes(m));
+};
+
+type GlobalModelType = 'chat' | 'image' | 'video';
+
+const GOOGLE_CHAT_MODELS = [
+    { id: 'gemini-flash-lite-latest', name: 'Gemini Flash-Lite 最新款', icon: '⚡', description: '超高性价比，适合轻量对话与高并发' },
+    { id: 'gemini-flash-latest', name: 'Gemini Flash 最新款', icon: '🚀', description: '速度与质量均衡，日常对话首选' },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash 预览', icon: '🌟', description: '新能力尝鲜，响应快' },
+    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro 预览', icon: '🧠', description: '最强推理与长上下文能力' },
+    { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash（实验）', icon: '🧪', description: '多模态实验版，适合探索' },
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', icon: '🧠', description: '强推理与稳定性，适合复杂任务' },
+    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', icon: '⚡', description: '速度优先，成本更低' }
+];
+
+const GOOGLE_MODEL_METADATA = new Map<string, { name: string; description?: string; icon?: string }>(
+    GOOGLE_CHAT_MODELS.map(model => [model.id, { name: model.name, description: model.description, icon: model.icon }])
+);
+
+const MODEL_TYPE_MAP = new Map<string, GlobalModelType>();
+GOOGLE_CHAT_MODELS.forEach(model => MODEL_TYPE_MAP.set(model.id, 'chat'));
+MODEL_PRESETS.forEach(preset => MODEL_TYPE_MAP.set(preset.id, preset.type));
+
+MODEL_PRESETS.filter(preset => preset.provider === 'Google').forEach(preset => {
+    if (!GOOGLE_MODEL_METADATA.has(preset.id)) {
+        GOOGLE_MODEL_METADATA.set(preset.id, { name: preset.label, description: preset.description });
+    }
+});
+
+const inferModelType = (modelId: string): GlobalModelType => {
+    const id = modelId.toLowerCase();
+    const isVideo = id.includes('video') || id.includes('veo') || id.includes('kling') || id.includes('runway') || id.includes('luma') || id.includes('sora') || id.includes('pika');
+    if (isVideo) return 'video';
+
+    const isImage = id.includes('imagen') || id.includes('image') || id.includes('img') || id.includes('dall-e') || id.includes('midjourney') || id.includes('nano-banana') || id.includes('flux') || id.includes('stable') || id.includes('sd') || id.includes('diffusion');
+    if (isImage) return 'image';
+
+    const isChat = id.includes('gemini') || id.includes('gpt') || id.includes('claude') || id.includes('deepseek') || id.includes('qwen') || id.includes('llama') || id.includes('mistral') || id.includes('yi-');
+    if (isChat) return 'chat';
+
+    return 'image';
+};
+
+// Register Chat Model Presets
+CHAT_MODEL_PRESETS.forEach(preset => {
+    if (!GOOGLE_MODEL_METADATA.has(preset.id)) {
+        GOOGLE_MODEL_METADATA.set(preset.id, { name: preset.label, description: preset.description });
+    }
+});
 
 export class KeyManager {
     private state: KeyManagerState;
@@ -63,6 +138,17 @@ export class KeyManager {
 
     constructor() {
         this.state = this.loadState();
+        // Ensure strategy exists for legacy state
+        if (!this.state.rotationStrategy) {
+            this.state.rotationStrategy = 'round-robin';
+        }
+
+        // Ensure loaded slots have sane defaults
+        this.state.slots = this.state.slots.map(s => ({
+            ...s,
+            disabled: s.disabled ?? false,
+            status: s.status || 'valid'
+        }));
     }
 
     /**
@@ -78,9 +164,7 @@ export class KeyManager {
             // Check budget - 预算耗尽时自动轮换
             if (slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit) {
                 console.log(`[KeyManager] API ${slot.name} 预算已耗尽 ($${slot.totalCost.toFixed(2)}/$${slot.budgetLimit})`);
-                if (slot.strategy === 'sequential') {
-                    this.rotateToBottom(keyId);
-                }
+                // Removed strategy-based rotation, now handled by external logic or just disabled
             }
 
             this.saveState();
@@ -98,40 +182,47 @@ export class KeyManager {
             const stored = localStorage.getItem(STORAGE_KEY);
             if (stored) {
                 const parsed = JSON.parse(stored);
-                // Migration for existing keys (add new proxy fields with defaults)
-                const slots = (parsed.slots || []).map((s: any) => ({
-                    ...s,
-                    name: s.name || 'Unnamed Key',
-                    provider: s.provider || 'Gemini',
-                    totalCost: s.totalCost || 0,
-                    budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
-                    // Proxy config defaults
-                    baseUrl: s.baseUrl || '',
-                    authMethod: s.authMethod || 'query',
+                // Migration for existing keys
+                const slots = (parsed.slots || []).map((s: any) => {
+                    const provider = s.provider || 'Google';
+                    const rawModels = Array.isArray(s.supportedModels) ? s.supportedModels : [];
+                    const supportedModels = provider === 'Google' && (rawModels.length === 0 || isLegacyGoogleModelList(rawModels))
+                        ? [...DEFAULT_GOOGLE_MODELS]
+                        : rawModels;
 
-                    headerName: s.headerName || 'x-goog-api-key',
-                    // Default strategy
-                    strategy: s.strategy || 'sequential',
-                    priority: s.priority || 0
-                }));
-                return {
-                    slots: slots,
-                    currentIndex: parsed.currentIndex || 0,
-                    maxFailures: parsed.maxFailures || DEFAULT_MAX_FAILURES,
-                    activeStrategy: parsed.activeStrategy || 'concurrent'
+                    return {
+                        ...s,
+                        name: s.name || 'Unnamed Channel',
+                        provider,
+                        totalCost: s.totalCost || 0,
+                        budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
+                        baseUrl: s.baseUrl || '',
+                        authMethod: s.authMethod || 'query',
+                        headerName: s.headerName || 'x-goog-api-key',
+                        supportedModels,
+                        disabled: s.disabled ?? false,
+                        status: s.status || 'valid'
+                    };
+                });
+
+                const state: KeyManagerState = {
+                    slots,
+                    currentIndex: 0,
+                    maxFailures: DEFAULT_MAX_FAILURES,
+                    rotationStrategy: parsed.rotationStrategy || this.state?.rotationStrategy || 'round-robin'
                 };
+
+                this.saveState(state);
+                return state;
             }
         } catch (e) {
-            console.warn('[KeyManager] Failed to load state:', e);
+            console.warn('[KeyManager] Migration failed:', e);
         }
 
         // Try to migrate from old storage format
         return this.migrateFromOldFormat();
     }
 
-    /**
-     * Migrate from old kk-api-keys-local format
-     */
     private migrateFromOldFormat(): KeyManagerState {
         try {
             const oldKeys = localStorage.getItem('kk-api-keys-local');
@@ -143,7 +234,7 @@ export class KeyManager {
                         id: `key_${Date.now()}_${i}`,
                         key: key.trim(),
                         name: `Migrated Key ${i + 1}`,
-                        provider: 'Gemini',
+                        provider: 'Google',
                         status: 'unknown' as const,
                         failCount: 0,
                         successCount: 0,
@@ -152,10 +243,11 @@ export class KeyManager {
                         disabled: false,
                         createdAt: Date.now(),
                         totalCost: 0,
-
                         budgetLimit: -1,
-                        strategy: 'sequential',
-                        priority: 0
+                        supportedModels: [...DEFAULT_GOOGLE_MODELS],
+                        baseUrl: '',
+                        authMethod: 'query',
+                        headerName: 'x-goog-api-key'
                     }));
 
                 if (slots.length > 0) {
@@ -164,7 +256,7 @@ export class KeyManager {
                         slots,
                         currentIndex: 0,
                         maxFailures: DEFAULT_MAX_FAILURES,
-                        activeStrategy: 'concurrent'
+                        rotationStrategy: 'round-robin'
                     };
                     this.saveState(state);
                     return state;
@@ -178,7 +270,7 @@ export class KeyManager {
             slots: [],
             currentIndex: 0,
             maxFailures: DEFAULT_MAX_FAILURES,
-            activeStrategy: 'concurrent'
+            rotationStrategy: 'round-robin'
         };
     }
 
@@ -260,8 +352,7 @@ export class KeyManager {
                         totalCost: s.totalCost || 0,
 
                         budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
-                        strategy: s.strategy || 'sequential',
-                        priority: s.priority || 0
+                        supportedModels: s.supportedModels || []
                     }));
 
                     // Merge: cloud keys take priority, add unique local keys
@@ -369,157 +460,194 @@ export class KeyManager {
         return () => this.listeners.delete(listener);
     }
 
-    /**
-     * Set Global Strategy Mode
-     */
-    setStrategyMode(mode: 'concurrent' | 'sequential') {
-        this.state.activeStrategy = mode;
-        this.saveState();
-        this.notifyListeners();
-    }
 
-    getStrategyMode() {
-        return this.state.activeStrategy;
-    }
 
     /**
-     * Auto Sort Sequential Keys
-     * Rules: Active > Budget Desc (Unlimited Top) > Google > Others
+     * Test a potential channel connection
      */
-    autoSortSequentialKeys() {
-        const sequentialSlots = this.state.slots.filter(s => (s.strategy || 'sequential') === 'sequential');
+    async testChannel(url: string, key: string): Promise<{ success: boolean, message?: string }> {
+        try {
+            // Test with a simple model list call if standard, or a lightweight call
+            // For OpenAI-compatible: /v1/models
+            const cleanUrl = url.replace(/\/chat\/completions$/, '').replace(/\/$/, '');
+            const targetUrl = cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`;
 
-        // Sorting Logic
-        sequentialSlots.sort((a, b) => {
-            // 1. Status: Active First (Disabled at bottom)
-            if (!a.disabled && b.disabled) return -1;
-            if (a.disabled && !b.disabled) return 1;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-            // 1.5 Sub-Status: Valid (Green) First
-            // Prioritize explicitly 'valid' keys over 'unknown'/'rate_limited'/'invalid'
-            const aValid = a.status === 'valid';
-            const bValid = b.status === 'valid';
-            if (aValid && !bValid) return -1;
-            if (!aValid && bValid) return 1;
+            const response = await fetch(targetUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${key}`
+                },
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
 
-            // Prefer Unknown over Invalid/RateLimited
-            const aBad = a.status === 'invalid' || a.status === 'rate_limited';
-            const bBad = b.status === 'invalid' || b.status === 'rate_limited';
-            if (!aBad && bBad) return -1;
-            if (aBad && !bBad) return 1;
-
-            // 2. Budget: Unlimited (-1) First, then Higher Limits
-            const aUnlimited = a.budgetLimit < 0;
-            const bUnlimited = b.budgetLimit < 0;
-            if (aUnlimited && !bUnlimited) return -1;
-            if (!aUnlimited && bUnlimited) return 1;
-
-            // Both limited: Higher limit first
-            if (!aUnlimited && !bUnlimited) {
-                if (a.budgetLimit !== b.budgetLimit) return b.budgetLimit - a.budgetLimit;
+            if (response.ok) {
+                return { success: true };
             }
 
-            // 3. Provider: Google First (REMOVED as per user request to treat them equally)
-            // const aIsGoogle = !a.baseUrl || a.baseUrl.includes('googleapis.com');
-            // const bIsGoogle = !b.baseUrl || b.baseUrl.includes('googleapis.com');
-            // if (aIsGoogle && !bIsGoogle) return -1;
-            // if (!aIsGoogle && bIsGoogle) return 1;
+            // If models endpoint fails, try a very simple completion (optional, maybe too expensive to test automatically)
+            return { success: false, message: `HTTP ${response.status}: ${response.statusText}` };
+        } catch (e: any) {
+            return { success: false, message: e.message || 'Connection failed' };
+        }
+    }
 
-            // 4. Stable sort (preserve index if available, or name)
-            return 0;
-        });
+    /**
+     * Fetch available models from a remote API
+     * Returns a list of model IDs or empty array on failure
+     */
+    async fetchRemoteModels(baseUrl: string, key: string): Promise<string[]> {
+        try {
+            const cleanUrl = baseUrl.replace(/\/chat\/completions$/, '').replace(/\/$/, '');
+            // Some non-standard APIs might need /v1/models even if base is /v1
+            // But usually user provides https://api.openai.com/v1
+            const targetUrl = cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`;
 
-        // Re-assign priorities
-        sequentialSlots.forEach((slot, index) => {
-            slot.priority = index;
-        });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
+            console.log(`[KeyManager] Fetching models from ${targetUrl}...`);
+            const response = await fetch(targetUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${key}`,
+                    'Content-Type': 'application/json'
+                },
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                console.warn(`[KeyManager] Failed to fetch models: ${response.status} ${response.statusText}`);
+                return [];
+            }
+
+            const data = await response.json();
+
+            // Handle standard OpenAI format { data: [{ id: "model-name", ... }] }
+            if (data && Array.isArray(data.data)) {
+                return data.data.map((m: any) => m.id).filter((id: any) => typeof id === 'string');
+            }
+
+            // Handle list format (some proxies)
+            if (Array.isArray(data)) {
+                return data.map((m: any) => typeof m === 'string' ? m : m.id).filter(id => id);
+            }
+
+            return [];
+        } catch (e) {
+            console.error('[KeyManager] Error fetching remote models:', e);
+            return [];
+        }
+    }
+
+    /**
+     * Set the rotation strategy
+     */
+    setStrategy(strategy: 'round-robin' | 'sequential') {
+        this.state.rotationStrategy = strategy;
         this.saveState();
         this.notifyListeners();
     }
 
     /**
-     * Get the next available API key using a hierarchical strategy:
-     * Respects KeyManager.state.activeStrategy as the primary selector.
-     * 
-     * @param providerMode - Optional filter: 'google' (Official Only), 'proxy' (Third-Party Only), or 'all' (default)
+     * Get the current rotation strategy
      */
-    getNextKey(providerMode: 'google' | 'proxy' | 'all' = 'all'): {
+    getStrategy(): 'round-robin' | 'sequential' {
+        return this.state.rotationStrategy || 'round-robin'; // Default to round-robin
+    }
+
+    /**
+     * Get the best available channel for a specific model
+     * Strategy:
+     * 1. Filter channels that support the model
+     * 2. Filter healthy channels (Active, Valid, Budget OK)
+     * 3. Apply Rotation Strategy (Round Robin vs Sequential)
+     */
+    getNextKey(modelId: string): {
         id: string;
         key: string;
         baseUrl: string;
         authMethod: AuthMethod;
         headerName: string;
+        group?: string;
     } | null {
-        // Filter healthy slots: not disabled, not manually marked invalid, and within budget
-        const isHealthy = (s: KeySlot) => !s.disabled && s.status !== 'invalid' && (s.budgetLimit < 0 || s.totalCost < s.budgetLimit);
+        // 1. Filter by Model Support
+        const candidates = this.state.slots.filter(s =>
+            (s.supportedModels || []).includes(modelId)
+        );
 
-        // Filter by provider mode if specified
-        const matchesProvider = (s: KeySlot) => {
-            const isGoogle = !s.baseUrl || s.baseUrl.includes('googleapis.com');
-            if (providerMode === 'google') return isGoogle;
-            if (providerMode === 'proxy') return !isGoogle;
-            return true;
-        };
+        if (candidates.length === 0) return null;
 
-        const allAvailable = this.state.slots.filter(s => isHealthy(s) && matchesProvider(s));
-        if (allAvailable.length === 0) return null;
+        // 2. Filter Healthy
+        const healthy = candidates.filter(s =>
+            !s.disabled &&
+            s.status !== 'invalid' &&
+            (s.budgetLimit < 0 || s.totalCost < s.budgetLimit)
+        );
 
-        // --- Determine Target Pool based on Active Strategy ---
-        const preferredStrategy = this.state.activeStrategy;
+        if (healthy.length === 0) return null;
 
-        let targetPool = allAvailable.filter(s => {
-            const strategy = s.strategy || 'sequential';
-            return strategy === (preferredStrategy === 'concurrent' ? 'load_balance' : 'sequential');
+        // 3. Apply Strategy
+        // Common Sort: Valid > Unknown > Rate Limited
+        healthy.sort((a, b) => {
+            if (a.status === 'valid' && b.status !== 'valid') return -1;
+            if (a.status !== 'valid' && b.status === 'valid') return 1;
+            // Secondary Sort: Stable Order (by Index/ID) for Sequential
+            // tertiary sort by creation time or just preserve index order
+            return 0;
         });
 
-        // Fallback: If preferred pool is empty, try the other one
-        if (targetPool.length === 0) {
-            targetPool = allAvailable.filter(s => {
-                const strategy = s.strategy || 'sequential';
-                return strategy !== (preferredStrategy === 'concurrent' ? 'load_balance' : 'sequential');
-            });
+        // Determine Selection
+        const strategy = this.state.rotationStrategy || 'round-robin';
+        let winner: KeySlot;
+
+        if (strategy === 'sequential') {
+            // SEQUENTIAL: Always pick the first healthy key (Stable Priority)
+            // This ensures we burn through Key 1 before touching Key 2
+            winner = healthy[0];
+        } else {
+            // ROUND-ROBIN / CONCURRENT: Pick random from top tier to distribute load
+            const topStatus = healthy[0].status;
+            const topTier = healthy.filter(s => s.status === topStatus);
+            winner = topTier[Math.floor(Math.random() * topTier.length)];
         }
 
-        if (targetPool.length === 0) return null;
+        return this.prepareKeyResult(winner);
+    }
 
-        // --- Selection Logic ---
+    /**
+     * Get available proxy models with default capabilities
+     * Used by modelCapabilities.ts
+     */
+    getAvailableProxyModels(): { id: string; supportedAspectRatios: any[]; supportedSizes: any[]; supportsGrounding: boolean }[] {
+        const models = new Map<string, any>();
+        // Import enums to avoid circular dependency if possible, or just use strings if suitable. 
+        // Actually we can access AspectRatio/ImageSize from imports if available, but to avoid circular deps with types.ts if this file imports it...
+        // KeyManager imports types from apiConfig? No.
+        // Let's assume defaults.
+        const defaultRatios = ['1:1', '3:4', '4:3', '9:16', '16:9', '21:9', '2:3', '3:2'];
+        const defaultSizes = ['1024x1024', '1344x768', '768x1344']; // Approximate
 
-        // Case A: Concurrent (Load Balance)
-        if (targetPool.some(s => s.strategy === 'load_balance')) {
-            // 排序优先级：
-            // 1. 无限预算优先 (budgetLimit < 0)
-            // 2. 剩余预算多的优先
-            // 3. Round Robin (Least Recently Used) for equal tiers
-
-            const sortedSlots = targetPool.sort((a, b) => {
-                // 1. 无限预算优先
-                if (a.budgetLimit < 0 && b.budgetLimit >= 0) return -1;
-                if (b.budgetLimit < 0 && a.budgetLimit >= 0) return 1;
-
-                // 2. If both unlimited (or both limited), Prefer "Least Recently Used" to balance load
-                // (Simulates Round Robin)
-                // Use random for now as lastUsed updates are async/not guaranteed on selection immediately
-                return 0;
-            });
-
-            // Re-sort for weighted random among best candidates
-            // Picking from the top tier (e.g. all unlimited ones)
-            const bestCandidates = sortedSlots.filter(s => {
-                if (sortedSlots[0].budgetLimit < 0) return s.budgetLimit < 0; // All unlimited
-                return true; // Or just take top few
-            });
-
-            // Pick random from best candidates to distribute load
-            const winner = bestCandidates[Math.floor(Math.random() * bestCandidates.length)];
-
-            return this.prepareKeyResult(winner);
-        }
-
-        // Case B: Sequential
-        // Simply Sort by priority
-        const sequentialSlots = targetPool.sort((a, b) => (a.priority || 0) - (b.priority || 0));
-        return this.prepareKeyResult(sequentialSlots[0]);
+        this.state.slots.forEach(s => {
+            // Check if proxy (has baseUrl)
+            if (s.baseUrl && !s.disabled && s.status !== 'invalid') {
+                (s.supportedModels || []).forEach(m => {
+                    if (!models.has(m)) {
+                        models.set(m, {
+                            id: m,
+                            supportedAspectRatios: defaultRatios,
+                            supportedSizes: defaultSizes,
+                            supportsGrounding: false
+                        });
+                    }
+                });
+            }
+        });
+        return Array.from(models.values());
     }
 
     /**
@@ -538,7 +666,8 @@ export class KeyManager {
             key: slot.key,
             baseUrl: slot.baseUrl || GOOGLE_API_BASE,
             authMethod: slot.authMethod || 'query',
-            headerName: slot.headerName || 'x-goog-api-key'
+            headerName: slot.headerName || 'x-goog-api-key',
+            group: slot.group
         };
     }
 
@@ -558,7 +687,7 @@ export class KeyManager {
     }
 
     /**
-     * Report failed API call - 失败后将该 key 移到顺序队列末尾
+     * Report failed API call
      */
     reportFailure(keyId: string, error: string): void {
         const slot = this.state.slots.find(s => s.id === keyId);
@@ -567,90 +696,16 @@ export class KeyManager {
             slot.lastError = error;
             slot.lastUsed = Date.now();
 
-            // 判断错误类型
             if (error.includes('429') || error.includes('rate limit')) {
                 slot.status = 'rate_limited';
             } else if (error.includes('401') || error.includes('403') || error.includes('invalid')) {
                 slot.status = 'invalid';
             }
 
-            // 将失败的 key 移到顺序队列末尾
-            if (slot.strategy === 'sequential') {
-                this.rotateToBottom(keyId);
-            }
-
-            // 多路并发模式：10-30秒快速重试
-            // 顺序模式：5分钟后重试
-            if (slot.failCount >= this.state.maxFailures || slot.status === 'rate_limited') {
-                const retryDelay = slot.strategy === 'load_balance'
-                    ? (10 + Math.random() * 20) * 1000  // 多路并发: 10-30秒随机重试
-                    : 5 * 60 * 1000;  // 顺序: 5分钟
-
-                console.warn(`[KeyManager] API ${slot.name} 连续失败 ${slot.failCount} 次，${Math.round(retryDelay / 1000)}秒后重试`);
-
-                setTimeout(() => {
-                    const s = this.state.slots.find(ss => ss.id === keyId);
-                    if (s && (s.status === 'invalid' || s.status === 'rate_limited')) {
-                        s.failCount = 0;
-                        s.status = 'unknown';
-                        console.log(`[KeyManager] API ${s.name} 自动重试中...`);
-                        this.saveState();
-                        this.notifyListeners();
-                    }
-                }, retryDelay);
-            }
-
             this.saveState();
             this.notifyListeners();
         }
     }
-
-    /**
-     * 将指定 key 移到顺序队列末尾（预算耗尽或失败时调用）
-     */
-    rotateToBottom(keyId: string): void {
-        const sequentialSlots = this.state.slots
-            .filter(s => (s.strategy || 'sequential') === 'sequential')
-            .sort((a, b) => (a.priority || 0) - (b.priority || 0));
-
-        if (sequentialSlots.length <= 1) return;
-
-        const targetSlot = sequentialSlots.find(s => s.id === keyId);
-        if (!targetSlot) return;
-
-        // 获取当前最大优先级
-        const maxPriority = Math.max(...sequentialSlots.map(s => s.priority || 0));
-
-        // 将目标 key 移到末尾
-        targetSlot.priority = maxPriority + 1;
-
-        // 重新排序并重置优先级（0, 1, 2, 3...）
-        const reordered = this.state.slots
-            .filter(s => (s.strategy || 'sequential') === 'sequential')
-            .sort((a, b) => (a.priority || 0) - (b.priority || 0));
-
-        reordered.forEach((s, i) => {
-            s.priority = i;
-        });
-
-        console.log(`[KeyManager] API ${targetSlot.name} 已移至顺序队列末尾`);
-        this.saveState();
-        this.notifyListeners();
-    }
-
-    /**
-     * 检查预算是否耗尽，耗尽则自动轮换
-     */
-    checkBudgetAndRotate(keyId: string): void {
-        const slot = this.state.slots.find(s => s.id === keyId);
-        if (slot && slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit) {
-            console.log(`[KeyManager] API ${slot.name} 预算已耗尽，移至末尾`);
-            if (slot.strategy === 'sequential') {
-                this.rotateToBottom(keyId);
-            }
-        }
-    }
-
     /**
      * Toggle disabled state for manual pause/resume
      * 暂停的 key 会移到顺序队列末尾
@@ -659,62 +714,13 @@ export class KeyManager {
         const slot = this.state.slots.find(s => s.id === keyId);
         if (slot) {
             slot.disabled = !slot.disabled;
-
-            if (slot.disabled) {
-                // 暂停时移到队列末尾
-                if (slot.strategy === 'sequential') {
-                    this.rotateToBottom(keyId);
-                }
-                console.log(`[KeyManager] API ${slot.name} 已暂停并移至末尾`);
-            } else {
-                // 恢复时重置失败计数
+            if (!slot.disabled) {
                 slot.failCount = 0;
                 slot.status = 'unknown';
-                // 手动开启时，自动提升到顶部
-                if (slot.strategy === 'sequential') {
-                    this.rotateToTop(keyId);
-                }
-                console.log(`[KeyManager] API ${slot.name} 已恢复`);
             }
-
             this.saveState();
             this.notifyListeners();
         }
-    }
-
-    /**
-     * 将指定 key 移到顺序队列顶部（手动启用时调用）
-     */
-    rotateToTop(keyId: string): void {
-        const sequentialSlots = this.state.slots
-            .filter(s => (s.strategy || 'sequential') === 'sequential')
-            .sort((a, b) => (a.priority || 0) - (b.priority || 0));
-
-        if (sequentialSlots.length <= 1) return;
-
-        const targetSlot = sequentialSlots.find(s => s.id === keyId);
-        if (!targetSlot) return;
-
-        // Shuffle everyone down by 1
-        sequentialSlots.forEach(s => {
-            if (s.id !== keyId) {
-                s.priority = (s.priority || 0) + 1;
-            }
-        });
-
-        // Set target to 0
-        targetSlot.priority = 0;
-
-        // Re-normalize to Ensure clean 0, 1, 2... order
-        const reordered = this.state.slots
-            .filter(s => (s.strategy || 'sequential') === 'sequential')
-            .sort((a, b) => (a.priority || 0) - (b.priority || 0));
-
-        reordered.forEach((s, i) => {
-            s.priority = i;
-        });
-
-        this.saveState();
     }
 
 
@@ -739,29 +745,46 @@ export class KeyManager {
             slot.totalCost = (slot.totalCost || 0) + cost;
             this.saveState();
             this.notifyListeners();
-            this.checkBudgetAndRotate(keyId);
         }
     }
 
 
 
     /**
-     * Add a new API key
+     * Clear all keys (e.g. on user switch)
      */
+    clearAll() {
+        this.state.slots = [];
+        this.state.currentIndex = 0;
+        this.saveState();
+        this.notifyListeners();
+    }
+
+    /**
+     * Reorder slots (for manual sorting)
+     */
+    reorderSlots(fromIndex: number, toIndex: number) {
+        if (fromIndex < 0 || fromIndex >= this.state.slots.length ||
+            toIndex < 0 || toIndex >= this.state.slots.length) return;
+
+        const slots = [...this.state.slots];
+        const [moved] = slots.splice(fromIndex, 1);
+        slots.splice(toIndex, 0, moved);
+
+        this.state.slots = slots;
+        this.saveState();
+        this.notifyListeners();
+    }
+
     async addKey(key: string, options?: {
         name?: string;
         provider?: string;
-        budgetLimit?: number;
-        // Proxy configuration
         baseUrl?: string;
         authMethod?: AuthMethod;
-
         headerName?: string;
-        // Strategy
-        strategy?: 'load_balance' | 'sequential';
-        priority?: number;
-        totalCost?: number;
-    }): Promise<{ success: boolean; error?: string }> {
+        supportedModels?: string[];
+        budgetLimit?: number;
+    }): Promise<{ success: boolean; error?: string; id?: string }> {
         const trimmedKey = key.trim();
 
         if (!trimmedKey) {
@@ -769,52 +792,39 @@ export class KeyManager {
         }
 
         // Check for duplicates
-        if (this.state.slots.some(s => s.key === trimmedKey)) {
+        if (this.state.slots.some(s => s.key === trimmedKey && s.baseUrl === options?.baseUrl)) {
             return { success: false, error: '该 Key 已存在' };
         }
 
-        // Validate the key (skip validation for proxies as they may have different endpoints)
-        const isProxy = options?.baseUrl && !options.baseUrl.includes('googleapis.com');
-        const validation = isProxy
-            ? { valid: true }
-            : await this.validateKey(trimmedKey, options?.provider);
+        const isProxy = !!options?.baseUrl;
 
         const newSlot: KeySlot = {
             id: `key_${Date.now()}`,
             key: trimmedKey,
-            name: options?.name || 'My Key',
-            provider: options?.provider || 'Gemini',
-            // Proxy configuration
+            name: options?.name || 'My Channel',
+            provider: options?.provider || 'Custom',
             baseUrl: options?.baseUrl || '',
             authMethod: options?.authMethod || (isProxy ? 'header' : 'query'),
             headerName: options?.headerName || 'x-goog-api-key',
-            // Status
-            status: validation.valid ? 'valid' : 'invalid',
+            supportedModels: options?.supportedModels || [],
+            status: 'unknown',
             failCount: 0,
             successCount: 0,
             lastUsed: null,
-            lastError: validation.error || null,
-            disabled: !validation.valid,
+            lastError: null,
+            disabled: false,
             createdAt: Date.now(),
-            totalCost: options?.totalCost || 0,
-            budgetLimit: options?.budgetLimit ?? -1,
-            strategy: options?.strategy || 'sequential',
-            priority: options?.priority ?? -1 // Default to -1 (top) then normalize
+            totalCost: 0,
+            budgetLimit: options?.budgetLimit ?? -1
         };
 
         this.state.slots.push(newSlot);
-
-        // Normalize priority if sequential
-        if (newSlot.strategy === 'sequential') {
-            this.rotateToTop(newSlot.id);
-        }
-
         this.saveState();
         this.notifyListeners();
 
         return {
             success: true,
-            error: validation.valid ? undefined : `Key 添加成功但验证失败: ${validation.error}`
+            id: newSlot.id
         };
     }
 
@@ -830,31 +840,14 @@ export class KeyManager {
     /**
      * Update an existing API key
      */
-    updateKey(id: string, updates: {
-        key?: string,
-        name?: string,
-        budgetLimit?: number,
-        baseUrl?: string,
-        authMethod?: AuthMethod,
-
-        headerName?: string,
-        strategy?: 'load_balance' | 'sequential',
-        priority?: number,
-        totalCost?: number
-    }): void {
+    updateKey(id: string, updates: Partial<KeySlot>): void {
         const slot = this.state.slots.find(s => s.id === id);
         if (slot) {
-            if (updates.key !== undefined) slot.key = updates.key;
-            if (updates.name !== undefined) slot.name = updates.name;
-            if (updates.budgetLimit !== undefined) slot.budgetLimit = updates.budgetLimit;
-            if (updates.totalCost !== undefined) slot.totalCost = updates.totalCost;
-            if (updates.baseUrl !== undefined) slot.baseUrl = updates.baseUrl;
-            if (updates.authMethod !== undefined) slot.authMethod = updates.authMethod;
-
-            if (updates.headerName !== undefined) slot.headerName = updates.headerName;
-            if (updates.strategy !== undefined) slot.strategy = updates.strategy;
-            if (updates.priority !== undefined) slot.priority = updates.priority;
-
+            Object.assign(slot, updates);
+            // Ensure supportedModels is always an array
+            if (updates.supportedModels) {
+                slot.supportedModels = updates.supportedModels;
+            }
             this.saveState();
             this.notifyListeners();
         }
@@ -946,6 +939,70 @@ export class KeyManager {
     }
 
     /**
+     * Get validated global model list from all channels (Standard + Custom)
+     */
+    getGlobalModelList(): { id: string; name: string; provider: string; isCustom: boolean; type: GlobalModelType; icon?: string; description?: string }[] {
+        const uniqueModels = new Map<string, { id: string; name: string; provider: string; isCustom: boolean; type: GlobalModelType; icon?: string; description?: string }>();
+        const chatModelIds = new Set(GOOGLE_CHAT_MODELS.map(model => model.id));
+
+        // 1. Add Standard Google Models if any Google key exists
+        const hasGoogleKey = this.state.slots.some(s => s.provider === 'Google' && !s.disabled && s.status !== 'invalid');
+        if (hasGoogleKey) {
+            GOOGLE_CHAT_MODELS.forEach(model => {
+                uniqueModels.set(model.id, {
+                    id: model.id,
+                    name: model.name,
+                    provider: 'Google',
+                    isCustom: false,
+                    type: 'chat',
+                    icon: model.icon,
+                    description: model.description
+                });
+            });
+        }
+
+        // 2. Add models from all active keys (Proxies)
+        this.state.slots.forEach(slot => {
+            if (slot.disabled || slot.status === 'invalid') return;
+            if (slot.supportedModels && slot.supportedModels.length > 0) {
+                slot.supportedModels.forEach(mid => {
+                    // Only add if not already present (Standard models take precedence for metadata)
+                    if (!uniqueModels.has(mid)) {
+                        const meta = GOOGLE_MODEL_METADATA.get(mid);
+                        const mappedType = MODEL_TYPE_MAP.get(mid);
+                        const isGoogleProvider = slot.provider === 'Google' || chatModelIds.has(mid);
+                        const inferredType = mappedType || inferModelType(mid);
+                        if (meta) {
+                            uniqueModels.set(mid, {
+                                id: mid,
+                                name: meta.name,
+                                provider: slot.provider || 'Google',
+                                isCustom: !isGoogleProvider,
+                                type: inferredType,
+                                icon: meta.icon,
+                                description: meta.description
+                            });
+                            return;
+                        }
+
+                        uniqueModels.set(mid, {
+                            id: mid,
+                            name: slot.provider ? `${slot.provider} 模型` : '自定义模型',
+                            provider: slot.name || slot.provider,
+                            isCustom: true,
+                            type: inferredType,
+                            icon: '🔌',
+                            description: `通过 ${slot.name || slot.provider} 调用`
+                        });
+                    }
+                });
+            }
+        });
+
+        return Array.from(uniqueModels.values());
+    }
+
+    /**
      * Get all key slots
      */
     getSlots(): KeySlot[] {
@@ -987,127 +1044,8 @@ export class KeyManager {
         this.saveState();
     }
 
-    /**
-     * Clear all keys
-     */
-    clearAll(): void {
-        this.state.slots = [];
-        this.state.currentIndex = 0;
-        this.saveState();
-        this.notifyListeners();
-    }
 
-    // ============================================
-    // Proxy Model Configuration Methods
-    // ============================================
 
-    /**
-     * Update proxy models for a specific API key
-     */
-    updateProxyModels(keyId: string, models: ProxyModelConfig[]): void {
-        const slot = this.state.slots.find(s => s.id === keyId);
-        if (slot) {
-            slot.proxyModels = models;
-            this.saveState();
-            this.notifyListeners();
-        }
-    }
-
-    /**
-     * Add a single proxy model to an API key
-     */
-    addProxyModel(keyId: string, model: ProxyModelConfig): void {
-        const slot = this.state.slots.find(s => s.id === keyId);
-        if (slot) {
-            if (!slot.proxyModels) {
-                slot.proxyModels = [];
-            }
-            // Check for duplicate
-            if (!slot.proxyModels.some(m => m.id === model.id)) {
-                slot.proxyModels.push(model);
-                this.saveState();
-                this.notifyListeners();
-            }
-        }
-    }
-
-    /**
-     * Remove a proxy model from an API key
-     */
-    removeProxyModel(keyId: string, modelId: string): void {
-        const slot = this.state.slots.find(s => s.id === keyId);
-        if (slot && slot.proxyModels) {
-            slot.proxyModels = slot.proxyModels.filter(m => m.id !== modelId);
-            this.saveState();
-            this.notifyListeners();
-        }
-    }
-
-    /**
-     * Update a single proxy model
-     */
-    updateProxyModel(keyId: string, oldModelId: string, model: ProxyModelConfig): void {
-        const slot = this.state.slots.find(s => s.id === keyId);
-        if (slot && slot.proxyModels) {
-            // Remove old if ID changed, or just find index
-            const index = slot.proxyModels.findIndex(m => m.id === oldModelId);
-            if (index !== -1) {
-                // Check if new ID collides with another existing model (if ID changed)
-                if (model.id !== oldModelId && slot.proxyModels.some(m => m.id === model.id)) {
-                    // Start override or Error? User probably wants to rename.
-                    // If conflict, we overwrite the other one? Or fail?
-                    // Let's just overwrite the index. If duplicate ID exists else where, it effectively merges?
-                    // Better to just update at index.
-                }
-                slot.proxyModels[index] = model;
-                this.saveState();
-                this.notifyListeners();
-            }
-        }
-    }
-
-    /**
-     * Get all available proxy models from all enabled proxy API keys
-     * Aggregates models from all proxy keys (non-Google)
-     *
-     * @param type Optional filter by model type ('image', 'video', 'chat')
-     */
-    getAvailableProxyModels(type?: 'image' | 'video' | 'chat'): ProxyModelConfig[] {
-        const allModels: ProxyModelConfig[] = [];
-        const seenIds = new Set<string>();
-
-        for (const slot of this.state.slots) {
-            // Skip disabled keys
-            if (slot.disabled) continue;
-
-            // Only include proxy keys (non-Google)
-            const isProxy = slot.baseUrl && !slot.baseUrl.includes('googleapis.com');
-            if (!isProxy) continue;
-
-            // Skip keys without configured models
-            if (!slot.proxyModels || slot.proxyModels.length === 0) continue;
-
-            for (const model of slot.proxyModels) {
-                // Skip duplicates
-                if (seenIds.has(model.id)) continue;
-
-                // Filter by type if specified
-                if (type && model.type !== type) continue;
-
-                allModels.push(model);
-                seenIds.add(model.id);
-            }
-        }
-
-        return allModels;
-    }
-
-    /**
-     * Check if there are any proxy keys with configured models
-     */
-    hasConfiguredProxyModels(type?: 'image' | 'video' | 'chat'): boolean {
-        return this.getAvailableProxyModels(type).length > 0;
-    }
 }
 
 // Singleton instance
@@ -1116,4 +1054,4 @@ export const keyManager = new KeyManager();
 export default KeyManager;
 
 // Re-export ProxyModelConfig for convenience
-export type { ProxyModelConfig } from './proxyModelConfig';
+

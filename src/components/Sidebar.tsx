@@ -62,11 +62,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {/* Header */}
                 <div className="sidebar-header" style={{ borderBottom: '1px solid var(--border-light)' }}>
                     <div className="sidebar-logo">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-white">
-                            <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M17 4a2 2 0 0 0 2 2a2 2 0 0 0 -2 2a2 2 0 0 0 -2 -2a2 2 0 0 0 2 -2" fill="currentColor" stroke="none" />
-                            <path d="M19 11h2m-1 -1v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
+                        <img src="/icon.svg" alt="KK Studio" />
                     </div>
                     <span className="sidebar-title" style={{ fontFamily: 'var(--font-sans)', letterSpacing: '-0.02em' }}>KK Studio</span>
                     <button

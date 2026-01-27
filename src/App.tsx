@@ -38,6 +38,7 @@ import ProjectManager from './components/ProjectManager';
 import SearchPalette from './components/SearchPalette';
 import { Search } from 'lucide-react'; // Import Search icon
 import MobileTabBar from './components/MobileTabBar';
+import TagInputModal from './components/TagInputModal';
 
 const AppContent: React.FC = () => {
   const {
@@ -54,7 +55,6 @@ const AppContent: React.FC = () => {
     redo,
     canUndo,
     canRedo,
-    arrangeAllNodes,
     selectedNodeIds,
     selectNodes,
     clearSelection,
@@ -62,7 +62,9 @@ const AppContent: React.FC = () => {
     findNextGroupPosition,
     addGroup,
     removeGroup,
-    updateGroup
+    updateGroup,
+    setNodeTags,
+    arrangeAllNodes
   } = useCanvas();
 
   // Canvas Ref for Zoom/Pan Controls
@@ -93,7 +95,7 @@ const AppContent: React.FC = () => {
   const [showStorageModal, setShowStorageModal] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
-  const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-channels' | 'cost-estimation' | 'storage-settings' | 'system-logs'>('dashboard');
+  const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs'>('dashboard');
   const [showGrid, setShowGrid] = useState(true);
 
   useEffect(() => {
@@ -102,6 +104,31 @@ const AppContent: React.FC = () => {
     });
     return unsubscribe;
   }, []);
+
+  // Tagging State
+  const [isTagModalOpen, setIsTagModalOpen] = useState(false);
+  const [taggingNodeIds, setTaggingNodeIds] = useState<string[]>([]);
+  const [initialTags, setInitialTags] = useState<string[]>([]);
+
+  const handleTag = useCallback(() => {
+    if (selectedNodeIds.length === 0) return;
+    setTaggingNodeIds(selectedNodeIds);
+
+    const firstId = selectedNodeIds[0];
+    const promptNode = activeCanvas?.promptNodes.find(n => n.id === firstId);
+    const imageNode = activeCanvas?.imageNodes.find(n => n.id === firstId);
+
+    const tags = promptNode?.tags || imageNode?.tags || [];
+    setInitialTags(tags);
+    setIsTagModalOpen(true);
+    setSelectionMenuPosition(null);
+  }, [selectedNodeIds, activeCanvas]);
+
+  const handleSaveTags = useCallback((tags: string[]) => {
+    setNodeTags(taggingNodeIds, tags);
+    setIsTagModalOpen(false);
+  }, [taggingNodeIds, setNodeTags]);
+
 
   // Sync user with KeyManager and handle Modal Logic (Storage -> API)
   useEffect(() => {
@@ -123,7 +150,7 @@ const AppContent: React.FC = () => {
           setShowStorageModal(true);
         } else if (!keyManager.hasValidKeys()) {
           setShowSettingsPanel(true);
-          setSettingsInitialView('api-channels');
+          setSettingsInitialView('api-management');
         }
       });
     }
@@ -146,8 +173,7 @@ const AppContent: React.FC = () => {
           referenceImages: [], // Always reset images
           model: parsed.model || KnownModel.IMAGEN_3,
           enableGrounding: parsed.enableGrounding || false,
-          mode: parsed.mode || GenerationMode.IMAGE,
-          lineMode: parsed.lineMode || 'google_direct'
+          mode: parsed.mode || GenerationMode.IMAGE
         };
       }
     } catch (e) {
@@ -162,8 +188,7 @@ const AppContent: React.FC = () => {
       referenceImages: [],
       model: KnownModel.IMAGEN_3,
       enableGrounding: false,
-      mode: GenerationMode.IMAGE,
-      lineMode: 'google_direct'
+      mode: GenerationMode.IMAGE
     };
   });
 
@@ -175,13 +200,12 @@ const AppContent: React.FC = () => {
       parallelCount: config.parallelCount,
       model: config.model,
       enableGrounding: config.enableGrounding,
-      mode: config.mode,
-      lineMode: config.lineMode
+      mode: config.mode
     };
     localStorage.setItem('kk_generation_config', JSON.stringify(toSave));
   }, [
     config.aspectRatio, config.imageSize, config.parallelCount,
-    config.model, config.enableGrounding, config.mode, config.lineMode
+    config.model, config.enableGrounding, config.mode
   ]);
 
   // Pending generation state
@@ -633,36 +657,7 @@ const AppContent: React.FC = () => {
     if (!config.prompt.trim()) return;
     // Note: API key is now managed server-side, no need to pass from frontend
 
-    const isGoogleFamilyModel = (modelId: string) => /gemini|imagen|veo|nano-banana/i.test(modelId);
-    const isProxyGoogleImageOrVideo = config.lineMode === 'proxy'
-      && (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.VIDEO)
-      && isGoogleFamilyModel(config.model);
-
-    const findProxyFallbackModel = () => {
-      const type = config.mode === GenerationMode.VIDEO ? 'video' : 'image';
-      return keyManager.getAvailableProxyModels(type)
-        .find(m => !isGoogleFamilyModel(m.id)) || null;
-    };
-
-    let effectiveLineMode = config.lineMode;
-    let effectiveModel = config.model;
-
-    if (isProxyGoogleImageOrVideo) {
-      const type = config.mode === GenerationMode.VIDEO ? 'video' : 'image';
-      const currentProxyModel = keyManager.getAvailableProxyModels(type)
-        .find(m => m.id === config.model);
-
-      if (currentProxyModel?.apiFormat !== 'gemini') {
-        const fallback = findProxyFallbackModel();
-        if (!fallback) {
-          notify.warning('中转模型不可用', '当前模型协议为 OpenAI 标准且不支持 Gemini 原生，请在模型设置改为 Google 原生或添加可用替代模型');
-          return;
-        }
-        effectiveModel = fallback.id;
-        notify.info('自动切换模型', `当前模型中转不支持，已切换为 ${fallback.label || fallback.id}`);
-        setConfig(prev => ({ ...prev, model: fallback.id }));
-      }
-    }
+    const effectiveModel = config.model;
 
     setIsGenerating(true);
 
@@ -736,7 +731,6 @@ const AppContent: React.FC = () => {
     };
 
     // 4. Update State Immediately (Optimistic UI)
-    // 4. Update State Immediately (Optimistic UI)
     addPromptNode(generatingNode);
 
     // 5. Clear Input UI immediately & Unblock
@@ -747,19 +741,9 @@ const AppContent: React.FC = () => {
 
     try {
       const count = config.parallelCount;
-      const isProxyMode = effectiveLineMode === 'proxy';
-      const healthyProxyCount = isProxyMode
-        ? keyManager.getSlots().filter(s => {
-          const isProxy = !!s.baseUrl && !s.baseUrl.includes('googleapis.com');
-          const isHealthy = !s.disabled && s.status !== 'invalid' && (s.budgetLimit < 0 || s.totalCost < s.budgetLimit);
-          return isProxy && isHealthy;
-        }).length
-        : count;
 
-      const concurrencyLimit = isProxyMode ? Math.max(1, Math.min(count, healthyProxyCount)) : count;
-      if (isProxyMode && concurrencyLimit < count) {
-        notify.info('中转并发调整', `可用中转 Key 数量为 ${healthyProxyCount}，已自动分批生成`);
-      }
+      // Simple concurrency check based on model availability could be added here
+      // For now, we trust KeyManager to handle rotation or Key exhaustion
 
       const buildTask = (index: number) => async () => {
         const startTime = Date.now();
@@ -804,48 +788,14 @@ const AppContent: React.FC = () => {
                 effectiveModel,
                 '', // apiKey (handled internally)
                 currentRequestId, // Unique requestId for cancellation
-                config.enableGrounding, // Pass grounding config
-                effectiveLineMode // Pass line mode (google_direct or proxy)
+                config.enableGrounding // Pass grounding config
               );
             } catch (err: any) {
-              // Auto-fallback for "not supported model" error
-              if (effectiveLineMode !== 'proxy' && err.message && (err.message.includes("not supported model") || err.message.includes("model_not_found"))) {
-                notify.info("自动切换模型", "当前模型不支持，正在尝试 DALL-E 3...");
-                generatedBase64 = await generateImage(
-                  promptToUse,
-                  config.aspectRatio,
-                  config.imageSize,
-                  finalReferenceImages,
-                  KnownModel.DALLE_3,
-                  '',
-                  currentRequestId,
-                  false,
-                  effectiveLineMode
-                );
-              } else if (effectiveLineMode === 'proxy' && err.message && (err.message.includes('not supported model') || err.message.includes('model_not_found') || err.message.includes('Invalid URL'))) {
-                const fallback = findProxyFallbackModel();
-                if (fallback && fallback.id !== effectiveModel) {
-                  notify.info('自动切换模型', `当前模型中转不支持，已切换为 ${fallback.label || fallback.id}`);
-                  setConfig(prev => ({ ...prev, model: fallback.id }));
-                  generatedBase64 = await generateImage(
-                    promptToUse,
-                    config.aspectRatio,
-                    config.imageSize,
-                    finalReferenceImages,
-                    fallback.id,
-                    '',
-                    currentRequestId,
-                    config.enableGrounding,
-                    effectiveLineMode
-                  );
-                } else {
-                  throw err;
-                }
-              } else {
-                throw err;
-              }
+              // Simplified error handling
+              throw err;
             }
           }
+
           isFinished = true;
           clearTimeout(timeoutId);
 
@@ -856,24 +806,21 @@ const AppContent: React.FC = () => {
 
           // --- Cloud Sync Upgrade: Upload Generated Image ---
           try {
-            // Convert Base64 to Blob
-            const res = await fetch(generatedBase64);
-            const blob = await res.blob();
+            if (generatedBase64) {
+              // Convert Base64 to Blob
+              const res = await fetch(generatedBase64);
+              const blob = await res.blob();
 
-            // Upload (Generate Thumb + Original)
-            const id = `${Date.now()}_${index}`; // Temporary ID for upload path
-            const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
+              // Upload (Generate Thumb + Original)
+              const id = `${Date.now()}_${index}`; // Temporary ID for upload path
+              const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
 
-            // Success: Use Cloud URLs
-            // CHECK: If syncService returns a blob: URL (local mock), ignore it to keep Base64 for persistence
-            if (!thumbnail.startsWith('blob:')) {
-              originalUrl = original;
-              displayUrl = thumbnail;
-            } else {
-              // It's a local blob, so we stick to 'generatedBase64' (already set above)
-              // This ensures we save the full data to IndexedDB, not a temporary link
+              // Success: Use Cloud URLs
+              if (!thumbnail.startsWith('blob:')) {
+                originalUrl = original;
+                displayUrl = thumbnail;
+              }
             }
-
           } catch (e) {
             console.warn('Cloud upload failed, falling back to local base64:', e);
             // Fallback: url stays as base64, originalUrl empty
@@ -916,7 +863,7 @@ const AppContent: React.FC = () => {
         return results;
       };
 
-      const imageData = await runWithConcurrency(tasks, concurrencyLimit);
+      const imageData = await runWithConcurrency(tasks, count);
 
       // Validate results and narrow type
       type SuccessResult = { index: number; url: string; originalUrl: string; generationTime: number; base64: string; mode: GenerationMode };
@@ -1063,7 +1010,7 @@ const AppContent: React.FC = () => {
       notify.error('生成任务失败', err.message || "Generation failed.");
       if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
         setShowSettingsPanel(true);
-        setSettingsInitialView('api-channels');
+        setSettingsInitialView('api-management');
       }
     } finally {
       setIsGenerating(false);
@@ -1113,295 +1060,99 @@ const AppContent: React.FC = () => {
     setDragConnection(null);
   }, [dragConnection, linkNodes]);
 
-  // Auto-arrange all cards in a grid layout (Compact & Dynamic)
+  // Auto-arrange with compact grid: normals first, errors stacked below
   const handleAutoArrange = useCallback(() => {
     if (!activeCanvas) return;
 
-    // Configuration
-    const colWidth = 380;
-    const startY = 100;
-    const imageVirtualHeight = 320; // Height of an image row
+    const START_Y = 80;
+    const ROW_GAP = 32;
+    const COL_GAP = 16;
+    const PROMPT_WIDTH = 380;
+    const NODE_GAP = 20;
+    const COL_GAP_IMG = 12;
+    const NORMAL_PER_ROW = 14;
+    const ERRORS_PER_ROW = 14;
 
-    // Get all prompt nodes sorted by creation time
-    const sortedPrompts = [...activeCanvas.promptNodes].sort((a, b) =>
-      parseInt(a.id) - parseInt(b.id)
-    );
+    const clampGap = (h: number) => Math.min(36, Math.max(16, Math.round(h * 0.12)));
 
-    if (isMobile) {
-      // Mobile: Single vertical column
-      let currentY = 0;
+    const runLayout = () => {
+      const canvas = activeCanvasRef.current;
+      if (!canvas) return;
 
-      sortedPrompts.forEach((pn) => {
-        const promptHeight = getPromptHeight(pn.prompt);
-        const childImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === pn.id);
-        const imageRows = Math.ceil(childImages.length / 2);
+      const normals = canvas.promptNodes.filter(p => !p.error);
+      const errors = canvas.promptNodes.filter(p => p.error);
 
-        // Calculate total node block height
-        // Prompt + Gap + Images + Bottom Padding
-        const nodeBlockHeight = promptHeight + 80 + (imageRows * imageVirtualHeight) + 80;
-
-        updatePromptNodePosition(pn.id, { x: 0, y: currentY });
-
-        // Arrange images
-        childImages.forEach((img, imgIndex) => {
-          const col = imgIndex % 2;
-          const row = Math.floor(imgIndex / 2);
-          const imgWidth = 170;
-          const gap = 10;
-          const startX = -(imgWidth * 2 + gap) / 2 + imgWidth / 2;
-
-          updateImageNodePosition(img.id, {
-            x: startX + col * (imgWidth + gap),
-            y: currentY + 80 + 320 + row * 320 // +320 = imageHeight so TOP is below prompt
-          });
-        });
-
-        currentY += nodeBlockHeight;
-      });
-
-    } else {
-      // Desktop: Stream Layout (Standard Grid with Row Limits)
-      // 3 Zones: Normal (30/row), Groups (5/row), Errors (10/row)
-
-      const inputPrompts = [...activeCanvas.promptNodes];
-
-      // 1. Identify Groups & Errors
-      const groupNodeIds = new Set<string>();
-      (activeCanvas.groups || []).forEach(g => g.nodeIds.forEach(id => groupNodeIds.add(id)));
-
-      const errorNodes = inputPrompts.filter(p => !groupNodeIds.has(p.id) && p.error);
-      const normalNodes = inputPrompts.filter(p => !groupNodeIds.has(p.id) && !p.error);
-
-      // 2. Build Thread structures for Normal Nodes
-      const imageMap = new Map(activeCanvas.imageNodes.map(img => [img.id, img.parentPromptId]));
-      const findRoot = (p: PromptNode) => {
-        let curr = p;
-        const visited = new Set<string>();
-        while (curr.sourceImageId && imageMap.has(curr.sourceImageId)) {
-          if (visited.has(curr.id)) break;
-          visited.add(curr.id);
-          const parentId = imageMap.get(curr.sourceImageId);
-          const parent = inputPrompts.find(n => n.id === parentId);
-          if (parent) curr = parent; else break;
-        }
-        return curr.id;
+      const measureBlock = (prompt: PromptNode) => {
+        const promptHeight = getPromptHeight(prompt.prompt);
+        const children = canvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
+        const dims = children.map(img => getCardDimensions(img.aspectRatio, true));
+        const rowWidth = dims.reduce((s, d) => s + d.width, 0) + (dims.length > 0 ? (dims.length - 1) * COL_GAP_IMG : 0);
+        const rowHeight = dims.length > 0 ? Math.max(...dims.map(d => d.totalHeight)) : 0;
+        const blockWidth = Math.max(PROMPT_WIDTH, rowWidth);
+        const promptToImageGap = children.length > 0 ? clampGap(promptHeight) : 0;
+        const blockHeight = promptHeight + (children.length > 0 ? promptToImageGap + rowHeight : 0) + NODE_GAP;
+        return { promptHeight, children, dims, rowWidth, blockWidth, blockHeight, promptToImageGap };
       };
 
-      const threadGroups = new Map<string, PromptNode[]>();
-      normalNodes.forEach(p => {
-        const rootId = findRoot(p);
-        if (!threadGroups.has(rootId)) threadGroups.set(rootId, []);
-        threadGroups.get(rootId)!.push(p);
-      });
-      // Sort within thread
-      threadGroups.forEach(g => g.sort((a, b) => parseInt(a.id) - parseInt(b.id)));
+      const placePrompt = (prompt: PromptNode, xLeft: number, yTop: number) => {
+        const info = measureBlock(prompt);
+        const centerX = xLeft + info.blockWidth / 2;
+        const promptBottom = yTop + info.promptHeight;
 
-      const threads = Array.from(threadGroups.entries())
-        .map(([rootId, nodes]) => ({ rootId, nodes }))
-        .sort((a, b) => parseInt(a.rootId) - parseInt(b.rootId));
+        updatePromptNodePosition(prompt.id, { x: centerX, y: promptBottom }, { moveChildren: false, ignoreSelection: true });
 
-      // 3. Layout Function (Row-Aware)
-      const COL_GAP = 16;
-      const ROW_GAP = 32;
-      const ZONE_GAP = 80;
-      let maxNormalRight = 0;
-      let maxGroupRight = 0;
+        if (info.children.length > 0) {
+          let cursorX = centerX - info.rowWidth / 2;
+          const rowTop = promptBottom + info.promptToImageGap;
+          info.children.forEach((img, idx) => {
+            const dim = info.dims[idx];
+            updateImageNodePosition(img.id, { x: cursorX + dim.width / 2, y: rowTop + dim.totalHeight }, { ignoreSelection: true });
+            cursorX += dim.width + COL_GAP_IMG;
+          });
+        }
 
-      type LayoutRow = { startY: number; height: number; endX: number };
-
-      const layoutRows = (
-        items: any[],
-        maxPerLine: number,
-        getStartX: (rowIndex: number) => number,
-        getStartY: (rowIndex: number, previousRow?: LayoutRow) => number,
-        renderItem: (item: any, x: number, y: number) => { width: number, height: number }
-      ): LayoutRow[] => {
-        const rows: LayoutRow[] = [];
-        let rowIndex = 0;
-        let currentX = getStartX(rowIndex);
-        let currentY = getStartY(rowIndex);
-        let rowHeight = 0;
-        let countInRow = 0;
-        let rowEndX = currentX;
-
-        const commitRow = () => {
-          if (countInRow === 0) return;
-          rows.push({ startY: currentY, height: rowHeight, endX: rowEndX });
-          rowIndex += 1;
-          currentX = getStartX(rowIndex);
-          currentY = getStartY(rowIndex, rows[rows.length - 1]);
-          rowHeight = 0;
-          countInRow = 0;
-          rowEndX = currentX;
-        };
-
-        items.forEach((item) => {
-          if (countInRow >= maxPerLine) {
-            commitRow();
-          }
-
-          const dim = renderItem(item, currentX, currentY);
-          rowHeight = Math.max(rowHeight, dim.height);
-          rowEndX = Math.max(rowEndX, currentX + dim.width);
-          currentX += dim.width + COL_GAP;
-          countInRow += 1;
-        });
-
-        commitRow();
-        return rows;
+        return { width: info.blockWidth, height: info.blockHeight };
       };
 
-      // Zone 1: Normal Threads (Limit 30)
-      const normalRows = layoutRows(
-        threads,
-        30,
-        () => 0,
-        (_rowIndex, previousRow) => previousRow ? previousRow.startY + previousRow.height + ROW_GAP : startY,
-        (thread: { nodes: PromptNode[] }, x, y) => {
-          // Render Thread
-          const PROMPT_WIDTH = 380;
-          const nodeGap = 20;
-          const colGap = 12;
-          const rowGap = 12;
-
-          const nodeLayouts = thread.nodes.map((pn: PromptNode) => {
-            const childImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === pn.id);
-            const rows: Array<{
-              images: typeof childImages;
-              dims: ReturnType<typeof getCardDimensions>[];
-              rowWidth: number;
-              rowHeight: number;
-            }> = [];
-            let maxRowWidth = 0;
-            let imgBlockH = 0;
-
-            if (childImages.length > 0) {
-              const rowImages = childImages;
-              const rowDims = rowImages.map((img) => getCardDimensions(img.aspectRatio, true));
-              const rowWidths = rowDims.map(dim => dim.width);
-              const rowHeights = rowDims.map(dim => dim.totalHeight);
-              const rowHeight = Math.max(...rowHeights);
-              const rowWidth = rowWidths.reduce((sum, w) => sum + w, 0) + colGap * (rowWidths.length - 1);
-              maxRowWidth = rowWidth;
-              imgBlockH = rowHeight;
-              rows.push({ images: rowImages, dims: rowDims, rowWidth, rowHeight });
-            }
-
-            return {
-              pn,
-              rows,
-              maxRowWidth,
-              imgBlockH,
-              promptHeight: getPromptHeight(pn.prompt)
-            };
-          });
-
-          const threadW = Math.max(
-            PROMPT_WIDTH,
-            ...nodeLayouts.map(layout => layout.maxRowWidth)
-          );
-
-          let blockTop = y;
-          nodeLayouts.forEach((layout) => {
-            const centerX = x + threadW / 2;
-            const promptToImageGap = layout.rows.length > 0
-              ? Math.max(16, Math.min(36, Math.round(layout.promptHeight * 0.12)))
-              : 0;
-            const promptBottom = blockTop + layout.promptHeight;
-
-            updatePromptNodePosition(layout.pn.id, { x: centerX, y: promptBottom });
-
-            if (layout.rows.length > 0) {
-              let rowTop = promptBottom + promptToImageGap;
-              layout.rows.forEach((row) => {
-                let cursorX = centerX - row.rowWidth / 2;
-                row.images.forEach((img, idx) => {
-                  const dim = row.dims[idx];
-                  updateImageNodePosition(img.id, {
-                    x: cursorX + dim.width / 2,
-                    y: rowTop + dim.totalHeight
-                  });
-                  cursorX += dim.width + colGap;
-                });
-                rowTop += row.rowHeight + rowGap;
-              });
-            }
-
-            const blockHeight = layout.promptHeight
-              + (layout.rows.length > 0 ? promptToImageGap + layout.imgBlockH : 0)
-              + nodeGap;
-            blockTop += blockHeight;
-          });
-
-          maxNormalRight = Math.max(maxNormalRight, x + threadW);
-
-          return { width: threadW, height: blockTop - y };
+      // Normals grid
+      const normalsSorted = [...normals].sort((a, b) => parseInt(a.id) - parseInt(b.id));
+      let x = 0, y = START_Y, rowH = 0, count = 0;
+      normalsSorted.forEach(p => {
+        const info = measureBlock(p);
+        if (count >= NORMAL_PER_ROW) {
+          y += rowH + ROW_GAP;
+          x = 0;
+          rowH = 0;
+          count = 0;
         }
-      );
 
-      // Zone 2: Groups (Limit 5)
-      const sortedGroups = [...(activeCanvas.groups || [])].sort((a, b) => parseInt(a.id) - parseInt(b.id));
-      const getNormalAnchorRow = (rowIndex: number) => normalRows[rowIndex] || normalRows[normalRows.length - 1];
+        placePrompt(p, x, y);
+        x += info.blockWidth + COL_GAP;
+        rowH = Math.max(rowH, info.blockHeight);
+        count += 1;
+      });
 
-      const groupRows = layoutRows(
-        sortedGroups,
-        5,
-        (rowIndex) => {
-          const anchor = getNormalAnchorRow(rowIndex);
-          return anchor ? anchor.endX + ZONE_GAP : 0;
-        },
-        (rowIndex, previousRow) => {
-          const anchor = normalRows[rowIndex];
-          if (anchor) return anchor.startY;
-          return previousRow ? previousRow.startY + previousRow.height + ROW_GAP : startY;
-        },
-        (group: CanvasGroup, x, y) => {
-          // Move Group
-          const dx = x - group.bounds.x;
-          const dy = y - group.bounds.y;
-
-          group.nodeIds.forEach((nid: string) => {
-            const p = activeCanvas.promptNodes.find(n => n.id === nid);
-            if (p) updatePromptNodePosition(p.id, { x: p.position.x + dx, y: p.position.y + dy });
-            const img = activeCanvas.imageNodes.find(n => n.id === nid);
-            if (img) updateImageNodePosition(img.id, { x: img.position.x + dx, y: img.position.y + dy });
-          });
-
-          updateGroup({
-            ...group,
-            bounds: { ...group.bounds, x, y }
-          });
-
-          maxGroupRight = Math.max(maxGroupRight, x + group.bounds.width);
-
-          return { width: group.bounds.width, height: group.bounds.height };
+      // Errors stacked below normals
+      const errorsSorted = [...errors].sort((a, b) => parseInt(a.id) - parseInt(b.id));
+      let xe = 0, ye = y + rowH + ROW_GAP, eRowH = 0, eCount = 0;
+      errorsSorted.forEach(p => {
+        const info = measureBlock(p);
+        if (eCount >= ERRORS_PER_ROW) {
+          ye += eRowH + ROW_GAP;
+          xe = 0;
+          eRowH = 0;
+          eCount = 0;
         }
-      );
+        placePrompt(p, xe, ye);
+        xe += info.blockWidth + COL_GAP;
+        eRowH = Math.max(eRowH, info.blockHeight);
+        eCount += 1;
+      });
+    };
 
-      // Zone 3: Errors (Limit 10)
-      const errorAnchorRows = groupRows.length > 0 ? groupRows : normalRows;
-      const getErrorAnchorRow = (rowIndex: number) => errorAnchorRows[rowIndex] || errorAnchorRows[errorAnchorRows.length - 1];
-      const fallbackNormalRight = normalRows.reduce((max, row) => Math.max(max, row.endX), 0);
-      const fallbackGroupRight = groupRows.reduce((max, row) => Math.max(max, row.endX), 0);
-      const errorBaseX = Math.max(maxNormalRight, maxGroupRight, fallbackNormalRight, fallbackGroupRight) + ZONE_GAP;
-
-      layoutRows(
-        errorNodes,
-        10,
-        () => errorBaseX,
-        (rowIndex, previousRow) => {
-          const anchor = errorAnchorRows[rowIndex];
-          if (anchor) return anchor.startY;
-          return previousRow ? previousRow.startY + previousRow.height + ROW_GAP : startY;
-        },
-        (p, x, y) => {
-          const errorWidth = 380;
-          updatePromptNodePosition(p.id, { x: x + errorWidth / 2, y });
-          return { width: errorWidth, height: getPromptHeight(p.prompt) + 120 };
-        }
-      );
-    }
-  }, [activeCanvas, updatePromptNodePosition, updateImageNodePosition, isMobile]);
+    clearSelection();
+    requestAnimationFrame(runLayout);
+  }, [activeCanvas, clearSelection, updateImageNodePosition, updatePromptNodePosition, getPromptHeight]);
 
   const handleCutConnection = useCallback((promptId: string, imageId: string) => {
     unlinkNodes(promptId, imageId);
@@ -1826,10 +1577,7 @@ const AppContent: React.FC = () => {
             clearSelection();
             setSelectionMenuPosition(null);
           }}
-          onTag={() => {
-            notify.info('Tagging', 'Feature coming soon!');
-            setSelectionMenuPosition(null);
-          }}
+          onTag={handleTag}
         />
       )}
 
@@ -1852,7 +1600,11 @@ const AppContent: React.FC = () => {
           clearSelection();
           setSelectionMenuPosition(null);
         }}
-        onAutoArrange={arrangeAllNodes}
+        onAutoArrange={handleAutoArrange}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onContextMenu={handleContextMenu}
       >
         {/* 1. Connection Lines Layer (SVG) - Below all cards */}
         <svg
@@ -2203,7 +1955,7 @@ const AppContent: React.FC = () => {
         onClearSource={() => setActiveSourceImage(null)}
         isMobile={isMobile}
         onOpenSettings={(view) => {
-          setSettingsInitialView(view || 'api-channels');
+          setSettingsInitialView(view || 'api-management');
           setShowSettingsPanel(true);
         }}
       />
@@ -2217,7 +1969,7 @@ const AppContent: React.FC = () => {
         onClose={() => setIsChatOpen(false)}
         isMobile={isMobile}
         onOpenSettings={(view) => {
-          setSettingsInitialView(view || 'api-channels');
+          setSettingsInitialView(view || 'api-management');
           setShowSettingsPanel(true);
         }}
       />
@@ -2225,6 +1977,13 @@ const AppContent: React.FC = () => {
       {/* Legacy KeyManagerModal removed - integrated into UserProfileModal */}
 
       {/* User Profile Modal (Unified) */}
+      {/* Modals */}
+      <TagInputModal
+        isOpen={isTagModalOpen}
+        onClose={() => setIsTagModalOpen(false)}
+        initialTags={initialTags}
+        onSave={handleSaveTags}
+      />
       <UserProfileModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
@@ -2250,7 +2009,7 @@ const AppContent: React.FC = () => {
           // If keys are missing, open settings but user can close it (Skip logic)
           if (!keyManager.hasValidKeys()) {
             setShowSettingsPanel(true);
-            setSettingsInitialView('api-channels');
+            setSettingsInitialView('api-management');
           }
         }}
       />
@@ -2259,7 +2018,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.2.0
+        v1.2.1
       </div>
 
       {/* Project Manager (Replaces Canvas Manager) */}
