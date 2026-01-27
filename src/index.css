@@ -243,7 +243,8 @@ input[type=number] {
 }
 
 .ios-transition {
-  @apply transition-all duration-500 cubic-bezier(0.25, 0.1, 0.25, 1);
+  @apply transition-all duration-500;
+  transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .touch-target {
@@ -272,7 +273,7 @@ input[type=number] {
 }
 
 .bottom-sheet {
-  @apply fixed bottom-0 left-0 right-0 bg-[#1c1c1e]/95 backdrop-blur-3xl rounded-t-[32px] border-t border-white/10 animate-in slide-in-from-bottom duration-300;
+  @apply fixed bottom-0 left-0 right-0 bg-[#1c1c1e]/95 backdrop-blur-3xl rounded-t-[32px] border-t border-white/10 duration-300;
 }
 
 .blur-transition {
@@ -291,19 +292,27 @@ input[type=number] {
 }
 
 @media (max-width: 768px) {
-  button, a {
+
+  button,
+  a {
     min-height: 44px;
     min-width: 44px;
   }
-  input, textarea, select {
+
+  input,
+  textarea,
+  select {
     font-size: 16px;
   }
+
   .smooth-scroll {
     -webkit-overflow-scrolling: touch;
   }
+
   button {
     touch-action: manipulation;
   }
+
   .mobile-optimized {
     @apply px-4 py-3;
   }
