@@ -286,6 +286,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     return (
         <div
+            id="prompt-bar-container"
             className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
@@ -348,15 +349,15 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 <div className="input-bar-options">
                     {/* Mode Toggle (Desktop Only - hidden on mobile) */}
                     {!isMobile && (
-                        <div className="hidden md:flex items-center gap-1 mr-2 p-1 bg-zinc-800/50 rounded-lg">
+                        <div className="hidden md:flex items-center gap-1 mr-2 p-1 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                             <button
-                                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${config.mode === GenerationMode.IMAGE ? 'bg-indigo-500/20 text-indigo-400' : 'text-zinc-400 hover:text-white'}`}
+                                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${config.mode === GenerationMode.IMAGE ? 'bg-indigo-500/20 text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                                 onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
                             >
                                 图片
                             </button>
                             <button
-                                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${config.mode === GenerationMode.VIDEO ? 'bg-purple-500/20 text-purple-400' : 'text-zinc-400 hover:text-white'}`}
+                                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${config.mode === GenerationMode.VIDEO ? 'bg-purple-500/20 text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                                 onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
                             >
                                 视频
@@ -398,6 +399,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         {/* Model Button */}
                         <div className="relative">
                             <button
+                                id="models-dropdown-trigger"
                                 className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] max-w-[70vw] sm:max-w-none ${isModelListEmpty
                                     ? 'bg-zinc-800/50 border-zinc-700 text-zinc-500 min-w-0 sm:min-w-[220px] cursor-not-allowed'
                                     : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50 min-w-0 w-auto'
@@ -461,7 +463,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             {/* Aspect Ratio */}
                             <div className="relative flex-shrink-0">
                                 <button
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800/60 border border-zinc-700/40 hover:border-amber-500/30 transition-all text-zinc-400 hover:text-amber-400"
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all"
+                                    style={{
+                                        backgroundColor: 'var(--bg-tertiary)',
+                                        borderColor: 'var(--border-light)',
+                                        color: 'var(--text-secondary)'
+                                    }}
                                     onClick={() => toggleMenu('ratio')}
                                     title="宽高比"
                                 >
@@ -486,7 +493,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             {/* Image Size */}
                             <div className="relative flex-shrink-0">
                                 <button
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800/60 border border-zinc-700/40 hover:border-amber-500/30 transition-all text-zinc-400 hover:text-amber-400"
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all"
+                                    style={{
+                                        backgroundColor: 'var(--bg-tertiary)',
+                                        borderColor: 'var(--border-light)',
+                                        color: 'var(--text-secondary)'
+                                    }}
                                     onClick={() => toggleMenu('size')}
                                     title="分辨率"
                                 >
@@ -511,14 +523,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     <div className="input-bar-actions flex items-center gap-2">
 
                         {/* Group 1: Network & Provider Settings */}
-                        <div className="flex items-center gap-0.5 p-0.5 bg-zinc-800/60 rounded-full border border-zinc-700/50 h-[32px]">
+                        <div className="flex items-center gap-0.5 p-0.5 rounded-full border h-[32px]" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
                             {/* Grounding Tool - Now with capability check */}
                             <button
                                 className={`flex items-center gap-1.5 px-3 h-full rounded-full transition-all text-[11px] font-medium whitespace-nowrap ${!groundingSupported
-                                    ? 'opacity-40 cursor-not-allowed text-zinc-500'
+                                    ? 'opacity-40 cursor-not-allowed text-[var(--text-tertiary)]'
                                     : config.enableGrounding
-                                        ? 'bg-indigo-500/20 text-indigo-400 shadow-sm shadow-indigo-500/10'
-                                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                                        ? 'bg-indigo-500/15 text-indigo-500 shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]'
                                     }`}
                                 onClick={() => groundingSupported && setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }))}
                                 disabled={!groundingSupported}
@@ -535,11 +547,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         </div>
 
                         {/* Group 2: Generation Settings */}
-                        <div className="flex items-center gap-0.5 p-0.5 bg-zinc-800/60 rounded-full border border-zinc-700/50 h-[32px]">
+                        <div className="flex items-center gap-0.5 p-0.5 rounded-full border h-[32px]" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
                             {/* Parallel Count */}
                             <div className="relative h-full">
                                 <button
-                                    className="flex items-center gap-1.5 px-3 h-full rounded-full hover:bg-white/5 transition-all text-zinc-400 hover:text-white whitespace-nowrap"
+                                    className="flex items-center gap-1.5 px-3 h-full rounded-full transition-all whitespace-nowrap"
+                                    style={{ color: 'var(--text-secondary)' }}
                                     onClick={() => toggleMenu('count')}
                                     title="并发数量"
                                 >
@@ -563,7 +576,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                         {/* Upload Button */}
                         <button
-                            className="p-2.5 rounded-full bg-zinc-800/60 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all border border-zinc-700/50 hover:border-zinc-600"
+                            className="p-2.5 rounded-full transition-all border"
+                            style={{
+                                backgroundColor: 'var(--bg-tertiary)',
+                                color: 'var(--text-secondary)',
+                                borderColor: 'var(--border-light)'
+                            }}
                             onClick={() => fileInputRef.current?.click()}
                             title="上传参考图"
                         >

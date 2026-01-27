@@ -3,6 +3,7 @@ import { Canvas, PromptNode, GeneratedImage, AspectRatio, CanvasGroup, CanvasDra
 import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '../services/imageStorage';
 import { syncService } from '../services/syncService';
 import { fileSystemService } from '../services/fileSystemService';
+import { base64ToBlob, safeRevokeBlobUrl } from '../utils/blobUtils';
 
 const MAX_CANVASES = 10;
 
@@ -277,12 +278,21 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         ...prev,
                         canvases: prev.canvases.map(c => ({
                             ...c,
-                            imageNodes: c.imageNodes.map(img => ({
-                                ...img,
-                                url: img.url || imageMap.get(img.id) || '',
-                                // Hydrate originalUrl from IndexedDB (Local Original Cache)
-                                originalUrl: imageMap.get(img.id) || img.originalUrl
-                            })),
+                            imageNodes: c.imageNodes.map(img => {
+                                const storedUrl = imageMap.get(img.id);
+                                let displayUrl = img.url || '';
+                                if (storedUrl && storedUrl.startsWith('data:')) {
+                                    // Convert to Blob URL for display
+                                    const blob = base64ToBlob(storedUrl);
+                                    displayUrl = URL.createObjectURL(blob);
+                                }
+                                return {
+                                    ...img,
+                                    url: displayUrl, // Use Blob URL
+                                    // Hydrate originalUrl from IndexedDB (Local Original Cache)
+                                    originalUrl: storedUrl || img.originalUrl
+                                };
+                            }),
                             // Rehydrate reference images
                             promptNodes: c.promptNodes.map(pn => ({
                                 ...pn,
@@ -511,33 +521,54 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return;
         }
 
-        // 1. Optimistic Update: Add to State immediately so it's visible & persistable in LS
+        // Process Nodes: Create Blob URLs for State, Keep Base64 for Persistence
+        const stateNodes: GeneratedImage[] = [];
+        const persistenceTasks: Promise<void>[] = [];
+
+        for (const node of validNodes) {
+            let displayUrl = node.url;
+            // If Base64, convert to Blob URL for optimized rendering
+            if (node.url.startsWith('data:')) {
+                try {
+                    const blob = base64ToBlob(node.url);
+                    displayUrl = URL.createObjectURL(blob);
+                } catch (e) {
+                    console.error('Failed to create Blob URL', e);
+                }
+            }
+
+            stateNodes.push({ ...node, url: displayUrl });
+
+            // Persistence: Save ORIGINAL (Base64) to IndexedDB
+            persistenceTasks.push((async () => {
+                try {
+                    // A. IndexedDB (Fast Cache) - Save ORIGINAL URL (Base64)
+                    await saveImage(node.id, node.url);
+
+                    // B. File System (Persistent Disk)
+                    if (state.fileSystemHandle) {
+                        try {
+                            const res = await fetch(node.url); // works with data: or blob:
+                            const blob = await res.blob();
+                            await fileSystemService.saveImageToHandle(state.fileSystemHandle, node.id, blob);
+                        } catch (e) {
+                            console.warn(`[CanvasContext] Failed to save image ${node.id} to disk`, e);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`[CanvasContext] Failed to save image ${node.id}`, e);
+                }
+            })());
+        }
+
+        // 1. Optimistic Update: Add to State immediately (using Blob URLs)
         updateCanvas(c => ({
             ...c,
-            imageNodes: [...c.imageNodes, ...validNodes]
+            imageNodes: [...c.imageNodes, ...stateNodes]
         }));
 
-        // 2. Save to IndexedDB (and FileSystem) in background
-        try {
-            await Promise.all(validNodes.map(async node => {
-                // A. IndexedDB (Fast Cache)
-                await saveImage(node.id, node.url);
-
-                // B. File System (Persistent Disk)
-                if (state.fileSystemHandle) {
-                    try {
-                        const res = await fetch(node.url);
-                        const blob = await res.blob();
-                        await fileSystemService.saveImageToHandle(state.fileSystemHandle, node.id, blob);
-                    } catch (e) {
-                        console.warn(`[CanvasContext] Failed to save image ${node.id} to disk`, e);
-                    }
-                }
-            }));
-        } catch (error) {
-            console.error('[CanvasContext] Failed to save images:', error);
-            // We continue to update state so UI shows standard image even if persistence failed temporarily
-        }
+        // 2. Execute Persistence in Background
+        await Promise.all(persistenceTasks);
     }, [updateCanvas]);
 
     const updatePromptNodePosition = useCallback((
@@ -665,15 +696,22 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // Delete from IndexedDB
         deleteImage(id);
 
-        updateCanvas(c => ({
-            ...c,
-            imageNodes: c.imageNodes.filter(n => n.id !== id),
-            // Also update parent prompt node to remove from child list
-            promptNodes: c.promptNodes.map(p => ({
-                ...p,
-                childImageIds: p.childImageIds.filter(cid => cid !== id)
-            }))
-        }));
+        updateCanvas(c => {
+            // Revoke Blob URL to free memory
+            const node = c.imageNodes.find(n => n.id === id);
+            if (node) {
+                safeRevokeBlobUrl(node.url);
+            }
+            return {
+                ...c,
+                imageNodes: c.imageNodes.filter(n => n.id !== id),
+                // Also update parent prompt node to remove from child list
+                promptNodes: c.promptNodes.map(p => ({
+                    ...p,
+                    childImageIds: p.childImageIds.filter(cid => cid !== id)
+                }))
+            };
+        });
     }, [updateCanvas]);
 
     const deletePromptNode = useCallback((id: string) => {
@@ -808,6 +846,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const canRedo = (state.history[state.activeCanvasId]?.future.length || 0) > 0;
 
     const clearAllData = useCallback(() => {
+        // [Optimization] Revoke all Blob URLs to free memory
+        state.canvases.forEach(c => {
+            c.imageNodes.forEach(img => {
+                safeRevokeBlobUrl(img.url);
+            });
+        });
+
         // Clear localStorage
         localStorage.removeItem(STORAGE_KEY);
         // Clear IndexedDB images
@@ -821,7 +866,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             folderName: null,
             selectedNodeIds: []
         });
-    }, []);
+    }, [state.canvases]);
 
     /**
      * Arrange all nodes: Group by project (prompt + child images)

@@ -11,21 +11,29 @@ const ApiManagementView = () => {
       <div className="px-1 py-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <h3 className="text-2xl font-bold text-white text-left">API 管理</h3>
-            <div className="flex items-center gap-2 bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-xl p-1 w-full sm:w-fit">
+            <h3 className="text-2xl font-bold text-left" style={{ color: 'var(--text-primary)' }}>API 管理</h3>
+            <div className="flex items-center gap-2 rounded-xl p-1 w-full sm:w-fit" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)', borderWidth: '1px' }}>
               <button
                 onClick={() => setActiveTab('dispatch')}
-                className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors ${activeTab === 'dispatch'
-                  ? 'bg-indigo-500/20 text-white border border-indigo-500/30'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors`}
+                style={{
+                  backgroundColor: activeTab === 'dispatch' ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                  color: activeTab === 'dispatch' ? '#fff' : 'var(--text-tertiary)',
+                  borderColor: activeTab === 'dispatch' ? 'rgba(99, 102, 241, 0.3)' : 'transparent',
+                  borderWidth: '1px'
+                }}
               >
                 <SlidersHorizontal size={14} /> 通道管理 (Local)
               </button>
               <button
                 onClick={() => setActiveTab('assets')}
-                className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors ${activeTab === 'assets'
-                  ? 'bg-indigo-500/20 text-white border border-indigo-500/30'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors`}
+                style={{
+                  backgroundColor: activeTab === 'assets' ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                  color: activeTab === 'assets' ? '#fff' : 'var(--text-tertiary)',
+                  borderColor: activeTab === 'assets' ? 'rgba(99, 102, 241, 0.3)' : 'transparent',
+                  borderWidth: '1px'
+                }}
               >
                 <Building2 size={14} /> OneAPI 管理 (Remote)
               </button>

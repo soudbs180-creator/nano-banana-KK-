@@ -4,8 +4,9 @@ import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import {
     Loader2, Menu, Layers, Search, ZoomIn, ZoomOut,
-    Focus, CircleDot, LayoutDashboard, GripVertical, Bot, Grid3x3, Square
+    Focus, CircleDot, LayoutDashboard, GripVertical, Bot, Grid3x3, Square, Sun, Moon
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 interface ProjectManagerProps {
     onSearch: () => void;
@@ -70,6 +71,8 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
             window.visualViewport?.removeEventListener('scroll', handleViewportResize);
         };
     }, [isMobile]);
+
+    const { theme, toggleTheme } = useTheme();
 
     // Dragging Logic
     const [topPosition, setTopPosition] = useState(() => {
@@ -282,13 +285,17 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
         >
             {/* Project Module Container */}
             <div
-                className={`flex flex-col gap-2 p-1.5 glass-strong rounded-2xl border border-white/5 shadow-xl transition-colors hover:bg-[#1c1c1e]/90 cursor-grab active:cursor-grabbing ${isDragging ? 'scale-[0.98]' : ''}`}
+                className={`flex flex-col gap-2 p-1.5 glass-strong rounded-2xl transition-colors cursor-grab active:cursor-grabbing ${isDragging ? 'scale-[0.98]' : ''}`}
+                style={{
+                    borderColor: 'var(--border-light)',
+                    boxShadow: 'var(--shadow-xl)'
+                }}
                 onMouseDown={handleDragStart}
                 onTouchStart={handleDragStart}
             >
                 {/* Drag Handle Indicator */}
                 <div className="w-full flex justify-center py-0.5 opacity-20 hover:opacity-50">
-                    <div className="w-4 h-0.5 bg-white/50 rounded-full" />
+                    <div className="w-4 h-0.5 rounded-full" style={{ backgroundColor: 'var(--text-primary)' }} />
                 </div>
 
                 {/* 1. Sidebar Toggle REMOVED as per user request (Extra Icon) */}
@@ -308,7 +315,16 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 <div className="relative">
                     <button
                         onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown); }}
-                        className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all group relative flex items-center justify-center outline-none focus:outline-none"
+                        className="p-2 rounded-lg transition-all group relative flex items-center justify-center outline-none focus:outline-none"
+                        style={{ color: 'var(--text-secondary)' }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.color = 'var(--text-primary)';
+                            e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.color = 'var(--text-secondary)';
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
                         title={activeProjectName}
                         tabIndex={-1}
                     >
@@ -328,15 +344,25 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                     {showDropdown && (
                         <div className="absolute left-full top-0 ml-3 w-64 glass-strong rounded-2xl overflow-hidden z-50 animate-scaleIn origin-top-left border border-white/5 shadow-2xl cursor-default">
                             {/* ... same dropdown content ... */}
-                            <div className="px-4 py-3 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                                <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">我的项目</h3>
-                                <span className="text-[10px] text-zinc-500">{activeProjectName}</span>
+                            <div
+                                className="px-4 py-3 border-b flex items-center justify-between"
+                                style={{
+                                    borderColor: 'var(--border-light)',
+                                    backgroundColor: 'var(--bg-tertiary)'
+                                }}
+                            >
+                                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>我的项目</h3>
+                                <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{activeProjectName}</span>
                             </div>
                             <div className="max-h-60 overflow-y-auto custom-scrollbar">
                                 {state.canvases.map(canvas => (
                                     <div
                                         key={canvas.id}
-                                        className={`flex items-center gap-2 px-3 py-2.5 hover:bg-white/5 cursor-pointer transition-colors ${canvas.id === activeCanvas?.id ? 'bg-indigo-500/10 text-indigo-400' : 'text-zinc-300'}`}
+                                        className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-colors ${canvas.id === activeCanvas?.id ? 'text-indigo-400' : ''}`}
+                                        style={{
+                                            backgroundColor: canvas.id === activeCanvas?.id ? 'var(--toolbar-active)' : 'transparent',
+                                            color: canvas.id === activeCanvas?.id ? 'var(--accent-indigo)' : 'var(--text-secondary)'
+                                        }}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             if (editingId !== canvas.id) {
@@ -344,9 +370,11 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                                                 setShowDropdown(false);
                                             }
                                         }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = canvas.id === activeCanvas?.id ? 'var(--toolbar-active)' : 'transparent'}
                                     >
                                         <div className={`w-4 h-4 flex items-center justify-center ${canvas.id === activeCanvas?.id ? 'opacity-100' : 'opacity-0'}`}>
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-indigo)' }}>
                                                 <polyline points="20 6 9 17 4 12" />
                                             </svg>
                                         </div>
@@ -385,11 +413,51 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                                     </div>
                                 ))}
                             </div>
-                            <div className="border-t border-white/5 p-2 space-y-1 bg-black/20">
-                                <button onClick={(e) => { e.stopPropagation(); handleCreateProject(); }} className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-all ${canCreateCanvas ? 'text-indigo-400 hover:bg-indigo-500/10' : 'text-zinc-600 cursor-not-allowed'}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>新建项目</button>
-                                <div className="h-px bg-white/5 my-1" />
-                                <button onClick={(e) => { e.stopPropagation(); handleDownloadAll(); }} disabled={isDownloading} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>{isDownloading ? '打包中...' : '下载项目原图'}</button>
-                                <button onClick={(e) => { e.stopPropagation(); handleClearAll(); }} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>清除项目数据</button>
+                            <div className="border-t p-2 space-y-1" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-secondary)' }}>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleCreateProject(); }}
+                                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-all ${canCreateCanvas ? 'hover:bg-opacity-10' : 'cursor-not-allowed'}`}
+                                    style={{
+                                        color: canCreateCanvas ? 'var(--accent-indigo)' : 'var(--text-secondary)',
+                                        backgroundColor: 'transparent'
+                                    }}
+                                    onMouseEnter={(e) => canCreateCanvas && (e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)')}
+                                    onMouseLeave={(e) => canCreateCanvas && (e.currentTarget.style.backgroundColor = 'transparent')}
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>新建项目
+                                </button>
+                                <div className="h-px my-1" style={{ backgroundColor: 'var(--border-light)' }} />
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleDownloadAll(); }}
+                                    disabled={isDownloading}
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors"
+                                    style={{ color: 'var(--text-secondary)' }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.color = 'var(--text-primary)';
+                                        e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.color = 'var(--text-secondary)';
+                                        e.currentTarget.style.backgroundColor = 'transparent';
+                                    }}
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>{isDownloading ? '打包中...' : '下载项目原图'}
+                                </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleClearAll(); }}
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors"
+                                    style={{ color: 'var(--text-secondary)' }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.color = 'var(--accent-red)';
+                                        e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.color = 'var(--text-secondary)';
+                                        e.currentTarget.style.backgroundColor = 'transparent';
+                                    }}
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>清除项目数据
+                                </button>
                             </div>
                         </div>
                     )}
@@ -398,19 +466,37 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 {/* 3. Search Button */}
                 <button
                     onClick={(e) => { e.stopPropagation(); onSearch(); }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
+                    className="p-2 rounded-lg transition-all outline-none focus:outline-none"
+                    style={{ color: 'var(--text-secondary)' }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.color = 'var(--text-primary)';
+                        e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.color = 'var(--text-secondary)';
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
                     title="搜索提示词 (Ctrl+K)"
                     tabIndex={-1}
                 >
                     <Search size={20} />
                 </button>
 
-                <div className="w-full h-px bg-white/5 my-1" />
+                <div className="w-full h-px my-1" style={{ backgroundColor: 'var(--toolbar-divider)' }} />
 
                 {/* 4. Zoom Controls and Tools */}
                 <button
                     onClick={(e) => { e.stopPropagation(); onZoomIn(); }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
+                    className="p-2 rounded-lg transition-all outline-none focus:outline-none"
+                    style={{ color: 'var(--text-secondary)' }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.color = 'var(--text-primary)';
+                        e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.color = 'var(--text-secondary)';
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
                     title="放大 (+)"
                     tabIndex={-1}
                 >
@@ -453,10 +539,21 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                     <LayoutDashboard size={20} />
                 </button>
 
+                <div className="w-full h-px my-1" style={{ backgroundColor: 'var(--toolbar-divider)' }} />
+
+                <button
+                    onClick={(e) => { e.stopPropagation(); toggleTheme(); }}
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
+                    title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+                    tabIndex={-1}
+                >
+                    {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
+                </button>
+
                 {/* Mobile Only: Robot Chat Button */}
                 {isMobile && onToggleChat && (
                     <>
-                        <div className="w-full h-px bg-white/5 my-1" />
+                        <div className="w-full h-px my-1" style={{ backgroundColor: 'var(--toolbar-divider)' }} />
                         <button
                             onClick={(e) => { e.stopPropagation(); onToggleChat(); }}
                             className={`p-2 rounded-lg transition-all outline-none focus:outline-none relative ${isChatOpen

@@ -110,21 +110,22 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
 
     return (
         <ProfileErrorBoundary onClose={onClose}>
-            <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200" onClick={handleClose}>
-                <div
-                    className="w-full max-w-sm bg-[#000000] rounded-2xl shadow-2xl border border-zinc-800/50 animate-in zoom-in-95 duration-200 overflow-hidden"
-                    onClick={e => e.stopPropagation()}
-                >
-                    <div className="w-full p-5">
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center gap-2">
-                                {view !== 'main' && <button onClick={() => setView('main')}><ChevronLeft size={20} className="text-blue-500" /></button>}
-                                <h2 className="text-xl font-bold text-white">
-                                    {view === 'main' ? '个人中心' : view === 'edit-profile' ? '编辑资料' : '修改密码'}
-                                </h2>
+                <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200" onClick={handleClose}>
+                    <div
+                        className="w-full max-w-sm rounded-2xl shadow-2xl border animate-in zoom-in-95 duration-200 overflow-hidden"
+                        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="w-full p-5">
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-2">
+                                    {view !== 'main' && <button onClick={() => setView('main')}><ChevronLeft size={20} className="text-blue-500" /></button>}
+                                    <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                                        {view === 'main' ? '个人中心' : view === 'edit-profile' ? '编辑资料' : '修改密码'}
+                                    </h2>
+                                </div>
+                                <button onClick={handleClose} className="p-1.5 rounded-full" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}><X size={16} /></button>
                             </div>
-                            <button onClick={handleClose} className="p-1.5 bg-zinc-800 rounded-full text-zinc-400 hover:text-white"><X size={16} /></button>
-                        </div>
 
                         {message && (
                             <div className={`mb-4 p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
@@ -134,20 +135,20 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
 
                         {view === 'main' && (
                             <>
-                                <div className="flex items-center gap-4 mb-6 p-4 bg-zinc-900 rounded-xl border border-zinc-800">
+                                <div className="flex items-center gap-4 mb-6 p-4 rounded-xl border" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
                                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl font-bold text-white overflow-hidden">
                                         {userAvatarUrl ? <img src={userAvatarUrl} className="w-full h-full object-cover" /> : user?.email?.[0].toUpperCase()}
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-semibold text-white">{displayName || 'User'}</h3>
-                                        <p className="text-xs text-zinc-400">{user?.email}</p>
+                                        <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{displayName || 'User'}</h3>
+                                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{user?.email}</p>
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <button onClick={() => setView('edit-profile')} className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors">
+                                    <button onClick={() => setView('edit-profile')} className="w-full flex items-center justify-between p-3 rounded-xl transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
                                         <span className="flex items-center gap-3"><UserIcon size={16} /> 编辑资料</span> <ChevronRight size={14} />
                                     </button>
-                                    <button onClick={() => setView('change-password')} className="w-full flex items-center justify-between p-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition-colors">
+                                    <button onClick={() => setView('change-password')} className="w-full flex items-center justify-between p-3 rounded-xl transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
                                         <span className="flex items-center gap-3"><Lock size={16} /> 修改密码</span> <ChevronRight size={14} />
                                     </button>
                                     <button onClick={onSignOut} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors mt-4">
@@ -162,12 +163,12 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                 {view === 'edit-profile' && (
                                     <>
                                         <div>
-                                            <label className="text-xs text-zinc-500 mb-1 block">昵称 (Display Name)</label>
-                                            <input value={displayName} onChange={e => setDisplayName(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800 focus:border-indigo-500 outline-none" placeholder="User Name" />
+                                            <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>昵称 (Display Name)</label>
+                                            <input value={displayName} onChange={e => setDisplayName(e.target.value)} className="w-full p-3 rounded-xl border outline-none" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="User Name" />
                                         </div>
                                         <div>
-                                            <label className="text-xs text-zinc-500 mb-1 block">头像链接 (Avatar URL)</label>
-                                            <input value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800 focus:border-indigo-500 outline-none" placeholder="https://..." />
+                                            <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>头像链接 (Avatar URL)</label>
+                                            <input value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)} className="w-full p-3 rounded-xl border outline-none" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="https://..." />
                                         </div>
                                         <button onClick={handleUpdateProfile} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-white font-medium flex items-center justify-center gap-2 mt-4">
                                             {loading && <Loader2 size={16} className="animate-spin" />} 保存更改
@@ -177,16 +178,16 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                 {view === 'change-password' && (
                                     <>
                                         <div>
-                                            <label className="text-xs text-zinc-500 mb-1 block">当前密码</label>
-                                            <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800" placeholder="Current Password" />
+                                            <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>当前密码</label>
+                                            <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full p-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="Current Password" />
                                         </div>
                                         <div>
-                                            <label className="text-xs text-zinc-500 mb-1 block">新密码 (6位以上)</label>
-                                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800" placeholder="New Password" />
+                                            <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>新密码 (6位以上)</label>
+                                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full p-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="New Password" />
                                         </div>
                                         <div>
-                                            <label className="text-xs text-zinc-500 mb-1 block">确认新密码</label>
-                                            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white border border-zinc-800" placeholder="Confirm Password" />
+                                            <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>确认新密码</label>
+                                            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full p-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="Confirm Password" />
                                         </div>
                                         <button onClick={handleChangePassword} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-white font-medium flex items-center justify-center gap-2 mt-4">
                                             {loading && <Loader2 size={16} className="animate-spin" />} 确定修改

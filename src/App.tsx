@@ -16,6 +16,7 @@ import { keyManager } from './services/keyManager';
 import { getCardDimensions } from './utils/styleUtils';
 // Lucide icons replaced with SVGs
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
+import { ThemeProvider } from './context/ThemeContext';
 import ConnectionDot from './components/ConnectionDot';
 import LoginScreen from './components/LoginScreen';
 import UserProfileModal, { UserProfileView } from './components/UserProfileModal';
@@ -53,7 +54,6 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     const seen = localStorage.getItem('kk_tutorial_seen');
     if (!seen) {
-      // Small delay to ensure UI is ready
       setTimeout(() => setShowTutorial(true), 1500);
     }
   }, []);
@@ -112,6 +112,19 @@ const AppContent: React.FC = () => {
   const [showStorageModal, setShowStorageModal] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
+  /* Tutorial Logic - Delayed until Storage is Checked */
+  const [isStorageChecked, setIsStorageChecked] = useState(false);
+
+  useEffect(() => {
+    // Only trigger if storage is checked AND we are not showing the modal
+    if (isStorageChecked && !showStorageModal) {
+      const seen = localStorage.getItem('kk_tutorial_seen');
+      if (!seen) {
+        setTimeout(() => setShowTutorial(true), 1500);
+      }
+    }
+  }, [isStorageChecked, showStorageModal]);
+
   const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs'>('dashboard');
   const [showGrid, setShowGrid] = useState(true);
 
@@ -168,6 +181,16 @@ const AppContent: React.FC = () => {
         } else if (!keyManager.hasValidKeys()) {
           setShowSettingsPanel(true);
           setSettingsInitialView('api-management');
+        }
+        if (!storageMode) {
+          // Show storage selection modal first
+          setShowStorageModal(true);
+        } else {
+          setIsStorageChecked(true); // Mark checked immediately if exists
+          if (!keyManager.hasValidKeys()) {
+            setShowSettingsPanel(true);
+            setSettingsInitialView('api-management');
+          }
         }
       });
     }
@@ -524,9 +547,10 @@ const AppContent: React.FC = () => {
   }, []);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Clean Fly-to Navigation Logic
-  const handleNavigateToNode = useCallback((targetX: number, targetY: number) => {
+  const handleNavigateToNode = useCallback((targetX: number, targetY: number, id?: string) => {
     const screenCenterX = window.innerWidth / 2;
     const screenCenterY = window.innerHeight / 2;
 
@@ -543,13 +567,17 @@ const AppContent: React.FC = () => {
     // IMPERATIVE UPDATE: Tell InfiniteCanvas to move
     canvasRef.current?.setView(newX, newY, targetScale);
 
-    // Keep local state in sync (though onTransformChange should technically handle this, 
-    // doing it here ensures immediate React updates if needed)
+    // Keep local state in sync
     setCanvasTransform({
       x: newX,
       y: newY,
       scale: targetScale
     });
+
+    if (id) {
+      setHighlightedId(id);
+      setTimeout(() => setHighlightedId(null), 3000); // Highlight for 3 seconds
+    }
   }, []);
 
   const handleResetView = useCallback(() => {
@@ -1623,6 +1651,7 @@ const AppContent: React.FC = () => {
 
       {/* Main Infinite Canvas */}
       <InfiniteCanvas
+        id="canvas-container"
         ref={canvasRef}
         showGrid={showGrid}
         onTransformChange={setCanvasTransform}
@@ -1886,13 +1915,41 @@ const AppContent: React.FC = () => {
 
 
 
-        {/* 2. Persistent Prompt Nodes */}
+        {/* 2. Groups Layer (Behind cards) */}
+        {activeCanvas?.groups?.map(group => (
+          <CanvasGroupComponent
+            key={group.id}
+            group={group}
+            zoom={canvasTransform.scale}
+            highlighted={highlightedId === group.id}
+            onUngroup={removeGroup}
+            onDragStart={(id, e) => {
+              // Logic to handle group dragging could be added here
+              // For now, we might just rely on selection moving? 
+              // Or implement specific group drag. 
+              // Usually dragging the group background should move all items.
+              // Let's defer complex group dragging for now or check if handled.
+              // Actually, let's just enable selecting the group to move it?
+              // CanvasGroupComponent calls onDragStart prop.
+              // We can implement a simple handler or reuse a placeholder.
+              // For now, let's just update selection to include all group nodes?
+              // Better: implement a simple handleGroupDragStart if needed, 
+              // but for visual box, just rendering is step 1.
+              // Let's pass a handler that selects all nodes in the group.
+              const nodeIds = group.nodeIds;
+              selectNodes(nodeIds);
+            }}
+          />
+        ))}
+
+        {/* 3. Persistent Prompt Nodes */}
         {activeCanvas?.promptNodes.map(node => (
           <PromptNodeComponent
             key={node.id}
             node={node}
             onPositionChange={updatePromptNodePosition}
             isSelected={selectedNodeIds.includes(node.id)}
+            highlighted={highlightedId === node.id}
             onSelect={() => selectNodes([node.id], !(window.event as any)?.shiftKey)}
             onClickPrompt={handlePromptClick}
             onConnectStart={handleConnectStart}
@@ -1921,6 +1978,7 @@ const AppContent: React.FC = () => {
             image={node}
             position={node.position}
             onPositionChange={updateImageNodePosition}
+            highlighted={highlightedId === node.id}
             onDimensionsUpdate={updateImageNodeDimensions}
             onDelete={deleteImageNode}
             onConnectEnd={handleConnectEnd}
@@ -1958,7 +2016,7 @@ const AppContent: React.FC = () => {
       {/* Mobile Top Right Avatar - Removed by user request */}
 
       {/* Prompt Bar */}
-      <div id="prompt-bar-container" className="contents">
+      <div className="contents">
         <PromptBar
           config={config}
           setConfig={setConfig}
@@ -2026,15 +2084,14 @@ const AppContent: React.FC = () => {
         isOpen={showStorageModal}
         onComplete={() => {
           setShowStorageModal(false);
-          // After storage configured, check if API key is set
-          // Using hasValidKeys to ensure we catch cases with no keys or only invalid ones
-          // If keys are missing, open settings but user can close it (Skip logic)
+          setIsStorageChecked(true);
           if (!keyManager.hasValidKeys()) {
             setShowSettingsPanel(true);
             setSettingsInitialView('api-management');
           }
         }}
       />
+
 
 
 
@@ -2064,6 +2121,7 @@ const AppContent: React.FC = () => {
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         promptNodes={activeCanvas?.promptNodes || []}
+        groups={activeCanvas?.groups || []}
         onNavigate={handleNavigateToNode}
       />
 
@@ -2117,15 +2175,21 @@ const App: React.FC = () => {
   }
 
   if (!user) {
-    return <LoginScreen />;
+    return (
+      <ThemeProvider>
+        <LoginScreen />
+      </ThemeProvider>
+    );
   }
 
   return (
-    <CanvasProvider>
-      <NotificationToast />
-      <UpdateNotification />
-      <AppContent />
-    </CanvasProvider>
+    <ThemeProvider>
+      <CanvasProvider>
+        <NotificationToast />
+        <UpdateNotification />
+        <AppContent />
+      </CanvasProvider>
+    </ThemeProvider>
   );
 };
 

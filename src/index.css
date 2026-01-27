@@ -5,29 +5,33 @@
    CSS Variables & Design Tokens (AnyGen Premium)
    ============================================ */
 :root {
-  /* Background Colors - Deep Premium Dark */
-  --bg-primary: #050505;
-  --bg-secondary: #0F0F10;
-  --bg-tertiary: #18181B;
-  --bg-canvas: #050505;
+  /* Background Colors - Light */
+  --bg-primary: #f7f8fb;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f3f7;
+  --bg-canvas: #f3f4f6;
+  --bg-color: #ffffff;
+  --menu-bg: #f5f5f5;
+  --text-color: #0f172a;
+  --accent-color: #3B82F6;
 
   /* Toolbar & Glass Colors */
-  --toolbar-bg: rgba(15, 15, 16, 0.7);
-  --toolbar-bg-dark: rgba(10, 10, 12, 0.8);
-  --toolbar-hover: rgba(255, 255, 255, 0.08);
-  --toolbar-active: rgba(255, 255, 255, 0.12);
-  --toolbar-divider: rgba(255, 255, 255, 0.08);
+  --toolbar-bg: rgba(255, 255, 255, 0.8);
+  --toolbar-bg-dark: rgba(255, 255, 255, 0.85);
+  --toolbar-hover: rgba(15, 23, 42, 0.06);
+  --toolbar-active: rgba(15, 23, 42, 0.12);
+  --toolbar-divider: rgba(15, 23, 42, 0.08);
 
   /* Border Colors - Subtle & Refined */
-  --border-light: rgba(255, 255, 255, 0.06);
-  --border-medium: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-light: rgba(15, 23, 42, 0.08);
+  --border-medium: rgba(15, 23, 42, 0.14);
+  --border-strong: rgba(15, 23, 42, 0.2);
 
   /* Text Colors */
-  --text-primary: #FFFFFF;
-  --text-secondary: rgba(255, 255, 255, 0.65);
-  --text-tertiary: rgba(255, 255, 255, 0.4);
-  --text-muted: rgba(255, 255, 255, 0.25);
+  --text-primary: #0f172a;
+  --text-secondary: rgba(15, 23, 42, 0.7);
+  --text-tertiary: rgba(15, 23, 42, 0.5);
+  --text-muted: rgba(15, 23, 42, 0.35);
 
   /* Accent Colors - Vibrant & Electric */
   --accent-indigo: #6366F1;
@@ -42,15 +46,15 @@
 
   /* Gradients */
   --gradient-primary: linear-gradient(135deg, #6366F1 0%, #A855F7 100%);
-  --gradient-surface: linear-gradient(180deg, rgba(24, 24, 27, 0.6) 0%, rgba(24, 24, 27, 0.3) 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(243, 244, 246, 0.8) 100%);
 
   /* Shadows - Ambient & Soft */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
-  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6);
-  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.12);
+  --shadow-lg: 0 16px 48px rgba(15, 23, 42, 0.18);
+  --shadow-xl: 0 24px 64px rgba(15, 23, 42, 0.22);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.2);
 
   /* Transitions */
   --transition-fast: 0.2s cubic-bezier(0.2, 0, 0, 1);
@@ -65,6 +69,47 @@
   --radius-xl: 24px;
   --radius-2xl: 32px;
   --radius-full: 9999px;
+
+  /* Grid */
+  --grid-dot: rgba(0, 0, 0, 0.12);
+}
+
+body.dark-mode {
+  --bg-primary: #09090b;
+  --bg-secondary: #18181b;
+  --bg-tertiary: #27272a;
+  --bg-canvas: #09090b;
+  --bg-color: #0c0c0e;
+  --menu-bg: #1f1f22;
+  --text-color: #f4f4f5;
+  --accent-color: #3d5afe;
+
+  --toolbar-bg: rgba(24, 24, 27, 0.75);
+  --toolbar-bg-dark: rgba(39, 39, 42, 0.85);
+  --toolbar-hover: rgba(255, 255, 255, 0.08);
+  --toolbar-active: rgba(255, 255, 255, 0.12);
+  --toolbar-divider: rgba(255, 255, 255, 0.1);
+
+  --border-light: rgba(255, 255, 255, 0.12);
+  --border-medium: rgba(255, 255, 255, 0.2);
+  --border-strong: rgba(255, 255, 255, 0.3);
+
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-tertiary: rgba(255, 255, 255, 0.4);
+  --text-muted: rgba(255, 255, 255, 0.25);
+
+  --gradient-primary: linear-gradient(135deg, #6366F1 0%, #A855F7 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(24, 24, 27, 0.6) 0%, rgba(24, 24, 27, 0.3) 100%);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+
+  --grid-dot: rgba(255, 255, 255, 0.15);
 }
 
 /* ============================================
@@ -100,15 +145,21 @@ body,
   width: 800px;
   height: 800px;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(30, 27, 75, 0.2) 0%, transparent 70%);
+  /* Light Gradient */
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, transparent 70%);
   pointer-events: none;
   z-index: 0;
 }
 
+body.dark-mode #root::before {
+  background: radial-gradient(circle, rgba(30, 27, 75, 0.2) 0%, transparent 70%);
+}
+
 body {
   font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  transition: all 0.3s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -moz-osx-font-smoothing: grayscale;
@@ -285,7 +336,7 @@ input[type=number] {
   pointer-events: none;
   z-index: 0;
   /* Dot grid pattern */
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
   background-size: 24px 24px;
   background-position: center center;
 }
@@ -1410,4 +1461,28 @@ input[type=number] {
   to {
     width: 0%;
   }
+}
+
+/* Light-mode overrides for settings panel readability */
+body:not(.dark-mode) .settings-panel .text-white {
+  color: var(--text-primary) !important;
+}
+
+body:not(.dark-mode) .settings-panel .text-zinc-300,
+body:not(.dark-mode) .settings-panel .text-zinc-400,
+body:not(.dark-mode) .settings-panel .text-zinc-500 {
+  color: var(--text-secondary) !important;
+}
+
+body:not(.dark-mode) .settings-panel .bg-zinc-900,
+body:not(.dark-mode) .settings-panel .bg-zinc-800,
+body:not(.dark-mode) .settings-panel .bg-[#121214],
+body:not(.dark-mode) .settings-panel .bg-[#0F0F10] {
+  background-color: var(--bg-tertiary) !important;
+}
+
+body:not(.dark-mode) .settings-panel .border-white\/10,
+body:not(.dark-mode) .settings-panel .border-white\/5,
+body:not(.dark-mode) .settings-panel .border-zinc-800 {
+  border-color: var(--border-light) !important;
 }

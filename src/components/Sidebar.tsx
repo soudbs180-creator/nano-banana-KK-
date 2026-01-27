@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
+import { useTheme } from '../context/ThemeContext';
 // Lucide icons replaced with SVGs
 
 interface SidebarProps {
@@ -32,6 +33,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     }, [isOpen, onClose]);
 
     const [activeTab, setActiveTab] = useState<'home' | 'history'>('home');
+    const { theme, toggleTheme, setTheme } = useTheme();
 
     return (
         <>
@@ -52,12 +54,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                     left: '16px',
                     height: 'calc(100vh - 32px)',
                     width: '260px',
-                    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                    backgroundColor: 'var(--toolbar-bg-dark)',
                     backdropFilter: 'blur(40px) saturate(180%)',
                     WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    border: '1px solid var(--border-light)',
                     borderRadius: '24px',
-                    boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5)'
+                    boxShadow: 'var(--shadow-xl)'
                 }}
             >
                 {/* Header */}
@@ -120,19 +122,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 </span>
                             )}
                         </button>
-                        {/* 
-                        <button
-                            className="sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all"
-                            style={{ color: 'var(--text-secondary)' }}
-                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                        >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                            </svg>
-                            <span className="font-medium text-sm">项目收藏</span>
-                        </button>
-                        */}
                     </div>
 
                     {/* Placeholder for history list when history tab is active */}
@@ -154,6 +143,51 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                 {/* Footer */}
                 <div className="sidebar-footer" style={{ borderTop: '1px solid var(--border-light)' }}>
+                    {/* UI Mode */}
+                    <div className="p-3 rounded-xl mb-3" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                        <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                            画面 UI 模式
+                        </p>
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                onClick={(e) => { e.currentTarget.blur(); setTheme('dark'); }}
+                                tabIndex={-1}
+                                className="px-3 py-2 rounded-lg text-[11px] font-semibold transition-all outline-none focus:outline-none"
+                                style={{
+                                    backgroundColor: theme === 'dark' ? 'var(--toolbar-active)' : 'var(--toolbar-hover)',
+                                    color: theme === 'dark' ? 'var(--text-primary)' : 'var(--text-secondary)'
+                                }}
+                                title="暗色模式"
+                            >
+                                暗色
+                            </button>
+                            <button
+                                onClick={(e) => { e.currentTarget.blur(); setTheme('light'); }}
+                                tabIndex={-1}
+                                className="px-3 py-2 rounded-lg text-[11px] font-semibold transition-all outline-none focus:outline-none"
+                                style={{
+                                    backgroundColor: theme === 'light' ? 'var(--toolbar-active)' : 'var(--toolbar-hover)',
+                                    color: theme === 'light' ? 'var(--text-primary)' : 'var(--text-secondary)'
+                                }}
+                                title="白天模式"
+                            >
+                                白天
+                            </button>
+                            <button
+                                onClick={(e) => { e.currentTarget.blur(); setTheme('system'); }}
+                                tabIndex={-1}
+                                className="px-3 py-2 rounded-lg text-[11px] font-semibold transition-all outline-none focus:outline-none"
+                                style={{
+                                    backgroundColor: theme === 'system' ? 'var(--toolbar-active)' : 'var(--toolbar-hover)',
+                                    color: theme === 'system' ? 'var(--text-primary)' : 'var(--text-secondary)'
+                                }}
+                                title="跟随系统"
+                            >
+                                系统
+                            </button>
+                        </div>
+                    </div>
+
                     {/* User Section */}
                     <div className="p-2 rounded-xl mb-2 transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                         <div className="flex items-center gap-3 mb-3 p-1">
@@ -177,42 +211,71 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </div>
                         </div>
 
-                        <div className="flex gap-2">
-                            <button
-                                onClick={(e) => { e.currentTarget.blur(); onOpenSettings(); }}
-                                tabIndex={-1}
-                                id="settings-button"
-                                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all hover:brightness-110 active:scale-95 outline-none focus:outline-none"
-                                style={{
-                                    backgroundColor: hasApiKey ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                                    color: hasApiKey ? 'var(--accent-green)' : 'var(--accent-orange)'
-                                }}
-                            >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="7.5" cy="15.5" r="5.5" />
-                                    <path d="m21 2-9.6 9.6" />
-                                    <path d="m15.5 7.5 3 3L22 7l-3-3" />
-                                </svg>
-                                {hasApiKey ? '已配置密钥' : '配置密钥'}
-                            </button>
+                    </div>
 
-                            <button
-                                onClick={(e) => { e.currentTarget.blur(); onSignOut(); }}
-                                tabIndex={-1}
-                                className="px-3 py-2 rounded-lg transition-all hover:bg-red-500/20 hover:text-red-400 active:scale-95 outline-none focus:outline-none"
-                                style={{ backgroundColor: 'var(--toolbar-hover)', color: 'var(--text-tertiary)' }}
-                                title="退出登录"
-                            >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                                    <polyline points="16 17 21 12 16 7" />
-                                    <line x1="21" y1="12" x2="9" y2="12" />
+                    <div className="flex gap-2">
+                        {/* Theme Toggle */}
+                        <button
+                            onClick={(e) => { e.currentTarget.blur(); toggleTheme(); }}
+                            tabIndex={-1}
+                            className="px-3 py-2 rounded-lg transition-all hover:bg-white/10 active:scale-95 outline-none focus:outline-none flex items-center justify-center"
+                            style={{ backgroundColor: 'var(--toolbar-hover)', color: 'var(--text-secondary)' }}
+                            title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+                        >
+                            {theme === 'dark' ? (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="5" />
+                                    <line x1="12" y1="1" x2="12" y2="3" />
+                                    <line x1="12" y1="21" x2="12" y2="23" />
+                                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                                    <line x1="1" y1="12" x2="3" y2="12" />
+                                    <line x1="21" y1="12" x2="23" y2="12" />
+                                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                                 </svg>
-                            </button>
-                        </div>
+                            ) : (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                                </svg>
+                            )}
+                        </button>
+
+                        <button
+                            onClick={(e) => { e.currentTarget.blur(); onOpenSettings(); }}
+                            tabIndex={-1}
+                            id="settings-button"
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all hover:brightness-110 active:scale-95 outline-none focus:outline-none"
+                            style={{
+                                backgroundColor: hasApiKey ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                color: hasApiKey ? 'var(--accent-green)' : 'var(--accent-orange)'
+                            }}
+                        >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="7.5" cy="15.5" r="5.5" />
+                                <path d="m21 2-9.6 9.6" />
+                                <path d="m15.5 7.5 3 3L22 7l-3-3" />
+                            </svg>
+                            {hasApiKey ? '已配置密钥' : '配置密钥'}
+                        </button>
+
+                        <button
+                            onClick={(e) => { e.currentTarget.blur(); onSignOut(); }}
+                            tabIndex={-1}
+                            className="px-3 py-2 rounded-lg transition-all hover:bg-red-500/20 hover:text-red-400 active:scale-95 outline-none focus:outline-none"
+                            style={{ backgroundColor: 'var(--toolbar-hover)', color: 'var(--text-tertiary)' }}
+                            title="退出登录"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                <polyline points="16 17 21 12 16 7" />
+                                <line x1="21" y1="12" x2="9" y2="12" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
-            </aside >
+            </div >
+        </aside >
         </>
     );
 };

@@ -66,7 +66,7 @@ const BudgetAlerts = ({ totalRemaining, dailyRemaining, isTotalUnlimited, isDail
             /* Desktop: Bottom Right */
             md:top-auto md:left-auto md:bottom-6 md:right-6 md:transform-none
         `}>
-            <div className="bg-[rgba(24,24,27,0.92)] backdrop-blur-xl border border-white/10 rounded-full py-2 pl-3 pr-4 flex items-center gap-3 shadow-2xl">
+            <div className="glass-strong rounded-full py-2 pl-3 pr-4 flex items-center gap-3 shadow-2xl" style={{ border: '1px solid var(--border-light)' }}>
                 {/* Icon & Pulse */}
                 <div className={`relative flex items-center justify-center w-8 h-8 rounded-full ${config.bg} ${config.color}`}>
                     <Icon size={14} className="animate-pulse" />
@@ -76,8 +76,8 @@ const BudgetAlerts = ({ totalRemaining, dailyRemaining, isTotalUnlimited, isDail
 
                 {/* Text */}
                 <div className="flex flex-col items-start mr-1">
-                    <span className="text-sm font-bold text-white leading-tight">{message}</span>
-                    <span className="text-[10px] text-zinc-400 font-mono leading-tight">{subMessage}</span>
+                    <span className="text-sm font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>{message}</span>
+                    <span className="text-[10px] font-mono leading-tight" style={{ color: 'var(--text-tertiary)' }}>{subMessage}</span>
                 </div>
             </div>
         </div>
@@ -183,8 +183,8 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-white tracking-tight">仪表盘 (Dashboard)</h2>
-                    <p className="text-xs text-zinc-500 mt-1">实时监控 API 消耗与系统状态</p>
+                    <h2 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>仪表盘 (Dashboard)</h2>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>实时监控 API 消耗与系统状态</p>
                 </div>
                 <button
                     onClick={handleSync}
@@ -950,27 +950,27 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
     ];
 
     return (
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/70 backdrop-blur-xl animate-in fade-in duration-200 settings-panel" onClick={onClose}>
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/40 backdrop-blur-xl animate-in fade-in duration-200 settings-panel" onClick={onClose}>
             {!isMobile ? (
                 /* --- Desktop Layout - VisionOS Style --- */
                 <div
                     className="hidden md:flex w-[980px] h-[640px] rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
                     style={{
-                        backgroundColor: 'rgba(13, 13, 14, 0.85)',
-                        backdropFilter: 'blur(40px) saturate(180%)',
-                        WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        boxShadow: '0 32px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.05) inset'
+                        backgroundColor: 'var(--bg-secondary)',
+                        backdropFilter: 'blur(24px) saturate(150%)',
+                        WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+                        border: '1px solid var(--border-light)',
+                        boxShadow: 'var(--shadow-xl)'
                     }}
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Desktop Sidebar */}
-                    <div className="w-64 border-r border-white/5 flex flex-col p-4 shrink-0" style={{ backgroundColor: 'rgba(22, 22, 24, 0.5)' }}>
+                    <div className="w-64 border-r flex flex-col p-4 shrink-0" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
                         <div className="flex items-center gap-3 px-2 mb-8 mt-2">
-                            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
+                            <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: 'var(--accent-indigo)', color: 'white' }}>
                                 <LayoutDashboard size={18} />
                             </div>
-                            <span className="font-bold text-white tracking-tight">系统设置</span>
+                            <span className="font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>系统设置</span>
                         </div>
 
                         <div className="space-y-1">
@@ -978,7 +978,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                                 <button
                                     key={item.id}
                                     onClick={() => setActiveView(item.id)}
-                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeView === item.id ? 'bg-indigo-600/80 text-white shadow-[0_8px_20px_rgba(99,102,241,0.25)]' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}`}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
+                                    style={{
+                                        backgroundColor: activeView === item.id ? 'var(--toolbar-active)' : 'transparent',
+                                        color: activeView === item.id ? 'var(--text-primary)' : 'var(--text-secondary)'
+                                    }}
                                 >
                                     <item.icon size={16} />
                                     {item.label === '仪表盘' ? '仪表盘(Dashboard)' :
@@ -991,18 +995,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                             ))}
                         </div>
 
-                        <div className="mt-auto pt-4 border-t border-white/5">
-                            <div className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg">
-                                <div className="text-xs text-zinc-500 mb-1">总消耗(Total Consumption)</div>
-                                <div className="text-lg font-bold text-white font-mono">${totalConsumed.toFixed(4)}</div>
+                            <div className="mt-auto pt-4" style={{ borderTop: '1px solid var(--border-light)' }}>
+                                <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                                    <div className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>总消耗(Total Consumption)</div>
+                                    <div className="text-lg font-bold font-mono" style={{ color: 'var(--text-primary)' }}>${totalConsumed.toFixed(4)}</div>
+                                </div>
                             </div>
-                        </div>
                     </div>
 
                     {/* Desktop Content */}
                     <div className="flex-1 flex flex-col min-w-0 bg-[var(--bg-secondary)]">
-                        <div className="h-14 border-b border-white/5 flex items-center justify-end px-6 bg-[rgba(15,15,16,0.6)] backdrop-blur-xl sticky top-0 z-10">
-                            <button onClick={onClose} className="p-2 text-zinc-400 hover:text-white hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-colors">
+                        <div className="h-14 border-b flex items-center justify-end px-6 sticky top-0 z-10" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)', backdropFilter: 'blur(12px)' }}>
+                            <button onClick={onClose} className="p-2 rounded-lg transition-colors" style={{ color: 'var(--text-tertiary)' }}>
                                 <X size={18} />
                             </button>
                         </div>
@@ -1021,16 +1025,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
             ) : (
                 /* --- Mobile Layout (Window/Card Style for iOS) --- */
                 <div
-                    className="fixed inset-0 w-full h-full bg-[#000000] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 z-[10001]"
+                    className="fixed inset-0 w-full h-full flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 z-[10001]"
+                    style={{ backgroundColor: 'var(--bg-secondary)' }}
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Mobile Header (iOS Style) */}
-                    <div className="h-14 border-b border-white/5 flex items-center justify-between px-5 bg-[rgba(24,24,27,0.85)] backdrop-blur-xl sticky top-0 z-20 shrink-0">
+                    <div className="h-14 border-b flex items-center justify-between px-5 sticky top-0 z-20 shrink-0" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)', backdropFilter: 'blur(12px)' }}>
                         <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-900/20">
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: 'var(--accent-indigo)' }}>
                                 <LayoutDashboard size={14} />
                             </div>
-                            <span className="text-white font-bold text-[17px] tracking-tight truncate">
+                            <span className="font-bold text-[17px] tracking-tight truncate" style={{ color: 'var(--text-primary)' }}>
                                 {(() => {
                                     const item = navItems.find(n => n.id === activeView);
                                     if (!item) return '设置';
@@ -1047,14 +1052,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                         </div>
                         <button
                             onClick={onClose}
-                            className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-white bg-[var(--bg-tertiary)] rounded-full transition-all active:scale-90"
+                            className="w-8 h-8 flex items-center justify-center rounded-full transition-all active:scale-90"
+                            style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-tertiary)' }}
                         >
                             <X size={18} />
                         </button>
                     </div>
 
                     {/* Mobile Content (Scrollable) */}
-                    <div className="flex-1 overflow-y-auto p-4 scrollbar-hide space-y-4 pb-32 bg-black">
+                    <div className="flex-1 overflow-y-auto p-4 scrollbar-hide space-y-4 pb-32" style={{ backgroundColor: 'var(--bg-secondary)' }}>
                         {/* Dynamic Content based on activeView */}
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                             {activeView === 'dashboard' && <DashboardView keyStats={keyStats} totalConsumed={totalConsumed} totalTokens={totalTokens} />}

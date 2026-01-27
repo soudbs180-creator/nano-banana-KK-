@@ -315,10 +315,10 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                 )}
 
                                 {/* Card Content Container */}
-                                <div className={`flex-1 min-w-0 ${isSequential ? 'flex items-center justify-between gap-4' : ''}`}>
+                                <div className={`flex-1 min-w-0 ${isSequential ? 'flex items-center gap-4' : ''}`}>
 
                                     {/* Main Info */}
-                                    <div className="min-w-0">
+                                    <div className={`min-w-0 ${isSequential ? 'flex-1' : ''}`}>
                                         <div className="flex items-center justify-between mb-2">
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <div className={`w-2 h-2 rounded-full shrink-0 ${refreshingIds.has(slot.id) ? 'bg-blue-500 animate-pulse' :
@@ -348,9 +348,9 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                     </div>
 
                                     {/* Stats & Actions (Horizontal in Sequential, Bottom in Grid) */}
-                                    <div className={`${isSequential ? 'flex items-center gap-6 shrink-0' : 'mt-4 pt-4 border-t border-[var(--border-light)] grid grid-cols-[1fr_auto] items-center gap-3'}`}>
-                                        {/* Usage Stats */}
-                                        <div className="flex items-center gap-3 text-xs text-zinc-500">
+                                    <div className={`${isSequential ? 'flex items-center gap-6 shrink-0' : 'mt-4 pt-4 border-t border-[var(--border-light)] flex items-center justify-between gap-6'}`}>
+                                        {/* Usage Stats (Fixed Width for Alignment) */}
+                                        <div className={`flex items-center gap-3 text-xs text-zinc-500 ${isSequential ? 'w-[100px] justify-center border-l border-zinc-700/50 pl-4' : 'min-w-[110px]'}`}>
                                             <div className="flex items-center gap-1" title="调用成功次数">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50" />
                                                 {slot.successCount || 0}
@@ -361,8 +361,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             </div>
                                         </div>
 
-                                        {/* Action Buttons */}
-                                        <div className="flex items-center gap-1 justify-end">
+                                        {/* Action Buttons (Fixed Width for Alignment) */}
+                                        <div className={`flex items-center gap-1 justify-end ${isSequential ? 'w-[100px] justify-center border-l border-zinc-700/50 pl-4' : 'min-w-[110px]'}`}>
                                             <button
                                                 onClick={(e) => handleRefresh(slot.id, e)}
                                                 disabled={refreshingIds.has(slot.id)}
@@ -390,8 +390,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             </button>
                                         </div>
                                     </div>
-                                    {/* Stats */}
-                                    <div className="grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)]">
+                                    {/* Stats (Fixed Width for Alignment in Sequential) */}
+                                    <div className={`grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)] ${isSequential ? 'w-[180px] shrink-0' : ''}`}>
                                         <div className="text-center">
                                             <div className="text-[10px] text-zinc-500">Tokens消耗</div>
                                             <div className="text-xs font-mono text-emerald-300 overflow-hidden text-ellipsis whitespace-nowrap">{clampAndFormat(slot.usedTokens)}</div>
@@ -561,7 +561,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                     </label>
                                     <textarea
                                         className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-indigo-500/50 min-h-[100px] leading-relaxed resize-none"
-                                        placeholder="模型 ID 列表，例如: gemini-pro(My Gemini/强力模型), deepseek-chat..."
+                                        placeholder="模型 ID 列表，支持格式: ID(自定义名称/描述)&#10;例如: gemini-2.5-flash-image(Gemini 2.5 Flash/速度优先的原生图像生成), gemini-3-pro-image-preview(香蕉pro/高质量原生图像生成，细节更强)"
                                         value={formModels}
                                         onChange={e => setFormModels(e.target.value)}
                                     />
@@ -571,8 +571,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                 <div className="mt-2 flex flex-wrap gap-2 justify-end">
                                     {formProvider === 'Google' ? (
                                         <>
-                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-3-pro-preview')}>+ Gemini 3 Pro</span>
-                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-3-flash-preview')}>+ Gemini 3 Flash</span>
+                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-2.0-pro-exp-01-21(Gemini 2.0 Pro)')}>+ Gemini 2.0 Pro</span>
+                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-2.0-flash-exp(Gemini 2.0 Flash)')}>+ Gemini 2.0 Flash</span>
                                             <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(DEFAULT_GOOGLE_MODELS.join(', '))}>填入热门模型</span>
                                         </>
                                     ) : (
@@ -584,10 +584,13 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                     onClick={() => setFormModels(prev => {
                                                         const current = splitModelStrings(prev);
                                                         if (current.some(s => parseModelString(s).id === preset.id)) return prev;
-                                                        return (prev ? prev + ', ' : '') + preset.id;
+                                                        // Format: ID(Label)
+                                                        const label = preset.label.split('(')[0].trim(); // Use name part
+                                                        const entry = `${preset.id}(${label})`;
+                                                        return (prev ? prev + ', ' : '') + entry;
                                                     })}
                                                 >
-                                                    + {preset.label.split(' ')[0]}
+                                                    + {preset.label.split('(')[0].trim()}
                                                 </span>
                                             ))}
                                             <span className="text-zinc-500 text-[10px] cursor-help" title="更多模型请手动输入或自动获取">...</span>

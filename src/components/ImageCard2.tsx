@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { AspectRatio, GeneratedImage, GenerationMode } from '../types';
 import { Download, Trash2 } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
+import { generateTagColor } from '../utils/colorUtils';
 
 interface ImageNodeProps {
     image: GeneratedImage;
@@ -18,6 +19,7 @@ interface ImageNodeProps {
     isMobile?: boolean;
     isSelected?: boolean;
     onSelect?: () => void;
+    highlighted?: boolean;
 }
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
@@ -32,7 +34,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     zoomScale = 1,
     isMobile = false,
     isSelected = false,
-    onSelect
+    onSelect,
+    highlighted
 }) => {
     const [isDragging, setIsDragging] = useState(false);
 
@@ -491,9 +494,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 onDoubleClick={handleImageClick}
             >
                 <div className={`
-                        relative bg-[#18181b] border rounded-2xl overflow-hidden shadow-xl w-full
+                        relative bg-[var(--bg-secondary)] border rounded-2xl overflow-hidden shadow-xl w-full
                         ${isDragging ? '' : 'transition-all duration-200'} hover:shadow-2xl
-                        ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : isActive ? 'border-amber-500 ring-2 ring-amber-500/50' : 'border-white/5 hover:border-white/10'}
+                        ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : isActive ? 'border-amber-500 ring-2 ring-amber-500/50' : 'border-[var(--border-light)] hover:border-[var(--border-medium)]'}
+                        ${highlighted ? 'ring-2 ring-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.5)] z-50 scale-[1.02]' : ''}
                     `}>
                     {/* Connection Point */}
                     <div
@@ -503,7 +507,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                     {/* Image View with Lazy Loading / Virtualization */}
                     <div
-                        className="relative aspect-auto cursor-pointer min-h-[100px] bg-zinc-900"
+                        className="relative aspect-auto cursor-pointer min-h-[100px] bg-[var(--bg-tertiary)]"
                         onClick={handleImageClick}
                         onDoubleClick={handleImageClick}
                         ref={(el) => {
@@ -567,7 +571,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                 />
                             )
                         ) : (
-                            <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-zinc-500 p-4 text-center">
+                            <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-[var(--text-secondary)] p-4 text-center">
                                 <Trash2 size={24} className="mb-2 opacity-50" />
                                 <span className="text-xs">资源加载失败</span>
                                 <span className="text-[9px] opacity-60">(Load Failed)</span>
@@ -586,16 +590,20 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     {/* Tags Layer */}
                     {image.tags && image.tags.length > 0 && (
                         <div className="absolute bottom-[36px] left-0 right-0 p-2 flex flex-wrap gap-1 justify-end pointer-events-none">
-                            {image.tags.map(tag => (
-                                <span key={tag} className="px-1.5 py-0.5 bg-black/60 backdrop-blur-sm border border-white/10 rounded text-[9px] text-zinc-300 shadow-sm">
-                                    #{tag}
-                                </span>
-                            ))}
+                            {image.tags.map(tag => {
+                                const colors = generateTagColor(tag);
+                                return (
+                                    <span key={tag}
+                                        className={`px-1.5 py-0.5 backdrop-blur-sm rounded text-[9px] shadow-sm border ${colors.bg} ${colors.border} ${colors.text}`}>
+                                        #{tag}
+                                    </span>
+                                );
+                            })}
                         </div>
                     )}
 
                     {/* Footer - Model badge + Continue + Download + Delete */}
-                    <div className="px-3 py-2 bg-[#121212]/50 flex items-center justify-between border-t border-white/5 relative z-10">
+                    <div className="px-3 py-2 bg-[var(--bg-tertiary)] flex items-center justify-between border-t border-[var(--border-light)] relative z-10">
                         {(() => {
                             const model = image.model || '';
                             let label = 'AI';
@@ -625,7 +633,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         {/* Dimensions & Time */}
                         <div className="flex items-center gap-2 ml-2">
                             {image.dimensions && (
-                                <span className="text-[9px] text-zinc-500 font-mono border border-white/5 px-1.5 rounded bg-white/5">
+                                <span className="text-[9px] text-[var(--text-tertiary)] font-mono border border-[var(--border-light)] px-1.5 rounded bg-[var(--bg-tertiary)]">
                                     {(() => {
                                         const [w, h] = image.dimensions.split('x').map(Number);
                                         if (!w || !h) return image.dimensions;
@@ -658,7 +666,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                 </span>
                             )}
                             {image.generationTime && (
-                                <span className="text-[9px] text-zinc-500 font-mono">
+                                <span className="text-[9px] text-[var(--text-tertiary)] font-mono">
                                     {(image.generationTime / 1000).toFixed(1)}s
                                 </span>
                             )}
@@ -669,14 +677,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                             <button
                                 onClick={handleDownload}
-                                className="text-zinc-500 hover:text-white p-1 rounded-md hover:bg-white/5 transition-colors"
+                                className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--toolbar-hover)] transition-colors"
                                 title="下载 (Download High-Res)"
                             >
                                 <Download size={12} />
                             </button>
                             <button
                                 onClick={(e) => { e.stopPropagation(); onDelete(image.id); }}
-                                className="text-zinc-500 hover:text-red-400 p-1 rounded-md hover:bg-white/5 transition-colors"
+                                className="text-[var(--text-tertiary)] hover:text-red-400 p-1 rounded-md hover:bg-[var(--toolbar-hover)] transition-colors"
                                 title="删除"
                             >
                                 <Trash2 size={12} />

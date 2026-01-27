@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PromptNode, AspectRatio } from '../types';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
+import { generateTagColor } from '../utils/colorUtils';
 
 interface PromptNodeProps {
     node: PromptNode;
@@ -19,6 +20,7 @@ interface PromptNodeProps {
     onRetry?: (node: PromptNode) => void;
     onDisconnect?: (id: string) => void;
     onHeightChange?: (id: string, height: number) => void;
+    highlighted?: boolean;
 }
 
 const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
@@ -36,7 +38,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     onDelete,
     onRetry,
     onDisconnect,
-    onHeightChange
+    onHeightChange,
+    highlighted
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const dragStartPos = useRef({ x: 0, y: 0 });
@@ -208,13 +211,14 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             <div
                 ref={cardRef}
                 className={`
-                    relative bg-[#18181b] border rounded-2xl p-3 shadow-xl max-w-[95vw] flex flex-col select-none
+                    relative bg-[var(--bg-secondary)] border rounded-2xl p-3 shadow-xl max-w-[95vw] flex flex-col select-none
                     ${isDragging ? '' : 'transition-all duration-200'}
-                    ${node.isGenerating ? 'border-indigo-500/30' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-white/10 hover:border-white/20'}
+                    ${node.isGenerating ? 'border-indigo-500/30' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-[var(--border-light)] hover:border-[var(--border-medium)]'}
+                    ${highlighted ? 'ring-2 ring-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.5)] z-50 scale-[1.02]' : ''}
                 `}
                 style={{ width: getCardDimensions(node.aspectRatio).width }}>
                 {/* Header - Changes based on generating state */}
-                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
+                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-[var(--border-light)]">
                     {node.isGenerating ? (
                         <>
                             <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center">
@@ -273,7 +277,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                         e.stopPropagation();
                                         onDelete(node.id);
                                     }}
-                                    className="w-6 h-6 flex items-center justify-center rounded-full text-zinc-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                                    className="w-6 h-6 flex items-center justify-center rounded-full text-[var(--text-tertiary)] hover:bg-red-500/10 hover:text-red-400 transition-colors"
                                     title="删除"
                                 >
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -288,7 +292,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                             <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center">
                                 <Sparkles size={12} className="text-white" />
                             </div>
-                            <span className="text-xs font-medium text-zinc-400 flex-1">Prompt</span>
+                            <span className="text-xs font-medium text-[var(--text-secondary)] flex-1">Prompt</span>
 
                             {/* Delete Button */}
                             {onDelete && (
@@ -299,7 +303,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             onDelete(node.id);
                                         }
                                     }}
-                                    className="w-6 h-6 flex items-center justify-center rounded-full text-zinc-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                                    className="w-6 h-6 flex items-center justify-center rounded-full text-[var(--text-tertiary)] hover:bg-red-500/10 hover:text-red-400 transition-colors"
                                     title="删除"
                                 >
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -320,29 +324,33 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                 key={img.id || idx}
                                 src={`data:${img.mimeType};base64,${img.data}`}
                                 alt="Reference"
-                                className="w-10 h-10 object-cover rounded border border-white/10"
+                                className="w-10 h-10 object-cover rounded border border-[var(--border-light)]"
                             />
                         ))}
                         {node.referenceImages.length > 4 && (
-                            <div className="w-10 h-10 rounded border border-white/10 bg-zinc-800 flex items-center justify-center text-xs text-zinc-400">
+                            <div className="w-10 h-10 rounded border border-[var(--border-light)] bg-[var(--bg-tertiary)] flex items-center justify-center text-xs text-[var(--text-secondary)]">
                                 +{node.referenceImages.length - 4}
                             </div>
                         )}
                     </div>
                 )}
 
-                <p className="text-zinc-100 text-[15px] leading-7 line-clamp-4 font-normal flex-1 tracking-wide">
+                <p className="text-[var(--text-primary)] text-[15px] leading-7 line-clamp-4 font-normal flex-1 tracking-wide">
                     {node.prompt}
                 </p>
 
 
                 {node.tags && node.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2 mb-1 px-3">
-                        {node.tags.map(tag => (
-                            <span key={tag} className="px-1.5 py-0.5 bg-white/5 border border-white/10 rounded text-[10px] text-zinc-400">
-                                #{tag}
-                            </span>
-                        ))}
+                        {node.tags.map(tag => {
+                            const colors = generateTagColor(tag);
+                            return (
+                                <span key={tag}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] border ${colors.bg} ${colors.border} ${colors.text}`}>
+                                    #{tag}
+                                </span>
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -398,7 +406,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
                                         {/* Placeholder Card */}
                                         <div
-                                            className="absolute bg-[#1a1a1c] border border-white/10 rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
+                                            className="absolute bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
                                             style={{
                                                 width: w,
                                                 height: h,
@@ -410,7 +418,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                         >
                                             <div className="flex flex-col items-center gap-3 opacity-50">
                                                 <Loader2 size={24} className="text-indigo-400 animate-spin" />
-                                                <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
+                                                <span className="text-[10px] text-[var(--text-secondary)] font-medium">Creating masterpiece...</span>
                                             </div>
                                             <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
                                         </div>

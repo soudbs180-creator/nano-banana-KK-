@@ -18,6 +18,7 @@ interface InfiniteCanvasProps {
     onMouseMove?: (e: React.MouseEvent) => void;
     onMouseUp?: (e: React.MouseEvent) => void;
     onContextMenu?: (e: React.MouseEvent) => void;
+    id?: string;
 }
 
 interface Transform {
@@ -26,7 +27,7 @@ interface Transform {
     scale: number;
 }
 
-const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onAutoArrange, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu }, ref) => {
+const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onAutoArrange, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, id }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
     const [isDragging, setIsDragging] = useState(false);
@@ -309,9 +310,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
             >
                 {/* Grid Background */}
-                {showGrid && (
-                    <div className="canvas-grid" />
-                )}
+                {showGrid && <div className="canvas-grid" />}
 
                 {/* Viewport with transform */}
                 <div

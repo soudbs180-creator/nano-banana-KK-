@@ -7,17 +7,20 @@ interface CanvasGroupProps {
     zoom: number;
     onUngroup: (id: string) => void;
     onDragStart: (id: string, e: React.MouseEvent) => void;
+    highlighted?: boolean;
 }
 
 export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
     group,
     zoom,
     onUngroup,
-    onDragStart
+    onDragStart,
+    highlighted
 }) => {
     return (
         <div
-            className="absolute border-2 border-dashed border-indigo-500/50 rounded-xl bg-indigo-500/5 group hover:border-indigo-400 hover:bg-indigo-500/10 transition-colors"
+            className={`absolute border-2 rounded-xl transition-all duration-300 group-container ${highlighted ? 'border-indigo-400 bg-indigo-500/10 shadow-[0_0_30px_rgba(99,102,241,0.3)] z-10' : 'border-dashed border-indigo-500/50 bg-indigo-500/5 hover:border-indigo-400 hover:bg-indigo-500/10'
+                }`}
             style={{
                 left: group.bounds.x,
                 top: group.bounds.y,
