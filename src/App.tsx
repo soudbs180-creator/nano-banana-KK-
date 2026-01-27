@@ -1469,7 +1469,8 @@ const AppContent: React.FC = () => {
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     let hasNodes = false;
-    const PADDING = 20;
+    const PADDING = 48;
+    const TOP_EXTRA = 36;
 
     // Helper to merge rect into bounds
     const addRect = (x: number, y: number, w: number, h: number) => {
@@ -1505,9 +1506,9 @@ const AppContent: React.FC = () => {
 
     return {
       x: minX - PADDING,
-      y: minY - PADDING,
+      y: minY - (PADDING + TOP_EXTRA),
       width: (maxX - minX) + PADDING * 2,
-      height: (maxY - minY) + PADDING * 2
+      height: (maxY - minY) + PADDING + TOP_EXTRA
     };
   }, [activeCanvas]);
 
@@ -2173,7 +2174,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.2.1
+        v1.2.2
       </div>
 
       {/* Project Manager (Replaces Canvas Manager) */}

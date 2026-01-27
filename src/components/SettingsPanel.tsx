@@ -358,7 +358,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>版本</div>
-                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.1</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.2</div>
                     </div>
                 </div>
             </div>

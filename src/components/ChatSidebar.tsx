@@ -102,25 +102,49 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         };
     }, [isMobile]);
 
-    // Auto-close timer ref
-    const autoCloseTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const [isHovering, setIsHovering] = useState(false);
+    const lastActivityRef = useRef<number>(Date.now());
+    const autoCloseTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
-    const handleMouseEnter = () => {
+    const clearAutoClose = useCallback(() => {
         if (autoCloseTimerRef.current) {
             clearTimeout(autoCloseTimerRef.current);
             autoCloseTimerRef.current = null;
         }
-    };
+    }, []);
 
-    const handleMouseLeave = () => {
-        if (isOpen && !isDragging) {
-            autoCloseTimerRef.current = setTimeout(() => {
-                if (isOpen && onClose) {
-                    onClose();
-                }
-            }, 5000); // 5 seconds
+    const closeChat = useCallback(() => {
+        if (onClose) {
+            onClose();
+        } else {
+            onToggle();
         }
-    };
+    }, [onClose, onToggle]);
+
+    const scheduleAutoClose = useCallback(() => {
+        clearAutoClose();
+        if (!isOpen || isHovering || isDragging) return;
+        const elapsed = Date.now() - lastActivityRef.current;
+        const delay = Math.max(20000 - elapsed, 0);
+        autoCloseTimerRef.current = window.setTimeout(() => {
+            if (!isHovering && isOpen) closeChat();
+        }, delay);
+    }, [clearAutoClose, closeChat, isDragging, isHovering, isOpen]);
+
+    const registerActivity = useCallback(() => {
+        lastActivityRef.current = Date.now();
+        scheduleAutoClose();
+    }, [scheduleAutoClose]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            clearAutoClose();
+            return;
+        }
+        lastActivityRef.current = Date.now();
+        scheduleAutoClose();
+        return clearAutoClose;
+    }, [isOpen, scheduleAutoClose, clearAutoClose]);
 
     // Cleanup timer on unmount or when closed
     useEffect(() => {

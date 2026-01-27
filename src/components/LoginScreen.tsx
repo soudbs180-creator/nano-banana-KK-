@@ -169,7 +169,7 @@ const LoginScreen: React.FC = () => {
                         无限画布，无限创意。
                     </p>
                     <div className="absolute bottom-8 left-0 right-0 text-center opacity-30 text-xs font-mono">
-                        v1.2.1 BUILD 2026.01
+                        v1.2.2 BUILD 2026.01
                     </div>
                 </div>
             </div>

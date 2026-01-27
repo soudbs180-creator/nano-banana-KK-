@@ -27,7 +27,7 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
     // Shared state for drag
     const lastPos = useRef<{ x: number; y: number } | null>(null);
     const rafRef = useRef<number | null>(null);
-    const lastDelta = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+    const pendingDelta = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
 
     // Direct DOM Refs
@@ -144,8 +144,13 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
                     containerRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0)`;
                 }
 
-                lastDelta.current = { x: dx, y: dy };
-                onGroupDrag({ x: dx, y: dy });
+                pendingDelta.current = {
+                    x: pendingDelta.current.x + dx,
+                    y: pendingDelta.current.y + dy
+                };
+                const { x, y } = pendingDelta.current;
+                pendingDelta.current = { x: 0, y: 0 };
+                onGroupDrag({ x, y });
                 rafRef.current = null;
             });
         };
@@ -153,7 +158,7 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
         const handleMouseUp = () => {
             setIsDragging(false);
             lastPos.current = null;
-            lastDelta.current = { x: 0, y: 0 };
+            pendingDelta.current = { x: 0, y: 0 };
             if (rafRef.current) {
                 cancelAnimationFrame(rafRef.current);
                 rafRef.current = null;
@@ -197,6 +202,11 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
                     style={{
                         backgroundColor: highlighted ? 'rgba(99,102,241,0.12)' : 'var(--bg-tertiary)',
                         borderColor: highlighted ? 'rgba(99,102,241,0.35)' : 'var(--border-light)'
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setIsEditing(true);
                     }}
                 >
                     <GripHorizontal size={14} style={{ color: highlighted ? 'var(--accent-indigo)' : 'var(--text-tertiary)' }} />
