@@ -4,7 +4,10 @@ import { Loader2, AlertCircle, CheckCircle2, ChevronLeft, ArrowRight, Mail, Lock
 
 type AuthView = 'login' | 'register' | 'forgot-password';
 
+import { useAuth } from '../context/AuthContext';
+
 const LoginScreen: React.FC = () => {
+    const { bypassAuth } = useAuth();
     const [view, setView] = useState<AuthView>('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -13,6 +16,16 @@ const LoginScreen: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
+
+    const handleDevLogin = async () => {
+        setLoading(true);
+        try {
+            await bypassAuth();
+        } catch (e: any) {
+            setError(e.message);
+            setLoading(false);
+        }
+    };
 
     // Reset state when switching views
     useEffect(() => {
@@ -270,7 +283,7 @@ const LoginScreen: React.FC = () => {
                         </button>
                     </form>
 
-                    <div className="mt-8 text-center">
+                    <div className="mt-8 text-center space-y-4">
                         {view === 'login' ? (
                             <p className="text-zinc-500 text-sm">
                                 还没有账号？{' '}
@@ -292,6 +305,21 @@ const LoginScreen: React.FC = () => {
                                 </button>
                             </p>
                         )}
+
+                        <div className="pt-4 border-t border-white/5">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    // Use bypassAuth from context (need to cast or assuming updated context imports)
+                                    // Actually, let's use the hook in the component
+                                    handleDevLogin();
+                                }}
+                                className="text-xs text-zinc-600 hover:text-zinc-400 font-mono transition-colors flex items-center justify-center gap-2 mx-auto"
+                            >
+                                <Lock size={12} />
+                                开发者离线模式 (Dev Mode)
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
