@@ -225,8 +225,8 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
 
                             <div className="relative z-10">
                                 <div className="flex items-baseline gap-1 mb-1">
-                                    <span className="text-xl text-zinc-400 font-medium">$</span>
-                                    <span className="text-4xl md:text-6xl font-bold text-white font-mono tracking-tight text-shadow-lg">{dailyUsage.toFixed(4)}</span>
+                                    <span className="text-xl font-medium" style={{ color: 'var(--text-tertiary)' }}>$</span>
+                                    <span className="text-4xl md:text-6xl font-bold font-mono tracking-tight text-shadow-lg" style={{ color: 'var(--text-primary)' }}>{dailyUsage.toFixed(4)}</span>
                                 </div>
                                 <div className="text-sm text-zinc-500 flex items-center gap-2 mb-6">
                                     <span>约 ¥{(dailyUsage * 7.2).toFixed(2)} CNY</span>
@@ -237,8 +237,8 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                                         <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg"><Activity size={20} /></div>
                                         <div>
                                             <div className="text-xs text-zinc-500 uppercase tracking-wider">今日 Token 消耗</div>
-                                            <div className="text-white font-mono font-bold text-lg">
-                                                {dailyTokens.toLocaleString()} <span className="text-xs text-zinc-500 font-normal">Tokens</span>
+                                            <div className="font-mono font-bold text-lg" style={{ color: 'var(--text-primary)' }}>
+                                                {dailyTokens.toLocaleString()} <span className="text-xs font-normal" style={{ color: 'var(--text-tertiary)' }}>Tokens</span>
                                             </div>
                                         </div>
                                     </div>
@@ -274,8 +274,8 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                                     <span className="text-zinc-400 text-sm font-medium">总消耗预算</span>
                                 </div>
                                 <div className="text-right">
-                                    <div className="text-xs text-zinc-500 uppercase">Token 总消耗</div>
-                                    <div className="text-white font-mono font-bold text-lg">{(totalTokens / 1000).toFixed(1)}k</div>
+                                    <div className="text-xs uppercase" style={{ color: 'var(--text-tertiary)' }}>Token 总消耗</div>
+                                    <div className="font-mono font-bold text-lg" style={{ color: 'var(--text-primary)' }}>{(totalTokens / 1000).toFixed(1)}k</div>
                                 </div>
                             </div>
 
@@ -292,7 +292,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                                             style={{ width: isTotalUnlimited ? '100%' : `${remainingPercent}%` }}
                                         />
                                     </div>
-                                    <div className="text-sm font-bold font-mono text-white text-right w-14">
+                                    <div className="text-sm font-bold font-mono text-right w-14" style={{ color: 'var(--text-primary)' }}>
                                         {isTotalUnlimited ? '∞' : `${remainingPercent.toFixed(1)}%`}
                                     </div>
                                 </div>
@@ -315,23 +315,23 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                                     <Key size={24} />
                                 </div>
                                 <div>
-                                    <div className="text-sm font-medium text-zinc-400 mb-1">API 管理状态</div>
+                                    <div className="text-sm font-medium mb-1" style={{ color: 'var(--text-tertiary)' }}>API 管理状态</div>
                                     <div className="flex gap-4 text-xs font-mono">
                                         <div className="flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                            <span className="text-zinc-300">正常 <span className="text-emerald-500 font-bold ml-0.5">{activeCount}</span></span>
+                                            <span style={{ color: 'var(--text-secondary)' }}>正常 <span className="text-emerald-500 font-bold ml-0.5">{activeCount}</span></span>
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                             <div className={`w-1.5 h-1.5 rounded-full ${abnormalCount > 0 ? 'bg-red-500' : 'bg-zinc-600'}`} />
-                                            <span className="text-zinc-300">异常 <span className={`${abnormalCount > 0 ? 'text-red-500' : 'text-zinc-500'} font-bold ml-0.5`}>{abnormalCount}</span></span>
+                                            <span style={{ color: 'var(--text-secondary)' }}>异常 <span className={`${abnormalCount > 0 ? 'text-red-500' : 'text-zinc-500'} font-bold ml-0.5`}>{abnormalCount}</span></span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="text-right">
-                                <div className="text-xs text-zinc-500 mb-1">密钥总数</div>
-                                <div className="text-2xl md:text-3xl font-bold text-zinc-300 font-mono tracking-tighter">{totalCount}</div>
+                                <div className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>密钥总数</div>
+                                <div className="text-2xl md:text-3xl font-bold font-mono tracking-tighter" style={{ color: 'var(--text-primary)' }}>{totalCount}</div>
                             </div>
                         </div>
                     );
@@ -340,25 +340,25 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
 
             {/* System Status Section - Compact (Restored) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-[var(--bg-secondary)] rounded-[24px] border border-[var(--border-light)] p-4 flex items-center gap-3 hover:border-[var(--border-medium)] transition-colors">
+                <div className="rounded-[24px] border p-4 flex items-center gap-3 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}>
                     <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
                     <div className="flex-1">
-                        <div className="text-xs text-zinc-500 uppercase tracking-wider">系统状态</div>
-                        <div className="text-sm font-medium text-zinc-300">运行正常</div>
+                        <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>系统状态</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>运行正常</div>
                     </div>
                 </div>
-                <div className="bg-[var(--bg-secondary)] rounded-[24px] border border-[var(--border-light)] p-4 flex items-center gap-3 hover:border-[var(--border-medium)] transition-colors">
+                <div className="rounded-[24px] border p-4 flex items-center gap-3 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}>
                     <div className={`w-2 h-2 rounded-full ${latency > 0 && latency < 200 ? 'bg-emerald-500' : latency > 0 ? 'bg-amber-500' : 'bg-zinc-600'}`} />
                     <div className="flex-1">
-                        <div className="text-xs text-zinc-500 uppercase tracking-wider">延迟</div>
-                        <div className="text-sm font-medium text-zinc-300 font-mono">{latency > 0 ? `${latency}ms` : 'Checking...'}</div>
+                        <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>延迟</div>
+                        <div className="text-sm font-medium font-mono" style={{ color: 'var(--text-primary)' }}>{latency > 0 ? `${latency}ms` : 'Checking...'}</div>
                     </div>
                 </div>
-                <div className="bg-[var(--bg-secondary)] rounded-[24px] border border-[var(--border-light)] p-4 flex items-center gap-3 hover:border-[var(--border-medium)] transition-colors">
+                <div className="rounded-[24px] border p-4 flex items-center gap-3 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}>
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
-                        <div className="text-xs text-zinc-500 uppercase tracking-wider">版本</div>
-                        <div className="text-sm font-medium text-zinc-300">v1.2.1</div>
+                        <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>版本</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.1</div>
                     </div>
                 </div>
             </div>
@@ -403,7 +403,7 @@ const CostEstimationView = () => {
         <div className="space-y-6">
             <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
-                    <h3 className="text-2xl font-bold text-white text-left">成本详情</h3>
+                    <h3 className="text-2xl font-bold text-left" style={{ color: 'var(--text-primary)' }}>成本详情</h3>
                     <div className="flex items-center gap-2">
                         <div className="flex bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg p-0.5">
                             <button
@@ -438,26 +438,26 @@ const CostEstimationView = () => {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-[var(--bg-tertiary)] border-b border-[var(--border-light)]">
                             <tr>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">模型</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">规格</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">数量</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">Tokens</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">成本</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>模型</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>规格</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>数量</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>Tokens</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>成本</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800/50">
                             {breakdown.length === 0 ? (
-                                <tr><td colSpan={5} className="p-12 text-center text-zinc-500">今日暂无数据</td></tr>
+                                <tr><td colSpan={5} className="p-12 text-center" style={{ color: 'var(--text-tertiary)' }}>今日暂无数据</td></tr>
                             ) : (
                                 breakdown.map((item, idx) => (
-                                    <tr key={idx} className="hover:bg-white/5 transition-colors group">
-                                        <td className="px-5 py-4 text-white font-medium">{item.model}</td>
-                                        <td className="px-5 py-4 text-zinc-500 font-mono text-xs">{item.imageSize || 'Default'}</td>
-                                        <td className="px-5 py-4 text-right font-mono text-zinc-300">{item.count}</td>
-                                        <td className="px-5 py-4 text-right font-mono text-indigo-400 opacity-80 group-hover:opacity-100 transition-opacity">
+                                    <tr key={idx} className="hover:bg-[var(--toolbar-hover)] transition-colors group">
+                                        <td className="px-5 py-4 font-medium" style={{ color: 'var(--text-primary)' }}>{item.model}</td>
+                                        <td className="px-5 py-4 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{item.imageSize || 'Default'}</td>
+                                        <td className="px-5 py-4 text-right font-mono" style={{ color: 'var(--text-primary)' }}>{item.count}</td>
+                                        <td className="px-5 py-4 text-right font-mono text-indigo-500 opacity-80 group-hover:opacity-100 transition-opacity">
                                             {(item.tokens || 0).toLocaleString()}
                                         </td>
-                                        <td className="px-5 py-4 text-right font-mono text-emerald-400 font-medium">
+                                        <td className="px-5 py-4 text-right font-mono text-emerald-500 font-medium">
                                             ${item.cost.toFixed(5)}
                                         </td>
                                     </tr>
@@ -474,11 +474,11 @@ const CostEstimationView = () => {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-[var(--bg-tertiary)] border-b border-[var(--border-light)]">
                             <tr>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">时间</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">模型</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider">规格</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">Tokens</th>
-                                <th className="px-5 py-4 font-medium text-zinc-400 text-xs uppercase tracking-wider text-right">成本</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>时间</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>模型</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>规格</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>Tokens</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>成本</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800/50">
@@ -487,11 +487,11 @@ const CostEstimationView = () => {
                             ) : (
                                 entries.map((entry, idx) => (
                                     <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                        <td className="px-5 py-3 text-zinc-400 font-mono text-xs">
+                                        <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>
                                             {new Date(entry.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                         </td>
-                                        <td className="px-5 py-3 text-white text-sm">{entry.model}</td>
-                                        <td className="px-5 py-3 text-zinc-500 font-mono text-xs">{entry.imageSize || '-'}</td>
+                                        <td className="px-5 py-3 text-sm" style={{ color: 'var(--text-primary)' }}>{entry.model}</td>
+                                        <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{entry.imageSize || '-'}</td>
                                         <td className="px-5 py-3 text-right font-mono text-indigo-400 text-sm">
                                             {(entry.tokens || 0).toLocaleString()}
                                         </td>
@@ -521,8 +521,8 @@ const CostEstimationView = () => {
                             {/* Header: Model Name */}
                             <div className="flex justify-between items-start">
                                 <div className="space-y-1">
-                                    <span className="text-xs text-zinc-500 font-mono uppercase">Model</span>
-                                    <div className="text-white font-bold text-base break-all">{item.model}</div>
+                                    <span className="text-xs font-mono uppercase" style={{ color: 'var(--text-tertiary)' }}>Model</span>
+                                    <div className="font-bold text-base break-all" style={{ color: 'var(--text-primary)' }}>{item.model}</div>
                                 </div>
                                 <div className="text-right space-y-1">
                                     <span className="text-xs text-zinc-500 font-mono uppercase">Cost</span>
@@ -681,12 +681,12 @@ const StorageSettingsView = () => {
     return (
         <div className="space-y-8 h-full flex flex-col px-1">
             <div className="flex-1">
-                <h3 className="text-2xl font-bold text-white flex items-center gap-3 text-left">
+                <h3 className="text-2xl font-bold flex items-center gap-3 text-left" style={{ color: 'var(--text-primary)' }}>
                     存储管理
                     <div className={`text-xs ml-2 font-normal px-2 py-0.5 rounded-full border ${isConnectedToLocal
                         ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                        : 'bg-[var(--bg-tertiary)] text-zinc-300 border-[var(--border-light)]'
-                        }`}>
+                        : 'bg-[var(--bg-tertiary)] border-[var(--border-light)]'
+                        }`} style={{ color: !isConnectedToLocal ? 'var(--text-tertiary)' : undefined }}>
                         {isConnectedToLocal ? '本地 (Local)' : '临时 (Temp)'}
                     </div>
                 </h3>
@@ -722,7 +722,7 @@ const StorageSettingsView = () => {
                     </div>
 
                     <div className="mt-8">
-                        <h4 className={`text-lg font-bold ${!isConnectedToLocal ? 'text-white' : 'text-zinc-400'}`}>临时文件 (Temp)</h4>
+                        <h4 className={`text-lg font-bold ${!isConnectedToLocal ? '' : 'text-zinc-400'}`} style={{ color: !isConnectedToLocal ? 'var(--text-primary)' : undefined }}>临时文件 (Temp)</h4>
                         <div className={`text-4xl font-mono font-bold mt-2 ${!isConnectedToLocal ? 'text-indigo-400' : 'text-zinc-600'}`}>
                             {formatBytes(browserUsage)}
                         </div>
@@ -781,7 +781,7 @@ const StorageSettingsView = () => {
                     </div>
 
                     <div className="mt-8">
-                        <h4 className={`text-lg font-bold ${isConnectedToLocal ? 'text-white' : 'text-zinc-400'}`}>本地文件夹(Local)</h4>
+                        <h4 className={`text-lg font-bold ${isConnectedToLocal ? '' : 'text-zinc-400'}`} style={{ color: isConnectedToLocal ? 'var(--text-primary)' : undefined }}>本地文件夹(Local)</h4>
                         <div className={`text-4xl font-mono font-bold mt-2 ${isConnectedToLocal ? 'text-indigo-400' : 'text-zinc-600'}`}>
                             {isConnectedToLocal ? formatBytes(localUsage) : '--'}
                         </div>
@@ -967,10 +967,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                     {/* Desktop Sidebar */}
                     <div className="w-64 border-r flex flex-col p-4 shrink-0" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
                         <div className="flex items-center gap-3 px-2 mb-8 mt-2">
-                            <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: 'var(--accent-indigo)', color: 'white' }}>
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20" style={{ background: 'var(--gradient-primary)', color: 'white' }}>
                                 <LayoutDashboard size={18} />
                             </div>
-                            <span className="font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>系统设置</span>
+                            <span className="font-bold tracking-tight text-lg" style={{ color: 'var(--text-primary)' }}>系统设置</span>
                         </div>
 
                         <div className="space-y-1">

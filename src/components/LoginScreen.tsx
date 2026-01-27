@@ -16,8 +16,14 @@ const LoginScreen: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
+    const [showDevWarning, setShowDevWarning] = useState(false);
 
-    const handleDevLogin = async () => {
+    const handleDevLoginClick = () => {
+        setShowDevWarning(true);
+    };
+
+    const confirmDevLogin = async () => {
+        setShowDevWarning(false);
         setLoading(true);
         try {
             await bypassAuth();
@@ -96,14 +102,10 @@ const LoginScreen: React.FC = () => {
             } else if (err.message?.includes('Failed to fetch')) {
                 // Auto Fallback to Offline Mode
                 console.log('Network failed, switching to Offline Mode');
-                // notify.info('无法连接服务器', '已为您自动切换至离线模式'); // If notify service is available here, otherwise use setError
-
-                // We use a temporary workaround to wait 1s then bypass
                 setError('网络连接超时，正在切换至离线模式...');
                 setTimeout(async () => {
-                    await bypassAuth();
+                    await bypassAuth(email || 'offline@user', (email?.split('@')[0]) || 'Offline User');
                 }, 1000);
-
             } else {
                 setError(err.message || '操作失败，请重试');
             }
@@ -114,15 +116,47 @@ const LoginScreen: React.FC = () => {
 
     return (
         <div className="fixed inset-0 bg-[#000000] flex overflow-hidden text-white font-sans">
+            {/* Custom Dev Mode Warning Modal */}
+            {showDevWarning && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-[#18181b] border border-white/10 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-6 animate-in zoom-in-95 duration-200">
+                        <div className="space-y-4 text-center">
+                            <div className="mx-auto w-12 h-12 bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center">
+                                <AlertCircle size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-white mb-2">进入离线开发模式?</h3>
+                                <p className="text-sm text-zinc-400 leading-relaxed">
+                                    离线模式仅供临时测试和开发使用。<br />
+                                    <span className="text-amber-500/90 font-medium">关闭浏览器后，本地存储的数据可能会丢失。</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                onClick={() => setShowDevWarning(false)}
+                                className="w-full py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={confirmDevLogin}
+                                className="w-full py-2.5 rounded-xl bg-white text-black hover:bg-zinc-200 font-bold transition-colors"
+                            >
+                                确认进入
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* LEFT SIDE: Visual / Artistic (Desktop Only) */}
             <div className="hidden lg:flex w-1/2 relative overflow-hidden items-center justify-center bg-[#05081a]">
-                {/* Dynamic Background */}
                 <div className="absolute inset-0">
                     <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-indigo-600/15 rounded-full blur-[120px] mix-blend-screen animate-blob" />
                     <div className="absolute bottom-[-10%] right-[-10%] w-[80%] h-[80%] bg-purple-600/15 rounded-full blur-[120px] mix-blend-screen animate-blob animation-delay-2000" />
                 </div>
-
-                {/* Content */}
                 <div className="relative z-10 p-12 max-w-lg text-center">
                     <div className="w-24 h-24 rounded-[32px] bg-gradient-to-tr from-indigo-500 to-purple-500 mx-auto mb-8 shadow-2xl shadow-indigo-500/30 flex items-center justify-center ring-1 ring-white/20 animate-float-breathe">
                         <Sparkles size={48} className="text-white" strokeWidth={2.5} />
@@ -134,7 +168,6 @@ const LoginScreen: React.FC = () => {
                         新一代 AI 内容创作工作站。<br />
                         无限画布，无限创意。
                     </p>
-                    {/* Version Badge */}
                     <div className="absolute bottom-8 left-0 right-0 text-center opacity-30 text-xs font-mono">
                         v1.2.1 BUILD 2026.01
                     </div>
@@ -143,7 +176,6 @@ const LoginScreen: React.FC = () => {
 
             {/* RIGHT SIDE: Form */}
             <div className="w-full lg:w-1/2 relative flex items-center justify-center p-6 sm:p-12 bg-[#000000]">
-                {/* iOS-like subtle background for mobile */}
                 <div className="lg:hidden absolute inset-0 overflow-hidden z-0">
                     <div className="absolute top-[-10%] right-[-10%] w-[300px] h-[300px] bg-purple-500/10 rounded-full blur-[80px]" />
                     <div className="absolute bottom-[-10%] left-[-10%] w-[300px] h-[300px] bg-indigo-500/10 rounded-full blur-[80px]" />
@@ -183,7 +215,6 @@ const LoginScreen: React.FC = () => {
                     </div>
 
                     <form onSubmit={handleAuth} className="space-y-4">
-                        {/* Status Messages */}
                         {error && (
                             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex gap-3 text-red-400 text-sm animate-in fade-in slide-in-from-top-1">
                                 <AlertCircle size={18} className="shrink-0" />
@@ -198,7 +229,6 @@ const LoginScreen: React.FC = () => {
                         )}
 
                         <div className="space-y-4">
-                            {/* Email */}
                             <div className="space-y-1">
                                 <label className="text-xs font-medium text-zinc-400 ml-1">电子邮箱</label>
                                 <div className="relative group">
@@ -216,7 +246,6 @@ const LoginScreen: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Password */}
                             {view !== 'forgot-password' && (
                                 <div className="space-y-1">
                                     <div className="flex justify-between items-center ml-1">
@@ -255,7 +284,6 @@ const LoginScreen: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* Confirm Password */}
                             {view === 'register' && (
                                 <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
                                     <label className="text-xs font-medium text-zinc-400 ml-1">确认密码</label>
@@ -320,11 +348,7 @@ const LoginScreen: React.FC = () => {
                         <div className="pt-4 border-t border-white/5">
                             <button
                                 type="button"
-                                onClick={() => {
-                                    // Use bypassAuth from context (need to cast or assuming updated context imports)
-                                    // Actually, let's use the hook in the component
-                                    handleDevLogin();
-                                }}
+                                onClick={handleDevLoginClick}
                                 className="text-xs text-zinc-600 hover:text-zinc-400 font-mono transition-colors flex items-center justify-center gap-2 mx-auto"
                             >
                                 <Lock size={12} />
@@ -337,5 +361,4 @@ const LoginScreen: React.FC = () => {
         </div>
     );
 };
-
 export default LoginScreen;

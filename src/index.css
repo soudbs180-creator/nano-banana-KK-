@@ -165,6 +165,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
   letter-spacing: -0.015em;
+  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ============================================
@@ -398,6 +401,7 @@ input[type=number] {
   background-color: var(--bg-canvas);
   overflow: hidden;
   cursor: grab;
+  transition: background-color 0.3s ease;
 }
 
 .canvas-container:active {
@@ -423,6 +427,7 @@ input[type=number] {
   background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
   background-size: 24px 24px;
   background-position: center center;
+  transition: background-image 0.3s ease;
 }
 
 /* ============================================
@@ -435,7 +440,7 @@ input[type=number] {
   border-right: 1px solid var(--border-light);
   display: flex;
   flex-direction: column;
-  transition: width var(--transition-slow);
+  transition: width var(--transition-slow), background-color 0.3s ease, border-color 0.3s ease;
   overflow: hidden;
 }
 
@@ -556,7 +561,7 @@ input[type=number] {
   border-radius: var(--radius-lg);
   overflow: hidden;
   cursor: move;
-  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+  transition: box-shadow var(--transition-fast), border-color var(--transition-fast), background-color 0.3s ease;
   user-select: none;
 }
 
@@ -642,6 +647,7 @@ input[type=number] {
   box-shadow: var(--shadow-xl);
   z-index: 100;
   overflow: visible;
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .input-bar-inner {
@@ -1498,12 +1504,6 @@ input[type=number] {
   transition: all 0.3s ease;
 }
 
-.liquid-glass:hover,
-.liquid-glass:active {
-  /* filter: url(#liquidFilter);  <-- Removed per user request "Too weird" */
-  /* Slight lighten on hover instead */
-}
-
 /* Utility to hide scrollbar */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
@@ -1567,4 +1567,26 @@ body:not(.dark-mode) .settings-panel .border-white\/10,
 body:not(.dark-mode) .settings-panel .border-white\/5,
 body:not(.dark-mode) .settings-panel .border-zinc-800 {
   border-color: var(--border-light) !important;
+}
+
+/* ============================================
+   Global Theme Transition Fallback
+   ============================================ */
+div,
+span,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+input,
+textarea,
+button,
+select,
+a {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+  transition-duration: 0.3s;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }

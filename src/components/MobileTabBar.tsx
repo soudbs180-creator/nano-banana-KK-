@@ -27,12 +27,14 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
                 }}
             >
                 {/* Tab: Gallery (Sidebar) */}
+                {/* Tab: Gallery (Sidebar) */}
                 {/* Tab: Image Mode (was Gallery) */}
                 <button
                     onClick={() => onSetMode(GenerationMode.IMAGE)}
-                    className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300 ${currentMode === GenerationMode.IMAGE && currentView !== 'settings' && currentView !== 'profile' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300`}
                 >
-                    <div className={`p-1.5 rounded-xl transition-all ${currentMode === GenerationMode.IMAGE && currentView !== 'settings' && currentView !== 'profile' ? 'bg-white/10' : ''}`}>
+                    <div className={`p-1.5 rounded-xl transition-all ${currentMode === GenerationMode.IMAGE && currentView !== 'settings' && currentView !== 'profile' ? 'bg-[var(--bg-tertiary)]' : ''}`}
+                        style={{ color: currentMode === GenerationMode.IMAGE && currentView !== 'settings' && currentView !== 'profile' ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                         <ImageIcon size={24} strokeWidth={2} />
                     </div>
                 </button>
@@ -41,9 +43,10 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
                 {/* Tab: Video Mode (was Home) */}
                 <button
                     onClick={() => onSetMode(GenerationMode.VIDEO)}
-                    className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300 ${currentMode === GenerationMode.VIDEO && currentView !== 'settings' && currentView !== 'profile' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300`}
                 >
-                    <div className={`p-1.5 rounded-xl transition-all ${currentMode === GenerationMode.VIDEO && currentView !== 'settings' && currentView !== 'profile' ? 'bg-white/10' : ''}`}>
+                    <div className={`p-1.5 rounded-xl transition-all ${currentMode === GenerationMode.VIDEO && currentView !== 'settings' && currentView !== 'profile' ? 'bg-[var(--bg-tertiary)]' : ''}`}
+                        style={{ color: currentMode === GenerationMode.VIDEO && currentView !== 'settings' && currentView !== 'profile' ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                         <Video size={24} strokeWidth={2} />
                     </div>
                 </button>
@@ -51,9 +54,10 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
                 {/* Tab: Settings */}
                 <button
                     onClick={onOpenSettings}
-                    className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300 ${currentView === 'settings' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300`}
                 >
-                    <div className={`p-1.5 rounded-xl transition-all ${currentView === 'settings' ? 'bg-white/10' : ''}`}>
+                    <div className={`p-1.5 rounded-xl transition-all ${currentView === 'settings' ? 'bg-[var(--bg-tertiary)]' : ''}`}
+                        style={{ color: currentView === 'settings' ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                         <Settings size={24} strokeWidth={currentView === 'settings' ? 2 : 2} />
                     </div>
                 </button>
@@ -61,9 +65,10 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
                 {/* Tab: Profile */}
                 <button
                     onClick={onOpenProfile}
-                    className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300 ${currentView === 'profile' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300`}
                 >
-                    <div className={`p-1.5 rounded-xl transition-all ${currentView === 'profile' ? 'bg-white/10' : ''}`}>
+                    <div className={`p-1.5 rounded-xl transition-all ${currentView === 'profile' ? 'bg-[var(--bg-tertiary)]' : ''}`}
+                        style={{ color: currentView === 'profile' ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                         <User size={24} strokeWidth={currentView === 'profile' ? 2 : 2} />
                     </div>
                 </button>

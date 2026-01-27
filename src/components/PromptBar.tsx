@@ -293,12 +293,6 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                backdropFilter: 'blur(40px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
-                borderRadius: '24px',
                 bottom: isMobile ? 'calc(96px + env(safe-area-inset-bottom))' : '32px'
             }}
         >
@@ -537,9 +531,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 title={groundingSupported ? "Grounding with Google Search" : "当前模型不支持联网模式"}
                             >
                                 <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <line x1="2" y1="12" x2="22" y2="12" />
-                                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10 15.3 15.3 0 0 1 4-10z" />
+                                    <path d="M2 8.8a15 15 0 0 1 20 0" />
+                                    <path d="M5 12.5a10 10 0 0 1 14 0" />
+                                    <path d="M8.5 16.3a5 5 0 0 1 7 0" />
+                                    <line x1="12" y1="20" x2="12.01" y2="20" />
                                 </svg>
                                 <span>联网</span>
                             </button>

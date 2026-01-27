@@ -110,7 +110,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         const slot = slots.find(s => s.id === id);
         if (slot) {
             const targetUrl = slot.baseUrl || 'https://generativelanguage.googleapis.com'; // Default to Google if empty
-            const result = await keyManager.testChannel(targetUrl, slot.key);
+            const result = await keyManager.testChannel(targetUrl, slot.key, slot.provider);
 
             if (result.success) {
                 keyManager.reportSuccess(id);
@@ -224,8 +224,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-4 px-1 py-4 shrink-0">
                 <div>
-                    <h3 className="text-2xl font-bold text-white text-left">API 通道</h3>
-                    <p className="text-xs text-zinc-500 mt-1">
+                    <h3 className="text-2xl font-bold text-left" style={{ color: 'var(--text-primary)' }}>API 通道</h3>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
                         {isSequential ? '顺序优先: 按列表顺序依次调用' : '并发优先: 随机/负载均衡调用'}
                     </p>
                 </div>
@@ -236,8 +236,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                         <button
                             onClick={() => handleStrategyChange('round-robin')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${strategy === 'round-robin'
-                                ? 'bg-zinc-700 text-white shadow-sm'
-                                : 'text-zinc-500 hover:text-zinc-300'
+                                ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-sm border border-[var(--border-light)]'
+                                : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
                                 }`}
                             title="随机/负载均衡"
                         >
@@ -246,8 +246,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                         <button
                             onClick={() => handleStrategyChange('sequential')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${strategy === 'sequential'
-                                ? 'bg-zinc-700 text-white shadow-sm'
-                                : 'text-zinc-500 hover:text-zinc-300'
+                                ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-sm border border-[var(--border-light)]'
+                                : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
                                 }`}
                             title="顺序优先"
                         >
@@ -257,7 +257,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
                     <button
                         onClick={openAddModal}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 !text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
+                        style={{ color: 'white' }}
                     >
                         <Plus size={14} />
                         <span className="hidden sm:inline">添加通道</span>
@@ -282,9 +283,10 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                         </button>
                     </div>
                 ) : (
-                    <div className={isSequential
-                        ? "flex flex-col gap-3 max-w-3xl mx-0 w-full"
-                        : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                    <div className={
+                        isSequential
+                            ? "flex flex-col gap-3 max-w-3xl mx-auto w-full pb-4 pt-2 px-4"
+                            : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 px-4 pb-6 pt-2"
                     }>
                         {slots.map((slot, index) => (
                             <div
@@ -303,8 +305,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         ? 'bg-zinc-900/30 border-zinc-800/50 opacity-60'
                                         : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/5'
                                     }
-                                    ${isSequential ? 'flex items-center gap-4 p-3' : 'p-4'}
-                                    ${draggedId === slot.id ? 'opacity-20 border-dashed border-indigo-500 scale-[0.98]' : 'hover:-translate-y-0.5'}
+                                    ${isSequential ? 'flex items-center gap-4 p-3 w-full' : 'p-4 w-full'}
+                                    ${draggedId === slot.id ? 'opacity-20 border-dashed border-indigo-500 scale-[0.98]' : 'hover:-translate-y-1 hover:z-10 relative'}
                                 `}
                             >
                                 {/* Sequential Order Badge */}
@@ -327,30 +329,30 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                             (slot.status === 'invalid' || slot.status === 'rate_limited') ? 'bg-red-500' :
                                                                 'bg-zinc-600'
                                                     }`} />
-                                                <h4 className="font-medium text-zinc-200 truncate pr-2" title={slot.name}>
+                                                <h4 className="font-medium truncate pr-2" style={{ color: 'var(--text-primary)' }} title={slot.name}>
                                                     {slot.name}
                                                 </h4>
                                             </div>
                                             {!isSequential && (
                                                 <span className={`text-[10px] px-1.5 py-0.5 rounded border ${slot.provider === 'Google'
-                                                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                                    : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                                    ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                                    : 'bg-purple-500/10 text-purple-500 border-purple-500/20'
                                                     }`}>
                                                     {slot.provider}
                                                 </span>
                                             )}
                                         </div>
 
-                                        <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
+                                        <div className="flex items-center gap-2 text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
                                             <Key size={12} />
                                             <span className="truncate">{maskApiKey(slot.key)}</span>
                                         </div>
                                     </div>
 
                                     {/* Stats & Actions (Horizontal in Sequential, Bottom in Grid) */}
-                                    <div className={`${isSequential ? 'flex items-center gap-6 shrink-0' : 'mt-4 pt-4 border-t border-[var(--border-light)] flex items-center justify-between gap-6'}`}>
-                                        {/* Usage Stats (Fixed Width for Alignment) */}
-                                        <div className={`flex items-center gap-3 text-xs text-zinc-500 ${isSequential ? 'hidden md:flex w-[100px] justify-center border-l border-zinc-700/50 pl-4' : 'min-w-[110px]'}`}>
+                                    <div className={`${isSequential ? 'flex items-center gap-6 shrink-0' : 'mt-4 pt-4 border-t border-[var(--border-light)] flex items-center justify-center gap-6'}`}>
+                                        {/* Usage Stats (Centered) */}
+                                        <div className={`flex items-center gap-3 text-xs ${isSequential ? 'hidden md:flex w-[100px] justify-center border-l pl-4' : 'justify-center mx-auto'}`} style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-light)' }}>
                                             <div className="flex items-center gap-1" title="调用成功次数">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50" />
                                                 {slot.successCount || 0}
@@ -361,12 +363,12 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             </div>
                                         </div>
 
-                                        {/* Action Buttons (Fixed Width for Alignment) */}
-                                        <div className={`flex items-center gap-1 justify-end ${isSequential ? 'w-auto md:w-[100px] justify-end md:justify-center md:border-l md:border-zinc-700/50 md:pl-4' : 'min-w-[110px]'}`}>
+                                        {/* Action Buttons (Centered) */}
+                                        <div className={`flex items-center gap-1 justify-center shrink-0 ${isSequential ? 'w-auto md:w-[100px] justify-end md:justify-center md:border-l md:pl-4' : 'mx-auto'}`} style={{ borderColor: 'var(--border-light)' }}>
                                             <button
                                                 onClick={(e) => handleRefresh(slot.id, e)}
                                                 disabled={refreshingIds.has(slot.id)}
-                                                className={`p-1.5 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors ${refreshingIds.has(slot.id) ? 'animate-spin text-indigo-500' : ''}`}
+                                                className={`p-1.5 rounded-lg transition-colors ${refreshingIds.has(slot.id) ? 'animate-spin text-indigo-500' : 'hover:bg-[var(--toolbar-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
                                                 title="验证连通性"
                                             >
                                                 <RefreshCw size={14} />
@@ -374,7 +376,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             <button
                                                 onClick={(e) => handleToggle(slot.id, e)}
                                                 className={`p-1.5 rounded-lg transition-colors ${slot.disabled
-                                                    ? 'hover:bg-emerald-500/10 text-zinc-500 hover:text-emerald-500'
+                                                    ? 'hover:bg-emerald-500/10 text-[var(--text-tertiary)] hover:text-emerald-500'
                                                     : 'hover:bg-amber-500/10 text-emerald-500 hover:text-amber-500'
                                                     }`}
                                                 title={slot.disabled ? "启用通道" : "禁用通道"}
@@ -383,7 +385,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             </button>
                                             <button
                                                 onClick={(e) => handleDelete(slot.id, e)}
-                                                className="p-1.5 hover:bg-red-500/10 text-zinc-400 hover:text-red-500 rounded-lg transition-colors"
+                                                className="p-1.5 hover:bg-red-500/10 text-[var(--text-tertiary)] hover:text-red-500 rounded-lg transition-colors"
                                                 title="删除通道"
                                             >
                                                 <Trash2 size={14} />
@@ -391,14 +393,14 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         </div>
                                     </div>
                                     {/* Stats (Fixed Width for Alignment in Sequential) */}
-                                    <div className={`grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)] ${isSequential ? 'hidden md:grid w-[180px] shrink-0' : ''}`}>
+                                    <div className={`grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)] ${isSequential ? 'hidden md:grid w-[180px] shrink-0' : 'w-full mt-3'}`}>
                                         <div className="text-center">
-                                            <div className="text-[10px] text-zinc-500">Tokens消耗</div>
-                                            <div className="text-xs font-mono text-emerald-300 overflow-hidden text-ellipsis whitespace-nowrap">{clampAndFormat(slot.usedTokens)}</div>
+                                            <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Tokens消耗</div>
+                                            <div className="text-xs font-mono text-emerald-500 break-all" style={{ fontWeight: 600 }}>{clampAndFormat(slot.usedTokens)}</div>
                                         </div>
-                                        <div className="text-center border-l border-white/5">
-                                            <div className="text-[10px] text-zinc-500">费用消耗</div>
-                                            <div className="text-xs font-mono text-amber-400 overflow-hidden text-ellipsis whitespace-nowrap">${clampAndFormat(slot.totalCost)}</div>
+                                        <div className="text-center border-l" style={{ borderColor: 'var(--border-light)' }}>
+                                            <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>费用消耗</div>
+                                            <div className="text-xs font-mono text-amber-500 break-all" style={{ fontWeight: 600 }}>${clampAndFormat(slot.totalCost)}</div>
                                         </div>
                                     </div>
 
@@ -412,225 +414,226 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             </div>
 
             {/* Modal */}
-            {isModalOpen && createPortal(
-                <div className="fixed inset-0 z-[10050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-[var(--bg-secondary)] w-full max-w-md rounded-2xl border border-[var(--border-light)] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-                        <div className="flex justify-between items-center p-5 border-b border-[var(--border-light)]">
-                            <h4 className="text-lg font-bold text-white">{editingId ? '编辑通道' : '添加通道'}</h4>
-                            <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={20} /></button>
-                        </div>
-
-                        {/* Modal Content */}
-                        <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar">
-
-                            {/* Step 1: Connection Details */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between text-xs text-zinc-500 uppercase tracking-wider font-bold">
-                                    连接配置
-                                </div>
-
-                                {formProvider !== 'Google' && (
-                                    <div>
-                                        <label className="text-xs text-zinc-400 mb-1.5 block">接口地址 (Base URL)</label>
-                                        <div className="relative">
-                                            <input
-                                                className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-white font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 placeholder-zinc-600 transition-all"
-                                                placeholder={formProvider === 'Google' ? "https://generativelanguage.googleapis.com" : "https://api.openai.com/v1"}
-                                                value={formBaseUrl}
-                                                onChange={e => {
-                                                    setFormBaseUrl(e.target.value);
-                                                    // Auto-set provider if recognized
-                                                    const val = e.target.value.toLowerCase();
-                                                    if (val.includes('deepseek')) { setFormName(n => n === 'New Channel' || !n ? 'DeepSeek' : n); setFormProvider('OpenAI'); }
-                                                    else if (val.includes('silicon')) { setFormName(n => n === 'New Channel' || !n ? 'SiliconFlow' : n); setFormProvider('OpenAI'); }
-                                                    else if (val.includes('openrouter')) { setFormName(n => n === 'New Channel' || !n ? 'OpenRouter' : n); setFormProvider('OpenAI'); }
-                                                }}
-                                            />
-                                            <Globe className="absolute left-3 top-2.5 text-zinc-600 pointer-events-none" size={14} />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* API Key */}
-                                <div>
-                                    <label className="text-xs text-zinc-400 mb-1.5 block">API Key</label>
-                                    <div className="relative">
-                                        <input
-                                            className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-10 py-2.5 text-sm text-white font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
-                                            type={isKeyEditing ? "text" : "password"}
-                                            value={isKeyEditing ? formKey : maskApiKey(formKey)}
-                                            onChange={e => setFormKey(e.target.value)}
-                                            onFocus={() => setIsKeyEditing(true)}
-                                            onBlur={() => setIsKeyEditing(false)}
-                                            placeholder="sk-..."
-                                            autoComplete="off"
-                                        />
-                                        <Key className="absolute left-3 top-2.5 text-zinc-600 pointer-events-none" size={14} />
-                                    </div>
-                                </div>
-
-                                {/* Auto Fetch Button */}
-                                <div>
-                                    <button
-                                        onClick={async () => {
-                                            if (!formBaseUrl && !formKey) return;
-                                            setLoading(true);
-
-                                            // Default URL if empty
-                                            const targetUrl = formBaseUrl || 'https://api.openai.com/v1';
-
-                                            try {
-                                                const models = await keyManager.fetchRemoteModels(targetUrl, formKey);
-                                                if (models.length > 0) {
-                                                    setFormModels(models.join(', '));
-                                                    // Auto-name if still default
-                                                    if (formName === 'New Channel' || !formName) {
-                                                        try {
-                                                            const url = new URL(targetUrl);
-                                                            const domain = url.hostname.split('.').slice(-2).join('.').split('.')[0];
-                                                            setFormName(domain.charAt(0).toUpperCase() + domain.slice(1));
-                                                        } catch (e) {
-                                                            setFormName('Custom API');
-                                                        }
-                                                    }
-                                                    alert(`成功获取 ${models.length} 个模型！`);
-                                                } else {
-                                                    alert('未发现模型，请检查 URL 和 Key，或手动输入模型。');
-                                                }
-                                            } catch (e) {
-                                                alert('连接失败');
-                                            } finally {
-                                                setLoading(false);
-                                            }
-                                        }}
-                                        disabled={loading || !formKey}
-                                        className={`w-full py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${loading || !formKey
-                                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                                            : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 border border-indigo-500/20'
-                                            }`}
-                                    >
-                                        {loading ? <RefreshCw className="animate-spin" size={14} /> : <Zap size={14} />}
-                                        {loading ? '正在获取...' : '自动获取模型列表 (Auto-Fetch)'}
-                                    </button>
-                                </div>
+            {
+                isModalOpen && createPortal(
+                    <div className="fixed inset-0 z-[10050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                        <div className="bg-[var(--bg-secondary)] w-full max-w-md rounded-2xl border border-[var(--border-light)] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                            <div className="flex justify-between items-center p-5 border-b border-[var(--border-light)]">
+                                <h4 className="text-lg font-bold text-white">{editingId ? '编辑通道' : '添加通道'}</h4>
+                                <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={20} /></button>
                             </div>
 
-                            <div className="border-t border-[var(--border-light)]" />
+                            {/* Modal Content */}
+                            <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar">
 
-                            {/* Step 2: Meta Info */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between text-xs text-zinc-500 uppercase tracking-wider font-bold">
-                                    基础信息 & 模型
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-xs text-zinc-400 mb-1.5 block">通道名称</label>
-                                        <input
-                                            className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50"
-                                            placeholder="My Channel"
-                                            value={formName}
-                                            onChange={e => setFormName(e.target.value)}
-                                        />
+                                {/* Step 1: Connection Details */}
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between text-xs text-zinc-500 uppercase tracking-wider font-bold">
+                                        连接配置
                                     </div>
-                                    <div>
-                                        <label className="text-xs text-zinc-400 mb-1.5 block">供应商类型</label>
-                                        <select
-                                            className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50"
-                                            value={formProvider}
-                                            onChange={e => {
-                                                const nextProvider = e.target.value;
-                                                setFormProvider(nextProvider);
-                                                if (nextProvider === 'Google' && !formModels.trim()) {
-                                                    setFormModels(DEFAULT_GOOGLE_MODELS.join(', '));
-                                                }
-                                            }}
-                                        >
-                                            <option value="Google">Google / Gemini</option>
-                                            <option value="OpenAI">OpenAI Compatible</option>
-                                            <option value="Anthropic">Anthropic</option>
-                                            <option value="Custom">Custom</option>
-                                        </select>
-                                    </div>
-                                </div>
 
-                                {/* Models */}
-                                <div>
-                                    <label className="text-xs text-zinc-400 mb-1.5 flex justify-between items-center">
-                                        <span>可用模型 ID (逗号分隔)</span>
-                                    </label>
-                                    <textarea
-                                        className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-indigo-500/50 min-h-[100px] leading-relaxed resize-none"
-                                        placeholder="模型 ID 列表，支持格式: ID(自定义名称/描述)&#10;例如: gemini-2.5-flash-image(Gemini 2.5 Flash/速度优先的原生图像生成), gemini-3-pro-image-preview(香蕉pro/高质量原生图像生成，细节更强)"
-                                        value={formModels}
-                                        onChange={e => setFormModels(e.target.value)}
-                                    />
-                                </div>
-
-                                {/* Preset Tags - Moved Below Input */}
-                                <div className="mt-2 flex flex-wrap gap-2 justify-end">
-                                    {formProvider === 'Google' ? (
-                                        <>
-                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-2.0-pro-exp-01-21(Gemini 2.0 Pro)')}>+ Gemini 2.0 Pro</span>
-                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-2.0-flash-exp(Gemini 2.0 Flash)')}>+ Gemini 2.0 Flash</span>
-                                            <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(DEFAULT_GOOGLE_MODELS.join(', '))}>填入热门模型</span>
-                                        </>
-                                    ) : (
-                                        <div className="flex flex-wrap gap-2 justify-end max-w-full">
-                                            {CHAT_MODEL_PRESETS.slice(0, 4).map(preset => (
-                                                <span
-                                                    key={preset.id}
-                                                    className="text-indigo-400 cursor-pointer hover:underline text-[10px]"
-                                                    onClick={() => setFormModels(prev => {
-                                                        const current = splitModelStrings(prev);
-                                                        if (current.some(s => parseModelString(s).id === preset.id)) return prev;
-                                                        // Format: ID(Label)
-                                                        const label = preset.label.split('(')[0].trim(); // Use name part
-                                                        const entry = `${preset.id}(${label})`;
-                                                        return (prev ? prev + ', ' : '') + entry;
-                                                    })}
-                                                >
-                                                    + {preset.label.split('(')[0].trim()}
-                                                </span>
-                                            ))}
-                                            <span className="text-zinc-500 text-[10px] cursor-help" title="更多模型请手动输入或自动获取">...</span>
+                                    {formProvider !== 'Google' && (
+                                        <div>
+                                            <label className="text-xs text-zinc-400 mb-1.5 block">接口地址 (Base URL)</label>
+                                            <div className="relative">
+                                                <input
+                                                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 placeholder-zinc-600 transition-all"
+                                                    placeholder={formProvider === 'Google' ? "https://generativelanguage.googleapis.com" : "https://api.openai.com/v1"}
+                                                    value={formBaseUrl}
+                                                    onChange={e => {
+                                                        setFormBaseUrl(e.target.value);
+                                                        // Auto-set provider if recognized
+                                                        const val = e.target.value.toLowerCase();
+                                                        if (val.includes('deepseek')) { setFormName(n => n === 'New Channel' || !n ? 'DeepSeek' : n); setFormProvider('OpenAI'); }
+                                                        else if (val.includes('silicon')) { setFormName(n => n === 'New Channel' || !n ? 'SiliconFlow' : n); setFormProvider('OpenAI'); }
+                                                        else if (val.includes('openrouter')) { setFormName(n => n === 'New Channel' || !n ? 'OpenRouter' : n); setFormProvider('OpenAI'); }
+                                                    }}
+                                                />
+                                                <Globe className="absolute left-3 top-2.5 text-zinc-600 pointer-events-none" size={14} />
+                                            </div>
                                         </div>
                                     )}
+
+                                    {/* API Key */}
+                                    <div>
+                                        <label className="text-xs text-zinc-400 mb-1.5 block">API Key</label>
+                                        <div className="relative">
+                                            <input
+                                                className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-10 py-2.5 text-sm text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
+                                                type={isKeyEditing ? "text" : "password"}
+                                                value={isKeyEditing ? formKey : maskApiKey(formKey)}
+                                                onChange={e => setFormKey(e.target.value)}
+                                                onFocus={() => setIsKeyEditing(true)}
+                                                onBlur={() => setIsKeyEditing(false)}
+                                                placeholder="sk-..."
+                                                autoComplete="off"
+                                            />
+                                            <Key className="absolute left-3 top-2.5 text-zinc-600 pointer-events-none" size={14} />
+                                        </div>
+                                    </div>
+
+                                    {/* Auto Fetch Button */}
+                                    <div>
+                                        <button
+                                            onClick={async () => {
+                                                if (!formBaseUrl && !formKey) return;
+                                                setLoading(true);
+
+                                                // Default URL if empty
+                                                const targetUrl = formBaseUrl || 'https://api.openai.com/v1';
+
+                                                try {
+                                                    const models = await keyManager.fetchRemoteModels(targetUrl, formKey);
+                                                    if (models.length > 0) {
+                                                        setFormModels(models.join(', '));
+                                                        // Auto-name if still default
+                                                        if (formName === 'New Channel' || !formName) {
+                                                            try {
+                                                                const url = new URL(targetUrl);
+                                                                const domain = url.hostname.split('.').slice(-2).join('.').split('.')[0];
+                                                                setFormName(domain.charAt(0).toUpperCase() + domain.slice(1));
+                                                            } catch (e) {
+                                                                setFormName('Custom API');
+                                                            }
+                                                        }
+                                                        alert(`成功获取 ${models.length} 个模型！`);
+                                                    } else {
+                                                        alert('未发现模型，请检查 URL 和 Key，或手动输入模型。');
+                                                    }
+                                                } catch (e) {
+                                                    alert('连接失败');
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !formKey}
+                                            className={`w-full py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${loading || !formKey
+                                                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                                : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 border border-indigo-500/20'
+                                                }`}
+                                        >
+                                            {loading ? <RefreshCw className="animate-spin" size={14} /> : <Zap size={14} />}
+                                            {loading ? '正在获取...' : '自动获取模型列表 (Auto-Fetch)'}
+                                        </button>
+                                    </div>
                                 </div>
 
-                                {/* Parsed Preview Tags */}
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                    {formModels.split(/[,，\n]/).filter(Boolean).slice(0, 5).map((m, i) => (
-                                        <span key={i} className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded text-zinc-400">{m.trim()}</span>
-                                    ))}
-                                    {formModels.split(/[,，\n]/).filter(Boolean).length > 5 && <span className="text-[10px] text-zinc-600">...</span>}
+                                <div className="border-t border-[var(--border-light)]" />
+
+                                {/* Step 2: Meta Info */}
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between text-xs text-zinc-500 uppercase tracking-wider font-bold">
+                                        基础信息 & 模型
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs text-zinc-400 mb-1.5 block">通道名称</label>
+                                            <input
+                                                className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-indigo-500/50"
+                                                placeholder="My Channel"
+                                                value={formName}
+                                                onChange={e => setFormName(e.target.value)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-zinc-400 mb-1.5 block">供应商类型</label>
+                                            <select
+                                                className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-indigo-500/50"
+                                                value={formProvider}
+                                                onChange={e => {
+                                                    const nextProvider = e.target.value;
+                                                    setFormProvider(nextProvider);
+                                                    if (nextProvider === 'Google' && !formModels.trim()) {
+                                                        setFormModels(DEFAULT_GOOGLE_MODELS.join(', '));
+                                                    }
+                                                }}
+                                            >
+                                                <option value="Google">Google / Gemini</option>
+                                                <option value="OpenAI">OpenAI Compatible</option>
+                                                <option value="Anthropic">Anthropic</option>
+                                                <option value="Custom">Custom</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Models */}
+                                    <div>
+                                        <label className="text-xs text-zinc-400 mb-1.5 flex justify-between items-center">
+                                            <span>可用模型 ID (逗号分隔)</span>
+                                        </label>
+                                        <textarea
+                                            className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 min-h-[100px] leading-relaxed resize-none"
+                                            placeholder="模型 ID 列表，支持格式: ID(自定义名称/描述)&#10;例如: gemini-2.5-flash-image(Gemini 2.5 Flash/速度优先的原生图像生成), gemini-3-pro-image-preview(香蕉pro/高质量原生图像生成，细节更强)"
+                                            value={formModels}
+                                            onChange={e => setFormModels(e.target.value)}
+                                        />
+                                    </div>
+
+                                    {/* Preset Tags - Moved Below Input */}
+                                    <div className="mt-2 flex flex-wrap gap-2 justify-end">
+                                        {formProvider === 'Google' ? (
+                                            <>
+                                                <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-2.0-pro-exp-01-21(Gemini 2.0 Pro)')}>+ Gemini 2.0 Pro</span>
+                                                <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-2.0-flash-exp(Gemini 2.0 Flash)')}>+ Gemini 2.0 Flash</span>
+                                                <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(DEFAULT_GOOGLE_MODELS.join(', '))}>填入热门模型</span>
+                                            </>
+                                        ) : (
+                                            <div className="flex flex-wrap gap-2 justify-end max-w-full">
+                                                {CHAT_MODEL_PRESETS.slice(0, 4).map(preset => (
+                                                    <span
+                                                        key={preset.id}
+                                                        className="text-indigo-400 cursor-pointer hover:underline text-[10px]"
+                                                        onClick={() => setFormModels(prev => {
+                                                            const current = splitModelStrings(prev);
+                                                            if (current.some(s => parseModelString(s).id === preset.id)) return prev;
+                                                            // Format: ID(Label)
+                                                            const label = preset.label.split('(')[0].trim(); // Use name part
+                                                            const entry = `${preset.id}(${label})`;
+                                                            return (prev ? prev + ', ' : '') + entry;
+                                                        })}
+                                                    >
+                                                        + {preset.label.split('(')[0].trim()}
+                                                    </span>
+                                                ))}
+                                                <span className="text-zinc-500 text-[10px] cursor-help" title="更多模型请手动输入或自动获取">...</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Parsed Preview Tags */}
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                        {formModels.split(/[,，\n]/).filter(Boolean).slice(0, 5).map((m, i) => (
+                                            <span key={i} className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded text-zinc-400">{m.trim()}</span>
+                                        ))}
+                                        {formModels.split(/[,，\n]/).filter(Boolean).length > 5 && <span className="text-[10px] text-zinc-600">...</span>}
+                                    </div>
+                                    {formProvider === 'Google' && (
+                                        <p className="text-[10px] text-zinc-500 mt-1">Google 通道默认已填热门模型，可按需增删。</p>
+                                    )}
                                 </div>
-                                {formProvider === 'Google' && (
-                                    <p className="text-[10px] text-zinc-500 mt-1">Google 通道默认已填热门模型，可按需增删。</p>
-                                )}
+                            </div>
+
+
+                            <div className="p-5 border-t border-[var(--border-light)] flex justify-end gap-3 bg-[var(--bg-secondary)]">
+                                <button
+                                    onClick={() => setIsModalOpen(false)}
+                                    className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleSubmit}
+                                    disabled={loading}
+                                    className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
+                                >
+                                    {loading ? '处理中...' : (editingId ? '保存修改' : '添加通道')}
+                                </button>
                             </div>
                         </div>
-
-
-                        <div className="p-5 border-t border-[var(--border-light)] flex justify-end gap-3 bg-[var(--bg-secondary)]">
-                            <button
-                                onClick={() => setIsModalOpen(false)}
-                                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={handleSubmit}
-                                disabled={loading}
-                                className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
-                            >
-                                {loading ? '处理中...' : (editingId ? '保存修改' : '添加通道')}
-                            </button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )
+                    </div>,
+                    document.body
+                )
             }
         </div >
     );

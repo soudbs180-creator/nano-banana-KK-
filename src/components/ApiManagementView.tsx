@@ -17,8 +17,8 @@ const ApiManagementView = () => {
                 onClick={() => setActiveTab('dispatch')}
                 className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors`}
                 style={{
-                  backgroundColor: activeTab === 'dispatch' ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                  color: activeTab === 'dispatch' ? '#fff' : 'var(--text-tertiary)',
+                  backgroundColor: activeTab === 'dispatch' ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                  color: activeTab === 'dispatch' ? 'var(--accent-color)' : 'var(--text-tertiary)',
                   borderColor: activeTab === 'dispatch' ? 'rgba(99, 102, 241, 0.3)' : 'transparent',
                   borderWidth: '1px'
                 }}
@@ -29,8 +29,8 @@ const ApiManagementView = () => {
                 onClick={() => setActiveTab('assets')}
                 className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors`}
                 style={{
-                  backgroundColor: activeTab === 'assets' ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                  color: activeTab === 'assets' ? '#fff' : 'var(--text-tertiary)',
+                  backgroundColor: activeTab === 'assets' ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                  color: activeTab === 'assets' ? 'var(--accent-color)' : 'var(--text-tertiary)',
                   borderColor: activeTab === 'assets' ? 'rgba(99, 102, 241, 0.3)' : 'transparent',
                   borderWidth: '1px'
                 }}

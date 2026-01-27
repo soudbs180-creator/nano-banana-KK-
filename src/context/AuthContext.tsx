@@ -7,7 +7,7 @@ interface AuthContextType {
     user: User | null;
     loading: boolean;
     signOut: () => Promise<void>;
-    bypassAuth: () => Promise<void>;
+    bypassAuth: (email?: string, name?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -55,14 +55,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(null);
     };
 
-    const bypassAuth = async () => {
+    const bypassAuth = async (email = 'dev@local', name = 'Dev User') => {
+        // Simple deterministic hash for offline ID
+        const emailHash = email.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
+        const safeHash = Math.abs(emailHash).toString(36);
+
         const fakeUser: User = {
-            id: 'dev-user-' + Math.random().toString(36).slice(2),
+            id: 'dev-user-' + safeHash,
             app_metadata: { provider: 'email' },
-            user_metadata: { full_name: 'Dev User', avatar_url: null },
+            user_metadata: { full_name: name, avatar_url: null },
             aud: 'authenticated',
             created_at: new Date().toISOString(),
-            email: 'dev@local',
+            email: email,
             phone: '',
             confirmed_at: new Date().toISOString(),
             last_sign_in_at: new Date().toISOString(),

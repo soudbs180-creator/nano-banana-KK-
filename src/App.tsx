@@ -1494,7 +1494,8 @@ const AppContent: React.FC = () => {
         <div className="relative group">
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 hover:border-indigo-500 transition-all shadow-2xl bg-[#1a1a1c] flex items-center justify-center cursor-pointer active:scale-95"
+            className="relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all shadow-2xl bg-[#1a1a1c] flex items-center justify-center cursor-pointer active:scale-95"
+            style={{ borderColor: 'var(--border-light)' }}
           >
             {user?.user_metadata?.avatar_url ? (
               <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />
@@ -1514,14 +1515,18 @@ const AppContent: React.FC = () => {
           {showUserMenu && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-              <div className="absolute top-12 right-0 w-64 bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+              <div className="absolute top-12 right-0 w-64 border rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}>
 
                 {/* User Info Header */}
-                <div className="px-3 py-3 border-b border-white/5 mb-2 hover:bg-white/5 rounded-lg transition-colors cursor-pointer" onClick={() => {
-                  setProfileInitialView('main');
-                  setShowProfileModal(true);
-                  setShowUserMenu(false);
-                }}>
+                <div className="px-3 py-3 border-b mb-2 rounded-lg transition-colors cursor-pointer group"
+                  style={{ borderColor: 'var(--border-light)' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  onClick={() => {
+                    setProfileInitialView('main');
+                    setShowProfileModal(true);
+                    setShowUserMenu(false);
+                  }}>
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold overflow-hidden">
                       {user?.user_metadata?.avatar_url ? (
@@ -1529,8 +1534,8 @@ const AppContent: React.FC = () => {
                       ) : user?.email?.[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-white truncate">{user?.user_metadata?.full_name || 'User'}</div>
-                      <div className="text-xs text-zinc-400 truncate">{user?.email}</div>
+                      <div className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user?.user_metadata?.full_name || 'User'}</div>
+                      <div className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>{user?.email}</div>
                     </div>
                   </div>
                 </div>
@@ -1543,9 +1548,12 @@ const AppContent: React.FC = () => {
                       setShowProfileModal(true);
                       setShowUserMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left"
+                    style={{ color: 'var(--text-secondary)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                   >
-                    <div className="p-1.5 bg-blue-500/10 text-blue-400 rounded-lg"><User size={14} /></div>
+                    <div className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-blue)' }}><User size={14} /></div>
                     个人中心
                   </button>
 
@@ -1555,13 +1563,16 @@ const AppContent: React.FC = () => {
                       setShowSettingsPanel(true);
                       setSettingsInitialView('dashboard');
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left"
+                    style={{ color: 'var(--text-secondary)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                   >
-                    <div className="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg"><LayoutDashboard size={14} /></div>
+                    <div className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-purple)' }}><LayoutDashboard size={14} /></div>
                     设置
                   </button>
 
-                  <div className="h-px bg-white/5 my-1" />
+                  <div className="h-px my-1" style={{ backgroundColor: 'var(--border-light)' }} />
 
                   <button
                     onClick={() => {
@@ -2051,16 +2062,16 @@ const AppContent: React.FC = () => {
       {/* Liquid Glass SVG Filter Removed (User Request) */}
       {/* Chat Sidebar (Left) */}
       <div id="sidebar-container">
-      <ChatSidebar
-        isOpen={isChatOpen}
-        onToggle={() => setIsChatOpen(prev => !prev)}
-        onClose={() => setIsChatOpen(false)}
-        isMobile={isMobile}
-        onOpenSettings={(view) => {
-          setSettingsInitialView(view || 'api-management');
-          setShowSettingsPanel(true);
-        }}
-      />
+        <ChatSidebar
+          isOpen={isChatOpen}
+          onToggle={() => setIsChatOpen(prev => !prev)}
+          onClose={() => setIsChatOpen(false)}
+          isMobile={isMobile}
+          onOpenSettings={(view) => {
+            setSettingsInitialView(view || 'api-management');
+            setShowSettingsPanel(true);
+          }}
+        />
       </div>
 
       {/* Legacy KeyManagerModal removed - integrated into UserProfileModal */}

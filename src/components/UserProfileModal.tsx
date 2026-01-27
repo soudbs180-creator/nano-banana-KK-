@@ -16,11 +16,11 @@ class ProfileErrorBoundary extends Component<{ children: ReactNode; onClose: () 
         if (this.state.hasError) {
             return (
                 <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-sm bg-[#1c1c1e] rounded-2xl shadow-2xl p-6 border border-zinc-800 text-center">
+                    <div className="w-full max-w-sm rounded-2xl shadow-2xl p-6 border text-center" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}>
                         <AlertTriangle size={48} className="text-red-500 mx-auto mb-4" />
-                        <h2 className="text-lg font-bold text-white mb-2">加载错误</h2>
-                        <p className="text-sm text-zinc-400 mb-4">{this.state.error?.message}</p>
-                        <button onClick={this.props.onClose} className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm">关闭</button>
+                        <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)' }}>加载错误</h2>
+                        <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>{this.state.error?.message}</p>
+                        <button onClick={this.props.onClose} className="px-4 py-2 rounded-lg text-sm transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>关闭</button>
                     </div>
                 </div>
             );

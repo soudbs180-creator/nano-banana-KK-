@@ -166,6 +166,11 @@ export class KeyManager {
         }));
     }
 
+    private getStorageKey(): string {
+        if (!this.userId) return STORAGE_KEY; // Default global key for anon
+        return `${STORAGE_KEY}_${this.userId}`;
+    }
+
     /**
      * Add token usage to a key and update cost
      * 预算耗尽时自动将 key 移到队列末尾
@@ -194,7 +199,12 @@ export class KeyManager {
      */
     private loadState(): KeyManagerState {
         try {
-            const stored = localStorage.getItem(STORAGE_KEY);
+            const key = this.getStorageKey();
+            const stored = localStorage.getItem(key);
+
+            // If scoped key not found, DO NOT fallback to global key to prevent leakage.
+            // Only fallback if userId is null (already handled by getStorageKey).
+
             if (stored) {
                 const parsed = JSON.parse(stored);
                 // Migration for existing keys
@@ -227,15 +237,20 @@ export class KeyManager {
                     rotationStrategy: parsed.rotationStrategy || this.state?.rotationStrategy || 'round-robin'
                 };
 
-                this.saveState(state);
+                // No immediate saveState here to avoid overwriting on read
                 return state;
             }
         } catch (e) {
-            console.warn('[KeyManager] Migration failed:', e);
+            console.warn('[KeyManager] Load failed:', e);
         }
 
-        // Try to migrate from old storage format
-        return this.migrateFromOldFormat();
+        // Return empty state if nothing found (Fresh user / Fresh storage)
+        return {
+            slots: [],
+            currentIndex: 0,
+            maxFailures: DEFAULT_MAX_FAILURES,
+            rotationStrategy: 'round-robin'
+        };
     }
 
     private migrateFromOldFormat(): KeyManagerState {
@@ -295,7 +310,8 @@ export class KeyManager {
     private saveState(state?: KeyManagerState): void {
         const toSave = state || this.state;
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+            const key = this.getStorageKey();
+            localStorage.setItem(key, JSON.stringify(toSave));
 
             // Sync to cloud if user is logged in
             if (this.userId && !this.isSyncing) {
@@ -317,17 +333,27 @@ export class KeyManager {
 
         // Only clear keys if switching between different logged-in users
         // (not when logging in from anonymous or logging out)
-        if (previousUserId && userId && previousUserId !== userId) {
-            // Switching users - clear for security
-            this.clearAll();
-        }
+        // Only clear keys if switching between different logged-in users
+        // (not when logging in from anonymous or logging out)
+        // Actually, we should ALWAYS reload state when ID changes to ensure isolation.
 
         this.userId = userId;
+
+        // Reload state from scoped storage
+        // This effectively "clears" the in-memory state if the new scope is empty
+        this.state = this.loadState();
+        this.notifyListeners(); // Notify UI to clear/update immediately
+
         if (userId) {
             // Pass local keys to merge with cloud
-            await this.loadFromCloud(localKeys);
+            // Note: After loadState(), this.state.slots might be empty (fresh scope)
+            // or contain existing local keys for THIS user.
+            // If we want to import previous anon keys, we would need to pass them explicitly.
+            // But strict isolation means we probably shouldn't auto-merge generic keys into private accounts.
+            // Let's stick to standard sync: Load from cloud.
+            await this.loadFromCloud([]); // Pass empty array as we don't want to merge across scopes implicitly
         } else {
-            // Logging out - keep local keys as-is
+            // Logging out - just state loaded from 'global' (anon) scope
         }
     }
 
@@ -490,21 +516,42 @@ export class KeyManager {
     /**
      * Test a potential channel connection
      */
-    async testChannel(url: string, key: string): Promise<{ success: boolean, message?: string }> {
+    async testChannel(url: string, key: string, provider?: string): Promise<{ success: boolean, message?: string }> {
         try {
-            // Test with a simple model list call if standard, or a lightweight call
-            // For OpenAI-compatible: /v1/models
+            let targetUrl = url;
+            const headers: Record<string, string> = {};
+
+            // Pre-process URL
             const cleanUrl = url.replace(/\/chat\/completions$/, '').replace(/\/$/, '');
-            const targetUrl = cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`;
+
+            if (url.includes('generativelanguage.googleapis.com') || provider === 'Google') {
+                // Google Native Logic
+                if (cleanUrl === 'https://generativelanguage.googleapis.com') {
+                    // Default Google Base
+                    targetUrl = `${cleanUrl}/v1beta/models`;
+                } else if (!cleanUrl.endsWith('/models')) {
+                    // Custom Google Proxy? Try appending models if missing
+                    targetUrl = `${cleanUrl}/models`;
+                }
+
+                // Google uses Query Param or x-goog-api-key header
+                // We'll use the header for cleanliness, works on v1beta
+                headers['x-goog-api-key'] = key;
+                // headers['Content-Type'] = 'application/json'; // Not strictly triggered for GET
+            } else {
+                // OpenAI Compatible Logic
+                targetUrl = cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`;
+                headers['Authorization'] = `Bearer ${key}`;
+            }
+
+            // console.log(`[TestChannel] Testing ${targetUrl} (Provider: ${provider})...`);
 
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
             const response = await fetch(targetUrl, {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${key}`
-                },
+                headers,
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -513,8 +560,18 @@ export class KeyManager {
                 return { success: true };
             }
 
-            // If models endpoint fails, try a very simple completion (optional, maybe too expensive to test automatically)
-            return { success: false, message: `HTTP ${response.status}: ${response.statusText}` };
+            // Google often returns 400/403 with detailed JSON
+            let errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error && errorData.error.message) {
+                    errorMsg = errorData.error.message;
+                }
+            } catch (e) {
+                // Ignore json parse error
+            }
+
+            return { success: false, message: errorMsg };
         } catch (e: any) {
             return { success: false, message: e.message || 'Connection failed' };
         }
