@@ -350,7 +350,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                     {/* Stats & Actions (Horizontal in Sequential, Bottom in Grid) */}
                                     <div className={`${isSequential ? 'flex items-center gap-6 shrink-0' : 'mt-4 pt-4 border-t border-[var(--border-light)] flex items-center justify-between gap-6'}`}>
                                         {/* Usage Stats (Fixed Width for Alignment) */}
-                                        <div className={`flex items-center gap-3 text-xs text-zinc-500 ${isSequential ? 'w-[100px] justify-center border-l border-zinc-700/50 pl-4' : 'min-w-[110px]'}`}>
+                                        <div className={`flex items-center gap-3 text-xs text-zinc-500 ${isSequential ? 'hidden md:flex w-[100px] justify-center border-l border-zinc-700/50 pl-4' : 'min-w-[110px]'}`}>
                                             <div className="flex items-center gap-1" title="调用成功次数">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50" />
                                                 {slot.successCount || 0}
@@ -362,7 +362,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         </div>
 
                                         {/* Action Buttons (Fixed Width for Alignment) */}
-                                        <div className={`flex items-center gap-1 justify-end ${isSequential ? 'w-[100px] justify-center border-l border-zinc-700/50 pl-4' : 'min-w-[110px]'}`}>
+                                        <div className={`flex items-center gap-1 justify-end ${isSequential ? 'w-auto md:w-[100px] justify-end md:justify-center md:border-l md:border-zinc-700/50 md:pl-4' : 'min-w-[110px]'}`}>
                                             <button
                                                 onClick={(e) => handleRefresh(slot.id, e)}
                                                 disabled={refreshingIds.has(slot.id)}
@@ -391,7 +391,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         </div>
                                     </div>
                                     {/* Stats (Fixed Width for Alignment in Sequential) */}
-                                    <div className={`grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)] ${isSequential ? 'w-[180px] shrink-0' : ''}`}>
+                                    <div className={`grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)] ${isSequential ? 'hidden md:grid w-[180px] shrink-0' : ''}`}>
                                         <div className="text-center">
                                             <div className="text-[10px] text-zinc-500">Tokens消耗</div>
                                             <div className="text-xs font-mono text-emerald-300 overflow-hidden text-ellipsis whitespace-nowrap">{clampAndFormat(slot.usedTokens)}</div>

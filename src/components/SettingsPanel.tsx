@@ -226,7 +226,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                             <div className="relative z-10">
                                 <div className="flex items-baseline gap-1 mb-1">
                                     <span className="text-xl text-zinc-400 font-medium">$</span>
-                                    <span className="text-6xl font-bold text-white font-mono tracking-tight text-shadow-lg">{dailyUsage.toFixed(4)}</span>
+                                    <span className="text-4xl md:text-6xl font-bold text-white font-mono tracking-tight text-shadow-lg">{dailyUsage.toFixed(4)}</span>
                                 </div>
                                 <div className="text-sm text-zinc-500 flex items-center gap-2 mb-6">
                                     <span>约 ¥{(dailyUsage * 7.2).toFixed(2)} CNY</span>
@@ -331,7 +331,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
 
                             <div className="text-right">
                                 <div className="text-xs text-zinc-500 mb-1">密钥总数</div>
-                                <div className="text-3xl font-bold text-zinc-300 font-mono tracking-tighter">{totalCount}</div>
+                                <div className="text-2xl md:text-3xl font-bold text-zinc-300 font-mono tracking-tighter">{totalCount}</div>
                             </div>
                         </div>
                     );
@@ -995,12 +995,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                             ))}
                         </div>
 
-                            <div className="mt-auto pt-4" style={{ borderTop: '1px solid var(--border-light)' }}>
-                                <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                                    <div className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>总消耗(Total Consumption)</div>
-                                    <div className="text-lg font-bold font-mono" style={{ color: 'var(--text-primary)' }}>${totalConsumed.toFixed(4)}</div>
-                                </div>
+                        <div className="mt-auto pt-4" style={{ borderTop: '1px solid var(--border-light)' }}>
+                            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                                <div className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>总消耗(Total Consumption)</div>
+                                <div className="text-lg font-bold font-mono" style={{ color: 'var(--text-primary)' }}>${totalConsumed.toFixed(4)}</div>
                             </div>
+                        </div>
                     </div>
 
                     {/* Desktop Content */}

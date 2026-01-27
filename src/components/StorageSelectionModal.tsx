@@ -65,7 +65,7 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
 
     return (
         <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-lg bg-[#1a1a1c] border border-white/10 rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-full max-w-[92vw] md:max-w-lg bg-[#1a1a1c] border border-white/10 rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="text-center mb-6">
                     <div className="w-14 h-14 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-xl mx-auto mb-4 flex items-center justify-center">
