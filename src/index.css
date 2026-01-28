@@ -889,7 +889,7 @@ input[type=number] {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   padding: 4px;
-  min-width: 160px;
+  min-width: min-content;
   z-index: 200;
 }
 
@@ -901,7 +901,7 @@ input[type=number] {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-size: 12px;

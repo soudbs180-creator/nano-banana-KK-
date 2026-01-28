@@ -504,7 +504,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 </button>
                                 {activeMenu === 'ratio' && (
                                     <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-                                        <div className="dropdown static animate-scaleIn origin-bottom grid grid-cols-3 gap-1 p-2 min-w-[200px]" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
+                                        <div className="dropdown static animate-scaleIn origin-bottom flex flex-col gap-0.5 p-1.5" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
                                             {availableRatios.map(ratio => {
                                                 const isActive = config.aspectRatio === ratio;
                                                 // Icon and label mapping
@@ -535,11 +535,11 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 return (
                                                     <button
                                                         key={ratio}
-                                                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg transition-all ${isActive ? 'bg-indigo-500/20 ring-1 ring-indigo-500/50' : 'hover:bg-white/5'}`}
+                                                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-all ${isActive ? 'bg-indigo-500/20' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
                                                         onClick={() => { setConfig(prev => ({ ...prev, aspectRatio: ratio })); setActiveMenu(null); }}
                                                     >
-                                                        <span className={isActive ? 'text-indigo-400' : 'text-zinc-400'}>{getIcon()}</span>
-                                                        <span className={`text-[10px] font-medium ${isActive ? 'text-indigo-400' : 'text-zinc-500'}`}>{getLabel()}</span>
+                                                        <span className={`w-6 flex items-center justify-center ${isActive ? 'text-indigo-500' : ''}`} style={{ color: isActive ? undefined : 'var(--text-secondary)' }}>{getIcon()}</span>
+                                                        <span className={`text-xs font-medium ${isActive ? 'text-indigo-500' : ''}`} style={{ color: isActive ? undefined : 'var(--text-primary)' }}>{getLabel()}</span>
                                                     </button>
                                                 );
                                             })}
@@ -564,7 +564,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 </button>
                                 {activeMenu === 'size' && (
                                     <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-                                        <div className="dropdown static w-20 animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
+                                        <div className="dropdown static animate-scaleIn origin-bottom p-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
                                             {availableSizes.map(size => (
                                                 <button key={size} className={`dropdown-item ${config.imageSize === size ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, imageSize: size })); setActiveMenu(null); }}>
                                                     {size}
