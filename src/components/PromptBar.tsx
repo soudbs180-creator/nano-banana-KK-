@@ -466,19 +466,83 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     onClick={() => toggleMenu('ratio')}
                                     title="宽高比"
                                 >
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <rect x="3" y="5" width="18" height="14" rx="2" />
-                                    </svg>
-                                    <span className="text-[11px] font-medium">{config.aspectRatio}</span>
+                                    {/* Dynamic icon based on current ratio */}
+                                    {config.aspectRatio === AspectRatio.AUTO ? (
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 3v18M3 12h18" /><circle cx="12" cy="12" r="9" />
+                                        </svg>
+                                    ) : config.aspectRatio === AspectRatio.SQUARE ? (
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="4" y="4" width="16" height="16" rx="2" />
+                                        </svg>
+                                    ) : config.aspectRatio === AspectRatio.PORTRAIT_3_4 || config.aspectRatio === AspectRatio.PORTRAIT_2_3 ? (
+                                        <svg width="10" height="12" viewBox="0 0 20 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="2" y="2" width="16" height="20" rx="2" />
+                                        </svg>
+                                    ) : config.aspectRatio === AspectRatio.PORTRAIT_9_16 || config.aspectRatio === AspectRatio.PORTRAIT_9_21 ? (
+                                        <svg width="8" height="14" viewBox="0 0 16 28" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="2" y="2" width="12" height="24" rx="2" />
+                                        </svg>
+                                    ) : config.aspectRatio === AspectRatio.LANDSCAPE_4_3 || config.aspectRatio === AspectRatio.LANDSCAPE_3_2 ? (
+                                        <svg width="14" height="10" viewBox="0 0 24 18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="2" y="2" width="20" height="14" rx="2" />
+                                        </svg>
+                                    ) : config.aspectRatio === AspectRatio.LANDSCAPE_16_9 ? (
+                                        <svg width="16" height="9" viewBox="0 0 32 18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="2" y="2" width="28" height="14" rx="2" />
+                                        </svg>
+                                    ) : config.aspectRatio === AspectRatio.LANDSCAPE_21_9 ? (
+                                        <svg width="18" height="8" viewBox="0 0 42 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="2" y="2" width="38" height="12" rx="2" />
+                                        </svg>
+                                    ) : (
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="3" y="5" width="18" height="14" rx="2" />
+                                        </svg>
+                                    )}
+                                    <span className="text-[11px] font-medium">{config.aspectRatio === AspectRatio.AUTO ? 'Auto' : config.aspectRatio}</span>
                                 </button>
                                 {activeMenu === 'ratio' && (
                                     <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-                                        <div className="dropdown static animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                            {availableRatios.map(ratio => (
-                                                <button key={ratio} className={`dropdown-item ${config.aspectRatio === ratio ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, aspectRatio: ratio })); setActiveMenu(null); }}>
-                                                    {ratio}
-                                                </button>
-                                            ))}
+                                        <div className="dropdown static animate-scaleIn origin-bottom grid grid-cols-3 gap-1 p-2 min-w-[200px]" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
+                                            {availableRatios.map(ratio => {
+                                                const isActive = config.aspectRatio === ratio;
+                                                // Icon and label mapping
+                                                const getIcon = () => {
+                                                    switch (ratio) {
+                                                        case AspectRatio.AUTO:
+                                                            return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3v18M3 12h18" /><circle cx="12" cy="12" r="9" /></svg>;
+                                                        case AspectRatio.SQUARE:
+                                                            return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>;
+                                                        case AspectRatio.PORTRAIT_3_4:
+                                                        case AspectRatio.PORTRAIT_2_3:
+                                                            return <svg width="16" height="20" viewBox="0 0 18 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="14" height="20" rx="2" /></svg>;
+                                                        case AspectRatio.PORTRAIT_9_16:
+                                                        case AspectRatio.PORTRAIT_9_21:
+                                                            return <svg width="12" height="22" viewBox="0 0 14 26" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="10" height="22" rx="2" /></svg>;
+                                                        case AspectRatio.LANDSCAPE_4_3:
+                                                        case AspectRatio.LANDSCAPE_3_2:
+                                                            return <svg width="22" height="16" viewBox="0 0 26 18" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="22" height="14" rx="2" /></svg>;
+                                                        case AspectRatio.LANDSCAPE_16_9:
+                                                            return <svg width="24" height="14" viewBox="0 0 28 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="24" height="12" rx="2" /></svg>;
+                                                        case AspectRatio.LANDSCAPE_21_9:
+                                                            return <svg width="26" height="12" viewBox="0 0 30 14" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="26" height="10" rx="2" /></svg>;
+                                                        default:
+                                                            return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="5" width="18" height="14" rx="2" /></svg>;
+                                                    }
+                                                };
+                                                const getLabel = () => ratio === AspectRatio.AUTO ? 'Auto' : ratio;
+                                                return (
+                                                    <button
+                                                        key={ratio}
+                                                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg transition-all ${isActive ? 'bg-indigo-500/20 ring-1 ring-indigo-500/50' : 'hover:bg-white/5'}`}
+                                                        onClick={() => { setConfig(prev => ({ ...prev, aspectRatio: ratio })); setActiveMenu(null); }}
+                                                    >
+                                                        <span className={isActive ? 'text-indigo-400' : 'text-zinc-400'}>{getIcon()}</span>
+                                                        <span className={`text-[10px] font-medium ${isActive ? 'text-indigo-400' : 'text-zinc-500'}`}>{getLabel()}</span>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}

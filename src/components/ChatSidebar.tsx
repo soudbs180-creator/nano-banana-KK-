@@ -26,7 +26,7 @@ interface ChatModel {
     isCustom: boolean;
     type?: 'chat' | 'image' | 'video';
     icon?: string;
-    displayName?: string; // Optional override
+    displayName?: string;
     description?: string;
 }
 
@@ -36,22 +36,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     const [selectedModel, setSelectedModel] = useState<ChatModel>(() => availableModels[0] || { id: 'gemini-flash-latest', name: 'Gemini Flash', provider: 'Google', isCustom: false });
     const [showModelMenu, setShowModelMenu] = useState(false);
 
-
-
     // Subscribe to keyManager updates
     useEffect(() => {
         const updateModels = () => {
             const models = keyManager.getGlobalModelList().filter(model => model.type === 'chat');
             setAvailableModels(models);
 
-            // Validate current selection
             if (models.length > 0) {
-                // Check if current selected model still exists
                 const exists = models.find(m => m.id === selectedModel.id);
                 if (!exists) {
                     setSelectedModel(models[0]);
                 } else {
-                    // Update metadata if changed
                     if (exists.name !== selectedModel.name || exists.description !== selectedModel.description) {
                         setSelectedModel(exists);
                     }
@@ -62,7 +57,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         const unsubscribe = keyManager.subscribe(updateModels);
         return unsubscribe;
     }, [selectedModel.id]);
-
 
     // 2. Chat State
     const [messages, setMessages] = useState<Message[]>([
@@ -79,6 +73,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     // 3. Layout State
     const [keyboardHeight, setKeyboardHeight] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+
+    // 4. Drag State (must be declared before scheduleAutoClose uses it)
+    const [isDragging, setIsDragging] = useState(false);
+    const dragStartRef = useRef({ x: 0, y: 0 });
+    const startPosRef = useRef({ x: 0, y: 0 });
 
     // Track keyboard visibility using visualViewport API
     useEffect(() => {
@@ -102,6 +101,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         };
     }, [isMobile]);
 
+    // Auto-close logic
     const [isHovering, setIsHovering] = useState(false);
     const lastActivityRef = useRef<number>(Date.now());
     const autoCloseTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -179,11 +179,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         localStorage.setItem('kk_chat_pos', JSON.stringify(position));
     }, [position]);
 
-
-    const [isDragging, setIsDragging] = useState(false);
-    const dragStartRef = useRef({ x: 0, y: 0 });
-    const startPosRef = useRef({ x: 0, y: 0 });
-
     const messagesEndRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -234,17 +229,15 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setIsThinking(true);
-        handleMouseEnter();
+        registerActivity();
 
         try {
-            // Build history for context
             const history = messages
                 .filter(m => m.id !== 'welcome')
                 .map(m => ({ role: m.role, content: m.content }));
 
             history.push({ role: 'user', content: userText });
 
-            // Call API with selected model ID
             const responseText = await generateText(history, selectedModel.id);
 
             const aiMsg: Message = {
@@ -255,7 +248,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             };
             setMessages(prev => [...prev, aiMsg]);
 
-            // Record Cost (Estimation) in background
             import('../services/costService').then(({ recordCost }) => {
                 const fullText = history.map(m => m.content).join('') + userText + responseText;
                 recordCost(
@@ -324,7 +316,16 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             {/* 2. Chat Card Popover (Morph Transformation) */}
             {isOpen && (
                 <div
-                    onMouseEnter={handleMouseEnter}
+                    onMouseEnter={() => {
+                        setIsHovering(true);
+                        clearAutoClose();
+                    }}
+                    onMouseLeave={() => {
+                        setIsHovering(false);
+                        scheduleAutoClose();
+                    }}
+                    onMouseDown={registerActivity}
+                    onWheel={registerActivity}
                     className={`fixed z-[100] flex flex-col bg-[var(--bg-secondary)] backdrop-blur-2xl border border-[var(--border-light)] shadow-[var(--shadow-lg)] animate-scale-up-corner overflow-hidden ring-1 ring-[var(--border-light)] ${isMobile
                         ? 'inset-0 rounded-none pb-0'
                         : 'w-[380px] h-[600px] max-h-[80vh] rounded-3xl origin-bottom-left'
@@ -341,12 +342,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
 
                     {/* Header */}
                     <div className="h-14 border-b border-[var(--border-light)] flex items-center justify-between px-4 bg-[var(--bg-tertiary)] shrink-0">
-                        {/* Model Selector - NOW UNIFIED */}
+                        {/* Model Selector */}
                         <div className="relative flex items-center gap-2">
-
-                            {/* Model Button */}
                             <button
                                 onClick={() => {
+                                    registerActivity();
                                     if (availableModels.length === 0) {
                                         onOpenSettings?.('api-management');
                                     } else {
@@ -413,15 +413,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
                         {messages.map((msg) => (
                             <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''} group`}>
-                                {/* Avatar */}
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-lg ${msg.role === 'user'
                                     ? 'bg-[var(--bg-tertiary)] border border-[var(--border-light)]'
                                     : 'bg-gradient-to-br from-blue-500 to-cyan-400 text-white'
                                     }`}>
                                     {msg.role === 'user' ? <User size={14} className="text-[var(--text-tertiary)]" /> : <Bot size={16} className="animate-icon-breathe" />}
                                 </div>
-
-                                {/* Content */}
                                 <div className={`max-w-[85%] rounded-2xl p-3 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
                                     ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-tr-sm border border-[var(--border-light)]'
                                     : 'bg-blue-500/10 text-[var(--text-primary)] border border-blue-500/20 rounded-tl-sm backdrop-blur-sm'
@@ -446,7 +443,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Input - Floating Capsule */}
+                    {/* Input */}
                     <div className="px-4 pb-2 pt-2 bg-transparent shrink-0 pointer-events-none">
                         <div className="relative group/input max-w-[95%] mx-auto pointer-events-auto">
                             <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/30 to-cyan-400/30 rounded-[32px] blur opacity-0 group-hover/input:opacity-100 transition-opacity duration-500" />
@@ -458,6 +455,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                     value={input}
                                     onChange={e => {
                                         setInput(e.target.value);
+                                        registerActivity();
                                         e.target.style.height = 'auto';
                                         e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
                                     }}

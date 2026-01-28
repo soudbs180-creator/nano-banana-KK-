@@ -263,6 +263,43 @@ export const generateImage = async (
     model = model.replace(/-4k$/i, '') as ModelType;
   }
 
+  // Resolve AUTO aspect ratio
+  let resolvedRatio = aspectRatio;
+  if (aspectRatio === AspectRatio.AUTO) {
+    // Try to infer from reference image dimensions
+    if (referenceImages.length > 0 && referenceImages[0].data) {
+      try {
+        // Create image to get dimensions
+        const img = new Image();
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('Failed to load reference'));
+          img.src = `data:${referenceImages[0].mimeType};base64,${referenceImages[0].data}`;
+        });
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        const ratio = w / h;
+
+        // Map to closest standard ratio
+        if (ratio > 2.0) resolvedRatio = AspectRatio.LANDSCAPE_21_9;
+        else if (ratio > 1.6) resolvedRatio = AspectRatio.LANDSCAPE_16_9;
+        else if (ratio > 1.2) resolvedRatio = AspectRatio.LANDSCAPE_4_3;
+        else if (ratio > 0.9) resolvedRatio = AspectRatio.SQUARE;
+        else if (ratio > 0.66) resolvedRatio = AspectRatio.PORTRAIT_3_4;
+        else resolvedRatio = AspectRatio.PORTRAIT_9_16;
+
+        console.log(`[Auto Ratio] Inferred ${resolvedRatio} from reference (${w}x${h}, ratio=${ratio.toFixed(2)})`);
+      } catch (e) {
+        console.warn('[Auto Ratio] Failed to infer from reference, using SQUARE');
+        resolvedRatio = AspectRatio.SQUARE;
+      }
+    } else {
+      // Default to SQUARE if no reference
+      resolvedRatio = AspectRatio.SQUARE;
+    }
+  }
+  aspectRatio = resolvedRatio;
+
   // Create AbortController if requestId provided
   if (requestId && !abortControllers.has(requestId)) {
     abortControllers.set(requestId, new AbortController());

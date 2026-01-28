@@ -1,4 +1,5 @@
 export enum AspectRatio {
+  AUTO = 'auto', // 自动匹配
   SQUARE = '1:1',
   PORTRAIT_3_4 = '3:4',
   PORTRAIT_9_16 = '9:16',

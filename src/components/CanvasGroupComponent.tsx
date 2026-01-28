@@ -125,34 +125,38 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
         const handleMouseMove = (ev: MouseEvent) => {
             if (!lastPos.current) return;
 
-            // RAF Throttle
-            if (rafRef.current) return;
+            const dx = (ev.clientX - lastPos.current.x) / zoom;
+            const dy = (ev.clientY - lastPos.current.y) / zoom;
+            lastPos.current = { x: ev.clientX, y: ev.clientY };
 
-            rafRef.current = requestAnimationFrame(() => {
-                if (!lastPos.current) return;
-                const dx = (ev.clientX - lastPos.current!.x) / zoom;
-                const dy = (ev.clientY - lastPos.current!.y) / zoom;
+            // Accumulate deltas (even if RAF is pending)
+            pendingDelta.current = {
+                x: pendingDelta.current.x + dx,
+                y: pendingDelta.current.y + dy
+            };
 
-                lastPos.current = { x: ev.clientX, y: ev.clientY };
+            // Schedule RAF if not already pending
+            if (!rafRef.current) {
+                rafRef.current = requestAnimationFrame(() => {
+                    // 1. Update Group Box DOM
+                    if (containerRef.current) {
+                        const cb = localBoundsRef.current;
+                        const newX = cb.x + pendingDelta.current.x;
+                        const newY = cb.y + pendingDelta.current.y;
+                        localBoundsRef.current = { ...cb, x: newX, y: newY };
+                        containerRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0)`;
+                    }
 
-                // Update Local DOM immediately
-                if (containerRef.current) {
-                    const cb = localBoundsRef.current;
-                    const newX = cb.x + dx;
-                    const newY = cb.y + dy;
-                    localBoundsRef.current = { ...cb, x: newX, y: newY };
-                    containerRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0)`;
-                }
+                    // 2. Move Cards (flush accumulated delta)
+                    if (onGroupDrag) {
+                        onGroupDrag(pendingDelta.current);
+                    }
 
-                pendingDelta.current = {
-                    x: pendingDelta.current.x + dx,
-                    y: pendingDelta.current.y + dy
-                };
-                const { x, y } = pendingDelta.current;
-                pendingDelta.current = { x: 0, y: 0 };
-                onGroupDrag({ x, y });
-                rafRef.current = null;
-            });
+                    // Reset
+                    pendingDelta.current = { x: 0, y: 0 };
+                    rafRef.current = null;
+                });
+            }
         };
 
         const handleMouseUp = () => {
@@ -202,11 +206,6 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
                     style={{
                         backgroundColor: highlighted ? 'rgba(99,102,241,0.12)' : 'var(--bg-tertiary)',
                         borderColor: highlighted ? 'rgba(99,102,241,0.35)' : 'var(--border-light)'
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setIsEditing(true);
                     }}
                 >
                     <GripHorizontal size={14} style={{ color: highlighted ? 'var(--accent-indigo)' : 'var(--text-tertiary)' }} />
