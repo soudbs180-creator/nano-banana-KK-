@@ -9,15 +9,19 @@ interface SearchPaletteProps {
     promptNodes: PromptNode[];
     groups?: CanvasGroup[];
     onNavigate: (x: number, y: number, id?: string) => void;
+    onMultiSelectConfirm?: (ids: string[]) => void;
 }
 
 type SearchResultItem =
     | { type: 'node'; data: PromptNode }
     | { type: 'group'; data: CanvasGroup };
 
-const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNodes, groups = [], onNavigate }) => {
+const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNodes, groups = [], onNavigate, onMultiSelectConfirm }) => {
     const [query, setQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+    const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
+
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +45,8 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
         if (isOpen) {
             setQuery('');
             setSelectedIndex(0);
+            setMultiSelectedIds(new Set());
+            setIsMultiSelectMode(false);
             setTimeout(() => inputRef.current?.focus(), 50);
         }
     }, [isOpen]);
@@ -61,20 +67,36 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                     break;
                 case 'Enter':
                     e.preventDefault();
-                    if (results[selectedIndex]) {
-                        handleSelect(results[selectedIndex]);
+                    if (isMultiSelectMode) {
+                        if (e.ctrlKey || e.metaKey) {
+                            handleConfirmMultiSelect();
+                        } else {
+                            if (results[selectedIndex]) {
+                                toggleMultiSelect(results[selectedIndex]);
+                            }
+                        }
+                    } else {
+                        if (results[selectedIndex]) {
+                            handleSelect(results[selectedIndex]);
+                        }
                     }
                     break;
                 case 'Escape':
                     e.preventDefault();
                     onClose();
                     break;
+                case 'm':
+                    if (e.ctrlKey || e.metaKey) {
+                        e.preventDefault();
+                        setIsMultiSelectMode(prev => !prev);
+                    }
+                    break;
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, results, selectedIndex]);
+    }, [isOpen, results, selectedIndex, isMultiSelectMode, multiSelectedIds]);
 
     // Scroll selected item into view
     useEffect(() => {
@@ -98,6 +120,24 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
         onClose();
     };
 
+    const toggleMultiSelect = (item: SearchResultItem) => {
+        setMultiSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(item.data.id)) {
+                next.delete(item.data.id);
+            } else {
+                next.add(item.data.id);
+            }
+            return next;
+        });
+    };
+
+    const handleConfirmMultiSelect = () => {
+        if (multiSelectedIds.size === 0) return;
+        onMultiSelectConfirm?.(Array.from(multiSelectedIds));
+        onClose();
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -117,9 +157,21 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                             setQuery(e.target.value);
                             setSelectedIndex(0);
                         }}
-                        placeholder="搜索提示词、标签或编组..."
+                        placeholder={isMultiSelectMode ? "多选模式: 点击选择多个，按 Ctrl+Enter 确认整理" : "搜索提示词、标签或编组..."}
                         className="flex-1 bg-transparent border-none py-4 text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none text-lg"
                     />
+
+                    {/* Multi-Select Toggle */}
+                    <button
+                        onClick={() => setIsMultiSelectMode(!isMultiSelectMode)}
+                        className={`mr-2 px-2 py-1 rounded text-xs font-medium border transition-colors ${isMultiSelectMode
+                            ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50'
+                            : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:bg-[var(--toolbar-hover)]'}`}
+                        title="多选模式 (Ctrl+M)"
+                    >
+                        {isMultiSelectMode ? '多选开启' : '多选'}
+                    </button>
+
                     <button
                         onClick={onClose}
                         className="p-1 hover:bg-[var(--toolbar-hover)] rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
@@ -139,17 +191,32 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                         </div>
                     ) : (
                         results.map((item, index) => {
-                            const isSelected = index === selectedIndex;
+                            const isFocused = index === selectedIndex;
+                            const isSelected = multiSelectedIds.has(item.data.id);
                             const isGroup = item.type === 'group';
 
                             return (
                                 <div
                                     key={item.data.id}
-                                    onClick={() => handleSelect(item)}
+                                    onClick={() => {
+                                        if (isMultiSelectMode) {
+                                            toggleMultiSelect(item);
+                                        } else {
+                                            handleSelect(item);
+                                        }
+                                    }}
                                     onMouseEnter={() => setSelectedIndex(index)}
-                                    className={`flex items-start gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-indigo-500/10' : 'hover:bg-[var(--toolbar-hover)]'}`}
+                                    className={`flex items-start gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors ${isFocused ? 'bg-[var(--toolbar-hover)]' : ''
+                                        } ${isSelected ? 'bg-indigo-500/10 border border-indigo-500/30' : ''}`}
                                 >
-                                    <div className={`mt-1 p-1.5 rounded-md ${isSelected ? 'bg-indigo-500/20 text-indigo-400' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'}`}>
+                                    {isMultiSelectMode && (
+                                        <div className={`mt-1.5 w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-[var(--text-tertiary)] bg-transparent'
+                                            }`}>
+                                            {isSelected && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="text-white"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                                        </div>
+                                    )}
+
+                                    <div className={`mt-1 p-1.5 rounded-md ${isFocused ? 'bg-[var(--bg-tertiary)]' : 'bg-[var(--bg-tertiary)]'} text-[var(--text-secondary)]`}>
                                         {isGroup ? <Layers size={14} /> : <MapPin size={14} />}
                                     </div>
                                     <div className="flex-1 overflow-hidden">
@@ -200,13 +267,30 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                         <span className="flex items-center gap-1">
                             <kbd className="px-1.5 py-0.5 bg-[var(--bg-primary)] rounded border border-[var(--border-light)] font-sans">↑↓</kbd> 导航
                         </span>
+                        {isMultiSelectMode ? (
+                            <span className="flex items-center gap-1 text-indigo-400 font-medium">
+                                <kbd className="px-1.5 py-0.5 bg-indigo-500/20 rounded border border-indigo-500/30 font-sans text-indigo-400">Ctrl+Enter</kbd> 确认整理 ({multiSelectedIds.size})
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1">
+                                <kbd className="px-1.5 py-0.5 bg-[var(--bg-primary)] rounded border border-[var(--border-light)] font-sans">Enter</kbd> 定位
+                            </span>
+                        )}
                         <span className="flex items-center gap-1">
-                            <kbd className="px-1.5 py-0.5 bg-[var(--bg-primary)] rounded border border-[var(--border-light)] font-sans">Enter</kbd> 定位
+                            <kbd className="px-1.5 py-0.5 bg-[var(--bg-primary)] rounded border border-[var(--border-light)] font-sans">Ctrl+M</kbd> 切换多选
                         </span>
                     </div>
                     <span>{results.length} 个结果</span>
                 </div>
             </div>
+
+            {/* Multi-Select Floating Confirmation */}
+            {isMultiSelectMode && multiSelectedIds.size > 0 && (
+                <div className="absolute bottom-20 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium flex items-center gap-2 animate-bounce-in cursor-pointer hover:bg-indigo-500" onClick={handleConfirmMultiSelect}>
+                    <span>已选择 {multiSelectedIds.size} 项，点击整理</span>
+                    <CornerDownLeft size={14} />
+                </div>
+            )}
         </div>
     );
 };

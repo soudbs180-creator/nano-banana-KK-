@@ -4,6 +4,7 @@ import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '
 import { syncService } from '../services/syncService';
 import { fileSystemService } from '../services/fileSystemService';
 import { base64ToBlob, safeRevokeBlobUrl } from '../utils/blobUtils';
+import { calculateImageHash } from '../utils/imageUtils';
 
 const MAX_CANVASES = 10;
 
@@ -66,6 +67,7 @@ interface CanvasContextType {
     removeGroup: (id: string) => void;
     updateGroup: (group: CanvasGroup) => void;
     setNodeTags: (ids: string[], tags: string[]) => void;
+    isReady: boolean;
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -103,10 +105,15 @@ const stripImageUrls = (canvases: Canvas[]): Canvas[] => {
         })),
         promptNodes: c.promptNodes.map(pn => ({
             ...pn,
-            referenceImages: pn.referenceImages?.map(ref => ({
-                ...ref,
-                data: '' // Clear base64 data for localStorage
-            }))
+            referenceImages: pn.referenceImages?.map(ref => {
+                // [CRITICAL FIX] Keep small reference images in localStorage to prevent data loss on fast refresh
+                // 500KB limit (approx 375KB image). Larger images rely on IndexedDB.
+                const shouldKeep = ref.data && ref.data.length < 500000;
+                return {
+                    ...ref,
+                    data: shouldKeep ? ref.data : ''
+                };
+            })
         }))
     }));
 };
@@ -114,38 +121,38 @@ const stripImageUrls = (canvases: Canvas[]): Canvas[] => {
 export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [state, setState] = useState<CanvasState>(() => {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-            try {
+        try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) {
                 const parsed: CanvasState = JSON.parse(stored);
 
-                // Schema migration 1: Ensure history exists
+                // 架构迁移 1: 确保 history 存在
                 if (!parsed.history) parsed.history = {};
                 if (!parsed.selectedNodeIds) parsed.selectedNodeIds = [];
 
-                // Schema migration 2: Sanitize Nodes (Fix "Overlap/Broken Features" from old data)
+                // 架构迁移 2: 清洗节点数据 (修复旧数据的重叠/功能损坏问题)
                 parsed.canvases = parsed.canvases.map(canvas => ({
                     ...canvas,
-                    // Fix Image Nodes
+                    // 修复 Image Nodes
                     imageNodes: (canvas.imageNodes || []).map(img => ({
                         ...img,
-                        // Ensure new fields exist
+                        // 确保新字段存在
                         generationTime: img.generationTime || Date.now(),
                         canvasId: img.canvasId || canvas.id,
                         parentPromptId: img.parentPromptId || 'unknown',
                         prompt: img.prompt || '',
-                        dimensions: img.dimensions || "1024x1024", // Default string
+                        dimensions: img.dimensions || "1024x1024", // 默认字符串
                         aspectRatio: img.aspectRatio || AspectRatio.SQUARE,
-                        model: img.model || 'imagen-3.0-generate-001' // Fallback to default model string
+                        model: img.model || 'imagen-3.0-generate-001' // 回退到默认模型
                     })),
-                    // Fix Prompt Nodes
+                    // 修复 Prompt Nodes
                     promptNodes: (canvas.promptNodes || []).map(node => ({
                         ...node,
                         referenceImages: node.referenceImages || [],
                         parallelCount: node.parallelCount || 1,
-                        // Reset generating state on load. If reload page, process is dead.
-                        isGenerating: false,
-                        error: node.isGenerating ? '::INTERRUPTED::' : undefined,
+                        // 保留 generating 状态以支持 App.tsx 的自动恢复
+                        isGenerating: node.isGenerating || false,
+                        error: node.error,
                         tags: node.tags || []
                     })),
                     groups: canvas.groups || [],
@@ -153,10 +160,17 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }));
 
                 return parsed;
-            } catch (e) {
-                console.error('Failed to parse stored canvas state', e);
-                return DEFAULT_STATE;
             }
+        } catch (e) {
+            // [CRITICAL FIX] 捕获初始化时的 Stack Overflow 或解析错误
+            // 如果本地数据损坏导致崩溃，必须重置并清除 localStorage，防止无限崩溃循环
+            console.error('[CanvasProvider] Failed to parse stored state (Resetting):', e);
+            try {
+                localStorage.removeItem(STORAGE_KEY);
+            } catch (cleanupErr) {
+                console.error('[CanvasProvider] Failed to clear localStorage:', cleanupErr);
+            }
+            return DEFAULT_STATE;
         }
         return DEFAULT_STATE;
     });
@@ -279,12 +293,18 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         canvases: prev.canvases.map(c => ({
                             ...c,
                             imageNodes: c.imageNodes.map(img => {
-                                const storedUrl = imageMap.get(img.id);
+                                const storedUrl = imageMap.get(img.storageId || img.id);
+                                // Prefer cached URL. It might be:
+                                // - data:... (base64) -> convert to blob URL for perf
+                                // - http(s)/blob:...  -> use as-is (fix for empty url after strip)
                                 let displayUrl = img.url || '';
-                                if (storedUrl && storedUrl.startsWith('data:')) {
-                                    // Convert to Blob URL for display
-                                    const blob = base64ToBlob(storedUrl);
-                                    displayUrl = URL.createObjectURL(blob);
+                                if (storedUrl) {
+                                    if (storedUrl.startsWith('data:')) {
+                                        const blob = base64ToBlob(storedUrl);
+                                        displayUrl = URL.createObjectURL(blob);
+                                    } else {
+                                        displayUrl = storedUrl;
+                                    }
                                 }
                                 return {
                                     ...img,
@@ -297,12 +317,30 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             promptNodes: c.promptNodes.map(pn => ({
                                 ...pn,
                                 referenceImages: pn.referenceImages?.map(ref => {
-                                    const storedUrl = imageMap.get(ref.id);
+                                    const storedUrl = imageMap.get(ref.storageId || ref.id);
                                     if (storedUrl) {
-                                        // Parse back the base64 data and mime type
-                                        const matches = storedUrl.match(/^data:(.+);base64,(.+)$/);
-                                        if (matches) {
-                                            return { ...ref, mimeType: matches[1], data: matches[2] };
+                                        let finalData = storedUrl;
+                                        let finalMime = ref.mimeType || 'image/png';
+
+                                        // [SELF-HEALING] Detect corrupted double-wrapped URLs (e.g. data:image/png;base64,http...)
+                                        // This fixes images that were saved with the previous buggy logic
+                                        const corruptedMatch = storedUrl.match(/^data:.*;base64,(http.*|blob:.*)$/);
+                                        if (corruptedMatch) {
+                                            console.log('[CanvasContext] Recovering corrupted URL:', corruptedMatch[1]);
+                                            finalData = corruptedMatch[1];
+                                        } else if (storedUrl.startsWith('data:')) {
+                                            // Normal Data URL extraction
+                                            const matches = storedUrl.match(/^data:(.+);base64,(.+)$/);
+                                            if (matches) {
+                                                finalMime = matches[1];
+                                                // We keep the full URL for the component to render, or just the base64?
+                                                // ReferenceThumbnail handles both, but let's keep full URL for consistency if it's valid
+                                            }
+                                        }
+
+                                        // Accept Data URL, HTTP, Blob, or Raw Base64
+                                        if (finalData.startsWith('data:') || finalData.startsWith('http') || finalData.startsWith('blob:') || finalData.length > 20) {
+                                            return { ...ref, mimeType: finalMime, data: finalData };
                                         }
                                     }
                                     return ref;
@@ -400,12 +438,63 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
     }, []);
 
-    // Initial Load: Merge Cloud Data - DISABLED (Local Only Mode)
-    /*
+    // Hydrate Reference Images from IDB (if stripped from localStorage)
     useEffect(() => {
-        // Cloud sync disabled per user request
-    }, []);
-    */
+        if (!state.activeCanvasId) return;
+        const currentCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
+        if (!currentCanvas) return;
+
+        let hasUpdates = false;
+        const updates: { nodeId: string; refs: any[] }[] = [];
+
+        const hydrateRefs = async () => {
+            const promises = currentCanvas.promptNodes.map(async (node) => {
+                if (!node.referenceImages || node.referenceImages.length === 0) return;
+
+                let nodeUpdated = false;
+                const newRefs = await Promise.all(node.referenceImages.map(async (ref) => {
+                    // If data is missing (stripped), try to load from IDB
+                    if ((!ref.data || ref.data === '') && ref.id) {
+                        try {
+                            const data = await getImage(ref.id);
+                            if (data) {
+                                nodeUpdated = true;
+                                return { ...ref, data };
+                            }
+                        } catch (e) {
+                            // console.warn('Failed to hydrate ref', ref.id);
+                        }
+                    }
+                    return ref;
+                }));
+
+                if (nodeUpdated) {
+                    updates.push({ nodeId: node.id, refs: newRefs });
+                    hasUpdates = true;
+                }
+            });
+
+            await Promise.all(promises);
+
+            if (hasUpdates) {
+                setState(prev => ({
+                    ...prev,
+                    canvases: prev.canvases.map(c => c.id === prev.activeCanvasId ? {
+                        ...c,
+                        promptNodes: c.promptNodes.map(pn => {
+                            const update = updates.find(u => u.nodeId === pn.id);
+                            return update ? { ...pn, referenceImages: update.refs } : pn;
+                        })
+                    } : c)
+                }));
+            }
+        };
+
+        // Delay slighty to defer IO
+        setTimeout(hydrateRefs, 500);
+
+    }, [state.activeCanvasId]); // Run when canvas changes (or roughly once on load if active ID is set)
+
 
     const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
     const canCreateCanvas = state.canvases.length < MAX_CANVASES;
@@ -486,7 +575,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (node.referenceImages) {
             node.referenceImages.forEach(ref => {
                 if (ref.data) {
-                    const fullUrl = ref.data.startsWith('data:') ? ref.data : `data:${ref.mimeType};base64,${ref.data}`;
+                    const mime = ref.mimeType || 'image/png';
+                    let fullUrl = ref.data;
+                    if (!fullUrl.startsWith('data:') && !fullUrl.startsWith('blob:') && !fullUrl.startsWith('http')) {
+                        fullUrl = `data:${mime};base64,${ref.data}`;
+                    }
                     saveImage(ref.id, fullUrl);
                 }
             });
@@ -497,12 +590,40 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
     }, [updateCanvas]);
 
+    const pushToHistory = useCallback(() => {
+        const current = state.canvases.find(c => c.id === state.activeCanvasId);
+        if (!current) return;
+
+        setState(prev => {
+            const historyEntry = prev.history[prev.activeCanvasId] || { past: [], future: [] };
+            const newPast = [...historyEntry.past, current]; // Push current state to past
+
+            // Limit history depth
+            if (newPast.length > 20) newPast.shift();
+
+            return {
+                ...prev,
+                history: {
+                    ...prev.history,
+                    [prev.activeCanvasId]: {
+                        past: newPast,
+                        future: [] // Clear future on new action
+                    }
+                }
+            };
+        });
+    }, [state.activeCanvasId, state.canvases]);
+
     const updatePromptNode = useCallback((node: PromptNode) => {
         // Save reference images to IndexedDB
         if (node.referenceImages) {
             node.referenceImages.forEach(ref => {
                 if (ref.data) {
-                    const fullUrl = ref.data.startsWith('data:') ? ref.data : `data:${ref.mimeType};base64,${ref.data}`;
+                    const mime = ref.mimeType || 'image/png';
+                    let fullUrl = ref.data;
+                    if (!fullUrl.startsWith('data:') && !fullUrl.startsWith('blob:') && !fullUrl.startsWith('http')) {
+                        fullUrl = `data:${mime};base64,${ref.data}`;
+                    }
                     saveImage(ref.id, fullUrl);
                 }
             });
@@ -543,14 +664,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             persistenceTasks.push((async () => {
                 try {
                     // A. IndexedDB (Fast Cache) - Save ORIGINAL URL (Base64)
-                    await saveImage(node.id, node.url);
+                    await saveImage(node.storageId || node.id, node.url);
 
                     // B. File System (Persistent Disk)
                     if (state.fileSystemHandle) {
                         try {
                             const res = await fetch(node.url); // works with data: or blob:
                             const blob = await res.blob();
-                            await fileSystemService.saveImageToHandle(state.fileSystemHandle, node.id, blob);
+                            await fileSystemService.saveImageToHandle(state.fileSystemHandle, node.storageId || node.id, blob);
                         } catch (e) {
                             console.warn(`[CanvasContext] Failed to save image ${node.id} to disk`, e);
                         }
@@ -717,22 +838,17 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const deletePromptNode = useCallback((id: string) => {
         pushToHistory();
 
-        // Get child image IDs to delete from IndexedDB
-        const canvas = state.canvases.find(c => c.id === state.activeCanvasId);
-        const promptNode = canvas?.promptNodes.find(p => p.id === id);
-        const childImageIds = canvas?.imageNodes
-            .filter(img => img.parentPromptId === id)
-            .map(img => img.id) || [];
-
-        // Delete child images from IndexedDB
-        childImageIds.forEach(imgId => deleteImage(imgId));
+        // 核心修改: 仅删除提示词卡片，保留子图片 (除非是框选删除逻辑在外部处理)
+        // 子图片变为 "游离" 状态 (parentPromptId = undefined)
 
         updateCanvas(c => ({
             ...c,
             promptNodes: c.promptNodes.filter(n => n.id !== id),
-            imageNodes: c.imageNodes.filter(img => img.parentPromptId !== id)
+            imageNodes: c.imageNodes.map(img =>
+                img.parentPromptId === id ? { ...img, parentPromptId: '' } : img
+            )
         }));
-    }, [updateCanvas, state.canvases, state.activeCanvasId]);
+    }, [updateCanvas, pushToHistory]);
 
     const linkNodes = useCallback((promptId: string, imageId: string) => {
         updateCanvas(c => {
@@ -766,29 +882,6 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
     }, [updateCanvas]);
 
-    const pushToHistory = useCallback(() => {
-        const current = state.canvases.find(c => c.id === state.activeCanvasId);
-        if (!current) return;
-
-        setState(prev => {
-            const historyEntry = prev.history[prev.activeCanvasId] || { past: [], future: [] };
-            const newPast = [...historyEntry.past, current]; // Push current state to past
-
-            // Limit history depth
-            if (newPast.length > 20) newPast.shift();
-
-            return {
-                ...prev,
-                history: {
-                    ...prev.history,
-                    [prev.activeCanvasId]: {
-                        past: newPast,
-                        future: [] // Clear future on new action
-                    }
-                }
-            };
-        });
-    }, [state.activeCanvasId, state.canvases]);
 
     const undo = useCallback(() => {
         setState(prev => {
@@ -907,7 +1000,24 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (!currentCanvas) return;
 
         // --- SCOPED ARRANGE: Selected Nodes Only (Smart Layout) ---
-        const selectedIds = state.selectedNodeIds || [];
+        const initialSelectedIds = state.selectedNodeIds || [];
+
+        // [NEW] Expand Group Selection: If a group is selected, arrange its children
+        let selectedIds = [...initialSelectedIds];
+        const groups = currentCanvas.groups || [];
+        const selectedGroups = groups.filter(g => initialSelectedIds.includes(g.id));
+
+        if (selectedGroups.length > 0) {
+            selectedGroups.forEach(g => {
+                if (g.nodeIds && g.nodeIds.length > 0) {
+                    selectedIds.push(...g.nodeIds);
+                }
+            });
+            // Deduplicate and remove Group IDs (they are not actual node IDs)
+            const groupIdSet = new Set(groups.map(g => g.id));
+            selectedIds = Array.from(new Set(selectedIds)).filter(id => !groupIdSet.has(id));
+        }
+
         if (selectedIds.length > 0) {
             {
                 // 1. Analyze Selection Composition
@@ -987,7 +1097,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     let strategy: 'matrix' | 'row' | 'column' = 'row';
                     const GAP = 40; // Group Gap
 
-                    if (roots.length > 6) {
+                    if (roots.length >= 4) {
                         strategy = 'matrix';
                     } else {
                         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -1633,8 +1743,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (img.url && !img.url.startsWith('data:')) {
                     fetch(img.url).then(r => r.blob()).then(blob => {
                         const reader = new FileReader();
-                        reader.onloadend = () => {
-                            if (reader.result) saveImage(img.id, reader.result as string);
+                        reader.onloadend = async () => {
+                            if (reader.result) {
+                                const data = reader.result as string;
+                                const sid = img.storageId || await calculateImageHash(data);
+                                saveImage(sid, data);
+                            }
                         };
                         reader.readAsDataURL(blob);
                     }).catch(e => console.warn('Background cache failed', e));
@@ -1643,13 +1757,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // B. Cache Reference Images (Fix for missing refs)
             currentCanvas.promptNodes.forEach(pn => {
-                pn.referenceImages?.forEach(ref => {
+                pn.referenceImages?.forEach(async ref => {
                     if (ref.data) {
                         // Ensure it's a full data URL for storage
                         const fullUrl = ref.data.startsWith('data:')
                             ? ref.data
                             : `data:${ref.mimeType || 'image/png'};base64,${ref.data}`;
-                        saveImage(ref.id, fullUrl).catch(e => console.warn('Ref cache failed', e));
+                        const sid = ref.storageId || await calculateImageHash(fullUrl);
+                        saveImage(sid, fullUrl).catch(e => console.warn('Ref cache failed', e));
                     }
                 });
             });
@@ -1740,30 +1855,71 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
             }
 
-            // Reload state
+            // Reload state only if changed
             if (canvases.length > 0) {
-                setState(prev => ({
-                    ...prev,
-                    canvases: canvases.map(c => ({
-                        ...c,
-                        imageNodes: c.imageNodes.map(img => {
-                            const localData = images.get(img.id);
-                            return {
-                                ...img,
-                                url: localData?.url || img.url || '',
-                                originalUrl: localData?.originalUrl || img.originalUrl
-                            };
-                        })
-                    }))
-                }));
-            }
-            alert('本地文件夹刷新成功！');
+                setState(prev => {
+                    // Simple check: Compare lastModified of active canvas (simplified sync)
+                    // Ideally we check all, but for now let's check the first/active one.
 
+                    const newCanvas = canvases[0];
+                    const currentCanvas = prev.canvases.find(c => c.id === newCanvas.id);
+
+                    // If timestamps are close (within 2s) and item counts match, skip update to prevent flash
+                    // Note: fileSystemService might not set exact lastModified from file stats, 
+                    // dependent on how loadProject works.
+                    // Let's implement a deeper equality check or just check node counts for now.
+
+                    if (currentCanvas) {
+                        const countMatch = currentCanvas.promptNodes.length === newCanvas.promptNodes.length &&
+                            currentCanvas.imageNodes.length === newCanvas.imageNodes.length;
+
+                        // If counts match, assume no external change for now to stop flashing. 
+                        // [FIX] Strict Timestamp Check: If local state is newer than disk, DO NOT OVERWRITE.
+                        // allow 2s margin for FS precision issues.
+                        if (currentCanvas) {
+                            // If local is "dirtier" (newer) than incoming, skip refresh
+                            if (currentCanvas.lastModified > newCanvas.lastModified + 2000) {
+                                return prev;
+                            }
+
+                            const countMatch = currentCanvas.promptNodes.length === newCanvas.promptNodes.length &&
+                                currentCanvas.imageNodes.length === newCanvas.imageNodes.length;
+
+                            if (countMatch && Math.abs(currentCanvas.lastModified - newCanvas.lastModified) < 5000) {
+                                return prev;
+                            }
+                        }
+                    }
+
+                    return {
+                        ...prev,
+                        canvases: canvases.map(c => ({
+                            ...c,
+                            imageNodes: c.imageNodes.map(img => {
+                                const localData = images.get(img.id);
+                                return {
+                                    ...img,
+                                    url: localData?.url || img.url || '',
+                                    originalUrl: localData?.originalUrl || img.originalUrl
+                                };
+                            })
+                        }))
+                    };
+                });
+            }
+            // Silent refresh success (no alert)
         } catch (error) {
             console.error('Failed to refresh folder:', error);
-            alert('刷新文件夹失败。');
+            // Silent failure
         }
     }, [state.fileSystemHandle]);
+
+    // Auto-Sync: Poll local folder every 5 seconds if connected
+    useEffect(() => {
+        if (!state.fileSystemHandle) return;
+        const interval = setInterval(refreshLocalFolder, 5000);
+        return () => clearInterval(interval);
+    }, [state.fileSystemHandle, refreshLocalFolder]);
 
     // Enhanced Persistence (Local Storage + File System)
     useEffect(() => {
@@ -1961,6 +2117,25 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // Helper: Check collision
         const checkCollision = (cx: number, cy: number) => {
+            // Check groups first (Large blocks)
+            for (const g of currentCanvas.groups) {
+                const gX = g.bounds.x;
+                const gY = g.bounds.y;
+                const gW = g.bounds.width;
+                const gH = g.bounds.height;
+
+                const myX = cx - width / 2; // Anchor Center Helper
+                const myY = cy - height;    // Anchor Bottom Helper
+
+                // Check Overlap
+                // My: [myX, myY, width, height]
+                // Group: [gX, gY, gW, gH]
+                if (myX < gX + gW + buffer && myX + width + buffer > gX &&
+                    myY < gY + gH + buffer && myY + height + buffer > gY) {
+                    return true;
+                }
+            }
+
             // Check prompts
             for (const p of currentCanvas.promptNodes) {
                 // Approximate prompt dimensions (default width 320, height ~160+)
@@ -2161,7 +2336,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             addGroup,
             removeGroup,
             updateGroup,
-            setNodeTags
+            setNodeTags,
+            isReady: !isLoading
         }}>
             {children}
         </CanvasContext.Provider>

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap } from 'lucide-react';
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
@@ -358,7 +358,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>版本</div>
-                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.2</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.3</div>
                     </div>
                 </div>
             </div>
@@ -939,6 +939,44 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
+    // Mobile Navigation Auto-Hide Logic
+    const [isNavVisible, setIsNavVisible] = useState(true);
+    const navTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const touchStartY = useRef<number | null>(null);
+
+    const handleInteract = () => {
+        setIsNavVisible(true);
+        if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+        navTimeoutRef.current = setTimeout(() => {
+            setIsNavVisible(false);
+        }, 5000);
+    };
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        touchStartY.current = e.touches[0].clientY;
+        handleInteract();
+    };
+
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        if (touchStartY.current === null) return;
+        const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+        // Swipe Up (Negative delta)
+        if (deltaY < -20) {
+            handleInteract();
+        }
+        touchStartY.current = null;
+    };
+
+    // Initial timer
+    useEffect(() => {
+        if (isMobile) {
+            handleInteract();
+        }
+        return () => {
+            if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+        };
+    }, [isMobile]);
+
     if (!isOpen) return null;
 
     const navItems: { id: SettingsView; label: string; icon: any }[] = [
@@ -1027,7 +1065,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                 <div
                     className="fixed inset-0 w-full h-full flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 z-[10001]"
                     style={{ backgroundColor: 'var(--bg-secondary)' }}
-                    onClick={e => e.stopPropagation()}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        // Handle tap to show nav
+                        if (!activeView) return; // specific logic if needed
+                        handleInteract();
+                    }}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
                 >
                     {/* Mobile Header (iOS Style) */}
                     <div className="h-14 border-b flex items-center justify-between px-5 sticky top-0 z-20 shrink-0" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)', backdropFilter: 'blur(12px)' }}>
@@ -1060,7 +1105,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                     </div>
 
                     {/* Mobile Content (Scrollable) */}
-                    <div className="flex-1 overflow-y-auto p-4 scrollbar-hide space-y-4 pb-32" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                    <div
+                        className="flex-1 overflow-y-auto p-4 scrollbar-hide space-y-4 pb-32"
+                        style={{ backgroundColor: 'var(--bg-secondary)' }}
+                        onScroll={() => {
+                            // Optional: hide on scroll? User didn't strictly ask, but standard behavior.
+                            // keeping simple auto-hide timer for now.
+                            handleInteract();
+                        }}
+                    >
                         {/* Dynamic Content based on activeView */}
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                             {activeView === 'dashboard' && <DashboardView keyStats={keyStats} totalConsumed={totalConsumed} totalTokens={totalTokens} />}
@@ -1071,28 +1124,43 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                         </div>
                     </div>
 
-                    {/* Mobile Bottom Navigation Bar (iOS Tab Bar Style) */}
                     {/* Mobile Bottom Navigation Bar (Floating Glass Pill - iOS 26 Style) */}
                     <div
-                        className="absolute bottom-4 mx-4 left-0 right-0 h-14 rounded-[24px] flex items-center justify-around px-2 z-[10002] liquid-glass"
+                        className={`absolute bottom-4 left-4 right-4 h-16 rounded-[24px] flex items-center justify-around px-2 z-[10002] liquid-glass transition-all duration-300 ease-out pb-safe mb-safe
+                        ${isNavVisible ? 'translate-y-0 opacity-100' : 'translate-y-[150%] opacity-0 pointer-events-none'}`}
                         style={{
-                            // Handled by CSS class
+                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+                            backdropFilter: 'blur(20px) saturate(180%)',
+                            backgroundColor: 'rgba(20, 20, 25, 0.6)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)'
                         }}
                     >
                         {navItems.map(item => (
                             <button
                                 key={item.id}
-                                onClick={() => setActiveView(item.id)}
-                                className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-90
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveView(item.id);
+                                    handleInteract();
+                                }}
+                                className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-90 touch-target
                                     ${activeView === item.id
                                         ? 'text-white'
                                         : 'text-zinc-500 hover:text-zinc-300'
                                     }`}
                             >
-                                <div className={`p-1.5 rounded-xl transition-all duration-300 ${activeView === item.id ? 'bg-white/10' : ''}`}>
-                                    <item.icon size={22} strokeWidth={activeView === item.id ? 2 : 2} />
+                                <div className={`flex items-center justify-center transition-all duration-300`}>
+                                    <item.icon size={20} strokeWidth={activeView === item.id ? 2.5 : 2} />
                                 </div>
-                                <span className={`text-[9px] font-medium tracking-tight transform ${activeView === item.id ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>{item.label}</span>
+                                <span className={`text-[10px] font-medium tracking-tight leading-tight text-center transition-all duration-300 ${activeView === item.id
+                                    ? 'opacity-100'
+                                    : 'opacity-60'
+                                    }`}>
+                                    {item.label === '仪表盘' ? '概览' :
+                                        item.label === 'API 管理' ? '通道' :
+                                            item.label === '成本' ? '成本' :
+                                                item.label === '存储' ? '存储' : '日志'}
+                                </span>
                             </button>
                         ))}
                     </div>

@@ -11,7 +11,7 @@ import { AspectRatio, ImageSize, GenerationConfig, PromptNode, GeneratedImage, G
 import { User, LayoutDashboard, LogOut, Settings } from 'lucide-react'; // Added icons for User Menu
 import { SelectionMenu } from './components/SelectionMenu';
 import { CanvasGroupComponent } from './components/CanvasGroupComponent';
-import { generateImage, cancelGeneration, generateVideo } from './services/geminiService';
+import { generateImage, cancelGeneration } from './services/geminiService';
 import { keyManager } from './services/keyManager';
 import { getCardDimensions } from './utils/styleUtils';
 // Lucide icons replaced with SVGs
@@ -29,6 +29,7 @@ import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import { syncService } from './services/syncService';
 import { saveImage } from './services/imageStorage';
+import { calculateImageHash } from './utils/imageUtils';
 import NotificationToast from './components/NotificationToast';
 import { notify } from './services/notificationService';
 import UpdateNotification from './components/UpdateNotification';
@@ -41,6 +42,7 @@ import { Search } from 'lucide-react'; // Import Search icon
 import MobileTabBar from './components/MobileTabBar';
 import TagInputModal from './components/TagInputModal';
 import TutorialOverlay from './components/TutorialOverlay';
+import { GlobalLightbox } from './components/GlobalLightbox';
 
 const AppContent: React.FC = () => {
   const {
@@ -48,15 +50,12 @@ const AppContent: React.FC = () => {
     loading: authLoading,
     signOut
   } = useAuth();
-
   const [showTutorial, setShowTutorial] = useState(false);
+  // [Draft Feature] Persistent Input Card State (Moved to top to avoid ReferenceError)
+  const [draftNodeId, setDraftNodeId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const seen = localStorage.getItem('kk_tutorial_seen');
-    if (!seen) {
-      setTimeout(() => setShowTutorial(true), 1500);
-    }
-  }, []);
+
+
 
   const {
     activeCanvas,
@@ -82,7 +81,8 @@ const AppContent: React.FC = () => {
     updateGroup,
     setNodeTags,
     arrangeAllNodes,
-    moveSelectedNodes
+    moveSelectedNodes,
+    isReady
   } = useCanvas();
 
   // Canvas Ref for Zoom/Pan Controls
@@ -101,6 +101,41 @@ const AppContent: React.FC = () => {
     activeCanvasRef.current = activeCanvas;
   }, [activeCanvas]);
 
+  // [新功能] 全局灯箱状态 (针对图片浏览)
+  const [previewImages, setPreviewImages] = useState<GeneratedImage[] | null>(null);
+  const [previewInitialIndex, setPreviewInitialIndex] = useState(0);
+
+  const handleOpenPreview = useCallback((imageId: string) => {
+    const canvas = activeCanvasRef.current;
+    if (!canvas) return;
+
+    // 1. 编组逻辑 (优先处理画布编组)
+    const group = canvas.groups.find(g => g.nodeIds.includes(imageId));
+    let list: GeneratedImage[] = [];
+
+    if (group) {
+      list = canvas.imageNodes.filter(n => group.nodeIds.includes(n.id))
+        .sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
+    } else {
+      // 2. 提示词同级逻辑 (生成批次/多张变体)
+      const prompt = canvas.promptNodes.find(p => p.childImageIds?.includes(imageId));
+      if (prompt) {
+        list = canvas.imageNodes.filter(n => prompt.childImageIds.includes(n.id))
+          .sort((a, b) => a.timestamp - b.timestamp || (a.position.x - b.position.x));
+      } else {
+        // 3. 兜底逻辑 (单张图片)
+        const target = canvas.imageNodes.find(n => n.id === imageId);
+        if (target) list = [target];
+      }
+    }
+
+    if (list.length > 0) {
+      const idx = list.findIndex(n => n.id === imageId);
+      setPreviewImages(list);
+      setPreviewInitialIndex(idx >= 0 ? idx : 0);
+    }
+  }, []);
+
   // Reactively track KeyManager state
   const [keyStats, setKeyStats] = useState(keyManager.getStats());
 
@@ -118,7 +153,8 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     // Only trigger if storage is checked AND we are not showing the modal
-    if (isStorageChecked && !showStorageModal) {
+    // AND Canvas is fully Ready (Hydration complete, prompts dismissed)
+    if (isStorageChecked && !showStorageModal && isReady) {
       const seen = localStorage.getItem('kk_tutorial_seen');
       if (!seen) {
         // Wait for potential redirect/settings panel to close or settle
@@ -127,11 +163,11 @@ const AppContent: React.FC = () => {
           if (!showSettingsPanel) {
             setShowTutorial(true);
           }
-        }, 2000);
+        }, 1500); // Keep 1.5s delay for smooth UX
         return () => clearTimeout(timer);
       }
     }
-  }, [isStorageChecked, showStorageModal, showSettingsPanel]);
+  }, [isStorageChecked, showStorageModal, showSettingsPanel, isReady]);
 
   const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs'>('dashboard');
   const [showGrid, setShowGrid] = useState(true);
@@ -141,6 +177,27 @@ const AppContent: React.FC = () => {
       setKeyStats(keyManager.getStats());
     });
     return unsubscribe;
+  }, []);
+
+  // Mobile Nav Bar Visibility (Swipe to Show, Auto Hide)
+  const [isMobileNavVisible, setIsMobileNavVisible] = useState(false);
+  const mobileNavTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleShowMobileNav = useCallback(() => {
+    setIsMobileNavVisible(true);
+    if (mobileNavTimerRef.current) {
+      clearTimeout(mobileNavTimerRef.current);
+    }
+    mobileNavTimerRef.current = setTimeout(() => {
+      setIsMobileNavVisible(false);
+    }, 5000); // Auto hide after 5s
+  }, []);
+
+  const handleHideMobileNav = useCallback(() => {
+    setIsMobileNavVisible(false);
+    if (mobileNavTimerRef.current) {
+      clearTimeout(mobileNavTimerRef.current);
+    }
   }, []);
 
   // Tagging State
@@ -170,39 +227,79 @@ const AppContent: React.FC = () => {
 
   // Sync user with KeyManager and handle Modal Logic (Storage -> API)
   useEffect(() => {
-    if (user) {
-      // Sync Costs (properly await the sync)
-      import('./services/costService').then(async ({ setUserId }) => {
-        await setUserId(user.id);
-        console.log('[App] CostService sync completed for user:', user.id);
-      }).catch(err => console.error('[App] CostService sync failed:', err));
+    if (authLoading) return;
 
-      // First sync KeyManager
-      keyManager.setUserId(user.id).then(async () => {
-        // Check storage mode first
-        const { getStorageMode } = await import('./services/storagePreference');
-        const storageMode = await getStorageMode();
+    const init = async () => {
+      // 1. Sync User ID
+      if (user) {
+        import('./services/costService').then(async ({ setUserId }) => {
+          await setUserId(user.id);
+        }).catch(err => console.error('[App] CostService sync failed:', err));
+        await keyManager.setUserId(user.id);
 
-        if (!storageMode) {
-          // Show storage selection modal first
-          setShowStorageModal(true);
-        } else if (!keyManager.hasValidKeys()) {
+        // [New] Mark user as logged in on this browser (for future skips)
+        localStorage.setItem('kk_has_logged_in', 'true');
+      }
+
+      // 2. Check for Returning User (Smart Skip)
+      const hasLoggedInBefore = localStorage.getItem('kk_has_logged_in');
+      const isDevMode = window.location.hostname === 'localhost';
+
+      // 3. Storage Mode Check
+      const { getStorageMode } = await import('./services/storagePreference');
+      const storageMode = await getStorageMode();
+
+      // 4. Tutorial Logic
+      const tutorialSeen = localStorage.getItem('kk_tutorial_seen');
+
+      // [Smart Logic]
+      // A. Storage Modal: Show ONLY if no mode set AND user is NOT a returning user (unless critical)
+      // Actually, if storageMode is missing, we MUST show it or default it, otherwise app won't work.
+      // But user said: "If storage settings are already set, do not pop up" -> Already handled by `!storageMode` check.
+      // "If my account has already logged in ... do not pop up selection" -> This implies we might need a default if missing?
+      // For safety, if storageMode is MISSING, we must ask. But if it exists, we skip.
+
+      if (!storageMode) {
+        // If returning user but somehow lost storage config? 
+        // We still need to ask, to avoid data saving to nowhere.
+        // However, if the user implies "don't ask me *again*", likely they have it set.
+        // Current logic: `if (!storageMode) setShowStorageModal(true)`
+        setShowStorageModal(true);
+      } else {
+        // Mode exists -> Check Keys for API Panel
+        const hasKeys = keyManager.hasValidKeys();
+        if (!hasKeys) {
+          // Optional: Skip API setup for returning users too? User didn't specify, but implies "don't annoy me".
+          // We'll keep it for now as it's critical functionality.
           setShowSettingsPanel(true);
           setSettingsInitialView('api-management');
         }
-        if (!storageMode) {
-          // Show storage selection modal first
-          setShowStorageModal(true);
-        } else {
-          setIsStorageChecked(true); // Mark checked immediately if exists
-          if (!keyManager.hasValidKeys()) {
-            setShowSettingsPanel(true);
-            setSettingsInitialView('api-management');
-          }
+        setIsStorageChecked(true);
+      }
+
+      // B. Tutorial Logic
+      // "Only new users and developer mode should pop up tutorial"
+      // "If my account has already logged in ... do not pop up tutorial"
+      if (isDevMode) {
+        // Dev Mode: Allow normal logic (show if not seen, or always? User said "Only... pop up")
+        // We'll stick to "Show if not seen" for Devs, unless user explicitly meant "Always for Devs".
+        // Assuming "Only [New Users OR Dev Mode] get it" implies Devs get it too.
+        if (!tutorialSeen) {
+          // Handled by the other useEffect, we just ensure we don't block it here.
         }
-      });
-    }
-  }, [user]);
+      } else {
+        if (hasLoggedInBefore) {
+          // Returning User -> FORCE SKIP TUTORIAL
+          // Even if 'kk_tutorial_seen' is missing (e.g. cleared cache but kept local storage key?)
+          // We'll trust 'kk_has_logged_in'.
+          // actually 'kk_has_logged_in' is set above.
+          localStorage.setItem('kk_tutorial_seen', 'true'); // Silently mark as seen
+        }
+      }
+    };
+
+    init();
+  }, [user, authLoading]);
 
   // Generation config state
   // Generation config state with Persistence
@@ -275,13 +372,7 @@ const AppContent: React.FC = () => {
     }
   }, [activeSourceImage]);
 
-  const handleDisconnectPrompt = useCallback((promptId: string) => {
-    const node = activeCanvas?.promptNodes.find(n => n.id === promptId);
-    if (node) {
-      updatePromptNode({ ...node, sourceImageId: undefined });
-      notify.info('已断开连接', '该提示词已断开与原图的关联');
-    }
-  }, [activeCanvas, updatePromptNode]);
+
 
   // Budget Monitoring for Global Notifications
   const lastBudgetAlertRef = useRef<string | null>(null);
@@ -370,45 +461,106 @@ const AppContent: React.FC = () => {
         };
       }
     }
-    // Smart Top-Right Placement
-    if (activeCanvas && (activeCanvas.promptNodes.length > 0 || activeCanvas.imageNodes.length > 0)) {
-      let maxX = -Infinity;
-      let minY = Infinity;
-
-      activeCanvas.promptNodes.forEach(p => {
-        maxX = Math.max(maxX, p.position.x + 160); // Width/2
-        minY = Math.min(minY, p.position.y - (p.height || 200));
-      });
-
-      activeCanvas.imageNodes.forEach(img => {
-        let w = 280;
-        if (img.dimensions) {
-          const [dw, dh] = img.dimensions.split('x').map(Number);
-          if (dw && dh) {
-            const ratio = dw / dh;
-            w = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
-          }
-        }
-        // Height estimation (rough)
-        const h = 300;
-        maxX = Math.max(maxX, img.position.x + w / 2);
-        minY = Math.min(minY, img.position.y - h);
-      });
-
-      if (maxX > -Infinity && minY < Infinity) {
-        return {
-          x: maxX + 250, // 250px Gap to the right
-          y: minY + 200  // Align roughly with top (assuming card height ~200)
-        };
-      }
-    }
-
-    return {
+    // Smart Center Placement (finding empty space)
+    const viewCenter = {
       x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
       y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
     };
+    // Use findSmartPosition to avoid overlap around center
+    // 350x250 is a safe bounding box for the new card
+    return findSmartPosition(viewCenter.x, viewCenter.y, 350, 250);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSourceImage, activeCanvas, canvasTransform]);
+  }, [activeSourceImage, activeCanvas, canvasTransform, findSmartPosition]);
+
+  // [Draft Feature] Persistent Input Card State - Moved to Top
+
+
+  // Sync Config -> Draft Node
+  useEffect(() => {
+    // 1. Check if we have content to sync
+    const hasContent = config.prompt || config.referenceImages.length > 0;
+
+    if (hasContent) {
+      if (!draftNodeId) {
+        // [Draft Logic] Recover existing draft from canvas (e.g. after refresh)
+        const existingDraft = activeCanvas?.promptNodes.find(n => n.isDraft);
+        if (existingDraft) {
+          setDraftNodeId(existingDraft.id);
+          return;
+        }
+
+        // [Create Draft] If no draft linked, create one using pendingPosition logic
+        const newId = Date.now().toString();
+
+        addPromptNode({
+          id: newId,
+          prompt: config.prompt,
+          position: pendingPosition,
+          aspectRatio: config.aspectRatio,
+          imageSize: config.imageSize,
+          model: config.model,
+          childImageIds: [],
+          referenceImages: config.referenceImages,
+          timestamp: Date.now(),
+          sourceImageId: activeSourceImage || undefined,
+          isDraft: true,
+          mode: config.mode,
+          tags: []
+        });
+        setDraftNodeId(newId);
+      } else {
+        // [Update Draft] Sync changes to existing draft
+        const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
+        if (node) {
+          // Detect changes to avoid loop
+          const hasChanged = node.prompt !== config.prompt ||
+            node.model !== config.model ||
+            node.aspectRatio !== config.aspectRatio ||
+            node.imageSize !== config.imageSize ||
+            JSON.stringify(node.referenceImages) !== JSON.stringify(config.referenceImages) ||
+            node.sourceImageId !== (activeSourceImage || undefined);
+
+          if (hasChanged) {
+            updatePromptNode({
+              ...node,
+              prompt: config.prompt,
+              aspectRatio: config.aspectRatio,
+              imageSize: config.imageSize,
+              model: config.model,
+              referenceImages: config.referenceImages,
+              sourceImageId: activeSourceImage || undefined,
+              mode: config.mode
+            });
+          }
+        } else {
+          // Draft ID exists but node not found (deleted?), reset ID
+          setDraftNodeId(null);
+        }
+      }
+    } else {
+      // Config is empty.
+      // If we are linked to a draft, delete it to clear the "Preview Box"
+      if (draftNodeId) {
+        const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
+        if (node) {
+          deletePromptNode(draftNodeId);
+          setDraftNodeId(null);
+        }
+      }
+    }
+  }, [config, draftNodeId, activeCanvas, addPromptNode, updatePromptNode, pendingPosition, activeSourceImage]);
+
+  const handleDisconnectPrompt = useCallback((promptId: string) => {
+    const node = activeCanvas?.promptNodes.find(n => n.id === promptId);
+    if (node) {
+      updatePromptNode({ ...node, sourceImageId: undefined });
+      // [Draft Logic] If disconnecting draft, clear global source state too
+      if (node.id === draftNodeId) {
+        setActiveSourceImage(null);
+      }
+      notify.info('已断开连接', '该提示词已断开与原图的关联');
+    }
+  }, [activeCanvas, updatePromptNode, draftNodeId, setActiveSourceImage]);
 
   // Right-Click Selection State
   const [selectionBox, setSelectionBox] = useState<{ start: { x: number; y: number }; current: { x: number; y: number }; active: boolean } | null>(null);
@@ -588,6 +740,14 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
+  const handleMultiSelectConfirm = useCallback((ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    selectNodes(ids, true);
+    setTimeout(() => {
+      arrangeAllNodes();
+    }, 100);
+  }, [selectNodes, arrangeAllNodes]);
+
   const handleResetView = useCallback(() => {
     if (!activeCanvas) return;
     const prompts = activeCanvas.promptNodes;
@@ -705,170 +865,76 @@ const AppContent: React.FC = () => {
     return Math.max(130, baseHeight + (lines * lineHeight));
   }, []);
 
-  const handleGenerate = useCallback(async () => {
-    // Allow multiple concurrent generations - only check for valid prompt
-    if (!config.prompt.trim()) return;
-    // Note: API key is now managed server-side, no need to pass from frontend
+  // Extracted Execution Logic
+  const executeGeneration = useCallback(async (node: PromptNode) => {
+    const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: effectiveModel, mode, referenceImages: files = [] } = node;
 
-    const effectiveModel = config.model;
-
-    setIsGenerating(true);
-
-    // 1. Create Persistent Prompt Node immediately
-    const promptNodeId = Date.now().toString();
-
-
-    // Card Group Placement Strategy: center of current view, avoid collisions
-    const viewCenter = {
-      x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
-      y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
-    };
-    const promptHeight = getPromptHeight(config.prompt);
-    const targetY = viewCenter.y + promptHeight / 2;
-    const currentPos = findSmartPosition(viewCenter.x, targetY, 380, promptHeight, 40);
-
-    // If continuing from an image, auto-add it as reference (img2img)
-    let finalReferenceImages = [...config.referenceImages];
-    if (activeSourceImage) {
-      const sourceImage = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
-      if (sourceImage && sourceImage.url) {
-        // Fetch image and convert to base64 to use as reference
-        try {
-          const response = await fetch(sourceImage.url);
-          const blob = await response.blob();
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const result = reader.result as string;
-              const matches = result.match(/^data:(.+);base64,(.+)$/);
-              if (matches) {
-                resolve(matches[2]);
-              } else {
-                resolve('');
-              }
-            };
-            reader.readAsDataURL(blob);
-          });
-          if (base64) {
-            // Check if not already in references
-            const alreadyAdded = finalReferenceImages.some(ref => ref.id === sourceImage.id);
-            if (!alreadyAdded) {
-              finalReferenceImages.push({
-                id: sourceImage.id,
-                data: base64,
-                mimeType: blob.type || 'image/png'
-              });
-            }
-          }
-        } catch (fetchErr) {
-          console.warn('Could not fetch source image for reference:', fetchErr);
-        }
-      }
+    // [FIX] Get fresh position from canvas state to support moving during generation
+    const liveNode = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
+    if (!liveNode) {
+      console.error("Node lost during generation");
+      return;
     }
-
-    const generatingNode: PromptNode = {
-      id: promptNodeId,
-      prompt: config.prompt,
-      position: currentPos,
-      aspectRatio: config.aspectRatio,
-      imageSize: config.imageSize,
-      model: effectiveModel,
-      childImageIds: [], // Will fill after generation
-      referenceImages: finalReferenceImages,
-      timestamp: Date.now(),
-      // New: Generating State
-      isGenerating: true,
-      parallelCount: config.parallelCount,
-      sourceImageId: activeSourceImage || undefined,
-      mode: config.mode
-    };
-
-    // 4. Update State Immediately (Optimistic UI)
-    addPromptNode(generatingNode);
-
-    // 5. Clear Input UI immediately & Unblock
-    const promptToUse = config.prompt; // Capture for API call
-    setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
-    setActiveSourceImage(null);
-    setIsGenerating(false);
+    const livePos = liveNode.position;
+    const isVideo = mode === GenerationMode.VIDEO;
 
     try {
-      const count = config.parallelCount;
-
-      // Simple concurrency check based on model availability could be added here
-      // For now, we trust KeyManager to handle rotation or Key exhaustion
-
       const buildTask = (index: number) => async () => {
         const startTime = Date.now();
         const currentRequestId = `${promptNodeId}-${index}`;
 
         // Timeout Check (4 minutes)
         let isFinished = false;
-        let isTimedOut = false;
         const timeoutId = setTimeout(() => {
           if (!isFinished) {
-            isTimedOut = true;
             cancelGeneration(currentRequestId);
-            // Update prompt node with timeout error
             updatePromptNode({
-              ...generatingNode,
+              ...node,
               isGenerating: false,
               error: '生成超时，请重新发送任务'
             });
-            // Show system notification
             notify.warning('生成超时', '已超过4分钟，任务已自动停止。请检查网络后重试。');
           }
-        }, 360000); // 6 minutes
+        }, 240000);
 
         try {
           let generatedBase64 = '';
           let videoUrl = '';
+          let tokenUsage = 0;
+          let costUsd = 0;
 
-          if (config.mode === GenerationMode.VIDEO) {
-            videoUrl = await generateVideo(
+          if (isVideo) {
+            throw new Error('视频生成功能尚未实现');
+          } else {
+            const result = await generateImage(
               promptToUse,
+              node.aspectRatio,
+              node.imageSize,
+              files,
               effectiveModel,
               '',
-              currentRequestId
+              currentRequestId,
+              false // grounding config not preserved in node? assuming false for resume or need to add to PromptNode
             );
-          } else {
-            try {
-              generatedBase64 = await generateImage(
-                promptToUse,
-                config.aspectRatio,
-                config.imageSize,
-                finalReferenceImages,
-                effectiveModel,
-                '', // apiKey (handled internally)
-                currentRequestId, // Unique requestId for cancellation
-                config.enableGrounding // Pass grounding config
-              );
-            } catch (err: any) {
-              // Simplified error handling
-              throw err;
-            }
+            generatedBase64 = result.url;
+            tokenUsage = result.tokens || 0;
+            costUsd = result.cost || 0;
           }
 
           isFinished = true;
           clearTimeout(timeoutId);
 
           const generationTime = Date.now() - startTime;
-
           let originalUrl = '';
           let displayUrl = generatedBase64;
 
-          // --- Cloud Sync Upgrade: Upload Generated Image ---
+          // Cloud Sync / Upload
           try {
             if (generatedBase64) {
-              // Convert Base64 to Blob
               const res = await fetch(generatedBase64);
               const blob = await res.blob();
-
-              // Upload (Generate Thumb + Original)
-              const id = `${Date.now()}_${index}`; // Temporary ID for upload path
+              const id = `${Date.now()}_${index}`;
               const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
-
-              // Success: Use Cloud URLs
               if (!thumbnail.startsWith('blob:')) {
                 originalUrl = original;
                 displayUrl = thumbnail;
@@ -876,12 +942,11 @@ const AppContent: React.FC = () => {
             }
           } catch (e) {
             console.warn('Cloud upload failed, falling back to local base64:', e);
-            // Fallback: url stays as base64, originalUrl empty
           }
 
-          if (config.mode === GenerationMode.VIDEO) {
+          if (isVideo) {
             displayUrl = videoUrl;
-            originalUrl = videoUrl; // Video usually returns a remote URL or data URI
+            originalUrl = videoUrl;
           }
 
           return {
@@ -889,8 +954,10 @@ const AppContent: React.FC = () => {
             url: displayUrl,
             originalUrl,
             generationTime,
-            base64: generatedBase64, // Return base64 for local saving
-            mode: config.mode
+            base64: generatedBase64,
+            mode,
+            tokens: tokenUsage,
+            cost: costUsd
           };
         } catch (error: any) {
           isFinished = true;
@@ -918,77 +985,63 @@ const AppContent: React.FC = () => {
 
       const imageData = await runWithConcurrency(tasks, count);
 
-      // Validate results and narrow type
-      type SuccessResult = { index: number; url: string; originalUrl: string; generationTime: number; base64: string; mode: GenerationMode };
-      const validImageData = imageData.filter((d): d is SuccessResult => !!d && !('error' in d) && !!d.url);
+      // 过滤成功的结果
+      const validImageData = imageData.filter(d => !!d && !('error' in d) && !!d.url && typeof d.index === 'number') as Array<{
+        index: number;
+        url: string;
+        originalUrl: string;
+        generationTime: number;
+        base64: string;
+        mode: GenerationMode;
+        tokens: number;
+        cost: number;
+      }>;
 
       if (validImageData.length === 0) {
-        // Find first error
         const firstError = imageData.find(d => d && 'error' in d);
-        throw new Error(firstError && 'error' in firstError ? firstError.error : 'All generated images failed');
+        throw new Error(firstError && 'error' in firstError ? firstError.error : '所有图片生成失败');
       }
 
-      // Use the stable position determined at start of generation
-      const livePos = currentPos;
-
-      // Now calculate positions using the LIVE position
-      const gapToImages = 80; // Increased to match visual style (dotted line)
+      // 计算位置
+      const gapToImages = 80;
       const gap = 16;
+      const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(node.aspectRatio, true);
 
-      const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(config.aspectRatio, true);
-
-      // Note: Both prompt and image use translate(-50%, -100%), so position.y = BOTTOM
-      // For image TOP to be 80px below prompt BOTTOM:
-      //   imageY - imageHeight = promptY + 80
-      //   imageY = promptY + 80 + imageHeight
-
-      const validResults: GeneratedImage[] = validImageData.map(({ index, url, originalUrl, generationTime, base64, mode }) => {
+      const validResults: GeneratedImage[] = validImageData.map((item, mapIndex) => {
+        // 使用 mapIndex 作为后备，因为 item.index 已在 filter 中验证
+        const idx = item.index ?? mapIndex;
+        const { url, originalUrl, generationTime, base64, tokens, cost } = item;
         let x, y;
 
-        // Calculate offset based on device type
         if (isMobile) {
           const cols = Math.min(count, 2);
-          const col = index % cols;
-          const row = Math.floor(index / cols);
-
+          const col = idx % cols;
+          const row = Math.floor(idx / cols);
           const mobileCardWidth = 170;
           const mobileCardHeight = 260;
           const mobileGap = 10;
-
           const itemsInRow = Math.min(cols, count - row * cols);
           const currentGridWidth = itemsInRow * mobileCardWidth + (itemsInRow - 1) * mobileGap;
-
           const startX = -currentGridWidth / 2;
           const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
           const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
-
-          // Apply to live position
           x = livePos.x + offsetX;
           y = livePos.y + offsetY;
         } else {
-          // Desktop Layout
           const columns = Math.min(count, 2);
-          const col = index % columns;
-          const row = Math.floor(index / columns);
-
+          const col = idx % columns;
+          const row = Math.floor(idx / columns);
           const itemsInRow = Math.min(columns, count - row * columns);
           const currentGridWidth = itemsInRow * cardWidth + (itemsInRow - 1) * gap;
-
           const startX = -currentGridWidth / 2;
           const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
           const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
-
-          // Apply to live position
           x = livePos.x + offsetX;
           y = livePos.y + offsetY;
         }
 
-        const uniqueId = Date.now().toString() + index + Math.random();
-
-        // Save Original to IndexedDB (Local Cache) if available
+        const uniqueId = Date.now().toString() + idx + Math.random();
         if (base64) {
-          // We save the Base64 string directly as 'url' in IndexedDB
-          // This matches what 'saveImage' expects (id, url)
           saveImage(uniqueId, base64).catch(err => console.error("Failed to cache original locally", err));
         }
 
@@ -996,21 +1049,22 @@ const AppContent: React.FC = () => {
           id: uniqueId,
           url,
           originalUrl,
-          prompt: config.prompt,
-          aspectRatio: config.aspectRatio,
+          prompt: promptToUse,
+          aspectRatio: node.aspectRatio,
           timestamp: Date.now(),
-          model: config.model,
+          model: effectiveModel,
           canvasId: activeCanvas?.id || 'default',
           parentPromptId: promptNodeId,
           position: { x, y },
-          dimensions: `${config.aspectRatio} · ${config.imageSize || '1K'}`,
-          generationTime
+          dimensions: `${node.aspectRatio} · ${node.imageSize || '1K'}`,
+          generationTime,
+          tokens,
+          cost
         } as GeneratedImage;
       });
 
-      // Update the prompt node with success state
       const updatedNode = {
-        ...generatingNode,
+        ...node,
         isGenerating: false,
         childImageIds: validResults.map(r => r.id)
       };
@@ -1018,57 +1072,166 @@ const AppContent: React.FC = () => {
       updatePromptNode(updatedNode);
       addImageNodes(validResults);
 
-      // Record cost for this generation
       import('./services/costService').then(({ recordCost }) => {
         recordCost(
-          config.model,
-          config.imageSize,
+          effectiveModel,
+          node.imageSize,
           validResults.length,
-          config.prompt,
-          finalReferenceImages.length
+          promptToUse,
+          files.length
         );
       });
 
-      // Clear active source image after successful generation
-      setActiveSourceImage(null);
-
-      // Keep prompt for continuous generation (don't clear)
-
-      // Auto-scroll to center the new content (Mobile Only)
-      if (isMobile) {
-        // We want to center on the NEW PROMPT node, or slightly below it to see images
-        // Target Y is prompt position Y + some offset
-        const targetX = livePos.x;
-        const targetY = livePos.y + 150; // Center between prompt and images
-
-        // Calculate new translation to put (targetX, targetY) at screen center
-        // visualX = targetX * scale + newTranslateX = screenW / 2
-        // => newTranslateX = screenW / 2 - targetX * scale
-
-        const screenW = window.innerWidth;
-        const screenH = window.innerHeight;
-
-        setCanvasTransform(prev => ({
-          ...prev,
-          x: screenW / 2 - targetX * prev.scale,
-          y: screenH / 2 - targetY * prev.scale
-        }));
+      // Clear active source if it was this node (simple check)
+      if (activeSourceImage && activeSourceImage === node.sourceImageId) {
+        setActiveSourceImage(null);
       }
 
     } catch (err: any) {
       console.error(err);
-      updatePromptNode({ ...generatingNode, isGenerating: false, error: err.message || 'Failed' });
-      console.error(err);
-      updatePromptNode({ ...generatingNode, isGenerating: false, error: err.message || 'Failed' });
+      updatePromptNode({ ...node, isGenerating: false, error: err.message || 'Failed' });
       notify.error('生成任务失败', err.message || "Generation failed.");
       if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
         setShowSettingsPanel(true);
         setSettingsInitialView('api-management');
       }
-    } finally {
-      setIsGenerating(false);
     }
-  }, [config, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, isGenerating, isMobile, canvasTransform, findSmartPosition, getPromptHeight]);
+  }, [isMobile, updatePromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions]);
+
+  // Auto-Resume Effect
+  const hasResumedRef = useRef(false);
+  useEffect(() => {
+    // Wait for canvas to be ready and loaded
+    if (!activeCanvas || hasResumedRef.current) return;
+
+    const interruptedNodes = activeCanvas.promptNodes.filter(n => n.isGenerating);
+    if (interruptedNodes.length > 0) {
+      console.log(`[Auto-Resume] Found ${interruptedNodes.length} interrupted tasks. Resuming...`);
+      interruptedNodes.forEach(node => {
+        // Delay slightly to prevent UI contention
+        setTimeout(() => executeGeneration(node), 500);
+      });
+      notify.info('任务自动恢复', `已恢复 ${interruptedNodes.length} 个未完成的生成任务`);
+    }
+    hasResumedRef.current = true;
+  }, [activeCanvas, executeGeneration]);
+
+
+  const handleGenerate = useCallback(async () => {
+    if (!config.prompt.trim()) return;
+
+    setIsGenerating(true);
+
+    // [Draft Logic] Use existing draft if available
+    let promptNodeId = draftNodeId;
+    let isReusingDraft = false;
+    let currentPos = findNextGroupPosition(); // Fallback for new
+
+    if (promptNodeId) {
+      // We have a draft. Use it.
+      const draft = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
+      if (draft) {
+        isReusingDraft = true;
+        // [FIX] Update draft position to current view center (where user sees it)
+        const viewCenter = {
+          x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
+          y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
+        };
+        currentPos = viewCenter;
+      } else {
+        // Draft ID stale?
+        promptNodeId = Date.now().toString();
+      }
+    } else {
+      promptNodeId = Date.now().toString();
+    }
+
+    setDraftNodeId(null); // Detach status immediately
+
+    const viewCenter = {
+      x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
+      y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
+    };
+
+    // Legacy calculation reference, but we used currentPos above.
+    const promptHeight = getPromptHeight(config.prompt);
+
+    let finalReferenceImages = [...config.referenceImages];
+    if (activeSourceImage) {
+      const sourceImage = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
+      if (sourceImage && sourceImage.url) {
+        try {
+          const response = await fetch(sourceImage.url);
+          const blob = await response.blob();
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              const matches = result.match(/^data:(.+);base64,(.+)$/);
+              resolve(matches ? matches[2] : '');
+            };
+            reader.readAsDataURL(blob);
+          });
+          if (base64) {
+            const alreadyAdded = finalReferenceImages.some(ref => ref.id === sourceImage.id);
+            if (!alreadyAdded) {
+              finalReferenceImages.push({
+                id: sourceImage.id,
+                data: base64, // @ts-ignore
+                mimeType: blob.type || 'image/png'
+              });
+            }
+          }
+        } catch (filesErr) {
+          console.warn('Ref load error', filesErr);
+        }
+      }
+    }
+
+    // Ensure all reference images are saved to IDB for persistence
+    // (Large images might be stripped from localStorage)
+    finalReferenceImages.forEach(ref => {
+      if (ref.data) {
+        import('./services/imageStorage').then(({ saveImage }) => {
+          // IMPORTANT: store as full DataURL so CanvasContext can rehydrate mimeType/base64 reliably
+          const mime = (ref as any).mimeType || 'image/png';
+          const fullUrl = ref.data!.startsWith('data:') ? ref.data! : `data:${mime};base64,${ref.data!}`;
+          saveImage(ref.id, fullUrl).catch(e => console.warn('Ref save failed', e));
+        });
+      }
+    });
+
+    const generatingNode: PromptNode = {
+      id: promptNodeId!,
+      prompt: config.prompt,
+      position: currentPos,
+      aspectRatio: config.aspectRatio,
+      imageSize: config.imageSize,
+      model: config.model,
+      childImageIds: [],
+      referenceImages: finalReferenceImages,
+      timestamp: Date.now(),
+      isGenerating: true,
+      parallelCount: config.parallelCount,
+      sourceImageId: activeSourceImage || undefined,
+      mode: config.mode,
+      isDraft: false // Ensure it is NOT a draft anymore
+    };
+
+    if (isReusingDraft) {
+      updatePromptNode(generatingNode);
+    } else {
+      addPromptNode(generatingNode);
+    }
+
+    setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
+    setActiveSourceImage(null);
+    setIsGenerating(false); // Global spinner off, local spinner on
+
+    // Execute immediately
+    executeGeneration(generatingNode);
+
+  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
@@ -1117,7 +1280,6 @@ const AppContent: React.FC = () => {
   const handleAutoArrange = useCallback(() => {
     if (!activeCanvas) return;
 
-    const START_Y = 80;
     const ROW_GAP = 32;
     const COL_GAP = 16;
     const PROMPT_WIDTH = 380;
@@ -1132,13 +1294,74 @@ const AppContent: React.FC = () => {
       const canvas = activeCanvasRef.current;
       if (!canvas) return;
 
-      const normals = canvas.promptNodes.filter(p => !p.error);
-      const errors = canvas.promptNodes.filter(p => p.error);
+      // Layout should appear near current viewport center (avoid "arranged far away")
+      const viewCenter = {
+        x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
+        y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
+      };
+
+      // 智能整理逻辑: 如果有选中，仅整理选中内容 (及其关联的卡片)
+      // If selection exists, filter targets. Otherwise arrange ALL.
+      let targets = canvas.promptNodes;
+
+      if (selectedNodeIds.length > 0) {
+        const selectedSet = new Set(selectedNodeIds);
+
+        // Find prompts involved in selection
+        targets = canvas.promptNodes.filter(p => {
+          // 1. Prompt itself is selected
+          if (selectedSet.has(p.id)) return true;
+
+          // 2. Child Image is selected (Implies "Organize Local Group")
+          if (p.childImageIds.some(cid => selectedSet.has(cid))) return true;
+
+          // 3. Prompt belongs to a selected Group
+          const parentGroup = canvas.groups.find(g => g.id === p.id || g.nodeIds.includes(p.id));
+          if (parentGroup && selectedSet.has(parentGroup.id)) return true; // (Wait, group ID usually distinct)
+
+          // Check actual Group objects for selection
+          const groupsSelected = canvas.groups.filter(g => selectedSet.has(g.id));
+          if (groupsSelected.some(g => g.nodeIds.includes(p.id))) return true;
+
+          return false;
+        });
+
+        if (targets.length === 0) {
+          // Maybe only images selected but no parents? (Orphans)
+          // We can't easily auto-arrange orphans with this logic.
+          return;
+        }
+      }
+
+      const normals = targets.filter(p => !p.error);
+      const errors = targets.filter(p => p.error);
+
+      // Prefer measured node height (from PromptNodeComponent) to avoid overlap/misalignment.
+      const getPromptHeightForLayout = (p: PromptNode) => p.height || getPromptHeight(p.prompt);
+
+      // Get image dims consistent with rendering + connection-line math
+      const getImageDimsForLayout = (img: any) => {
+        const base = getCardDimensions(img.aspectRatio, true);
+
+        // If we have real pixel dimensions like "1024x768", compute height precisely
+        if (typeof img.dimensions === 'string' && /^\d+\s*x\s*\d+$/.test(img.dimensions)) {
+          const [w, h] = img.dimensions.split('x').map((s: string) => parseInt(s.trim(), 10));
+          if (w > 0 && h > 0) {
+            const ratio = w / h;
+            // Render width is driven by aspectRatio mapping, not by pixel width
+            const renderWidth = getCardDimensions(img.aspectRatio, false).width;
+            const exactTotalHeight = (renderWidth / ratio) + 40; // footer
+            return { width: renderWidth, totalHeight: exactTotalHeight };
+          }
+        }
+
+        return base;
+      };
 
       const measureBlock = (prompt: PromptNode) => {
-        const promptHeight = getPromptHeight(prompt.prompt);
+        const promptHeight = getPromptHeightForLayout(prompt);
         const children = canvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
-        const dims = children.map(img => getCardDimensions(img.aspectRatio, true));
+        const dims = children.map(img => getImageDimsForLayout(img));
         const rowWidth = dims.reduce((s, d) => s + d.width, 0) + (dims.length > 0 ? (dims.length - 1) * COL_GAP_IMG : 0);
         const rowHeight = dims.length > 0 ? Math.max(...dims.map(d => d.totalHeight)) : 0;
         const blockWidth = Math.max(PROMPT_WIDTH, rowWidth);
@@ -1147,19 +1370,23 @@ const AppContent: React.FC = () => {
         return { promptHeight, children, dims, rowWidth, blockWidth, blockHeight, promptToImageGap };
       };
 
+      // Stage positions first, then apply a single global offset so the result is centered near viewCenter.
+      const promptPositions: Record<string, { x: number; y: number }> = {};
+      const imagePositions: Record<string, { x: number; y: number }> = {};
+
       const placePrompt = (prompt: PromptNode, xLeft: number, yTop: number) => {
         const info = measureBlock(prompt);
         const centerX = xLeft + info.blockWidth / 2;
         const promptBottom = yTop + info.promptHeight;
 
-        updatePromptNodePosition(prompt.id, { x: centerX, y: promptBottom }, { moveChildren: false, ignoreSelection: true });
+        promptPositions[prompt.id] = { x: centerX, y: promptBottom };
 
         if (info.children.length > 0) {
           let cursorX = centerX - info.rowWidth / 2;
           const rowTop = promptBottom + info.promptToImageGap;
           info.children.forEach((img, idx) => {
             const dim = info.dims[idx];
-            updateImageNodePosition(img.id, { x: cursorX + dim.width / 2, y: rowTop + dim.totalHeight }, { ignoreSelection: true });
+            imagePositions[img.id] = { x: cursorX + dim.width / 2, y: rowTop + dim.totalHeight };
             cursorX += dim.width + COL_GAP_IMG;
           });
         }
@@ -1169,7 +1396,7 @@ const AppContent: React.FC = () => {
 
       // Normals grid
       const normalsSorted = [...normals].sort((a, b) => parseInt(a.id) - parseInt(b.id));
-      let x = 0, y = START_Y, rowH = 0, count = 0;
+      let x = 0, y = 0, rowH = 0, count = 0;
       normalsSorted.forEach(p => {
         const info = measureBlock(p);
         if (count >= NORMAL_PER_ROW) {
@@ -1201,11 +1428,64 @@ const AppContent: React.FC = () => {
         eRowH = Math.max(eRowH, info.blockHeight);
         eCount += 1;
       });
+
+      // Compute bounds (using staged positions + real sizes) and shift whole layout to viewCenter.
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      const addRect = (cx: number, bottomY: number, w: number, h: number) => {
+        // Anchor is bottom-center
+        const left = cx - w / 2;
+        const right = cx + w / 2;
+        const top = bottomY - h;
+        const bottom = bottomY;
+        minX = Math.min(minX, left);
+        maxX = Math.max(maxX, right);
+        minY = Math.min(minY, top);
+        maxY = Math.max(maxY, bottom);
+      };
+
+      canvas.promptNodes.forEach(p => {
+        const pos = promptPositions[p.id];
+        if (!pos) return;
+        addRect(pos.x, pos.y, PROMPT_WIDTH, getPromptHeightForLayout(p));
+      });
+
+      canvas.imageNodes.forEach(img => {
+        const pos = imagePositions[img.id];
+        if (!pos) return;
+        const dim = getImageDimsForLayout(img);
+        addRect(pos.x, pos.y, dim.width, dim.totalHeight);
+      });
+
+      if (minX !== Infinity && minY !== Infinity && maxX !== -Infinity && maxY !== -Infinity) {
+        const layoutCenterX = (minX + maxX) / 2;
+        const layoutCenterY = (minY + maxY) / 2;
+        const dx = viewCenter.x - layoutCenterX;
+        const dy = viewCenter.y - layoutCenterY;
+
+        Object.keys(promptPositions).forEach(id => {
+          const p = promptPositions[id];
+          promptPositions[id] = { x: p.x + dx, y: p.y + dy };
+        });
+        Object.keys(imagePositions).forEach(id => {
+          const p = imagePositions[id];
+          imagePositions[id] = { x: p.x + dx, y: p.y + dy };
+        });
+      }
+
+      // Apply updates (ignore selection + do not auto-move children because we explicitly set image positions)
+      canvas.promptNodes.forEach(p => {
+        const pos = promptPositions[p.id];
+        if (pos) updatePromptNodePosition(p.id, pos, { moveChildren: false, ignoreSelection: true });
+      });
+      canvas.imageNodes.forEach(img => {
+        const pos = imagePositions[img.id];
+        if (pos) updateImageNodePosition(img.id, pos, { ignoreSelection: true });
+      });
     };
 
     clearSelection();
     requestAnimationFrame(runLayout);
-  }, [activeCanvas, clearSelection, updateImageNodePosition, updatePromptNodePosition, getPromptHeight]);
+  }, [activeCanvas, canvasTransform, clearSelection, updateImageNodePosition, updatePromptNodePosition, getPromptHeight]);
 
   const handleCutConnection = useCallback((promptId: string, imageId: string) => {
     unlinkNodes(promptId, imageId);
@@ -1238,12 +1518,12 @@ const AppContent: React.FC = () => {
 
         try {
           let b64 = '';
-          const currentMode = node.mode || GenerationMode.IMAGE;
+          const currentMode: GenerationMode = node.mode || GenerationMode.IMAGE;
 
           if (currentMode === GenerationMode.VIDEO) {
-            b64 = await generateVideo(node.prompt, node.model, '', requestId);
+            throw new Error('视频生成功能尚未实现');
           } else {
-            b64 = await generateImage(
+            const result = await generateImage(
               node.prompt,
               node.aspectRatio,
               node.imageSize,
@@ -1253,6 +1533,7 @@ const AppContent: React.FC = () => {
               requestId,
               false // grounding
             );
+            b64 = result.url;
           }
 
           isFinished = true;
@@ -1281,6 +1562,9 @@ const AppContent: React.FC = () => {
 
           const generationTime = Date.now() - startTime;
 
+          // Calculate Hash/StorageID
+          const storageId = await calculateImageHash(url);
+
           return {
             canvasId: activeCanvas?.id || 'default',
             parentPromptId: node.id,
@@ -1297,7 +1581,9 @@ const AppContent: React.FC = () => {
             model: node.model,
             seed: -1,
             id: `${Date.now()}_${index}_${Math.random().toString(36).substr(2, 5)}`,
-            mimeType: currentMode === GenerationMode.VIDEO ? 'video/mp4' : 'image/png',
+            storageId, // Content-Based ID
+            // 在此分支中 currentMode 只能是 IMAGE（VIDEO 在上面抛出错误）
+            mimeType: 'image/png',
             timestamp: Date.now(),
             mode: currentMode
           };
@@ -1451,6 +1737,14 @@ const AppContent: React.FC = () => {
       model: clickedNode.model,
       referenceImages: clickedNode.referenceImages || []
     }));
+
+    // [Draft Logic] Resume Draft if clicked on a draft node
+    if (clickedNode.isDraft) {
+      setDraftNodeId(clickedNode.id);
+    } else {
+      // Detach draft if clicking a finalized node (acting as "Edit Template" or "Remix")
+      setDraftNodeId(null);
+    }
   }, [setConfig]);
 
   const handleImageClick = useCallback((imageId: string) => {
@@ -1512,6 +1806,52 @@ const AppContent: React.FC = () => {
     };
   }, [activeCanvas]);
 
+  // Viewport Culling (Virtualization) Logic
+  // Optimization: Only render nodes overlapping with the current viewport (+buffer)
+  const { visiblePromptNodes, visibleImageNodes, visibleGroups } = React.useMemo(() => {
+    if (!activeCanvas) {
+      return { visiblePromptNodes: [], visibleImageNodes: [], visibleGroups: [] };
+    }
+
+    // Buffer: Load 1 screen worth of content around the viewport to prevent flash on scroll
+    const BUFFER = 2000;
+
+    // Viewport Render Bounds in Canvas Coordinates
+    // Screen (0,0) -> Canvas (vLeft, vTop)
+    const vLeft = -canvasTransform.x / canvasTransform.scale - BUFFER;
+    const vTop = -canvasTransform.y / canvasTransform.scale - BUFFER;
+    const vRight = (window.innerWidth - canvasTransform.x) / canvasTransform.scale + BUFFER;
+    const vBottom = (window.innerHeight - canvasTransform.y) / canvasTransform.scale + BUFFER;
+
+    // 1. Filter Groups
+    const visibleGroups = activeCanvas.groups.filter(g => {
+      const { x, y, width, height } = g.bounds;
+      return !(x > vRight || x + width < vLeft || y > vBottom || y + height < vTop);
+    });
+
+    // 2. Filter Prompt Nodes
+    const visiblePromptNodes = activeCanvas.promptNodes.filter(n => {
+      // Estimate Bounds (Center X, Bottom Y)
+      const w = 500; // Generous width
+      const h = 500; // Generous height
+      const x = n.position.x - w / 2;
+      const y = n.position.y - h;
+      return !(x > vRight || x + w < vLeft || y > vBottom || y + h < vTop);
+    });
+
+    // 3. Filter Image Nodes
+    const visibleImageNodes = activeCanvas.imageNodes.filter(n => {
+      // Estimate Bounds (Center X, Bottom Y)
+      const w = 400;
+      const h = 700; // Vertical images can be tall
+      const x = n.position.x - w / 2;
+      const y = n.position.y - h;
+      return !(x > vRight || x + w < vLeft || y > vBottom || y + h < vTop);
+    });
+
+    return { visiblePromptNodes, visibleImageNodes, visibleGroups };
+  }, [activeCanvas, canvasTransform]);
+
   return (
     <div id="canvas-container" className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
       onMouseDown={handleMouseDown}
@@ -1538,7 +1878,7 @@ const AppContent: React.FC = () => {
 
 
       {/* Top Right User Menu - Desktop Only */}
-      <div className="absolute top-4 right-4 z-[100] hidden md:flex items-center gap-3">
+      <div id="header-user-menu" className="absolute top-4 right-4 z-[100] hidden md:flex items-center gap-3">
 
         {/* User Avatar & Dropdown Trigger */}
         <div className="relative group">
@@ -1653,6 +1993,7 @@ const AppContent: React.FC = () => {
           }}
         />
       )}
+      {/* Selection Menu Overlay */}
       {selectionMenuPosition && selectedNodeIds.length > 0 && (
         <SelectionMenu
           position={selectionMenuPosition}
@@ -1671,7 +2012,10 @@ const AppContent: React.FC = () => {
             if (!activeCanvas) return;
             // Calculate bounds
             const prompts = activeCanvas.promptNodes.filter(n => selectedNodeIds.includes(n.id));
-            const images = activeCanvas.imageNodes.filter(n => selectedNodeIds.includes(n.id));
+
+            // [FIX] Include child images of selected prompts for adaptive bounding
+            const childImageIds = prompts.flatMap(p => p.childImageIds || []);
+            const images = activeCanvas.imageNodes.filter(n => selectedNodeIds.includes(n.id) || childImageIds.includes(n.id));
 
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
@@ -1717,6 +2061,8 @@ const AppContent: React.FC = () => {
         />
       )}
 
+
+
       {/* Main Infinite Canvas */}
       <InfiniteCanvas
         id="canvas-container"
@@ -1728,6 +2074,9 @@ const AppContent: React.FC = () => {
           ...(activeCanvas?.imageNodes.map(n => n.position) || [])
         ]}
         onCanvasClick={() => {
+          // [Draft Logic] Detach from draft when clicking background
+          if (draftNodeId) setDraftNodeId(null);
+
           // Clear input when clicking empty canvas, but NOT during generation
           // and NOT when in "continue from image" mode
           if (!isGenerating && !activeSourceImage) {
@@ -1812,7 +2161,7 @@ const AppContent: React.FC = () => {
                     fill="none"
                     stroke="#3f3f46"
                     strokeWidth="1"
-                    strokeDasharray="3 4"
+                    strokeDasharray="4 4"
                     strokeLinecap="round"
                   />
                 </g>
@@ -1983,8 +2332,8 @@ const AppContent: React.FC = () => {
 
 
 
-        {/* 2. Groups Layer (Behind cards) */}
-        {activeCanvas?.groups?.map(group => (
+        {/* 2. 编组层 (位于卡片后方) */}
+        {visibleGroups.map(group => (
           <CanvasGroupComponent
             key={group.id}
             group={group}
@@ -2017,8 +2366,8 @@ const AppContent: React.FC = () => {
           />
         ))}
 
-        {/* 3. Persistent Prompt Nodes */}
-        {activeCanvas?.promptNodes.map(node => (
+        {/* 3. 持久化提示词节点 (Filter out Draft Node) */}
+        {visiblePromptNodes.filter(n => n.id !== draftNodeId).map(node => (
           <PromptNodeComponent
             key={node.id}
             node={node}
@@ -2046,8 +2395,8 @@ const AppContent: React.FC = () => {
           />
         ))}
 
-        {/* 3. Image Nodes */}
-        {activeCanvas?.imageNodes.map(node => (
+        {/* 3. 图片节点 */}
+        {visibleImageNodes.map(node => (
           <ImageNode
             key={node.id}
             image={node}
@@ -2063,35 +2412,19 @@ const AppContent: React.FC = () => {
             onSelect={() => selectNodes([node.id], !(window.event as any)?.shiftKey)}
             zoomScale={canvasTransform.scale}
             isMobile={isMobile}
+            onPreview={handleOpenPreview}
           />
         ))}
 
         {/* 4. Pending / Typing Node */}
-        <PendingNode
-          prompt={config.prompt}
-          parallelCount={config.parallelCount}
-          isGenerating={isGenerating}
-          position={pendingPosition}
-          aspectRatio={config.aspectRatio}
-          // Position fixed to center, no drag needed
-          isMobile={isMobile}
-          canvasTransform={canvasTransform}
-          referenceImages={config.referenceImages}
-          sourcePosition={activeSourceImage
-            ? activeCanvas?.imageNodes.find(n => n.id === activeSourceImage)?.position
-            : undefined
-          }
-          onDisconnect={() => {
-            setActiveSourceImage(null);
-            setConfig(prev => ({ ...prev, referenceImages: [] })); // Also clear generic references if they came from source? Maybe debatable.
-          }}
-        />
+        {/* 4. Pending / Typing Node - Removed (Now handled by Persistent Draft DraftNode) */}
+        {/* <PendingNode ... /> removed */}
       </InfiniteCanvas>
 
       {/* Mobile Top Right Avatar - Removed by user request */}
 
       {/* Prompt Bar */}
-      <div id="prompt-bar-container" className="contents">
+      <div className="contents">
         <PromptBar
           config={config}
           setConfig={setConfig}
@@ -2111,14 +2444,16 @@ const AppContent: React.FC = () => {
           onOpenSettings={(view) => {
             setSettingsInitialView(view || 'api-management');
             setShowSettingsPanel(true);
+            handleHideMobileNav(); // Hide nav when opening settings (optional, but requested behavior implies consistent handling)
           }}
+          onInteract={handleShowMobileNav}
         />
       </div>
 
       {/* Liquid Glass SVG Filter Definition */}
       {/* Liquid Glass SVG Filter Removed (User Request) */}
       {/* Chat Sidebar (Left) */}
-      <div id="sidebar-container">
+      <div id="chat-sidebar-wrapper">
         <ChatSidebar
           isOpen={isChatOpen}
           onToggle={() => setIsChatOpen(prev => !prev)}
@@ -2174,7 +2509,7 @@ const AppContent: React.FC = () => {
 
       {/* Version Badge - Bottom Right */}
       <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.2.2
+        v1.2.3
       </div>
 
       {/* Project Manager (Replaces Canvas Manager) */}
@@ -2193,13 +2528,52 @@ const AppContent: React.FC = () => {
         isChatOpen={isChatOpen}
       />
 
-      {/* Search Palette */}
+
+
+      {/* [NEW] Draft Node Overlay (Fixed Center) */}
+      {draftNodeId && (() => {
+        const draftNode = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
+        if (!draftNode) return null;
+
+        // Mock position 0,0 for component, handle centering via container
+        const displayNode = { ...draftNode, position: { x: 0, y: 0 } };
+
+        return (
+          <div className="fixed inset-0 pointer-events-none z-[100] flex items-center justify-center">
+            {/* Wrapper to handle PromptNode's bottom-center anchor */}
+            <div className="relative pointer-events-auto transform translate-y-[50%]">
+              <PromptNodeComponent
+                node={displayNode}
+                onPositionChange={() => { }} // No-op during preview
+                isSelected={true}
+                onSelect={() => { }}
+                zoomScale={1} // Always 1:1 in preview? Or match canvas? User said "center area". 1:1 is clearer.
+                isMobile={isMobile}
+                onCancel={handleCancelGeneration}
+                // Disable drag for the overlay
+                onConnectStart={() => { }}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
+
+      {/* 全局灯箱与搜索面板 (搜索面板置于底部，灯箱置于最上层) */}
+      {previewImages && (
+        <GlobalLightbox
+          images={previewImages}
+          initialIndex={previewInitialIndex}
+          onClose={() => setPreviewImages(null)}
+        />
+      )}
       <SearchPalette
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         promptNodes={activeCanvas?.promptNodes || []}
         groups={activeCanvas?.groups || []}
         onNavigate={handleNavigateToNode}
+        onMultiSelectConfirm={handleMultiSelectConfirm}
       />
 
       {/* VisionOS Mobile Bottom Bar */}
@@ -2212,15 +2586,26 @@ const AppContent: React.FC = () => {
             setIsChatOpen(false);
             setShowSettingsPanel(false);
             setShowProfileModal(false);
+            handleShowMobileNav(); // Keep visible on interaction
           }}
-          onOpenSettings={() => { setShowSettingsPanel(true); setIsSidebarOpen(false); }}
-          onOpenProfile={() => { setShowProfileModal(true); setIsSidebarOpen(false); }}
+          onOpenSettings={() => {
+            setShowSettingsPanel(true);
+            setIsSidebarOpen(false);
+            handleShowMobileNav();
+          }}
+          onOpenProfile={() => {
+            setShowProfileModal(true);
+            setIsSidebarOpen(false);
+            handleShowMobileNav();
+          }}
           currentMode={config.mode}
           currentView={
             showProfileModal ? 'profile' :
               showSettingsPanel ? 'settings' :
                 isSidebarOpen ? 'gallery' : 'home'
           }
+          isVisible={isMobileNavVisible}
+          onInteract={handleShowMobileNav}
         />
       )}
       {showTutorial && (
@@ -2271,3 +2656,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+// Force Rebuild

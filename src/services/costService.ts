@@ -29,6 +29,7 @@
  */
 
 import { ModelType, ImageSize } from '../types';
+import { getImageTokenEstimate, getModelPricing, getRefImageTokenEstimate } from './modelPricing';
 import type { KeySlot } from './keyManager';
 import { supabase } from '../lib/supabase';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -151,6 +152,30 @@ export const calculateCost = (
     let tokens = 0;
 
     const modelId = model.toLowerCase();
+
+    const pricing = getModelPricing(modelId);
+    if (pricing?.pricePerImage) {
+        cost = pricing.pricePerImage * count;
+        details = `Fixed: $${pricing.pricePerImage}/img`;
+        return { cost, details, tokens: 0 };
+    }
+
+    if (pricing && (pricing.inputPerMillionTokens || pricing.outputPerMillionTokens)) {
+        const textTokens = Math.ceil(promptLen / 4);
+        const refTokens = refCount * getRefImageTokenEstimate(modelId);
+        const inputTokens = textTokens + refTokens;
+
+        const outputTokensPerImage = getImageTokenEstimate(modelId, size);
+        const outputTokens = count * outputTokensPerImage;
+
+        const inputCost = (inputTokens / 1_000_000) * (pricing.inputPerMillionTokens || 0);
+        const outputCost = (outputTokens / 1_000_000) * (pricing.outputPerMillionTokens || 0);
+
+        cost = Math.max(0.000001, inputCost + outputCost);
+        tokens = inputTokens + outputTokens;
+        details = `Pricing: ${tokens} Tokens`;
+        return { cost, details, tokens };
+    }
 
     // 1. Imagen Models (Fixed Price per Image)
     if (modelId.includes('imagen')) {

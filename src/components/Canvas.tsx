@@ -299,9 +299,9 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
                 </div>
             </div>
 
-            {/* Canvas Controls - Bottom Left */}
-            <div className="absolute bottom-4 left-4 z-50">
-                <div className="toolbar">
+            {/* Canvas Controls - Bottom Left (Desktop) / Top Left (Mobile) */}
+            <div id="canvas-toolbar" className="absolute md:bottom-4 md:left-4 top-24 left-4 z-[1001]">
+                <div className="toolbar !grid grid-cols-2 !gap-2 md:!flex md:!flex-col md:!gap-1">
                     {/* 1. Zoom In - Clean + */}
                     <button className="toolbar-btn group" onClick={zoomIn} title="放大 (+)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-white transition-colors">

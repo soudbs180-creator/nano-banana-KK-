@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cherry API 连接测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .results {
+            margin-top: 30px;
+        }
+        .result-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 4px solid;
+        }
+        .result-item.success {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        .result-item.error {
+            background: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+        .result-item.info {
+            background: #d1ecf1;
+            border-color: #17a2b8;
+            color: #0c5460;
+        }
+        .response-time {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .details {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #555;
+            background: rgba(0,0,0,0.05);
+            padding: 10px;
+            border-radius: 3px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .status.success { background: #28a745; color: white; }
+        .status.error { background: #dc3545; color: white; }
+        .status.testing { background: #ffc107; color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cherry API 连接测试</h1>
+        
+        <div class="form-group">
+            <label for="baseUrl">API Base URL:</label>
+            <input type="text" id="baseUrl" value="https://future-api.vodeshop.com" />
+        </div>
+        
+        <div class="form-group">
+            <label for="apiKey">API Key:</label>
+            <input type="password" id="apiKey" placeholder="请输入您的 API Key" />
+        </div>
+        
+        <div class="form-group">
+            <label for="provider">接口类型:</label>
+            <select id="provider" onchange="updateModelOptions()">
+                <option value="Cherry">Cherry API (Chat绘图模式)</option>
+                <option value="Standard">标准 NewAPI/OpenAI (Image绘图模式)</option>
+                <option value="Google">Google Gemini (原生模式)</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="model">模型:</label>
+            <select id="model">
+                <option value="nano-banana">Nano Banana (推荐)</option>
+                <option value="nano-banana-pro">Nano Banana Pro</option>
+                <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image Preview</option>
+            </select>
+        </div>
+        
+        <button onclick="testConnection()" id="testBtn">测试连接</button>
+        <button onclick="testModels()" id="modelsBtn">获取模型列表</button>
+        <button onclick="testImageGeneration()" id="imageBtn">测试图片生成</button>
+        
+        <div class="results" id="results"></div>
+    </div>
+
+    <script type="module">
+        // 模拟 buildProxyHeaders 函数
+        function buildProxyHeaders(authMethod, apiKey, headerName) {
+            const headers = { 'Content-Type': 'application/json' };
+            
+            if (authMethod === 'bearer' || authMethod === 'header') {
+                const resolvedHeader = headerName || 'Authorization';
+                const value = resolvedHeader.toLowerCase() === 'authorization'
+                    ? (apiKey.toLowerCase().startsWith('bearer ') ? apiKey : `Bearer ${apiKey}`)
+                    : apiKey;
+                headers[resolvedHeader] = value;
+            }
+            
+            return headers;
+        }
+
+        // 模拟 normalizeProxyBaseUrl 函数
+        function normalizeProxyBaseUrl(baseUrl) {
+            let clean = (baseUrl || '').trim();
+            if (!clean) return '';
+            return clean.replace(/\/+$/, '');
+        }
+
+        // 添加结果到页面
+        function addResult(type, message, details = null, responseTime = null) {
+            const resultsDiv = document.getElementById('results');
+            const resultItem = document.createElement('div');
+            resultItem.className = `result-item ${type}`;
+            
+            let html = `<div>${message}`;
+            if (responseTime !== null) {
+                html += `<span class="response-time">响应时间: ${responseTime}ms</span>`;
+            }
+            html += '</div>';
+            
+            if (details) {
+                html += `<div class="details">${JSON.stringify(details, null, 2)}</div>`;
+            }
+            
+            resultItem.innerHTML = html;
+            resultsDiv.appendChild(resultItem);
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        // 测试基础连接
+        window.testConnection = async function() {
+            const config = getConfig();
+            const startTime = Date.now();
+            
+            setButtonStatus('testBtn', 'testing');
+            addResult('info', '正在测试连接...');
+            
+            try {
+                const cleanBase = normalizeProxyBaseUrl(config.baseUrl);
+                const apiUrl = `${cleanBase}/v1/chat/completions`;
+                
+                const requestBody = {
+                    model: config.model,
+                    stream: false,
+                    messages: [
+                        {
+                            role: 'user',
+                            content: [
+                                { type: 'text', text: 'Test connection - say hello' }
+                            ]
+                        }
+                    ],
+                    max_tokens: 10
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: buildProxyHeaders('bearer', config.apiKey, 'Authorization'),
+                    body: JSON.stringify(requestBody),
+                    signal: AbortSignal.timeout(30000)
+                });
+
+                const responseTime = Date.now() - startTime;
+                const responseText = await response.text();
+
+                if (!response.ok) {
+                    let errorMessage = `HTTP ${response.status}`;
+                    try {
+                        const errData = JSON.parse(responseText);
+                        errorMessage = errData.error?.message || errorMessage;
+                    } catch {
+                        errorMessage = responseText || errorMessage;
+                    }
+                    addResult('error', `连接失败: ${errorMessage}`, null, responseTime);
+                } else {
+                    const result = JSON.parse(responseText);
+                    if (result.choices && result.choices.length > 0) {
+                        addResult('success', '✓ Cherry API 连接成功！', {
+                            model: config.model,
+                            responsePreview: result.choices[0].message?.content
+                        }, responseTime);
+                    } else {
+                        addResult('error', '响应格式异常：缺少 choices 字段', { response: result }, responseTime);
+                    }
+                }
+            } catch (error) {
+                const responseTime = Date.now() - startTime;
+                addResult('error', `网络错误: ${error.message}`, null, responseTime);
+            } finally {
+                setButtonStatus('testBtn', 'normal');
+            }
+        };
+
+        // 测试模型列表
+        window.testModels = async function() {
+            const config = getConfig();
+            const startTime = Date.now();
+            
+            setButtonStatus('modelsBtn', 'testing');
+            addResult('info', '正在获取模型列表...');
+            
+            try {
+                const cleanBase = normalizeProxyBaseUrl(config.baseUrl);
+                let listUrl;
+                
+                if (config.provider === 'Google') {
+                    listUrl = `${cleanBase}/v1beta/models?key=${config.apiKey}`;
+                } else {
+                    listUrl = `${cleanBase}/v1/models`;
+                }
+
+                const response = await fetch(listUrl, {
+                    method: 'GET',
+                    headers: buildProxyHeaders('bearer', config.apiKey, 'Authorization'),
+                    signal: AbortSignal.timeout(10000)
+                });
+
+                const responseTime = Date.now() - startTime;
+
+                if (!response.ok) {
+                    addResult('error', `无法获取模型列表: HTTP ${response.status}`, null, responseTime);
+                } else {
+                    const data = await response.json();
+                    const models = data.data || data.models || [];
+                    
+                    addResult('success', `✓ 成功获取 ${models.length} 个模型`, {
+                        modelCount: models.length,
+                        models: models.slice(0, 10).map(m => m.id || m.name)
+                    }, responseTime);
+                }
+            } catch (error) {
+                const responseTime = Date.now() - startTime;
+                addResult('error', `获取模型列表失败: ${error.message}`, null, responseTime);
+            } finally {
+                setButtonStatus('modelsBtn', 'normal');
+            }
+        };
+
+        // 测试图片生成
+        window.testImageGeneration = async function() {
+            const config = getConfig();
+            const startTime = Date.now();
+            
+            setButtonStatus('imageBtn', 'testing');
+            addResult('info', `正在测试图片生成 (${config.provider}模式)...`);
+            
+            try {
+                const cleanBase = normalizeProxyBaseUrl(config.baseUrl);
+                let apiUrl, requestBody;
+
+                if (config.provider === 'Standard') {
+                    // 标准 OpenAI Image 接口
+                    apiUrl = `${cleanBase}/v1/images/generations`;
+                    requestBody = {
+                        model: config.model,
+                        prompt: "Generate a simple red circle on white background",
+                        n: 1,
+                        size: "1024x1024"
+                    };
+                } else {
+                    // Cherry API / Chat 模式
+                    apiUrl = `${cleanBase}/v1/chat/completions`;
+                    requestBody = {
+                        model: config.model,
+                        stream: false,
+                        messages: [
+                            {
+                                role: 'user',
+                                content: [
+                                    { type: 'text', text: 'Generate a simple red circle on white background' }
+                                ]
+                            }
+                        ],
+                        max_tokens: 1000
+                    };
+                }
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: buildProxyHeaders('bearer', config.apiKey, 'Authorization'),
+                    body: JSON.stringify(requestBody),
+                    signal: AbortSignal.timeout(60000)
+                });
+
+                const responseTime = Date.now() - startTime;
+                const responseText = await response.text();
+
+                if (!response.ok) {
+                    let errorMessage = `HTTP ${response.status}`;
+                    try {
+                        const errData = JSON.parse(responseText);
+                        errorMessage = errData.error?.message || errorMessage;
+                    } catch {
+                        errorMessage = responseText || errorMessage;
+                    }
+                    addResult('error', `图片生成失败: ${errorMessage}`, {
+                        url: apiUrl,
+                        error: errorMessage
+                    }, responseTime);
+                } else {
+                    const result = JSON.parse(responseText);
+                    if (config.provider === 'Standard') {
+                        // 标准 Image 响应检查
+                        if (result.data && result.data.length > 0 && (result.data[0].url || result.data[0].b64_json)) {
+                            addResult('success', '✓ 标准 Image 接口测试成功！', {
+                                url: result.data[0].url ? 'URL returned' : 'Base64 returned'
+                            }, responseTime);
+                        } else {
+                             addResult('error', '标准响应格式异常', { response: result }, responseTime);
+                        }
+                    } else {
+                        // Chat 响应检查
+                        if (result.choices && result.choices.length > 0) {
+                            const content = result.choices[0].message?.content;
+                            addResult('success', '✓ Chat 接口绘图测试成功！', {
+                                model: config.model,
+                                responsePreview: content?.slice(0, 200) + '...'
+                            }, responseTime);
+                        } else {
+                            addResult('error', 'Chat 响应格式异常', { response: result }, responseTime);
+                        }
+                    }
+                }
+            } catch (error) {
+                const responseTime = Date.now() - startTime;
+                addResult('error', `图片生成错误: ${error.message}`, null, responseTime);
+            } finally {
+                setButtonStatus('imageBtn', 'normal');
+            }
+        };
+
+        window.updateModelOptions = function() {
+            const provider = document.getElementById('provider').value;
+            const modelSelect = document.getElementById('model');
+            modelSelect.innerHTML = '';
+            
+            if (provider === 'Standard') {
+                const opts = [
+                    {val: 'dall-e-3', txt: 'DALL-E 3'},
+                    {val: 'dall-e-2', txt: 'DALL-E 2'},
+                    {val: 'midjourney', txt: 'Midjourney'}
+                ];
+                opts.forEach(o => modelSelect.add(new Option(o.txt, o.val)));
+            } else {
+                const opts = [
+                    {val: 'nano-banana', txt: 'Nano Banana (推荐)'},
+                    {val: 'nano-banana-pro', txt: 'Nano Banana Pro'},
+                    {val: 'gemini-2.5-flash-image', txt: 'Gemini 2.5 Flash Image'},
+                    {val: 'gemini-3-pro-image-preview', txt: 'Gemini 3 Pro Image Preview'}
+                ];
+                opts.forEach(o => modelSelect.add(new Option(o.txt, o.val)));
+            }
+        };
+
+        // 获取配置
+        function getConfig() {
+            return {
+                baseUrl: document.getElementById('baseUrl').value,
+                apiKey: document.getElementById('apiKey').value,
+                model: document.getElementById('model').value,
+                provider: document.getElementById('provider').value
+            };
+        }
+
+        // 设置按钮状态
+        function setButtonStatus(buttonId, status) {
+            const button = document.getElementById(buttonId);
+            if (status === 'testing') {
+                button.disabled = true;
+                button.textContent = '测试中...';
+            } else {
+                button.disabled = false;
+                if (buttonId === 'testBtn') button.textContent = '测试连接';
+                else if (buttonId === 'modelsBtn') button.textContent = '获取模型列表';
+                else if (buttonId === 'imageBtn') button.textContent = '测试图片生成';
+            }
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            addResult('info', '测试页面已加载，请配置 API 参数后开始测试。');
+        });
+    </script>
+</body>
+</html>

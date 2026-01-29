@@ -274,6 +274,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
     return (
         <div
+            id="project-manager-container"
             className={`fixed left-4 z-50 flex flex-col items-start gap-2 select-none transition-all duration-300 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
             style={{
                 top: isMobile ? 20 : topPosition,

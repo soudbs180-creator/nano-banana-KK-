@@ -1,8 +1,9 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { GenerationConfig, AspectRatio, ImageSize, GenerationMode, ModelType } from '../types';
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
-import { keyManager } from '../services/keyManager';
+import { keyManager, getModelMetadata } from '../services/keyManager'; // Added getter
 import { getModelCapabilities, modelSupportsGrounding } from '../services/modelCapabilities';
+import { calculateImageHash } from '../utils/imageUtils';
 
 const MobileMenu = ({ title, onClose, children }: { title: string, onClose: () => void, children: React.ReactNode }) => (
     <>
@@ -36,12 +37,45 @@ interface PromptBarProps {
     onCancel?: () => void;
     isMobile?: boolean;
     onOpenSettings?: (view?: 'api-management') => void;
+    onInteract?: () => void;
 }
 
-const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings }) => {
+const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings, onInteract }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
+
+    // [NEW] Drag-to-Reorder State
+    const [dragSourceId, setDragSourceId] = useState<string | null>(null);
+
+    // [NEW] Flying Animation State
+    const [flyingImage, setFlyingImage] = useState<{
+        x: number;
+        y: number;
+        url: string;
+        targetX: number;
+        targetY: number;
+    } | null>(null);
+    const refContainerRef = useRef<HTMLDivElement>(null);
+
+    // Swipe Detection
+    const touchStartY = useRef<number | null>(null);
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        touchStartY.current = e.touches[0].clientY;
+        onInteract?.(); // General interaction
+    };
+
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        if (touchStartY.current === null) return;
+        const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+
+        // Swipe Up (Negative delta)
+        if (deltaY < -20) {
+            onInteract?.();
+        }
+        touchStartY.current = null;
+    };
 
     // Dynamic Model State
     const [globalModels, setGlobalModels] = useState(keyManager.getGlobalModelList());
@@ -164,15 +198,21 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
         filesToProcess.forEach(file => {
             const reader = new FileReader();
-            reader.onloadend = () => {
-                const matches = (reader.result as string).match(/^data:(.+);base64,(.+)$/);
+            reader.onloadend = async () => {
+                const result = reader.result as string;
+                const matches = result.match(/^data:(.+);base64,(.+)$/);
                 if (matches) {
+                    const mimeType = matches[1];
+                    const data = matches[2];
+                    const storageId = await calculateImageHash(data); // Use raw base64 for hash
+
                     setConfig(prev => ({
                         ...prev,
                         referenceImages: [...prev.referenceImages, {
                             id: Date.now() + Math.random().toString(),
-                            mimeType: matches[1],
-                            data: matches[2]
+                            storageId,
+                            mimeType,
+                            data
                         }]
                     }));
                 }
@@ -261,8 +301,31 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         e.stopPropagation();
         dragCounter.current = 0;
         setIsDragging(false);
+
+        // 1. 处理文件 (Prioritize files)
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             processFiles(e.dataTransfer.files);
+            return;
+        }
+
+        // 2. 处理 URL (从图片卡片拖拽)
+        const url = e.dataTransfer.getData('text/plain');
+        if (url) {
+            // 检查是否为有效 URL 或 Data URI
+            if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) {
+                // 获取并转换为 File 对象以复用 processFiles 逻辑
+                fetch(url)
+                    .then(res => res.blob())
+                    .then(blob => {
+                        const file = new File([blob], "dropped_image.png", { type: blob.type });
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(file);
+                        processFiles(dataTransfer.files);
+                    })
+                    .catch(err => {
+                        console.error("处理拖拽 URL 失败:", err);
+                    });
+            }
         }
     }, [processFiles]);
 
@@ -292,6 +355,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onClick={() => onInteract?.()}
             style={{
                 bottom: isMobile ? 'calc(96px + env(safe-area-inset-bottom))' : '32px'
             }}
@@ -300,6 +366,38 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             {isDragging && (
                 <div className="absolute inset-0 z-50 bg-indigo-500/20 backdrop-blur-md rounded-[inherit] flex items-center justify-center animate-fadeIn pointer-events-none">
                     <span className="font-bold text-sm text-white drop-shadow-md">释放添加参考图</span>
+                </div>
+            )}
+
+            {/* [NEW] Flying Image Animation */}
+            {flyingImage && (
+                <div
+                    className="fixed z-[9999] w-12 h-12 rounded-lg border-2 border-indigo-500 shadow-xl overflow-hidden pointer-events-none transition-all ease-in-out duration-500"
+                    style={{
+                        left: 0,
+                        top: 0,
+                        backgroundImage: `url(${flyingImage.url})`,
+                        backgroundSize: 'cover',
+                        transform: `translate(${flyingImage.targetX}px, ${flyingImage.targetY}px) scale(1)`,
+                        // Start scale/pos is handled by initial render, but React might batch it. 
+                        // Ideally we render at start, then next frame set target. 
+                        // For simplicity in this edit, we rely on CSS animation from internal state if we used a library, 
+                        // but here we might need a 2-step state or simple keyframe.
+                        // Actually, 'transition-all' + changing style prop works best if we render once.
+                        // Let's use a keyframe animation instead for guaranteed "fly from A to B".
+                        animation: `flyToTarget 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+                        // We need to inject the dynamic keyframes or use inline styles for start/end.
+                        // Since keyframes are static, let's use Inline Styles + mounted LayoutEffect? 
+                        // EASIER: Just use `transform` and a `useEffect` to trigger the move.
+                    }}
+                >
+                    <style>{`
+                        @keyframes flyToTarget {
+                            0% { transform: translate(${flyingImage.x}px, ${flyingImage.y}px) scale(1); opacity: 0.8; }
+                            50% { opacity: 1; scale: 1.2; }
+                            100% { transform: translate(${flyingImage.targetX}px, ${flyingImage.targetY}px) scale(1); opacity: 0; }
+                        }
+                    `}</style>
                 </div>
             )}
 
@@ -361,16 +459,46 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 </div>
 
                 {/* Reference Images */}
-                {config.referenceImages.length > 0 && (
-                    <div className="flex gap-2 flex-wrap mt-2">
-                        {config.referenceImages.map(img => (
-                            <div key={img.id} className="relative group">
-                                <img src={`data:${img.mimeType};base64,${img.data}`} className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm" alt="Reference" />
-                                <button onClick={() => removeReferenceImage(img.id)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                {/* Reference Images */}
+                <div ref={refContainerRef} className="flex gap-2 flex-wrap mt-2 empty:mt-0 duration-300">
+                    {config.referenceImages.map((img, index) => (
+                        <div
+                            key={img.id}
+                            className={`relative group cursor-move transition-all duration-200 ${dragSourceId === img.id ? 'opacity-30 scale-95' : 'hover:scale-105'}`}
+                            draggable
+                            onDragStart={(e) => {
+                                e.stopPropagation();
+                                setDragSourceId(img.id);
+                                e.dataTransfer.effectAllowed = 'move';
+                            }}
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.dataTransfer.dropEffect = 'move';
+                            }}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!dragSourceId || dragSourceId === img.id) return;
+
+                                const newImages = [...config.referenceImages];
+                                const sourceIndex = newImages.findIndex(i => i.id === dragSourceId);
+                                const targetIndex = index;
+
+                                if (sourceIndex !== -1) {
+                                    const [moved] = newImages.splice(sourceIndex, 1);
+                                    newImages.splice(targetIndex, 0, moved);
+                                    setConfig(prev => ({ ...prev, referenceImages: newImages }));
+                                }
+                                setDragSourceId(null);
+                            }}
+                            onDragEnd={() => setDragSourceId(null)}
+                        >
+                            <img src={`data:${img.mimeType};base64,${img.data}`} className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm pointer-events-none" alt="Reference" />
+                            <button onClick={() => removeReferenceImage(img.id)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
+                        </div>
+                    ))}
+                </div>
 
                 {/* Text Input */}
                 <textarea
@@ -439,8 +567,33 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
                                                         )}
                                                     </div>
-                                                    <span className="text-[10px] text-zinc-500 leading-tight break-all">ID: {model.id}</span>
-                                                    <span className="text-[10px] text-zinc-500 leading-tight">{advantage}</span>
+
+                                                    {/* Metadata Display */}
+                                                    {(() => {
+                                                        const meta = getModelMetadata(model.id);
+                                                        const features = [];
+                                                        if (meta?.contextLength) features.push(`${Math.round(meta.contextLength / 1000)}K Context`);
+                                                        if (meta?.pricing) {
+                                                            const p = meta.pricing;
+                                                            // Simple cost display: Input/Output per M
+                                                            if (p.prompt === '0' && p.completion === '0') features.push('Free');
+                                                            else features.push(`$${p.prompt}/$${p.completion} per M`);
+                                                        } else {
+                                                            // Fallback or Advantage
+                                                            features.push(advantage);
+                                                        }
+
+                                                        return (
+                                                            <div className="flex flex-wrap gap-2 mt-1">
+                                                                <span className="text-[10px] text-zinc-500 leading-tight break-all">ID: {model.id}</span>
+                                                                {features.map((f, i) => (
+                                                                    <span key={i} className="text-[10px] text-zinc-400 bg-zinc-800/50 px-1 rounded border border-zinc-700/50">
+                                                                        {f}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </button>
                                             );
                                         })}

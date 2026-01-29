@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { AspectRatio, GeneratedImage, GenerationMode } from '../types';
-import { Download, Trash2 } from 'lucide-react';
+import { Download, Trash2, Loader2 } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
 
@@ -20,6 +20,7 @@ interface ImageNodeProps {
     isSelected?: boolean;
     onSelect?: () => void;
     highlighted?: boolean;
+    onPreview?: (imageId: string) => void;
 }
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
@@ -35,7 +36,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     isMobile = false,
     isSelected = false,
     onSelect,
-    highlighted
+    highlighted,
+    onPreview
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -44,6 +46,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     // Local display position to avoid global re-renders during drag
     // Ref to track latest localPos without triggering effect re-runs
     const localPosRef = useRef(position);
+
+    // [FIX] Sync localPosRef with external position updates (when not dragging)
+    useEffect(() => {
+        if (!isDragging) {
+            localPosRef.current = position;
+            // Force DOM update to match prop
+            if (containerRef.current) {
+                containerRef.current.style.transform = `translate3d(${position.x}px, ${position.y}px, 0) translate(-50%, -100%)`;
+            }
+        }
+    }, [position.x, position.y, isDragging]);
 
     const [showLightbox, setShowLightbox] = useState(false);
     const [lightboxZoom, setLightboxZoom] = useState(1);
@@ -69,16 +82,30 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
     // Sync displaySrc when prop changes
     useEffect(() => {
-        setDisplaySrc(image.url);
-        setImgError(false); // Reset error on new URL
-    }, [image.url]);
+        // [FIX] Prevent overwriting valid local blob with empty string from context
+        // and avoid unnecessary updates if URL is effectively the same or if dragging
+        if (image.url && image.url !== displaySrc) {
+            setDisplaySrc(image.url);
+            setImgError(false);
+        }
+    }, [image.url]); // Remove displaySrc dependency to avoid loop, rely on guard
 
     // Helper: Attempt to recover image from cache
     const recoverImage = useCallback(async (retryCount = 0) => {
         try {
             // 1. Try IndexedDB first
+            // 1. Try IndexedDB first
             const { getImage } = await import('../services/imageStorage');
-            const cached = await getImage(image.id);
+
+            // [FIX] Add timeout to prevent hanging if IDB is unresponsive
+            const timeoutPromise = new Promise<string | null>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
+            let cached: string | null = null;
+            try {
+                cached = await Promise.race([getImage(image.id), timeoutPromise]);
+            } catch (e) {
+                // Ignore timeout, proceed to next recovery method
+            }
+
             if (cached) {
                 console.log(`[ImageCard] Recovered image ${image.id} from cache`);
                 setDisplaySrc(cached);
@@ -195,6 +222,13 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         // Ignore Right Click (2)
         if ('button' in e && e.button === 2) return;
 
+        // [FIX] Allow Native Drag for Images/Videos (Don't start card drag)
+        // Must check this BEFORE setting isDragging or stopping propagation
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'IMG' || target.tagName === 'VIDEO') {
+            return;
+        }
+
         // Stop canvas panning
         e.stopPropagation();
 
@@ -215,6 +249,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             clientX = (e as React.MouseEvent).clientX;
             clientY = (e as React.MouseEvent).clientY;
         }
+
+
 
         // Store initial mouse position and card position
         dragStartPos.current = { x: clientX, y: clientY };
@@ -441,23 +477,28 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const handleImageClick = (e: React.MouseEvent) => {
         e.stopPropagation();
 
-        // Ignore if clicking internal buttons (like delete/download)
+        // 忽略按钮点击 (如删除/下载)
         if ((e.target as HTMLElement).closest('button')) return;
 
-        // Robust Check: Calculate distance from mouse down
-        // This ensures we act on the specific click action, not past state
+        // 健壮检查：计算鼠标按下移动距离
+        // 确保响应特定的点击动作，而非拖拽结束
         const dist = Math.hypot(e.clientX - dragStartPos.current.x, e.clientY - dragStartPos.current.y);
 
-        // If moved significantly (>15px) AND not double click -> it's a drag, ignore.
-        // Also allow if dragStartPos is 0,0 (meaning mousedown wasn't captured correctly)
+        // 如果移动距离显著 (>15px) 且非双击 -> 视为拖拽，忽略点击
+        // 如果 dragStartPos 为 0,0 (未捕获/未初始化)，则允许通过
         const isUninitialized = dragStartPos.current.x === 0 && dragStartPos.current.y === 0;
 
         if (!isUninitialized && dist > 15 && e.type !== 'dblclick' && e.detail !== 2) return;
 
-        // SYNC: Set open time immediately before state triggers render/overlay
+        // 同步：在状态触发渲染前立即设置打开时间
         openTimeRef.current = Date.now();
-        setLightboxZoom(1);
-        setShowLightbox(true);
+
+        if (onPreview) {
+            onPreview(image.id);
+        } else {
+            setLightboxZoom(1);
+            setShowLightbox(true);
+        }
     };
 
     const getDims = () => {
@@ -505,40 +546,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         onMouseUp={() => onConnectEnd?.(image.id)}
                     />
 
-                    {/* Image View with Lazy Loading / Virtualization */}
+                    {/* 图片视图，支持懒加载/虚拟化 */}
                     <div
                         className="relative aspect-auto cursor-pointer min-h-[100px] bg-[var(--bg-tertiary)]"
                         onClick={handleImageClick}
                         onDoubleClick={handleImageClick}
-                        ref={(el) => {
-                            // Simple Intersection Observer implementation
-                            if (el && !imgError) {
-                                const observer = new IntersectionObserver(
-                                    (entries) => {
-                                        entries.forEach(entry => {
-                                            if (entry.isIntersecting) {
-                                                // Load
-                                                el.setAttribute('data-visible', 'true');
-                                                const img = el.querySelector('img, video') as HTMLElement;
-                                                if (img && img.dataset.src) {
-                                                    img.setAttribute('src', img.dataset.src);
-                                                    img.removeAttribute('data-src');
-                                                }
-                                            } else {
-                                                // Unload (Optional: aggressive memory saving)
-                                                // For now, let's just Lazy Load (not unload) to prevent flicker.
-                                                // User issue "old ones don't show" might be browser limit.
-                                                // But unloading might annoy user if scrolling back up.
-                                                // Let's stick to Native Lazy + explicit retry.
-                                            }
-                                        });
-                                    },
-                                    { rootMargin: '200px' }
-                                );
-                                observer.observe(el);
-                                return () => observer.disconnect();
-                            }
-                        }}
                     >
                         {!imgError && displaySrc ? (
                             (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
@@ -566,22 +578,41 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                             onDimensionsUpdate(image.id, dims);
                                         }
                                     }}
-                                    className="w-full h-auto block select-none pointer-events-none"
-                                    draggable={false}
+                                    className="w-full h-auto block select-none"
+                                    draggable={true}
+                                    onDragStart={(e) => {
+                                        // HTML5 Drag for Data Transfer (to PromptBar)
+                                        e.stopPropagation();
+                                        const url = displaySrc || image.url;
+                                        if (url) {
+                                            e.dataTransfer.setData('text/plain', url);
+                                            e.dataTransfer.effectAllowed = 'copy';
+                                        }
+                                    }}
                                 />
                             )
                         ) : (
+
                             <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-[var(--text-secondary)] p-4 text-center">
-                                <Trash2 size={24} className="mb-2 opacity-50" />
-                                <span className="text-xs">资源加载失败</span>
-                                <span className="text-[9px] opacity-60">(Load Failed)</span>
-                                {/* Retry Button */}
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); recoverImage(); }}
-                                    className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 underline"
-                                >
-                                    尝试重载
-                                </button>
+                                {!imgError && !displaySrc ? (
+                                    <>
+                                        <Loader2 size={24} className="mb-2 text-indigo-400 animate-spin" />
+                                        <span className="text-xs">正在恢复...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 size={24} className="mb-2 opacity-50" />
+                                        <span className="text-xs">资源加载失败</span>
+                                        <span className="text-[9px] opacity-60">(Load Failed)</span>
+                                        {/* Retry Button */}
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); recoverImage(); }}
+                                            className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 underline"
+                                        >
+                                            尝试重载
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
@@ -666,11 +697,29 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                 </span>
                             )}
                             {image.generationTime && (
-                                <span className="text-[9px] text-[var(--text-tertiary)] font-mono">
-                                    {(image.generationTime / 1000).toFixed(1)}s
-                                </span>
+                                <div className="flex flex-col justify-center items-start gap-0 leading-none ml-2">
+                                    <span className="text-[8px] text-[var(--text-tertiary)] mb-0.5 scale-90 origin-left">耗时</span>
+                                    <span className="text-[9px] text-[var(--text-secondary)] font-mono">
+                                        {(image.generationTime / 1000).toFixed(1)}s
+                                    </span>
+                                </div>
                             )}
                         </div>
+                        {/* Token & Cost Info */}
+                        {(image.tokens !== undefined || image.cost !== undefined) && (
+                            <div className="flex flex-col justify-center items-start gap-0 ml-2 border-l border-[var(--border-light)] pl-2 leading-none">
+                                {image.tokens && (
+                                    <span className="text-[8px] text-emerald-500/80 font-mono mb-0.5" title={`${image.tokens} Tokens`}>
+                                        {image.tokens} tokens
+                                    </span>
+                                )}
+                                {image.cost !== undefined && (
+                                    <span className="text-[8px] text-emerald-500/80 font-mono" title={`Estimated Cost: $${image.cost.toFixed(6)}`}>
+                                        ${image.cost < 0.0001 && image.cost > 0 ? '<0.0001' : image.cost.toFixed(4)}
+                                    </span>
+                                )}
+                            </div>
+                        )}
 
                         <div className="flex items-center gap-1 ml-auto">
                             {/* Continue Creation Button */}
@@ -692,126 +741,215 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         </div>
                     </div>
                 </div>
-            </div>
+            </div >
 
             {/* Lightbox Modal - Rendered to body via Portal for true top-level z-index */}
-            {showLightbox && ReactDOM.createPortal(
-                <div
-                    ref={lightboxRef}
-                    className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center animate-fadeIn select-none"
-                    onClick={() => {
-                        // Prevent accidental close from double-click (second click hitting backdrop)
-                        if (Date.now() - openTimeRef.current < 600) return;
-                        !isPanning && setShowLightbox(false);
-                    }}
-                    style={{ backdropFilter: 'blur(8px)', cursor: isPanning ? 'grabbing' : 'default' }}
-                >
-                    {/* Close Button - Top Right */}
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
-                        className="absolute top-4 right-4 z-[100000] w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-all duration-200 hover:scale-110"
-                        title="关闭"
+            {
+                showLightbox && ReactDOM.createPortal(
+                    <div
+                        ref={lightboxRef}
+                        className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center animate-fadeIn select-none"
+                        onClick={() => {
+                            // Prevent accidental close from double-click (second click hitting backdrop)
+                            if (Date.now() - openTimeRef.current < 600) return;
+                            !isPanning && setShowLightbox(false);
+                        }}
+                        style={{ backdropFilter: 'blur(8px)', cursor: isPanning ? 'grabbing' : 'default' }}
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                    </button>
-
-                    {/* Zoom Controls */}
-                    <div className="absolute bottom-6 right-6 z-[100000] flex items-center gap-2 bg-black/50 rounded-lg p-2">
+                        {/* Close Button - Top Right */}
                         <button
-                            onClick={(e) => { e.stopPropagation(); setLightboxZoom(prev => Math.max(0.25, prev - 0.25)); }}
-                            className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white"
-                            title="缩小"
+                            onClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
+                            className="absolute top-4 right-4 z-[100000] w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-all duration-200 hover:scale-110"
+                            title="关闭"
                         >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                <path d="M18 6L6 18M6 6l12 12" />
+                            </svg>
                         </button>
-                        <span className="text-white text-sm min-w-[50px] text-center">{Math.round(lightboxZoom * 100)}%</span>
+
+                        {/* Zoom Controls */}
+                        <div className="absolute bottom-6 right-6 z-[100000] flex items-center gap-2 bg-black/50 rounded-lg p-2">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setLightboxZoom(prev => Math.max(0.25, prev - 0.25)); }}
+                                className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white"
+                                title="缩小"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                            </button>
+                            <span className="text-white text-sm min-w-[50px] text-center">{Math.round(lightboxZoom * 100)}%</span>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setLightboxZoom(prev => Math.min(5, prev + 0.25)); }}
+                                className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white"
+                                title="放大"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                            </button>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setLightboxZoom(1); setLightboxPan({ x: 0, y: 0 }); }}
+                                className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white ml-1"
+                                title="重置"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="8" /></svg>
+                            </button>
+                        </div>
+
+                        {/* Main Image/Video - Drag to pan, scroll to zoom */}
+                        {(image.mode === GenerationMode.VIDEO || lightboxOriginalUrl?.startsWith('data:video') || highResUrl?.startsWith('data:video') || highResUrl?.endsWith('.mp4')) ? (
+                            <video
+                                src={lightboxOriginalUrl || highResUrl}
+                                controls
+                                autoPlay
+                                loop
+                                className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+                                style={{
+                                    maxWidth: '95vw',
+                                    maxHeight: '95vh',
+                                    transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
+                                    transition: isPanning ? 'none' : 'transform 0.15s ease-out',
+                                    cursor: isPanning ? 'grabbing' : 'auto'
+                                }}
+                                onClick={(e) => e.stopPropagation()} // Prevent click from closing lightbox
+                                onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowLightbox(false); // Double click to close
+                                }}
+                            />
+                        ) : (
+                            <img
+                                src={lightboxOriginalUrl || highResUrl}
+                                onError={(e) => {
+                                    console.warn('[Lightbox] Failed to load original, falling back to thumbnail');
+                                }}
+                                alt={image.prompt}
+                                onMouseDown={handleLightboxMouseDown}
+                                onClick={(e) => e.stopPropagation()}
+                                onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowLightbox(false);
+                                }}
+                                onContextMenu={(e) => e.stopPropagation()}
+                                className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+                                draggable={false}
+                                style={{
+                                    maxWidth: '95vw',
+                                    maxHeight: '95vh',
+                                    transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
+                                    transition: isPanning ? 'none' : 'transform 0.15s ease-out',
+                                    cursor: isPanning ? 'grabbing' : 'grab',
+                                }}
+                            />
+                        )}
+
+                        {/* Download Button in Lightbox */}
                         <button
-                            onClick={(e) => { e.stopPropagation(); setLightboxZoom(prev => Math.min(5, prev + 0.25)); }}
-                            className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white"
-                            title="放大"
+                            onClick={handleDownload}
+                            className="absolute bottom-6 left-6 z-[100000] flex items-center gap-2 bg-black/50 hover:bg-white/20 text-white rounded-lg px-4 py-2 transition-colors"
+                            title="下载原图"
                         >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                            <Download size={16} />
+                            <span className="text-sm">下载原图</span>
                         </button>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setLightboxZoom(1); setLightboxPan({ x: 0, y: 0 }); }}
-                            className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white ml-1"
-                            title="重置"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="8" /></svg>
-                        </button>
-                    </div>
 
-                    {/* Main Image/Video - Drag to pan, scroll to zoom */}
-                    {(image.mode === GenerationMode.VIDEO || lightboxOriginalUrl?.startsWith('data:video') || highResUrl?.startsWith('data:video') || highResUrl?.endsWith('.mp4')) ? (
-                        <video
-                            src={lightboxOriginalUrl || highResUrl}
-                            controls
-                            autoPlay
-                            loop
-                            className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
-                            style={{
-                                maxWidth: '95vw',
-                                maxHeight: '95vh',
-                                transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
-                                transition: isPanning ? 'none' : 'transform 0.15s ease-out',
-                                cursor: isPanning ? 'grabbing' : 'auto'
-                            }}
-                            onClick={(e) => e.stopPropagation()} // Prevent click from closing lightbox
-                            onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                setShowLightbox(false); // Double click to close
-                            }}
-                        />
-                    ) : (
-                        <img
-                            src={lightboxOriginalUrl || highResUrl}
-                            onError={(e) => {
-                                console.warn('[Lightbox] Failed to load original, falling back to thumbnail');
-                            }}
-                            alt={image.prompt}
-                            onMouseDown={handleLightboxMouseDown}
-                            onClick={(e) => e.stopPropagation()}
-                            onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                setShowLightbox(false);
-                            }}
-                            onContextMenu={(e) => e.stopPropagation()}
-                            className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
-                            draggable={false}
-                            style={{
-                                maxWidth: '95vw',
-                                maxHeight: '95vh',
-                                transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
-                                transition: isPanning ? 'none' : 'transform 0.15s ease-out',
-                                cursor: isPanning ? 'grabbing' : 'grab',
-                            }}
-                        />
-                    )}
+                        {/* Metadata Overlay (Bottom Center) */}
+                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none select-none z-[100000]">
+                            {/* Metadata Panel */}
+                            <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-3 flex items-center gap-4 shadow-2xl">
+                                {/* Model Badge */}
+                                {(() => {
+                                    const model = image.model || '';
+                                    let label = 'AI';
+                                    let style = 'border-white/20 text-zinc-300 bg-white/5'; // Lightbox specific dark theme style
 
-                    {/* Download Button in Lightbox */}
-                    <button
-                        onClick={handleDownload}
-                        className="absolute bottom-6 left-6 z-[100000] flex items-center gap-2 bg-black/50 hover:bg-white/20 text-white rounded-lg px-4 py-2 transition-colors"
-                        title="下载原图"
-                    >
-                        <Download size={16} />
-                        <span className="text-sm">下载原图</span>
-                    </button>
+                                    if (model.includes('ultra')) {
+                                        label = 'Imagen 4 Ultra';
+                                        style = 'border-purple-400/30 text-purple-300 bg-purple-500/20';
+                                    } else if (model.includes('imagen-4')) {
+                                        label = 'Imagen 4';
+                                        style = 'border-blue-400/30 text-blue-300 bg-blue-500/20';
+                                    } else if (model.includes('pro')) {
+                                        label = 'Gemini 3 Pro';
+                                        style = 'border-amber-400/30 text-amber-300 bg-amber-500/20';
+                                    } else if (model.includes('flash')) {
+                                        label = 'Gemini 2.5';
+                                        style = 'border-yellow-400/30 text-yellow-300 bg-yellow-500/20';
+                                    }
 
-                    {/* Hint text */}
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center pointer-events-none select-none">
-                        滚轮缩放 · 按住左键拖拽 · 双击关闭<br />
-                        <span className={`text-[10px] ${lightboxOriginalUrl || image.originalUrl || (image.url && image.url.startsWith('data:')) ? 'text-green-400/70' : 'text-amber-400/70'}`}>
-                            {lightboxOriginalUrl || image.originalUrl || (image.url && image.url.startsWith('data:'))
-                                ? '正在查看原图 (Viewing Original)'
-                                : '正在查看预览 (Viewing Preview - Original Not Found)'}
-                        </span>
-                    </div>
-                </div>,
-                document.body
-            )}
+                                    return (
+                                        <span className={`text-[10px] px-2 py-1 rounded font-medium border whitespace-nowrap ${style}`}>
+                                            {label}
+                                        </span>
+                                    );
+                                })()}
+
+                                {/* Dimensions */}
+                                <div className="h-6 w-px bg-white/10" />
+                                <div className="flex flex-col items-start gap-0.5">
+                                    <span className="text-[10px] text-white/50 leading-none">Resolution</span>
+                                    <span className="text-xs text-white/90 font-mono tracking-wide leading-none">
+                                        {image.dimensions ? (() => {
+                                            const [w, h] = image.dimensions.split('x').map(Number);
+                                            if (!w || !h) return image.dimensions;
+
+                                            // Mapping common approximate ratios for cleaner display
+                                            let displayRatio = `${w}:${h}`;
+                                            const ratioVal = w / h;
+                                            if (Math.abs(ratioVal - 1) < 0.05) displayRatio = '1:1';
+                                            else if (Math.abs(ratioVal - 4 / 3) < 0.05) displayRatio = '4:3';
+                                            else if (Math.abs(ratioVal - 3 / 4) < 0.05) displayRatio = '3:4';
+                                            else if (Math.abs(ratioVal - 16 / 9) < 0.05) displayRatio = '16:9';
+                                            else if (Math.abs(ratioVal - 9 / 16) < 0.05) displayRatio = '9:16';
+
+                                            let sizeLabel = '1K';
+                                            if (w >= 3000 || h >= 3000) sizeLabel = '4K';
+                                            else if (w >= 1500 || h >= 1500) sizeLabel = '2K';
+
+                                            return `${displayRatio} · ${sizeLabel}`;
+                                        })() : 'Unknown'}
+                                    </span>
+                                </div>
+
+                                {/* Generation Time */}
+                                {image.generationTime && (
+                                    <>
+                                        <div className="h-6 w-px bg-white/10" />
+                                        <div className="flex flex-col items-start gap-0.5">
+                                            <span className="text-[10px] text-white/50 leading-none">Generated in</span>
+                                            <span className="text-xs text-white/90 font-mono leading-none">
+                                                {(image.generationTime / 1000).toFixed(1)}s
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* Token & Cost */}
+                                {(image.tokens !== undefined || image.cost !== undefined) && (
+                                    <>
+                                        <div className="h-6 w-px bg-white/10" />
+                                        <div className="flex flex-col items-start gap-0.5">
+                                            {image.tokens && (
+                                                <span className="text-[10px] text-emerald-400 font-mono leading-none">
+                                                    {image.tokens} tokens
+                                                </span>
+                                            )}
+                                            {image.cost !== undefined && (
+                                                <span className="text-[10px] text-emerald-400/80 font-mono leading-none">
+                                                    ${image.cost < 0.0001 && image.cost > 0 ? '<0.0001' : image.cost.toFixed(4)}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Controls Hint */}
+                            <div className="text-white/30 text-[10px]">
+                                滚轮缩放 · 拖拽平移 · 双击关闭
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )
+            }
         </>
     );
 });

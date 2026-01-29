@@ -23,8 +23,112 @@ interface PromptNodeProps {
     highlighted?: boolean;
 }
 
+// [FIX] Self-healing thumbnail component that recovers data from IDB if missing
+const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeType?: string } }> = ({ image }) => {
+    const [data, setData] = useState<string | undefined>(image.data);
+    const [loading, setLoading] = useState(!image.data);
+
+    useEffect(() => {
+        if (image.data) {
+            setData(image.data);
+            setLoading(false);
+            return;
+        }
+
+        // If data missing, try recover from IDB
+        let active = true;
+        setLoading(true);
+        import('../services/imageStorage').then(({ getImage }) => {
+            // Add 3s timeout to prevent infinite spinning if IDB hangs
+            const timeoutPromise = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
+
+            Promise.race([getImage(image.id), timeoutPromise])
+                .then(cached => {
+                    if (active && typeof cached === 'string') {
+                        setData(cached);
+                    }
+                    if (active) setLoading(false);
+                })
+                .catch((e) => {
+                    // console.warn('Ref load failed/timeout', e);
+                    if (active) setLoading(false);
+                });
+        });
+
+        return () => { active = false; };
+    }, [image.id, image.data]);
+
+    const src = data ? (
+        data.startsWith('data:') || data.startsWith('http') || data.startsWith('blob:')
+            ? data
+            : `data:${image.mimeType || 'image/png'};base64,${data}`
+    ) : '';
+
+    return (
+        <div
+            className="w-10 h-10 rounded border border-[var(--border-light)] overflow-hidden relative bg-[var(--bg-tertiary)] cursor-grab active:cursor-grabbing"
+            draggable={!!src}
+            onMouseDown={(e) => e.stopPropagation()}
+            onDragStart={(e) => {
+                if (!src) {
+                    e.preventDefault();
+                    return;
+                }
+                e.stopPropagation(); // Prevent card drag
+                // Pass URL as text so PromptBar can read it
+                e.dataTransfer.setData('text/plain', src);
+                e.dataTransfer.setData('text/uri-list', src);
+                e.dataTransfer.effectAllowed = 'copy';
+            }}
+        >
+            {src ? (
+                <img
+                    src={src}
+                    alt="Ref"
+                    className="w-full h-full object-cover pointer-events-none"
+                />
+            ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                    {loading ? (
+                        <Loader2 className="w-3 h-3 text-[var(--text-tertiary)] animate-spin" />
+                    ) : (
+                        <div className="w-3 h-3 rounded-full bg-red-500/20" title="Lost" />
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// [NEW] Timer for generation status
+const GenerationTimer: React.FC<{ start: number }> = ({ start }) => {
+    const [elapsed, setElapsed] = useState(0);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setElapsed(Date.now() - start);
+        }, 100);
+        return () => clearInterval(interval);
+    }, [start]);
+
+    const seconds = (elapsed / 1000).toFixed(1);
+
+    return (
+        <div className="flex flex-col items-center gap-0.5">
+            <div className="text-[10px] text-indigo-300/50 font-medium tracking-widest mb-0.5 transform scale-90">等待时间</div>
+            <div className="flex items-center gap-2 text-indigo-400">
+                <Loader2 className="animate-spin" size={14} />
+                <div className="font-mono text-lg font-medium tabular-nums tracking-wider drop-shadow-sm">
+                    {seconds}s
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     node,
+
     onPositionChange,
     isSelected,
     onSelect,
@@ -151,8 +255,13 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             localPosRef.current = newPos;
 
             // 2. Global Update (Throttled)
+            /* 
+               [NOTE] We maintain a throttled global update to ensure connection lines follow the card.
+               We keep the rate low (e.g. 50ms / 20fps) to avoid choking the main thread,
+               relying on the Direct DOM Update above for perceived smoothness.
+            */
             const now = Date.now();
-            if (now - lastGlobalUpdateRef.current > 32) {
+            if (now - lastGlobalUpdateRef.current > 50) {
                 onPositionChange(node.id, newPos);
                 lastGlobalUpdateRef.current = now;
             }
@@ -202,7 +311,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 cursor: isDragging ? 'grabbing' : 'grab',
                 // Disable transition during drag to prevent fighting with JS updates
                 transition: isDragging ? 'none' : 'transform 0.1s linear, box-shadow 0.2s ease',
-                backfaceVisibility: 'hidden' // Anti-aliasing help
+                // backfaceVisibility: 'hidden' // Removed to fix text blurriness on zoom
             }}
             onMouseDown={handleMouseDown}
             onTouchStart={handleMouseDown}
@@ -224,7 +333,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 className={`
                     relative bg-[var(--bg-secondary)] border rounded-2xl p-3 shadow-xl max-w-[95vw] flex flex-col select-none
                     ${isDragging ? '' : 'transition-all duration-200'}
-                    ${node.isGenerating ? 'border-indigo-500/30' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-[var(--border-light)] hover:border-[var(--border-medium)]'}
+                    ${node.isGenerating ? 'border-indigo-500/30' : node.isDraft ? 'border-indigo-500/50 bg-[#18181b]/90 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl backdrop-saturate-150' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-[var(--border-light)] hover:border-[var(--border-medium)]'}
                     ${highlighted ? 'ring-2 ring-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.5)] z-50 scale-[1.02]' : ''}
                 `}
                 style={{ width: getCardDimensions(node.aspectRatio).width }}>
@@ -256,6 +365,13 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                 </button>
                             )}
                         </>
+                    ) : node.isDraft ? (
+                        <>
+                            <div className="w-6 h-6 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/30">
+                                <Sparkles size={12} className="text-indigo-400" />
+                            </div>
+                            <span className="text-xs font-medium text-indigo-400 flex-1">预览 (Preview)</span>
+                        </>
                     ) : node.error ? (
                         <>
                             <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center">
@@ -265,7 +381,17 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                     <line x1="12" y1="16" x2="12.01" y2="16" />
                                 </svg>
                             </div>
-                            <span className="text-xs font-medium text-red-400 flex-1 truncate">{node.error}</span>
+                            <span
+                                className="text-xs font-medium text-red-400 flex-1 truncate cursor-help"
+                                title={node.error}
+                            >
+                                {node.error?.includes('API key') ? 'API Key 无效' :
+                                    node.error?.includes('Invalid URL') ? '参考图无效' :
+                                        node.error?.includes('Ref img fetch failed') ? '参考图已失效(需重传)' :
+                                            node.error?.includes('Failed to fetch') ? '网络请求失败' :
+                                                node.error?.includes('40') ? '鉴权失败' :
+                                                    '生成失败'}
+                            </span>
 
                             {/* Retry Button */}
                             {onRetry && (
@@ -331,11 +457,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 {node.referenceImages && node.referenceImages.length > 0 && (
                     <div className="flex gap-1 mb-2 flex-wrap">
                         {node.referenceImages.slice(0, 4).map((img, idx) => (
-                            <img
+                            <ReferenceThumbnail
                                 key={img.id || idx}
-                                src={`data:${img.mimeType};base64,${img.data}`}
-                                alt="Reference"
-                                className="w-10 h-10 object-cover rounded border border-[var(--border-light)]"
+                                image={img}
                             />
                         ))}
                         {node.referenceImages.length > 4 && (
@@ -346,9 +470,12 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                     </div>
                 )}
 
-                <p className="text-[var(--text-primary)] text-[15px] leading-7 line-clamp-4 font-normal flex-1 tracking-wide">
+                <div
+                    className="text-[var(--text-primary)] text-[15px] leading-7 font-normal flex-1 tracking-wide overflow-y-auto max-h-[112px] custom-scrollbar pr-1"
+                    onWheel={(e) => e.stopPropagation()}
+                >
                     {node.prompt}
-                </p>
+                </div>
 
 
                 {node.tags && node.tags.length > 0 && (
@@ -369,15 +496,14 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             {/* Spacer (formerly connection dot - removed per user request) */}
             <div className="h-3 mt-3" />
 
-            {/* Loading Placeholders - Only shown when generating */}
+            {/* Loading Placeholders - Updated Design */}
             {
                 node.isGenerating && node.parallelCount && (() => {
                     const count = node.parallelCount;
                     const columns = Math.min(count, 2);
                     const placeholderGap = 16;
-                    const gapToPlaceholders = 80; // Must match handleGenerate gapToImages
+                    const gapToPlaceholders = 80;
 
-                    // Calculate card dimensions based on usage
                     const { width: w, totalHeight: h } = getCardDimensions(node.aspectRatio, true);
 
                     return (
@@ -386,7 +512,6 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                 const col = i % columns;
                                 const row = Math.floor(i / columns);
 
-                                // Calculate grid positioning
                                 const itemsInRow = Math.min(columns, count - row * columns);
                                 const currentGridWidth = itemsInRow * w + (itemsInRow - 1) * placeholderGap;
                                 const startX = -currentGridWidth / 2;
@@ -395,7 +520,6 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
                                 return (
                                     <React.Fragment key={i}>
-                                        {/* Dashed line from dot to placeholder - subtle style */}
                                         <svg
                                             className="pointer-events-none"
                                             style={{
@@ -403,35 +527,68 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                 left: '50%',
                                                 top: 0,
                                                 overflow: 'visible',
-                                                zIndex: 10
+                                                zIndex: 1
                                             }}
                                         >
                                             <path
-                                                d={`M0,0 L${offsetX},${offsetY}`}
+                                                d={`M0,0 C0,${offsetY * 0.5} ${offsetX},${offsetY * 0.5} ${offsetX},${offsetY}`}
                                                 fill="none"
                                                 stroke="#3f3f46"
-                                                strokeWidth="1"
-                                                strokeDasharray="3 4"
+                                                strokeWidth="1.5"
+                                                strokeDasharray="4 4"
                                             />
                                         </svg>
 
                                         {/* Placeholder Card */}
                                         <div
-                                            className="absolute bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl overflow-hidden shadow-lg flex items-center justify-center"
+                                            className="absolute border border-[var(--border-light)] rounded-xl overflow-hidden shadow-lg flex flex-col"
                                             style={{
+                                                backgroundColor: 'rgba(24, 24, 27, 0.6)',
+                                                backdropFilter: 'blur(20px) saturate(180%)',
+                                                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
                                                 width: w,
                                                 height: h,
                                                 left: `calc(50% + ${offsetX}px)`,
                                                 top: offsetY,
                                                 transform: 'translateX(-50%)',
-                                                zIndex: 0
+                                                zIndex: 20
                                             }}
                                         >
-                                            <div className="flex flex-col items-center gap-3 opacity-50">
-                                                <Loader2 size={24} className="text-indigo-400 animate-spin" />
-                                                <span className="text-[10px] text-[var(--text-secondary)] font-medium">Creating masterpiece...</span>
+                                            {/* Main Area: Timer & Spinner */}
+                                            <div className="flex-1 flex flex-col items-center justify-center relative">
+                                                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5 animate-pulse" />
+
+                                                <div className="relative z-10 flex flex-col items-center gap-2">
+                                                    <div className="relative">
+                                                        <div className="absolute inset-0 rounded-full blur-lg bg-indigo-500/20" />
+                                                        {/* Removed large redundant spinner, integrated into GenerationTimer */}
+                                                    </div>
+                                                    <GenerationTimer start={node.timestamp || Date.now()} />
+                                                </div>
                                             </div>
-                                            <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
+
+                                            {/* Footer Info - Clean & Dark */}
+                                            <div className="h-8 bg-[#09090b] border-t border-white/5 flex items-center justify-center px-3 text-[10px] gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-amber-500/90 font-medium px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                                                        {node.model?.replace(/gemini-?/i, '') || 'AI'}
+                                                    </span>
+                                                    <span className="text-zinc-500 font-medium border-l border-white/10 pl-2">
+                                                        {node.aspectRatio}
+                                                    </span>
+                                                    <span className="text-zinc-600 font-mono border-l border-white/10 pl-2">
+                                                        {(node.imageSize as string) === '1024x1024' || (node.imageSize as string) === '1K' ? '1K' :
+                                                            (node.imageSize as string) === '2048x2048' || (node.imageSize as string) === '2K' ? '2K' :
+                                                                (node.imageSize as string) === '4096x4096' || (node.imageSize as string) === '4K' ? '4K' :
+                                                                    (node.imageSize as string)}
+                                                    </span>
+                                                    {node.mode === 'video' && (
+                                                        <span className="text-purple-400 font-medium border-l border-white/10 pl-2">
+                                                            5s
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     </React.Fragment>
                                 );

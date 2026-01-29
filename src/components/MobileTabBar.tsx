@@ -6,7 +6,9 @@ interface MobileTabBarProps {
     onOpenSettings: () => void;
     onOpenProfile: () => void;
     currentMode: GenerationMode;
-    currentView: 'gallery' | 'home' | 'settings' | 'profile'; // Keep for other highlights if needed, or largely ignore for left buttons
+    currentView: 'gallery' | 'home' | 'settings' | 'profile';
+    isVisible?: boolean;
+    onInteract?: () => void;
 }
 
 const MobileTabBar: React.FC<MobileTabBarProps> = ({
@@ -14,10 +16,16 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
     onOpenSettings,
     onOpenProfile,
     currentMode,
-    currentView
+    currentView,
+    isVisible = true,
+    onInteract
 }) => {
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-[1000] md:hidden pb-safe">
+        <div
+            className={`fixed bottom-0 left-0 right-0 z-[1000] md:hidden pb-safe transition-transform duration-300 ease-in-out ${isVisible ? 'translate-y-0' : 'translate-y-[150%]'}`}
+            onTouchStart={onInteract}
+            onClick={onInteract}
+        >
             <div
                 className="mx-4 mb-4 h-14 rounded-[24px] flex items-center justify-around px-2 relative overflow-hidden liquid-glass"
                 id="mobile-tab-bar"

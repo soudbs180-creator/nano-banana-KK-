@@ -20,39 +20,34 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
 
     const STEPS: TutorialStep[] = React.useMemo(() => [
         {
-            title: "欢迎来到 KK Studio",
-            description: "这是您的新一代 AI 创作工作站。存储配置已完成，现在让我们花一分钟熟悉一下核心功能。",
-            position: "center"
-        },
-        {
-            targetId: isMobile ? "mobile-tab-bar" : "sidebar-container",
-            title: "侧边栏 & 导航",
-            description: "在此切换生成模式、查看历史记录或调整系统设置。手机端可通过左侧边缘向右滑动或点击图标唤起。",
-            position: isMobile ? "top" : "right"
-        },
-        {
-            targetId: "project-manager-trigger",
-            title: "项目管理",
-            description: "点击这里切换、重命名或创建新项目。每个项目都是一个独立的无限画布。",
-            position: "right"
-        },
-        {
-            targetId: "canvas-container",
+            // Removed targetId for "Infinite Canvas" to show centered text on dark overlay (better intro)
             title: "无限画布",
-            description: "双击空白处创建图像卡片，双击已有图像查看大图。支持自由拖拽和缩放。手机端支持双指缩放。",
+            description: "这是您的创作空间。您可以在这里自由拖拽、缩放查看作品。\n\n• 双击空白处创建新的图像卡片\n• 双击已有图像可查看大图\n• 鼠标滚轮或双指缩放画布\n• 拖拽可平移视角",
             position: "center"
         },
         {
             targetId: "prompt-bar-container",
-            title: "指令输入",
-            description: "在此输入创意指令。点击左侧模型名称可切换模型，右侧可配置并发数量或上传参考图。",
+            title: "指令输入区",
+            description: "在这里输入您的创意指令来生成图像。\n\n• 左侧选择 AI 模型（Gemini 2.0 Flash 等）\n• 中间输入框输入文字描述\n• 可选择比例（1:1, 16:9 等）和分辨率（1K, 2K, 4K）\n• 点击右侧图片按钮可上传参考图\n• 点击发送按钮开始生成",
             position: "top"
         },
         {
-            targetId: "models-dropdown-trigger",
-            title: "模型切换",
-            description: "在这里您可以快速切换不同的 AI 模型。如果列表为空，请前往设置配置您的 API 密钥。",
-            position: "top"
+            targetId: isMobile ? "mobile-tab-bar" : "project-manager-container",
+            title: "项目管理 & 工具栏",
+            description: "左上角管理您的项目和视图。\n\n• 新建/切换项目\n• 搜索提示词 (Ctrl+K)\n• 放大/缩小/重置视图\n• 切换网格显示\n• 切换亮色/暗色主题",
+            position: isMobile ? "top" : "right"
+        },
+        {
+            targetId: "chat-trigger-button",
+            title: "聊天机器人 & 辅助",
+            description: "左下角 AI 助手。\n\n• 点击图标唤起 AI 助手\n• 可询问关于创作的问题\n• 获取提示词优化建议",
+            position: "top" // [FIX] Changed from 'right' to 'top' to avoid bottom edge clipping
+        },
+        {
+            targetId: "header-user-menu",
+            title: "账户 & API 设置",
+            description: "右上角账户管理。\n\n• 配置 API 密钥\n• 查看今日预算消耗\n• 监控云同步状态",
+            position: isMobile ? "bottom" : "bottom" // [FIX] Changed to 'bottom' to avoid top edge clipping (safe for top-right menu)
         }
     ], [isMobile]);
 
@@ -144,11 +139,19 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
             transform = 'translate(0, -50%)';
         }
 
-        // Constraints to keep tooltip on screen
-        const safePadding = 10;
-        // Ideally we would measure the tooltip size, but this is a simple heuristic
-        // We can use calc/clamp in CSS, or just let it float.
-        // For now, let's trust the calculated position but maybe prevent negative top/left?
+        // [FIX] Clamp position to keep tooltip within viewport
+        // Assuming implicit max-height of ~300px and max-width of ~300px
+        const safeMarginY = 200; // Half height (150) + padding (50)
+        const safeMarginX = 200; // Half width (180) + padding (20)
+
+        // Only clamp if not explicitly 'top' or 'bottom' positioned (which naturally avoid vertical center issues mostly)
+        // But 'left'/'right' use vertical center, which causes the clip at bottom/top corners.
+        if (step.position === 'left' || step.position === 'right') {
+            top = Math.max(safeMarginY, Math.min(top, window.innerHeight - safeMarginY));
+        }
+        if (step.position === 'top' || step.position === 'bottom') {
+            left = Math.max(safeMarginX, Math.min(left, window.innerWidth - safeMarginX));
+        }
 
         return { top, left, transform, position: 'absolute' };
     };

@@ -3,9 +3,12 @@ import { createPortal } from 'react-dom';
 import {
     X, Plus, Trash2, Activity, Pencil, Zap,
     DollarSign, Check, Pause, Play, RefreshCw, Server,
-    Globe, Shield, Box, Key
+    Globe, Shield, Box, Key, Terminal
 } from 'lucide-react';
 import { KeySlot, keyManager, DEFAULT_GOOGLE_MODELS, parseModelString } from '../services/keyManager';
+import { generateImage } from "../services/geminiService";
+import { comprehensiveConnectionTest } from "../services/connectionTest"; // Use new test service
+import { notify } from '../services/notificationService';
 import { CHAT_MODEL_PRESETS } from '../services/modelPresets';
 
 // Helper to split model strings respecting parentheses
@@ -30,13 +33,24 @@ const splitModelStrings = (input: string): string[] => {
     return result;
 };
 
+// Preset Providers Configuration
+const PRESET_PROVIDERS = [
+    { label: 'Cherry Studio', url: 'https://future-api.vodeshop.com', provider: 'OpenAI', mode: 'chat', models: 'nano-banana(Nano Banana), nano-banana-pro(Nano Banana Pro), flux-schnell(Flux Fast), gemini-2.5-flash-image(Gemini 2.5 Flash)' },
+    { label: 'Gemini-API.cn', url: 'https://gemini-api.cn', provider: 'OpenAI', mode: 'standard', models: 'gemini-2.5-flash-image, gemini-3-pro-image-preview, imagen-3.0-generate-001' },
+    { label: 'SiliconFlow (硅基流动)', url: 'https://api.siliconflow.cn', provider: 'OpenAI', mode: 'chat', models: 'deepseek-ai/DeepSeek-V3, deepseek-ai/DeepSeek-R1, black-forest-labs/FLUX.1-schnell, stabilityai/stable-diffusion-3-medium' },
+    { label: 'DeepSeek Official', url: 'https://api.deepseek.com', provider: 'OpenAI', mode: 'chat', models: 'deepseek-chat, deepseek-reasoner' },
+    { label: 'OpenRouter', url: 'https://openrouter.ai/api/v1', provider: 'OpenAI', mode: 'standard', models: 'google/gemini-2.0-flash-exp:free, google/gemini-flash-1.5, openai/gpt-4o, anthropic/claude-3.5-sonnet' },
+    { label: 'OpenAI Official', url: 'https://api.openai.com/v1', provider: 'OpenAI', mode: 'standard', models: 'dall-e-3(DALL-E 3), gpt-4o(GPT-4o), gpt-4o-mini' },
+    { label: 'Google Gemini', url: 'https://generativelanguage.googleapis.com', provider: 'Google', mode: 'standard', models: DEFAULT_GOOGLE_MODELS.join(', ') },
+];
+
 export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'assets' }) => {
     const [slots, setSlots] = useState<KeySlot[]>(keyManager.getSlots());
     const [strategy, setStrategy] = useState(keyManager.getStrategy());
 
     const clampAndFormat = (value?: number) => {
-        const v = Math.min(Math.max(value || 0, 0), 999999.999);
-        return v.toFixed(3);
+        const v = Math.floor(value || 0);
+        return v.toLocaleString('en-US');
     };
     const [loading, setLoading] = useState(false);
     const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set());
@@ -53,7 +67,76 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
     const [formKey, setFormKey] = useState('');
     const [formBaseUrl, setFormBaseUrl] = useState('');
     const [formModels, setFormModels] = useState(''); // Comma separated strings
+    const [formCompatibility, setFormCompatibility] = useState<'standard' | 'chat'>('standard');
     const [isKeyEditing, setIsKeyEditing] = useState(false);
+
+    // Auto-detect provider & settings from Key pattern
+    const detectProviderFromKey = (key: string) => {
+        const k = key.trim();
+        if (k.startsWith('AIza')) {
+            // Google
+            setFormProvider('Google');
+            setFormBaseUrl('https://generativelanguage.googleapis.com');
+            setFormModels(DEFAULT_GOOGLE_MODELS.join(', '));
+            setFormCompatibility('standard');
+        } else if (k.startsWith('sk-ant')) {
+            // Anthropic
+            setFormProvider('Anthropic');
+            setFormBaseUrl('https://api.anthropic.com');
+            setFormCompatibility('standard');
+        } else if (k.startsWith('sk-or-')) {
+            // OpenRouter
+            const preset = PRESET_PROVIDERS.find(p => p.label === 'OpenRouter');
+            if (preset) {
+                setFormProvider(preset.provider);
+                setFormBaseUrl(preset.url);
+                setFormCompatibility(preset.mode as any);
+            }
+        }
+        // For generic 'sk-', we rely on Base URL detection or user preset selection
+    };
+
+    // Auto-detect settings from Base URL
+    const detectSettingsFromUrl = (url: string) => {
+        const lower = url.toLowerCase();
+        if (lower.includes('googleapis.com')) {
+            setFormProvider('Google');
+            setFormCompatibility('standard');
+        } else if (lower.includes('anthropic.com')) {
+            setFormProvider('Anthropic');
+            setFormCompatibility('standard');
+        } else {
+            // Default to OpenAI Compatible for most custom URLs
+            setFormProvider('OpenAI');
+
+            // Auto-detect Chat Mode for known chat-only providers
+            if (lower.includes('vodeshop') || lower.includes('cherry') || lower.includes('siliconflow') || lower.includes('deepseek')) {
+                setFormCompatibility('chat');
+            } else {
+                setFormCompatibility('standard'); // Default standard for NewAPI/OneAPI
+            }
+        }
+    };
+
+    // Apply Preset
+    const applyPreset = (label: string) => {
+        const preset = PRESET_PROVIDERS.find(p => p.label === label);
+        if (preset) {
+            setFormBaseUrl(preset.url);
+            setFormProvider(preset.provider);
+            setFormCompatibility(preset.mode as any);
+            if (preset.models) {
+                setFormModels(preset.models);
+            }
+            if (formName === 'New Channel' || !formName) {
+                setFormName(preset.label);
+            }
+        }
+    };
+
+    // Test Status
+    const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+    const [testMessage, setTestMessage] = useState('');
 
     useEffect(() => {
         const update = () => {
@@ -75,7 +158,10 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         setFormProvider('Google');
         setFormKey('');
         setFormBaseUrl('');
+        setFormCompatibility('standard');
         setFormModels(DEFAULT_GOOGLE_MODELS.join(', '));
+        setTestStatus('idle');
+        setTestMessage('');
         setIsModalOpen(true);
         setIsKeyEditing(true);
     };
@@ -86,7 +172,10 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         setFormProvider(slot.provider);
         setFormKey(slot.key);
         setFormBaseUrl(slot.baseUrl || '');
+        setFormCompatibility(slot.compatibilityMode || 'standard');
         setFormModels((slot.supportedModels || []).join(', '));
+        setTestStatus('idle');
+        setTestMessage('');
         setIsModalOpen(true);
         setIsKeyEditing(false);
     };
@@ -110,7 +199,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         const slot = slots.find(s => s.id === id);
         if (slot) {
             const targetUrl = slot.baseUrl || 'https://generativelanguage.googleapis.com'; // Default to Google if empty
-            const result = await keyManager.testChannel(targetUrl, slot.key, slot.provider);
+            const result = await keyManager.testChannel(targetUrl, slot.key, slot.provider, slot.authMethod, slot.headerName);
 
             if (result.success) {
                 keyManager.reportSuccess(id);
@@ -170,6 +259,44 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         setDraggedId(null);
     };
 
+    const handleTestConnection = async () => {
+        if (!formKey || (!formBaseUrl && formProvider !== 'Google')) {
+            setTestStatus('error');
+            setTestMessage('请先填写完整 API Key 和 接口地址');
+            return;
+        }
+
+        setTestStatus('testing');
+        setTestMessage('正在连接测试...');
+
+        try {
+            // Use new comprehensive test
+            const results = await comprehensiveConnectionTest({
+                apiKey: formKey,
+                baseUrl: formBaseUrl || (formProvider === 'Google' ? 'https://generativelanguage.googleapis.com' : ''),
+                model: formModels.split(',')[0]?.trim() || 'gpt-3.5-turbo',
+                compatibilityMode: formCompatibility,
+                provider: formProvider
+            });
+
+            const successTest = results.find(r => r.success);
+            const failTest = results.find(r => !r.success);
+
+            if (successTest) {
+                setTestStatus('success');
+                // Prefer showing the API test message if available
+                const apiMsg = results.find(r => r.message.includes('API'))?.message;
+                setTestMessage(apiMsg || successTest.message);
+            } else {
+                setTestStatus('error');
+                setTestMessage(failTest?.message || '连接失败');
+            }
+        } catch (e: any) {
+            setTestStatus('error');
+            setTestMessage(e.message || '连接失败');
+        }
+    };
+
     const handleSubmit = async () => {
         if (!formKey.trim()) return;
         setLoading(true);
@@ -195,6 +322,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             key: formKey.trim(),
             provider: formProvider,
             baseUrl: formBaseUrl.trim(),
+            compatibilityMode: formCompatibility,
             supportedModels: finalModels
         };
 
@@ -305,22 +433,22 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         ? 'bg-zinc-900/30 border-zinc-800/50 opacity-60'
                                         : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/5'
                                     }
-                                    ${isSequential ? 'flex items-center gap-4 p-3 w-full' : 'p-4 w-full'}
+                                    p-4 w-full
                                     ${draggedId === slot.id ? 'opacity-20 border-dashed border-indigo-500 scale-[0.98]' : 'hover:-translate-y-1 hover:z-10 relative'}
                                 `}
                             >
                                 {/* Sequential Order Badge */}
                                 {isSequential && (
-                                    <div className="shrink-0 w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-mono text-zinc-400">
+                                    <div className="absolute top-4 left-4 shrink-0 w-6 h-6 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-xs font-mono text-indigo-400 font-semibold">
                                         {index + 1}
                                     </div>
                                 )}
 
                                 {/* Card Content Container */}
-                                <div className={`flex-1 min-w-0 ${isSequential ? 'flex items-center gap-4' : ''}`}>
+                                <div className="flex-1 min-w-0">
 
                                     {/* Main Info */}
-                                    <div className={`min-w-0 ${isSequential ? 'flex-1' : ''}`}>
+                                    <div className={`min-w-0 ${isSequential ? 'pl-8' : ''}`}>
                                         <div className="flex items-center justify-between mb-2">
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <div className={`w-2 h-2 rounded-full shrink-0 ${refreshingIds.has(slot.id) ? 'bg-blue-500 animate-pulse' :
@@ -333,14 +461,12 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                     {slot.name}
                                                 </h4>
                                             </div>
-                                            {!isSequential && (
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${slot.provider === 'Google'
-                                                    ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
-                                                    : 'bg-purple-500/10 text-purple-500 border-purple-500/20'
-                                                    }`}>
-                                                    {slot.provider}
-                                                </span>
-                                            )}
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${slot.provider === 'Google'
+                                                ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                                : 'bg-purple-500/10 text-purple-500 border-purple-500/20'
+                                                }`}>
+                                                {slot.provider}
+                                            </span>
                                         </div>
 
                                         <div className="flex items-center gap-2 text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
@@ -349,10 +475,10 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         </div>
                                     </div>
 
-                                    {/* Stats & Actions (Horizontal in Sequential, Bottom in Grid) */}
-                                    <div className={`${isSequential ? 'flex items-center gap-6 shrink-0' : 'mt-4 pt-4 border-t border-[var(--border-light)] flex items-center justify-center gap-6'}`}>
-                                        {/* Usage Stats (Centered) */}
-                                        <div className={`flex items-center gap-3 text-xs ${isSequential ? 'hidden md:flex w-[100px] justify-center border-l pl-4' : 'justify-center mx-auto'}`} style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-light)' }}>
+                                    {/* Stats & Actions */}
+                                    <div className="mt-4 pt-4 border-t border-[var(--border-light)] flex items-center justify-between">
+                                        {/* Usage Stats */}
+                                        <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-tertiary)' }}>
                                             <div className="flex items-center gap-1" title="调用成功次数">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50" />
                                                 {slot.successCount || 0}
@@ -363,8 +489,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             </div>
                                         </div>
 
-                                        {/* Action Buttons (Centered) */}
-                                        <div className={`flex items-center gap-1 justify-center shrink-0 ${isSequential ? 'w-auto md:w-[100px] justify-end md:justify-center md:border-l md:pl-4' : 'mx-auto'}`} style={{ borderColor: 'var(--border-light)' }}>
+                                        {/* Action Buttons */}
+                                        <div className="flex items-center gap-1">
                                             <button
                                                 onClick={(e) => handleRefresh(slot.id, e)}
                                                 disabled={refreshingIds.has(slot.id)}
@@ -392,8 +518,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             </button>
                                         </div>
                                     </div>
-                                    {/* Stats (Fixed Width for Alignment in Sequential) */}
-                                    <div className={`grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)] ${isSequential ? 'hidden md:grid w-[180px] shrink-0' : 'w-full mt-3'}`}>
+                                    {/* Stats (Fixed Width for Alignment in Sequential Desktop, Block in Mobile) */}
+                                    <div className={`grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)] ${isSequential ? 'w-full mt-3' : 'w-full mt-3'}`}>
                                         <div className="text-center">
                                             <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Tokens消耗</div>
                                             <div className="text-xs font-mono text-emerald-500 break-all" style={{ fontWeight: 600 }}>{clampAndFormat(slot.usedTokens)}</div>
@@ -434,22 +560,78 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
                                     {formProvider !== 'Google' && (
                                         <div>
-                                            <label className="text-xs text-zinc-400 mb-1.5 block">接口地址 (Base URL)</label>
+                                            <div className="flex justify-between items-center mb-1.5">
+                                                <label className="text-xs text-zinc-400">接口地址 (Base URL)</label>
+                                                <select
+                                                    className="bg-[var(--bg-tertiary)] text-[10px] border border-[var(--border-light)] rounded px-2 py-0.5 text-zinc-400 outline-none hover:border-indigo-500/50 cursor-pointer"
+                                                    onChange={(e) => {
+                                                        if (e.target.value) applyPreset(e.target.value);
+                                                        e.target.value = ''; // Reset
+                                                    }}
+                                                >
+                                                    <option value="">🚀 快速选择...</option>
+                                                    {PRESET_PROVIDERS.filter(p => p.provider !== 'Google').map(p => (
+                                                        <option key={p.label} value={p.label}>{p.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
                                             <div className="relative">
                                                 <input
                                                     className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 placeholder-zinc-600 transition-all"
                                                     placeholder={formProvider === 'Google' ? "https://generativelanguage.googleapis.com" : "https://api.openai.com/v1"}
                                                     value={formBaseUrl}
                                                     onChange={e => {
-                                                        setFormBaseUrl(e.target.value);
-                                                        // Auto-set provider if recognized
-                                                        const val = e.target.value.toLowerCase();
-                                                        if (val.includes('deepseek')) { setFormName(n => n === 'New Channel' || !n ? 'DeepSeek' : n); setFormProvider('OpenAI'); }
-                                                        else if (val.includes('silicon')) { setFormName(n => n === 'New Channel' || !n ? 'SiliconFlow' : n); setFormProvider('OpenAI'); }
-                                                        else if (val.includes('openrouter')) { setFormName(n => n === 'New Channel' || !n ? 'OpenRouter' : n); setFormProvider('OpenAI'); }
+                                                        const val = e.target.value;
+                                                        setFormBaseUrl(val);
+                                                        detectSettingsFromUrl(val);
+
+                                                        // Auto-name if default
+                                                        if (val.includes('deepseek')) { setFormName(n => n === 'New Channel' || !n ? 'DeepSeek' : n); }
+                                                        else if (val.includes('silicon')) { setFormName(n => n === 'New Channel' || !n ? 'SiliconFlow' : n); }
+                                                        else if (val.includes('openrouter')) { setFormName(n => n === 'New Channel' || !n ? 'OpenRouter' : n); }
                                                     }}
                                                 />
                                                 <Globe className="absolute left-3 top-2.5 text-zinc-600 pointer-events-none" size={14} />
+                                            </div>
+
+                                            {/* Test Connection Button (Moved here) */}
+                                            <div className="flex justify-end mt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleTestConnection}
+                                                    disabled={testStatus === 'testing'}
+                                                    className={`text-[10px] px-3 py-1.5 rounded border flex items-center gap-2 transition-colors ${testStatus === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                                        testStatus === 'error' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                                                            'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-300'
+                                                        }`}
+                                                >
+                                                    {testStatus === 'testing' ? <Globe size={12} className="animate-spin" /> : <Terminal size={12} />}
+                                                    {testStatus === 'testing' ? '测试中...' : '测试连接 (Test Connection)'}
+                                                </button>
+                                            </div>
+                                            {testMessage && (
+                                                <div className={`text-[10px] mt-2 p-2 rounded text-right ${testStatus === 'success' ? 'text-emerald-400' :
+                                                    testStatus === 'error' ? 'text-red-400' : 'text-zinc-500'
+                                                    }`}>
+                                                    {testMessage}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Auto-detected Endpoint Info (Hidden Select) */}
+                                    {formProvider !== 'Google' && (
+                                        <div className="bg-[var(--bg-primary)] rounded px-3 py-2 border border-[var(--border-light)] flex items-center justify-between">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">自动适配模式</span>
+                                                <span className="text-xs text-zinc-300">
+                                                    {formCompatibility === 'standard' ? '标准 API (Standard)' : '对话模拟 (Chat Compat)'}
+                                                </span>
+                                            </div>
+                                            <div className="text-[10px] text-zinc-500 max-w-[50%] text-right">
+                                                {formCompatibility === 'standard'
+                                                    ? '适用于大多数兼容 OpenAI 的中转站'
+                                                    : '适用于 Cherry Studio、SiliconFlow 等特殊渠道'}
                                             </div>
                                         </div>
                                     )}
@@ -462,7 +644,10 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                 className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-10 py-2.5 text-sm text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
                                                 type={isKeyEditing ? "text" : "password"}
                                                 value={isKeyEditing ? formKey : maskApiKey(formKey)}
-                                                onChange={e => setFormKey(e.target.value)}
+                                                onChange={e => {
+                                                    setFormKey(e.target.value);
+                                                    detectProviderFromKey(e.target.value);
+                                                }}
                                                 onFocus={() => setIsKeyEditing(true)}
                                                 onBlur={() => setIsKeyEditing(false)}
                                                 placeholder="sk-..."
@@ -483,7 +668,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                 const targetUrl = formBaseUrl || 'https://api.openai.com/v1';
 
                                                 try {
-                                                    const models = await keyManager.fetchRemoteModels(targetUrl, formKey);
+                                                    const models = await keyManager.fetchRemoteModels(targetUrl, formKey, undefined, undefined, formProvider);
                                                     if (models.length > 0) {
                                                         setFormModels(models.join(', '));
                                                         // Auto-name if still default
@@ -493,15 +678,14 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                                 const domain = url.hostname.split('.').slice(-2).join('.').split('.')[0];
                                                                 setFormName(domain.charAt(0).toUpperCase() + domain.slice(1));
                                                             } catch (e) {
-                                                                setFormName('Custom API');
                                                             }
                                                         }
-                                                        alert(`成功获取 ${models.length} 个模型！`);
+                                                        notify.success('成功获取模型', `成功获取 ${models.length} 个模型！`);
                                                     } else {
-                                                        alert('未发现模型，请检查 URL 和 Key，或手动输入模型。');
+                                                        notify.warning('未发现模型', '请检查 URL 和 Key，或手动输入模型。');
                                                     }
-                                                } catch (e) {
-                                                    alert('连接失败');
+                                                } catch (e: any) {
+                                                    notify.error('连接失败', e.message || '无法连接到 API 服务');
                                                 } finally {
                                                     setLoading(false);
                                                 }
@@ -564,53 +748,11 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         </label>
                                         <textarea
                                             className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 min-h-[100px] leading-relaxed resize-none"
-                                            placeholder="模型 ID 列表，支持格式: ID(自定义名称/描述)&#10;例如: gemini-2.5-flash-image(Gemini 2.5 Flash/速度优先的原生图像生成), gemini-3-pro-image-preview(香蕉pro/高质量原生图像生成，细节更强)"
+                                            placeholder="模型 ID 列表，支持格式: ID(自定义名称/描述)&#10;建议点击上方“自动获取”按钮来填充可用模型"
                                             value={formModels}
                                             onChange={e => setFormModels(e.target.value)}
                                         />
                                     </div>
-
-                                    {/* Preset Tags - Moved Below Input */}
-                                    <div className="mt-2 flex flex-wrap gap-2 justify-end">
-                                        {formProvider === 'Google' ? (
-                                            <>
-                                                <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-2.0-pro-exp-01-21(Gemini 2.0 Pro)')}>+ Gemini 2.0 Pro</span>
-                                                <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(prev => (prev ? prev + ', ' : '') + 'gemini-2.0-flash-exp(Gemini 2.0 Flash)')}>+ Gemini 2.0 Flash</span>
-                                                <span className="text-indigo-400 cursor-pointer hover:underline text-[10px]" onClick={() => setFormModels(DEFAULT_GOOGLE_MODELS.join(', '))}>填入热门模型</span>
-                                            </>
-                                        ) : (
-                                            <div className="flex flex-wrap gap-2 justify-end max-w-full">
-                                                {CHAT_MODEL_PRESETS.slice(0, 4).map(preset => (
-                                                    <span
-                                                        key={preset.id}
-                                                        className="text-indigo-400 cursor-pointer hover:underline text-[10px]"
-                                                        onClick={() => setFormModels(prev => {
-                                                            const current = splitModelStrings(prev);
-                                                            if (current.some(s => parseModelString(s).id === preset.id)) return prev;
-                                                            // Format: ID(Label)
-                                                            const label = preset.label.split('(')[0].trim(); // Use name part
-                                                            const entry = `${preset.id}(${label})`;
-                                                            return (prev ? prev + ', ' : '') + entry;
-                                                        })}
-                                                    >
-                                                        + {preset.label.split('(')[0].trim()}
-                                                    </span>
-                                                ))}
-                                                <span className="text-zinc-500 text-[10px] cursor-help" title="更多模型请手动输入或自动获取">...</span>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Parsed Preview Tags */}
-                                    <div className="mt-2 flex flex-wrap gap-1">
-                                        {formModels.split(/[,，\n]/).filter(Boolean).slice(0, 5).map((m, i) => (
-                                            <span key={i} className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded text-zinc-400">{m.trim()}</span>
-                                        ))}
-                                        {formModels.split(/[,，\n]/).filter(Boolean).length > 5 && <span className="text-[10px] text-zinc-600">...</span>}
-                                    </div>
-                                    {formProvider === 'Google' && (
-                                        <p className="text-[10px] text-zinc-500 mt-1">Google 通道默认已填热门模型，可按需增删。</p>
-                                    )}
                                 </div>
                             </div>
 

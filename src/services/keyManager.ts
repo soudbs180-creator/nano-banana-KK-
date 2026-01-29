@@ -4,15 +4,9 @@
  * Provides multi-key rotation, status monitoring, and automatic failover.
  * Similar to Gemini Balance but runs entirely on frontend.
  * NOW SUPPORTS: Supabase Cloud Sync & Third-Party API Proxies
-/**
- * API Key Manager Service
- * 
- * Provides multi-key rotation, status monitoring, and automatic failover.
- * Similar to Gemini Balance but runs entirely on frontend.
- * NOW SUPPORTS: Supabase Cloud Sync & Third-Party API Proxies
  */
 import { supabase } from '../lib/supabase';
-import { AuthMethod, GOOGLE_API_BASE } from './apiConfig';
+import { AuthMethod, GOOGLE_API_BASE, getDefaultAuthMethod } from './apiConfig';
 import { MODEL_PRESETS, CHAT_MODEL_PRESETS } from './modelPresets';
 
 /**
@@ -43,6 +37,7 @@ export interface KeySlot {
     // Channel Configuration
     baseUrl?: string;        // Custom base URL (e.g. for proxies)
     group?: string;          // Group selection for proxies
+    compatibilityMode?: 'standard' | 'chat'; // 'standard' = /v1/images, 'chat' = /v1/chat
     supportedModels: string[]; // List of model IDs this channel supports
 
     // Auth Configuration
@@ -96,6 +91,19 @@ export const DEFAULT_GOOGLE_MODELS = [
     'imagen-4.0-fast-generate-001'
 ];
 
+const GOOGLE_HEADER_NAME = 'x-goog-api-key';
+
+const inferHeaderName = (provider: string | undefined, baseUrl: string | undefined, authMethod: AuthMethod): string => {
+    if (authMethod === 'query') return GOOGLE_HEADER_NAME;
+    const providerLower = (provider || '').toLowerCase();
+    const baseLower = (baseUrl || '').toLowerCase();
+    if (providerLower === 'google' || baseLower.includes('google') || baseLower.includes('gemini')) {
+        return GOOGLE_HEADER_NAME;
+    }
+    // OpenRouter / Other OpenAI compatible
+    return 'Authorization';
+};
+
 const isLegacyGoogleModelList = (models: string[]) => {
     if (models.length !== LEGACY_GOOGLE_MODELS.length) return false;
     return models.every(m => LEGACY_GOOGLE_MODELS.includes(m));
@@ -110,10 +118,16 @@ const GOOGLE_CHAT_MODELS = [
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro 预览', icon: '🧠', description: '最强推理与长上下文能力' },
     { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash（实验）', icon: '🧪', description: '多模态实验版，适合探索' },
     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', icon: '🧠', description: '强推理与稳定性，适合复杂任务' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', icon: '⚡', description: '速度优先，成本更低' }
+    { id: 'gemini-1.5-flash', icon: '⚡', name: 'Gemini 1.5 Flash', description: '速度优先，成本更低' }
 ];
 
-const GOOGLE_MODEL_METADATA = new Map<string, { name: string; description?: string; icon?: string }>(
+const GOOGLE_MODEL_METADATA = new Map<string, {
+    name: string;
+    description?: string;
+    icon?: string;
+    contextLength?: number;
+    pricing?: { prompt: string; completion: string; image?: string; request?: string };
+}>(
     GOOGLE_CHAT_MODELS.map(model => [model.id, { name: model.name, description: model.description, icon: model.icon }])
 );
 
@@ -127,16 +141,27 @@ MODEL_PRESETS.filter(preset => preset.provider === 'Google').forEach(preset => {
     }
 });
 
+export const getModelMetadata = (modelId: string) => GOOGLE_MODEL_METADATA.get(modelId);
+
 const inferModelType = (modelId: string): GlobalModelType => {
     const id = modelId.toLowerCase();
+
+    // OpenRouter Specific: "provider/model" format usually implies chat unless "flux", "sd", "ideogram" etc.
+    const isOpenRouter = id.includes('/') && !id.startsWith('models/');
+
     const isVideo = id.includes('video') || id.includes('veo') || id.includes('kling') || id.includes('runway') || id.includes('luma') || id.includes('sora') || id.includes('pika');
     if (isVideo) return 'video';
+
 
     const isImage = id.includes('imagen') || id.includes('image') || id.includes('img') || id.includes('dall-e') || id.includes('midjourney') || id.includes('nano-banana') || id.includes('flux') || id.includes('stable') || id.includes('sd') || id.includes('diffusion');
     if (isImage) return 'image';
 
-    const isChat = id.includes('gemini') || id.includes('gpt') || id.includes('claude') || id.includes('deepseek') || id.includes('qwen') || id.includes('llama') || id.includes('mistral') || id.includes('yi-');
+    const isChat = id.includes('gemini') || id.includes('gpt') || id.includes('claude') || id.includes('deepseek') || id.includes('qwen') || id.includes('llama') || id.includes('mistral') || id.includes('yi-') || id.includes(':free');
     if (isChat) return 'chat';
+
+    // Default OpenRouter to chat if ambivalent
+    if (isOpenRouter) return 'chat';
+
 
     return 'image';
 };
@@ -213,6 +238,14 @@ export class KeyManager {
                 // Migration for existing keys
                 const slots = (parsed.slots || []).map((s: any) => {
                     const provider = s.provider || 'Google';
+                    const baseUrl = s.baseUrl || '';
+                    const authMethod = s.authMethod || getDefaultAuthMethod(baseUrl);
+                    const shouldOverrideHeader = !s.headerName || (
+                        s.headerName === GOOGLE_HEADER_NAME &&
+                        provider !== 'Google' &&
+                        !baseUrl.toLowerCase().includes('google')
+                    );
+                    const headerName = shouldOverrideHeader ? inferHeaderName(provider, baseUrl, authMethod) : s.headerName;
                     const rawModels = Array.isArray(s.supportedModels) ? s.supportedModels : [];
                     const supportedModels = provider === 'Google' && (rawModels.length === 0 || isLegacyGoogleModelList(rawModels))
                         ? [...DEFAULT_GOOGLE_MODELS]
@@ -224,9 +257,10 @@ export class KeyManager {
                         provider,
                         totalCost: s.totalCost || 0,
                         budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
-                        baseUrl: s.baseUrl || '',
-                        authMethod: s.authMethod || 'query',
-                        headerName: s.headerName || 'x-goog-api-key',
+                        baseUrl,
+                        authMethod,
+                        headerName,
+                        compatibilityMode: s.compatibilityMode || 'standard',
                         supportedModels,
                         disabled: s.disabled ?? false,
                         status: s.status || 'valid'
@@ -519,13 +553,22 @@ export class KeyManager {
     /**
      * Test a potential channel connection
      */
-    async testChannel(url: string, key: string, provider?: string): Promise<{ success: boolean, message?: string }> {
+    async testChannel(
+        url: string,
+        key: string,
+        provider?: string,
+        authMethod?: AuthMethod,
+        headerName?: string
+    ): Promise<{ success: boolean, message?: string }> {
         try {
             let targetUrl = url;
             const headers: Record<string, string> = {};
 
             // Pre-process URL
             const cleanUrl = url.replace(/\/chat\/completions$/, '').replace(/\/$/, '');
+
+            const resolvedAuthMethod = authMethod || getDefaultAuthMethod(cleanUrl);
+            const resolvedHeader = headerName || inferHeaderName(provider, cleanUrl, resolvedAuthMethod);
 
             if (url.includes('generativelanguage.googleapis.com') || provider === 'Google') {
                 // Google Native Logic
@@ -539,42 +582,58 @@ export class KeyManager {
 
                 // Google uses Query Param or x-goog-api-key header
                 // We'll use the header for cleanliness, works on v1beta
-                headers['x-goog-api-key'] = key;
+                if (resolvedAuthMethod === 'query') {
+                    targetUrl = `${targetUrl}?key=${key}`;
+                } else {
+                    headers[resolvedHeader] = key;
+                }
                 // headers['Content-Type'] = 'application/json'; // Not strictly triggered for GET
             } else {
                 // OpenAI Compatible Logic
                 targetUrl = cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`;
-                headers['Authorization'] = `Bearer ${key}`;
+                const headerValue = resolvedHeader.toLowerCase() === 'authorization'
+                    ? (key.toLowerCase().startsWith('bearer ') ? key : `Bearer ${key}`)
+                    : key;
+                headers[resolvedHeader] = headerValue;
             }
 
             // console.log(`[TestChannel] Testing ${targetUrl} (Provider: ${provider})...`);
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+            const timeoutId = setTimeout(() => controller.abort("Request Timed Out"), 15000); // Increased to 15s
 
-            const response = await fetch(targetUrl, {
-                method: 'GET',
-                headers,
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (response.ok) {
-                return { success: true };
-            }
-
-            // Google often returns 400/403 with detailed JSON
-            let errorMsg = `HTTP ${response.status}: ${response.statusText}`;
             try {
-                const errorData = await response.json();
-                if (errorData.error && errorData.error.message) {
-                    errorMsg = errorData.error.message;
-                }
-            } catch (e) {
-                // Ignore json parse error
-            }
+                const response = await fetch(targetUrl, {
+                    method: 'GET',
+                    headers,
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
 
-            return { success: false, message: errorMsg };
+                if (response.ok) {
+                    return { success: true };
+                }
+
+                // Google often returns 400/403 with detailed JSON
+                let errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+                try {
+                    const errorData = await response.json();
+                    if (errorData.error && errorData.error.message) {
+                        errorMsg = errorData.error.message;
+                    }
+                } catch (e) {
+                    // Ignore json parse error
+                }
+
+                return { success: false, message: errorMsg };
+            } catch (e: any) {
+                clearTimeout(timeoutId);
+                const isAbort = e.name === 'AbortError' || e.message?.includes('aborted');
+                return {
+                    success: false,
+                    message: isAbort ? 'Request Timed Out (Check Network/Proxy)' : (e.message || 'Connection failed')
+                };
+            }
         } catch (e: any) {
             return { success: false, message: e.message || 'Connection failed' };
         }
@@ -583,56 +642,100 @@ export class KeyManager {
     /**
      * Fetch available models from a remote API
      * Returns a list of model IDs or empty array on failure
+     * SIDE EFFECT: Updates GOOGLE_MODEL_METADATA with rich info if available
      */
-    async fetchRemoteModels(baseUrl: string, key: string): Promise<string[]> {
+    async fetchRemoteModels(baseUrl: string, key: string, authMethod?: AuthMethod, headerName?: string, provider?: string): Promise<string[]> {
         try {
             const cleanUrl = baseUrl.replace(/\/chat\/completions$/, '').replace(/\/$/, '');
-            // Some non-standard APIs might need /v1/models even if base is /v1
-            // But usually user provides https://api.openai.com/v1
-            const targetUrl = cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`;
+            let targetUrls = [
+                cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`,
+            ];
 
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
-            console.log(`[KeyManager] Fetching models from ${targetUrl}...`);
-            const response = await fetch(targetUrl, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${key}`,
-                    'Content-Type': 'application/json'
-                },
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                console.warn(`[KeyManager] Failed to fetch models: ${response.status} ${response.statusText}`);
-                return [];
+            if (!cleanUrl.match(/\/v1\/?$/) && !cleanUrl.match(/\/v1beta\/?$/)) {
+                targetUrls.push(`${cleanUrl}/v1/models`);
+                targetUrls.push(`${cleanUrl}/v1beta/models`);
             }
 
-            const data = await response.json();
+            targetUrls = [...new Set(targetUrls)];
 
-            // Handle standard OpenAI format { data: [{ id: "model-name", ... }] }
-            if (data && Array.isArray(data.data)) {
-                return data.data.map((m: any) => m.id).filter((id: any) => typeof id === 'string');
+            const resolvedAuthMethod = authMethod || 'query'; // Simplified default
+            const resolvedHeader = headerName || 'Authorization';
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json'
+            };
+
+            if (resolvedAuthMethod !== 'query') {
+                headers[resolvedHeader] = resolvedHeader.toLowerCase() === 'authorization'
+                    ? (key.toLowerCase().startsWith('bearer ') ? key : `Bearer ${key}`)
+                    : key;
             }
 
-            // Handle list format (some proxies)
-            if (Array.isArray(data)) {
-                return data.map((m: any) => typeof m === 'string' ? m : m.id).filter(id => id);
+            // OpenRouter CORS Fix
+            if (cleanUrl.includes('openrouter.ai')) {
+                headers['HTTP-Referer'] = window.location.origin; // Required by OpenRouter
+                headers['X-Title'] = 'KK Studio'; // Optional
             }
 
+            // Try each URL until one works
+            for (const url of targetUrls) {
+                try {
+                    const fullUrl = resolvedAuthMethod === 'query' ? `${url}?key=${key}` : url;
+
+                    // Use manual AbortController for broader compatibility
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort("Request Timed Out"), 8000);
+
+                    const response = await fetch(fullUrl, {
+                        method: 'GET',
+                        headers,
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const list = data.data || data.models || [];
+                        if (Array.isArray(list)) {
+                            // Process metadata if available (OpenRouter style)
+                            list.forEach((m: any) => {
+                                const id = m.id || m.name;
+                                if (!id) return;
+
+                                const existing = GOOGLE_MODEL_METADATA.get(id);
+                                const metadata: any = {
+                                    name: m.name || existing?.name || id,
+                                    description: m.description || existing?.description,
+                                    // OpenRouter specific fields
+                                    contextLength: m.context_length || m.context_window,
+                                    pricing: m.pricing // { prompt: "0.000001", completion: "0.000002" } check API docs
+                                };
+
+                                // Explicitly handle OpenRouter free tagging
+                                if (id.endsWith(':free')) {
+                                    metadata.pricing = { prompt: '0', completion: '0' };
+                                }
+
+                                GOOGLE_MODEL_METADATA.set(id, { ...existing, ...metadata });
+                            });
+
+                            return list.map((m: any) => m.id || m.name).filter(Boolean);
+                        }
+                    }
+                } catch { /* continue */ }
+            }
             return [];
         } catch (e) {
-            console.error('[KeyManager] Error fetching remote models:', e);
+            console.error('Fetch models failed', e);
             return [];
         }
     }
 
     /**
-     * Set the rotation strategy
+     * Set rotation strategy
      */
     setStrategy(strategy: 'round-robin' | 'sequential') {
+
         this.state.rotationStrategy = strategy;
         this.saveState();
         this.notifyListeners();
@@ -753,6 +856,7 @@ export class KeyManager {
             baseUrl: slot.baseUrl || GOOGLE_API_BASE,
             authMethod: slot.authMethod || 'query',
             headerName: slot.headerName || 'x-goog-api-key',
+            compatibilityMode: slot.compatibilityMode || 'standard',
             group: slot.group,
             provider: slot.provider || 'Google'
         };
@@ -883,16 +987,18 @@ export class KeyManager {
             return { success: false, error: '该 Key 已存在' };
         }
 
-        const isProxy = !!options?.baseUrl;
+        const baseUrl = options?.baseUrl || '';
+        const authMethod = options?.authMethod || getDefaultAuthMethod(baseUrl);
+        const headerName = options?.headerName || inferHeaderName(options?.provider || 'Custom', baseUrl, authMethod);
 
         const newSlot: KeySlot = {
             id: `key_${Date.now()}`,
             key: trimmedKey,
             name: options?.name || 'My Channel',
             provider: options?.provider || 'Custom',
-            baseUrl: options?.baseUrl || '',
-            authMethod: options?.authMethod || (isProxy ? 'header' : 'query'),
-            headerName: options?.headerName || 'x-goog-api-key',
+            baseUrl,
+            authMethod,
+            headerName,
             supportedModels: options?.supportedModels || [],
             status: 'unknown',
             failCount: 0,

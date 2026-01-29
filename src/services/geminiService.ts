@@ -1,9 +1,39 @@
-import { GoogleGenAI } from "@google/genai";
 import { AspectRatio, ImageSize, ModelType, ReferenceImage, GenerationMode } from "../types";
 import { keyManager } from './keyManager';
 import * as costService from './costService';
 import { AuthMethod, buildApiUrl, buildHeaders, GOOGLE_API_BASE } from './apiConfig';
 import { ProxyModelConfig } from './proxyModelConfig';
+import { logError } from './systemLogService';
+
+// Fallback control: allow config/env-driven auto-backoff when quota is exhausted
+let __fallbackFlagCache: boolean | null = null;
+async function getFallbackFlag(): Promise<boolean> {
+  if (__fallbackFlagCache !== null) return __fallbackFlagCache;
+  // Default: enabled
+  let flag = true;
+  // Environment variable (Node-like env); may be undefined in some bundlers
+  try {
+    const envVal = (typeof process !== 'undefined' && (process as any).env?.GEMINI_FALLBACK_ON_QUOTA) ?? undefined;
+    if (typeof envVal === 'string') flag = envVal.toLowerCase() !== 'false';
+  } catch { }
+  // Configuration file (relative path at runtime)
+  try {
+    const cfgUrl = '/config/model_service_config.json';
+    if (typeof fetch === 'function') {
+      const resp = await fetch(cfgUrl, { cache: 'no-store' });
+      if (resp.ok) {
+        const cfg = await resp.json();
+        const v = cfg?.transit?.fallbackOnQuota;
+        if (typeof v === 'boolean') flag = v;
+        else if (typeof v === 'string') flag = v.toLowerCase() !== 'false';
+      }
+    }
+  } catch {
+    // ignore and keep previous flag
+  }
+  __fallbackFlagCache = flag;
+  return flag;
+}
 
 // Detect environment
 const isLocalDev = typeof window !== 'undefined' &&
@@ -18,13 +48,141 @@ const abortControllers = new Map<string, AbortController>();
 /**
  * Determine API Format based on Base URL
  */
-function detectApiFormat(baseUrl: string): 'openai' | 'gemini' {
+function detectApiFormat(baseUrl: string): 'openai' | 'gemini' | 'openai-chat-compat' {
   const url = baseUrl.toLowerCase();
   if (url.includes('googleapis.com') || url.includes('google.com')) return 'gemini';
   // Check for common OpenAI-compatible proxy signatures or explicit newapi/oneapi patterns
-  if (url.includes('newapi') || url.includes('oneapi') || url.includes('v1/images')) return 'openai';
+  if (url.includes('newapi') || url.includes('oneapi') || url.includes('v1/images') || url.includes('vodeshop.com')) return 'openai-chat-compat';
   // Default to OpenAI format for custom proxies unless it looks like Gemini
   return 'openai';
+}
+
+export function normalizeProxyBaseUrl(baseUrl: string): string {
+  let clean = (baseUrl || '').trim();
+  if (!clean) return '';
+  clean = clean.replace(/\/+$/, '');
+
+  const suffixes = [
+    '/v1/chat/completions',
+    '/chat/completions',
+    '/v1/images/generations',
+    '/images/generations',
+    '/v1beta',
+    '/v1',
+    '/api'
+  ];
+
+  let stripped = true;
+  while (stripped) {
+    stripped = false;
+    const lower = clean.toLowerCase();
+    for (const suffix of suffixes) {
+      if (lower.endsWith(suffix)) {
+        clean = clean.slice(0, -suffix.length).replace(/\/+$/, '');
+        stripped = true;
+        break;
+      }
+    }
+  }
+
+  return clean;
+}
+
+export function buildProxyHeaders(
+  authMethod: AuthMethod,
+  apiKey: string,
+  headerName?: string,
+  group?: string
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+
+  if (authMethod === 'header') {
+    const resolvedHeader = headerName || 'Authorization';
+    const normalizedHeader = resolvedHeader.toLowerCase();
+    const value = normalizedHeader === 'authorization'
+      ? (apiKey.toLowerCase().startsWith('bearer ') ? apiKey : `Bearer ${apiKey}`)
+      : apiKey;
+    headers[resolvedHeader] = value;
+  }
+
+  // OpenRouter Specific Headers for CORS
+  if (apiKey.startsWith('sk-or-') || (headerName && headerName.toLowerCase() === 'authorization')) {
+    if (typeof window !== 'undefined') {
+      headers['HTTP-Referer'] = window.location.origin;
+      headers['X-Title'] = 'KK Studio';
+    }
+  }
+
+  if (group) {
+    headers['X-Group'] = group;
+  }
+
+  return headers;
+}
+
+function toDataUrl(image: ReferenceImage): string {
+  return `data:${image.mimeType};base64,${image.data}`;
+}
+
+function buildChatContent(prompt: string, referenceImages: ReferenceImage[]): Array<{ type: string;[key: string]: any }> {
+  const content: Array<{ type: string;[key: string]: any }> = [{ type: 'text', text: prompt }];
+  referenceImages?.forEach((img) => {
+    if (!img?.data) return;
+    content.push({
+      type: 'image_url',
+      image_url: { url: toDataUrl(img) }
+    });
+  });
+  return content;
+}
+
+function extractImageFromChatResponse(result: any): { dataUrl?: string; url?: string } | null {
+  if (!result) return null;
+
+  const directB64 = result?.data?.[0]?.b64_json;
+  if (directB64) {
+    return { dataUrl: `data:image/png;base64,${directB64}` };
+  }
+  const directUrl = result?.data?.[0]?.url;
+  if (directUrl) {
+    return { url: directUrl };
+  }
+
+  const content = result?.choices?.[0]?.message?.content;
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      const b64 = part?.image?.b64_json || part?.b64_json;
+      if (b64) {
+        return { dataUrl: `data:image/png;base64,${b64}` };
+      }
+      const url = part?.image_url?.url || part?.image_url || part?.image?.url || part?.url;
+      if (url) {
+        return { url };
+      }
+    }
+  }
+
+  if (typeof content === 'string') {
+    const mdImageRegex = /!\[.*?\]\((.*?)\)/;
+    const urlRegex = /(https?:\/\/[^\s)]+)/;
+    const mdMatch = content.match(mdImageRegex);
+    if (mdMatch && mdMatch[1]) {
+      return { url: mdMatch[1] };
+    }
+    const urlMatch = content.match(urlRegex);
+    if (urlMatch) {
+      return { url: urlMatch[1] };
+    }
+  }
+
+  const legacyUrl = result?.choices?.[0]?.message?.image_url?.url || result?.choices?.[0]?.message?.image_url;
+  if (legacyUrl) {
+    return { url: legacyUrl };
+  }
+
+  return null;
 }
 
 /**
@@ -33,10 +191,53 @@ function detectApiFormat(baseUrl: string): 'openai' | 'gemini' {
 export const cancelGeneration = (id: string) => {
   const controller = abortControllers.get(id);
   if (controller) {
-    controller.abort();
+    controller.abort("Generation cancelled by user"); // Add reason
     abortControllers.delete(id);
   }
 };
+
+/**
+ * Helper to perform fetch with timeout and external signal support
+ */
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number, externalSignal?: AbortSignal): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutMsg = `Request timed out after ${timeoutMs / 1000}s`;
+  const timeoutId = setTimeout(() => controller.abort(timeoutMsg), timeoutMs);
+
+  // If external signal exists, listen to it
+  const onExternalAbort = () => controller.abort(externalSignal?.reason || "Operation cancelled");
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timeoutId);
+      throw new Error(externalSignal.reason || "Operation cancelled");
+    }
+    externalSignal.addEventListener('abort', onExternalAbort);
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+    return response;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+
+    // Enhance error message
+    if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+      if (controller.signal.aborted) {
+        // Check if it was our timeout or external cancellation
+        const reason = controller.signal.reason;
+        if (reason === timeoutMsg) throw new Error("Connection timed out (Check network/proxy)");
+        throw new Error(typeof reason === 'string' ? reason : "Request cancelled");
+      }
+    }
+    throw error;
+  }
+}
 
 /**
  * 模型 ID 映射表
@@ -136,8 +337,10 @@ function normalizeError(error: any): Error {
   if (msg.includes("safety") || msg.includes("blocked") || msg.includes("policy")) return new Error("生成内容被安全策略拦截，请修改提示词");
   if (msg.includes("400") || msg.includes("invalid_argument")) return new Error("请求参数无效：模型可能不支持当前配置");
   if (msg.includes("500") || msg.includes("internal")) return new Error("谷歌服务器繁忙 (500)，请稍后重试");
-  if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) return new Error("网络连接失败，请检查您的网络设置");
-  return new Error(`生成失败: ${error.message || '未知错误'}`);
+  if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) return new Error("网络连接失败 (Network Error)，请检查您的网络设置或代理配置");
+
+  // Return the original error message for better debugging
+  return new Error(`生成失败: ${error.message || '未知错误'} (请按 F12 查看控制台详情)`);
 }
 
 /**
@@ -200,7 +403,7 @@ function mapToOpenAISize(aspectRatio: AspectRatio, imageSize: ImageSize, model: 
 async function generateImageViaBackend(
   prompt: string, aspectRatio: AspectRatio, imageSize: ImageSize, referenceImages: ReferenceImage[],
   model: ModelType, apiKey: string, requestId?: string
-): Promise<string> {
+): Promise<{ url: string, tokens?: number, cost?: number }> {
   const controller = requestId ? abortControllers.get(requestId) : undefined;
   if (controller?.signal.aborted) throw new Error('Generation cancelled');
 
@@ -234,7 +437,7 @@ async function generateImageViaBackend(
     }
 
     const data = await response.json();
-    if (data.success && data.imageData) return `data:${data.mimeType || "image/png"};base64,${data.imageData}`;
+    if (data.success && data.imageData) return { url: `data:${data.mimeType || "image/png"};base64,${data.imageData}`, tokens: 0, cost: 0 };
     throw new Error(data.error || "未能生成图片");
 
   } catch (error: any) {
@@ -257,7 +460,7 @@ export const generateImage = async (
   apiKey: string = '',
   requestId?: string,
   enableGrounding: boolean = false
-): Promise<string> => {
+): Promise<{ url: string, tokens?: number, cost?: number }> => {
   // Defensive: Strip '-4k' suffix globally if present
   if (model.toLowerCase().endsWith('-4k')) {
     model = model.replace(/-4k$/i, '') as ModelType;
@@ -316,6 +519,7 @@ export const generateImage = async (
   let headerName = 'x-goog-api-key';
   let provider: string = 'Google';
   let group: string | undefined;
+  let compatibilityMode: 'standard' | 'chat' = 'standard';
 
   // If no explicit API key, ask KeyManager
   if (!effectiveKey) {
@@ -328,6 +532,7 @@ export const generateImage = async (
       headerName = keyData.headerName;
       group = keyData.group;
       provider = keyData.provider;
+      compatibilityMode = (keyData as any).compatibilityMode || 'standard';
     } else {
       // Fallback: Check env var (only for basic local setup)
       if (import.meta.env.VITE_GEMINI_API_KEY) {
@@ -345,104 +550,138 @@ export const generateImage = async (
   // 2. Retry Loop
   const MAX_ATTEMPTS = 3;
   let lastError: any = null;
+  let lastFormat: 'openai' | 'gemini' | 'openai-chat-compat' | null = null;
+
+  // 3. Detect API format and prepare request
+  let apiFormat: 'openai' | 'gemini' | 'openai-chat-compat' = detectApiFormat(baseUrl);
+  const cleanBase = normalizeProxyBaseUrl(baseUrl) || baseUrl.trim().replace(/\/$/, '');
+
+  // 4. Smart fallback for Cherry API vs Standard NewAPI
+  if (model.includes('nano-banana') || model.includes('gemini-2.5-flash-image')) {
+    apiFormat = 'openai-chat-compat';
+  }
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
-      if (controller?.signal.aborted) throw new Error('Generation cancelled');
+      let usageData = { tokens: 0, cost: 0 };
+      let result: any;
 
-      // Determine API Format
-      // STRICT RULE: If provider is explicitly Google, ALWAYS use gemini format
-      // This supports custom proxies like "gemini-api.cn" that don't match googleapis.com but wrap the native API
-      let apiFormat = detectApiFormat(baseUrl);
-      if (provider === 'Google') {
-        apiFormat = 'gemini';
-      }
+      // -----------------------------------------------------------------------
+      // CASE 1: Chat Compatibility Mode (Cherry API / Midjourney Proxy)
+      // -----------------------------------------------------------------------
+      if (apiFormat === 'openai-chat-compat' || compatibilityMode === 'chat') {
+        const apiUrl = `${cleanBase}/v1/chat/completions`;
 
-      console.log(`[GenService] Attempt ${attempt + 1} | Model: ${model} | Format: ${apiFormat} | BaseURL: ${baseUrl}`);
-
-      if (apiFormat === 'gemini') {
-        // --- GEMINI FORMAT (Official / Vertex / Gemini Proxy) ---
-
-        // Prepare contents
-        const parts: any[] = [{ text: prompt }];
-        referenceImages?.forEach(img => parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } }));
-
-        // Prepare Config
-        const generationConfig: any = { responseModalities: ['TEXT', 'IMAGE'] };
-
-        // Tools (Grounding)
-        const supportsTools = !model.includes('gemini-2.5-flash-image') && !model.includes('nano-banana');
-        const tools = (enableGrounding && supportsTools) ? [{ googleSearch: {} }] : undefined;
-
-        // Image Config
-        generationConfig.imageConfig = {};
-        if (aspectRatio) generationConfig.imageConfig.aspectRatio = aspectRatio;
-        const isFlashModel = model === 'nano-banana' || model.includes('gemini-2.5-flash-image');
-        if (!isFlashModel && imageSize && imageSize !== '1K') {
-          generationConfig.imageConfig.imageSize = imageSize;
-        }
-
-        // Map Model ID (important for aliases like nano-banana)
-        // If it's a proxy (custom base url), we usually keep original ID unless we have specific mapping logic
-        const isProxy = provider !== 'Google';
-        const apiModelId = mapToApiModelId(model, isProxy);
-
-        const apiUrl = buildApiUrl(baseUrl, apiModelId, 'generateContent', authMethod, effectiveKey);
-
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: buildHeaders(authMethod, effectiveKey, headerName),
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts }],
-            generationConfig,
-            tools
-          }),
-          signal: controller?.signal || AbortSignal.timeout(300000)
+        // ... (body construction skipped for brevity, assumed unchanged) ...
+        const contentParts: any[] = [{ type: 'text', text: prompt }];
+        referenceImages?.forEach((img) => {
+          if (img?.data) {
+            let finalUrl = img.data;
+            if (!img.data.startsWith('data:') && !img.data.startsWith('http')) {
+              finalUrl = `data:${img.mimeType || 'image/png'};base64,${img.data}`;
+            }
+            contentParts.push({ type: 'image_url', image_url: { url: finalUrl } });
+          }
         });
 
-        // Update Quota
-        if (keyId) {
-          const limit = response.headers.get('x-ratelimit-limit-requests');
-          const remaining = response.headers.get('x-ratelimit-remaining-requests');
-          if (limit || remaining) {
-            keyManager.updateQuota(keyId, {
-              limitRequests: parseInt(limit || '0'),
-              remainingRequests: parseInt(remaining || '0'),
-              resetTime: Date.now() + 60000, // Estimate 1 min reset if not provided
-              updatedAt: Date.now()
-            });
-          }
+        const requestBody = {
+          model: model,
+          stream: false,
+          messages: [{ role: 'user', content: contentParts }],
+          max_tokens: 4096
+        };
+
+        const response = await fetchWithTimeout(apiUrl, {
+          method: 'POST',
+          headers: buildProxyHeaders(authMethod, effectiveKey, headerName, group),
+          body: JSON.stringify(requestBody)
+        }, 300000, controller?.signal);
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `Chat-Image Request Failed: ${response.status}`);
         }
+
+        result = await response.json();
+        const extracted = extractImageFromChatResponse(result);
+
+        if (extracted?.dataUrl || extracted?.url) {
+          if (keyId) {
+            keyManager.reportSuccess(keyId);
+            const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, referenceImages?.length || 0);
+            keyManager.addUsage(keyId, tokens);
+            keyManager.addCost(keyId, cost);
+            costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, referenceImages?.length || 0);
+            usageData = { tokens, cost };
+          }
+          if (extracted.dataUrl) return { url: extracted.dataUrl, ...usageData };
+          if (extracted.url) return { url: extracted.url, ...usageData };
+        }
+        throw new Error("Model responded but no image URL found in chat response");
+
+      }
+      // -----------------------------------------------------------------------
+      // CASE 2: Native Gemini API
+      // -----------------------------------------------------------------------
+      else if (apiFormat === 'gemini') {
+        const apiUrl = buildApiUrl(cleanBase, model, 'generateContent', authMethod, effectiveKey);
+        const headers = buildHeaders(authMethod, effectiveKey, headerName);
+        if (group) headers['X-Group'] = group;
+
+        // Append Aspect Ratio to prompt since it's not supported in generationConfig for some models
+        const promptWithRatio = `${prompt} --aspect ${aspectRatio}`;
+        const parts: any[] = [{ text: promptWithRatio }];
+        referenceImages?.forEach((img) => {
+          if (img?.data) {
+            let base64Data = img.data;
+            let mimeType = img.mimeType || 'image/png';
+            if (img.data.startsWith('data:')) {
+              const matches = img.data.match(/^data:(.+);base64,(.+)$/);
+              if (matches) { mimeType = matches[1]; base64Data = matches[2]; }
+            }
+            if (!img.data.startsWith('http') && !img.data.startsWith('blob:')) {
+              parts.push({ inlineData: { mimeType, data: base64Data } });
+            }
+          }
+        });
+
+        const generationConfig = { responseModalities: ['IMAGE', 'TEXT'] };
+        const tools = enableGrounding ? [{ googleSearch: {} }] : undefined;
+
+        const response = await fetchWithTimeout(apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig, tools })
+        }, 300000, controller?.signal);
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
           throw new Error(errData.error?.message || `HTTP ${response.status}`);
         }
 
-        const result = await response.json();
+        result = await response.json();
         const inlineData = result.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData;
 
         if (inlineData) {
           if (keyId) {
             keyManager.reportSuccess(keyId);
-            const { cost, tokens } = costService.calculateCost(model, imageSize || '1K', 1, prompt.length, referenceImages?.length || 0);
+            const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, referenceImages?.length || 0);
             keyManager.addUsage(keyId, tokens);
             keyManager.addCost(keyId, cost);
-            costService.recordCost(model, imageSize || '1K', 1, prompt, referenceImages?.length || 0);
+            costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, referenceImages?.length || 0);
+            usageData = { tokens, cost };
           }
-          return `data:image/png;base64,${inlineData.data}`;
+          return { url: `data:image/png;base64,${inlineData.data}`, ...usageData };
         }
         throw new Error("No image data in Gemini response");
 
-      } else {
-        // --- OPENAI FORMAT (NewAPI / OneAPI / OpenAI) ---
-        // Clean URL
-        let cleanBase = baseUrl.trim().replace(/\/$/, '');
-        if (cleanBase.endsWith('/v1')) cleanBase = cleanBase.substring(0, cleanBase.length - 3);
+      }
+      // -----------------------------------------------------------------------
+      // CASE 3: Standard OpenAI Image API (Default)
+      // -----------------------------------------------------------------------
+      else {
         const apiUrl = `${cleanBase}/v1/images/generations`;
-
         const size = mapToOpenAISize(aspectRatio, imageSize, model);
-
         const requestBody = {
           model: model,
           prompt: prompt,
@@ -450,66 +689,103 @@ export const generateImage = async (
           size: size,
           response_format: 'b64_json'
         };
+        const headers = buildProxyHeaders(authMethod, effectiveKey, headerName, group);
 
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${effectiveKey}`,
-            'x-goog-api-key': effectiveKey // Sometimes needed
-          },
-          body: JSON.stringify(requestBody),
-          signal: controller?.signal || AbortSignal.timeout(300000)
-        });
+        let response;
+        try {
+          response = await fetchWithTimeout(apiUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(requestBody)
+          }, 300000, controller?.signal);
+        } catch (netErr) {
+          throw netErr;
+        }
+
+        // >>> AUTO-FALLBACK LOGIC <<<
+        // If 404/405 (Method Not Allowed), switch to Chat Mode immediately
+        if (response.status === 404 || response.status === 405) {
+          console.log(`[GenService] Image endpoint ${response.status}, switching to Chat Mode (Auto-Fallback)...`);
+          apiFormat = 'openai-chat-compat';
+          attempt--; // Retry immediately
+          continue;
+        }
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error?.message || `HTTP ${response.status}`);
+          const errMsg = errData.error?.message || `HTTP ${response.status}`;
+
+          // Retry without response_format if not supported
+          if (errMsg.toLowerCase().includes('response_format') || errMsg.toLowerCase().includes('b64_json')) {
+            const fallbackBody = { ...requestBody } as Record<string, any>;
+            delete fallbackBody.response_format;
+            response = await fetchWithTimeout(apiUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(fallbackBody)
+            }, 300000, controller?.signal);
+          } else {
+            // Fallback to backend if quota exhausted
+            const shouldFallback = await getFallbackFlag();
+            if (shouldFallback && (errMsg.toLowerCase().includes('quota') || (errData?.error?.code ?? '').toString().toLowerCase().includes('quota'))) {
+              return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId);
+            }
+            throw new Error(errMsg);
+          }
         }
 
-        const result = await response.json();
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        result = await response.json();
         const b64 = result.data?.[0]?.b64_json;
+
         if (b64) {
           if (keyId) {
             keyManager.reportSuccess(keyId);
-            // Assume similar price logging for compatibility
-            const { cost, tokens } = costService.calculateCost(model, imageSize || '1K', 1, prompt.length, 0);
+            const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, 0);
             keyManager.addUsage(keyId, tokens);
             keyManager.addCost(keyId, cost);
-            costService.recordCost(model, imageSize || '1K', 1, prompt, 0);
+            costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, 0);
+            usageData = { tokens, cost };
           }
-          return `data:image/png;base64,${b64}`;
+          return { url: `data:image/png;base64,${b64}`, ...usageData };
         }
 
-        // Handle URL fallback
         if (result.data?.[0]?.url) {
-          // ... fetch url logic ...
-          // For brevity, assuming B64 preferred or simple fetch
-          const imgRes = await fetch(result.data[0].url);
+          const imageUrl = result.data[0].url;
+          if (!imageUrl.startsWith('http')) throw new Error("Invalid URL protocol: " + imageUrl);
+
+          const imgRes = await fetch(imageUrl);
           const blob = await imgRes.blob();
           const reader = new FileReader();
           return new Promise((resolve, reject) => {
             reader.onloadend = () => {
               const base64 = (reader.result as string).split(',')[1];
-              if (keyId) keyManager.reportSuccess(keyId);
-              resolve(`data:image/png;base64,${base64}`);
+              const mimeType = blob.type || 'image/png';
+              if (keyId) {
+                keyManager.reportSuccess(keyId);
+                const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, 0);
+                keyManager.addUsage(keyId, tokens);
+                keyManager.addCost(keyId, cost);
+                costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, 0);
+              }
+              resolve({ url: `data:${mimeType};base64,${base64}`, ...usageData });
             };
             reader.onerror = reject;
             reader.readAsDataURL(blob);
           });
         }
-
-        throw new Error("No image data in OpenAI response");
+        throw new Error("No image data in OpenAI images response");
       }
 
     } catch (error: any) {
       if (error.name === 'AbortError' || error.message === 'Generation cancelled') throw error;
 
       console.warn(`[GenService] Error attempt ${attempt + 1}:`, error.message);
+      logError('GeminiService', error, `model=${model} format=${lastFormat || 'unknown'} baseUrl=${baseUrl} provider=${provider}`);
 
       if (keyId) {
         keyManager.reportFailure(keyId, error.message);
-        // Rotate Key
         const nextKey = keyManager.getNextKey(model);
         if (nextKey && nextKey.id !== keyId) {
           keyId = nextKey.id;
@@ -519,12 +795,12 @@ export const generateImage = async (
           headerName = nextKey.headerName;
           provider = nextKey.provider || provider;
           group = nextKey.group;
+          compatibilityMode = (nextKey as any).compatibilityMode || 'standard';
         } else {
-          // No more keys
           break;
         }
       } else {
-        break; // Env key failed, no rotation
+        break;
       }
       lastError = error;
     }
@@ -548,24 +824,16 @@ export const generateVideo = async (
 
 export const validateApiKey = async (apiKey: string): Promise<boolean> => {
   if (!apiKey) return false;
-  if (isLocalDev) {
-    try {
-      const ai = new GoogleGenAI({ apiKey });
-      await ai.models.get({ model: 'models/gemini-1.5-flash' });
-      return true;
-    } catch (e: any) {
-      const msg = (e.message || '').toLowerCase();
-      return !(msg.includes('403') || msg.includes('401') || msg.includes('permission'));
-    }
-  }
   try {
-    const response = await fetch(API_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: "test", aspectRatio: "1:1", model: "imagen-3.0-generate-001", referenceImages: [], apiKey }),
-    });
-    return response.status !== 403;
-  } catch { return true; }
+    const response = await fetchWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      { method: 'GET' },
+      15000
+    );
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
 };
 
 /**
@@ -603,6 +871,7 @@ export const generateText = async (
 
   if (!effectiveKey) throw new Error("MISSING_API_KEY");
 
+  // Chat Logic...
   const MAX_ATTEMPTS = 3; // Retry fewer times for chat to be responsive
   let lastError: any = null;
 
@@ -620,15 +889,15 @@ export const generateText = async (
       if (group) {
         headers['X-Group'] = group;
       }
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         buildApiUrl(baseUrl, model, 'generateContent', authMethod, effectiveKey),
         {
           method: 'POST',
           headers,
           body: JSON.stringify({ contents }),
-          signal: AbortSignal.timeout(120000) // 120s timeout for chat (Increased for complex tasks)
-        }
-      );
+        },
+        120000
+      ); // 120s timeout
 
       // Update Quota (if using managed key)
       if (keyId) {
@@ -697,4 +966,58 @@ export const generateText = async (
 
   if (lastError) throw normalizeError(lastError);
   throw new Error("Chat generation failed");
+};
+
+/**
+ * Test a specific channel configuration functionality
+ */
+export const testChannelConfig = async (
+  config: { apiKey: string, baseUrl: string, model: string, compatibilityMode: 'standard' | 'chat', provider: string }
+): Promise<{ success: boolean; message: string; details?: any }> => {
+  try {
+    const prompt = "Test connection";
+    const model = config.model || 'gpt-3.5-turbo'; // Default if empty
+    const isChatMode = config.compatibilityMode === 'chat';
+
+    const url = normalizeProxyBaseUrl(config.baseUrl) || config.baseUrl.replace(/\/$/, '');
+    const inferredAuthMethod: AuthMethod = config.provider === 'Google' ? 'query' : 'header';
+    const inferredHeaderName = config.provider === 'Google' ? 'x-goog-api-key' : 'Authorization';
+
+    const endpoint = isChatMode
+      ? `${url}/v1/chat/completions`
+      : (config.provider === 'Google' ? buildApiUrl(config.baseUrl, model, 'generateContent', 'query', config.apiKey) : `${url}/v1/images/generations`);
+
+    // Simplified test request
+    // If Chat format, try a simple chat
+    if (isChatMode) {
+      const res = await fetch(`${url}/v1/chat/completions`, {
+        method: 'POST',
+        headers: buildProxyHeaders(inferredAuthMethod, config.apiKey, inferredHeaderName),
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }],
+          max_tokens: 5
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || res.statusText);
+      }
+      return { success: true, message: "Connected to Chat Endpoint successfully!" };
+    } else {
+      // Standard Image: Use list models as a proxy for "Connection OK".
+      const listUrl = config.provider === 'Google'
+        ? `${url}/v1beta/models?key=${config.apiKey}`
+        : `${url}/v1/models`;
+      const res = await fetch(listUrl, { headers: buildProxyHeaders(inferredAuthMethod, config.apiKey, inferredHeaderName) });
+      if (res.ok) return { success: true, message: "Connection verified (Models listed)" };
+
+      if (res.status === 404 || res.status === 405) {
+        return { success: false, message: "Could not list models. Creating a real test generation is recommended." };
+      }
+      throw new Error(`Connection failed: ${res.status}`);
+    }
+  } catch (e: any) {
+    return { success: false, message: e.message };
+  }
 };

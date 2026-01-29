@@ -41,13 +41,17 @@ const LoginScreen: React.FC = () => {
         setConfirmPassword('');
     }, [view]);
 
+    const [retryCount, setRetryCount] = useState(0);
+    const MAX_RETRIES = 3;
+
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
         setMessage(null);
 
-        try {
+        // Helper function for actual auth attempt
+        const attemptAuth = async (): Promise<void> => {
             if (view === 'register') {
                 if (password !== confirmPassword) {
                     throw new Error("两次输入的密码不一致");
@@ -91,6 +95,11 @@ const LoginScreen: React.FC = () => {
                 if (error) throw error;
                 setMessage('重置链接已发送！请检查您的邮箱。');
             }
+        };
+
+        try {
+            await attemptAuth();
+            setRetryCount(0); // Reset on success
         } catch (err: any) {
             console.error('Login Error:', err);
             if (view === 'register' && (err.message?.includes('User already registered') || err.status === 400)) {
@@ -99,13 +108,37 @@ const LoginScreen: React.FC = () => {
                 setError('邮箱或密码错误');
             } else if (err.message?.includes('Email not confirmed')) {
                 setError('请先前往邮箱激活您的账号');
-            } else if (err.message?.includes('Failed to fetch')) {
-                // Auto Fallback to Offline Mode
-                console.log('Network failed, switching to Offline Mode');
-                setError('网络连接超时，正在切换至离线模式...');
-                setTimeout(async () => {
-                    await bypassAuth(email || 'offline@user', (email?.split('@')[0]) || 'Offline User');
-                }, 1000);
+            } else if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError') || err.message?.includes('network')) {
+                // Network error - implement retry logic
+                const currentRetry = retryCount + 1;
+                setRetryCount(currentRetry);
+
+                if (currentRetry < MAX_RETRIES) {
+                    setError(`网络连接失败，正在重试... (${currentRetry}/${MAX_RETRIES})`);
+                    // Auto retry after 1.5 seconds
+                    setTimeout(async () => {
+                        try {
+                            await attemptAuth();
+                            setRetryCount(0);
+                            setError(null);
+                        } catch (retryErr: any) {
+                            if (retryErr.message?.includes('Failed to fetch')) {
+                                // Trigger another retry by re-submitting
+                                const form = document.querySelector('form');
+                                if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                            } else {
+                                setError(retryErr.message || '操作失败，请重试');
+                            }
+                        } finally {
+                            setLoading(false);
+                        }
+                    }, 1500);
+                    return; // Don't set loading to false yet
+                } else {
+                    // Max retries reached, show option to go offline
+                    setError(`网络连接失败 (已重试${MAX_RETRIES}次)。您可以点击下方"开发者离线模式"按钮暂时使用。`);
+                    setRetryCount(0); // Reset for next attempt
+                }
             } else {
                 setError(err.message || '操作失败，请重试');
             }
@@ -169,7 +202,7 @@ const LoginScreen: React.FC = () => {
                         无限画布，无限创意。
                     </p>
                     <div className="absolute bottom-8 left-0 right-0 text-center opacity-30 text-xs font-mono">
-                        v1.2.2 BUILD 2026.01
+                        v1.2.3 BUILD 2026.01
                     </div>
                 </div>
             </div>

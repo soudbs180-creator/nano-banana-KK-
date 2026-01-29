@@ -84,12 +84,14 @@ export enum ChatModelType {
 
 export interface ReferenceImage {
   id: string;
+  storageId?: string; // Content-based Hash ID for storage deduplication
   data: string; // Base64
   mimeType: string;
 }
 
 export interface GeneratedImage {
   id: string;
+  storageId?: string; // Content-based Hash ID for storage deduplication
   url: string;
   originalUrl?: string; // High-res original (if different from url)
   prompt: string;
@@ -103,6 +105,8 @@ export interface GeneratedImage {
   dimensions?: string; // e.g. "1024x1024"
   mode?: GenerationMode; // New: track creation mode
   tags?: string[]; // Search tags
+  tokens?: number; // New: Token usage
+  cost?: number; // New: Estimated cost
 }
 
 export interface PromptNode {
@@ -122,6 +126,7 @@ export interface PromptNode {
   mode?: GenerationMode; // New
   height?: number; // Dynamic height for connection line anchoring
   tags?: string[]; // Search tags
+  isDraft?: boolean; // Preview/Draft state
 }
 
 export interface CanvasGroup {

@@ -128,7 +128,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         const delay = Math.max(20000 - elapsed, 0);
         autoCloseTimerRef.current = window.setTimeout(() => {
             if (!isHovering && isOpen) closeChat();
-        }, delay);
+        }, delay) as any;
     }, [clearAutoClose, closeChat, isDragging, isHovering, isOpen]);
 
     const registerActivity = useCallback(() => {
@@ -294,6 +294,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     style={{ left: position.x, bottom: position.y }}
                 >
                     <div
+                        id="chat-trigger-button"
                         onMouseDown={startDrag}
                         className={`group relative w-12 h-12 rounded-full bg-gradient-to-tr from-blue-500 to-cyan-400 flex items-center justify-center text-white shadow-2xl animate-float-breathe cursor-move active:scale-95 transition-transform hover:brightness-110 ${isDragging ? 'cursor-grabbing scale-95' : ''}`}
                         title="Open AI Assistant (Drag to move)"

@@ -1,0 +1,19 @@
+{
+  "transit": {
+    "baseUrl": "https://future-api.vodeshop.com",
+    "modelsPath": "/v1beta/models",
+    "chatPath": "/v1/chat/completions",
+    "defaultModel": "gemini-2.5-flash-image",
+    "auth": {
+      "method": "bearer",
+      "headerName": "Authorization",
+      "apiKeyEnv": "GEMINI_API_KEY"
+    },
+    "apiFormat": "openai",
+    "compatibilityMode": "chat"
+  },
+  "pricing": {
+    "source": "modelPricing",
+    "overrideKey": "kk_model_pricing_overrides"
+  }
+}

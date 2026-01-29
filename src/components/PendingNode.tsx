@@ -235,7 +235,7 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                     return (
                         <React.Fragment key={i}>
                             <svg className="pointer-events-none" style={{ position: 'absolute', left: '50%', top: 0, overflow: 'visible', zIndex: 10 }}>
-                                <path d={`M0,0 L${offsetX},${offsetY}`} fill="none" stroke="#3f3f46" strokeWidth="1" strokeDasharray="3 4" />
+                                <path d={`M0,0 L${offsetX},${offsetY}`} fill="none" stroke="#3f3f46" strokeWidth="1" strokeDasharray="4 4" />
                             </svg>
                             <div
                                 className="absolute rounded-2xl overflow-hidden shadow-lg flex items-center justify-center"
