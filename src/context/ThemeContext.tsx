@@ -24,6 +24,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         const applyMode = (mode: 'dark' | 'light') => {
             body.classList.toggle('dark-mode', mode === 'dark');
+            root.classList.toggle('dark', mode === 'dark');
             root.style.colorScheme = mode;
         };
 

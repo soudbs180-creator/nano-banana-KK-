@@ -391,9 +391,14 @@ function mapToOpenAISize(aspectRatio: AspectRatio, imageSize: ImageSize, model: 
     },
     '4K': {
       [AspectRatio.SQUARE]: '2048x2048',
-      [AspectRatio.LANDSCAPE_16_9]: '2048x1152',
+      [AspectRatio.PORTRAIT_3_4]: '1536x2048',
+      [AspectRatio.LANDSCAPE_4_3]: '2048x1536',
       [AspectRatio.PORTRAIT_9_16]: '1152x2048',
+      [AspectRatio.LANDSCAPE_16_9]: '2048x1152',
+      [AspectRatio.LANDSCAPE_21_9]: '2048x858',
       [AspectRatio.PORTRAIT_9_21]: '1080x2520',
+      [AspectRatio.LANDSCAPE_3_2]: '2048x1365',
+      [AspectRatio.PORTRAIT_2_3]: '1365x2048',
     }
   };
 
@@ -645,7 +650,29 @@ export const generateImage = async (
           }
         });
 
-        const generationConfig = { responseModalities: ['IMAGE', 'TEXT'] };
+        // Create explicit Image Generation Configuration
+        const generationConfig: any = {
+          responseModalities: ['IMAGE', 'TEXT']
+        };
+
+        // Inject Image Parameters (Aspect Ratio & Size)
+        const imageParam: any = {};
+        if (aspectRatio && aspectRatio !== AspectRatio.AUTO) {
+          imageParam.aspectRatio = aspectRatio;
+        }
+        if (imageSize) {
+          imageParam.imageSize = imageSize; // "1K", "2K", "4K"
+        }
+        // Only attach if we have parameters (Imagen 3 / Gemini 3 Pro supports this)
+        if (Object.keys(imageParam).length > 0) {
+          // Note: Current Google API docs say parameters go into 'speechConfig' or similar for specialized modalities,
+          // but for Image Generation model 'generateContent', it's often strictly typed.
+          // Correct field for Imagen 3 via Gemini API is often 'imageGenerationConfig' or top-level tools?
+          // Let's use the 'media_resolution' equivalent OR strictly `image_config` if supported.
+          // UPDATE: Google AI Studio sends it as part of `generationConfig`.
+          generationConfig['imageConfig'] = imageParam;
+        }
+
         const tools = enableGrounding ? [{ googleSearch: {} }] : undefined;
 
         const response = await fetchWithTimeout(apiUrl, {

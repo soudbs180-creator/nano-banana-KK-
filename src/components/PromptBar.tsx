@@ -8,13 +8,13 @@ import { calculateImageHash } from '../utils/imageUtils';
 const MobileMenu = ({ title, onClose, children }: { title: string, onClose: () => void, children: React.ReactNode }) => (
     <>
         <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md animate-fadeIn" onClick={onClose} />
-        <div className="fixed bottom-4 left-4 right-4 z-[201] bg-[#1c1c1e] border border-white/10 rounded-[32px] p-5 animate-slideUp shadow-2xl flex flex-col gap-5 max-h-[80vh] origin-bottom transform transition-transform">
-            <div className="w-10 h-1 bg-zinc-700/50 rounded-full mx-auto" />
+        <div className="fixed bottom-4 left-4 right-4 z-[201] bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-[32px] p-5 animate-slideUp shadow-2xl flex flex-col gap-5 max-h-[80vh] origin-bottom transform transition-transform">
+            <div className="w-10 h-1 bg-[var(--border-medium)] rounded-full mx-auto" />
             <div className="flex items-center justify-between px-1">
                 <span className="text-base font-bold text-white tracking-wide">{title}</span>
                 <button
                     onClick={onClose}
-                    className="w-7 h-7 flex items-center justify-center bg-zinc-800/50 hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-white transition-colors"
+                    className="w-7 h-7 flex items-center justify-center bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)] rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
                 >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
                 </button>
@@ -308,7 +308,39 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             return;
         }
 
-        // 2. 处理 URL (从图片卡片拖拽)
+        // 2. [NEW] Handle Internal Image Reuse (Optimized)
+        const internalRefData = e.dataTransfer.getData('application/x-kk-image-ref');
+        if (internalRefData) {
+            try {
+                const { storageId, mimeType } = JSON.parse(internalRefData);
+                if (storageId) {
+                    // reuse existing storageId!
+                    setConfig(prev => {
+                        // Prevent duplicates
+                        if (prev.referenceImages.some(img => img.storageId === storageId)) return prev;
+                        if (prev.referenceImages.length >= 5) {
+                            alert("最多只能上传 5 张参考图");
+                            return prev;
+                        }
+
+                        return {
+                            ...prev,
+                            referenceImages: [...prev.referenceImages, {
+                                id: Date.now() + Math.random().toString(),
+                                storageId,
+                                mimeType: mimeType || 'image/png',
+                                data: '' // Initialize as empty string to satisfy type and trigger loading spinner
+                            }]
+                        };
+                    });
+                    return;
+                }
+            } catch (err) {
+                console.error("Failed to parse internal image ref", err);
+            }
+        }
+
+        // 3. 处理 URL (从图片卡片拖拽 - Fallback or External)
         const url = e.dataTransfer.getData('text/plain');
         if (url) {
             // 检查是否为有效 URL 或 Data URI
@@ -425,12 +457,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             className="w-10 h-10 object-cover rounded-lg shadow-sm"
                         />
                         <div className="flex-1 min-w-0">
-                            <div className="text-xs font-semibold text-amber-500">从此图继续创作</div>
-                            <div className="text-xs text-zinc-400 truncate">{activeSourceImage.prompt}</div>
+                            <div className="text-xs font-semibold text-amber-600 dark:text-amber-500">从此图继续创作</div>
+                            <div className="text-xs text-[var(--text-tertiary)] truncate">{activeSourceImage.prompt}</div>
                         </div>
                         <button
                             onClick={onClearSource}
-                            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-500/10 text-zinc-500 hover:text-red-500 transition-colors"
+                            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-500/10 text-[var(--text-secondary)] hover:text-red-500 transition-colors"
                         >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                         </button>
@@ -494,7 +526,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             }}
                             onDragEnd={() => setDragSourceId(null)}
                         >
-                            <img src={`data:${img.mimeType};base64,${img.data}`} className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm pointer-events-none" alt="Reference" />
+                            {img.data ? (
+                                <img src={`data:${img.mimeType};base64,${img.data}`} className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm pointer-events-none" alt="Reference" />
+                            ) : (
+                                <div className="w-12 h-12 rounded-lg border border-white/10 shadow-sm bg-[var(--bg-tertiary)] flex items-center justify-center">
+                                    <div className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+                                </div>
+                            )}
                             <button onClick={() => removeReferenceImage(img.id)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
                         </div>
                     ))}
@@ -523,7 +561,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             <button
                                 id="models-dropdown-trigger"
                                 className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] max-w-[70vw] sm:max-w-none ${isModelListEmpty
-                                    ? 'bg-zinc-800/50 border-zinc-700 text-zinc-500 min-w-0 sm:min-w-[220px] cursor-not-allowed'
+                                    ? 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-tertiary)] min-w-0 sm:min-w-[220px] cursor-not-allowed'
                                     : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50 min-w-0 w-auto'
                                     }`}
                                 onClick={() => {
@@ -585,9 +623,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                                         return (
                                                             <div className="flex flex-wrap gap-2 mt-1">
-                                                                <span className="text-[10px] text-zinc-500 leading-tight break-all">ID: {model.id}</span>
+                                                                <span className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-tight break-all">ID: {model.id}</span>
                                                                 {features.map((f, i) => (
-                                                                    <span key={i} className="text-[10px] text-zinc-400 bg-zinc-800/50 px-1 rounded border border-zinc-700/50">
+                                                                    <span key={i} className="text-[10px] text-zinc-600 dark:text-zinc-400 bg-zinc-400/10 dark:bg-zinc-800/50 px-1 rounded border border-zinc-400/20 dark:border-zinc-700/50">
                                                                         {f}
                                                                     </span>
                                                                 ))}

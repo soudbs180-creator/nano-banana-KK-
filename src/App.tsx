@@ -315,7 +315,7 @@ const AppContent: React.FC = () => {
           aspectRatio: parsed.aspectRatio || AspectRatio.SQUARE,
           imageSize: parsed.imageSize || ImageSize.SIZE_1K,
           parallelCount: parsed.parallelCount || 1,
-          referenceImages: [], // Always reset images
+          referenceImages: parsed.referenceImages || [], // Load metadata
           model: parsed.model || KnownModel.IMAGEN_3,
           enableGrounding: parsed.enableGrounding || false,
           mode: parsed.mode || GenerationMode.IMAGE
@@ -337,20 +337,86 @@ const AppContent: React.FC = () => {
     };
   });
 
+  // [New] Hydrate Reference Images from IndexedDB
+  useEffect(() => {
+    const hydrate = async () => {
+      // Only hydrate if we have images with storageId but missing data
+      const needsHydration = config.referenceImages.some(img => !img.data && img.storageId);
+      if (!needsHydration) return;
+
+      const { getImage } = await import('./services/imageStorage');
+
+      const hydratedImages = await Promise.all(config.referenceImages.map(async (img) => {
+        if (!img.data && img.storageId) {
+          try {
+            // Try to find image by storageId
+            const dataUrl = await getImage(img.storageId);
+
+            if (dataUrl) {
+              // If it's a raw base64 string without prefix, we might need to be careful?
+              // But imageStorage saves what it gets.
+              // However, PromptBar expects 'data' to be JUST the base64 part often in 'src' construction: `data:${img.mimeType};base64,${img.data}`
+              // Let's check what imageStorage returns. It returns what saveImage gets.
+
+              // PromptBar: processFiles -> setConfig ... img.data is RAW BASE64 (matches[2])
+              // PromptBar: processFiles -> setConfig ... img.storageId = calculateImageHash(data)
+
+              // So if we save `img.data` (raw base64) to IndexedDB, we get raw base64 back.
+              return { ...img, data: dataUrl };
+            }
+          } catch (e) {
+            console.error('Failed to hydrate image', img.id, e);
+          }
+        }
+        return img;
+      }));
+
+      // Update state with hydrated images, only if actually changed
+      // To avoid infinite loop, we compare stringified or reference equality?
+      // But 'hydrate' runs on config change. If we update config, it runs again.
+      // We must ensure we don't trigger if already hydrated.
+      // The check `needsHydration` handles this.
+
+      setConfig(prev => ({ ...prev, referenceImages: hydratedImages }));
+    };
+
+    hydrate();
+  }, [config.referenceImages]); // Run when referenceImages array changes (e.g. loaded from empty metadata)
+
+
   // Persist Config Changes (Debounced/Effect)
   useEffect(() => {
+    // 1. Save Image Data to IndexedDB (Async side effect)
+    if (config.referenceImages && config.referenceImages.length > 0) {
+      import('./services/imageStorage').then(({ saveImage }) => {
+        config.referenceImages.forEach(img => {
+          if (img.data && img.storageId) {
+            saveImage(img.storageId, img.data).catch(err => console.error("Failed to save ref image", err));
+          }
+        });
+      });
+    }
+
     const toSave = {
       aspectRatio: config.aspectRatio,
       imageSize: config.imageSize,
       parallelCount: config.parallelCount,
       model: config.model,
       enableGrounding: config.enableGrounding,
-      mode: config.mode
+      mode: config.mode,
+      // Save metadata only (strip heavy data) appropriately? 
+      // Actually PromptBar renders using `img.data`.
+      // We must save the array structure, but we want `data` to be undefined or null in localStorage to save space.
+      referenceImages: config.referenceImages.map(img => ({
+        ...img,
+        data: undefined // Don't save base64 to localStorage
+      }))
     };
     localStorage.setItem('kk_generation_config', JSON.stringify(toSave));
   }, [
     config.aspectRatio, config.imageSize, config.parallelCount,
-    config.model, config.enableGrounding, config.mode
+    config.model, config.enableGrounding, config.mode,
+    config.referenceImages // Add referenceImages to dep array
   ]);
 
   // Pending generation state

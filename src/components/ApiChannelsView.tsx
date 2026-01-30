@@ -398,8 +398,8 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             {/* Channels Grid/List */}
             <div className="flex-1 overflow-y-auto px-1 pb-4 min-h-0 custom-scrollbar">
                 {slots.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-4">
-                        <div className="w-16 h-16 rounded-2xl bg-zinc-800/50 flex items-center justify-center">
+                    <div className="h-full flex flex-col items-center justify-center text-[var(--text-tertiary)] space-y-4">
+                        <div className="w-16 h-16 rounded-2xl bg-[var(--bg-tertiary)]/50 flex items-center justify-center">
                             <Key className="w-8 h-8 opacity-50" />
                         </div>
                         <p>暂无 API 通道</p>
@@ -430,7 +430,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                     group relative rounded-xl border cursor-move
                                     transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
                                     ${slot.disabled
-                                        ? 'bg-zinc-900/30 border-zinc-800/50 opacity-60'
+                                        ? 'bg-[var(--bg-tertiary)]/30 border-[var(--border-medium)]/50 opacity-60'
                                         : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/5'
                                     }
                                     p-4 w-full
@@ -452,10 +452,10 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         <div className="flex items-center justify-between mb-2">
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <div className={`w-2 h-2 rounded-full shrink-0 ${refreshingIds.has(slot.id) ? 'bg-blue-500 animate-pulse' :
-                                                    slot.disabled ? 'bg-zinc-600' :
+                                                    slot.disabled ? 'bg-[var(--text-tertiary)]' :
                                                         slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
                                                             (slot.status === 'invalid' || slot.status === 'rate_limited') ? 'bg-red-500' :
-                                                                'bg-zinc-600'
+                                                                'bg-[var(--text-tertiary)]'
                                                     }`} />
                                                 <h4 className="font-medium truncate pr-2" style={{ color: 'var(--text-primary)' }} title={slot.name}>
                                                     {slot.name}
@@ -543,10 +543,10 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             {
                 isModalOpen && createPortal(
                     <div className="fixed inset-0 z-[10050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                        <div className="bg-[var(--bg-secondary)] w-full max-w-md rounded-2xl border border-[var(--border-light)] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="bg-[var(--bg-secondary)] w-full max-w-md rounded-2xl border border-[var(--border-light)] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] overflow-hidden">
                             <div className="flex justify-between items-center p-5 border-b border-[var(--border-light)]">
-                                <h4 className="text-lg font-bold text-white">{editingId ? '编辑通道' : '添加通道'}</h4>
-                                <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={20} /></button>
+                                <h4 className="text-lg font-bold text-[var(--text-primary)]">{editingId ? '编辑通道' : '添加通道'}</h4>
+                                <button onClick={() => setIsModalOpen(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"><X size={20} /></button>
                             </div>
 
                             {/* Modal Content */}
@@ -554,16 +554,16 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
                                 {/* Step 1: Connection Details */}
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between text-xs text-zinc-500 uppercase tracking-wider font-bold">
+                                    <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] uppercase tracking-wider font-bold">
                                         连接配置
                                     </div>
 
                                     {formProvider !== 'Google' && (
                                         <div>
                                             <div className="flex justify-between items-center mb-1.5">
-                                                <label className="text-xs text-zinc-400">接口地址 (Base URL)</label>
+                                                <label className="text-xs text-[var(--text-secondary)]">接口地址 (Base URL)</label>
                                                 <select
-                                                    className="bg-[var(--bg-tertiary)] text-[10px] border border-[var(--border-light)] rounded px-2 py-0.5 text-zinc-400 outline-none hover:border-indigo-500/50 cursor-pointer"
+                                                    className="bg-[var(--bg-tertiary)] text-[10px] border border-[var(--border-light)] rounded px-2 py-0.5 text-[var(--text-tertiary)] outline-none hover:border-indigo-500/50 cursor-pointer"
                                                     onChange={(e) => {
                                                         if (e.target.value) applyPreset(e.target.value);
                                                         e.target.value = ''; // Reset
@@ -591,7 +591,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                         else if (val.includes('openrouter')) { setFormName(n => n === 'New Channel' || !n ? 'OpenRouter' : n); }
                                                     }}
                                                 />
-                                                <Globe className="absolute left-3 top-2.5 text-zinc-600 pointer-events-none" size={14} />
+                                                <Globe className="absolute left-3 top-2.5 text-[var(--text-secondary)] pointer-events-none" size={14} />
                                             </div>
 
                                             {/* Test Connection Button (Moved here) */}
@@ -602,7 +602,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                     disabled={testStatus === 'testing'}
                                                     className={`text-[10px] px-3 py-1.5 rounded border flex items-center gap-2 transition-colors ${testStatus === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
                                                         testStatus === 'error' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                                                            'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-300'
+                                                            'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border-[var(--border-medium)] hover:text-[var(--text-secondary)]'
                                                         }`}
                                                 >
                                                     {testStatus === 'testing' ? <Globe size={12} className="animate-spin" /> : <Terminal size={12} />}
@@ -611,7 +611,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             </div>
                                             {testMessage && (
                                                 <div className={`text-[10px] mt-2 p-2 rounded text-right ${testStatus === 'success' ? 'text-emerald-400' :
-                                                    testStatus === 'error' ? 'text-red-400' : 'text-zinc-500'
+                                                    testStatus === 'error' ? 'text-red-400' : 'text-[var(--text-tertiary)]'
                                                     }`}>
                                                     {testMessage}
                                                 </div>
@@ -623,12 +623,12 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                     {formProvider !== 'Google' && (
                                         <div className="bg-[var(--bg-primary)] rounded px-3 py-2 border border-[var(--border-light)] flex items-center justify-between">
                                             <div className="flex flex-col">
-                                                <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">自动适配模式</span>
-                                                <span className="text-xs text-zinc-300">
+                                                <span className="text-[10px] text-[var(--text-secondary)] uppercase font-bold tracking-wider">自动适配模式</span>
+                                                <span className="text-xs text-[var(--text-secondary)]">
                                                     {formCompatibility === 'standard' ? '标准 API (Standard)' : '对话模拟 (Chat Compat)'}
                                                 </span>
                                             </div>
-                                            <div className="text-[10px] text-zinc-500 max-w-[50%] text-right">
+                                            <div className="text-[10px] text-[var(--text-secondary)] max-w-[50%] text-right">
                                                 {formCompatibility === 'standard'
                                                     ? '适用于大多数兼容 OpenAI 的中转站'
                                                     : '适用于 Cherry Studio、SiliconFlow 等特殊渠道'}
@@ -638,7 +638,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
                                     {/* API Key */}
                                     <div>
-                                        <label className="text-xs text-zinc-400 mb-1.5 block">API Key</label>
+                                        <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">API Key</label>
                                         <div className="relative">
                                             <input
                                                 className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-10 py-2.5 text-sm text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
@@ -653,7 +653,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                 placeholder="sk-..."
                                                 autoComplete="off"
                                             />
-                                            <Key className="absolute left-3 top-2.5 text-zinc-600 pointer-events-none" size={14} />
+                                            <Key className="absolute left-3 top-2.5 text-[var(--text-secondary)] pointer-events-none" size={14} />
                                         </div>
                                     </div>
 
@@ -692,7 +692,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             }}
                                             disabled={loading || !formKey}
                                             className={`w-full py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${loading || !formKey
-                                                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                                ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] cursor-not-allowed'
                                                 : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 border border-indigo-500/20'
                                                 }`}
                                         >
@@ -706,13 +706,13 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
                                 {/* Step 2: Meta Info */}
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between text-xs text-zinc-500 uppercase tracking-wider font-bold">
+                                    <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] uppercase tracking-wider font-bold">
                                         基础信息 & 模型
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-xs text-zinc-400 mb-1.5 block">通道名称</label>
+                                            <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">通道名称</label>
                                             <input
                                                 className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-indigo-500/50"
                                                 placeholder="My Channel"
@@ -721,7 +721,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-xs text-zinc-400 mb-1.5 block">供应商类型</label>
+                                            <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">供应商类型</label>
                                             <select
                                                 className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-indigo-500/50"
                                                 value={formProvider}
@@ -743,7 +743,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
                                     {/* Models */}
                                     <div>
-                                        <label className="text-xs text-zinc-400 mb-1.5 flex justify-between items-center">
+                                        <label className="text-xs text-[var(--text-secondary)] mb-1.5 flex justify-between items-center">
                                             <span>可用模型 ID (逗号分隔)</span>
                                         </label>
                                         <textarea
@@ -760,7 +760,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                             <div className="p-5 border-t border-[var(--border-light)] flex justify-end gap-3 bg-[var(--bg-secondary)]">
                                 <button
                                     onClick={() => setIsModalOpen(false)}
-                                    className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                                    className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
                                 >
                                     取消
                                 </button>

@@ -41,8 +41,10 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
         import('../services/imageStorage').then(({ getImage }) => {
             // Add 3s timeout to prevent infinite spinning if IDB hangs
             const timeoutPromise = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
+            // Prefer storageId if available, otherwise fallback to id
+            const lookupId = (image as any).storageId || image.id;
 
-            Promise.race([getImage(image.id), timeoutPromise])
+            Promise.race([getImage(lookupId), timeoutPromise])
                 .then(cached => {
                     if (active && typeof cached === 'string') {
                         setData(cached);
@@ -56,7 +58,7 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
         });
 
         return () => { active = false; };
-    }, [image.id, image.data]);
+    }, [image.id, (image as any).storageId, image.data]);
 
     const src = data ? (
         data.startsWith('data:') || data.startsWith('http') || data.startsWith('blob:')
@@ -78,6 +80,12 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
                 // Pass URL as text so PromptBar can read it
                 e.dataTransfer.setData('text/plain', src);
                 e.dataTransfer.setData('text/uri-list', src);
+                // [NEW] Pass structured data for efficient reuse
+                e.dataTransfer.setData('application/x-kk-image-ref', JSON.stringify({
+                    storageId: (image as any).storageId || image.id,
+                    mimeType: image.mimeType || 'image/png',
+                    source: 'reference-thumb'
+                }));
                 e.dataTransfer.effectAllowed = 'copy';
             }}
         >
@@ -115,8 +123,8 @@ const GenerationTimer: React.FC<{ start: number }> = ({ start }) => {
 
     return (
         <div className="flex flex-col items-center gap-0.5">
-            <div className="text-[10px] text-indigo-300/50 font-medium tracking-widest mb-0.5 transform scale-90">等待时间</div>
-            <div className="flex items-center gap-2 text-indigo-400">
+            <div className="text-[10px] text-indigo-500/60 dark:text-indigo-300/50 font-medium tracking-widest mb-0.5 transform scale-90">等待时间</div>
+            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
                 <Loader2 className="animate-spin" size={14} />
                 <div className="font-mono text-lg font-medium tabular-nums tracking-wider drop-shadow-sm">
                     {seconds}s
@@ -331,9 +339,16 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             <div
                 ref={cardRef}
                 className={`
-                    relative bg-[var(--bg-secondary)] border rounded-2xl p-3 shadow-xl max-w-[95vw] flex flex-col select-none
+                    relative border rounded-2xl p-3 shadow-xl max-w-[95vw] flex flex-col select-none
                     ${isDragging ? '' : 'transition-all duration-200'}
-                    ${node.isGenerating ? 'border-indigo-500/30' : node.isDraft ? 'border-indigo-500/50 bg-[#18181b]/90 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl backdrop-saturate-150' : isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-[var(--border-light)] hover:border-[var(--border-medium)]'}
+                    ${node.isGenerating
+                        ? 'bg-[var(--bg-secondary)] border-indigo-500/30'
+                        : node.isDraft
+                            ? 'bg-white/90 dark:bg-zinc-900/90 border-indigo-500/50 shadow-[0_8px_32px_rgba(99,102,241,0.15)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl backdrop-saturate-150'
+                            : isSelected
+                                ? 'bg-[var(--bg-secondary)] border-indigo-500 ring-1 ring-indigo-500/50'
+                                : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-[var(--border-medium)]'
+                    }
                     ${highlighted ? 'ring-2 ring-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.5)] z-50 scale-[1.02]' : ''}
                 `}
                 style={{ width: getCardDimensions(node.aspectRatio).width }}>
@@ -368,9 +383,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                     ) : node.isDraft ? (
                         <>
                             <div className="w-6 h-6 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/30">
-                                <Sparkles size={12} className="text-indigo-400" />
+                                <Sparkles size={12} className="text-indigo-600 dark:text-indigo-400" />
                             </div>
-                            <span className="text-xs font-medium text-indigo-400 flex-1">预览 (Preview)</span>
+                            <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 flex-1">预览 (Preview)</span>
                         </>
                     ) : node.error ? (
                         <>
@@ -541,11 +556,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
                                         {/* Placeholder Card */}
                                         <div
-                                            className="absolute border border-[var(--border-light)] rounded-xl overflow-hidden shadow-lg flex flex-col"
+                                            className="absolute border border-[var(--border-light)] rounded-xl overflow-hidden shadow-lg flex flex-col bg-white/60 dark:bg-zinc-900/60 backdrop-blur-2xl backdrop-saturate-150"
                                             style={{
-                                                backgroundColor: 'rgba(24, 24, 27, 0.6)',
-                                                backdropFilter: 'blur(20px) saturate(180%)',
-                                                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
                                                 width: w,
                                                 height: h,
                                                 left: `calc(50% + ${offsetX}px)`,
@@ -568,22 +580,22 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             </div>
 
                                             {/* Footer Info - Clean & Dark */}
-                                            <div className="h-8 bg-[#09090b] border-t border-white/5 flex items-center justify-center px-3 text-[10px] gap-3">
+                                            <div className="h-8 bg-zinc-50/50 dark:bg-[#09090b] border-t border-[var(--border-light)] dark:border-white/5 flex items-center justify-center px-3 text-[10px] gap-3">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-amber-500/90 font-medium px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
                                                         {node.model?.replace(/gemini-?/i, '') || 'AI'}
                                                     </span>
-                                                    <span className="text-zinc-500 font-medium border-l border-white/10 pl-2">
+                                                    <span className="text-zinc-500 font-medium border-l border-zinc-200 dark:border-white/10 pl-2">
                                                         {node.aspectRatio}
                                                     </span>
-                                                    <span className="text-zinc-600 font-mono border-l border-white/10 pl-2">
+                                                    <span className="text-zinc-600 font-mono border-l border-zinc-200 dark:border-white/10 pl-2">
                                                         {(node.imageSize as string) === '1024x1024' || (node.imageSize as string) === '1K' ? '1K' :
                                                             (node.imageSize as string) === '2048x2048' || (node.imageSize as string) === '2K' ? '2K' :
                                                                 (node.imageSize as string) === '4096x4096' || (node.imageSize as string) === '4K' ? '4K' :
                                                                     (node.imageSize as string)}
                                                     </span>
                                                     {node.mode === 'video' && (
-                                                        <span className="text-purple-400 font-medium border-l border-white/10 pl-2">
+                                                        <span className="text-purple-600 dark:text-purple-400 font-medium border-l border-zinc-200 dark:border-white/10 pl-2">
                                                             5s
                                                         </span>
                                                     )}

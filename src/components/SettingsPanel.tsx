@@ -218,8 +218,8 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                             <div className="relative z-10 flex items-center gap-2">
                                 <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400"><ScrollText size={20} /></div>
                                 <div>
-                                    <span className="text-zinc-400 font-medium">今日消耗</span>
-                                    <span className="text-[10px] text-zinc-600 ml-2">(每天0点重置)</span>
+                                    <span className="text-zinc-500 dark:text-zinc-400 font-medium">今日消耗</span>
+                                    <span className="text-[10px] text-zinc-500 dark:text-zinc-600 ml-2">(每天0点重置)</span>
                                 </div>
                             </div>
 
@@ -236,7 +236,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg"><Activity size={20} /></div>
                                         <div>
-                                            <div className="text-xs text-zinc-500 uppercase tracking-wider">今日 Token 消耗</div>
+                                            <div className="text-xs text-zinc-600 dark:text-zinc-500 uppercase tracking-wider">今日 Token 消耗</div>
                                             <div className="font-mono font-bold text-lg" style={{ color: 'var(--text-primary)' }}>
                                                 {dailyTokens.toLocaleString()} <span className="text-xs font-normal" style={{ color: 'var(--text-tertiary)' }}>Tokens</span>
                                             </div>
@@ -271,7 +271,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex items-center gap-2">
                                     <div className="p-1.5 bg-emerald-500/10 rounded-md text-emerald-500"><DollarSign size={20} /></div>
-                                    <span className="text-zinc-400 text-sm font-medium">总消耗预算</span>
+                                    <span className="text-zinc-600 dark:text-zinc-400 text-sm font-medium">总消耗预算</span>
                                 </div>
                                 <div className="text-right">
                                     <div className="text-xs uppercase" style={{ color: 'var(--text-tertiary)' }}>Token 总消耗</div>
@@ -281,7 +281,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
 
                             {/* Budget Progress */}
                             <div className="space-y-2">
-                                <div className="flex justify-between text-xs text-zinc-500 font-mono">
+                                <div className="flex justify-between text-xs text-zinc-600 dark:text-zinc-500 font-mono">
                                     <span>剩余: {isTotalUnlimited ? '∞' : `$${remainingAmount.toFixed(2)}`}</span>
                                     <span>总额: {isTotalUnlimited ? '∞' : `$${totalBudget.toFixed(2)}`}</span>
                                 </div>
@@ -503,7 +503,7 @@ const CostEstimationView = () => {
                             )}
                         </tbody>
                     </table>
-                    <div className="px-5 py-3 border-t border-[var(--border-light)] text-xs text-zinc-500 text-center">
+                    <div className="px-5 py-3 border-t border-[var(--border-light)] text-xs text-zinc-600 dark:text-zinc-500 text-center">
                         显示最近 {entries.length} 条记录 (最多 20 条)
                     </div>
                 </div>

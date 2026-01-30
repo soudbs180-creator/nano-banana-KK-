@@ -346,6 +346,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
     // Handle pan/drag for lightbox image
     const handleLightboxMouseDown = useCallback((e: React.MouseEvent) => {
+        if (e.button === 2) return;
         e.preventDefault();
         e.stopPropagation();
         setIsPanning(true);
@@ -586,6 +587,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                         const url = displaySrc || image.url;
                                         if (url) {
                                             e.dataTransfer.setData('text/plain', url);
+                                            // [NEW] Pass structured data for efficient reuse in PromptBar
+                                            e.dataTransfer.setData('application/x-kk-image-ref', JSON.stringify({
+                                                storageId: image.id, // Generated images use their ID as storage key
+                                                mimeType: 'image/png', // Generated images are typically PNG
+                                                source: 'generated-card'
+                                            }));
                                             e.dataTransfer.effectAllowed = 'copy';
                                         }
                                     }}

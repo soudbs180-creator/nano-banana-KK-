@@ -191,11 +191,11 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
                 className="transition-all duration-500 ease-out p-4 w-full max-w-[min(360px,90vw)]"
                 style={getTooltipStyle()}
             >
-                <div className="bg-[#1c1c1e]/90 backdrop-blur-2xl border border-white/10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] rounded-[28px] p-6 animate-in fade-in zoom-in-95 duration-300">
+                <div className="bg-[var(--bg-secondary)]/90 backdrop-blur-2xl border border-[var(--border-light)] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] rounded-[28px] p-6 animate-in fade-in zoom-in-95 duration-300">
                     <div className="flex justify-between items-start mb-5">
                         <div className="flex items-center gap-2">
                             <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                            <span className="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+                            <span className="text-[10px] font-bold tracking-widest text-[var(--text-tertiary)] uppercase">
                                 Step {currentStepIndex + 1} of {STEPS.length}
                             </span>
                         </div>

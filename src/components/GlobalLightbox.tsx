@@ -103,6 +103,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     }, []);
 
     const handleMouseDown = (e: React.MouseEvent) => {
+        if (e.button === 2) return;
         e.preventDefault();
         e.stopPropagation();
         setIsPanning(true);
@@ -221,6 +222,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                         draggable={false}
                         onMouseDown={handleMouseDown}
                         onDoubleClick={onClose}
+                        onContextMenu={(e) => e.stopPropagation()}
                         onError={() => setHasError(true)}
                         style={{
                             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
@@ -231,7 +233,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 {/* Error Fallback */}
                 {hasError && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="bg-zinc-800 p-4 rounded-lg text-red-400 flex flex-col items-center gap-2">
+                        <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-red-400 flex flex-col items-center gap-2">
                             <ZoomOut size={24} />
                             <span>图片加载失败 (Image Load Failed)</span>
                         </div>
@@ -242,15 +244,15 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             {/* 底部信息面板 */}
             {/* 固定高度，位于图片下方，防止遮挡 */}
             <div
-                className="h-[100px] w-full bg-zinc-900/90 border-t border-zinc-800 flex items-center justify-between px-8 py-4 z-50 text-white"
+                className="h-[100px] w-full bg-[var(--bg-secondary)]/90 border-t border-[var(--border-light)] flex items-center justify-between px-8 py-4 z-50 text-[var(--text-primary)]"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="flex flex-col max-w-[70%]">
                     <div className="text-sm font-medium line-clamp-2" title={image.prompt}>
                         {image.prompt}
                     </div>
-                    <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
-                        <span className="bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">
+                    <div className="flex items-center gap-3 mt-2 text-xs text-[var(--text-tertiary)]">
+                        <span className="bg-[var(--bg-tertiary)] px-2 py-0.5 rounded border border-[var(--border-medium)]">
                             {currentIndex + 1} / {images.length}
                         </span>
                         <span>{image.model.split('/').pop()}</span>
@@ -261,11 +263,11 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
 
                 <div className="flex items-center gap-4">
                     {/* 控制栏 */}
-                    <div className="flex items-center bg-zinc-800 rounded-lg p-1">
-                        <button onClick={() => setZoom(z => Math.max(0.25, z - 0.25))} className="p-2 hover:bg-zinc-700 rounded" title="缩小"><ZoomOut size={16} /></button>
+                    <div className="flex items-center bg-[var(--bg-tertiary)] rounded-lg p-1">
+                        <button onClick={() => setZoom(z => Math.max(0.25, z - 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="缩小"><ZoomOut size={16} /></button>
                         <span className="w-12 text-center text-xs">{Math.round(zoom * 100)}%</span>
-                        <button onClick={() => setZoom(z => Math.min(5, z + 0.25))} className="p-2 hover:bg-zinc-700 rounded" title="放大"><ZoomIn size={16} /></button>
-                        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} className="p-2 hover:bg-zinc-700 rounded ml-1 border-l border-zinc-700" title="重置"><RotateCcw size={16} /></button>
+                        <button onClick={() => setZoom(z => Math.min(5, z + 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="放大"><ZoomIn size={16} /></button>
+                        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} className="p-2 hover:bg-[var(--bg-secondary)] rounded ml-1 border-l border-[var(--border-light)]" title="重置"><RotateCcw size={16} /></button>
                     </div>
 
                     <button
