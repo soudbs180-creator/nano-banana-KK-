@@ -1,34 +1,45 @@
 /**
- * Generates a deterministic color (bg and border) for a given tag name.
- * Returns Tailwind classes or style objects.
+ * 生成标签颜色 - 基于 Design System v2.0
+ * 8种固定颜色，相同名称的标签颜色一致
+ * 
+ * @param tagName 标签名称
+ * @returns 包含内联样式的颜色对象
  */
-export const generateTagColor = (tagName: string) => {
-    let hash = 0;
-    for (let i = 0; i < tagName.length; i++) {
-        hash = tagName.charCodeAt(i) + ((hash << 5) - hash);
-    }
 
-    // Pre-defined color palettes (Background, Text/Border) suited for dark mode
-    const palettes = [
-        { bg: 'bg-red-500/20', text: 'text-red-300', border: 'border-red-500/30' },
-        { bg: 'bg-orange-500/20', text: 'text-orange-300', border: 'border-orange-500/30' },
-        { bg: 'bg-amber-500/20', text: 'text-amber-300', border: 'border-amber-500/30' },
-        { bg: 'bg-yellow-500/20', text: 'text-yellow-300', border: 'border-yellow-500/30' },
-        { bg: 'bg-lime-500/20', text: 'text-lime-300', border: 'border-lime-500/30' },
-        { bg: 'bg-green-500/20', text: 'text-green-300', border: 'border-green-500/30' },
-        { bg: 'bg-emerald-500/20', text: 'text-emerald-300', border: 'border-emerald-500/30' },
-        { bg: 'bg-teal-500/20', text: 'text-teal-300', border: 'border-teal-500/30' },
-        { bg: 'bg-cyan-500/20', text: 'text-cyan-300', border: 'border-cyan-500/30' },
-        { bg: 'bg-sky-500/20', text: 'text-sky-300', border: 'border-sky-500/30' },
-        { bg: 'bg-blue-500/20', text: 'text-blue-300', border: 'border-blue-500/30' },
-        { bg: 'bg-indigo-500/20', text: 'text-indigo-300', border: 'border-indigo-500/30' },
-        { bg: 'bg-violet-500/20', text: 'text-violet-300', border: 'border-violet-500/30' },
-        { bg: 'bg-purple-500/20', text: 'text-purple-300', border: 'border-purple-500/30' },
-        { bg: 'bg-fuchsia-500/20', text: 'text-fuchsia-300', border: 'border-fuchsia-500/30' },
-        { bg: 'bg-pink-500/20', text: 'text-pink-300', border: 'border-pink-500/30' },
-        { bg: 'bg-rose-500/20', text: 'text-rose-300', border: 'border-rose-500/30' },
-    ];
+export interface TagColor {
+    bg: string;      // 背景色（inline style）
+    text: string;    // 文字色（inline style）
+    border: string;  // 边框色（inline style）
+}
 
-    const index = Math.abs(hash) % palettes.length;
-    return palettes[index];
+/**
+ * Design System v2.0 - 8色标签系统
+ * 颜色顺序：红/橙/黄/绿/青/蓝/紫/粉
+ */
+const TAG_COLORS: TagColor[] = [
+    { bg: 'rgba(239, 68, 68, 0.15)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.3)' },   // 红
+    { bg: 'rgba(249, 115, 22, 0.15)', text: '#f97316', border: 'rgba(249, 115, 22, 0.3)' }, // 橙
+    { bg: 'rgba(234, 179, 8, 0.15)', text: '#eab308', border: 'rgba(234, 179, 8, 0.3)' },   // 黄
+    { bg: 'rgba(34, 197, 94, 0.15)', text: '#22c55e', border: 'rgba(34, 197, 94, 0.3)' },   // 绿
+    { bg: 'rgba(6, 182, 212, 0.15)', text: '#06b6d4', border: 'rgba(6, 182, 212, 0.3)' },   // 青
+    { bg: 'rgba(59, 130, 246, 0.15)', text: '#3b82f6', border: 'rgba(59, 130, 246, 0.3)' }, // 蓝
+    { bg: 'rgba(139, 92, 246, 0.15)', text: '#8b5cf6', border: 'rgba(139, 92, 246, 0.3)' }, // 紫
+    { bg: 'rgba(236, 72, 153, 0.15)', text: '#ec4899', border: 'rgba(236, 72, 153, 0.3)' }, // 粉
+];
+
+/**
+ * 根据标签名生成稳定颜色
+ * 相同名称永远返回相同颜色
+ */
+export const generateTagColor = (tagName: string): TagColor => {
+    // 使用字符码相加的哈希算法
+    const hash = tagName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return TAG_COLORS[hash % TAG_COLORS.length];
+};
+
+/**
+ * 获取所有可用的标签颜色（用于预览/选择）
+ */
+export const getAllTagColors = (): TagColor[] => {
+    return TAG_COLORS;
 };

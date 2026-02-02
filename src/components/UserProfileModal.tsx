@@ -110,25 +110,64 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
 
     return (
         <ProfileErrorBoundary onClose={onClose}>
-            <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200" onClick={handleClose}>
+            <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in"
+                style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
+                onClick={handleClose}
+            >
                 <div
-                    className="w-full max-w-sm rounded-2xl shadow-2xl border animate-in zoom-in-95 duration-200 overflow-hidden"
-                    style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}
+                    className="w-full max-w-sm shadow-2xl border overflow-hidden animate-modal-in"
+                    style={{
+                        backgroundColor: 'var(--bg-surface)',
+                        borderColor: 'var(--border-default)',
+                        borderRadius: 'var(--radius-xl)', // 16px
+                        boxShadow: 'var(--shadow-xl)'
+                    }}
                     onClick={e => e.stopPropagation()}
                 >
                     <div className="w-full p-5">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-2">
-                                {view !== 'main' && <button onClick={() => setView('main')}><ChevronLeft size={20} className="text-blue-500" /></button>}
+                                {view !== 'main' && (
+                                    <button
+                                        onClick={() => setView('main')}
+                                        className="transition-all active:scale-95"
+                                        style={{
+                                            color: 'var(--accent-blue)',
+                                            borderRadius: 'var(--radius-sm)'
+                                        }}
+                                    >
+                                        <ChevronLeft size={20} />
+                                    </button>
+                                )}
                                 <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
                                     {view === 'main' ? '个人中心' : view === 'edit-profile' ? '编辑资料' : '修改密码'}
                                 </h2>
                             </div>
-                            <button onClick={handleClose} className="p-1.5 rounded-full" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}><X size={16} /></button>
+                            <button
+                                onClick={handleClose}
+                                className="p-1.5 transition-all active:scale-95"
+                                style={{
+                                    backgroundColor: 'var(--bg-secondary)',
+                                    color: 'var(--text-tertiary)',
+                                    borderRadius: 'var(--radius-full)',
+                                    transitionDuration: 'var(--duration-fast)'
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+                                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-tertiary)')}
+                            >
+                                <X size={16} />
+                            </button>
                         </div>
 
                         {message && (
-                            <div className={`mb-4 p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                            <div
+                                className="mb-4 p-3 text-sm"
+                                style={{
+                                    backgroundColor: message.type === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(220, 38, 38, 0.1)',
+                                    color: message.type === 'success' ? 'var(--accent-green)' : 'var(--accent-red)',
+                                    borderRadius: 'var(--radius-md)'
+                                }}
+                            >
                                 {message.text}
                             </div>
                         )}
@@ -145,13 +184,46 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <button onClick={() => setView('edit-profile')} className="w-full flex items-center justify-between p-3 rounded-xl transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
+                                    <button
+                                        onClick={() => setView('edit-profile')}
+                                        className="w-full flex items-center justify-between p-3 transition-all active:scale-95"
+                                        style={{
+                                            backgroundColor: 'var(--bg-secondary)',
+                                            color: 'var(--text-primary)',
+                                            borderRadius: 'var(--radius-md)',
+                                            transitionDuration: 'var(--duration-fast)'
+                                        }}
+                                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
+                                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-secondary)')}
+                                    >
                                         <span className="flex items-center gap-3"><UserIcon size={16} /> 编辑资料</span> <ChevronRight size={14} />
                                     </button>
-                                    <button onClick={() => setView('change-password')} className="w-full flex items-center justify-between p-3 rounded-xl transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
+                                    <button
+                                        onClick={() => setView('change-password')}
+                                        className="w-full flex items-center justify-between p-3 transition-all active:scale-95"
+                                        style={{
+                                            backgroundColor: 'var(--bg-secondary)',
+                                            color: 'var(--text-primary)',
+                                            borderRadius: 'var(--radius-md)',
+                                            transitionDuration: 'var(--duration-fast)'
+                                        }}
+                                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
+                                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-secondary)')}
+                                    >
                                         <span className="flex items-center gap-3"><Lock size={16} /> 修改密码</span> <ChevronRight size={14} />
                                     </button>
-                                    <button onClick={onSignOut} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors mt-4">
+                                    <button
+                                        onClick={onSignOut}
+                                        className="w-full flex items-center justify-between p-3 mt-4 transition-all active:scale-95"
+                                        style={{
+                                            backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                                            color: 'var(--accent-red)',
+                                            borderRadius: 'var(--radius-md)',
+                                            transitionDuration: 'var(--duration-fast)'
+                                        }}
+                                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.2)')}
+                                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.1)')}
+                                    >
                                         <span className="flex items-center gap-3"><LogOut size={16} /> 退出登录</span>
                                     </button>
                                 </div>
@@ -164,13 +236,70 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                     <>
                                         <div>
                                             <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>昵称 (Display Name)</label>
-                                            <input value={displayName} onChange={e => setDisplayName(e.target.value)} className="w-full p-3 rounded-xl border outline-none" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="User Name" />
+                                            <input
+                                                value={displayName}
+                                                onChange={e => setDisplayName(e.target.value)}
+                                                className="w-full p-3 outline-none transition-all"
+                                                style={{
+                                                    backgroundColor: 'var(--bg-input)',
+                                                    color: 'var(--text-primary)',
+                                                    borderColor: 'var(--border-default)',
+                                                    border: '1px solid var(--border-default)',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    fontSize: '16px',
+                                                    transitionDuration: 'var(--duration-fast)'
+                                                }}
+                                                placeholder="User Name"
+                                                onFocus={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--accent-blue)';
+                                                    e.currentTarget.style.boxShadow = 'var(--glow-blue)';
+                                                }}
+                                                onBlur={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--border-default)';
+                                                    e.currentTarget.style.boxShadow = 'none';
+                                                }}
+                                            />
                                         </div>
                                         <div>
                                             <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>头像链接 (Avatar URL)</label>
-                                            <input value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)} className="w-full p-3 rounded-xl border outline-none" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="https://..." />
+                                            <input
+                                                value={avatarUrl}
+                                                onChange={e => setAvatarUrl(e.target.value)}
+                                                className="w-full p-3 outline-none transition-all"
+                                                style={{
+                                                    backgroundColor: 'var(--bg-input)',
+                                                    color: 'var(--text-primary)',
+                                                    borderColor: 'var(--border-default)',
+                                                    border: '1px solid var(--border-default)',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    fontSize: '16px',
+                                                    transitionDuration: 'var(--duration-fast)'
+                                                }}
+                                                placeholder="https://..."
+                                                onFocus={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--accent-blue)';
+                                                    e.currentTarget.style.boxShadow = 'var(--glow-blue)';
+                                                }}
+                                                onBlur={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--border-default)';
+                                                    e.currentTarget.style.boxShadow = 'none';
+                                                }}
+                                            />
                                         </div>
-                                        <button onClick={handleUpdateProfile} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-white font-medium flex items-center justify-center gap-2 mt-4">
+                                        <button
+                                            onClick={handleUpdateProfile}
+                                            disabled={loading}
+                                            className="w-full py-3 text-white font-medium flex items-center justify-center gap-2 mt-4 transition-all active:scale-95"
+                                            style={{
+                                                backgroundColor: 'var(--accent-blue)',
+                                                borderRadius: 'var(--radius-md)',
+                                                opacity: loading ? 0.7 : 1,
+                                                cursor: loading ? 'not-allowed' : 'pointer',
+                                                transitionDuration: 'var(--duration-fast)'
+                                            }}
+                                            onMouseEnter={(e) => { if (!loading) e.currentTarget.style.filter = 'brightness(1.1)'; }}
+                                            onMouseLeave={(e) => (e.currentTarget.style.filter = 'brightness(1)')}
+                                        >
                                             {loading && <Loader2 size={16} className="animate-spin" />} 保存更改
                                         </button>
                                     </>
@@ -179,17 +308,96 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
                                     <>
                                         <div>
                                             <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>当前密码</label>
-                                            <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full p-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="Current Password" />
+                                            <input
+                                                type="password"
+                                                value={oldPassword}
+                                                onChange={e => setOldPassword(e.target.value)}
+                                                className="w-full p-3 outline-none transition-all"
+                                                style={{
+                                                    backgroundColor: 'var(--bg-input)',
+                                                    color: 'var(--text-primary)',
+                                                    border: '1px solid var(--border-default)',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    fontSize: '16px',
+                                                    transitionDuration: 'var(--duration-fast)'
+                                                }}
+                                                placeholder="Current Password"
+                                                onFocus={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--accent-blue)';
+                                                    e.currentTarget.style.boxShadow = 'var(--glow-blue)';
+                                                }}
+                                                onBlur={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--border-default)';
+                                                    e.currentTarget.style.boxShadow = 'none';
+                                                }}
+                                            />
                                         </div>
                                         <div>
                                             <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>新密码 (6位以上)</label>
-                                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full p-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="New Password" />
+                                            <input
+                                                type="password"
+                                                value={newPassword}
+                                                onChange={e => setNewPassword(e.target.value)}
+                                                className="w-full p-3 outline-none transition-all"
+                                                style={{
+                                                    backgroundColor: 'var(--bg-input)',
+                                                    color: 'var(--text-primary)',
+                                                    border: '1px solid var(--border-default)',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    fontSize: '16px',
+                                                    transitionDuration: 'var(--duration-fast)'
+                                                }}
+                                                placeholder="New Password"
+                                                onFocus={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--accent-blue)';
+                                                    e.currentTarget.style.boxShadow = 'var(--glow-blue)';
+                                                }}
+                                                onBlur={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--border-default)';
+                                                    e.currentTarget.style.boxShadow = 'none';
+                                                }}
+                                            />
                                         </div>
                                         <div>
                                             <label className="text-xs mb-1 block" style={{ color: 'var(--text-tertiary)' }}>确认新密码</label>
-                                            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full p-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-light)' }} placeholder="Confirm Password" />
+                                            <input
+                                                type="password"
+                                                value={confirmPassword}
+                                                onChange={e => setConfirmPassword(e.target.value)}
+                                                className="w-full p-3 outline-none transition-all"
+                                                style={{
+                                                    backgroundColor: 'var(--bg-input)',
+                                                    color: 'var(--text-primary)',
+                                                    border: '1px solid var(--border-default)',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    fontSize: '16px',
+                                                    transitionDuration: 'var(--duration-fast)'
+                                                }}
+                                                placeholder="Confirm Password"
+                                                onFocus={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--accent-blue)';
+                                                    e.currentTarget.style.boxShadow = 'var(--glow-blue)';
+                                                }}
+                                                onBlur={(e) => {
+                                                    e.currentTarget.style.borderColor = 'var(--border-default)';
+                                                    e.currentTarget.style.boxShadow = 'none';
+                                                }}
+                                            />
                                         </div>
-                                        <button onClick={handleChangePassword} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-white font-medium flex items-center justify-center gap-2 mt-4">
+                                        <button
+                                            onClick={handleChangePassword}
+                                            disabled={loading}
+                                            className="w-full py-3 text-white font-medium flex items-center justify-center gap-2 mt-4 transition-all active:scale-95"
+                                            style={{
+                                                backgroundColor: 'var(--accent-blue)',
+                                                borderRadius: 'var(--radius-md)',
+                                                opacity: loading ? 0.7 : 1,
+                                                cursor: loading ? 'not-allowed' : 'pointer',
+                                                transitionDuration: 'var(--duration-fast)'
+                                            }}
+                                            onMouseEnter={(e) => { if (!loading) e.currentTarget.style.filter = 'brightness(1.1)'; }}
+                                            onMouseLeave={(e) => (e.currentTarget.style.filter = 'brightness(1)')}
+                                        >
                                             {loading && <Loader2 size={16} className="animate-spin" />} 确定修改
                                         </button>
                                     </>

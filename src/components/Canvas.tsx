@@ -302,20 +302,7 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
             {/* Canvas Controls - Bottom Left (Desktop) / Top Left (Mobile) */}
             <div id="canvas-toolbar" className="absolute md:bottom-4 md:left-4 top-24 left-4 z-[1001]">
                 <div className="toolbar !grid grid-cols-2 !gap-2 md:!flex md:!flex-col md:!gap-1">
-                    {/* 1. Zoom In - Clean + */}
-                    <button className="toolbar-btn group" onClick={zoomIn} title="放大 (+)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-white transition-colors">
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                    </button>
-                    {/* 2. Zoom Out - Clean - */}
-                    <button className="toolbar-btn group" onClick={zoomOut} title="缩小 (-)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-white transition-colors">
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                    </button>
-                    {/* 3. Locate (Home) - Clean Target */}
+                    {/* 1. Locate (Home) - Clean Target */}
                     <button className="toolbar-btn group" onClick={locateAllCards} title="定位 (Home)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-white transition-colors">
                             <circle cx="12" cy="12" r="10" />
@@ -340,28 +327,52 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
                             <circle cx="18" cy="18" r="2" />
                         </svg>
                     </button>
-                    {/* 5. Auto Arrange - Clean Mosaic */}
-                    {onAutoArrange && (
-                        <button
-                            className="toolbar-btn group"
-                            onClick={onAutoArrange}
-                            title="整理卡片"
-                        >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-white transition-colors">
-                                <rect x="3" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="14" width="7" height="7" rx="1" />
-                                <rect x="3" y="14" width="7" height="7" rx="1" />
-                            </svg>
-                        </button>
-                    )}
                 </div>
             </div>
 
-            {/* Scale Indicator */}
-            <div className="absolute bottom-4 right-4 z-50">
-                <div className="glass px-3 py-1.5 rounded-lg text-xs text-zinc-400 font-medium">
-                    {Math.round(transform.scale * 100)}%
+            {/* Zoom Slider & Version - Bottom Left */}
+            <div className="absolute bottom-4 left-4 z-50 flex items-center gap-3">
+                {/* Zoom Slider */}
+                <div className="glass px-4 py-2.5 rounded-xl flex items-center gap-3">
+                    <input
+                        type="range"
+                        min="10"
+                        max="300"
+                        value={Math.round(transform.scale * 100)}
+                        onChange={(e) => {
+                            const newScale = parseInt(e.target.value) / 100;
+                            const container = containerRef.current;
+                            if (!container) return;
+
+                            const rect = container.getBoundingClientRect();
+                            const centerX = rect.width / 2;
+                            const centerY = rect.height / 2;
+
+                            const scaleRatio = newScale / transform.scale;
+                            const newX = centerX - (centerX - transform.x) * scaleRatio;
+                            const newY = centerY - (centerY - transform.y) * scaleRatio;
+
+                            const newTransform = { x: newX, y: newY, scale: newScale };
+                            setTransform(newTransform);
+                            onTransformChange?.(newTransform);
+                        }}
+                        className="zoom-slider w-24 h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer
+                                   [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
+                                   [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer
+                                   [&::-webkit-slider-thumb]:hover:bg-cyan-400 [&::-webkit-slider-thumb]:transition-colors
+                                   [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full 
+                                   [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer
+                                   [&::-moz-range-thumb]:hover:bg-cyan-400 [&::-moz-range-thumb]:transition-colors"
+                        title={`缩放: ${Math.round(transform.scale * 100)}%`}
+                    />
+                    <span className="text-xs text-zinc-400 font-medium min-w-[42px] text-right">
+                        {Math.round(transform.scale * 100)}%
+                    </span>
+                </div>
+
+                {/* Version Badge */}
+                <div className="glass px-3 py-2 rounded-xl">
+                    <span className="text-xs text-zinc-500 font-semibold">v1.2.3</span>
                 </div>
             </div>
         </div>

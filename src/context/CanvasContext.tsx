@@ -8,6 +8,9 @@ import { calculateImageHash } from '../utils/imageUtils';
 
 const MAX_CANVASES = 10;
 
+// 副卡排列模式: 横向 | 宫格 | 竖向
+export type SubCardLayout = 'row' | 'grid' | 'column';
+
 interface CanvasState {
     canvases: Canvas[];
     activeCanvasId: string;
@@ -22,6 +25,8 @@ interface CanvasState {
     fileSystemHandle: FileSystemDirectoryHandle | null;
     folderName: string | null;
     selectedNodeIds: string[];
+    // 副卡排列模式 (轮换: row -> grid -> column -> row)
+    subCardLayoutMode: SubCardLayout;
 }
 
 interface CanvasContextType {
@@ -91,7 +96,8 @@ const DEFAULT_STATE: CanvasState = {
     history: { 'default': { past: [], future: [] } },
     fileSystemHandle: null,
     folderName: null,
-    selectedNodeIds: []
+    selectedNodeIds: [],
+    subCardLayoutMode: 'row' // 默认横向排列
 };
 
 // Helper to strip image URLs and Reference Image data for localStorage
@@ -554,7 +560,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 history: prev.history,
                 fileSystemHandle: prev.fileSystemHandle,
                 folderName: prev.folderName,
-                selectedNodeIds: []
+                selectedNodeIds: [],
+                subCardLayoutMode: prev.subCardLayoutMode
             };
         });
     }, []);
@@ -736,24 +743,66 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 };
             }
 
-            // SINGLE MOVE LOGIC
-            const newImageNodes = c.imageNodes.map(img => {
-                if (img.parentPromptId === id) {
-                    return {
-                        ...img,
-                        position: {
-                            x: img.position.x + dx,
-                            y: img.position.y + dy
-                        }
-                    };
+            // [MODIFIED] 卡组内排斥逻辑:主卡靠近副卡时被弹开
+            // 不再让副卡跟随移动,而是保持互相排斥
+            const REPULSION_THRESHOLD = 80;
+            const MIN_DISTANCE = 100;
+
+            let finalPos = { ...pos };
+            const promptHeight = node.height || 200;
+            const promptWidth = 320;
+
+            // 找到该主卡的所有副卡
+            const childImages = c.imageNodes.filter(img => img.parentPromptId === id);
+
+            for (const childImg of childImages) {
+                const imgHeight = 200;
+                const imgWidth = 280;
+
+                // 主卡边界
+                const promptTop = pos.y - promptHeight;
+                const promptBottom = pos.y;
+                const promptLeft = pos.x - promptWidth / 2;
+                const promptRight = pos.x + promptWidth / 2;
+
+                // 副卡边界
+                const imgTop = childImg.position.y - imgHeight;
+                const imgBottom = childImg.position.y;
+                const imgLeft = childImg.position.x - imgWidth / 2;
+                const imgRight = childImg.position.x + imgWidth / 2;
+
+                // 检测重叠
+                const horizontalOverlap = promptLeft < imgRight + REPULSION_THRESHOLD &&
+                    promptRight > imgLeft - REPULSION_THRESHOLD;
+                const verticalOverlap = promptTop < imgBottom + REPULSION_THRESHOLD &&
+                    promptBottom > imgTop - REPULSION_THRESHOLD;
+
+                if (horizontalOverlap && verticalOverlap) {
+                    // 计算中心距离
+                    const promptCenterX = pos.x;
+                    const promptCenterY = pos.y - promptHeight / 2;
+                    const imgCenterX = childImg.position.x;
+                    const imgCenterY = childImg.position.y - imgHeight / 2;
+
+                    const centerDx = promptCenterX - imgCenterX;
+                    const centerDy = promptCenterY - imgCenterY;
+                    const dist = Math.sqrt(centerDx * centerDx + centerDy * centerDy) || 1;
+
+                    // 如果太近,弹开主卡
+                    if (dist < MIN_DISTANCE) {
+                        const pushRatio = MIN_DISTANCE / dist;
+                        finalPos = {
+                            x: imgCenterX + centerDx * pushRatio,
+                            y: imgCenterY + centerDy * pushRatio + promptHeight / 2
+                        };
+                    }
                 }
-                return img;
-            });
+            }
 
             return {
                 ...c,
-                promptNodes: c.promptNodes.map(n => n.id === id ? { ...n, position: pos } : n),
-                imageNodes: newImageNodes
+                promptNodes: c.promptNodes.map(n => n.id === id ? { ...n, position: finalPos } : n),
+                imageNodes: c.imageNodes // 副卡位置不变
             };
         });
     }, [updateCanvas, state.selectedNodeIds]);
@@ -771,11 +820,91 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const dy = pos.y - node.position.y;
             const ignoreSelection = options?.ignoreSelection === true;
 
+            // 辅助函数:当副卡靠近主卡时,推开主卡(实时磁铁效果)
+            const pushPromptAwayFromImage = (
+                imgPos: { x: number; y: number },
+                imgNode: typeof node,
+                promptNodes: typeof c.promptNodes
+            ): typeof c.promptNodes => {
+                // Debug log
+                console.log('[Repulsion] Checking:', imgNode.id, 'parentPromptId:', imgNode.parentPromptId);
+
+                if (!imgNode.parentPromptId) {
+                    console.log('[Repulsion] No parentPromptId, skipping');
+                    return promptNodes;
+                }
+
+                const parentPrompt = promptNodes.find(p => p.id === imgNode.parentPromptId);
+                if (!parentPrompt) {
+                    console.log('[Repulsion] Parent prompt not found');
+                    return promptNodes;
+                }
+
+                // 排斥参数
+                const REPULSION_ZONE = 20; // 边界外多少像素开始排斥
+                const PUSH_STRENGTH = 1.5; // 推力强度
+
+                const promptHeight = parentPrompt.height || 200;
+                const promptWidth = 320;
+                const imgHeight = 200;
+                const imgWidth = 280;
+
+                // 主卡边界 (position是底部中心)
+                const promptTop = parentPrompt.position.y - promptHeight;
+                const promptBottom = parentPrompt.position.y;
+                const promptLeft = parentPrompt.position.x - promptWidth / 2;
+                const promptRight = parentPrompt.position.x + promptWidth / 2;
+
+                // 副卡边界 (position是底部中心)
+                const imgTop = imgPos.y - imgHeight;
+                const imgBottom = imgPos.y;
+                const imgLeft = imgPos.x - imgWidth / 2;
+                const imgRight = imgPos.x + imgWidth / 2;
+
+                // 检测边界框是否重叠或接近
+                const horizontalOverlap = imgRight > promptLeft - REPULSION_ZONE && imgLeft < promptRight + REPULSION_ZONE;
+                const verticalOverlap = imgBottom > promptTop - REPULSION_ZONE && imgTop < promptBottom + REPULSION_ZONE;
+
+                console.log('[Repulsion] Overlap check:', { horizontalOverlap, verticalOverlap });
+
+                if (horizontalOverlap && verticalOverlap) {
+                    // 计算推开方向和距离
+                    const imgCenterX = imgPos.x;
+                    const imgCenterY = imgPos.y - imgHeight / 2;
+                    const promptCenterX = parentPrompt.position.x;
+                    const promptCenterY = parentPrompt.position.y - promptHeight / 2;
+
+                    // 方向向量 (从副卡指向主卡的反方向)
+                    let pushX = promptCenterX - imgCenterX;
+                    let pushY = promptCenterY - imgCenterY;
+
+                    // 归一化并乘以推力
+                    const dist = Math.sqrt(pushX * pushX + pushY * pushY) || 1;
+                    const pushAmount = Math.max(0, (REPULSION_ZONE + 50) - dist) * PUSH_STRENGTH;
+
+                    pushX = (pushX / dist) * pushAmount;
+                    pushY = (pushY / dist) * pushAmount;
+
+                    console.log('[Repulsion] Pushing prompt by:', { pushX, pushY });
+
+                    // 更新主卡位置
+                    return promptNodes.map(p =>
+                        p.id === parentPrompt.id
+                            ? { ...p, position: { x: p.position.x + pushX, y: p.position.y + pushY } }
+                            : p
+                    );
+                }
+                return promptNodes;
+            };
+
             // GROUP MOVE LOGIC
             if (!ignoreSelection) {
                 const selectedIds = new Set(state.selectedNodeIds || []);
                 if (selectedIds.has(id)) {
-                    const newPromptNodes = c.promptNodes.map(n => {
+                    // 先应用排斥效果
+                    let newPromptNodes = pushPromptAwayFromImage(pos, node, c.promptNodes);
+
+                    newPromptNodes = newPromptNodes.map(n => {
                         if (selectedIds.has(n.id)) {
                             return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
                         }
@@ -794,8 +923,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
             }
 
+            // SINGLE MOVE - 副卡拖动时推开主卡
+            const updatedPromptNodes = pushPromptAwayFromImage(pos, node, c.promptNodes);
+
             return {
                 ...c,
+                promptNodes: updatedPromptNodes,
                 imageNodes: c.imageNodes.map(img =>
                     img.id === id ? { ...img, position: pos } : img
                 )
@@ -957,7 +1090,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             history: {},
             fileSystemHandle: null,
             folderName: null,
-            selectedNodeIds: []
+            selectedNodeIds: [],
+            subCardLayoutMode: 'row'
         });
     }, [state.canvases]);
 
@@ -973,9 +1107,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // --- Configuration ---
         const PROMPT_WIDTH = 320;
         const PROMPT_HEIGHT = 160; // Base height, dynamic in reality but fixed for grid slot
-        const GAP_X = 60;  // Horizontal gap between branches
-        const GAP_Y = 80;  // Vertical gap between levels
-        const IMAGE_GAP = 20; // Gap between sibling images
+        const GAP_X = 100;  // ✅ 增大水平间距防止堆叠
+        const GAP_Y = 120;  // ✅ 增大垂直间距防止堆叠
+        const IMAGE_GAP = 40; // ✅ 增大图片间距
 
         // --- Helper: Get dimensions ---
         const getImageDims = (aspectRatio?: string, dimensions?: string) => {
@@ -1026,6 +1160,83 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 const isPromptOnly = selectedPrompts.length > 0 && selectedImages.length === 0;
                 const isImageOnly = selectedPrompts.length === 0 && selectedImages.length > 0;
+
+                // [NEW] 单选主卡时: 对其副卡应用排列模式轮换
+                if (isPromptOnly && selectedPrompts.length === 1) {
+                    const prompt = selectedPrompts[0];
+                    const childImages = currentCanvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
+
+                    if (childImages.length > 0) {
+                        const currentMode = state.subCardLayoutMode;
+                        const SUB_GAP = 16;
+                        const PROMPT_TO_SUB_GAP = 60;
+
+                        // 计算副卡尺寸
+                        const imageDims = childImages.map(img => getImageDims(img.aspectRatio, img.dimensions));
+                        const avgWidth = imageDims.reduce((sum, d) => sum + d.w, 0) / imageDims.length;
+                        const avgHeight = imageDims.reduce((sum, d) => sum + d.h, 0) / imageDims.length;
+
+                        const newImagePositions: Record<string, { x: number, y: number }> = {};
+                        const promptCenterX = prompt.position.x;
+                        const promptBottom = prompt.position.y;
+
+                        if (currentMode === 'row') {
+                            // 横向排列: 副卡水平排成一行,居中对齐
+                            const totalWidth = childImages.length * avgWidth + (childImages.length - 1) * SUB_GAP;
+                            let currentX = promptCenterX - totalWidth / 2 + avgWidth / 2;
+                            const y = promptBottom + PROMPT_TO_SUB_GAP + avgHeight;
+
+                            childImages.forEach((img, i) => {
+                                const dims = imageDims[i];
+                                newImagePositions[img.id] = { x: currentX, y };
+                                currentX += dims.w + SUB_GAP;
+                            });
+                        } else if (currentMode === 'grid') {
+                            // 宫格排列: 4列网格,居中对齐
+                            const columns = Math.min(4, childImages.length);
+                            const rows = Math.ceil(childImages.length / columns);
+                            const totalWidth = columns * avgWidth + (columns - 1) * SUB_GAP;
+                            const startX = promptCenterX - totalWidth / 2 + avgWidth / 2;
+                            const startY = promptBottom + PROMPT_TO_SUB_GAP + avgHeight;
+
+                            childImages.forEach((img, i) => {
+                                const col = i % columns;
+                                const row = Math.floor(i / columns);
+                                newImagePositions[img.id] = {
+                                    x: startX + col * (avgWidth + SUB_GAP),
+                                    y: startY + row * (avgHeight + SUB_GAP)
+                                };
+                            });
+                        } else {
+                            // 竖向排列: 副卡垂直排成一列,居中对齐
+                            let currentY = promptBottom + PROMPT_TO_SUB_GAP + avgHeight;
+
+                            childImages.forEach((img, i) => {
+                                const dims = imageDims[i];
+                                newImagePositions[img.id] = { x: promptCenterX, y: currentY };
+                                currentY += dims.h + SUB_GAP;
+                            });
+                        }
+
+                        // 轮换到下一个模式
+                        const nextMode: SubCardLayout = currentMode === 'row' ? 'grid' : currentMode === 'grid' ? 'column' : 'row';
+
+                        // 应用位置变更
+                        const newCanvases = state.canvases.map(c => {
+                            if (c.id !== state.activeCanvasId) return c;
+                            return {
+                                ...c,
+                                imageNodes: c.imageNodes.map(img =>
+                                    newImagePositions[img.id] ? { ...img, position: newImagePositions[img.id] } : img
+                                ),
+                                lastModified: Date.now()
+                            };
+                        });
+
+                        setState(prev => ({ ...prev, canvases: newCanvases, subCardLayoutMode: nextMode }));
+                        return;
+                    }
+                }
 
                 // 2. Identify Roots & Sync Mode
                 let roots: any[] = [];
@@ -1095,9 +1306,23 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (roots.length >= 2) {
                     // 2. Decide Strategy
                     let strategy: 'matrix' | 'row' | 'column' = 'row';
-                    const GAP = 40; // Group Gap
+                    const GAP = 80; // ✅ 增大分组间距防止堆叠
 
-                    if (roots.length >= 4) {
+                    // [NEW] 纯副卡模式: 使用subCardLayoutMode轮换
+                    if (isImageOnly) {
+                        // 使用当前模式
+                        const currentMode = state.subCardLayoutMode;
+                        if (currentMode === 'row') {
+                            strategy = 'row';
+                        } else if (currentMode === 'grid') {
+                            strategy = 'matrix';
+                        } else {
+                            strategy = 'column';
+                        }
+                        // 轮换到下一个模式 (row -> grid -> column -> row)
+                        const nextMode: SubCardLayout = currentMode === 'row' ? 'grid' : currentMode === 'grid' ? 'column' : 'row';
+                        setState(prev => ({ ...prev, subCardLayoutMode: nextMode }));
+                    } else if (roots.length >= 4) {
                         strategy = 'matrix';
                     } else {
                         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -1219,113 +1444,165 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const selectedCount = selectedPrompts.length + selectedImages.length;
 
             if (selectedCount > 1) {
-                // 1. Prepare data with visual dimensions and centers
-                // Card Anchor is Bottom-Center (x, y). 
-                // Visual Center Y = y - height / 2.
-                const allSelected = [
-                    ...selectedPrompts.map(p => ({
-                        id: p.id,
-                        type: 'prompt',
-                        obj: p,
-                        x: p.position.x,
-                        y: p.position.y,
-                        width: PROMPT_WIDTH,
-                        height: p.height || 200, // Use tracked height or fallback
-                        visualCy: p.position.y - (p.height || 200) / 2
-                    })),
-                    ...selectedImages.map(img => {
+                // ✅ 框选整理: 按卡组处理,支持副卡顶部对齐和就近原则
+
+                // 1. 构建卡组列表 (类似全局整理)
+                const SUB_COLUMNS = 4; // 副卡4列
+                const SUB_IMAGE_GAP = 16;
+                const PROMPT_TO_SUB_GAP = 60;
+                const GROUP_GAP_X = 100;
+                const GROUP_GAP_Y = 160;
+
+                type SelectionGroup = {
+                    prompt?: typeof selectedPrompts[0];
+                    images: typeof selectedImages;
+                    width: number;
+                    height: number;
+                    originalX: number;
+                    originalY: number;
+                };
+
+                const groups: SelectionGroup[] = [];
+                const processedImageIds = new Set<string>();
+
+                // 2a. 处理选中的主卡及其副卡
+                selectedPrompts.forEach(prompt => {
+                    const childImages = currentCanvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
+                    const promptHeight = prompt.height || 200;
+
+                    let maxSubWidth = 0;
+                    let maxSubHeight = 0;
+                    childImages.forEach(img => {
                         const dims = getImageDims(img.aspectRatio, img.dimensions);
-                        return {
-                            id: img.id,
-                            type: 'image',
-                            obj: img,
-                            x: img.position.x,
-                            y: img.position.y,
-                            width: dims.w,
-                            height: dims.h,
-                            visualCy: img.position.y - dims.h / 2
-                        };
-                    })
-                ];
+                        maxSubWidth = Math.max(maxSubWidth, dims.w);
+                        maxSubHeight = Math.max(maxSubHeight, dims.h);
+                        processedImageIds.add(img.id);
+                    });
 
-                // 2. Sort by current X to maintain relative left-to-right order
-                allSelected.sort((a, b) => a.x - b.x);
+                    const actualColumns = Math.min(SUB_COLUMNS, childImages.length);
+                    const rows = Math.ceil(childImages.length / SUB_COLUMNS);
+                    const subBlockWidth = actualColumns > 0 ? actualColumns * maxSubWidth + (actualColumns - 1) * SUB_IMAGE_GAP : 0;
+                    const subBlockHeight = rows > 0 ? rows * maxSubHeight + (rows - 1) * SUB_IMAGE_GAP : 0;
 
-                // 3. Calculate Visual Vertical Center Line (Average of visual centers)
-                const avgVisualCy = allSelected.reduce((sum, n) => sum + n.visualCy, 0) / allSelected.length;
+                    const groupWidth = Math.max(PROMPT_WIDTH, subBlockWidth);
+                    const groupHeight = promptHeight + (childImages.length > 0 ? PROMPT_TO_SUB_GAP + subBlockHeight : 0);
 
-                // 4. Distribute Horizontally with Fixed Gap
-                const DISTRIBUTION_GAP = 40; // Fixed distance requested by user
-
-                // Start X: Keep the group centered around the same visual center X? 
-                // Or start from the leftmost item's X? 
-                // Let's preserve the "Leftmost Edge" of the group to avoid jumping too much.
-                // Leftmost Edge = allSelected[0].x - allSelected[0].width / 2
-                let currentLeftEdge = allSelected[0].x - allSelected[0].width / 2;
-
-                const newPositions: Record<string, { x: number, y: number }> = {};
-                const movedPrompts = new Set<string>();
-
-                // Calculate new positions for SELECTED nodes
-                allSelected.forEach((node) => {
-                    // Horizontal: Place based on accumulated width
-                    // Node Center X = currentLeftEdge + node.width / 2
-                    const newX = currentLeftEdge + node.width / 2;
-
-                    // Vertical: Align Visual Center
-                    // New Bottom Y = avgVisualCy + height / 2
-                    const newY = avgVisualCy + node.height / 2;
-
-                    newPositions[node.id] = { x: newX, y: newY };
-
-                    // Advance X cursor
-                    currentLeftEdge += node.width + DISTRIBUTION_GAP;
-
-                    // Track prompt moves to sync children later
-                    if (node.type === 'prompt') movedPrompts.add(node.id);
+                    groups.push({
+                        prompt,
+                        images: childImages,
+                        width: groupWidth,
+                        height: groupHeight,
+                        originalX: prompt.position.x,
+                        originalY: prompt.position.y
+                    });
                 });
 
-                // 5. Apply updates & Handle Implicit Child Movement
-                // If a prompt moved, its unselected child images should move with it.
+                // 2b. 处理选中但无主卡的孤立副卡
+                selectedImages.filter(img => !processedImageIds.has(img.id)).forEach(img => {
+                    const dims = getImageDims(img.aspectRatio, img.dimensions);
+                    groups.push({
+                        images: [img],
+                        width: dims.w,
+                        height: dims.h + 200 + PROMPT_TO_SUB_GAP, // 假设有主卡高度
+                        originalX: img.position.x,
+                        originalY: img.position.y
+                    });
+                });
+
+                if (groups.length === 0) return;
+
+                // 3. 按原位置排序 (就近原则)
+                groups.sort((a, b) => {
+                    const rowDiff = Math.floor(a.originalY / 200) - Math.floor(b.originalY / 200);
+                    if (rowDiff !== 0) return rowDiff;
+                    return a.originalX - b.originalX;
+                });
+
+                // 4. 计算选中区域中心 (就近原则)
+                const centerX = groups.reduce((sum, g) => sum + g.originalX, 0) / groups.length;
+                const centerY = groups.reduce((sum, g) => sum + g.originalY, 0) / groups.length;
+
+                // 5. 两遍处理: 先分行,再设置位置
+                const gridColumns = Math.ceil(Math.sqrt(groups.length));
+                const layoutRows: Array<{ groups: SelectionGroup[]; maxPromptHeight: number; maxTotalHeight: number }> = [];
+                let currentRow: typeof layoutRows[0] = { groups: [], maxPromptHeight: 0, maxTotalHeight: 0 };
+
+                groups.forEach((group, i) => {
+                    if (currentRow.groups.length >= gridColumns) {
+                        layoutRows.push(currentRow);
+                        currentRow = { groups: [], maxPromptHeight: 0, maxTotalHeight: 0 };
+                    }
+                    currentRow.groups.push(group);
+                    const promptHeight = group.prompt?.height || 200;
+                    currentRow.maxPromptHeight = Math.max(currentRow.maxPromptHeight, promptHeight);
+                    currentRow.maxTotalHeight = Math.max(currentRow.maxTotalHeight, group.height);
+                });
+                if (currentRow.groups.length > 0) layoutRows.push(currentRow);
+
+                // 6. 计算总尺寸并从中心点开始布局
+                const maxGroupWidth = Math.max(...groups.map(g => g.width));
+                const totalLayoutWidth = gridColumns * maxGroupWidth + (gridColumns - 1) * GROUP_GAP_X;
+                const totalLayoutHeight = layoutRows.reduce((sum, r) => sum + r.maxTotalHeight, 0) + (layoutRows.length - 1) * GROUP_GAP_Y;
+                const startX = centerX - totalLayoutWidth / 2;
+                let startY = centerY - totalLayoutHeight / 2;
+
+                const newPositions: Record<string, { x: number; y: number }> = {};
+                const movedPrompts = new Set<string>();
+
+                // 7. 设置位置 (副卡顶部对齐)
+                layoutRows.forEach(layoutRow => {
+                    let rowX = startX;
+                    const rowMaxPromptHeight = layoutRow.maxPromptHeight;
+                    const subCardsStartY = startY + rowMaxPromptHeight + PROMPT_TO_SUB_GAP;
+
+                    layoutRow.groups.forEach(group => {
+                        const groupCenterX = rowX + maxGroupWidth / 2;
+
+                        if (group.prompt) {
+                            newPositions[group.prompt.id] = {
+                                x: groupCenterX,
+                                y: startY + rowMaxPromptHeight
+                            };
+                            movedPrompts.add(group.prompt.id);
+
+                            // 副卡位置
+                            if (group.images.length > 0) {
+                                const imageDims = group.images.map(img => getImageDims(img.aspectRatio, img.dimensions));
+                                const maxWidth = Math.max(...imageDims.map(d => d.w));
+                                const maxHeight = Math.max(...imageDims.map(d => d.h));
+                                const actualColumns = Math.min(SUB_COLUMNS, group.images.length);
+                                const blockWidth = actualColumns * maxWidth + (actualColumns - 1) * SUB_IMAGE_GAP;
+                                const blockStartX = groupCenterX - blockWidth / 2;
+
+                                group.images.forEach((img, i) => {
+                                    const col = i % SUB_COLUMNS;
+                                    const imgRow = Math.floor(i / SUB_COLUMNS);
+                                    const cardCenterX = blockStartX + col * (maxWidth + SUB_IMAGE_GAP) + maxWidth / 2;
+                                    const cardTopY = subCardsStartY + imgRow * (maxHeight + SUB_IMAGE_GAP);
+                                    const dims = imageDims[i];
+                                    newPositions[img.id] = { x: cardCenterX, y: cardTopY + dims.h };
+                                });
+                            }
+                        } else if (group.images[0]) {
+                            // 孤立副卡
+                            const img = group.images[0];
+                            const dims = getImageDims(img.aspectRatio, img.dimensions);
+                            newPositions[img.id] = { x: groupCenterX, y: subCardsStartY + dims.h };
+                        }
+
+                        rowX += maxGroupWidth + GROUP_GAP_X;
+                    });
+
+                    startY += layoutRow.maxTotalHeight + GROUP_GAP_Y;
+                });
+
+                // 8. 应用位置
                 const newCanvases = state.canvases.map(c => {
                     if (c.id !== state.activeCanvasId) return c;
-
-                    // Helper to get delta for a specific prompt
-                    const getPromptDelta = (pid: string) => {
-                        if (!newPositions[pid]) return { x: 0, y: 0 };
-                        // Find original pos
-                        const original = allSelected.find(s => s.id === pid);
-                        if (!original) return { x: 0, y: 0 };
-                        return {
-                            x: newPositions[pid].x - original.x,
-                            y: newPositions[pid].y - original.y
-                        };
-                    };
-
                     return {
                         ...c,
                         promptNodes: c.promptNodes.map(pn => newPositions[pn.id] ? { ...pn, position: newPositions[pn.id] } : pn),
-                        imageNodes: c.imageNodes.map(img => {
-                            // Case 1: Image is explicitly selected and arranged
-                            if (newPositions[img.id]) {
-                                return { ...img, position: newPositions[img.id] };
-                            }
-                            // Case 2: Image is NOT selected, but its Parent Prompt moved
-                            if (img.parentPromptId && movedPrompts.has(img.parentPromptId)) {
-                                // Sync move
-                                const delta = getPromptDelta(img.parentPromptId);
-                                if (delta.x !== 0 || delta.y !== 0) {
-                                    return {
-                                        ...img,
-                                        position: {
-                                            x: img.position.x + delta.x,
-                                            y: img.position.y + delta.y
-                                        }
-                                    };
-                                }
-                            }
-                            return img;
-                        }),
+                        imageNodes: c.imageNodes.map(img => newPositions[img.id] ? { ...img, position: newPositions[img.id] } : img),
                         lastModified: Date.now()
                     };
                 });
@@ -1335,229 +1612,307 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
         }
 
-        // --- 1. Build Data Structures (Original Full Layout) ---
+        // --- 新布局逻辑: 从左上角开始,每行20组 ---
+        // 配置
+        const GROUPS_PER_ROW = 20;  // 每行20个卡组
+        const GROUP_GAP_X = 100;    // ✅ 卡组之间的横向间距 (增加防止重叠)
+        const GROUP_GAP_Y = 160;    // ✅ 行之间的纵向间距 (增加防止重叠)
+        const SUB_CARD_GAP = 20;    // 子卡片之间的间距
+        const START_X = -2000;      // 画布左上角起始X
+        const START_Y = 200;        // 画布左上角起始Y
+
+        // 1. 分类卡片
         const errorPrompts = currentCanvas.promptNodes.filter(p => p.error);
         const errorPromptIds = new Set(errorPrompts.map(p => p.id));
-        const normalPrompts = currentCanvas.promptNodes.filter(p => !errorPromptIds.has(p.id));
-        const normalImages = currentCanvas.imageNodes.filter(img => !img.parentPromptId || !errorPromptIds.has(img.parentPromptId));
 
-        const promptMap = new Map(normalPrompts.map(n => [n.id, n]));
-        const imageMap = new Map(normalImages.map(n => [n.id, n]));
+        // 正确的Prompt卡(有子卡的)
+        const normalPrompts = currentCanvas.promptNodes.filter(p =>
+            !errorPromptIds.has(p.id) &&
+            currentCanvas.imageNodes.some(img => img.parentPromptId === p.id)
+        );
 
-        // Track visited to prevent infinite loops (though DAG is expected)
-        const visited = new Set<string>();
+        // 孤独的Prompt卡(没有子卡的)
+        const orphanPrompts = currentCanvas.promptNodes.filter(p =>
+            !errorPromptIds.has(p.id) &&
+            !currentCanvas.imageNodes.some(img => img.parentPromptId === p.id)
+        );
 
-        // Tree Node Definition
-        interface TreeNode {
-            id: string;
-            type: 'prompt' | 'image';
+        // 孤独的Image卡(没有父Prompt的)
+        const orphanImages = currentCanvas.imageNodes.filter(img =>
+            !img.parentPromptId ||
+            !currentCanvas.promptNodes.some(p => p.id === img.parentPromptId)
+        );
+
+        // 2. 构建卡组列表
+        type LayoutGroupType = 'normal' | 'orphan-prompt' | 'orphan-image' | 'error';
+        const layoutGroups: Array<{
+            type: LayoutGroupType;
+            prompt?: typeof normalPrompts[0];
+            images: typeof currentCanvas.imageNodes;
             width: number;
             height: number;
-            children: TreeNode[]; // Images have Prompt children (follow-ups), Prompts have Image children
-            subtreeWidth: number;
-            x?: number;
-            y?: number;
+        }> = [];
+
+        // 2a. 正确的卡组(Prompt + 子Image)
+        const SUB_COLUMNS = 4; // ✅ 副卡横向4列
+        const SUB_IMAGE_GAP = 16; // 子卡间距
+        const PROMPT_TO_SUB_GAP = 60; // 主卡和副卡之间的间距 (行间距的1/2)
+
+        normalPrompts.forEach(prompt => {
+            const childImages = currentCanvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
+            const promptWidth = 320;
+            const promptHeight = prompt.height || 200;
+
+            // 计算子卡尺寸
+            let maxSubWidth = 0;
+            let maxSubHeight = 0;
+            childImages.forEach(img => {
+                const dims = getImageDims(img.aspectRatio, img.dimensions);
+                maxSubWidth = Math.max(maxSubWidth, dims.w);
+                maxSubHeight = Math.max(maxSubHeight, dims.h);
+            });
+
+            // 实际列数 (不超过图片数量)
+            const actualColumns = Math.min(SUB_COLUMNS, childImages.length);
+            const rows = Math.ceil(childImages.length / SUB_COLUMNS);
+
+            // 子卡块尺寸
+            const subBlockWidth = actualColumns > 0
+                ? actualColumns * maxSubWidth + (actualColumns - 1) * SUB_IMAGE_GAP
+                : 0;
+            const subBlockHeight = rows > 0
+                ? rows * maxSubHeight + (rows - 1) * SUB_IMAGE_GAP
+                : 0;
+
+            // 卡组总宽度和高度
+            const groupWidth = Math.max(promptWidth, subBlockWidth);
+            const groupHeight = promptHeight + (childImages.length > 0 ? PROMPT_TO_SUB_GAP + subBlockHeight : 0);
+
+            layoutGroups.push({
+                type: 'normal',
+                prompt,
+                images: childImages,
+                width: groupWidth,
+                height: groupHeight
+            });
+        });
+
+        // 2b. 孤独的Prompt卡
+        orphanPrompts.forEach(prompt => {
+            layoutGroups.push({
+                type: 'orphan-prompt',
+                prompt,
+                images: [],
+                width: 320,
+                height: prompt.height || 200
+            });
+        });
+
+        // 2c. 孤独的Image卡
+        orphanImages.forEach(img => {
+            const dims = getImageDims(img.aspectRatio, img.dimensions);
+            layoutGroups.push({
+                type: 'orphan-image',
+                images: [img],
+                width: dims.w,
+                height: dims.h
+            });
+        });
+
+        // 3. 布局正常卡组 + 孤独卡组 (每行20组或超出最大宽度)
+        // ✅ 两遍处理: 
+        //   第一遍: 分配卡组到行,计算每行的最大主卡高度
+        //   第二遍: 根据每行的最大主卡高度设置位置,实现副卡顶部对齐
+
+        const STANDARD_CARD_WIDTH = 320;
+        const MAX_ROW_WIDTH = GROUPS_PER_ROW * (STANDARD_CARD_WIDTH + GROUP_GAP_X);
+
+        // ✅ 第一遍: 将卡组分配到行
+        const rows: Array<{
+            groups: typeof layoutGroups;
+            maxPromptHeight: number;  // 该行最高主卡高度
+            maxTotalHeight: number;   // 该行最高卡组总高度
+            startX: number;
+        }> = [];
+
+        let currentX = START_X;
+        let currentRow: typeof rows[0] = { groups: [], maxPromptHeight: 0, maxTotalHeight: 0, startX: START_X };
+
+        layoutGroups.forEach((group) => {
+            const willExceedWidth = (currentX - START_X + group.width + GROUP_GAP_X) > MAX_ROW_WIDTH;
+            const groupsInCurrentRow = currentRow.groups.length;
+
+            // 换行检查
+            if (groupsInCurrentRow >= GROUPS_PER_ROW || (groupsInCurrentRow > 0 && willExceedWidth)) {
+                rows.push(currentRow);
+                currentX = START_X;
+                currentRow = { groups: [], maxPromptHeight: 0, maxTotalHeight: 0, startX: START_X };
+            }
+
+            // 添加到当前行
+            currentRow.groups.push(group);
+
+            // 更新该行最大主卡高度
+            const promptHeight = group.prompt?.height || 200;
+            currentRow.maxPromptHeight = Math.max(currentRow.maxPromptHeight, promptHeight);
+            currentRow.maxTotalHeight = Math.max(currentRow.maxTotalHeight, group.height);
+
+            currentX += group.width + GROUP_GAP_X;
+        });
+
+        // 添加最后一行
+        if (currentRow.groups.length > 0) {
+            rows.push(currentRow);
         }
 
-        // Recursive Build
-        const buildTree = (nodeId: string, type: 'prompt' | 'image'): TreeNode | null => {
-            if (visited.has(nodeId)) return null;
-            visited.add(nodeId);
-
-            let node: any;
-            let width = 0;
-            let height = 0;
-            let childrenIds: string[] = [];
-            let childType: 'prompt' | 'image';
-
-            if (type === 'prompt') {
-                node = promptMap.get(nodeId);
-                if (!node) return null;
-                width = PROMPT_WIDTH;
-                height = node.height || 200; // Use actual height if available
-                // Children are Images created by this prompt
-                childrenIds = normalImages
-                    .filter(img => img.parentPromptId === nodeId)
-                    .map(img => img.id);
-                childType = 'image';
-            } else {
-                node = imageMap.get(nodeId);
-                if (!node) return null;
-                const dims = getImageDims(node.aspectRatio, node.dimensions);
-                width = dims.w;
-                height = dims.h;
-                // Children are Prompts that use this image as source (Follow-ups)
-                childrenIds = normalPrompts
-                    .filter(p => p.sourceImageId === nodeId)
-                    .map(p => p.id);
-                childType = 'prompt';
-            }
-
-            const children = childrenIds
-                .map(id => buildTree(id, childType))
-                .filter((n): n is TreeNode => n !== null);
-
-            return { id: nodeId, type, width, height, children, subtreeWidth: 0 };
-        };
-
-        // --- 2. Identify Roots ---
-        // Root Prompts: No sourceImageId OR sourceImageId not found
-        const rootPrompts = normalPrompts.filter(p =>
-            !p.sourceImageId || !imageMap.has(p.sourceImageId)
-        );
-
-        // Root Images: No parentPromptId OR parentPromptId not found (Orphans)
-        const rootImages = normalImages.filter(img =>
-            !img.parentPromptId || !promptMap.has(img.parentPromptId)
-        );
-
-        const forest: TreeNode[] = [];
-        rootPrompts.forEach(p => {
-            const tree = buildTree(p.id, 'prompt');
-            if (tree) forest.push(tree);
-        });
-        rootImages.forEach(img => {
-            const tree = buildTree(img.id, 'image');
-            if (tree) forest.push(tree);
-        });
-
-        // --- 3. Measure Subtrees (Bottom-Up) ---
-        // 副卡横向排列，计算子树宽度时需考虑居中对齐
-        const measureTree = (node: TreeNode) => {
-            if (node.children.length === 0) {
-                node.subtreeWidth = node.width;
-                return;
-            }
-
-            // Measure all children first
-            node.children.forEach(measureTree);
-
-            // 计算子节点行的总宽度
-            // 如果父节点是 prompt，子节点是 images：使用紧凑间距，横向居中
-            // 如果父节点是 image，子节点是 prompts：使用宽间距
-            const childGap = node.type === 'prompt' ? IMAGE_GAP : GAP_X;
-
-            const childrenTotalWidth = node.children.reduce((sum, child) => sum + child.subtreeWidth, 0)
-                + (node.children.length - 1) * childGap;
-
-            // 子树宽度取父节点宽度和子节点总宽度的较大值
-            node.subtreeWidth = Math.max(node.width, childrenTotalWidth);
-        };
-
-        forest.forEach(measureTree);
-
-        // --- 4. 布局（自顶向下）---
-        // Layout: Top-Down positioning with sub-cards centered under main cards
+        // ✅ 第二遍: 根据每行的最大主卡高度设置位置
         const positions: { [id: string]: { x: number; y: number } } = {};
+        let currentY = START_Y;
 
-        const layoutTree = (node: TreeNode, x: number, y: number) => {
-            // 对于居中锚点的卡片（translate -50%）：
-            // X 应该是卡片的视觉中心
-            // 分配的子树宽度范围是 [x, x + node.subtreeWidth]
-            // 我们希望卡片中心位于此分配区域的中心
-            const nodeX = x + node.subtreeWidth / 2;
-            positions[node.id] = { x: nodeX, y };
+        rows.forEach((row) => {
+            let rowX = START_X;
+            const rowMaxPromptHeight = row.maxPromptHeight; // 该行最高主卡高度
+            const subCardsStartY = currentY + rowMaxPromptHeight + PROMPT_TO_SUB_GAP; // ✅ 该行所有副卡的顶部Y
 
-            // 如果没有子节点，无需进一步布局
-            if (node.children.length === 0) return;
+            row.groups.forEach((group) => {
+                const groupCenterX = rowX + group.width / 2;
 
-            // 计算子节点块的总宽度
-            const childGap = node.type === 'prompt' ? IMAGE_GAP : GAP_X;
-            const childrenBlockWidth = node.children.reduce((sum, c) => sum + c.subtreeWidth, 0)
-                + (node.children.length - 1) * childGap;
+                if (group.type === 'normal' && group.prompt) {
+                    // ✅ 主卡位置: 底部与该行最高主卡底部对齐
+                    const promptHeight = group.prompt.height || 200;
+                    positions[group.prompt.id] = {
+                        x: groupCenterX,
+                        y: currentY + rowMaxPromptHeight  // 所有主卡底部对齐到该行最高主卡底部
+                    };
 
-            // 副卡居中对齐：计算起始X使子节点块在父节点子树中居中
-            let currentChildX = x;
-            if (childrenBlockWidth < node.subtreeWidth) {
-                currentChildX += (node.subtreeWidth - childrenBlockWidth) / 2;
-            }
+                    // ✅ 子卡位置: 所有副卡顶部对齐到 subCardsStartY
+                    if (group.images.length > 0) {
+                        const imageDims = group.images.map(img => getImageDims(img.aspectRatio, img.dimensions));
+                        const maxWidth = Math.max(...imageDims.map(d => d.w));
+                        const maxHeight = Math.max(...imageDims.map(d => d.h));
 
-            // 底部锚点卡片（translate -50%, -100%）的Y计算：
-            // - node.position.y 是卡片的视觉底部
-            // - 子节点的视觉顶部应该在父节点底部 + 间距
-            // - 由于子节点也使用底部锚点：child.y = parentBottom + GAP + childHeight
-            const baseY = y + GAP_Y;
+                        const actualColumns = Math.min(SUB_COLUMNS, group.images.length);
+                        const blockWidth = actualColumns * maxWidth + (actualColumns - 1) * SUB_IMAGE_GAP;
+                        const blockStartX = groupCenterX - blockWidth / 2;
 
-            node.children.forEach(child => {
-                const childY = baseY + child.height;
-                layoutTree(child, currentChildX, childY);
-                currentChildX += child.subtreeWidth + childGap;
+                        group.images.forEach((img, i) => {
+                            const col = i % SUB_COLUMNS;
+                            const imgRow = Math.floor(i / SUB_COLUMNS);
+                            const cardCenterX = blockStartX + col * (maxWidth + SUB_IMAGE_GAP) + maxWidth / 2;
+                            // ✅ 副卡顶部对齐: 使用该行统一的副卡起始Y
+                            const cardTopY = subCardsStartY + imgRow * (maxHeight + SUB_IMAGE_GAP);
+                            const dims = imageDims[i];
+                            positions[img.id] = {
+                                x: cardCenterX,
+                                y: cardTopY + dims.h  // 底部锚点
+                            };
+                        });
+                    }
+                } else if (group.type === 'orphan-prompt' && group.prompt) {
+                    // 孤立主卡: 底部与该行最高主卡底部对齐
+                    positions[group.prompt.id] = {
+                        x: groupCenterX,
+                        y: currentY + rowMaxPromptHeight
+                    };
+                } else if (group.type === 'orphan-image' && group.images[0]) {
+                    // ✅ 孤立副卡: 顶部与该行其他副卡对齐
+                    const img = group.images[0];
+                    const dims = getImageDims(img.aspectRatio, img.dimensions);
+                    positions[img.id] = {
+                        x: groupCenterX,
+                        y: subCardsStartY + dims.h  // 底部锚点
+                    };
+                }
+
+                rowX += group.width + GROUP_GAP_X;
             });
-        };
 
-        let currentRootX = 0; // Start from 0 for easier centering calculation
-        const baseRootY = 100;
-
-        // First pass: layout from X=0 to calculate total width
-        forest.forEach(root => {
-            const rootY = baseRootY + root.height;
-            layoutTree(root, currentRootX, rootY);
-            currentRootX += root.subtreeWidth + 100;
+            // 下一行起始Y = 当前行所有卡组的最大总高度 + 行间距
+            currentY += row.maxTotalHeight + GROUP_GAP_Y;
         });
 
-        // Calculate total width and center offset
-        const totalWidth = currentRootX - 100; // Remove trailing gap
-        const centerOffsetX = -totalWidth / 2; // Canvas uses 0,0 as center
-
-        // Shift all positions to center
-        Object.keys(positions).forEach(id => {
-            positions[id].x += centerOffsetX;
-        });
-
-
-        // --- 5. Error Prompt Layout (Right of Normal Groups) ---
+        // 4. 错误卡片单独换行排列
         if (errorPrompts.length > 0) {
-            const errorGapX = 80;
-            const errorGapY = 40;
-            const errorImageGap = 16;
+            // 新行开始 - ✅ 使用新的局部变量
+            let errorX = START_X;
+            let errorRowMaxHeight = 0;
+            let errorGroupsInRow = 0;
+            currentY += GROUP_GAP_Y + 50; // 额外50px分隔
 
-            let maxRight = 0;
-            normalPrompts.forEach(p => {
-                const pos = positions[p.id];
-                if (!pos) return;
-                maxRight = Math.max(maxRight, pos.x + PROMPT_WIDTH / 2);
-            });
-            normalImages.forEach(img => {
-                const pos = positions[img.id];
-                if (!pos) return;
-                const dims = getImageDims(img.aspectRatio, img.dimensions);
-                maxRight = Math.max(maxRight, pos.x + dims.w / 2);
-            });
-            (currentCanvas.groups || []).forEach(group => {
-                maxRight = Math.max(maxRight, group.bounds.x + group.bounds.width);
-            });
+            const ERROR_GAP_X = 40; // 错误卡片之间更紧凑
 
-            const errorStartX = maxRight + errorGapX;
-            let cursorY = baseRootY;
-
-            const sortedErrors = [...errorPrompts].sort((a, b) => parseInt(a.id) - parseInt(b.id));
-            sortedErrors.forEach(prompt => {
-                const promptHeight = prompt.height || PROMPT_HEIGHT;
+            errorPrompts.forEach(prompt => {
+                const promptWidth = 320;
+                const promptHeight = prompt.height || 200;
                 const childImages = currentCanvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
-                const imageDims = childImages.map(img => getImageDims(img.aspectRatio, img.dimensions));
-                const rowWidth = imageDims.reduce((sum, dim) => sum + dim.w, 0) + Math.max(0, childImages.length - 1) * errorImageGap;
-                const rowHeight = imageDims.length > 0 ? Math.max(...imageDims.map(dim => dim.h)) : 0;
-                const blockWidth = Math.max(PROMPT_WIDTH, rowWidth);
-                const promptToImageGap = childImages.length > 0 ? 20 : 0;
 
-                const promptX = errorStartX + blockWidth / 2;
-                const promptBottom = cursorY + promptHeight;
-                positions[prompt.id] = { x: promptX, y: promptBottom };
+                // 计算错误卡组尺寸 (使用与正常卡组相同的4列布局)
+                let groupWidth = promptWidth;
+                let groupHeight = promptHeight;
 
                 if (childImages.length > 0) {
-                    let imgCursorX = errorStartX + (blockWidth - rowWidth) / 2;
-                    const rowTop = cursorY + promptHeight + promptToImageGap;
-                    childImages.forEach((img, index) => {
-                        const dims = imageDims[index];
+                    let maxSubWidth = 0;
+                    let maxSubHeight = 0;
+                    childImages.forEach(img => {
+                        const dims = getImageDims(img.aspectRatio, img.dimensions);
+                        maxSubWidth = Math.max(maxSubWidth, dims.w);
+                        maxSubHeight = Math.max(maxSubHeight, dims.h);
+                    });
+                    const actualColumns = Math.min(SUB_COLUMNS, childImages.length);
+                    const rows = Math.ceil(childImages.length / SUB_COLUMNS);
+                    const subBlockWidth = actualColumns * maxSubWidth + (actualColumns - 1) * SUB_IMAGE_GAP;
+                    const subBlockHeight = rows * maxSubHeight + (rows - 1) * SUB_IMAGE_GAP;
+                    groupWidth = Math.max(promptWidth, subBlockWidth);
+                    groupHeight = promptHeight + PROMPT_TO_SUB_GAP + subBlockHeight;
+                }
+
+                // 换行检查
+                if (errorGroupsInRow >= GROUPS_PER_ROW) {
+                    errorX = START_X;
+                    currentY += errorRowMaxHeight + GROUP_GAP_Y;
+                    errorRowMaxHeight = 0;
+                    errorGroupsInRow = 0;
+                }
+
+                const groupCenterX = errorX + groupWidth / 2;
+
+                // Prompt位置
+                positions[prompt.id] = {
+                    x: groupCenterX,
+                    y: currentY + promptHeight
+                };
+
+                // 子Image位置: 横向4列居中,顶部对齐
+                if (childImages.length > 0) {
+                    const promptBottom = currentY + promptHeight + PROMPT_TO_SUB_GAP;
+
+                    // 计算子卡尺寸
+                    const imageDims = childImages.map(img => getImageDims(img.aspectRatio, img.dimensions));
+                    const maxWidth = Math.max(...imageDims.map(d => d.w));
+                    const maxHeight = Math.max(...imageDims.map(d => d.h));
+
+                    // 计算实际列数
+                    const actualColumns = Math.min(SUB_COLUMNS, childImages.length);
+                    const blockWidth = actualColumns * maxWidth + (actualColumns - 1) * SUB_IMAGE_GAP;
+                    const blockStartX = groupCenterX - blockWidth / 2;
+
+                    childImages.forEach((img, i) => {
+                        const col = i % SUB_COLUMNS;
+                        const row = Math.floor(i / SUB_COLUMNS);
+                        const cardCenterX = blockStartX + col * (maxWidth + SUB_IMAGE_GAP) + maxWidth / 2;
+                        // 顶部对齐: y = 顶部位置 + 卡片高度 (底部锚点)
+                        const cardTopY = promptBottom + row * (maxHeight + SUB_IMAGE_GAP);
+                        const dims = imageDims[i];
                         positions[img.id] = {
-                            x: imgCursorX + dims.w / 2,
-                            y: rowTop + dims.h
+                            x: cardCenterX,
+                            y: cardTopY + dims.h
                         };
-                        imgCursorX += dims.w + errorImageGap;
                     });
                 }
 
-                cursorY += promptHeight + promptToImageGap + rowHeight + errorGapY;
+                errorX += groupWidth + ERROR_GAP_X;
+                errorRowMaxHeight = Math.max(errorRowMaxHeight, groupHeight);
+                errorGroupsInRow++;
             });
         }
 

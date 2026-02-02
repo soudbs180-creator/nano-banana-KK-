@@ -202,7 +202,7 @@ const LoginScreen: React.FC = () => {
                         无限画布，无限创意。
                     </p>
                     <div className="absolute bottom-8 left-0 right-0 text-center opacity-30 text-xs font-mono">
-                        v1.2.3 BUILD 2026.01
+                        v1.2.5 BUILD 2026.02
                     </div>
                 </div>
             </div>
@@ -272,9 +272,26 @@ const LoginScreen: React.FC = () => {
                                         type="email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all placeholder:text-zinc-600 text-base"
+                                        className="w-full h-12 pl-11 pr-4 transition-all text-base"
+                                        style={{
+                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                                            borderRadius: 'var(--radius-xl)',
+                                            color: 'white',
+                                            outline: 'none',
+                                            fontSize: '16px',
+                                            transitionDuration: 'var(--duration-fast)'
+                                        }}
                                         placeholder="name@example.com"
                                         required
+                                        onFocus={(e) => {
+                                            e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)';
+                                            e.currentTarget.style.boxShadow = '0 0 0 1px rgba(99, 102, 241, 0.2)';
+                                        }}
+                                        onBlur={(e) => {
+                                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                                            e.currentTarget.style.boxShadow = 'none';
+                                        }}
                                     />
                                 </div>
                             </div>
@@ -301,10 +318,27 @@ const LoginScreen: React.FC = () => {
                                             type={showPassword ? "text" : "password"}
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
-                                            className="w-full h-12 bg-white/5 border border-white/10 rounded-2xl pl-11 pr-10 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all placeholder:text-zinc-600 text-base"
+                                            className="w-full h-12 pl-11 pr-10 transition-all text-base"
+                                            style={{
+                                                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                borderRadius: 'var(--radius-xl)',
+                                                color: 'white',
+                                                outline: 'none',
+                                                fontSize: '16px',
+                                                transitionDuration: 'var(--duration-fast)'
+                                            }}
                                             placeholder="••••••••"
                                             required
                                             minLength={6}
+                                            onFocus={(e) => {
+                                                e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)';
+                                                e.currentTarget.style.boxShadow = '0 0 0 1px rgba(99, 102, 241, 0.2)';
+                                            }}
+                                            onBlur={(e) => {
+                                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                                                e.currentTarget.style.boxShadow = 'none';
+                                            }}
                                         />
                                         <button
                                             type="button"
@@ -328,9 +362,26 @@ const LoginScreen: React.FC = () => {
                                             type="password"
                                             value={confirmPassword}
                                             onChange={(e) => setConfirmPassword(e.target.value)}
-                                            className="w-full h-11 bg-zinc-900/50 border border-white/10 rounded-lg pl-10 pr-4 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-zinc-600"
+                                            className="w-full h-11 pl-10 pr-4 transition-all"
+                                            style={{
+                                                backgroundColor: 'rgba(24, 24, 27, 0.5)',
+                                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                borderRadius: 'var(--radius-md)',
+                                                color: 'white',
+                                                outline: 'none',
+                                                fontSize: '16px',
+                                                transitionDuration: 'var(--duration-fast)'
+                                            }}
                                             placeholder="再次输入密码"
                                             required
+                                            onFocus={(e) => {
+                                                e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)';
+                                                e.currentTarget.style.boxShadow = '0 0 0 1px rgba(99, 102, 241, 0.5)';
+                                            }}
+                                            onBlur={(e) => {
+                                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                                                e.currentTarget.style.boxShadow = 'none';
+                                            }}
                                         />
                                     </div>
                                 </div>

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { AspectRatio, GeneratedImage, GenerationMode } from '../types';
-import { Download, Trash2, Loader2 } from 'lucide-react';
+import { Download, Trash2, Loader2, ImageOff } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
 
@@ -74,8 +74,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const wheelCleanupRef = useRef<(() => void) | null>(null);
 
     const [imgError, setImgError] = useState(false);
+    const [isRecovering, setIsRecovering] = useState(false); // [NEW] Track active recovery to hide broken IMG
     const [lightboxOriginalUrl, setLightboxOriginalUrl] = useState<string | null>(null);
     const [isLoadingOriginal, setIsLoadingOriginal] = useState(false);
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false); // 视频默认暂停
+    const videoRef = useRef<HTMLVideoElement>(null);
 
     // Robust Image Loading State
     const [displaySrc, setDisplaySrc] = useState<string | undefined>(image.url);
@@ -90,33 +93,35 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }
     }, [image.url]); // Remove displaySrc dependency to avoid loop, rely on guard
 
-    // Helper: Attempt to recover image from cache
-    const recoverImage = useCallback(async (retryCount = 0) => {
-        try {
-            // 1. Try IndexedDB first
-            // 1. Try IndexedDB first
-            const { getImage } = await import('../services/imageStorage');
 
-            // [FIX] Add timeout to prevent hanging if IDB is unresponsive
-            const timeoutPromise = new Promise<string | null>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
-            let cached: string | null = null;
-            try {
-                cached = await Promise.race([getImage(image.id), timeoutPromise]);
-            } catch (e) {
-                // Ignore timeout, proceed to next recovery method
-            }
+
+    // Helper: Attempt to recover image from cache
+    const recoverImage = useCallback(async () => {
+        if (isRecovering) return;
+
+        setIsRecovering(true);
+        setImgError(false);
+        console.log(`[ImageCard] Attempting recovery for ${image.id}...`);
+
+        try {
+            // 1. Try IndexedDB
+            const { getImage } = await import('../services/imageStorage');
+            // Fast timeout for IDB
+            const idbPromise = getImage(image.id);
+            const timeoutPromise = new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 2000));
+
+            const cached = await Promise.race([idbPromise, timeoutPromise]);
 
             if (cached) {
-                console.log(`[ImageCard] Recovered image ${image.id} from cache`);
+                console.log(`[ImageCard] Recovered ${image.id} from IDB`);
                 setDisplaySrc(cached);
-                setImgError(false);
+                setIsRecovering(false);
                 return;
             }
 
-            // 2. Try Local File System (if in local mode)
+            // 2. Try Local File Handle (if applicable)
             const { getStorageMode, getLocalFolderHandle } = await import('../services/storagePreference');
             const mode = await getStorageMode();
-
             if (mode === 'local') {
                 const handle = await getLocalFolderHandle();
                 if (handle) {
@@ -124,46 +129,39 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     const blob = await fileSystemService.loadOriginalFromDisk(handle, image.id);
                     if (blob) {
                         const objectUrl = URL.createObjectURL(blob);
-                        console.log(`[ImageCard] Recovered image ${image.id} from local disk`);
                         setDisplaySrc(objectUrl);
-                        setImgError(false);
+                        setIsRecovering(false);
                         return;
                     }
                 }
             }
 
-            // 3. Last Resort: If we have an originalUrl that is different from the failed url
+            // 3. Fallback: If Original URL exists and is different, try it once
             if (image.originalUrl && image.originalUrl !== image.url) {
-                const separator = image.originalUrl.includes('?') ? '&' : '?';
-                const url = retryCount > 0 ? `${image.originalUrl}${separator}retry=${retryCount}-${Date.now()}` : image.originalUrl;
-                setDisplaySrc(url);
-                setImgError(false);
-                return;
-            }
-            // Fallback retry for main URL if we are in a retry loop
-            if (retryCount > 0) {
-                const separator = image.url.includes('?') ? '&' : '?';
-                const url = `${image.url}${separator}retry=${retryCount}-${Date.now()}`;
-                setDisplaySrc(url);
-                setImgError(false);
+                setDisplaySrc(image.originalUrl);
+                setIsRecovering(false); // Let the browser try to load this new src
                 return;
             }
 
-        } catch (err) {
-            console.warn('Failed to recover image', err);
-        }
-
-        // If failed, auto-retry with exponential backoff (up to 3 times)
-        if (retryCount < 3) {
-            console.log(`[ImageCard] Load failed, retrying (${retryCount + 1}/3) for ${image.id}...`);
-            setTimeout(() => {
-                recoverImage(retryCount + 1);
-            }, 1000 * Math.pow(2, retryCount)); // 1000ms, 2000ms, 4000ms
-        } else {
-            // If all retries fail, show error state
+            // If we got here, recovery failed
+            console.warn(`[ImageCard] Recovery failed to find alternative for ${image.id}`);
             setImgError(true);
+            setIsRecovering(false);
+
+        } catch (error) {
+            console.error('[ImageCard] Recovery exception:', error);
+            setImgError(true);
+            setIsRecovering(false);
         }
     }, [image.id, image.url, image.originalUrl]);
+
+    // [NEW] Auto-recover if URL is missing (moved after recoverImage to fix lint error)
+    useEffect(() => {
+        if (!displaySrc && !image.url && !isRecovering && !imgError) {
+            console.log('[ImageCard] Auto-triggering recovery for empty URL', image.id);
+            recoverImage();
+        }
+    }, [displaySrc, image.url, isRecovering, imgError, recoverImage, image.id]);
 
     // Construct high-res URL for lightbox
     const highResUrl = image.originalUrl || displaySrc || image.url;
@@ -535,12 +533,36 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 }}
                 onDoubleClick={handleImageClick}
             >
-                <div className={`
-                        relative bg-[var(--bg-secondary)] border rounded-2xl overflow-hidden shadow-xl w-full
-                        ${isDragging ? '' : 'transition-all duration-200'} hover:shadow-2xl
-                        ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : isActive ? 'border-amber-500 ring-2 ring-amber-500/50' : 'border-[var(--border-light)] hover:border-[var(--border-medium)]'}
-                        ${highlighted ? 'ring-2 ring-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.5)] z-50 scale-[1.02]' : ''}
-                    `}>
+                <div
+                    className={`
+                        relative w-full overflow-hidden
+                        border shadow-xl
+                        ${isDragging ? '' : 'transition-all'}
+                        ${isSelected ?
+                            'animate-glow-pulse' :
+                            'hover:shadow-2xl'
+                        }
+                        ${highlighted ? 'scale-[1.02] z-50' : ''}
+                    `}
+                    style={{
+                        backgroundColor: 'var(--bg-surface)',
+                        borderColor: isSelected ?
+                            'var(--selected-border)' :
+                            isActive ?
+                                'var(--accent-gold)' :
+                                highlighted ?
+                                    'var(--accent-gold)' :
+                                    'var(--border-default)',
+                        borderRadius: 'var(--radius-lg)', // 12px
+                        boxShadow: isSelected ?
+                            'var(--glow-blue)' :
+                            highlighted ?
+                                'var(--glow-gold)' :
+                                'var(--shadow-xl)',
+                        transitionDuration: isDragging ? '0ms' : 'var(--duration-normal)',
+                        transitionProperty: 'box-shadow, border-color, transform'
+                    }}
+                >
                     {/* Connection Point */}
                     <div
                         className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-transparent hover:bg-indigo-500/50 rounded-full z-50 cursor-crosshair"
@@ -549,18 +571,43 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                     {/* 图片视图，支持懒加载/虚拟化 */}
                     <div
-                        className="relative aspect-auto cursor-pointer min-h-[100px] bg-[var(--bg-tertiary)]"
+                        className="relative w-full cursor-pointer bg-[var(--bg-tertiary)]"
+                        style={{ aspectRatio: image.aspectRatio.replace(':', '/') }} // [FIX] 强制锁定宽高比，防止恢复时高度跳动
                         onClick={handleImageClick}
                         onDoubleClick={handleImageClick}
                     >
-                        {!imgError && displaySrc ? (
+
+                        {!imgError && !isRecovering && displaySrc ? (
                             (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
-                                <video
-                                    src={displaySrc}
-                                    className="w-full h-auto block select-none pointer-events-none"
-                                    muted loop autoPlay playsInline
-                                    onError={() => recoverImage()}
-                                />
+                                <div className="relative w-full h-full">
+                                    <video
+                                        ref={videoRef}
+                                        src={displaySrc}
+                                        className="w-full h-full object-cover block select-none"
+                                        muted loop playsInline
+                                        onError={() => recoverImage()}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (videoRef.current) {
+                                                if (videoRef.current.paused) {
+                                                    videoRef.current.play();
+                                                    setIsVideoPlaying(true);
+                                                } else {
+                                                    videoRef.current.pause();
+                                                    setIsVideoPlaying(false);
+                                                }
+                                            }
+                                        }}
+                                    />
+                                    {/* 播放/暂停指示器 */}
+                                    {!isVideoPlaying && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                                            <div className="w-12 h-12 rounded-full bg-white/80 flex items-center justify-center">
+                                                <div className="w-0 h-0 border-t-[8px] border-t-transparent border-l-[14px] border-l-gray-800 border-b-[8px] border-b-transparent ml-1" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             ) : (
                                 <img
                                     src={displaySrc} // React handles updates. Native lazy is often enough.
@@ -568,6 +615,18 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                     decoding="async"
                                     loading="lazy"
                                     alt={image.prompt}
+                                    style={{
+                                        color: 'transparent',
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                        // 关键优化: 确保缩放时快速响应清晰度
+                                        imageRendering: 'auto', // 高质量缩放
+                                        // GPU 加速
+                                        transform: 'translateZ(0)',
+                                        willChange: 'auto'
+                                    }}
+
                                     onError={(e) => {
                                         recoverImage();
                                     }}
@@ -587,11 +646,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                         const url = displaySrc || image.url;
                                         if (url) {
                                             e.dataTransfer.setData('text/plain', url);
-                                            // [NEW] Pass structured data for efficient reuse in PromptBar
+                                            // [NEW] Pass structured data for efficient reuse (consistent with PromptNode)
                                             e.dataTransfer.setData('application/x-kk-image-ref', JSON.stringify({
-                                                storageId: image.id, // Generated images use their ID as storage key
-                                                mimeType: 'image/png', // Generated images are typically PNG
-                                                source: 'generated-card'
+                                                storageId: image.storageId || image.id,
+                                                mimeType: 'image/png', // Default, hard to know without fetch or magic
+                                                source: 'image-card',
+                                                data: url.startsWith('data:') ? url : undefined
                                             }));
                                             e.dataTransfer.effectAllowed = 'copy';
                                         }
@@ -601,154 +661,222 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         ) : (
 
                             <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-[var(--text-secondary)] p-4 text-center">
-                                {!imgError && !displaySrc ? (
+
+                                {!imgError && !displaySrc || isRecovering ? (
                                     <>
                                         <Loader2 size={24} className="mb-2 text-indigo-400 animate-spin" />
-                                        <span className="text-xs">正在恢复...</span>
+                                        <span className="text-xs">
+                                            {isRecovering ? '正在恢复...' : '正在加载...'}
+                                        </span>
                                     </>
                                 ) : (
                                     <>
-                                        <Trash2 size={24} className="mb-2 opacity-50" />
-                                        <span className="text-xs">资源加载失败</span>
-                                        <span className="text-[9px] opacity-60">(Load Failed)</span>
+                                        <ImageOff size={24} className="mb-2 opacity-50 text-rose-400" />
+                                        <span className="text-xs text-rose-300">图片加载失败</span>
+                                        <span className="text-[9px] opacity-60">(Image Load Error)</span>
                                         {/* Retry Button */}
                                         <button
                                             onClick={(e) => { e.stopPropagation(); recoverImage(); }}
                                             className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 underline"
                                         >
-                                            尝试重载
+                                            点击重试
                                         </button>
                                     </>
                                 )}
                             </div>
                         )}
-                    </div>
 
 
-                    {/* Tags Layer */}
-                    {image.tags && image.tags.length > 0 && (
-                        <div className="absolute bottom-[36px] left-0 right-0 p-2 flex flex-wrap gap-1 justify-end pointer-events-none">
-                            {image.tags.map(tag => {
-                                const colors = generateTagColor(tag);
-                                return (
-                                    <span key={tag}
-                                        className={`px-1.5 py-0.5 backdrop-blur-sm rounded text-[9px] shadow-sm border ${colors.bg} ${colors.border} ${colors.text}`}>
-                                        #{tag}
-                                    </span>
-                                );
-                            })}
-                        </div>
-                    )}
 
-                    {/* Footer - Model badge + Continue + Download + Delete */}
-                    <div className="px-3 py-2 bg-[var(--bg-tertiary)] flex items-center justify-between border-t border-[var(--border-light)] relative z-10">
-                        {(() => {
-                            const model = image.model || '';
-                            let label = 'AI';
-                            let style = 'border-zinc-500/30 text-zinc-400 bg-zinc-500/10';
-
-                            if (model.includes('ultra')) {
-                                label = 'Imagen 4 Ultra';
-                                style = 'border-purple-500/30 text-purple-400 bg-purple-500/10';
-                            } else if (model.includes('imagen-4')) {
-                                label = 'Imagen 4';
-                                style = 'border-blue-500/30 text-blue-400 bg-blue-500/10';
-                            } else if (model.includes('pro')) {
-                                label = 'Gemini 3 Pro';
-                                style = 'border-amber-500/30 text-amber-400 bg-amber-500/10';
-                            } else if (model.includes('flash')) {
-                                label = 'Gemini 2.5';
-                                style = 'border-yellow-500/30 text-yellow-400 bg-yellow-500/10';
-                            }
-
-                            return (
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium border whitespace-nowrap ${style}`}>
-                                    {label}
-                                </span>
-                            );
-                        })()}
-
-                        {/* Dimensions & Time */}
-                        <div className="flex items-center gap-2 ml-2">
-                            {image.dimensions && (
-                                <span className="text-[9px] text-[var(--text-tertiary)] font-mono border border-[var(--border-light)] px-1.5 rounded bg-[var(--bg-tertiary)]">
-                                    {(() => {
-                                        const [w, h] = image.dimensions.split('x').map(Number);
-                                        if (!w || !h) return image.dimensions;
-
-                                        let sizeLabel = '1K';
-                                        if (w >= 3000 || h >= 3000) sizeLabel = '4K';
-                                        else if (w >= 1500 || h >= 1500) sizeLabel = '2K';
-
-                                        // Calculate actual aspect ratio
-                                        const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
-                                        const divisor = gcd(w, h);
-                                        let ratioW = w / divisor;
-                                        let ratioH = h / divisor;
-
-                                        let displayRatio = `${ratioW}:${ratioH}`;
-
-                                        // Mapping common approximate ratios for cleaner display
-                                        const ratioVal = w / h;
-                                        if (Math.abs(ratioVal - 1) < 0.05) displayRatio = '1:1';
-                                        else if (Math.abs(ratioVal - 4 / 3) < 0.05) displayRatio = '4:3';
-                                        else if (Math.abs(ratioVal - 3 / 4) < 0.05) displayRatio = '3:4';
-                                        else if (Math.abs(ratioVal - 16 / 9) < 0.05) displayRatio = '16:9';
-                                        else if (Math.abs(ratioVal - 9 / 16) < 0.05) displayRatio = '9:16';
-                                        else if (Math.abs(ratioVal - 21 / 9) < 0.05) displayRatio = '21:9';
-                                        else if (Math.abs(ratioVal - 3 / 2) < 0.05) displayRatio = '3:2';
-                                        else if (Math.abs(ratioVal - 2 / 3) < 0.05) displayRatio = '2:3';
-
-                                        return `${displayRatio} · ${sizeLabel}`;
-                                    })()}
-                                </span>
-                            )}
-                            {image.generationTime && (
-                                <div className="flex flex-col justify-center items-start gap-0 leading-none ml-2">
-                                    <span className="text-[8px] text-[var(--text-tertiary)] mb-0.5 scale-90 origin-left">耗时</span>
-                                    <span className="text-[9px] text-[var(--text-secondary)] font-mono">
-                                        {(image.generationTime / 1000).toFixed(1)}s
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                        {/* Token & Cost Info */}
-                        {(image.tokens !== undefined || image.cost !== undefined) && (
-                            <div className="flex flex-col justify-center items-start gap-0 ml-2 border-l border-[var(--border-light)] pl-2 leading-none">
-                                {image.tokens && (
-                                    <span className="text-[8px] text-emerald-500/80 font-mono mb-0.5" title={`${image.tokens} Tokens`}>
-                                        {image.tokens} tokens
-                                    </span>
-                                )}
-                                {image.cost !== undefined && (
-                                    <span className="text-[8px] text-emerald-500/80 font-mono" title={`Estimated Cost: $${image.cost.toFixed(6)}`}>
-                                        ${image.cost < 0.0001 && image.cost > 0 ? '<0.0001' : image.cost.toFixed(4)}
-                                    </span>
-                                )}
+                        {/* Tags Layer */}
+                        {image.tags && image.tags.length > 0 && (
+                            <div className="absolute bottom-[36px] left-0 right-0 p-2 flex flex-wrap gap-1 justify-end pointer-events-none">
+                                {image.tags.map(tag => {
+                                    const colors = generateTagColor(tag);
+                                    return (
+                                        <span
+                                            key={tag}
+                                            className="px-1.5 py-0.5 backdrop-blur-sm text-[9px] shadow-sm"
+                                            style={{
+                                                backgroundColor: colors.bg,
+                                                color: colors.text,
+                                                border: `1px solid ${colors.border}`,
+                                                borderRadius: 'var(--radius-sm)' // 4px
+                                            }}
+                                        >
+                                            #{tag}
+                                        </span>
+                                    );
+                                })}
                             </div>
                         )}
 
-                        <div className="flex items-center gap-1 ml-auto">
-                            {/* Continue Creation Button */}
+                        {/* Footer - Compact Two Row Layout */}
+                        <div
+                            className="px-2 py-1 flex flex-col gap-0.5 border-t relative z-10 box-border"
+                            style={{
+                                backgroundColor: 'var(--bg-elevated)',
+                                borderTopColor: 'var(--border-default)',
+                                minHeight: '36px'
+                            }}
+                        >
+                            {/* Row 1: Model + Ratio + Size + Buttons */}
+                            <div className="flex items-center gap-1">
+                                {/* Model Info Container - Compact style */}
+                                {(() => {
+                                    const model = image.model || '';
+                                    let label = 'AI';
+                                    let dotColor = 'bg-zinc-500';
 
-                            <button
-                                onClick={handleDownload}
-                                className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--toolbar-hover)] transition-colors"
-                                title="下载 (Download High-Res)"
-                            >
-                                <Download size={12} />
-                            </button>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); onDelete(image.id); }}
-                                className="text-[var(--text-tertiary)] hover:text-red-400 p-1 rounded-md hover:bg-[var(--toolbar-hover)] transition-colors"
-                                title="删除"
-                            >
-                                <Trash2 size={12} />
-                            </button>
+                                    // ✅ 优先级：先检查具体模型，再检查通用关键字
+                                    if (model.includes('ultra')) {
+                                        label = 'Imagen 4 Ultra';
+                                        dotColor = 'bg-purple-500';
+                                    } else if (model.includes('imagen-4')) {
+                                        label = 'Imagen 4';
+                                        dotColor = 'bg-blue-500';
+                                    } else if (model.includes('gemini-3')) {
+                                        // Gemini 3 系列（必须在 pro/flash 之前检查）
+                                        if (model.includes('flash')) {
+                                            label = 'Gemini 3 Flash';
+                                            dotColor = 'bg-cyan-500';
+                                        } else if (model.includes('pro')) {
+                                            label = 'Gemini 3 Pro';
+                                            dotColor = 'bg-purple-600';
+                                        } else {
+                                            label = 'Gemini 3';
+                                            dotColor = 'bg-purple-500';
+                                        }
+                                    } else if (model.includes('gemini-2.5')) {
+                                        // Gemini 2.5 系列
+                                        if (model.includes('flash')) {
+                                            label = 'Gemini 2.5 Flash';
+                                            dotColor = 'bg-yellow-500';
+                                        } else if (model.includes('pro')) {
+                                            label = 'Gemini 2.5 Pro';
+                                            dotColor = 'bg-amber-500';
+                                        } else {
+                                            label = 'Gemini 2.5';
+                                            dotColor = 'bg-amber-500';
+                                        }
+                                    } else if (model.includes('gemini-2.0') || model.includes('gemini-2-')) {
+                                        // Gemini 2.0 系列
+                                        if (model.includes('flash')) {
+                                            label = 'Gemini 2.0 Flash';
+                                            dotColor = 'bg-orange-500';
+                                        } else {
+                                            label = 'Gemini 2.0';
+                                            dotColor = 'bg-orange-500';
+                                        }
+                                    } else if (model.includes('flash')) {
+                                        // 通用 Flash（未匹配到具体版本）
+                                        label = 'Gemini Flash';
+                                        dotColor = 'bg-yellow-500';
+                                    } else if (model.includes('pro')) {
+                                        // 通用 Pro（未匹配到具体版本）
+                                        label = 'Gemini Pro';
+                                        dotColor = 'bg-amber-500';
+                                    } else if (model.includes('veo-3.1') || model.includes('veo-3')) {
+                                        // Veo 3 系列视频模型
+                                        label = model.includes('fast') ? 'Veo 3.1 Fast' : 'Veo 3.1';
+                                        dotColor = 'bg-purple-500';
+                                    } else if (model.includes('veo-2') || model.includes('veo')) {
+                                        // Veo 2 系列视频模型
+                                        label = 'Veo 2';
+                                        dotColor = 'bg-violet-500';
+                                    }
+
+                                    return (
+                                        <div
+                                            className="flex items-center gap-1 px-1.5 py-0.5 rounded border"
+                                            style={{
+                                                backgroundColor: 'var(--bg-tertiary)',
+                                                borderColor: 'var(--border-light)'
+                                            }}
+                                        >
+                                            <span className={`w-1 h-1 rounded-full ${dotColor}`}></span>
+                                            <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                                                {label}
+                                            </span>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Ratio + Size Container - Compact style */}
+                                <div
+                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded border"
+                                    style={{
+                                        backgroundColor: 'var(--bg-tertiary)',
+                                        borderColor: 'var(--border-light)'
+                                    }}
+                                >
+                                    <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                                        {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || image.model?.toLowerCase().includes('veo') || image.url?.startsWith('data:video')) ? '720p' : (image.imageSize || '1K')}
+                                    </span>
+                                </div>
+
+                                {/* Spacer */}
+                                <div className="flex-1" />
+
+                                {/* Download */}
+                                <button
+                                    onClick={handleDownload}
+                                    className="flex items-center justify-center transition-all active:scale-95 hover:bg-[var(--bg-hover)]"
+                                    title="下载"
+                                    style={{
+                                        color: 'var(--accent-blue)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        width: '20px',
+                                        height: '20px'
+                                    }}
+                                >
+                                    <Download size={10} strokeWidth={2} />
+                                </button>
+
+                                {/* Delete */}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onDelete(image.id); }}
+                                    className="flex items-center justify-center transition-all active:scale-95 hover:bg-[var(--bg-hover)]"
+                                    title="删除"
+                                    style={{
+                                        color: 'var(--accent-red)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        width: '20px',
+                                        height: '20px'
+                                    }}
+                                >
+                                    <Trash2 size={10} strokeWidth={2} />
+                                </button>
+                            </div>
+
+                            {/* Divider between rows */}
+                            <div className="w-full my-1" style={{ height: '0.5px', backgroundColor: 'var(--border-light)', opacity: 0.5 }}></div>
+
+                            {/* Row 2: Time + Tokens + Cost - Centered with dividers */}
+                            <div className="flex items-center justify-center gap-2 text-[7px] font-mono">
+                                {/* Time */}
+                                {image.generationTime && (
+                                    <>
+                                        <span className="text-[var(--text-tertiary)]">
+                                            耗时 <span className="text-[var(--text-secondary)]">{(image.generationTime / 1000).toFixed(1)}s</span>
+                                        </span>
+                                        <span className="text-[var(--border-medium)]">|</span>
+                                    </>
+                                )}
+                                {/* Tokens */}
+                                <span className="text-emerald-500/70">
+                                    令牌 <span className="text-emerald-500/90">{image.tokens || 0}</span>
+                                </span>
+                                <span className="text-[var(--border-medium)]">|</span>
+                                {/* Cost */}
+                                <span className="text-amber-500/70" title={`$${(image.cost || 0).toFixed(6)}`}>
+                                    费用 <span className="text-amber-500/90">${(image.cost || 0).toFixed(4)}</span>
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div >
+            </div>
 
             {/* Lightbox Modal - Rendered to body via Portal for true top-level z-index */}
             {
@@ -817,6 +945,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                 }}
                                 onClick={(e) => e.stopPropagation()} // Prevent click from closing lightbox
                                 onDoubleClick={(e) => {
+                                    e.preventDefault();
                                     e.stopPropagation();
                                     setShowLightbox(false); // Double click to close
                                 }}
@@ -831,6 +960,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                 onMouseDown={handleLightboxMouseDown}
                                 onClick={(e) => e.stopPropagation()}
                                 onDoubleClick={(e) => {
+                                    e.preventDefault();
                                     e.stopPropagation();
                                     setShowLightbox(false);
                                 }}
@@ -843,6 +973,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                     transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
                                     transition: isPanning ? 'none' : 'transform 0.15s ease-out',
                                     cursor: isPanning ? 'grabbing' : 'grab',
+                                    // 高质量渲染
+                                    imageRendering: 'auto',
+                                    // GPU 加速
+                                    willChange: isPanning ? 'transform' : 'auto'
                                 }}
                             />
                         )}

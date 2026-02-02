@@ -27,13 +27,13 @@ import { Loader2 } from 'lucide-react';
 
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
-import { syncService } from './services/syncService';
+// import { syncService } from './services/syncService'; // [FIX] Dynamic Import
 import { saveImage } from './services/imageStorage';
 import { calculateImageHash } from './utils/imageUtils';
 import NotificationToast from './components/NotificationToast';
-import { notify } from './services/notificationService';
-import UpdateNotification from './components/UpdateNotification';
-import { initUpdateCheck } from './services/updateCheck';
+// import { notify } from './services/notificationService'; // [FIX] Dynamic Import
+
+// import { initUpdateCheck } from './services/updateCheck'; // [FIX] Dynamic Import
 
 // ProjectManager imported from components
 import ProjectManager from './components/ProjectManager';
@@ -88,8 +88,7 @@ const AppContent: React.FC = () => {
   // Canvas Ref for Zoom/Pan Controls
   const canvasRef = useRef<InfiniteCanvasHandle>(null);
 
-  const handleZoomIn = () => canvasRef.current?.zoomIn();
-  const handleZoomOut = () => canvasRef.current?.zoomOut();
+  const handleFitToAll = () => canvasRef.current?.fitToAll();
 
   const handleToggleGrid = () => setShowGrid(prev => !prev);
 
@@ -100,6 +99,8 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     activeCanvasRef.current = activeCanvas;
   }, [activeCanvas]);
+
+
 
   // [新功能] 全局灯箱状态 (针对图片浏览)
   const [previewImages, setPreviewImages] = useState<GeneratedImage[] | null>(null);
@@ -312,7 +313,7 @@ const AppContent: React.FC = () => {
         // Merge with defaults to ensure all fields exist
         return {
           prompt: '', // Always reset prompt
-          aspectRatio: parsed.aspectRatio || AspectRatio.SQUARE,
+          aspectRatio: parsed.aspectRatio || AspectRatio.AUTO, // [Default: Auto]
           imageSize: parsed.imageSize || ImageSize.SIZE_1K,
           parallelCount: parsed.parallelCount || 1,
           referenceImages: parsed.referenceImages || [], // Load metadata
@@ -327,7 +328,7 @@ const AppContent: React.FC = () => {
     // Default Fallback
     return {
       prompt: '',
-      aspectRatio: AspectRatio.SQUARE,
+      aspectRatio: AspectRatio.AUTO, // [Default: Auto]
       imageSize: ImageSize.SIZE_1K,
       parallelCount: 1,
       referenceImages: [],
@@ -353,15 +354,20 @@ const AppContent: React.FC = () => {
             const dataUrl = await getImage(img.storageId);
 
             if (dataUrl) {
-              // If it's a raw base64 string without prefix, we might need to be careful?
-              // But imageStorage saves what it gets.
-              // However, PromptBar expects 'data' to be JUST the base64 part often in 'src' construction: `data:${img.mimeType};base64,${img.data}`
-              // Let's check what imageStorage returns. It returns what saveImage gets.
+              // [FIX] Strip Data URL prefix to comply with PromptBar's raw Base64 expectation
+              // The storage returns a full Data URL (e.g. "data:image/png;base64,...")
+              // but PromptBar constructs the src by prepending "data:..." again.
+              const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
+              if (matches && matches[2]) {
+                return {
+                  ...img,
+                  data: matches[2],
+                  mimeType: matches[1] || img.mimeType
+                };
+              }
 
-              // PromptBar: processFiles -> setConfig ... img.data is RAW BASE64 (matches[2])
-              // PromptBar: processFiles -> setConfig ... img.storageId = calculateImageHash(data)
-
-              // So if we save `img.data` (raw base64) to IndexedDB, we get raw base64 back.
+              // Fallback: If it doesn't match standard Data URL format, use as is.
+              // This handles edge cases or if raw base64 was somehow saved.
               return { ...img, data: dataUrl };
             }
           } catch (e) {
@@ -377,7 +383,27 @@ const AppContent: React.FC = () => {
       // We must ensure we don't trigger if already hydrated.
       // The check `needsHydration` handles this.
 
-      setConfig(prev => ({ ...prev, referenceImages: hydratedImages }));
+      setConfig(prev => {
+        // [FIX] Race Condition: The async hydration might finish AFTER the user has deleted an image.
+        // We must NOT overwrite 'prev.referenceImages' with the stale 'hydratedImages' array.
+        // Instead, we update only the images that still exist in 'prev'.
+
+        const hydratedMap = new Map(hydratedImages.map(img => [img.id, img]));
+
+        const newImages = prev.referenceImages.map(img => {
+          // If we found a hydrated version (with data) for this existing image, use it.
+          const hydrated = hydratedMap.get(img.id);
+          if (hydrated && hydrated.data && !img.data) {
+            return { ...img, data: hydrated.data };
+          }
+          return img;
+        });
+
+        // Optimization: strict equality check to avoid re-render if nothing effectively changed
+        // But for object references in map, it's safer to just return new state if we are unsure.
+        // Given React batching, this is fine.
+        return { ...prev, referenceImages: newImages };
+      });
     };
 
     hydrate();
@@ -386,16 +412,8 @@ const AppContent: React.FC = () => {
 
   // Persist Config Changes (Debounced/Effect)
   useEffect(() => {
-    // 1. Save Image Data to IndexedDB (Async side effect)
-    if (config.referenceImages && config.referenceImages.length > 0) {
-      import('./services/imageStorage').then(({ saveImage }) => {
-        config.referenceImages.forEach(img => {
-          if (img.data && img.storageId) {
-            saveImage(img.storageId, img.data).catch(err => console.error("Failed to save ref image", err));
-          }
-        });
-      });
-    }
+    // 1. [REMOVED] Save Image Data to IndexedDB (Async side effect)
+    // The "Write-First" strategy in PromptBar now handles this immediately upon upload.
 
     const toSave = {
       aspectRatio: config.aspectRatio,
@@ -478,11 +496,13 @@ const AppContent: React.FC = () => {
       if (alertKey && lastBudgetAlertRef.current !== alertKey) {
         lastBudgetAlertRef.current = alertKey;
         // Use appropriate level
-        if (alertKey === 'critical' || alertKey === 'warning') {
-          notify.warning(title, sub);
-        } else {
-          notify.info(title, sub);
-        }
+        import('./services/notificationService').then(({ notify }) => {
+          if (alertKey === 'critical' || alertKey === 'warning') {
+            notify.warning(title, sub);
+          } else {
+            notify.info(title, sub);
+          }
+        });
       }
     };
 
@@ -624,7 +644,9 @@ const AppContent: React.FC = () => {
       if (node.id === draftNodeId) {
         setActiveSourceImage(null);
       }
-      notify.info('已断开连接', '该提示词已断开与原图的关联');
+      import('./services/notificationService').then(({ notify }) => {
+        notify.info('已断开连接', '该提示词已断开与原图的关联');
+      });
     }
   }, [activeCanvas, updatePromptNode, draftNodeId, setActiveSourceImage]);
 
@@ -936,7 +958,9 @@ const AppContent: React.FC = () => {
     const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: effectiveModel, mode, referenceImages: files = [] } = node;
 
     // [FIX] Get fresh position from canvas state to support moving during generation
-    const liveNode = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
+    // ✅ 使用ref获取最新状态,避免闭包问题
+    const freshCanvas = activeCanvasRef.current;
+    const liveNode = freshCanvas?.promptNodes.find(n => n.id === promptNodeId);
     if (!liveNode) {
       console.error("Node lost during generation");
       return;
@@ -959,7 +983,9 @@ const AppContent: React.FC = () => {
               isGenerating: false,
               error: '生成超时，请重新发送任务'
             });
-            notify.warning('生成超时', '已超过4分钟，任务已自动停止。请检查网络后重试。');
+            import('./services/notificationService').then(({ notify }) => {
+              notify.warning('生成超时', '已超过4分钟，任务已自动停止。请检查网络后重试。');
+            });
           }
         }, 240000);
 
@@ -970,7 +996,35 @@ const AppContent: React.FC = () => {
           let costUsd = 0;
 
           if (isVideo) {
-            throw new Error('视频生成功能尚未实现');
+            // ✅ 视频生成 - 使用独立的 videoService
+            const { generateVideo } = await import('./services/videoService');
+            const apiKey = keyManager.getSlots().find(s => !s.disabled && s.status === 'valid')?.key;
+            if (!apiKey) {
+              throw new Error('没有可用的 API Key');
+            }
+
+            // 视频宽高比转换
+            const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
+
+            const videoResult = await generateVideo(
+              {
+                prompt: promptToUse,
+                aspectRatio: videoAspect,
+                // 视频模式支持多图片: 0张=文生视频, 1张=首帧, 2张=首尾帧, 3张=参考图
+                referenceImages: files.length > 0
+                  ? files.slice(0, 3).map(f => f.data.replace(/^data:image\/[^;]+;base64,/, ''))
+                  : undefined
+              },
+              apiKey,
+              undefined, // onProgress 回调
+              undefined  // abort signal
+            );
+
+            videoUrl = videoResult.videoUrl;
+            generatedBase64 = ''; // 视频没有base64
+            tokenUsage = 0; // 视频不计算token
+            // 视频成本计算: fast版$0.15, 标准版$0.30
+            costUsd = effectiveModel.toLowerCase().includes('fast') ? 0.15 : 0.30;
           } else {
             const result = await generateImage(
               promptToUse,
@@ -1000,11 +1054,13 @@ const AppContent: React.FC = () => {
               const res = await fetch(generatedBase64);
               const blob = await res.blob();
               const id = `${Date.now()}_${index}`;
-              const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
-              if (!thumbnail.startsWith('blob:')) {
-                originalUrl = original;
-                displayUrl = thumbnail;
-              }
+              import('./services/syncService').then(async ({ syncService }) => {
+                const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
+                if (!thumbnail.startsWith('blob:')) {
+                  originalUrl = original;
+                  displayUrl = thumbnail;
+                }
+              });
             }
           } catch (e) {
             console.warn('Cloud upload failed, falling back to local base64:', e);
@@ -1068,9 +1124,14 @@ const AppContent: React.FC = () => {
         throw new Error(firstError && 'error' in firstError ? firstError.error : '所有图片生成失败');
       }
 
+      // ✅ 生成完成后重新获取主卡最新位置 (支持生成过程中拖动)
+      const finalCanvas = activeCanvasRef.current;
+      const finalNode = finalCanvas?.promptNodes.find(n => n.id === promptNodeId);
+      const finalPos = finalNode?.position || livePos; // 使用最新位置,如果找不到则回退
+
       // 计算位置
-      const gapToImages = 80;
-      const gap = 16;
+      const gapToImages = 80; // 主卡和副卡之间的距离
+      const gap = 20; // 副卡之间的间距
       const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(node.aspectRatio, true);
 
       const validResults: GeneratedImage[] = validImageData.map((item, mapIndex) => {
@@ -1079,31 +1140,25 @@ const AppContent: React.FC = () => {
         const { url, originalUrl, generationTime, base64, tokens, cost } = item;
         let x, y;
 
+        // ✅ 统一布局: 固定2列,使用和PendingNode相同的计算公式
+        const columns = 2; // 固定2列
+        const col = idx % columns;
+        const row = Math.floor(idx / columns);
+
         if (isMobile) {
-          const cols = Math.min(count, 2);
-          const col = idx % cols;
-          const row = Math.floor(idx / cols);
           const mobileCardWidth = 170;
           const mobileCardHeight = 260;
           const mobileGap = 10;
-          const itemsInRow = Math.min(cols, count - row * cols);
-          const currentGridWidth = itemsInRow * mobileCardWidth + (itemsInRow - 1) * mobileGap;
-          const startX = -currentGridWidth / 2;
-          const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
+          const gridWidth = columns * mobileCardWidth + (columns - 1) * mobileGap;
+          const offsetX = (col - 0.5) * (mobileCardWidth + mobileGap);
           const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
-          x = livePos.x + offsetX;
-          y = livePos.y + offsetY;
+          x = finalPos.x + offsetX;
+          y = finalPos.y + offsetY;
         } else {
-          const columns = Math.min(count, 2);
-          const col = idx % columns;
-          const row = Math.floor(idx / columns);
-          const itemsInRow = Math.min(columns, count - row * columns);
-          const currentGridWidth = itemsInRow * cardWidth + (itemsInRow - 1) * gap;
-          const startX = -currentGridWidth / 2;
-          const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
+          const offsetX = (col - 0.5) * (cardWidth + gap);
           const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
-          x = livePos.x + offsetX;
-          y = livePos.y + offsetY;
+          x = finalPos.x + offsetX;
+          y = finalPos.y + offsetY;
         }
 
         const uniqueId = Date.now().toString() + idx + Math.random();
@@ -1117,12 +1172,15 @@ const AppContent: React.FC = () => {
           originalUrl,
           prompt: promptToUse,
           aspectRatio: node.aspectRatio,
+          imageSize: node.imageSize, // Add imageSize field
           timestamp: Date.now(),
           model: effectiveModel,
           canvasId: activeCanvas?.id || 'default',
           parentPromptId: promptNodeId,
           position: { x, y },
-          dimensions: `${node.aspectRatio} · ${node.imageSize || '1K'}`,
+          dimensions: isVideo
+            ? `${node.aspectRatio} · 720p`
+            : `${node.aspectRatio} · ${node.imageSize || '1K'}`,
           generationTime,
           tokens,
           cost
@@ -1131,6 +1189,7 @@ const AppContent: React.FC = () => {
 
       const updatedNode = {
         ...node,
+        position: finalPos, // ✅ 使用最新位置防止回跳
         isGenerating: false,
         childImageIds: validResults.map(r => r.id)
       };
@@ -1156,7 +1215,9 @@ const AppContent: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       updatePromptNode({ ...node, isGenerating: false, error: err.message || 'Failed' });
-      notify.error('生成任务失败', err.message || "Generation failed.");
+      import('./services/notificationService').then(({ notify }) => {
+        notify.error('生成任务失败', err.message || "Generation failed.");
+      });
       if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
         setShowSettingsPanel(true);
         setSettingsInitialView('api-management');
@@ -1177,7 +1238,9 @@ const AppContent: React.FC = () => {
         // Delay slightly to prevent UI contention
         setTimeout(() => executeGeneration(node), 500);
       });
-      notify.info('任务自动恢复', `已恢复 ${interruptedNodes.length} 个未完成的生成任务`);
+      import('./services/notificationService').then(({ notify }) => {
+        notify.info('任务自动恢复', `已恢复 ${interruptedNodes.length} 个未完成的生成任务`);
+      });
     }
     hasResumedRef.current = true;
   }, [activeCanvas, executeGeneration]);
@@ -1225,9 +1288,12 @@ const AppContent: React.FC = () => {
     let finalReferenceImages = [...config.referenceImages];
     if (activeSourceImage) {
       const sourceImage = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
-      if (sourceImage && sourceImage.url) {
+      // [FIX] Prefer originalUrl (High Res) over url (Thumbnail) to prevent blurry reference images
+      const targetUrl = sourceImage?.originalUrl || sourceImage?.url;
+
+      if (sourceImage && targetUrl) {
         try {
-          const response = await fetch(sourceImage.url);
+          const response = await fetch(targetUrl);
           const blob = await response.blob();
           const base64 = await new Promise<string>((resolve) => {
             const reader = new FileReader();
@@ -1303,7 +1369,9 @@ const AppContent: React.FC = () => {
   const handleFilesDrop = useCallback((files: File[]) => {
     if (files.length === 0) return;
     if (config.referenceImages.length + files.length > 5) {
-      notify.warning('无法添加图片', "最多支持 5 张参考图");
+      import('./services/notificationService').then(({ notify }) => {
+        notify.warning('无法添加图片', "最多支持 5 张参考图");
+      });
       files = files.slice(0, 5 - config.referenceImages.length);
     }
 
@@ -1342,217 +1410,12 @@ const AppContent: React.FC = () => {
     setDragConnection(null);
   }, [dragConnection, linkNodes]);
 
-  // Auto-arrange with compact grid: normals first, errors stacked below
+  // 自动整理：委托给 CanvasContext
   const handleAutoArrange = useCallback(() => {
-    if (!activeCanvas) return;
+    arrangeAllNodes();
+  }, [arrangeAllNodes]);
 
-    const ROW_GAP = 32;
-    const COL_GAP = 16;
-    const PROMPT_WIDTH = 380;
-    const NODE_GAP = 20;
-    const COL_GAP_IMG = 12;
-    const NORMAL_PER_ROW = 14;
-    const ERRORS_PER_ROW = 14;
-
-    const clampGap = (h: number) => Math.min(36, Math.max(16, Math.round(h * 0.12)));
-
-    const runLayout = () => {
-      const canvas = activeCanvasRef.current;
-      if (!canvas) return;
-
-      // Layout should appear near current viewport center (avoid "arranged far away")
-      const viewCenter = {
-        x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
-        y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
-      };
-
-      // 智能整理逻辑: 如果有选中，仅整理选中内容 (及其关联的卡片)
-      // If selection exists, filter targets. Otherwise arrange ALL.
-      let targets = canvas.promptNodes;
-
-      if (selectedNodeIds.length > 0) {
-        const selectedSet = new Set(selectedNodeIds);
-
-        // Find prompts involved in selection
-        targets = canvas.promptNodes.filter(p => {
-          // 1. Prompt itself is selected
-          if (selectedSet.has(p.id)) return true;
-
-          // 2. Child Image is selected (Implies "Organize Local Group")
-          if (p.childImageIds.some(cid => selectedSet.has(cid))) return true;
-
-          // 3. Prompt belongs to a selected Group
-          const parentGroup = canvas.groups.find(g => g.id === p.id || g.nodeIds.includes(p.id));
-          if (parentGroup && selectedSet.has(parentGroup.id)) return true; // (Wait, group ID usually distinct)
-
-          // Check actual Group objects for selection
-          const groupsSelected = canvas.groups.filter(g => selectedSet.has(g.id));
-          if (groupsSelected.some(g => g.nodeIds.includes(p.id))) return true;
-
-          return false;
-        });
-
-        if (targets.length === 0) {
-          // Maybe only images selected but no parents? (Orphans)
-          // We can't easily auto-arrange orphans with this logic.
-          return;
-        }
-      }
-
-      const normals = targets.filter(p => !p.error);
-      const errors = targets.filter(p => p.error);
-
-      // Prefer measured node height (from PromptNodeComponent) to avoid overlap/misalignment.
-      const getPromptHeightForLayout = (p: PromptNode) => p.height || getPromptHeight(p.prompt);
-
-      // Get image dims consistent with rendering + connection-line math
-      const getImageDimsForLayout = (img: any) => {
-        const base = getCardDimensions(img.aspectRatio, true);
-
-        // If we have real pixel dimensions like "1024x768", compute height precisely
-        if (typeof img.dimensions === 'string' && /^\d+\s*x\s*\d+$/.test(img.dimensions)) {
-          const [w, h] = img.dimensions.split('x').map((s: string) => parseInt(s.trim(), 10));
-          if (w > 0 && h > 0) {
-            const ratio = w / h;
-            // Render width is driven by aspectRatio mapping, not by pixel width
-            const renderWidth = getCardDimensions(img.aspectRatio, false).width;
-            const exactTotalHeight = (renderWidth / ratio) + 40; // footer
-            return { width: renderWidth, totalHeight: exactTotalHeight };
-          }
-        }
-
-        return base;
-      };
-
-      const measureBlock = (prompt: PromptNode) => {
-        const promptHeight = getPromptHeightForLayout(prompt);
-        const children = canvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
-        const dims = children.map(img => getImageDimsForLayout(img));
-        const rowWidth = dims.reduce((s, d) => s + d.width, 0) + (dims.length > 0 ? (dims.length - 1) * COL_GAP_IMG : 0);
-        const rowHeight = dims.length > 0 ? Math.max(...dims.map(d => d.totalHeight)) : 0;
-        const blockWidth = Math.max(PROMPT_WIDTH, rowWidth);
-        const promptToImageGap = children.length > 0 ? clampGap(promptHeight) : 0;
-        const blockHeight = promptHeight + (children.length > 0 ? promptToImageGap + rowHeight : 0) + NODE_GAP;
-        return { promptHeight, children, dims, rowWidth, blockWidth, blockHeight, promptToImageGap };
-      };
-
-      // Stage positions first, then apply a single global offset so the result is centered near viewCenter.
-      const promptPositions: Record<string, { x: number; y: number }> = {};
-      const imagePositions: Record<string, { x: number; y: number }> = {};
-
-      const placePrompt = (prompt: PromptNode, xLeft: number, yTop: number) => {
-        const info = measureBlock(prompt);
-        const centerX = xLeft + info.blockWidth / 2;
-        const promptBottom = yTop + info.promptHeight;
-
-        promptPositions[prompt.id] = { x: centerX, y: promptBottom };
-
-        if (info.children.length > 0) {
-          let cursorX = centerX - info.rowWidth / 2;
-          const rowTop = promptBottom + info.promptToImageGap;
-          info.children.forEach((img, idx) => {
-            const dim = info.dims[idx];
-            imagePositions[img.id] = { x: cursorX + dim.width / 2, y: rowTop + dim.totalHeight };
-            cursorX += dim.width + COL_GAP_IMG;
-          });
-        }
-
-        return { width: info.blockWidth, height: info.blockHeight };
-      };
-
-      // Normals grid
-      const normalsSorted = [...normals].sort((a, b) => parseInt(a.id) - parseInt(b.id));
-      let x = 0, y = 0, rowH = 0, count = 0;
-      normalsSorted.forEach(p => {
-        const info = measureBlock(p);
-        if (count >= NORMAL_PER_ROW) {
-          y += rowH + ROW_GAP;
-          x = 0;
-          rowH = 0;
-          count = 0;
-        }
-
-        placePrompt(p, x, y);
-        x += info.blockWidth + COL_GAP;
-        rowH = Math.max(rowH, info.blockHeight);
-        count += 1;
-      });
-
-      // Errors stacked below normals
-      const errorsSorted = [...errors].sort((a, b) => parseInt(a.id) - parseInt(b.id));
-      let xe = 0, ye = y + rowH + ROW_GAP, eRowH = 0, eCount = 0;
-      errorsSorted.forEach(p => {
-        const info = measureBlock(p);
-        if (eCount >= ERRORS_PER_ROW) {
-          ye += eRowH + ROW_GAP;
-          xe = 0;
-          eRowH = 0;
-          eCount = 0;
-        }
-        placePrompt(p, xe, ye);
-        xe += info.blockWidth + COL_GAP;
-        eRowH = Math.max(eRowH, info.blockHeight);
-        eCount += 1;
-      });
-
-      // Compute bounds (using staged positions + real sizes) and shift whole layout to viewCenter.
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      const addRect = (cx: number, bottomY: number, w: number, h: number) => {
-        // Anchor is bottom-center
-        const left = cx - w / 2;
-        const right = cx + w / 2;
-        const top = bottomY - h;
-        const bottom = bottomY;
-        minX = Math.min(minX, left);
-        maxX = Math.max(maxX, right);
-        minY = Math.min(minY, top);
-        maxY = Math.max(maxY, bottom);
-      };
-
-      canvas.promptNodes.forEach(p => {
-        const pos = promptPositions[p.id];
-        if (!pos) return;
-        addRect(pos.x, pos.y, PROMPT_WIDTH, getPromptHeightForLayout(p));
-      });
-
-      canvas.imageNodes.forEach(img => {
-        const pos = imagePositions[img.id];
-        if (!pos) return;
-        const dim = getImageDimsForLayout(img);
-        addRect(pos.x, pos.y, dim.width, dim.totalHeight);
-      });
-
-      if (minX !== Infinity && minY !== Infinity && maxX !== -Infinity && maxY !== -Infinity) {
-        const layoutCenterX = (minX + maxX) / 2;
-        const layoutCenterY = (minY + maxY) / 2;
-        const dx = viewCenter.x - layoutCenterX;
-        const dy = viewCenter.y - layoutCenterY;
-
-        Object.keys(promptPositions).forEach(id => {
-          const p = promptPositions[id];
-          promptPositions[id] = { x: p.x + dx, y: p.y + dy };
-        });
-        Object.keys(imagePositions).forEach(id => {
-          const p = imagePositions[id];
-          imagePositions[id] = { x: p.x + dx, y: p.y + dy };
-        });
-      }
-
-      // Apply updates (ignore selection + do not auto-move children because we explicitly set image positions)
-      canvas.promptNodes.forEach(p => {
-        const pos = promptPositions[p.id];
-        if (pos) updatePromptNodePosition(p.id, pos, { moveChildren: false, ignoreSelection: true });
-      });
-      canvas.imageNodes.forEach(img => {
-        const pos = imagePositions[img.id];
-        if (pos) updateImageNodePosition(img.id, pos, { ignoreSelection: true });
-      });
-    };
-
-    clearSelection();
-    requestAnimationFrame(runLayout);
-  }, [activeCanvas, canvasTransform, clearSelection, updateImageNodePosition, updatePromptNodePosition, getPromptHeight]);
-
+  // --- 连接管理 ---
   const handleCutConnection = useCallback((promptId: string, imageId: string) => {
     unlinkNodes(promptId, imageId);
   }, [unlinkNodes]);
@@ -1563,7 +1426,8 @@ const AppContent: React.FC = () => {
     updatePromptNode({
       ...node,
       isGenerating: true,
-      error: undefined
+      error: undefined,
+      timestamp: Date.now() // Reset timer
     });
 
     const currentNodeId = node.id;
@@ -1613,7 +1477,18 @@ const AppContent: React.FC = () => {
             try {
               const res = await fetch(b64);
               const blob = await res.blob();
+              // const id = `${Date.now()}_${index}`;
+              // import('./services/syncService').then(async ({ syncService }) => {
+              //   const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
+              //   url = thumbnail;
+              //   originalUrl = original;
+              // });
+              // [Optimization] For local mode speed, skip syncService upload during inline flow?
+              // Or keep it but wait? The logic below needs `url` immediately.
+              // If we make it async, we must await it.
+              // To handle this properly with lazy loading:
               const id = `${Date.now()}_${index}`;
+              const { syncService } = await import('./services/syncService');
               const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
               url = thumbnail;
               originalUrl = original;
@@ -1764,7 +1639,9 @@ const AppContent: React.FC = () => {
           node.referenceImages?.length || 0
         );
       });
-      notify.success('生成完成', '重新生成成功');
+      import('./services/notificationService').then(({ notify }) => {
+        notify.success('生成完成', '重新生成成功');
+      });
 
     } catch (error: any) {
       updatePromptNode({
@@ -1772,7 +1649,9 @@ const AppContent: React.FC = () => {
         isGenerating: false,
         error: error.message || 'Retry failed'
       });
-      notify.error('重试失败', error.message);
+      import('./services/notificationService').then(({ notify }) => {
+        notify.error('重试失败', error.message);
+      });
     }
   }, [config.parallelCount, isMobile, updatePromptNode, addImageNodes, config.enableGrounding]);
 
@@ -1787,21 +1666,44 @@ const AppContent: React.FC = () => {
           handleRetryNode(node);
         });
 
-        notify.info('恢复任务', `系统已自动重新开始 ${interruptedNodes.length} 个中断的任务`);
+        import('./services/notificationService').then(({ notify }) => {
+          notify.info('恢复任务', `系统已自动重新开始 ${interruptedNodes.length} 个中断的任务`);
+        });
       }
     }
   }, [activeCanvas, handleRetryNode]);
 
   // Optimization: Stable handlers for Node Clicks
-  const handlePromptClick = useCallback((clickedNode: PromptNode) => {
+  const handlePromptClick = useCallback(async (clickedNode: PromptNode) => {
     setActiveSourceImage(null);
+
+    let referenceImages = clickedNode.referenceImages || [];
+
+    // Pre-hydrate if needed to prevent flicker
+    // We do this BEFORE setting config so the UI never sees the "loading" state
+    if (referenceImages.some(img => !img.data && img.storageId)) {
+      try {
+        const { getImage } = await import('./services/imageStorage');
+        const hydrated = await Promise.all(referenceImages.map(async (img) => {
+          if (!img.data && img.storageId) {
+            const data = await getImage(img.storageId);
+            if (data) return { ...img, data };
+          }
+          return img;
+        }));
+        referenceImages = hydrated;
+      } catch (e) {
+        console.error('Failed to pre-hydrate reference images', e);
+      }
+    }
+
     setConfig(prev => ({
       ...prev,
       prompt: clickedNode.prompt,
       aspectRatio: clickedNode.aspectRatio,
       imageSize: clickedNode.imageSize,
       model: clickedNode.model,
-      referenceImages: clickedNode.referenceImages || []
+      referenceImages: referenceImages
     }));
 
     // [Draft Logic] Resume Draft if clicked on a draft node
@@ -1917,6 +1819,15 @@ const AppContent: React.FC = () => {
 
     return { visiblePromptNodes, visibleImageNodes, visibleGroups };
   }, [activeCanvas, canvasTransform]);
+  // [Blocking Load] Wait for Canvas Hydration to prevent "Triple Load" flash
+  if (!isReady) {
+    return (
+      <div className="fixed inset-0 bg-[#0d0d0f] flex items-center justify-center z-50">
+        <Loader2 className="animate-spin text-indigo-500" size={32} />
+      </div>
+    );
+  }
+
 
   return (
     <div id="canvas-container" className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
@@ -2050,7 +1961,7 @@ const AppContent: React.FC = () => {
       {/* Selection Box Overlay */}
       {selectionBox && selectionBox.active && (
         <div
-          className="fixed z-[9999] border border-indigo-500 bg-indigo-500/10 pointer-events-none"
+          className="fixed z-[9999] border border-indigo-500 bg-indigo-500/10 pointer-events-none rounded-lg"
           style={{
             left: Math.min(selectionBox.start.x, selectionBox.current.x),
             top: Math.min(selectionBox.start.y, selectionBox.current.y),
@@ -2151,6 +2062,16 @@ const AppContent: React.FC = () => {
           // Always clear selection on empty click
           clearSelection();
           setSelectionMenuPosition(null);
+        }}
+        onCanvasDoubleClick={() => {
+          // [NEW] Double click to clear EVERYTHING (Prompt + Images)
+          if (!isGenerating) {
+            setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
+            setActiveSourceImage(null);
+            // Also clear selection
+            clearSelection();
+            setSelectionMenuPosition(null);
+          }
         }}
         onAutoArrange={handleAutoArrange}
         onMouseDown={handleMouseDown}
@@ -2573,10 +2494,8 @@ const AppContent: React.FC = () => {
 
 
 
-      {/* Version Badge - Bottom Right */}
-      <div className="fixed bottom-4 right-20 z-40 text-[10px] text-zinc-600 select-none">
-        v1.2.3
-      </div>
+
+
 
       {/* Project Manager (Replaces Canvas Manager) */}
       <ProjectManager
@@ -2584,8 +2503,7 @@ const AppContent: React.FC = () => {
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
         isMobile={isMobile}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
+        onFitToAll={handleFitToAll}
         onResetView={handleResetView}
         onToggleGrid={handleToggleGrid}
         showGrid={showGrid}
@@ -2682,6 +2600,58 @@ const AppContent: React.FC = () => {
           }}
         />
       )}
+
+
+      {/* AI聊天按钮 - 右下角固定 */}
+      <div className={`absolute bottom-6 z-50 transition-all duration-300 ${isChatOpen ? 'right-[404px]' : 'right-6'}`}>
+        <button
+          className="ai-chat-btn flex items-center justify-center cursor-pointer focus-visible:outline-none text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-blue-400/80 hover:shadow-[0_0_35px] bg-transparent overflow-hidden relative rounded-full aspect-square h-10 hover:scale-110 transition-all duration-300 p-2"
+          type="button"
+          onClick={() => setIsChatOpen(prev => !prev)}
+        >
+          <div className="uiverse w-full h-full absolute top-0 left-0 z-[-1] visible">
+            <div className="circle circle-12"></div>
+            <div className="circle circle-11"></div>
+            <div className="circle circle-10"></div>
+            <div className="circle circle-9"></div>
+            <div className="circle circle-8"></div>
+            <div className="circle circle-7"></div>
+            <div className="circle circle-6"></div>
+            <div className="circle circle-5"></div>
+            <div className="circle circle-4"></div>
+            <div className="circle circle-3"></div>
+            <div className="circle circle-2"></div>
+            <div className="circle circle-1"></div>
+          </div>
+
+          {/* 蓝色半透明遮罩层 */}
+          <div className="absolute inset-0 rounded-full bg-blue-500/15 z-[1]"></div>
+
+          {/* 星光图标 - 悬停时缓慢旋转90度 */}
+          <svg
+            className="ai-chat-icon relative z-10"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="rgba(255, 255, 255, 0.95)"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5))' }}
+          >
+            <path d="M11.6061 4.23218C11.6838 3.79153 12.3162 3.79153 12.3939 4.23218L12.5268 4.98521C13.1111 8.29642 15.7036 10.8889 19.0148 11.4732L19.7678 11.6061C20.2085 11.6838 20.2085 12.3162 19.7678 12.3939L19.0148 12.5268C15.7036 13.1111 13.1111 15.7036 12.5268 19.0148L12.3939 19.7678C12.3162 20.2085 11.6838 20.2085 11.6061 19.7678L11.4732 19.0148C10.8889 15.7036 8.29642 13.1111 4.98521 12.5268L4.23218 12.3939C3.79153 12.3162 3.79153 11.6838 4.23218 11.6061L4.98521 11.4732C8.29642 10.8889 10.8889 8.29642 11.4732 4.98521L11.6061 4.23218Z" fill="rgba(255, 255, 255, 0.95)"></path>
+          </svg>
+          <style>{`
+            .ai-chat-icon {
+              transition: transform 0.7s ease-out;
+            }
+            .ai-chat-btn:hover .ai-chat-icon {
+              transform: rotate(90deg);
+            }
+            .ai-chat-btn:hover .uiverse .circle {
+              animation-duration: calc(var(--duration) / 3) !important;
+            }
+          `}</style>
+        </button>
+      </div>
     </div>
   );
 };
@@ -2691,7 +2661,10 @@ const App: React.FC = () => {
 
   // Initialize update check on mount (must be before any conditional returns per React Rules of Hooks)
   useEffect(() => {
-    initUpdateCheck();
+    // Dynamic Import for Update Check
+    import('./services/updateCheck').then(({ initUpdateCheck }) => {
+      initUpdateCheck();
+    });
   }, []);
 
   if (loading) {
@@ -2714,7 +2687,7 @@ const App: React.FC = () => {
     <ThemeProvider>
       <CanvasProvider>
         <NotificationToast />
-        <UpdateNotification />
+        {/* <UpdateNotification /> moved to InfiniteCanvas */}
         <AppContent />
       </CanvasProvider>
     </ThemeProvider>

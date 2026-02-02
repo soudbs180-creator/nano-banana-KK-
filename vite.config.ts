@@ -19,6 +19,14 @@ export default defineConfig(({ mode }) => {
             alias: {
                 '@': path.resolve(__dirname, 'src'),
             }
+        },
+        optimizeDeps: {
+            force: true, // 强制重新预构建依赖
+            include: ['react', 'react-dom']
+        },
+        build: {
+            // 确保构建时清理旧文件
+            emptyOutDir: true,
         }
     };
 });

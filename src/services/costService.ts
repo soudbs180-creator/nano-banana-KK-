@@ -5,16 +5,16 @@
  * ============================================
  * 定价参考 - Google 官方文档
  * https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn
- * 更新日期: 2026-01-22
+ * https://ai.google.dev/gemini-api/docs/tokens?hl=zh-cn
+ * 更新日期: 2026-02-03
  * ============================================
+ * 
+ * 【图片生成模型】
  * 
  * Imagen 4 系列 (固定每张计费):
  * - imagen-4.0-fast-generate-001: $0.02/张
- * - imagen-4.0-generate-001: $0.04/张 (估计)
+ * - imagen-4.0-generate-001: $0.04/张
  * - imagen-4.0-ultra-generate-001: $0.06/张
- * 
- * Imagen 3 系列:
- * - imagen-3.0-generate-002: 与 Imagen 4 类似定价
  * 
  * Gemini 3 Pro Image (gemini-3-pro-image-preview):
  * - 输入: $3.50/1M tokens, 图片输入 560 tokens = $0.00196/张
@@ -26,6 +26,24 @@
  * - 输入: $0.075/1M tokens
  * - 输出: $30/1M tokens
  *   - 1024x1024: 1290 tokens = $0.039/张
+ * 
+ * 【视频生成模型】
+ * 
+ * Veo 3.1 系列 (最新预览版):
+ * - veo-3.1-generate-preview: ~$0.50/视频
+ * - veo-3.1-fast-generate-preview: ~$0.25/视频
+ * 
+ * Veo 3 系列 (稳定版):
+ * - veo-3.0-generate-001: ~$0.50/视频
+ * - veo-3.0-fast-generate-001: ~$0.25/视频
+ * 
+ * Veo 2 系列:
+ * - veo-2.0-generate-001: ~$0.35/视频
+ * 
+ * 【令牌计算说明】
+ * - 文本: 约 4 字符 = 1 token
+ * - 参考图片输入: 560 tokens/张
+ * - 图片生成输出: 按分辨率不同 1120-2000 tokens
  */
 
 import { ModelType, ImageSize } from '../types';
@@ -101,6 +119,14 @@ const PRICING = {
         OUTPUT_1M: 30.00,
         REF_IMG_TOKENS: 560,
         GEN_TOKENS_STD: 1290  // 1024x1024 输出
+    },
+
+    // ============================================
+    // Veo 视频系列 - 按视频计费
+    // ============================================
+    VEO: {
+        '3.1': 0.30,      // veo-3.1-generate-preview
+        '3.1_FAST': 0.15  // veo-3.1-fast-generate-preview
     }
 };
 
@@ -191,7 +217,7 @@ export const calculateCost = (
     }
 
     // 2. Gemini Pro Models (Tier 1 Pricing - $3.50/$10.50)
-    // Covering: gemini-3-pro-preview, gemini-1.5-pro, gemini-3-pro
+    // Covering: gemini-3-pro-preview, gemini-2.5-pro, gemini-3-pro
     if (modelId.includes('pro') && !modelId.includes('lite') && !modelId.includes('flash')) {
         const isHD = size === ImageSize.SIZE_4K;
         const outputTokens = count * (isHD ? PRICING.GEMINI_3_PRO.GEN_TOKENS_HD : PRICING.GEMINI_3_PRO.GEN_TOKENS_STD);
@@ -209,7 +235,7 @@ export const calculateCost = (
     }
 
     // 3. Gemini Flash / Lite Models (Tier 2 Pricing - $0.075/$0.30)
-    // Covering: gemini-flash-latest, gemini-flash-lite-latest, gemini-3-flash-preview
+    // Covering: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3-flash-preview
     // Lite is usually cheaper, but using Flash rate as safe baseline or defining Lite specific if critical.
     // Flash Lite (Preview) often free, but let's estimate as Flash rate for budget safety.
     if (modelId.includes('flash') || modelId.includes('lite') || modelId.includes('banana')) {
@@ -310,29 +336,42 @@ export function getCostsByModel(): CostBreakdownItem[] {
 
 export function getModelDisplayName(model: string): string {
     // Nano Banana 系列 - 使用 UI 显示名称
-    if (model === 'nano-banana') return 'Nano Banana';
-    if (model === 'nano-banana-pro') return 'Nano Banana Pro';
+    // 同时支持内部ID和实际Google API模型ID
+    if (model === 'nano-banana' || model === 'gemini-2.5-flash-image') return 'Nano Banana（极速）';
+    if (model === 'nano-banana-pro' || model === 'gemini-3-pro-image-preview') return 'Nano Banana Pro（高质量）';
 
-    // Imagen 4 系列
-    if (model.includes('imagen-4.0-ultra')) return 'Imagen 4 Ultra';
-    if (model.includes('imagen-4.0-fast')) return 'Imagen 4 Fast';
-    if (model.includes('imagen-4.0')) return 'Imagen 4';
+    // Imagen 4 系列 (包括preview版本)
+    if (model.includes('imagen-4.0-ultra')) return 'Imagen 4 Ultra（超清）';
+    if (model.includes('imagen-4.0-fast')) return 'Imagen 4 Fast（快速）';
+    if (model.includes('imagen-4.0') || model.includes('imagen-4-')) return 'Imagen 4（标准）';
 
     // Imagen 3 系列
-    if (model.includes('imagen-3.0-generate-002')) return 'Imagen 3';
-    if (model.includes('imagen-3.0-generate-001')) return 'Imagen 3.0 (Legacy)';
+    if (model.includes('imagen-3.0-generate-002') || model.includes('imagen-3-generate-002')) return 'Imagen 3（上一代）';
+    if (model.includes('imagen-3.0-generate-001') || model.includes('imagen-3-generate-001')) return 'Imagen 3.0（旧版）';
 
-    // Gemini 系列
-    if (model.includes('gemini-2.5-flash-image')) return 'Gemini 2.5 Flash Image';
-    if (model.includes('gemini-3-pro-image')) return 'Gemini 3 Pro Image';
-    if (model.includes('gemini-2.0-flash-exp')) return 'Gemini 2.0 Flash';
-    if (model.includes('gemini-2.0-pro-exp')) return 'Gemini 2.0 Pro';
+    // Gemini 系列 - 只处理非Nano Banana的Gemini模型
+    if (model.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
+    if (model.includes('gemini-2.5-flash') && !model.includes('image')) return 'Gemini 2.5 Flash';
+    if (model.includes('gemini-3-pro') && !model.includes('image')) return 'Gemini 3 Pro';
+    if (model.includes('gemini-3-flash')) return 'Gemini 3 Flash';
+    if (model.includes('gemini-2.0-flash-exp')) return 'Gemini 2.0 Flash（实验版）';
 
-    // Fallback cleanup
-    return model
+    // Veo 视频系列
+    if (model.includes('veo-3.1') && model.includes('fast')) return 'Veo 3.1 Fast';
+    if (model.includes('veo-3.1')) return 'Veo 3.1';
+    if (model.includes('veo-3.0') && model.includes('fast')) return 'Veo 3 Fast';
+    if (model.includes('veo-3.0')) return 'Veo 3';
+    if (model.includes('veo-2')) return 'Veo 2';
+
+    // Fallback cleanup - 移除models/前缀,转换为可读格式
+    const cleaned = model
         .replace('models/', '')
+        .replace(/-preview-\d{2}-\d{2}$/, ' (预览版)') // 移除日期后缀
+        .replace(/-generate-\d+$/, '') // 移除generate后缀
         .replace(/-/g, ' ')
         .replace(/\b\w/g, c => c.toUpperCase());
+
+    return cleaned;
 }
 
 export function getDailyBudget(): number {
@@ -498,14 +537,14 @@ async function syncWithCloud() {
             avatar_url: profile.avatar_url,
             // 今日统计
             daily_cost: local.totalCostUsd,
-            daily_cost_cny: dailyCostCny,  // 今日消耗人民币
+            // daily_cost_cny removed to prevent schema error
             daily_images: local.totalImages,
-            daily_tokens: local.totalTokens,
+            // daily_tokens removed to prevent schema error
             daily_date: local.date,
             // 全部 API 预算汇总
             total_budget: totalBudget > 0 ? totalBudget : -1,
             total_used: totalUsed,
-            total_tokens: totalTokensAllTime,  // 累计 token 消耗
+            // total_tokens removed to prevent schema error
             // 单个 API 详情
             api_budgets: apiBudgets,
             updated_at: new Date().toISOString()

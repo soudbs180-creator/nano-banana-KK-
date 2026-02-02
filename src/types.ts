@@ -2,10 +2,12 @@ export enum AspectRatio {
   AUTO = 'auto', // 自动匹配
   SQUARE = '1:1',
   PORTRAIT_3_4 = '3:4',
+  PORTRAIT_4_5 = '4:5', // Gemini 3 Pro支持
   PORTRAIT_9_16 = '9:16',
   PORTRAIT_9_21 = '9:21', // Flux Mobile
   PORTRAIT_2_3 = '2:3',
   LANDSCAPE_4_3 = '4:3',
+  LANDSCAPE_5_4 = '5:4', // Gemini 3 Pro支持
   LANDSCAPE_16_9 = '16:9',
   LANDSCAPE_21_9 = '21:9',
   LANDSCAPE_3_2 = '3:2',
@@ -37,15 +39,12 @@ export const KnownModel = {
   IMAGEN_4_FAST: 'imagen-4.0-fast-generate-001',
 
   // Imagen 3 系列
-  IMAGEN_3: 'imagen-3.0-generate-002',
-  IMAGEN_3_LEGACY: 'imagen-3.0-generate-001',
+  IMAGEN_3: 'imagen-3.0-generate-001',
+  IMAGEN_3_LEGACY: 'imagen-3.0-generate-002',
 
-  // Gemini Image 系列 (原生图像生成)
+  // Gemini 原生图像生成系列
   GEMINI_2_5_FLASH_IMAGE: 'gemini-2.5-flash-image',
   GEMINI_3_PRO_IMAGE: 'gemini-3-pro-image-preview',
-
-  // Gemini 多模态 (兼容图像生成)
-  GEMINI_2_FLASH: 'gemini-2.0-flash-exp',
 
   // Veo 视频生成系列
   VEO_3_1: 'veo-3.1-generate-preview',
@@ -69,17 +68,14 @@ export enum GenerationMode {
 // 参考: https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn
 // ============================================
 export enum ChatModelType {
-  // Flash Lite - 最快速、最轻量
-  GEMINI_LITE = 'gemini-flash-lite-latest',
-
-  // Flash 系列 - 速度优先
-  GEMINI_FLASH = 'gemini-flash-latest',
+  // Gemini 2.5 系列 - 性价比最佳
+  GEMINI_2_5_PRO = 'gemini-2.5-pro',
   GEMINI_2_5_FLASH = 'gemini-2.5-flash',
   GEMINI_2_5_FLASH_LITE = 'gemini-2.5-flash-lite',
 
-  // Gemini 3 系列 (预览版)
-  GEMINI_3_FLASH = 'gemini-3-flash-preview',
+  // Gemini 3 系列 - 最强智能
   GEMINI_3_PRO = 'gemini-3-pro-preview',
+  GEMINI_3_FLASH = 'gemini-3-flash-preview',
 }
 
 export interface ReferenceImage {
@@ -96,6 +92,7 @@ export interface GeneratedImage {
   originalUrl?: string; // High-res original (if different from url)
   prompt: string;
   aspectRatio: AspectRatio;
+  imageSize?: ImageSize; // Image size/quality setting
   timestamp: number;
   model: ModelType;
   canvasId: string;
@@ -165,4 +162,8 @@ export interface GenerationConfig {
   model: ModelType;
   enableGrounding: boolean;
   mode: GenerationMode;
+  // 视频配置字段
+  videoResolution?: string; // '720p' | '1080p' | '4k'
+  videoDuration?: string;   // '4s' | '6s' | '8s'
+  videoAudio?: boolean;     //生成音频
 }

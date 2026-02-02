@@ -158,7 +158,18 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                             setSelectedIndex(0);
                         }}
                         placeholder={isMultiSelectMode ? "多选模式: 点击选择多个，按 Ctrl+Enter 确认整理" : "搜索提示词、标签或编组..."}
-                        className="flex-1 bg-transparent border-none py-4 text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none text-lg"
+                        className="flex-1 bg-transparent border-none py-4 text-lg focus:outline-none transition-all"
+                        style={{
+                            color: 'var(--text-primary)',
+                            fontSize: '16px',
+                            transitionDuration: 'var(--duration-fast)'
+                        }}
+                        onFocus={(e) => {
+                            e.currentTarget.parentElement!.style.boxShadow = 'inset 0 0 0 2px var(--accent-blue)';
+                        }}
+                        onBlur={(e) => {
+                            e.currentTarget.parentElement!.style.boxShadow = 'none';
+                        }}
                     />
 
                     {/* Multi-Select Toggle */}
@@ -236,7 +247,16 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                                                         {item.data.tags.map(tag => {
                                                             const colors = generateTagColor(tag);
                                                             return (
-                                                                <span key={tag} className={`px-1.5 py-0.5 rounded text-[10px] border ${colors.bg} ${colors.border} ${colors.text}`}>
+                                                                <span
+                                                                    key={tag}
+                                                                    className="px-1.5 py-0.5 text-[10px]"
+                                                                    style={{
+                                                                        backgroundColor: colors.bg,
+                                                                        color: colors.text,
+                                                                        border: `1px solid ${colors.border}`,
+                                                                        borderRadius: 'var(--radius-sm)'
+                                                                    }}
+                                                                >
                                                                     #{tag}
                                                                 </span>
                                                             );

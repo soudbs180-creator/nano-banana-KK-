@@ -358,7 +358,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>版本</div>
-                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.3</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.5</div>
                     </div>
                 </div>
             </div>
@@ -554,39 +554,71 @@ const CostEstimationView = () => {
             </div>
 
             <div className="text-xs text-zinc-500 p-5 bg-[var(--bg-tertiary)] rounded-[32px] border border-[var(--border-light)]">
-                <p className="font-medium text-zinc-400 mb-3">计费参考</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* Imagen */}
+                <p className="font-medium text-zinc-400 mb-3">计费参考 (Google官方定价)</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Imagen 图片 */}
                     <div className="space-y-1.5">
-                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1">Imagen 4</div>
+                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                            <div className="w-2 h-2 bg-emerald-500 rounded-sm" />
+                            Imagen 4 (图片)
+                        </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
                             <span>Fast: <span className="text-emerald-400 font-mono">$0.02</span>/张</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                            <span>Standard: <span className="text-emerald-400 font-mono">$0.04</span>/张</span>
+                        </div>
+                        <div className="flex items-center gap-2">
                             <span>Ultra: <span className="text-emerald-400 font-mono">$0.06</span>/张</span>
                         </div>
                     </div>
-                    {/* Gemini */}
+                    {/* Gemini 图片 */}
                     <div className="space-y-1.5">
-                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1">Gemini Image</div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                            <span>2.5 Flash: <span className="text-indigo-400 font-mono">$0.039</span>/张(1290 tokens)</span>
+                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                            <div className="w-2 h-2 bg-indigo-500 rounded-sm" />
+                            Gemini Image (Token计费)
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                            <span>3 Pro (1K-2K): <span className="text-indigo-400 font-mono">$0.134</span>/张</span>
+                            <span>2.5 Flash: <span className="text-indigo-400 font-mono">$0.039</span>/张</span>
+                            <span className="text-[10px] text-zinc-600">(1290 tokens)</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                            <span>3 Pro (4K): <span className="text-indigo-400 font-mono">$0.24</span>/张</span>
+                            <span>3 Pro 1K-2K: <span className="text-indigo-400 font-mono">$0.134</span>/张</span>
+                            <span className="text-[10px] text-zinc-600">(1120 tokens)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span>3 Pro 4K: <span className="text-indigo-400 font-mono">$0.24</span>/张</span>
+                            <span className="text-[10px] text-zinc-600">(2000 tokens)</span>
+                        </div>
+                    </div>
+                    {/* Veo 视频 */}
+                    <div className="space-y-1.5">
+                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                            <div className="w-2 h-2 bg-purple-500 rounded-sm" />
+                            Veo (视频)
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span>Veo 3.1: <span className="text-purple-400 font-mono">~$0.50</span>/视频</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span>Veo 3.1 Fast: <span className="text-purple-400 font-mono">~$0.25</span>/视频</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span>Veo 2: <span className="text-purple-400 font-mono">~$0.35</span>/视频</span>
                         </div>
                     </div>
                 </div>
-                <div className="mt-3 pt-3 border-t border-[var(--border-light)] text-[10px] text-zinc-600">
-                    Token 计费: Gemini 2.5 Flash Image 输出 $30/1M, Gemini 3 Pro Image 输出 $120/1M
+                {/* 底部说明 */}
+                <div className="mt-4 pt-3 border-t border-[var(--border-light)] grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-zinc-600">
+                    <div>
+                        <span className="text-zinc-500">Token计算:</span> 输入≈4字符/token, 参考图=560tokens/张
+                    </div>
+                    <div>
+                        <span className="text-zinc-500">输出价格:</span> Flash=$30/1M, Pro=$120/1M
+                    </div>
+                </div>
+                <div className="mt-2 text-[10px] text-zinc-600">
+                    <span className="text-zinc-500">视频模式:</span> 0张=文生视频, 1张=首帧生成, 2张=首尾帧, 3张=参考图生成
                 </div>
             </div>
         </div >

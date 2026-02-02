@@ -23,7 +23,7 @@ const ApiManagementView = () => {
                   borderWidth: '1px'
                 }}
               >
-                <SlidersHorizontal size={14} /> 通道管理 (Local)
+                <SlidersHorizontal size={14} /> 通道管理
               </button>
               <button
                 onClick={() => setActiveTab('assets')}
@@ -35,12 +35,13 @@ const ApiManagementView = () => {
                   borderWidth: '1px'
                 }}
               >
-                <Building2 size={14} /> OneAPI 管理 (Remote)
+                <Building2 size={14} /> OneAPI
               </button>
             </div>
           </div>
           <p className="text-xs text-zinc-500 text-left w-full">
-            通道管理用于配置本地使用的 API Key 与模型映射；OneAPI 管理用于远程控制 NewAPI/OneAPI 系统。
+            {activeTab === 'dispatch' && '配置本地 API Key 与模型映射,支持顺序和并发调度'}
+            {activeTab === 'assets' && '远程管理 OneAPI/NewAPI 服务器,统一调度多个API渠道'}
           </p>
         </div>
       </div>

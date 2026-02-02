@@ -1,8 +1,8 @@
-# KK Studio v1.2.2
+# KK Studio v1.2.5
 
 **下一代 AI 图像创作工作室 | 无限画布 | 120Hz 极致性能**
 
-![Version](https://img.shields.io/badge/version-1.2.2-indigo.svg)
+![Version](https://img.shields.io/badge/version-1.2.5-indigo.svg)
 ![React](https://img.shields.io/badge/React-19-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
 ![Vite](https://img.shields.io/badge/Vite-6.0-purple)
@@ -137,13 +137,119 @@ npm run dev
 
 ---
 
+## 📦 项目结构
+
+```
+KK-Studio-1.0.0/
+├── src/                    # 项目源代码
+│   ├── components/         # React 组件
+│   ├── context/            # Context 状态管理
+│   ├── hooks/              # 自定义 Hooks
+│   ├── services/           # API 服务
+│   └── utils/              # 工具函数
+├── docs/                   # 📚 文档中心
+│   ├── development/        # 开发文档
+│   │   ├── model-service.md      # 模型服务文档
+│   │   ├── progress.md           # 开发进度
+│   │   └── session-handoff.md    # 会话交接
+│   └── reports/            # 报告文档
+│       └── mobile-ui-optimization.md  # 移动端UI优化报告
+├── scripts/                # 🔧 脚本工具
+│   ├── health_check.js
+│   ├── patch_canvas.py
+│   ├── patch_canvas_v2.py
+│   ├── verify_connection.js
+│   └── 启动 KK Studio.bat
+├── tests/                  # ✅ 测试文件
+│   └── test-connection.html
+├── .agent/                 # 🤖 AI代理规则
+│   ├── rules/skills/SKILL.md     # 完整开发规范
+│   └── README.md                 # 规则说明
+├── config/                 # ⚙️ 配置文件
+├── public/                 # 静态资源
+└── netlify/                # Netlify 部署配置
+```
+
+---
+
+## 🤖 AI 开发规范
+
+本项目配置了 `.agent/rules/skills/SKILL.md` 开发规范文档，所有 AI 代码助手（Cursor、GitHub Copilot、Claude 等）会自动遵循：
+
+- **UI 设计**: AnyGen Design Language，Glassmorphism 毛玻璃效果
+- **代码规范**: 中文注释，Type Safety，函数组件
+- **架构规则**: Service 层分离，Context 状态管理
+- **性能优化**: useMemo/useCallback，懒加载，GPU 加速
+
+
+---
+
 ## 📄 更新日志
+
+### v1.2.5 (2026-02-03)
+
+#### ✨ 新功能
+- **视频生成支持**：集成 Veo 3.1 视频生成 API，支持多图片模式（0/1/2/3张：文生视频/首帧/首尾帧/参考图）
+- **副卡排列模式轮换**：单选卡组或框选纯副卡时，连续点击整理可轮换 **横向/宫格/竖向** 三种排列方式
+- **模型参考图限制**：不同模型支持不同参考图数量（Gemini=10张，Imagen=0张，Veo=3张）
+
+#### 🛠️ 界面优化
+- **框选圆角**：框选区域添加圆角设计，视觉更柔和
+- **通知层级**：Toast 通知始终保持最顶层显示
+- **计费参考 UI**：丰富计费参考信息，新增 Veo 视频价格和 Token 计算说明
+
+---
+
+### v1.2.3 (2026-01-29)
+
+#### ✨ 界面升级 (UI Polish)
+- **Lightbox 元数据浮层**：
+  - 图片放大查看时，底部新增精美浮层，展示 **模型版本**、**分辨率/比例**、**生成耗时** 及 **Token/成本**。
+  - 采用深色毛玻璃风格，与应用整体设计语言保持一致。
+- **生成卡片优化**：
+  - **预览卡片 (Draft Node)**：调整为高斯模糊磨砂质感 (Frosted Glass)，提升文字可读性。
+  - **信息排布**：生成耗时、Token、预估成本均调整为 **垂直排布**，节省空间并增强层级感。
+  - **计时器重构**：将"正在生成"计时器改为垂直布局（标签在上，数字在下），避免与视频时长混淆。
+- **视觉修复**：
+  - 移除卡片 `backface-visibility` 属性，解决缩放后文字模糊的问题。
+
+#### 🐛 修复与部署
+- **部署修复**：清理过期的 `pnpm-lock.yaml`，解决 Vercel 部署时的依赖锁文件冲突 (`ERR_PNPM_OUTDATED_LOCKFILE`)。
+- **交互优化**：将部分原生 `alert()` 弹窗替换为应用内 `notify` 通知，体验更流畅。
+- **启动修复**：修复 `ImageCard2` 组件中的语法错误（嵌套 div 和标签不匹配）导致的模块加载失败问题。
+
+---
 
 ### v1.2.2 (2026-01-28)
 - 🚀 全新 Direct DOM 渲染引擎，120Hz 极致流畅
 - 🎨 AnyGen 设计语言升级，深色/浅色模式完美适配
 - 🔧 修复搜索栏、分组框在浅色模式下的显示问题
 - 📝 README 文档全面重写
+
+---
+
+### v1.2.0 (2026-01-23)
+
+#### ✨ 新功能
+- **智能排版系统 (Strict Selection)**：
+  - 严格选择模式：单选主卡/副卡时不干扰其他卡片。
+  - 混合联动：仅在框选主副卡时启用联动。
+  - 智能宫格：大于6张卡自动切为矩阵布局。
+- **智能落位 (Smart Placement)**：
+  - 新对话/卡片自动定位在画布**右上角空白处**，彻底告别堆叠覆盖。
+
+#### 🔧 改进与修复
+- **API 列表排序优化**：点击"按规则整理"时，现在会优先将 可用(Valid/Green) 密钥排在顶部，将 未知/无效/暂停 密钥沉底。
+- **代理配置容错**：修复自定义代理未填写 Base URL 时的报错（自动补全 https）。
+- **生成稳定性**：修复部分场景下 Invalid URL 导致的生成失败。
+
+---
+
+## 📚 相关文档
+
+- [移动端UI优化报告](docs/reports/mobile-ui-optimization.md) - 详细的移动端UI/UX优化记录
+- [模型服务文档](docs/development/model-service.md) - AI模型服务集成说明
+- [开发进度](docs/development/progress.md) - 项目开发进度跟踪
 
 ---
 

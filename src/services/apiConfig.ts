@@ -65,7 +65,21 @@ export function buildApiUrl(
     apiKey?: string
 ): string {
     const base = baseUrl || GOOGLE_API_BASE;
-    const url = `${base}/v1beta/models/${model}:${action}`;
+
+    // Normalize model ID: remove 'models/' prefix if present
+    const normalizedModel = model.replace(/^models\//, '');
+
+    // Special handling: Preview models like gemini-3-pro-image-preview require v1beta
+    // Also 'exp' (experimental), 'gemini-2', 'flash' (often newer) usually work better on v1beta
+    const useBeta = normalizedModel.includes('preview') ||
+        normalizedModel.includes('exp') ||
+        normalizedModel.includes('gemini-2') ||
+        normalizedModel.includes('gemini-3') ||
+        normalizedModel.includes('ultra'); // Imagen 3 Ultra / Gemini 1.5 Ultra?
+
+    const apiVersion = useBeta ? 'v1beta' : 'v1';
+
+    const url = `${base}/${apiVersion}/models/${normalizedModel}:${action}`;
     return authMethod === 'query' && apiKey ? `${url}?key=${apiKey}` : url;
 }
 

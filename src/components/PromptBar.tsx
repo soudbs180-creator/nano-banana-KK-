@@ -4,27 +4,132 @@ import { modelRegistry, ActiveModel } from '../services/modelRegistry';
 import { keyManager, getModelMetadata } from '../services/keyManager'; // Added getter
 import { getModelCapabilities, modelSupportsGrounding } from '../services/modelCapabilities';
 import { calculateImageHash } from '../utils/imageUtils';
+import { saveImage, getImage } from '../services/imageStorage'; // [NEW] Import getImage
+import ImageOptionsPanel from './ImageOptionsPanel';
+import VideoOptionsPanel from './VideoOptionsPanel';
 
-const MobileMenu = ({ title, onClose, children }: { title: string, onClose: () => void, children: React.ReactNode }) => (
-    <>
-        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md animate-fadeIn" onClick={onClose} />
-        <div className="fixed bottom-4 left-4 right-4 z-[201] bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-[32px] p-5 animate-slideUp shadow-2xl flex flex-col gap-5 max-h-[80vh] origin-bottom transform transition-transform">
-            <div className="w-10 h-1 bg-[var(--border-medium)] rounded-full mx-auto" />
-            <div className="flex items-center justify-between px-1">
-                <span className="text-base font-bold text-white tracking-wide">{title}</span>
-                <button
-                    onClick={onClose}
-                    className="w-7 h-7 flex items-center justify-center bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)] rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-                >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                </button>
+// [FIX] Robust Image Component that self-heals from Storage if data is missing
+const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeType?: string, storageId?: string } }> = ({ image }) => {
+    const [data, setData] = useState<string | undefined>(image.data);
+    const [loading, setLoading] = useState(!image.data);
+    const [error, setError] = useState(false);
+
+    useEffect(() => {
+        // Did parent provide data?
+        if (image.data) {
+            setData(image.data);
+            setLoading(false);
+            setError(false);
+            return;
+        }
+
+        // If no data and no storageId, it's a dead link (or just created invalidly)
+        if (!image.storageId) {
+            // Wait a bit? No, it's invalid.
+            // But maybe it's just being created? 
+            // If it's a fresh upload, data usually comes first. 
+            // If it's empty, we might not want to show error immediately if it's transient?
+            // But here "image" is from config.referenceImages.
+            setLoading(false);
+            setError(true);
+            return;
+        }
+
+        // Try to recover from IDB
+        let active = true;
+        setLoading(true);
+        setError(false);
+
+        getImage(image.storageId)
+            .then(cached => {
+                if (active) {
+                    if (cached) {
+                        setData(cached);
+                    } else {
+                        setError(true); // truly missing
+                    }
+                    setLoading(false);
+                }
+            })
+            .catch(() => {
+                if (active) {
+                    setError(true);
+                    setLoading(false);
+                }
+            });
+
+        return () => { active = false; };
+    }, [image.data, image.storageId]); // Re-run if prop data arrives or ID changes
+
+    if (error) {
+        return (
+            <div className="w-12 h-12 rounded-lg border border-red-500/30 bg-red-500/10 flex items-center justify-center flex-col gap-0.5" title="图片加载失败">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-500 opacity-70">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
             </div>
-            <div className="overflow-y-auto custom-scrollbar px-1 pb-1">
-                {children}
+        );
+    }
+
+    if (loading || !data) {
+        return (
+            <div className="w-12 h-12 rounded-lg border border-white/10 shadow-sm bg-[var(--bg-tertiary)] flex items-center justify-center">
+                <div className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
             </div>
+        );
+    }
+
+    // Robust Src Construction
+    const src = data.startsWith('data:') ? data : `data:${image.mimeType || 'image/png'}; base64, ${data} `;
+
+    return (
+        <img
+            src={src}
+            className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm pointer-events-none bg-[var(--bg-tertiary)]"
+            alt="Reference"
+        />
+    );
+};
+
+// 计算比例图标的尺寸
+const getRatioDimensions = (ratio: AspectRatio): { width: number; height: number } => {
+    const maxSize = 14;
+
+    const ratioMap: Record<string, [number, number]> = {
+        [AspectRatio.SQUARE]: [1, 1],
+        [AspectRatio.PORTRAIT_9_16]: [9, 16],
+        [AspectRatio.LANDSCAPE_16_9]: [16, 9],
+        [AspectRatio.PORTRAIT_3_4]: [3, 4],
+        [AspectRatio.LANDSCAPE_4_3]: [4, 3],
+        [AspectRatio.LANDSCAPE_3_2]: [3, 2],
+        [AspectRatio.PORTRAIT_2_3]: [2, 3],
+        [AspectRatio.LANDSCAPE_21_9]: [21, 9],
+    };
+
+    const [w, h] = ratioMap[ratio] || [1, 1];
+
+    if (w > h) {
+        return { width: maxSize, height: (maxSize * h) / w };
+    } else {
+        return { height: maxSize, width: (maxSize * w) / h };
+    }
+};
+
+// 渲染比例图标
+const getRatioIcon = (ratio: AspectRatio) => {
+    const dims = getRatioDimensions(ratio);
+
+    return (
+        <div className="flex items-center justify-center" style={{ width: 14, height: 14 }}>
+            <div
+                className="border-[1.5px] border-current rounded-[2px]"
+                style={{ width: dims.width, height: dims.height }}
+            />
         </div>
-    </>
-);
+    );
+};
 
 interface PromptBarProps {
     config: GenerationConfig;
@@ -47,6 +152,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     // [NEW] Drag-to-Reorder State
     const [dragSourceId, setDragSourceId] = useState<string | null>(null);
+    const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
 
     // [NEW] Flying Animation State
     const [flyingImage, setFlyingImage] = useState<{
@@ -57,9 +163,54 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         targetY: number;
     } | null>(null);
     const refContainerRef = useRef<HTMLDivElement>(null);
+    const optionsPanelRef = useRef<HTMLDivElement>(null); // [NEW] Ref for options panel
+
+    // 状态：选项面板显示
+    const [showOptionsPanel, setShowOptionsPanel] = useState(false);
+    const [isInputAreaHovered, setIsInputAreaHovered] = useState(false); // Phase 3: hover state
+    const hoverTimerRef = useRef<NodeJS.Timeout | null>(null); // 3-second hover delay timer
+    const touchStartY = useRef<number | null>(null);
+
+    // [NEW] Click outside to close options panel
+    useEffect(() => {
+        if (!showOptionsPanel) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            const target = e.target as Element;
+            // Check if click is outside panel AND not on the toggle button itself
+            if (optionsPanelRef.current && !optionsPanelRef.current.contains(target)) {
+                // Find the toggle button by checking if target is within it or is the button
+                const toggleButton = document.querySelector('[data-options-toggle]');
+                if (toggleButton && (toggleButton.contains(target) || toggleButton === target)) {
+                    // Click was on toggle button, let onClick handle it
+                    return;
+                }
+                setShowOptionsPanel(false);
+            }
+        };
+
+        // Add a small delay to prevent immediate closing from the toggle click
+        const timer = setTimeout(() => {
+            document.addEventListener('mousedown', handleClickOutside);
+        }, 100);
+
+        return () => {
+            clearTimeout(timer);
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showOptionsPanel]);
+
+    // Cleanup hover timer on unmount
+    useEffect(() => {
+        return () => {
+            if (hoverTimerRef.current) {
+                clearTimeout(hoverTimerRef.current);
+            }
+        };
+    }, []);
 
     // Swipe Detection
-    const touchStartY = useRef<number | null>(null);
+
 
     const handleTouchStart = (e: React.TouchEvent) => {
         touchStartY.current = e.touches[0].clientY;
@@ -80,9 +231,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     // Dynamic Model State
     const [globalModels, setGlobalModels] = useState(keyManager.getGlobalModelList());
 
+
     useEffect(() => {
         const unsubscribeKeyManager = keyManager.subscribe(() => {
-            setGlobalModels(keyManager.getGlobalModelList());
+            const newModels = keyManager.getGlobalModelList();
+            console.log('[PromptBar.keyManager订阅] 收到更新通知');
+            console.log('[PromptBar.keyManager订阅] 新的模型列表:', newModels.map(m => ({ id: m.id, type: m.type })));
+            setGlobalModels(newModels);
         });
         return () => {
             unsubscribeKeyManager();
@@ -91,31 +246,48 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     // Get available models based on global list and current mode
     const availableModels = useMemo(() => {
-        return globalModels
-            .filter(m => m.type !== 'chat')
-            .map(m => {
-                // Check if explicitly in registry (for overrides)
-                const registryModel = modelRegistry.getModels().find(r => r.id === m.id);
-                if (registryModel) return registryModel;
+        console.log('[PromptBar.availableModels] 开始计算');
+        console.log('[PromptBar.availableModels] globalModels数量:', globalModels.length);
+        console.log('[PromptBar.availableModels] globalModels:', globalModels.map(m => ({ id: m.id, type: m.type, name: m.name })));
+        console.log('[PromptBar.availableModels] 当前mode:', config.mode);
 
-                // Infer type for custom models
-                const isVideo = m.id.toLowerCase().includes('video') ||
-                    m.id.toLowerCase().includes('runway') ||
-                    m.id.toLowerCase().includes('kling') ||
-                    m.id.toLowerCase().includes('luma') ||
-                    m.id.toLowerCase().includes('veo');
-                const modelType = m.type || (isVideo ? 'video' : 'image');
+        const step1 = globalModels.filter(m => m.type !== 'chat');
+        console.log('[PromptBar.availableModels] 过滤chat后:', step1.length, step1.map(m => ({ id: m.id, type: m.type })));
 
-                return {
-                    id: m.id,
-                    label: m.name || m.id,
-                    provider: m.provider,
-                    type: modelType,
-                    enabled: true,
-                    description: m.description
-                } as ActiveModel;
-            })
-            .filter(m => (m.type || 'image') === config.mode);
+        const step2 = step1.map(m => {
+            // Check if explicitly in registry (for overrides)
+            const registryModel = modelRegistry.getModels().find(r => r.id === m.id);
+            if (registryModel) return registryModel;
+
+            // Infer type for custom models
+            const isVideo = m.id.toLowerCase().includes('video') ||
+                m.id.toLowerCase().includes('runway') ||
+                m.id.toLowerCase().includes('kling') ||
+                m.id.toLowerCase().includes('luma') ||
+                m.id.toLowerCase().includes('veo');
+            const modelType = m.type || (isVideo ? 'video' : 'image');
+
+            return {
+                id: m.id,
+                label: m.name || m.id,
+                provider: m.provider,
+                type: modelType,
+                enabled: true,
+                description: m.description
+            } as ActiveModel;
+        });
+        console.log('[PromptBar.availableModels] map后:', step2.length, step2.map(m => ({ id: m.id, type: m.type })));
+
+        const result = step2.filter(m => {
+            const type = m.type || 'image';
+            // ✨ 支持多模态模型：image+chat 在 image 模式下也可用
+            if (config.mode === 'image' && type === 'image+chat') return true;
+            if (config.mode === 'video' && type === 'image+chat') return false;
+            return type === config.mode;
+        });
+
+        console.log('[PromptBar.availableModels] 最终结果:', result.length, result.map(m => ({ id: m.id, type: m.type, label: m.label })));
+        return result;
     }, [globalModels, config.mode]);
 
     // Auto-select valid model when switching modes
@@ -170,17 +342,28 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setConfig(prev => ({ ...prev, prompt: e.target.value }));
         e.target.style.height = 'auto';
-        e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+        const newHeight = Math.max(36, Math.min(e.target.scrollHeight, 200));
+        e.target.style.height = `${newHeight}px`;
     }, [setConfig]);
 
-    // Reset height when prompt is cleared programmatically
+    // Auto-resize height when prompt changes (handles paste, select, clear)
     useEffect(() => {
-        if (!config.prompt && textareaRef.current) {
+        if (textareaRef.current) {
+            // Reset to auto to get correct scrollHeight for shrinkage
             textareaRef.current.style.height = 'auto';
+
+            if (config.prompt) {
+                // detailed check: if it has content, expand up to max
+                const newHeight = Math.max(36, Math.min(textareaRef.current.scrollHeight, 200));
+                textareaRef.current.style.height = `${newHeight}px`;
+            } else {
+                // empty content - shrink to 1 row
+                textareaRef.current.style.height = '36px';
+            }
         }
     }, [config.prompt]);
 
-    const processFiles = useCallback((files: FileList) => {
+    const processFiles = useCallback(async (files: FileList | File[]) => {
         if (config.referenceImages.length >= 5) {
             alert("最多只能上传 5 张参考图");
             return;
@@ -195,33 +378,53 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         }
 
         const filesToProcess = fileArray.slice(0, remainingSlots);
+        if (filesToProcess.length === 0) return;
 
-        filesToProcess.forEach(file => {
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-                const result = reader.result as string;
-                const matches = result.match(/^data:(.+);base64,(.+)$/);
-                if (matches) {
-                    const mimeType = matches[1];
-                    const data = matches[2];
-                    const storageId = await calculateImageHash(data); // Use raw base64 for hash
+        // Process all files in parallel
+        const newImages = await Promise.all(filesToProcess.map(async (file) => {
+            return new Promise<{ id: string, storageId: string, mimeType: string, data: string } | null>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    const result = reader.result as string;
+                    const matches = result.match(/^data:(.+);base64,(.+)$/);
+                    if (matches) {
+                        const mimeType = matches[1];
+                        const data = matches[2];
+                        const storageId = await calculateImageHash(data);
 
-                    setConfig(prev => ({
-                        ...prev,
-                        referenceImages: [...prev.referenceImages, {
+                        // [OPTIMIZATION] Fire-and-forget save to IndexedDB
+                        // Do not await this. UI should update immediately.
+                        const fullDataUrl = `data:${mimeType}; base64, ${data} `;
+                        saveImage(storageId, fullDataUrl).catch(err =>
+                            console.error("Failed to save image to local storage", err)
+                        );
+
+                        resolve({
                             id: Date.now() + Math.random().toString(),
                             storageId,
                             mimeType,
                             data
-                        }]
-                    }));
-                }
-            };
-            reader.readAsDataURL(file);
-        });
+                        });
+                    } else {
+                        resolve(null);
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+        }));
+
+        const validImages = newImages.filter((img): img is NonNullable<typeof img> => img !== null);
+
+        if (validImages.length > 0) {
+            setConfig(prev => ({
+                ...prev,
+                referenceImages: [...prev.referenceImages, ...validImages]
+            }));
+        }
     }, [config.referenceImages, setConfig]);
 
     const toggleMenu = useCallback((menu: string) => {
+        setShowOptionsPanel(false); // 关闭Options Panel
         setActiveMenu(prev => prev === menu ? null : menu);
     }, []);
 
@@ -312,7 +515,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         const internalRefData = e.dataTransfer.getData('application/x-kk-image-ref');
         if (internalRefData) {
             try {
-                const { storageId, mimeType } = JSON.parse(internalRefData);
+                const { storageId, mimeType, data } = JSON.parse(internalRefData);
                 if (storageId) {
                     // reuse existing storageId!
                     setConfig(prev => {
@@ -323,13 +526,24 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             return prev;
                         }
 
+                        // [FIX] Use passed data if available to avoid loading state
+                        let finalData = '';
+                        if (data && data.startsWith('data:')) {
+                            const matches = data.match(/^data:(.+);base64,(.+)$/);
+                            if (matches && matches[2]) {
+                                finalData = matches[2];
+                            } else {
+                                finalData = data; // Fallback
+                            }
+                        }
+
                         return {
                             ...prev,
                             referenceImages: [...prev.referenceImages, {
                                 id: Date.now() + Math.random().toString(),
                                 storageId,
                                 mimeType: mimeType || 'image/png',
-                                data: '' // Initialize as empty string to satisfy type and trigger loading spinner
+                                data: finalData // Use pure data if available, else empty (triggers healing)
                             }]
                         };
                     });
@@ -343,16 +557,33 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         // 3. 处理 URL (从图片卡片拖拽 - Fallback or External)
         const url = e.dataTransfer.getData('text/plain');
         if (url) {
+            // [OPTIMIZATION] Handle Data URIs directly without fetch
+            if (url.startsWith('data:')) {
+                const matches = url.match(/^data:(.+);base64,(.+)$/);
+                if (matches) {
+                    const mimeType = matches[1];
+                    const data = matches[2];
+                    // Wrap in a fake File object-like structure or just call logic?
+                    // Reuse direct logic to avoid File overhead if possible, but processFiles expects File[].
+                    // Let's create a File. Fast enough.
+                    fetch(url)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            const file = new File([blob], "dropped_image.png", { type: mimeType });
+                            processFiles([file]);
+                        });
+                    return;
+                }
+            }
+
             // 检查是否为有效 URL 或 Data URI
-            if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) {
+            if (url.startsWith('http') || url.startsWith('blob:')) {
                 // 获取并转换为 File 对象以复用 processFiles 逻辑
                 fetch(url)
                     .then(res => res.blob())
                     .then(blob => {
                         const file = new File([blob], "dropped_image.png", { type: blob.type });
-                        const dataTransfer = new DataTransfer();
-                        dataTransfer.items.add(file);
-                        processFiles(dataTransfer.files);
+                        processFiles([file]);
                     })
                     .catch(err => {
                         console.error("处理拖拽 URL 失败:", err);
@@ -374,7 +605,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         if (label.length <= max) return label;
         const head = Math.max(6, Math.floor(max * 0.6));
         const tail = Math.max(3, max - head - 3);
-        return `${label.slice(0, head)}...${label.slice(-tail)}`;
+        return `${label.slice(0, head)}...${label.slice(-tail)} `;
     }, [isMobile]);
 
     const displayModelLabel = truncateModelLabel(currentModelLabel);
@@ -424,12 +655,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     }}
                 >
                     <style>{`
-                        @keyframes flyToTarget {
-                            0% { transform: translate(${flyingImage.x}px, ${flyingImage.y}px) scale(1); opacity: 0.8; }
-                            50% { opacity: 1; scale: 1.2; }
-                            100% { transform: translate(${flyingImage.targetX}px, ${flyingImage.targetY}px) scale(1); opacity: 0; }
-                        }
-                    `}</style>
+@keyframes flyToTarget {
+    0% { transform: translate(${flyingImage.x}px, ${flyingImage.y}px) scale(1); opacity: 0.8; }
+    50% { opacity: 1; scale: 1.2; }
+    100% { transform: translate(${flyingImage.targetX}px, ${flyingImage.targetY}px) scale(1); opacity: 0; }
+}
+`}</style>
                 </div>
             )}
 
@@ -469,364 +700,221 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     </div>
                 )}
 
-                {/* Quick Options Row */}
-                <div className="input-bar-options">
-                    {/* Mode Toggle (Desktop Only - hidden on mobile) */}
-                    {!isMobile && (
-                        <div className="hidden md:flex items-center gap-1 mr-2 p-1 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                            <button
-                                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${config.mode === GenerationMode.IMAGE ? 'bg-indigo-500/20 text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
-                            >
-                                图片
-                            </button>
-                            <button
-                                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${config.mode === GenerationMode.VIDEO ? 'bg-purple-500/20 text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
-                            >
-                                视频
-                            </button>
-                        </div>
-                    )}
+                {/* Mode Toggle - Always visible at top of input area */}
+                <div className="flex justify-center mb-2">
+                    <div className="relative inline-flex items-center p-1 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', width: 'auto' }}>
+                        {/* Sliding highlight background */}
+                        <div
+                            className="absolute h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
+                            style={{
+                                width: '80px',
+                                left: config.mode === GenerationMode.IMAGE ? '4px' : 'calc(50% + 2px)',
+                                backgroundColor: config.mode === GenerationMode.IMAGE ? 'rgba(99, 102, 241, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                                boxShadow: config.mode === GenerationMode.IMAGE
+                                    ? '0 0 8px rgba(99, 102, 241, 0.3)'
+                                    : '0 0 8px rgba(168, 85, 247, 0.3)'
+                            }}
+                        />
+
+                        <button
+                            className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.IMAGE ? 'text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
+                        >
+                            图片
+                        </button>
+                        <button
+                            className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.VIDEO ? 'text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
+                        >
+                            视频
+                        </button>
+                    </div>
                 </div>
 
-                {/* Reference Images */}
-                {/* Reference Images */}
-                <div ref={refContainerRef} className="flex gap-2 flex-wrap mt-2 empty:mt-0 duration-300">
-                    {config.referenceImages.map((img, index) => (
+                {/* Input Area Wrapper with hover detection */}
+                <div
+                    onMouseEnter={() => {
+                        // Clear existing timer
+                        if (hoverTimerRef.current) {
+                            clearTimeout(hoverTimerRef.current);
+                        }
+                        // Set 3-second delay before showing upload button
+                        hoverTimerRef.current = setTimeout(() => {
+                            setIsInputAreaHovered(true);
+                        }, 3000);
+                    }}
+                    onMouseLeave={() => {
+                        // Clear timer on leave
+                        if (hoverTimerRef.current) {
+                            clearTimeout(hoverTimerRef.current);
+                            hoverTimerRef.current = null;
+                        }
+                        // Immediately hide
+                        setIsInputAreaHovered(false);
+                    }}
+                >
+                    {/* Reference Images - Only show when images exist */}
+                    {config.referenceImages.length > 0 && (
                         <div
-                            key={img.id}
-                            className={`relative group cursor-move transition-all duration-200 ${dragSourceId === img.id ? 'opacity-30 scale-95' : 'hover:scale-105'}`}
-                            draggable
-                            onDragStart={(e) => {
-                                e.stopPropagation();
-                                setDragSourceId(img.id);
-                                e.dataTransfer.effectAllowed = 'move';
-                            }}
+                            ref={refContainerRef}
+                            className="flex gap-2 flex-wrap duration-300 mb-2"
                             onDragOver={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                e.dataTransfer.dropEffect = 'move';
+
+                                // Calculate insertion index based on mouse cursor X
+                                if (refContainerRef.current) {
+                                    const children = Array.from(refContainerRef.current.children).filter(c => !c.id.includes('spacer'));
+                                    let insertIndex = children.length;
+
+                                    for (let i = 0; i < children.length; i++) {
+                                        const rect = children[i].getBoundingClientRect();
+                                        const centerX = rect.left + rect.width / 2;
+                                        if (e.clientX < centerX) {
+                                            insertIndex = i;
+                                            break;
+                                        }
+                                    }
+
+                                    // Don't show gap if we are hovering over the source itself or its immediate neighbor in a way that wouldn't change order
+                                    if (dragSourceId) {
+                                        const sourceIndex = config.referenceImages.findIndex(img => img.id === dragSourceId);
+                                        if (insertIndex === sourceIndex || insertIndex === sourceIndex + 1) {
+                                            setDropTargetIndex(null);
+                                            return;
+                                        }
+                                    }
+
+                                    setDropTargetIndex(insertIndex);
+                                }
+                            }}
+                            onDragLeave={(e) => {
+                                // Only clear if we actually left the container, not just entered a child
+                                if (refContainerRef.current && !refContainerRef.current.contains(e.relatedTarget as Node)) {
+                                    setDropTargetIndex(null);
+                                }
                             }}
                             onDrop={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                if (!dragSourceId || dragSourceId === img.id) return;
+                                setDropTargetIndex(null);
 
-                                const newImages = [...config.referenceImages];
-                                const sourceIndex = newImages.findIndex(i => i.id === dragSourceId);
-                                const targetIndex = index;
+                                // 1. Internal Reorder
+                                if (dragSourceId) {
+                                    if (dropTargetIndex !== null) {
+                                        setConfig(prev => {
+                                            const newImages = [...prev.referenceImages];
+                                            const sourceIndex = newImages.findIndex(i => i.id === dragSourceId);
+                                            if (sourceIndex === -1) return prev;
 
-                                if (sourceIndex !== -1) {
-                                    const [moved] = newImages.splice(sourceIndex, 1);
-                                    newImages.splice(targetIndex, 0, moved);
-                                    setConfig(prev => ({ ...prev, referenceImages: newImages }));
-                                }
-                                setDragSourceId(null);
-                            }}
-                            onDragEnd={() => setDragSourceId(null)}
-                        >
-                            {img.data ? (
-                                <img src={`data:${img.mimeType};base64,${img.data}`} className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm pointer-events-none" alt="Reference" />
-                            ) : (
-                                <div className="w-12 h-12 rounded-lg border border-white/10 shadow-sm bg-[var(--bg-tertiary)] flex items-center justify-center">
-                                    <div className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-                                </div>
-                            )}
-                            <button onClick={() => removeReferenceImage(img.id)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
-                        </div>
-                    ))}
-                </div>
+                                            const [moved] = newImages.splice(sourceIndex, 1);
+                                            // Adjust target index if we removed an item before it
+                                            let finalTargetIndex = dropTargetIndex;
+                                            if (sourceIndex < finalTargetIndex) {
+                                                finalTargetIndex -= 1;
+                                            }
 
-                {/* Text Input */}
-                <textarea
-                    ref={textareaRef}
-                    value={config.prompt}
-                    onChange={handleInput}
-                    onKeyDown={handleKeyDown}
-                    onPaste={handlePaste}
-                    onFocus={() => setActiveMenu(null)}
-                    placeholder={config.mode === GenerationMode.VIDEO ? "描述你想要生成的视频..." : "描述你想要生成的图片..."}
-                    className="input-bar-textarea w-full bg-transparent border-none outline-none text-sm resize-none mt-2"
-                    style={{ color: 'var(--text-primary)', minHeight: '48px', maxHeight: '160px', lineHeight: '1.6', fontSize: '15px' }}
-                    rows={1}
-                />
-
-                {/* Footer */}
-                <div className="input-bar-footer flex items-center justify-start sm:justify-between pt-3 mt-1" style={{ borderTop: '1px solid var(--border-light)' }}>
-                    {/* Left: Model & Settings - Coalescing Animation */}
-                    <div className="flex items-center gap-2 min-w-0 sm:min-w-[236px] w-full sm:w-auto flex-wrap sm:flex-nowrap">
-                        {/* Model Button */}
-                        <div className="relative">
-                            <button
-                                id="models-dropdown-trigger"
-                                className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] max-w-[70vw] sm:max-w-none ${isModelListEmpty
-                                    ? 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-tertiary)] min-w-0 sm:min-w-[220px] cursor-not-allowed'
-                                    : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50 min-w-0 w-auto'
-                                    }`}
-                                onClick={() => {
-                                    if (isModelListEmpty) {
-                                        onOpenSettings?.('api-management');
-                                    } else {
-                                        toggleMenu('model');
+                                            newImages.splice(finalTargetIndex, 0, moved);
+                                            return { ...prev, referenceImages: newImages };
+                                        });
                                     }
-                                }}
+                                    setDragSourceId(null);
+                                    return;
+                                }
+
+                                // 2. Pass to parent (handleDrop) for file processing
+                                // We need to re-fire the drop event on the parent or call logic.
+                                // Since we stopped prop, we must call it manually or refactor.
+                                // Simplest: Call onFilesDrop if provided? 
+                                // But existing architecture uses the parent <div> onDrop={handleDrop}.
+                                // If we stopPropagation here, the parent won't see it.
+                                // If we DON'T stopPropagation, the parent sees it.
+                                // But we want to handle Internal Reorder here exclusively.
+
+                                // Solution: Check if it's Files. If so, let it bubble (remove e.stopPropagation()).
+                                // If it's internal dragSourceId, handle and stop.
+                            }}
+                        >
+                            {config.referenceImages.map((img, index) => {
+                                const isSource = dragSourceId === img.id;
+
+                                // Spacer Logic
+                                const showSpacer = dropTargetIndex === index;
+
+                                return (
+                                    <React.Fragment key={img.id}>
+                                        {/* Spacer */}
+                                        <div
+                                            id="spacer"
+                                            className={`transition-all duration-300 ease-[cubic-bezier(0.25, 1, 0.5, 1)] rounded-lg overflow-hidden ${showSpacer ? 'w-12 opacity-100 mr-2' : 'w-0 opacity-0 mr-0'}`}
+                                            style={{ height: showSpacer ? '48px' : '0px' }}
+                                        >
+                                            <div className="w-12 h-12 rounded-lg border-2 border-dashed border-indigo-500/30 bg-indigo-500/5"></div>
+                                        </div>
+
+                                        <div
+                                            className={`relative group cursor-move transition-all duration-300 ${isSource ? 'opacity-0 w-0 overflow-hidden m-0 p-0 scale-0' : 'hover:scale-105'} ${!isSource ? 'w-12' : ''}`}
+                                            draggable
+                                            onDragStart={(e) => {
+                                                e.stopPropagation();
+                                                setDragSourceId(img.id);
+                                                e.dataTransfer.setData('text/plain', img.id);
+                                                e.dataTransfer.effectAllowed = 'move';
+                                            }}
+                                            onDragEnd={() => {
+                                                setDragSourceId(null);
+                                                setDropTargetIndex(null);
+                                            }}
+                                        >
+                                            <ReferenceThumbnail image={img} />
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    removeReferenceImage(img.id);
+                                                }}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity transform hover:scale-110"
+                                            >
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                                            </button>
+                                        </div>
+                                    </React.Fragment>
+                                );
+                            })}
+
+                            <div
+                                id="spacer"
+                                className={`transition-all duration-300 ease-[cubic-bezier(0.25, 1, 0.5, 1)] rounded-lg overflow-hidden ${dropTargetIndex === config.referenceImages.length ? 'w-12 opacity-100 h-12' : 'w-0 opacity-0 h-0'}`}
                             >
-                                <span className={`w-2 h-2 rounded-full transition-colors duration-300 ${isModelListEmpty
-                                    ? 'bg-zinc-600'
-                                    : (config.mode === GenerationMode.VIDEO ? 'bg-purple-500' : 'bg-green-500')
-                                    }`}></span>
-                                <span className="text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300">
-                                    {displayModelLabel}
-                                </span>
-                            </button>
-
-                            {/* Dropdown Menu */}
-                            {!isModelListEmpty && activeMenu === 'model' && (
-                                <div className="absolute bottom-full mb-2 z-20" style={{ left: '0' }}>
-                                    <div className="dropdown static w-[min(16rem,90vw)] max-w-[90vw] animate-scaleIn origin-bottom p-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
-                                        {availableModels.map(model => {
-                                            const displayName = model.label || model.id;
-                                            const advantage = model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
-                                            return (
-                                                <button
-                                                    key={model.id}
-                                                    className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/5' : ''}`}
-                                                    onClick={() => {
-                                                        setConfig(prev => ({ ...prev, model: model.id }));
-                                                        setActiveMenu(null);
-                                                    }}
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <span className={`text-xs font-medium ${config.model === model.id ? 'text-indigo-400' : 'text-slate-200'}`}>
-                                                            {displayName}
-                                                        </span>
-                                                        {config.model === model.id && (
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
-                                                        )}
-                                                    </div>
-
-                                                    {/* Metadata Display */}
-                                                    {(() => {
-                                                        const meta = getModelMetadata(model.id);
-                                                        const features = [];
-                                                        if (meta?.contextLength) features.push(`${Math.round(meta.contextLength / 1000)}K Context`);
-                                                        if (meta?.pricing) {
-                                                            const p = meta.pricing;
-                                                            // Simple cost display: Input/Output per M
-                                                            if (p.prompt === '0' && p.completion === '0') features.push('Free');
-                                                            else features.push(`$${p.prompt}/$${p.completion} per M`);
-                                                        } else {
-                                                            // Fallback or Advantage
-                                                            features.push(advantage);
-                                                        }
-
-                                                        return (
-                                                            <div className="flex flex-wrap gap-2 mt-1">
-                                                                <span className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-tight break-all">ID: {model.id}</span>
-                                                                {features.map((f, i) => (
-                                                                    <span key={i} className="text-[10px] text-zinc-600 dark:text-zinc-400 bg-zinc-400/10 dark:bg-zinc-800/50 px-1 rounded border border-zinc-400/20 dark:border-zinc-700/50">
-                                                                        {f}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Aspect Ratio & Size - Slide Animation */}
-                        <div className={`flex items-center gap-2 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${isModelListEmpty
-                            ? 'max-w-0 opacity-0 -translate-x-4 pointer-events-none overflow-hidden'
-                            : 'max-w-[300px] opacity-100 translate-x-0 overflow-visible'
-                            }`}>
-                            {/* Aspect Ratio */}
-                            <div className="relative flex-shrink-0">
-                                <button
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all"
-                                    style={{
-                                        backgroundColor: 'var(--bg-tertiary)',
-                                        borderColor: 'var(--border-light)',
-                                        color: 'var(--text-secondary)'
-                                    }}
-                                    onClick={() => toggleMenu('ratio')}
-                                    title="宽高比"
-                                >
-                                    {/* Dynamic icon based on current ratio */}
-                                    {config.aspectRatio === AspectRatio.AUTO ? (
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M12 3v18M3 12h18" /><circle cx="12" cy="12" r="9" />
-                                        </svg>
-                                    ) : config.aspectRatio === AspectRatio.SQUARE ? (
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="4" y="4" width="16" height="16" rx="2" />
-                                        </svg>
-                                    ) : config.aspectRatio === AspectRatio.PORTRAIT_3_4 || config.aspectRatio === AspectRatio.PORTRAIT_2_3 ? (
-                                        <svg width="10" height="12" viewBox="0 0 20 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="2" y="2" width="16" height="20" rx="2" />
-                                        </svg>
-                                    ) : config.aspectRatio === AspectRatio.PORTRAIT_9_16 || config.aspectRatio === AspectRatio.PORTRAIT_9_21 ? (
-                                        <svg width="8" height="14" viewBox="0 0 16 28" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="2" y="2" width="12" height="24" rx="2" />
-                                        </svg>
-                                    ) : config.aspectRatio === AspectRatio.LANDSCAPE_4_3 || config.aspectRatio === AspectRatio.LANDSCAPE_3_2 ? (
-                                        <svg width="14" height="10" viewBox="0 0 24 18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="2" y="2" width="20" height="14" rx="2" />
-                                        </svg>
-                                    ) : config.aspectRatio === AspectRatio.LANDSCAPE_16_9 ? (
-                                        <svg width="16" height="9" viewBox="0 0 32 18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="2" y="2" width="28" height="14" rx="2" />
-                                        </svg>
-                                    ) : config.aspectRatio === AspectRatio.LANDSCAPE_21_9 ? (
-                                        <svg width="18" height="8" viewBox="0 0 42 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="2" y="2" width="38" height="12" rx="2" />
-                                        </svg>
-                                    ) : (
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="3" y="5" width="18" height="14" rx="2" />
-                                        </svg>
-                                    )}
-                                    <span className="text-[11px] font-medium">{config.aspectRatio === AspectRatio.AUTO ? 'Auto' : config.aspectRatio}</span>
-                                </button>
-                                {activeMenu === 'ratio' && (
-                                    <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-                                        <div className="dropdown static animate-scaleIn origin-bottom flex flex-col gap-0.5 p-1.5" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                            {availableRatios.map(ratio => {
-                                                const isActive = config.aspectRatio === ratio;
-                                                // Icon and label mapping
-                                                const getIcon = () => {
-                                                    switch (ratio) {
-                                                        case AspectRatio.AUTO:
-                                                            return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3v18M3 12h18" /><circle cx="12" cy="12" r="9" /></svg>;
-                                                        case AspectRatio.SQUARE:
-                                                            return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>;
-                                                        case AspectRatio.PORTRAIT_3_4:
-                                                        case AspectRatio.PORTRAIT_2_3:
-                                                            return <svg width="16" height="20" viewBox="0 0 18 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="14" height="20" rx="2" /></svg>;
-                                                        case AspectRatio.PORTRAIT_9_16:
-                                                        case AspectRatio.PORTRAIT_9_21:
-                                                            return <svg width="12" height="22" viewBox="0 0 14 26" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="10" height="22" rx="2" /></svg>;
-                                                        case AspectRatio.LANDSCAPE_4_3:
-                                                        case AspectRatio.LANDSCAPE_3_2:
-                                                            return <svg width="22" height="16" viewBox="0 0 26 18" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="22" height="14" rx="2" /></svg>;
-                                                        case AspectRatio.LANDSCAPE_16_9:
-                                                            return <svg width="24" height="14" viewBox="0 0 28 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="24" height="12" rx="2" /></svg>;
-                                                        case AspectRatio.LANDSCAPE_21_9:
-                                                            return <svg width="26" height="12" viewBox="0 0 30 14" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="26" height="10" rx="2" /></svg>;
-                                                        default:
-                                                            return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="5" width="18" height="14" rx="2" /></svg>;
-                                                    }
-                                                };
-                                                const getLabel = () => ratio === AspectRatio.AUTO ? 'Auto' : ratio;
-                                                return (
-                                                    <button
-                                                        key={ratio}
-                                                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-all ${isActive ? 'bg-indigo-500/20' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
-                                                        onClick={() => { setConfig(prev => ({ ...prev, aspectRatio: ratio })); setActiveMenu(null); }}
-                                                    >
-                                                        <span className={`w-6 flex items-center justify-center ${isActive ? 'text-indigo-500' : ''}`} style={{ color: isActive ? undefined : 'var(--text-secondary)' }}>{getIcon()}</span>
-                                                        <span className={`text-xs font-medium ${isActive ? 'text-indigo-500' : ''}`} style={{ color: isActive ? undefined : 'var(--text-primary)' }}>{getLabel()}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
+                                <div className="w-12 h-12 rounded-lg border-2 border-dashed border-indigo-500/30 bg-indigo-500/5"></div>
                             </div>
 
-                            {/* Image Size */}
-                            <div className="relative flex-shrink-0">
-                                <button
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all"
-                                    style={{
-                                        backgroundColor: 'var(--bg-tertiary)',
-                                        borderColor: 'var(--border-light)',
-                                        color: 'var(--text-secondary)'
-                                    }}
-                                    onClick={() => toggleMenu('size')}
-                                    title="分辨率"
-                                >
-                                    <span className="text-[11px] font-medium">{config.imageSize}</span>
-                                </button>
-                                {activeMenu === 'size' && (
-                                    <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-                                        <div className="dropdown static animate-scaleIn origin-bottom p-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                            {availableSizes.map(size => (
-                                                <button key={size} className={`dropdown-item ${config.imageSize === size ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, imageSize: size })); setActiveMenu(null); }}>
-                                                    {size}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Right: Actions Group */}
-                    <div className="input-bar-actions flex items-center gap-2">
-
-                        {/* Group 1: Network & Provider Settings */}
-                        <div className="flex items-center gap-0.5 p-0.5 rounded-full border h-[32px]" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
-                            {/* Grounding Tool - Now with capability check */}
+                            {/* Upload Button - At the end of reference images row - show on hover */}
                             <button
-                                className={`flex items-center gap-1.5 px-3 h-full rounded-full transition-all text-[11px] font-medium whitespace-nowrap ${!groundingSupported
-                                    ? 'opacity-40 cursor-not-allowed text-[var(--text-tertiary)]'
-                                    : config.enableGrounding
-                                        ? 'bg-indigo-500/15 text-indigo-500 shadow-sm'
-                                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]'
+                                className={`w-12 h-12 rounded-md transition-all duration-200 border hover:bg-white/5 flex items-center justify-center flex-shrink-0 ${isInputAreaHovered ? 'opacity-100' : 'opacity-0'
                                     }`}
-                                onClick={() => groundingSupported && setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }))}
-                                disabled={!groundingSupported}
-                                title={groundingSupported ? "Grounding with Google Search" : "当前模型不支持联网模式"}
+                                style={{
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    color: 'var(--text-secondary)',
+                                    borderColor: 'var(--border-light)',
+                                    pointerEvents: isInputAreaHovered ? 'auto' : 'none'
+                                }}
+                                onClick={() => fileInputRef.current?.click()}
+                                title="上传参考图"
                             >
-                                <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M2 8.8a15 15 0 0 1 20 0" />
-                                    <path d="M5 12.5a10 10 0 0 1 14 0" />
-                                    <path d="M8.5 16.3a5 5 0 0 1 7 0" />
-                                    <line x1="12" y1="20" x2="12.01" y2="20" />
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="17 8 12 3 7 8" />
+                                    <line x1="12" y1="3" x2="12" y2="15" />
                                 </svg>
-                                <span>联网</span>
                             </button>
-
                         </div>
+                    )}
 
-                        {/* Group 2: Generation Settings */}
-                        <div className="flex items-center gap-0.5 p-0.5 rounded-full border h-[32px]" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
-                            {/* Parallel Count */}
-                            <div className="relative h-full">
-                                <button
-                                    className="flex items-center gap-1.5 px-3 h-full rounded-full transition-all whitespace-nowrap"
-                                    style={{ color: 'var(--text-secondary)' }}
-                                    onClick={() => toggleMenu('count')}
-                                    title="并发数量"
-                                >
-                                    <span className="text-[11px] font-medium">数量 {config.parallelCount}</span>
-                                    <svg className="w-2.5 h-2.5 opacity-50 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
-                                </button>
-                                {activeMenu === 'count' && (
-                                    <div className="absolute bottom-full mb-2 z-20 right-0">
-                                        <div className="dropdown static w-24 animate-scaleIn origin-bottom-right" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                            {[1, 2, 3, 4].map(count => (
-                                                <button key={count} className={`dropdown-item justify-between ${config.parallelCount === count ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, parallelCount: count })); setActiveMenu(null); }}>
-                                                    <span>{count} 张</span>
-                                                    {config.parallelCount === count && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Upload Button */}
+                    {/* Upload button when no reference images - show on hover */}
+                    {config.referenceImages.length === 0 && isInputAreaHovered && (
                         <button
-                            className="p-2.5 rounded-full transition-all border"
+                            className="w-12 h-12 rounded-md transition-all border hover:bg-white/5 flex items-center justify-center flex-shrink-0 mb-2"
                             style={{
                                 backgroundColor: 'var(--bg-tertiary)',
                                 color: 'var(--text-secondary)',
@@ -841,37 +929,319 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
                         </button>
+                    )}
 
-                        <div className="w-[1px] h-6 bg-white/10 mx-1"></div>
+                    {/* Text Input Area */}
+                    <textarea
+                        ref={textareaRef}
+                        value={config.prompt}
+                        onChange={handleInput}
+                        onKeyDown={handleKeyDown}
+                        onPaste={handlePaste}
+                        onFocus={() => setActiveMenu(null)}
+                        placeholder={config.mode === GenerationMode.VIDEO ? "描述你想要生成的视频..." : "描述你想要生成的图片..."}
+                        className="input-bar-textarea w-full bg-transparent border-none outline-none text-[15px] resize-none mt-1 py-1"
+                        style={{
+                            color: 'var(--text-primary)', // 使用 CSS 变量适配主题
+                            minHeight: '36px',
+                            maxHeight: '200px',
+                            lineHeight: '1.5'
+                        }}
+                        rows={1}
+                    />
+                </div> {/* End of input area hover wrapper */}
 
+                {/* Footer */}
+                <div className="input-bar-footer flex items-center justify-between pt-3 mt-1" style={{ borderTop: '1px solid var(--border-light)' }}>
+                    {/* Left: Model & Settings */}
+                    {/* Model Button */}
+                    {/* Model Button */}
+                    <div className="relative inline-flex">
                         <button
-                            onClick={isGenerating ? onCancel : onGenerate}
-                            disabled={!isGenerating && !config.prompt}
-                            className={`input-bar-send ${isGenerating ? 'sending' : ''}`}
-                            style={{
-                                background: isGenerating
-                                    ? 'rgba(239, 68, 68, 0.9)'
-                                    : 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
-                                boxShadow: isGenerating
-                                    ? '0 0 20px rgba(239, 68, 68, 0.5)'
-                                    : '0 0 20px rgba(139, 92, 246, 0.4), 0 0 30px rgba(59, 130, 246, 0.3)',
-                                border: 'none'
+                            id="models-dropdown-trigger"
+                            className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
+                                ? 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-tertiary)] cursor-not-allowed'
+                                : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50'
+                                }`}
+                            style={{ width: '200px', minWidth: '200px', maxWidth: '200px' }}
+                            onClick={() => {
+                                if (isModelListEmpty) {
+                                    onOpenSettings?.('api-management');
+                                } else {
+                                    toggleMenu('model');
+                                }
                             }}
                         >
-                            {isGenerating ? (
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-                                    <rect x="6" y="6" width="12" height="12" rx="1" />
-                                </svg>
-                            ) : (
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="send-icon text-white">
-                                    <path d="M22 2L11 13" />
-                                    <path d="M22 2L15 22L11 13L2 9L22 2Z" />
-                                </svg>
-                            )}
+                            <span className={`w-2 h-2 rounded-full transition-colors duration-300 ${isModelListEmpty
+                                ? 'bg-zinc-600'
+                                : (config.mode === GenerationMode.VIDEO ? 'bg-purple-500' : 'bg-green-500')
+                                }`}></span>
+                            <span className="text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300">
+                                {displayModelLabel}
+                            </span>
                         </button>
+
+                        {/* Dropdown Menu */}
+                        {!isModelListEmpty && activeMenu === 'model' && (
+                            <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                <div className="dropdown static w-[min(16rem,90vw)] max-w-[90vw] max-h-[360px] overflow-y-auto scrollbar-thin animate-scaleIn origin-bottom p-1 flex flex-col gap-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
+                                    {availableModels.map(model => {
+                                        const displayName = model.label || model.id;
+                                        const advantage = model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                        return (
+                                            <button
+                                                key={model.id}
+                                                className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/5' : ''}`}
+                                                onClick={() => {
+                                                    setConfig(prev => ({ ...prev, model: model.id }));
+                                                    setActiveMenu(null);
+                                                }}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className={`text-xs font-medium ${config.model === model.id ? 'text-indigo-500' : 'text-[var(--text-primary)]'}`}>
+                                                        {displayName}
+                                                    </span>
+                                                </div>
+
+                                                {/* Metadata Display */}
+                                                {(() => {
+                                                    const meta = getModelMetadata(model.id);
+                                                    const features = [];
+                                                    if (meta?.contextLength) features.push(`${Math.round(meta.contextLength / 1000)}K Context`);
+                                                    if (meta?.pricing) {
+                                                        const p = meta.pricing;
+                                                        // Simple cost display: Input/Output per M
+                                                        if (p.prompt === '0' && p.completion === '0') features.push('Free');
+                                                        else features.push(`$${p.prompt}/$${p.completion} per M`);
+                                                    } else {
+                                                        // Fallback or Advantage
+                                                        features.push(advantage);
+                                                    }
+
+                                                    return (
+                                                        <div className="flex flex-wrap gap-2 mt-1">
+                                                            <span className="text-[10px] text-[var(--text-tertiary)] leading-tight break-all">ID: {model.id}</span>
+                                                            {features.map((f, i) => (
+                                                                <span key={i} className="text-[10px] text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-1 rounded border border-[var(--border-light)]">
+                                                                    {f}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </button >
+                                        );
+                                    })}
+                                </div >
+                            </div >
+                        )}
+                    </div >
+
+                    {/* Options Button - Shows current ratio and size */}
+                    <div className="relative inline-flex">
+                        <button
+                            data-options-toggle
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium whitespace-nowrap flex-shrink-0"
+                            style={{
+                                backgroundColor: showOptionsPanel ? 'var(--bg-hover)' : 'var(--bg-tertiary)',
+                                color: 'var(--text-secondary)',
+                                borderColor: showOptionsPanel ? 'var(--border-medium)' : 'var(--border-light)'
+                            }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenu(null); // 关闭其他菜单
+                                setShowOptionsPanel(prev => !prev);
+                            }}
+                            title="图片/视频选项"
+                        >
+                            {config.mode === GenerationMode.IMAGE ? (
+                                <>
+                                    {config.aspectRatio === AspectRatio.AUTO ? (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                                            <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                                            <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                                            <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                                            <rect width="10" height="8" x="7" y="8" rx="1"></rect>
+                                        </svg>
+                                    ) : (
+                                        getRatioIcon(config.aspectRatio)
+                                    )}
+                                    <span>{config.aspectRatio === AspectRatio.AUTO ? '自适应' : config.aspectRatio} · {config.imageSize}</span>
+                                </>
+                            ) : (
+                                <>
+                                    {config.aspectRatio === AspectRatio.AUTO ? (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                                            <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                                            <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                                            <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                                            <rect width="10" height="8" x="7" y="8" rx="1"></rect>
+                                        </svg>
+                                    ) : (
+                                        getRatioIcon(config.aspectRatio)
+                                    )}
+                                    <span>{config.aspectRatio === AspectRatio.AUTO ? '自适应' : config.aspectRatio} · {config.videoResolution || '720p'}</span>
+                                </>
+                            )}
+                            <svg className={`w-3 h-3 transition-transform ${showOptionsPanel ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M6 9l6 6 6-6" />
+                            </svg>
+                        </button>
+
+                        {/* Options Panel - positioned relative to button */}
+                        {showOptionsPanel && (
+                            <div className="absolute bottom-full mb-2 z-30" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                <div ref={optionsPanelRef}>
+                                    {config.mode === GenerationMode.IMAGE ? (
+                                        <ImageOptionsPanel
+                                            aspectRatio={config.aspectRatio}
+                                            imageSize={config.imageSize}
+                                            onAspectRatioChange={(ratio) => setConfig(prev => ({ ...prev, aspectRatio: ratio }))}
+                                            onImageSizeChange={(size) => setConfig(prev => ({ ...prev, imageSize: size }))}
+                                            availableRatios={availableRatios}
+                                            availableSizes={availableSizes}
+                                        />
+                                    ) : (
+                                        <VideoOptionsPanel
+                                            aspectRatio={config.aspectRatio}
+                                            resolution={config.videoResolution || '720p'}
+                                            duration={config.videoDuration || '4s'}
+                                            audio={config.videoAudio || false}
+                                            onAspectRatioChange={(ratio) => setConfig(prev => ({ ...prev, aspectRatio: ratio }))}
+                                            onResolutionChange={(res) => setConfig(prev => ({ ...prev, videoResolution: res }))}
+                                            onDurationChange={(dur) => setConfig(prev => ({ ...prev, videoDuration: dur }))}
+                                            onAudioChange={(audio) => setConfig(prev => ({ ...prev, videoAudio: audio }))}
+                                            availableRatios={availableRatios}
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
-                </div>
-            </div>
+
+                    {/* Removed duplicate ratio and size controls - now only in options panel */}
+                    {/* End of Left Group Items */}
+
+                    {/* Right: Actions Group */}
+                    {/* Group 1: Network & Provider Settings - Hidden but space reserved in VIDEO mode */}
+                    <div
+                        className="flex items-center gap-0.5 p-0.5 rounded-lg border h-[32px] transition-opacity duration-200"
+                        style={{
+                            backgroundColor: 'var(--bg-tertiary)',
+                            borderColor: 'var(--border-light)',
+                            opacity: config.mode === GenerationMode.VIDEO ? 0 : 1,
+                            visibility: config.mode === GenerationMode.VIDEO ? 'hidden' : 'visible',
+                            pointerEvents: config.mode === GenerationMode.VIDEO ? 'none' : 'auto'
+                        }}
+                    >
+                        {/* Grounding Tool - Now with capability check */}
+                        <button
+                            className={`flex items-center gap-1.5 px-3 h-full rounded-md transition-all text-[11px] font-medium whitespace-nowrap ${!groundingSupported
+                                ? 'opacity-40 cursor-not-allowed text-[var(--text-tertiary)]'
+                                : config.enableGrounding
+                                    ? 'bg-indigo-500/15 text-indigo-500 shadow-sm'
+                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]'
+                                }`}
+                            onClick={() => groundingSupported && setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }))}
+                            disabled={!groundingSupported}
+                            title={groundingSupported ? "Grounding with Google Search" : "当前模型不支持联网模式"}
+                        >
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M2 8.8a15 15 0 0 1 20 0" />
+                                <path d="M5 12.5a10 10 0 0 1 14 0" />
+                                <path d="M8.5 16.3a5 5 0 0 1 7 0" />
+                                <line x1="12" y1="20" x2="12.01" y2="20" />
+                            </svg>
+                            <span>联网</span>
+                        </button >
+
+                    </div >
+
+                    {/* Group 2: Generation Settings */}
+                    <div className="flex items-center gap-0.5 p-0.5 rounded-lg border h-[32px]" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
+                        {/* Parallel Count */}
+                        <div className="relative h-full">
+                            <button
+                                className="flex items-center gap-1.5 px-3 h-full rounded-md transition-all whitespace-nowrap text-[11px] font-medium"
+                                style={{ color: 'var(--text-secondary)' }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleMenu('count');
+                                }}
+                                title="并发数量"
+                            >
+                                <span className="text-[11px] font-medium">数量 {config.parallelCount}</span>
+                                <svg className={`w-2.5 h-2.5 opacity-50 flex-shrink-0 transition-transform duration-200 ${activeMenu === 'count' ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+                            </button>
+                            {
+                                activeMenu === 'count' && (
+                                    <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                        <div className="dropdown static w-24 animate-scaleIn origin-bottom p-1 flex flex-col gap-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
+                                            {[1, 2, 3, 4].map(count => (
+                                                <button key={count} className={`dropdown-item justify-between rounded-md ${config.parallelCount === count ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, parallelCount: count })); setActiveMenu(null); }}>
+                                                    <span>{count} 张</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )
+                            }
+                        </div >
+                    </div >
+
+                    <button
+                        onClick={isGenerating ? onCancel : onGenerate}
+                        disabled={!isGenerating && !config.prompt}
+                        className={`
+                            group relative px-6 h-8 rounded-full flex items-center justify-center gap-2 transition-all duration-300 border
+                            ${isGenerating
+                                ? 'shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:shadow-[0_6px_16px_rgba(239,68,68,0.5)]'
+                                : `${!isGenerating && !config.prompt
+                                    ? 'border-zinc-200 dark:border-zinc-800 cursor-not-allowed' // Disabled
+                                    : 'border-zinc-200 dark:border-zinc-700/50 hover:border-blue-500 dark:hover:border-blue-500 dark:hover:bg-white/5' // Enabled
+                                }`
+                            }
+                        `}
+                        style={!isGenerating ? {
+                            backgroundColor: 'var(--bg-surface)', // 适配主题
+                            color: !config.prompt ? 'var(--text-tertiary)' : 'var(--text-primary)', // 适配主题
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+                        } : {
+                            background: 'linear-gradient(to bottom right, rgb(239, 68, 68), rgb(220, 38, 38))',
+                            color: 'rgb(255, 255, 255)'
+                        }}
+                    >
+                        {/* Hover Glow Effect for Non-Generating State (Enabled) */}
+                        {!isGenerating && !(!isGenerating && !config.prompt) && (
+                            <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+                                style={{
+                                    background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(59,130,246,0.1) 100%)',
+                                    boxShadow: '0 8px 20px -4px rgba(59, 130, 246, 0.6), inset 0 0 0 1px rgba(59, 130, 246, 0.3)'
+                                }}
+                            />
+                        )}
+
+                        {isGenerating ? (
+                            <>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                </svg>
+                                <span className="text-[13px] font-semibold">停止</span>
+                            </>
+                        ) : (
+                            <>
+                                <span className="relative z-10 text-[13px] font-semibold">发送</span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="relative z-10 transition-transform group-hover:translate-x-1">
+                                    <path d="M5 12h14" />
+                                    <path d="M12 5l7 7-7 7" />
+                                </svg>
+                            </>
+                        )}
+                    </button>
+                </div >
+            </div >
 
             <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={(e) => e.target.files && processFiles(e.target.files)} />
         </div >

@@ -26,20 +26,30 @@ const NotificationToast: React.FC = () => {
     };
 
     const getIcon = (type: NotificationType) => {
+        const iconStyle = { color: getIconColor(type) };
         switch (type) {
-            case 'success': return <CheckCircle size={18} className="text-green-400" />;
-            case 'error': return <AlertCircle size={18} className="text-red-400" />;
-            case 'warning': return <AlertTriangle size={18} className="text-yellow-400" />;
-            case 'info': return <Info size={18} className="text-blue-400" />;
+            case 'success': return <CheckCircle size={18} style={iconStyle} />;
+            case 'error': return <AlertCircle size={18} style={iconStyle} />;
+            case 'warning': return <AlertTriangle size={18} style={iconStyle} />;
+            case 'info': return <Info size={18} style={iconStyle} />;
+        }
+    };
+
+    const getIconColor = (type: NotificationType): string => {
+        switch (type) {
+            case 'success': return 'var(--accent-green)';
+            case 'error': return 'var(--accent-red)';
+            case 'warning': return 'var(--accent-gold)';
+            case 'info': return 'var(--accent-blue)';
         }
     };
 
     const getStyles = (type: NotificationType) => {
         switch (type) {
-            case 'success': return 'border-green-500/30 bg-green-500/10';
-            case 'error': return 'border-red-500/30 bg-red-500/10';
-            case 'warning': return 'border-yellow-500/30 bg-yellow-500/10';
-            case 'info': return 'border-blue-500/30 bg-blue-500/10';
+            case 'success': return { borderColor: 'rgba(34, 197, 94, 0.3)', backgroundColor: 'rgba(34, 197, 94, 0.1)' };
+            case 'error': return { borderColor: 'rgba(220, 38, 38, 0.3)', backgroundColor: 'rgba(220, 38, 38, 0.1)' };
+            case 'warning': return { borderColor: 'rgba(217, 119, 6, 0.3)', backgroundColor: 'rgba(217, 119, 6, 0.1)' };
+            case 'info': return { borderColor: 'rgba(37, 99, 235, 0.3)', backgroundColor: 'rgba(37, 99, 235, 0.1)' };
         }
     };
 
@@ -67,14 +77,14 @@ const NotificationToast: React.FC = () => {
 
     return (
         <>
-            {/* 统一通知消息 - 右下角弹出 (All Notifications) */}
+            {/* 统一通知消息 - 左下角（滑块上方） */}
             {sortedNotifications.length > 0 && (
                 <div
-                    className="fixed z-[9999] flex gap-3 pointer-events-none w-full max-w-[400px]
+                    className="fixed z-[99999] flex gap-3 pointer-events-none w-full max-w-[400px]
                     /* Mobile: Top Centered / Full Width */
                     top-4 left-4 right-4 bottom-auto flex-col
-                    /* Desktop: Bottom Right */
-                    md:top-auto md:bottom-36 md:right-6 md:left-auto md:flex-col-reverse"
+                    /* Desktop: Bottom Left, Above Slider (留出180px给滑块+版本号) */
+                    md:top-auto md:bottom-20 md:left-4 md:right-auto md:flex-col-reverse"
                 >
                     <div
                         className="flex gap-3 flex-col md:flex-col-reverse pointer-events-auto"
@@ -90,16 +100,24 @@ const NotificationToast: React.FC = () => {
                             const secondaryColor = isDarkMode ? '#d4d4d8' : '#3f3f46';
                             const mutedColor = isDarkMode ? '#a1a1aa' : '#52525b';
 
+                            const styles = getStyles(notification.type);
                             return (
                                 <div
                                     key={notification.id}
-                                    className={`backdrop-blur-xl border rounded-2xl shadow-xl 
-                                        animate-in slide-in-from-right-1/2 fade-in duration-300 zoom-in-95
-                                        transition-all duration-300 ease-out
+                                    className={`backdrop-blur-xl border shadow-xl 
+                                        animate-slide-in-right
+                                        transition-all ease-out
                                         ${isCollapsed ? '-mb-20 scale-[0.95] opacity-85 pointer-events-none' : 'mb-2 scale-100 opacity-100'}
                                         ${isTop && !isExpanded ? '!mb-0 !opacity-100 !scale-100 pointer-events-auto' : ''}
-                                        hover:!scale-[1.02] hover:shadow-2xl brightness-100
-                                        ${getStyles(notification.type)}`}
+                                        hover:!scale-[1.02] brightness-100
+                                    `}
+                                    style={{
+                                        borderRadius: 'var(--radius-md)', // 8px
+                                        borderColor: styles.borderColor,
+                                        backgroundColor: styles.backgroundColor,
+                                        boxShadow: 'var(--shadow-xl)',
+                                        transitionDuration: 'var(--duration-normal)'
+                                    }}
                                 >
                                     <div className="flex items-start p-4 gap-3 bg-gradient-to-b from-white/5 to-transparent">
                                         <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-white/10 mt-0.5 shadow-inner`}>
@@ -131,19 +149,34 @@ const NotificationToast: React.FC = () => {
                                         <div className="flex flex-col gap-1 shrink-0">
                                             <button
                                                 onClick={() => notificationService.dismiss(notification.id)}
-                                                className="p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"
-                                                style={{ color: mutedColor }}
+                                                className="p-1.5 transition-all active:scale-95"
+                                                style={{
+                                                    color: mutedColor,
+                                                    borderRadius: 'var(--radius-sm)',
+                                                    transitionDuration: 'var(--duration-fast)'
+                                                }}
+                                                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
+                                                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                                             >
                                                 <X size={14} />
                                             </button>
                                             {notification.details && (
                                                 <button
                                                     onClick={() => handleCopyDetails(notification)}
-                                                    className="p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"
-                                                    style={{ color: mutedColor }}
+                                                    className="p-1.5 transition-all active:scale-95"
+                                                    style={{
+                                                        color: mutedColor,
+                                                        borderRadius: 'var(--radius-sm)',
+                                                        transitionDuration: 'var(--duration-fast)'
+                                                    }}
                                                     title="复制详细信息"
+                                                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
+                                                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                                                 >
-                                                    {copiedId === notification.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                                                    {copiedId === notification.id ?
+                                                        <Check size={14} style={{ color: 'var(--accent-green)' }} /> :
+                                                        <Copy size={14} />
+                                                    }
                                                 </button>
                                             )}
                                         </div>

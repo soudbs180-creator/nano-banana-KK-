@@ -3,7 +3,7 @@ import { useCanvas } from '../context/CanvasContext';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import {
-    Loader2, Menu, Layers, Search, ZoomIn, ZoomOut,
+    Loader2, Menu, Layers, Search, Maximize2,
     Focus, CircleDot, LayoutDashboard, GripVertical, Bot, Grid3x3, Square, Sun, Moon
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
@@ -13,8 +13,7 @@ interface ProjectManagerProps {
     isSidebarOpen: boolean;
     onToggleSidebar: () => void;
     isMobile: boolean;
-    onZoomIn: () => void;
-    onZoomOut: () => void;
+    onFitToAll: () => void; // ✅ 缩放到全览
     onResetView: () => void;
     onToggleGrid: () => void;
     onAutoArrange: () => void;
@@ -30,8 +29,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     isSidebarOpen,
     onToggleSidebar,
     isMobile,
-    onZoomIn,
-    onZoomOut,
+    onFitToAll,
     onResetView,
     onToggleGrid,
     onAutoArrange,
@@ -386,10 +384,24 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                                                 type="text"
                                                 value={editName}
                                                 onChange={(e) => setEditName(e.target.value)}
-                                                onBlur={saveEdit}
                                                 onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="flex-1 bg-black/30 border border-indigo-500 rounded px-2 py-0.5 text-sm text-white focus:outline-none"
+                                                className="flex-1 px-2 py-0.5 text-sm transition-all focus:outline-none"
+                                                style={{
+                                                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                                                    border: '1px solid var(--accent-blue)',
+                                                    borderRadius: 'var(--radius-sm)',
+                                                    color: 'white',
+                                                    fontSize: '16px',
+                                                    transitionDuration: 'var(--duration-fast)'
+                                                }}
+                                                onFocus={(e) => {
+                                                    e.currentTarget.style.boxShadow = 'var(--glow-blue)';
+                                                }}
+                                                onBlur={(e) => {
+                                                    e.currentTarget.style.boxShadow = 'none';
+                                                    saveEdit();
+                                                }}
                                                 autoFocus
                                             />
                                         ) : (
@@ -486,9 +498,9 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
                 <div className="w-full h-px my-1" style={{ backgroundColor: 'var(--toolbar-divider)' }} />
 
-                {/* 4. Zoom Controls and Tools */}
+                {/* 4. Fit All - 缩放到全览 */}
                 <button
-                    onClick={(e) => { e.stopPropagation(); onZoomIn(); }}
+                    onClick={(e) => { e.stopPropagation(); onFitToAll(); }}
                     className="p-2 rounded-lg transition-all outline-none focus:outline-none"
                     style={{ color: 'var(--text-secondary)' }}
                     onMouseEnter={(e) => {
@@ -499,25 +511,16 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                         e.currentTarget.style.color = 'var(--text-secondary)';
                         e.currentTarget.style.backgroundColor = 'transparent';
                     }}
-                    title="放大 (+)"
+                    title="缩放到全览 (Fit All)"
                     tabIndex={-1}
                 >
-                    <ZoomIn size={20} />
-                </button>
-
-                <button
-                    onClick={(e) => { e.stopPropagation(); onZoomOut(); }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
-                    title="缩小 (-)"
-                    tabIndex={-1}
-                >
-                    <ZoomOut size={20} />
+                    <Maximize2 size={20} />
                 </button>
 
                 <button
                     onClick={(e) => { e.stopPropagation(); onResetView(); }}
                     className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
-                    title="重置视图 / 定位最新 (Fit View)"
+                    title="重置视图 / 定位最新 (Reset View)"
                     tabIndex={-1}
                 >
                     <Focus size={20} />
@@ -552,25 +555,6 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                     {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
                 </button>
 
-                {/* Mobile Only: Robot Chat Button */}
-                {isMobile && onToggleChat && (
-                    <>
-                        <div className="w-full h-px my-1" style={{ backgroundColor: 'var(--toolbar-divider)' }} />
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onToggleChat(); }}
-                            className={`p-2 rounded-lg transition-all outline-none focus:outline-none relative ${isChatOpen
-                                ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
-                                : 'text-zinc-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            title="AI 助手"
-                            tabIndex={-1}
-                        >
-                            <Bot size={20} />
-                            {/* Status Dot */}
-                            <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-400 rounded-full border border-[#1c1c1e] animate-pulse" />
-                        </button>
-                    </>
-                )}
 
             </div>
 

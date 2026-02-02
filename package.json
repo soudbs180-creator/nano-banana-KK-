@@ -1,12 +1,13 @@
 {
     "name": "kk-studio",
     "private": true,
-    "version": "1.2.3",
+    "version": "1.2.5",
     "type": "module",
     "scripts": {
         "dev": "node node_modules/vite/bin/vite.js",
         "build": "node node_modules/vite/bin/vite.js build",
-        "preview": "node node_modules/vite/bin/vite.js preview"
+        "preview": "node node_modules/vite/bin/vite.js preview",
+        "clean": "node -e \"try{require('fs').rmSync('node_modules/.vite',{recursive:true})}catch(e){}\""
     },
     "dependencies": {
         "@google/genai": "^1.35.0",

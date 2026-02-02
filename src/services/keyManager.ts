@@ -19,12 +19,29 @@ export function parseModelString(input: string): { id: string; name?: string; de
 
     if (!match) return { id: input.trim() };
 
+    let id = match[1].trim();
+    let name = match[2]?.trim();
+    const description = match[3]?.trim();
+
+    // 智能检测: 如果 ID 看起来像名称(包含空格或大写), 而括号内的 name 看起来像 ID (kebab-case/lowercase)
+    // 则交换它们
+    const idLikeRegex = /^[a-z0-9-.:]+$/;
+    const hasSpace = /\s/.test(id);
+
+    if (name && idLikeRegex.test(name) && (hasSpace || !idLikeRegex.test(id))) {
+        // Swap
+        const temp = id;
+        id = name;
+        name = temp;
+    }
+
     return {
-        id: match[1].trim(),
-        name: match[2]?.trim(),
-        description: match[3]?.trim()
+        id,
+        name,
+        description
     };
 }
+
 
 
 
@@ -44,6 +61,12 @@ export interface KeySlot {
     authMethod?: AuthMethod; // 'query' | 'header'
     headerName?: string;     // Custom header name (default: x-goog-api-key)
 
+    // Advanced Configuration (NEW)
+    weight?: number;         // 权重 (1-100), 用于负载均衡,默认50
+    timeout?: number;        // 超时时间 (ms), 默认30000
+    maxRetries?: number;     // 最大重试次数,默认2
+    retryDelay?: number;     // 重试延迟 (ms), 默认1000
+
     // Status & Usage
     status: 'valid' | 'invalid' | 'rate_limited' | 'unknown';
     failCount: number;
@@ -52,6 +75,21 @@ export interface KeySlot {
     lastError: string | null;
     disabled: boolean;
     createdAt: number;
+
+    // Performance Metrics (NEW)
+    avgResponseTime?: number;    // 平均响应时间 (ms)
+    lastResponseTime?: number;   // 最后一次响应时间 (ms)
+    successRate?: number;        // 成功率 (0-100)
+    totalRequests?: number;      // 总请求数
+
+    // Call History (NEW)
+    recentCalls?: Array<{
+        timestamp: number;
+        success: boolean;
+        responseTime: number;
+        model?: string;
+        error?: string;
+    }>;
 
     // Metrics
     usedTokens?: number;
@@ -66,6 +104,7 @@ export interface KeySlot {
     };
 }
 
+
 interface KeyManagerState {
     slots: KeySlot[];
     currentIndex: number;
@@ -75,20 +114,121 @@ interface KeyManagerState {
 
 const STORAGE_KEY = 'kk_studio_key_manager';
 const DEFAULT_MAX_FAILURES = 3;
-// Simple pricing estimation (avg between input/output for simplicity, or 0.15/1M)
-const COST_PER_TOKEN = 0.00000015;
+// 旧版 Gemini 模型（已弃用）
+const LEGACY_GOOGLE_MODELS = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp'];
 
-const LEGACY_GOOGLE_MODELS = ['gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+/**
+ * 旧模型 ID 到新模型 ID 的自动校正映射表
+ * 用于向后兼容和自动迁移
+ */
+export const MODEL_MIGRATION_MAP: Record<string, string> = {
+    // Gemini 1.5 系列 → Gemini 2.5 系列
+    'gemini-1.5-pro': 'gemini-2.5-pro',
+    'gemini-1.5-pro-latest': 'gemini-2.5-pro',
+    'gemini-1.5-flash': 'gemini-2.5-flash',
+    'gemini-1.5-flash-latest': 'gemini-2.5-flash',
+
+    // Gemini 2.0 系列 → Gemini 2.5 系列
+    'gemini-2.0-flash-exp': 'gemini-2.5-flash',
+    'gemini-2.0-pro-exp': 'gemini-2.5-pro',
+
+    // Gemini 2.0 实验性图像生成 → Nano Banana
+    'gemini-2.0-flash-exp-image-generation': 'nano-banana',
+
+    // -latest 别名 → 具体版本
+    'gemini-flash-lite-latest': 'gemini-2.5-flash-lite',
+    'gemini-flash-latest': 'gemini-2.5-flash',
+    'gemini-pro-latest': 'gemini-2.5-pro',
+};
+
+/**
+ * 需要完全过滤掉的模型(不进行迁移,直接删除)
+ */
+export const BLACKLIST_MODELS = [
+    // Imagen 预览版(带日期后缀)
+    /^imagen-[34]\.0-(ultra-)?generate-preview-\d{2}-\d{2}$/,
+    /^imagen-[34]\.0-(fast-)?generate-preview-\d{2}-\d{2}$/,
+    // Imagen 旧版(generate-001)  
+    /^imagen-[34]\.0-.*generate-001$/,
+];
+
+/**
+ * 已弃用的模型列表(用于迁移)
+ */
+export const DEPRECATED_MODELS = Object.keys(MODEL_MIGRATION_MAP);
+
+/**
+ * 自动校正模型 ID
+ * @param modelId - 原始模型 ID
+ * @returns 校正后的模型 ID（如果需要校正）或原始 ID
+ */
+export function normalizeModelId(modelId: string): string {
+    const normalized = MODEL_MIGRATION_MAP[modelId];
+    if (normalized) {
+        console.log(`[ModelMigration] Auto-correcting "${modelId}" → "${normalized}"`);
+        return normalized;
+    }
+    return modelId;
+}
+
+/**
+ * 检查模型是否已弃用
+ */
+export function isDeprecatedModel(modelId: string): boolean {
+    return DEPRECATED_MODELS.includes(modelId);
+}
+
+/**
+ * 检查模型是否应该被过滤掉
+ */
+function shouldFilterModel(modelId: string): boolean {
+    // 过滤Imagen预览版(带日期后缀)
+    if (/imagen-[34]\.0-.*-preview-\d{2}-\d{2}/.test(modelId)) {
+        console.log(`[ModelFilter] Filtering Imagen preview: ${modelId}`);
+        return true;
+    }
+
+    // 过滤Imagen旧版(generate-001)
+    if (/imagen-[34]\.0-.*generate-001$/.test(modelId)) {
+        console.log(`[ModelFilter] Filtering old Imagen: ${modelId}`);
+        return true;
+    }
+
+    // 过滤gemini-2.0-flash-exp-image-generation
+    if (modelId === 'gemini-2.0-flash-exp-image-generation') {
+        console.log(`[ModelFilter] Filtering deprecated model: ${modelId}`);
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * 批量校正模型列表（去重）
+ */
+export function normalizeModelList(models: string[]): string[] {
+    const filtered = models.filter(model => !shouldFilterModel(model));
+    const normalized = filtered.map(normalizeModelId);
+    // 去重（防止多个旧模型映射到同一个新模型）
+    const unique = Array.from(new Set(normalized));
+
+    if (filtered.length < models.length) {
+        console.log(`[ModelFilter] Filtered ${models.length - filtered.length} obsolete models`);
+    }
+
+    return unique;
+}
+
+// 默认 Google 模型列表（仅核心Gemini模型）
 export const DEFAULT_GOOGLE_MODELS = [
-    'gemini-flash-lite-latest',
-    'gemini-flash-latest',
-    'gemini-3-flash-preview',
+    // Gemini 3 系列（预览版）
     'gemini-3-pro-preview',
-    'gemini-2.5-flash-image',
-    'gemini-3-pro-image-preview',
-    'imagen-4.0-generate-001',
-    'imagen-4.0-ultra-generate-001',
-    'imagen-4.0-fast-generate-001'
+    'gemini-3-flash-preview',
+    // Gemini 2.5 系列（稳定版）
+    'gemini-2.5-flash',
+    // Gemini Image（Nano Banana系列）
+    'nano-banana',
+    'nano-banana-pro'
 ];
 
 const GOOGLE_HEADER_NAME = 'x-goog-api-key';
@@ -109,16 +249,19 @@ const isLegacyGoogleModelList = (models: string[]) => {
     return models.every(m => LEGACY_GOOGLE_MODELS.includes(m));
 };
 
-type GlobalModelType = 'chat' | 'image' | 'video';
+type GlobalModelType = 'chat' | 'image' | 'video' | 'image+chat';  // ✨ 支持多模态
 
 const GOOGLE_CHAT_MODELS = [
-    { id: 'gemini-flash-lite-latest', name: 'Gemini Flash-Lite 最新款', icon: '⚡', description: '超高性价比，适合轻量对话与高并发' },
-    { id: 'gemini-flash-latest', name: 'Gemini Flash 最新款', icon: '🚀', description: '速度与质量均衡，日常对话首选' },
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash 预览', icon: '🌟', description: '新能力尝鲜，响应快' },
-    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro 预览', icon: '🧠', description: '最强推理与长上下文能力' },
-    { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash（实验）', icon: '🧪', description: '多模态实验版，适合探索' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', icon: '🧠', description: '强推理与稳定性，适合复杂任务' },
-    { id: 'gemini-1.5-flash', icon: '⚡', name: 'Gemini 1.5 Flash', description: '速度优先，成本更低' }
+    // Gemini 2.5 系列 - 性价比最佳
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', icon: '🧠', description: '最强推理模型，擅长代码、数学、STEM 复杂任务' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', icon: '⚡', description: '性价比最佳，适合大规模处理与代理任务' },
+    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', icon: '🚀', description: '最快速、最经济，适合高并发场景' },
+    // Gemini 3 系列 - 最强智能
+    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro 预览', icon: '🌟', description: '世界最强多模态模型，顶级推理能力' },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash 预览', icon: '✨', description: 'Gemini 3 快速版，新能力尝鲜' },
+    // 多模态模型 - 既能图像生成，又能聊天
+    { id: 'gemini-3-pro-image-preview', name: 'Nano Banana Pro', icon: '🎨', description: '顶级图像生成模型,超高质量输出' },
+    { id: 'gemini-2.5-flash-image', name: 'Nano Banana', icon: '🖼️', description: '快速图像生成,性价比最佳' },
 ];
 
 const GOOGLE_MODEL_METADATA = new Map<string, {
@@ -135,11 +278,34 @@ const MODEL_TYPE_MAP = new Map<string, GlobalModelType>();
 GOOGLE_CHAT_MODELS.forEach(model => MODEL_TYPE_MAP.set(model.id, 'chat'));
 MODEL_PRESETS.forEach(preset => MODEL_TYPE_MAP.set(preset.id, preset.type));
 
+// ✨ 修正 Gemini 多模态图片模型的类型
+MODEL_TYPE_MAP.set('gemini-2.5-flash-image', 'image+chat');
+MODEL_TYPE_MAP.set('gemini-3-pro-image-preview', 'image+chat');
+
+// ✨ 设置 Imagen 4.0 系列的类型
+MODEL_TYPE_MAP.set('imagen-4.0-generate-001', 'image');
+MODEL_TYPE_MAP.set('imagen-4.0-ultra-generate-001', 'image');
+MODEL_TYPE_MAP.set('imagen-4.0-fast-generate-001', 'image');
+
+// ✨ 设置 Veo 3.1 系列的类型
+MODEL_TYPE_MAP.set('veo-3.1-generate-preview', 'video');
+MODEL_TYPE_MAP.set('veo-3.1-fast-generate-preview', 'video');
+
+
+
 MODEL_PRESETS.filter(preset => preset.provider === 'Google').forEach(preset => {
     if (!GOOGLE_MODEL_METADATA.has(preset.id)) {
         GOOGLE_MODEL_METADATA.set(preset.id, { name: preset.label, description: preset.description });
     }
 });
+
+// 添加 Imagen 4.0 和 Veo 3.1 系列模型元数据
+GOOGLE_MODEL_METADATA.set('imagen-4.0-generate-001', { name: 'Imagen 4.0', icon: '🎨', description: 'Google 最新专业图像生成模型' });
+GOOGLE_MODEL_METADATA.set('imagen-4.0-ultra-generate-001', { name: 'Imagen 4.0 Ultra', icon: '💎', description: 'Imagen 4.0 超高质量版本' });
+GOOGLE_MODEL_METADATA.set('imagen-4.0-fast-generate-001', { name: 'Imagen 4.0 Fast', icon: '⚡', description: 'Imagen 4.0 快速生成版本' });
+GOOGLE_MODEL_METADATA.set('veo-3.1-generate-preview', { name: 'Veo 3.1', icon: '🎬', description: '最新视频生成模型（预览版）' });
+GOOGLE_MODEL_METADATA.set('veo-3.1-fast-generate-preview', { name: 'Veo 3.1 Fast', icon: '🎞️', description: 'Veo 3.1 快速版' });
+
 
 export const getModelMetadata = (modelId: string) => GOOGLE_MODEL_METADATA.get(modelId);
 
@@ -152,8 +318,8 @@ const inferModelType = (modelId: string): GlobalModelType => {
     const isVideo = id.includes('video') || id.includes('veo') || id.includes('kling') || id.includes('runway') || id.includes('luma') || id.includes('sora') || id.includes('pika');
     if (isVideo) return 'video';
 
-
-    const isImage = id.includes('imagen') || id.includes('image') || id.includes('img') || id.includes('dall-e') || id.includes('midjourney') || id.includes('nano-banana') || id.includes('flux') || id.includes('stable') || id.includes('sd') || id.includes('diffusion');
+    // ✨ 优先检查图片关键词,避免 gemini-*-image 被误判为 chat
+    const isImage = id.includes('imagen') || id.includes('image') || id.includes('img') || id.includes('dall-e') || id.includes('midjourney') || id.includes('nano') || id.includes('banana') || id.includes('flux') || id.includes('stable') || id.includes('sd') || id.includes('diffusion') || id.includes('painting') || id.includes('draw');
     if (isImage) return 'image';
 
     const isChat = id.includes('gemini') || id.includes('gpt') || id.includes('claude') || id.includes('deepseek') || id.includes('qwen') || id.includes('llama') || id.includes('mistral') || id.includes('yi-') || id.includes(':free');
@@ -165,6 +331,7 @@ const inferModelType = (modelId: string): GlobalModelType => {
 
     return 'image';
 };
+
 
 // Register Chat Model Presets
 CHAT_MODEL_PRESETS.forEach(preset => {
@@ -247,7 +414,8 @@ export class KeyManager {
                     );
                     const headerName = shouldOverrideHeader ? inferHeaderName(provider, baseUrl, authMethod) : s.headerName;
                     const rawModels = Array.isArray(s.supportedModels) ? s.supportedModels : [];
-                    const supportedModels = provider === 'Google' && (rawModels.length === 0 || isLegacyGoogleModelList(rawModels))
+                    // ✅ 直接使用存储的模型列表,不进行任何过滤或修改
+                    const supportedModels = provider === 'Google' && rawModels.length === 0
                         ? [...DEFAULT_GOOGLE_MODELS]
                         : rawModels;
 
@@ -342,20 +510,31 @@ export class KeyManager {
     }
 
     /**
-     * Save state to localStorage
-     */
-    private saveState(state?: KeyManagerState): void {
+ * Save state to localStorage
+ */
+    private async saveState(state?: KeyManagerState): Promise<void> {
         const toSave = state || this.state;
+        console.log('[KeyManager] 💾 saveState被调用!', {
+            slots数量: toSave.slots.length,
+            第一个slot的模型: toSave.slots[0]?.supportedModels,
+            userId: this.userId,
+            isSyncing: this.isSyncing
+        });
+
         try {
             const key = this.getStorageKey();
             localStorage.setItem(key, JSON.stringify(toSave));
+            console.log('[KeyManager] ✅ localStorage保存成功!', key);
 
-            // Sync to cloud if user is logged in
+            // Sync to cloud if user is logged in (等待完成)
             if (this.userId && !this.isSyncing) {
-                this.saveToCloud(toSave);
+                console.log('[KeyManager] 准备上传到云端...');
+                await this.saveToCloud(toSave);
+            } else {
+                console.log('[KeyManager] ⚠️ 跳过云端上传', { userId: this.userId, isSyncing: this.isSyncing });
             }
         } catch (e) {
-            console.error('[KeyManager] Failed to save state:', e);
+            console.error('[KeyManager] ❌ Failed to save state:', e);
         }
     }
 
@@ -443,19 +622,23 @@ export class KeyManager {
                         supportedModels: s.supportedModels || []
                     }));
 
-                    // Merge: cloud keys take priority, add unique local keys
-                    const cloudKeySet = new Set(cloudSlots.map(s => s.key));
-                    const uniqueLocalKeys = localKeys.filter(local => !cloudKeySet.has(local.key));
-
-                    this.state.slots = [...cloudSlots, ...uniqueLocalKeys];
-
-                    if (uniqueLocalKeys.length > 0) {
-                        console.log(`[KeyManager] Merged ${uniqueLocalKeys.length} local keys with ${cloudSlots.length} cloud keys`);
-                        // Save merged result to cloud
+                    // ✨ 改为本地优先策略
+                    // 如果本地有数据,优先使用本地数据并上传覆盖云端
+                    if (localKeys.length > 0) {
+                        console.log('[KeyManager] 本地有数据,优先使用本地并同步到云端');
+                        this.state.slots = localKeys;
+                        // 立即上传本地数据覆盖云端
                         await this.saveToCloud(this.state);
+                    } else {
+                        // 本地为空,使用云端数据
+                        console.log('[KeyManager] 本地为空,使用云端数据');
+                        this.state.slots = cloudSlots;
                     }
 
-                    this.saveState(); // Update local storage
+
+                    // 直接保存到localStorage,不触发云端上传(避免递归)
+                    const key = this.getStorageKey();
+                    localStorage.setItem(key, JSON.stringify(this.state));
                     this.notifyListeners();
                 }
             } else {
@@ -512,24 +695,80 @@ export class KeyManager {
      * Save state to Supabase
      */
     private async saveToCloud(state: KeyManagerState) {
-        if (!this.userId || this.userId.startsWith('dev-user-')) return;
+        if (!this.userId || this.userId.startsWith('dev-user-')) {
+            console.log('[KeyManager] ⚠️ 跳过云端上传 (无userId或dev用户)');
+            return;
+        }
 
         try {
-            // Sync full API keys to 'api_keys' column (associated with account)
-            await supabase
+            console.log('[KeyManager] 📤 开始上传到Supabase...', {
+                userId: this.userId,
+                slots数量: state.slots.length
+            });
+
+            // 1. 先验证当前用户身份
+            const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+            if (authError || !user) {
+                console.error('[KeyManager] ❌ 用户未登录或session过期!', authError);
+                return;
+            }
+
+            console.log('[KeyManager] ✅ 用户验证成功:', user.id);
+
+            // 2. 确保userId一致
+            if (user.id !== this.userId) {
+                console.error('[KeyManager] ❌ userId不匹配!', {
+                    expected: this.userId,
+                    actual: user.id
+                });
+                this.userId = user.id; // 更新userId
+            }
+
+            // 3. 准备上传数据
+            const uploadData = {
+                user_id: user.id, // 使用验证后的user.id
+                api_keys: state.slots,
+                updated_at: new Date().toISOString()
+            };
+
+            console.log('[KeyManager] 💾 执行upsert...', {
+                user_id: uploadData.user_id,
+                模型数量: state.slots[0]?.supportedModels?.length
+            });
+
+            // 4. 执行upsert (RLS策略会检查auth.uid() = user_id)
+            const { data, error } = await supabase
                 .from('user_settings')
-                .upsert({
-                    user_id: this.userId,
-                    api_keys: state.slots,
-                    updated_at: new Date().toISOString()
+                .upsert(uploadData, {
+                    onConflict: 'user_id' // 明确指定冲突字段
+                })
+                .select();
+
+            if (error) {
+                console.error('[KeyManager] ❌ Supabase upsert失败!', {
+                    code: error.code,
+                    message: error.message,
+                    details: error.details,
+                    hint: error.hint
                 });
 
-            // Also trigger CostService sync to update profile/stats
+                // 如果是RLS错误,提示用户
+                if (error.code === '42501' || error.message.includes('policy')) {
+                    console.error('[KeyManager] ⚠️ RLS策略阻止! 请检查Supabase RLS设置');
+                }
+
+                throw error;
+            }
+
+            console.log('[KeyManager] ✅ Supabase上传成功!', data);
+
+            // 5. 触发costService同步
             const { forceSync } = await import('./costService');
             forceSync().catch(console.error);
 
         } catch (e) {
-            console.error('[KeyManager] Error saving to cloud:', e);
+            console.error('[KeyManager] ❌ saveToCloud异常:', e);
         }
     }
 
@@ -719,7 +958,26 @@ export class KeyManager {
                                 GOOGLE_MODEL_METADATA.set(id, { ...existing, ...metadata });
                             });
 
-                            return list.map((m: any) => m.id || m.name).filter(Boolean);
+                            // Return all models - filtering by type happens at usage time
+                            // Chat models are needed for chat functionality
+                            // Image/video models are needed for generation
+                            let models = list.map((m: any) => {
+                                const id = m.id || m.name;
+                                // Normalize: remove 'models/' prefix if present for consistent matching
+                                return id ? id.replace(/^models\//, '') : null;
+                            }).filter(Boolean);
+
+                            // Auto-add Google chat models for Google provider
+                            if (provider === 'Google') {
+                                const googleModelIds = GOOGLE_CHAT_MODELS.map(m => m.id);
+                                googleModelIds.forEach(modelId => {
+                                    if (!models.includes(modelId)) {
+                                        models.push(modelId);
+                                    }
+                                });
+                            }
+
+                            return models;
                         }
                     }
                 } catch { /* continue */ }
@@ -764,9 +1022,15 @@ export class KeyManager {
         group?: string;
         provider: string;
     } | null {
+        // Normalize the requested model ID: remove 'models/' prefix if present
+        const normalizedModelId = modelId.replace(/^models\//, '');
+
         // 1. Filter by Model Support
         const candidates = this.state.slots.filter(s =>
-            (s.supportedModels || []).some(m => parseModelString(m).id === modelId)
+            (s.supportedModels || []).some(m => {
+                const storedId = parseModelString(m).id.replace(/^models\//, '');
+                return storedId === normalizedModelId;
+            })
         );
 
         if (candidates.length === 0) return null;
@@ -991,6 +1255,22 @@ export class KeyManager {
         const authMethod = options?.authMethod || getDefaultAuthMethod(baseUrl);
         const headerName = options?.headerName || inferHeaderName(options?.provider || 'Custom', baseUrl, authMethod);
 
+        // Initialize supportedModels
+        let supportedModels = options?.supportedModels || [];
+
+        // Auto-add all Google chat models for Google provider
+        if (options?.provider === 'Google') {
+            const googleModelIds = GOOGLE_CHAT_MODELS.map(m => m.id);
+            googleModelIds.forEach(modelId => {
+                if (!supportedModels.includes(modelId)) {
+                    supportedModels.push(modelId);
+                }
+            });
+        }
+
+        // ✨ 自动校正模型列表（将旧模型迁移到新模型）
+        supportedModels = normalizeModelList(supportedModels);
+
         const newSlot: KeySlot = {
             id: `key_${Date.now()}`,
             key: trimmedKey,
@@ -999,7 +1279,7 @@ export class KeyManager {
             baseUrl,
             authMethod,
             headerName,
-            supportedModels: options?.supportedModels || [],
+            supportedModels,
             status: 'unknown',
             failCount: 0,
             successCount: 0,
@@ -1031,17 +1311,23 @@ export class KeyManager {
     }
 
     /**
-     * Update an existing API key
-     */
-    updateKey(id: string, updates: Partial<KeySlot>): void {
+ * Update an existing API key
+ */
+    async updateKey(id: string, updates: Partial<KeySlot>): Promise<void> {
+        console.log('[KeyManager] 🔧 updateKey被调用!', {
+            id,
+            updates,
+            当前模型: this.state.slots.find(s => s.id === id)?.supportedModels
+        });
         const slot = this.state.slots.find(s => s.id === id);
         if (slot) {
             Object.assign(slot, updates);
             // Ensure supportedModels is always an array
             if (updates.supportedModels) {
+                // ✅ 直接使用用户提供的模型,不自动过滤或修改
                 slot.supportedModels = updates.supportedModels;
             }
-            this.saveState();
+            await this.saveState();
             this.notifyListeners();
         }
     }
@@ -1139,6 +1425,10 @@ export class KeyManager {
      * SORTING ORDER: User Custom Models (Top) -> Standard Google Models (Bottom)
      */
     getGlobalModelList(): { id: string; name: string; provider: string; isCustom: boolean; type: GlobalModelType; icon?: string; description?: string }[] {
+        console.log('[keyManager.getGlobalModelList] 开始获取全局模型列表');
+        console.log('[keyManager.getGlobalModelList] slots数量:', this.state.slots.length);
+        console.log('[keyManager.getGlobalModelList] 激活的slots:', this.state.slots.filter(s => !s.disabled && s.status !== 'invalid').map(s => ({ id: s.id, name: s.name, supportedModels: s.supportedModels })));
+
         const uniqueModels = new Map<string, { id: string; name: string; provider: string; isCustom: boolean; type: GlobalModelType; icon?: string; description?: string }>();
         const chatModelIds = new Set(GOOGLE_CHAT_MODELS.map(model => model.id));
 
@@ -1195,12 +1485,15 @@ export class KeyManager {
         if (hasGoogleKey) {
             GOOGLE_CHAT_MODELS.forEach(model => {
                 if (!uniqueModels.has(model.id)) {
+                    // 推断正确的模型类型
+                    const inferredType = MODEL_TYPE_MAP.get(model.id) || inferModelType(model.id);
+
                     uniqueModels.set(model.id, {
                         id: model.id,
                         name: model.name,
                         provider: 'Google',
                         isCustom: false,
-                        type: 'chat',
+                        type: inferredType,
                         icon: model.icon,
                         description: model.description
                     });
@@ -1209,7 +1502,10 @@ export class KeyManager {
         }
 
 
-        return Array.from(uniqueModels.values());
+        const result = Array.from(uniqueModels.values());
+        console.log('[keyManager.getGlobalModelList] 最终返回模型数量:', result.length);
+        console.log('[keyManager.getGlobalModelList] 模型详情:', result.map(m => ({ id: m.id, name: m.name, type: m.type, provider: m.provider })));
+        return result;
     }
 
     /**
@@ -1261,7 +1557,253 @@ export class KeyManager {
 // Singleton instance
 export const keyManager = new KeyManager();
 
-export default KeyManager;
+export default keyManager;
+
+// ============================================================================
+// 🆕 自动模型检测和配置功能
+// ============================================================================
+
+/**
+ * 检测API类型
+ */
+export function detectApiType(apiKey: string, baseUrl?: string): 'google-official' | 'openai' | 'proxy' | 'unknown' {
+    // Google官方API
+    if (apiKey.startsWith('AIza') || baseUrl?.includes('googleapis.com') || baseUrl?.includes('generativelanguage.googleapis.com')) {
+        return 'google-official';
+    }
+
+    // OpenAI官方API
+    if (apiKey.startsWith('sk-') && (!baseUrl || baseUrl.includes('api.openai.com'))) {
+        return 'openai';
+    }
+
+    // 第三方代理（NewAPI/One API等）
+    if (baseUrl && !baseUrl.includes('googleapis.com') && baseUrl.length > 0) {
+        return 'proxy';
+    }
+
+    return 'unknown';
+}
+
+/**
+ * 自动获取Google API支持的模型
+ */
+export async function fetchGoogleModels(apiKey: string): Promise<string[]> {
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+        );
+
+        if (!response.ok) {
+            console.error('[KeyManager] Failed to fetch Google models:', response.status);
+            console.log('[KeyManager] 使用默认Google模型列表作为备选');
+            return getDefaultGoogleModels();
+        }
+
+        const data = await response.json();
+
+        const models = data.models
+            ?.map((m: any) => m.name.replace('models/', ''))
+            .filter((rawM: string) => {
+                const m = rawM.replace(/^models\//, '');
+                const lower = m.toLowerCase();
+
+                // ❌ 排除embedding、audio、robotics等非内容生成模型
+                if (lower.includes('embedding') ||
+                    lower.includes('audio') ||
+                    lower.includes('robotics') ||
+                    lower.includes('code-execution') ||
+                    lower.includes('computer-use') ||
+                    lower.includes('aqa')) {
+                    return false;
+                }
+
+                // ❌ 排除TTS模型
+                if (lower.includes('tts')) return false;
+
+                // ✅ 白名单:只保留用户需要的核心模型
+                const allowedPatterns = [
+                    // 图像模型(5个)
+                    /^gemini-2\.5-flash-image$/,           // Nano Banana
+                    /^gemini-3-pro-image-preview$/,        // Nano Banana Pro
+                    /^imagen-4\.0-generate-001$/,          // Imagen 4
+                    /^imagen-4\.0-ultra-generate-001$/,    // Imagen 4 Ultra
+                    /^imagen-4\.0-fast-generate-001$/,     // Imagen 4 Fast
+
+                    // 视频模型(2个) - 只保留Veo 3.1
+                    /^veo-3\.1-generate-preview$/,         // Veo 3.1
+                    /^veo-3\.1-fast-generate-preview$/,    // Veo 3.1 fast
+
+                    // 聊天模型(保留主线版本)
+                    /^gemini-2\.5-(flash|pro|flash-lite)$/,
+                    /^gemini-3-(pro|flash)-preview$/,
+                ];
+
+                return allowedPatterns.some(pattern => pattern.test(m));
+            }) || [];
+
+        console.log(`[KeyManager] ✓ 白名单过滤后剩余 ${models.length} 个模型:`, models);
+
+        // 如果过滤后没有模型,使用默认列表
+        if (models.length === 0) {
+            console.log('[KeyManager] API返回空结果,使用默认Google模型列表');
+            return getDefaultGoogleModels();
+        }
+
+        return models;
+    } catch (error) {
+        console.error('[KeyManager] Error fetching Google models:', error);
+        console.log('[KeyManager] 使用默认Google模型列表作为备选');
+        return getDefaultGoogleModels();
+    }
+}
+
+// 默认Google模型列表(备选方案)
+function getDefaultGoogleModels(): string[] {
+    return [
+        // 图片模型
+        'gemini-2.5-flash-image',
+        'gemini-3-pro-image-preview',
+        'imagen-4.0-generate-001',
+        'imagen-4.0-ultra-generate-001',
+        'imagen-4.0-fast-generate-001',
+        // 视频模型
+        'veo-3.1-generate-preview',
+        'veo-3.1-fast-generate-preview',
+        // 聊天模型
+        'gemini-3-pro-preview',
+        'gemini-3-flash-preview',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+        'gemini-2.5-flash-lite'
+    ];
+}
+
+/**
+ * 自动获取OpenAI兼容API的模型列表
+ */
+export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): Promise<string[]> {
+    try {
+        const cleanUrl = baseUrl.replace(/\/$/, '');
+        const response = await fetch(`${cleanUrl}/v1/models`, {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.error('[KeyManager] Failed to fetch proxy models:', response.status);
+            return [];
+        }
+
+        const data = await response.json();
+        const models = data.data?.map((m: any) => m.id) || [];
+
+        console.log(`[KeyManager] ✓ 检测到 ${models.length} 个代理模型:`, models);
+        return models;
+    } catch (error) {
+        console.error('[KeyManager] Error fetching proxy models:', error);
+        return [];
+    }
+}
+
+/**
+ * 自动分类模型 - 增强版
+ * 按优先级分类: 图像 → 视频 → 聊天 → 其他
+ */
+export function categorizeModels(models: string[]): {
+    imageModels: string[];
+    videoModels: string[];
+    chatModels: string[];
+    otherModels: string[];
+} {
+    const categories = {
+        imageModels: [] as string[],
+        videoModels: [] as string[],
+        chatModels: [] as string[],
+        otherModels: [] as string[]
+    };
+
+    models.forEach(model => {
+        const lowerModel = model.toLowerCase();
+
+        // 优先级1: 视频模型
+        if (lowerModel.includes('veo') ||
+            lowerModel.includes('runway') ||
+            lowerModel.includes('luma') ||
+            lowerModel.includes('dream-machine') ||
+            lowerModel.includes('kling') ||
+            lowerModel.includes('cogvideo') ||
+            lowerModel.includes('svd') ||
+            lowerModel.includes('video')) {
+            categories.videoModels.push(model);
+        }
+        // 优先级2: 图像模型
+        else if (lowerModel.includes('imagen') ||
+            lowerModel.includes('dall-e') ||
+            lowerModel.includes('midjourney') ||
+            lowerModel.includes('image') ||
+            lowerModel.includes('nano') ||
+            lowerModel.includes('banana') ||
+            lowerModel.includes('flux') ||
+            lowerModel.includes('stable') ||
+            lowerModel.includes('diffusion') ||
+            lowerModel.includes('painting') ||
+            lowerModel.includes('draw') ||
+            lowerModel.includes('img')) {
+            categories.imageModels.push(model);
+        }
+        // 优先级3: 聊天模型
+        else if (lowerModel.includes('gemini') ||
+            lowerModel.includes('gpt') ||
+            lowerModel.includes('claude') ||
+            lowerModel.includes('chat')) {
+            categories.chatModels.push(model);
+        }
+        // 其他: 未分类模型
+        else {
+            categories.otherModels.push(model);
+        }
+    });
+
+    return categories;
+}
+
+/**
+ * 自动检测并配置API的所有模型
+ */
+export async function autoDetectAndConfigureModels(apiKey: string, baseUrl?: string): Promise<{
+    success: boolean;
+    models: string[];
+    categories: ReturnType<typeof categorizeModels>;
+    apiType: string;
+}> {
+    const apiType = detectApiType(apiKey, baseUrl);
+    console.log('[KeyManager] 检测到API类型:', apiType);
+
+    let models: string[] = [];
+
+    if (apiType === 'google-official') {
+        models = await fetchGoogleModels(apiKey);
+    } else if (apiType === 'proxy' && baseUrl) {
+        models = await fetchOpenAICompatModels(apiKey, baseUrl);
+    } else if (apiType === 'openai') {
+        // OpenAI官方，使用已知模型列表
+        models = ['dall-e-3', 'dall-e-2', 'gpt-4o', 'gpt-4o-mini'];
+    }
+
+    // 应用模型校正
+    const normalizedModels = normalizeModelList(models);
+
+    const categories = categorizeModels(normalizedModels);
+
+    return {
+        success: normalizedModels.length > 0,
+        models: normalizedModels,
+        categories,
+        apiType
+    };
+}
 
 // Re-export ProxyModelConfig for convenience
-

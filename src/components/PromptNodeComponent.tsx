@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { PromptNode, AspectRatio } from '../types';
-import { Sparkles, Loader2 } from 'lucide-react';
+﻿import React, { useState, useEffect, useRef } from 'react';
+import { PromptNode, AspectRatio, GenerationMode } from '../types';
+import { Sparkles, Loader2, Video, Image } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
 
@@ -81,10 +81,19 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
                 e.dataTransfer.setData('text/plain', src);
                 e.dataTransfer.setData('text/uri-list', src);
                 // [NEW] Pass structured data for efficient reuse
+                // We include 'data' (the Base64/Blob URL) directly to avoid hydration issues on drop
+                // if 'src' is a Data URL, we pass it as 'data'. 
+                // If it's a blob url, we might not be able to pass it as base64 easily here without reading it,
+                // but our 'src' variable in this component comes from 'data' state which IS base64 (mostly).
+                // Let's check:
+                // const src = data ? (data.startsWith...) : '';
+                // So 'src' is likely the full data URL.
+
                 e.dataTransfer.setData('application/x-kk-image-ref', JSON.stringify({
                     storageId: (image as any).storageId || image.id,
                     mimeType: image.mimeType || 'image/png',
-                    source: 'reference-thumb'
+                    source: 'reference-thumb',
+                    data: src.startsWith('data:') ? src : undefined // Pass full data URL if available
                 }));
                 e.dataTransfer.effectAllowed = 'copy';
             }}
@@ -94,6 +103,10 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
                     src={src}
                     alt="Ref"
                     className="w-full h-full object-cover pointer-events-none"
+                    style={{
+                        imageRendering: 'auto',
+                        transform: 'translateZ(0)'
+                    }}
                 />
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -105,6 +118,7 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
                 </div>
             )}
         </div>
+
     );
 };
 
@@ -122,9 +136,9 @@ const GenerationTimer: React.FC<{ start: number }> = ({ start }) => {
     const seconds = (elapsed / 1000).toFixed(1);
 
     return (
-        <div className="flex flex-col items-center gap-0.5">
-            <div className="text-[10px] text-indigo-500/60 dark:text-indigo-300/50 font-medium tracking-widest mb-0.5 transform scale-90">等待时间</div>
-            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+        <div className="flex flex-col items-center gap-0.5 pointer-events-none select-none">
+            <div className="text-[10px] text-current opacity-60 font-medium tracking-widest mb-0.5 transform scale-90">等待时间</div>
+            <div className="flex items-center gap-2 text-current">
                 <Loader2 className="animate-spin" size={14} />
                 <div className="font-mono text-lg font-medium tabular-nums tracking-wider drop-shadow-sm">
                     {seconds}s
@@ -154,6 +168,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     highlighted
 }) => {
     const [isDragging, setIsDragging] = useState(false);
+    const [cardHeight, setCardHeight] = useState(200); // 默认高度�?00px,会在渲染后更�?
     const dragStartPos = useRef({ x: 0, y: 0 });
     const dragStartCanvasPos = useRef({ x: 0, y: 0 });
 
@@ -190,6 +205,29 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         observer.observe(cardRef.current);
         return () => observer.disconnect();
     }, [node.id, onHeightChange, node.height]); // Depend on node.height to prevent loop if stable
+
+    // 动态更新cardHeight用于连接线起�?
+    useEffect(() => {
+        const updateHeight = () => {
+            if (cardRef.current) {
+                const height = cardRef.current.offsetHeight;
+                if (height > 0) {
+                    setCardHeight(height);
+                }
+            }
+        };
+
+        // 初始更新
+        updateHeight();
+
+        // 利用已有的ResizeObserver来监听高度变�?
+        const observer = new ResizeObserver(updateHeight);
+        if (cardRef.current) {
+            observer.observe(cardRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [node.prompt, node.referenceImages]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         // Ignore Right Click (2)
@@ -309,17 +347,18 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     return (
         <div
             ref={containerRef}
-            className={`absolute z-20 flex flex-col items-center group animate-cardPopIn ${isSelected ? 'z-30' : ''}`}
+            className={`absolute z-20 flex flex-col items-center group animate-cardPopIn antialiased ${isSelected ? 'z-30' : ''}`}
             style={{
                 left: 0,
                 top: 0,
-                // Initial transform from prop (or ref)
-                transform: `translate3d(${node.position.x}px, ${node.position.y}px, 0) translate(-50%, -100%)`,
-                willChange: isDragging || isSelected ? 'transform' : 'auto', // GPU hint for drag OR selection
+                // [FIX] Round coordinates to integer pixels to prevent text blurring on some displays
+                transform: `translate3d(${Math.round(node.position.x)}px, ${Math.round(node.position.y)}px, 0) translate(-50%, -100%)`,
+                willChange: isDragging ? 'transform' : 'auto', // Only optimize during active drag
                 cursor: isDragging ? 'grabbing' : 'grab',
                 // Disable transition during drag to prevent fighting with JS updates
-                transition: isDragging ? 'none' : 'transform 0.1s linear, box-shadow 0.2s ease',
-                // backfaceVisibility: 'hidden' // Removed to fix text blurriness on zoom
+                // Disable transition during drag to prevent fighting with JS updates
+                transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.2s ease',
+                backfaceVisibility: 'hidden' // Re-enabled to match ImageCard sharps rendering
             }}
             onMouseDown={handleMouseDown}
             onTouchStart={handleMouseDown}
@@ -339,30 +378,47 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             <div
                 ref={cardRef}
                 className={`
-                    relative border rounded-2xl p-3 shadow-xl max-w-[95vw] flex flex-col select-none
-                    ${isDragging ? '' : 'transition-all duration-200'}
-                    ${node.isGenerating
-                        ? 'bg-[var(--bg-secondary)] border-indigo-500/30'
-                        : node.isDraft
-                            ? 'bg-white/90 dark:bg-zinc-900/90 border-indigo-500/50 shadow-[0_8px_32px_rgba(99,102,241,0.15)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl backdrop-saturate-150'
-                            : isSelected
-                                ? 'bg-[var(--bg-secondary)] border-indigo-500 ring-1 ring-indigo-500/50'
-                                : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-[var(--border-medium)]'
-                    }
-                    ${highlighted ? 'ring-2 ring-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.5)] z-50 scale-[1.02]' : ''}
+                    relative border p-3 shadow-xl max-w-[95vw] flex flex-col select-none
+                    ${isDragging ? '' : 'transition-all'}
+                    ${node.isGenerating ? 'generating-flow-bg shadow-2xl' : ''}
+                    ${node.isDraft ? 'backdrop-blur-2xl backdrop-saturate-150' : ''}
+                    ${isSelected ? 'animate-glow-pulse' : ''}
+                    ${highlighted ? 'scale-[1.02] z-50' : ''}
                 `}
-                style={{ width: getCardDimensions(node.aspectRatio).width }}>
+                style={{
+                    width: getCardDimensions(node.aspectRatio).width,
+                    backgroundColor: 'var(--bg-surface)', // ✅ 不透明背景
+                    borderColor: node.isGenerating ?
+                        'var(--border-subtle)' :
+                        node.isDraft ?
+                            'var(--accent-indigo)' :
+                            isSelected ?
+                                'var(--selected-border)' :
+                                highlighted ?
+                                    'var(--accent-gold)' :
+                                    'var(--border-default)',
+                    borderRadius: 'var(--radius-lg)', // 12px
+                    boxShadow: isSelected ?
+                        'var(--glow-blue)' :
+                        node.isDraft ?
+                            'var(--glow-indigo)' :
+                            highlighted ?
+                                'var(--glow-gold)' :
+                                'var(--shadow-xl)',
+                    transitionDuration: isDragging ? '0ms' : 'var(--duration-normal)',
+                    transitionProperty: 'box-shadow, border-color, transform'
+                }}>
                 {/* Header - Changes based on generating state */}
-                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-[var(--border-light)]">
+                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-black/10 dark:border-white/10">
                     {node.isGenerating ? (
                         <>
-                            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center">
-                                <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <div className="w-6 h-6 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center">
+                                <svg className="animate-spin h-3 w-3 text-black dark:text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
                             </div>
-                            <span className="text-xs font-medium text-indigo-400 flex-1">Generating...</span>
+                            <span className="text-xs font-medium text-black dark:text-white flex-1">画师正在挥毫...</span>
 
                             {/* Stop Button */}
                             {onCancel && (
@@ -371,8 +427,21 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                         e.stopPropagation();
                                         onCancel(node.id);
                                     }}
-                                    className="w-6 h-6 flex items-center justify-center rounded-full bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all group/stop"
+                                    className="w-6 h-6 flex items-center justify-center rounded-full transition-all active:scale-95 group/stop"
                                     title="停止生成"
+                                    style={{
+                                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                        color: 'var(--accent-red)',
+                                        transitionDuration: 'var(--duration-fast)'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'var(--accent-red)';
+                                        e.currentTarget.style.color = 'white';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                                        e.currentTarget.style.color = 'var(--accent-red)';
+                                    }}
                                 >
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                                         <rect x="6" y="6" width="12" height="12" rx="2" />
@@ -385,7 +454,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                             <div className="w-6 h-6 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/30">
                                 <Sparkles size={12} className="text-indigo-600 dark:text-indigo-400" />
                             </div>
-                            <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 flex-1">预览 (Preview)</span>
+                            <span className="text-xs font-medium text-[var(--accent-indigo)] flex-1">偷瞄一眼效果..</span>
                         </>
                     ) : node.error ? (
                         <>
@@ -400,12 +469,12 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                 className="text-xs font-medium text-red-400 flex-1 truncate cursor-help"
                                 title={node.error}
                             >
-                                {node.error?.includes('API key') ? 'API Key 无效' :
-                                    node.error?.includes('Invalid URL') ? '参考图无效' :
-                                        node.error?.includes('Ref img fetch failed') ? '参考图已失效(需重传)' :
-                                            node.error?.includes('Failed to fetch') ? '网络请求失败' :
-                                                node.error?.includes('40') ? '鉴权失败' :
-                                                    '生成失败'}
+                                {node.error?.includes('API key') ? 'API Key 罢工了' :
+                                    node.error?.includes('Invalid URL') ? '参考图迷路了' :
+                                        node.error?.includes('Ref img fetch failed') ? '参考图加载失败' :
+                                            node.error?.includes('Failed to fetch') ? '网络开小差了' :
+                                                node.error?.includes('40') ? '权限验证失败' :
+                                                    '哎呀，翻车了...'}
                             </span>
 
                             {/* Retry Button */}
@@ -415,8 +484,22 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                         e.stopPropagation();
                                         onRetry(node);
                                     }}
-                                    className="px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500 hover:text-white transition-all"
-                                    title="重新发送"
+                                    className="px-2 py-1 text-xs transition-all active:scale-95"
+                                    title="重新生成"
+                                    style={{
+                                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                        color: 'var(--accent-blue)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        transitionDuration: 'var(--duration-fast)'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'var(--accent-blue)';
+                                        e.currentTarget.style.color = 'white';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+                                        e.currentTarget.style.color = 'var(--accent-blue)';
+                                    }}
                                 >
                                     重试
                                 </button>
@@ -440,27 +523,35 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                             )}
                         </>
                     ) : (
+                        // Default / Success State
                         <>
-                            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center">
-                                <Sparkles size={12} className="text-white" />
+                            <div className="w-6 h-6 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center border border-[var(--border-light)]">
+                                {node.mode === GenerationMode.VIDEO ? (
+                                    <Video size={12} className="text-purple-500" />
+                                ) : node.childImageIds && node.childImageIds.length > 0 ? (
+                                    <Sparkles size={12} className="text-yellow-500" />
+                                ) : (
+                                    <Image size={12} className="text-[var(--text-tertiary)]" />
+                                )}
                             </div>
-                            <span className="text-xs font-medium text-[var(--text-secondary)] flex-1">Prompt</span>
-
-                            {/* Delete Button */}
+                            <span className="text-xs font-medium text-[var(--text-secondary)] flex-1">
+                                {node.mode === GenerationMode.VIDEO
+                                    ? (node.childImageIds && node.childImageIds.length > 0 ? '视频生成完成! 🎬' : '视频模式 📹')
+                                    : (node.childImageIds && node.childImageIds.length > 0 ? '大功告成! 🎉' : '准备就绪 🚀')}
+                            </span>
+                            {/* Delete Button (Always show for idle/success nodes too) */}
                             {onDelete && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        if (confirm('删除此提示词卡片？')) {
-                                            onDelete(node.id);
-                                        }
+                                        onDelete(node.id);
                                     }}
-                                    className="w-6 h-6 flex items-center justify-center rounded-full text-[var(--text-tertiary)] hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                                    className="w-6 h-6 flex items-center justify-center rounded-full text-[var(--text-tertiary)] hover:bg-red-500/10 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
                                     title="删除"
                                 >
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <polyline points="3 6 5 6 21 6" />
-                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                        <line x1="18" y1="6" x2="6" y2="18" />
+                                        <line x1="6" y1="6" x2="18" y2="18" />
                                     </svg>
                                 </button>
                             )}
@@ -498,8 +589,16 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                         {node.tags.map(tag => {
                             const colors = generateTagColor(tag);
                             return (
-                                <span key={tag}
-                                    className={`px-1.5 py-0.5 rounded text-[10px] border ${colors.bg} ${colors.border} ${colors.text}`}>
+                                <span
+                                    key={tag}
+                                    className="px-1.5 py-0.5 text-[10px]"
+                                    style={{
+                                        backgroundColor: colors.bg,
+                                        color: colors.text,
+                                        border: `1px solid ${colors.border}`,
+                                        borderRadius: 'var(--radius-sm)' // 4px
+                                    }}
+                                >
                                     #{tag}
                                 </span>
                             );
@@ -511,30 +610,33 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             {/* Spacer (formerly connection dot - removed per user request) */}
             <div className="h-3 mt-3" />
 
-            {/* Loading Placeholders - Updated Design */}
+            {/* Loading Placeholders - 2x2 Grid Layout with Shimmer */}
             {
                 node.isGenerating && node.parallelCount && (() => {
                     const count = node.parallelCount;
-                    const columns = Math.min(count, 2);
-                    const placeholderGap = 16;
+                    const COLS = 2; // 固定2列
+                    const GAP = 16;
                     const gapToPlaceholders = 80;
 
                     const { width: w, totalHeight: h } = getCardDimensions(node.aspectRatio, true);
 
+                    // 计算实际列数(用于居中)
+                    const actualCols = Math.min(COLS, count);
+                    const totalWidth = actualCols * w + (actualCols - 1) * GAP;
+
                     return (
                         <div className="relative" style={{ height: 0 }}>
                             {Array.from({ length: count }).map((_, i) => {
-                                const col = i % columns;
-                                const row = Math.floor(i / columns);
+                                const col = i % COLS;
+                                const row = Math.floor(i / COLS);
 
-                                const itemsInRow = Math.min(columns, count - row * columns);
-                                const currentGridWidth = itemsInRow * w + (itemsInRow - 1) * placeholderGap;
-                                const startX = -currentGridWidth / 2;
-                                const offsetX = startX + col * (w + placeholderGap) + w / 2;
-                                const offsetY = gapToPlaceholders + row * (h + placeholderGap);
+                                // 居中布局
+                                const offsetX = -totalWidth / 2 + col * (w + GAP) + w / 2;
+                                const offsetY = gapToPlaceholders + row * (h + GAP);
 
                                 return (
                                     <React.Fragment key={i}>
+                                        {/* 连接线 */}
                                         <svg
                                             className="pointer-events-none"
                                             style={{
@@ -546,65 +648,104 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             }}
                                         >
                                             <path
-                                                d={`M0,0 C0,${offsetY * 0.5} ${offsetX},${offsetY * 0.5} ${offsetX},${offsetY}`}
+                                                d={`M0,${cardHeight} C0,${cardHeight + offsetY * 0.5} ${offsetX},${cardHeight + offsetY * 0.5} ${offsetX},${cardHeight + offsetY}`}
                                                 fill="none"
-                                                stroke="#3f3f46"
+                                                stroke="var(--border-medium)"
                                                 strokeWidth="1.5"
                                                 strokeDasharray="4 4"
                                             />
                                         </svg>
 
-                                        {/* Placeholder Card */}
+                                        {/* 副占位卡 */}
                                         <div
-                                            className="absolute border border-[var(--border-light)] rounded-xl overflow-hidden shadow-lg flex flex-col bg-white/60 dark:bg-zinc-900/60 backdrop-blur-2xl backdrop-saturate-150"
+                                            className="absolute rounded-xl overflow-hidden shadow-lg"
                                             style={{
                                                 width: w,
                                                 height: h,
                                                 left: `calc(50% + ${offsetX}px)`,
                                                 top: offsetY,
                                                 transform: 'translateX(-50%)',
-                                                zIndex: 20
+                                                zIndex: 20,
+                                                background: 'var(--bg-surface)',
+                                                border: '1px solid var(--border-light)'
                                             }}
                                         >
-                                            {/* Main Area: Timer & Spinner */}
-                                            <div className="flex-1 flex flex-col items-center justify-center relative">
-                                                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5 animate-pulse" />
+                                            {/* 扫光动画层 - 暗色白灰/亮色灰黑 */}
+                                            <div
+                                                className="absolute inset-0 pointer-events-none"
+                                                style={{
+                                                    background: 'linear-gradient(90deg, transparent 0%, transparent 35%, var(--shimmer-color, rgba(255,255,255,0.08)) 50%, transparent 65%, transparent 100%)',
+                                                    backgroundSize: '200% 100%',
+                                                    animation: 'shimmer-sweep 2s linear infinite'
+                                                }}
+                                            />
 
-                                                <div className="relative z-10 flex flex-col items-center gap-2">
-                                                    <div className="relative">
-                                                        <div className="absolute inset-0 rounded-full blur-lg bg-indigo-500/20" />
-                                                        {/* Removed large redundant spinner, integrated into GenerationTimer */}
-                                                    </div>
-                                                    <GenerationTimer start={node.timestamp || Date.now()} />
-                                                </div>
+                                            {/* 内容区 */}
+                                            <div className="flex-1 flex flex-col items-center justify-center h-full relative z-10">
+                                                <GenerationTimer start={node.timestamp || Date.now()} />
                                             </div>
 
-                                            {/* Footer Info - Clean & Dark */}
-                                            <div className="h-8 bg-zinc-50/50 dark:bg-[#09090b] border-t border-[var(--border-light)] dark:border-white/5 flex items-center justify-center px-3 text-[10px] gap-3">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-amber-500/90 font-medium px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
-                                                        {node.model?.replace(/gemini-?/i, '') || 'AI'}
+                                            {/* 底部信息栏 */}
+                                            <div
+                                                className="absolute bottom-0 left-0 right-0 h-8 flex items-center justify-center px-2 gap-2"
+                                                style={{
+                                                    background: 'var(--bg-tertiary)',
+                                                    borderTop: '1px solid var(--border-light)'
+                                                }}
+                                            >
+                                                <div
+                                                    className="flex items-center gap-2 px-2 py-0.5 rounded"
+                                                    style={{
+                                                        backgroundColor: 'var(--bg-tertiary)',
+                                                        border: '1px solid var(--border-light)'
+                                                    }}
+                                                >
+                                                    <span className={`w-1 h-1 rounded-full ${(node.model || '').includes('ultra') ? 'bg-purple-500' :
+                                                        (node.model || '').includes('imagen-4') ? 'bg-blue-500' :
+                                                            (node.model || '').includes('pro') ? 'bg-amber-500' :
+                                                                (node.model || '').includes('flash') ? 'bg-yellow-500' :
+                                                                    'bg-zinc-500'
+                                                        }`}></span>
+                                                    <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                                                        {(() => {
+                                                            const m = node.model || '';
+                                                            if (m.includes('ultra')) return 'Imagen 4 Ultra';
+                                                            if (m.includes('imagen-4')) return 'Imagen 4';
+                                                            if (m.includes('pro')) return 'Gemini 2.5 Pro';
+                                                            if (m.includes('flash')) return 'Gemini 2.0 Flash';
+                                                            return 'AI Model';
+                                                        })()}
                                                     </span>
-                                                    <span className="text-zinc-500 font-medium border-l border-zinc-200 dark:border-white/10 pl-2">
-                                                        {node.aspectRatio}
-                                                    </span>
-                                                    <span className="text-zinc-600 font-mono border-l border-zinc-200 dark:border-white/10 pl-2">
-                                                        {(node.imageSize as string) === '1024x1024' || (node.imageSize as string) === '1K' ? '1K' :
+                                                    <span className="text-[var(--border-medium)] text-[7px]">|</span>
+                                                    <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                                                        {node.aspectRatio || '1:1'} · {(node.imageSize as string) === '1024x1024' || (node.imageSize as string) === '1K' ? '1K' :
                                                             (node.imageSize as string) === '2048x2048' || (node.imageSize as string) === '2K' ? '2K' :
                                                                 (node.imageSize as string) === '4096x4096' || (node.imageSize as string) === '4K' ? '4K' :
-                                                                    (node.imageSize as string)}
+                                                                    (node.imageSize as string) || '1K'}
                                                     </span>
-                                                    {node.mode === 'video' && (
-                                                        <span className="text-purple-600 dark:text-purple-400 font-medium border-l border-zinc-200 dark:border-white/10 pl-2">
-                                                            5s
-                                                        </span>
-                                                    )}
                                                 </div>
                                             </div>
                                         </div>
                                     </React.Fragment>
                                 );
                             })}
+
+                            {/* 扫光动画CSS */}
+                            <style>{`
+                                @keyframes shimmer-sweep {
+                                    0% { background-position: -200% 0; }
+                                    100% { background-position: 200% 0; }
+                                }
+                                :root {
+                                    --shimmer-color: rgba(255, 255, 255, 0.08);
+                                }
+                                .dark {
+                                    --shimmer-color: rgba(255, 255, 255, 0.08);
+                                }
+                                :root:not(.dark) {
+                                    --shimmer-color: rgba(0, 0, 0, 0.05);
+                                }
+                            `}</style>
                         </div>
                     );
                 })()
@@ -616,3 +757,4 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 });
 
 export default PromptNodeComponent;
+

@@ -47,14 +47,41 @@ const TagInputModal: React.FC<TagInputModalProps> = ({ isOpen, onClose, initialT
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10001] backdrop-blur-sm">
-            <div className="bg-zinc-900 border border-white/10 rounded-xl w-[400px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between p-4 border-b border-white/10 bg-zinc-800/50">
-                    <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                        <Tag size={16} className="text-emerald-400" />
+        <div
+            className="fixed inset-0 flex items-center justify-center z-[10001] backdrop-blur-sm"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+        >
+            <div
+                className="w-[400px] shadow-2xl overflow-hidden animate-modal-in"
+                style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-xl)', // 16px
+                    boxShadow: 'var(--shadow-xl)'
+                }}
+            >
+                <div
+                    className="flex items-center justify-between p-4 border-b"
+                    style={{
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderColor: 'var(--border-default)'
+                    }}
+                >
+                    <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                        <Tag size={16} style={{ color: 'var(--accent-green)' }} />
                         编辑标签 (Edit Tags)
                     </h3>
-                    <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
+                    <button
+                        onClick={onClose}
+                        className="transition-all active:scale-95"
+                        style={{
+                            color: 'var(--text-tertiary)',
+                            borderRadius: 'var(--radius-sm)',
+                            transitionDuration: 'var(--duration-fast)'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-tertiary)')}
+                    >
                         <X size={18} />
                     </button>
                 </div>
@@ -67,9 +94,24 @@ const TagInputModal: React.FC<TagInputModalProps> = ({ isOpen, onClose, initialT
                         {tags.map(tag => {
                             const colors = generateTagColor(tag);
                             return (
-                                <span key={tag} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${colors.bg} ${colors.border} ${colors.text}`}>
+                                <span
+                                    key={tag}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs"
+                                    style={{
+                                        backgroundColor: colors.bg,
+                                        color: colors.text,
+                                        border: `1px solid ${colors.border}`,
+                                        borderRadius: 'var(--radius-full)' // 圆形胶囊
+                                    }}
+                                >
                                     #{tag}
-                                    <button onClick={() => removeTag(tag)} className={`hover:opacity-75 transition-opacity`}>
+                                    <button
+                                        onClick={() => removeTag(tag)}
+                                        className="transition-opacity active:scale-90"
+                                        style={{ opacity: 0.8 }}
+                                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.8')}
+                                    >
                                         <X size={12} />
                                     </button>
                                 </span>
@@ -89,34 +131,92 @@ const TagInputModal: React.FC<TagInputModalProps> = ({ isOpen, onClose, initialT
                             onChange={e => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder="输入标签并回车..."
-                            className="flex-1 bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                            className="flex-1 px-3 py-2 text-sm transition-all"
+                            style={{
+                                backgroundColor: 'var(--bg-input)',
+                                border: '1px solid var(--border-default)',
+                                borderRadius: 'var(--radius-md)',
+                                color: 'var(--text-primary)',
+                                outline: 'none',
+                                fontSize: '16px', // 移动端防止缩放
+                                transitionDuration: 'var(--duration-fast)'
+                            }}
+                            onFocus={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--accent-blue)';
+                                e.currentTarget.style.boxShadow = 'var(--glow-blue)';
+                            }}
+                            onBlur={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--border-default)';
+                                e.currentTarget.style.boxShadow = 'none';
+                            }}
                         />
                         <button
                             onClick={handleAdd}
                             disabled={!input.trim()}
-                            className="bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg px-3 disabled:opacity-50 transition-colors border border-white/5"
+                            className="px-3 transition-all active:scale-95"
+                            style={{
+                                backgroundColor: 'var(--bg-secondary)',
+                                color: 'var(--text-primary)',
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--border-subtle)',
+                                opacity: !input.trim() ? 0.5 : 1,
+                                cursor: !input.trim() ? 'not-allowed' : 'pointer',
+                                transitionDuration: 'var(--duration-fast)'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (input.trim()) e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                            }}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-secondary)')}
                         >
                             <Plus size={18} />
                         </button>
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-white/10 bg-zinc-800/30 flex justify-end gap-2">
+                <div
+                    className="p-4 border-t flex justify-end gap-2"
+                    style={{
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderColor: 'var(--border-default)'
+                    }}
+                >
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                        className="px-4 py-2 text-sm transition-all active:scale-95"
+                        style={{
+                            color: 'var(--text-tertiary)',
+                            borderRadius: 'var(--radius-md)',
+                            transitionDuration: 'var(--duration-fast)'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.color = 'var(--text-primary)';
+                            e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.color = 'var(--text-tertiary)';
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
                     >
                         取消
                     </button>
                     <button
                         onClick={handleSave}
-                        className="px-4 py-2 rounded-lg text-sm bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 transition-all font-medium"
+                        className="px-4 py-2 text-sm font-medium transition-all active:scale-95"
+                        style={{
+                            backgroundColor: 'var(--accent-blue)',
+                            color: 'white',
+                            borderRadius: 'var(--radius-md)',
+                            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)',
+                            transitionDuration: 'var(--duration-fast)'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.1)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.filter = 'brightness(1)')}
                     >
                         保存标签
                     </button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

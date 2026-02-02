@@ -83,17 +83,13 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     // 3. 导航处理函数
     const handlePrev = useCallback((e?: React.MouseEvent) => {
         e?.stopPropagation();
-        if (currentIndex > 0) {
-            setCurrentIndex(prev => prev - 1);
-        }
-    }, [currentIndex]);
+        setCurrentIndex(prev => (prev > 0 ? prev - 1 : images.length - 1));
+    }, [images.length]);
 
     const handleNext = useCallback((e?: React.MouseEvent) => {
         e?.stopPropagation();
-        if (currentIndex < images.length - 1) {
-            setCurrentIndex(prev => prev + 1);
-        }
-    }, [currentIndex, images.length]);
+        setCurrentIndex(prev => (prev < images.length - 1 ? prev + 1 : 0));
+    }, [images.length]);
 
     // 4. 缩放/平移逻辑
     const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -168,28 +164,28 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             </button>
 
             {/* 导航区域 (隐形或微弱提示) */}
-            {currentIndex > 0 && (
-                <div
-                    className="absolute left-0 top-0 bottom-0 w-[15%] z-40 flex items-center justify-start pl-4 cursor-pointer transition-colors group"
-                    onClick={handlePrev}
-                    title="上一张 (Previous)"
-                >
-                    <div className="p-3 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                        <ChevronLeft size={32} />
+            {images.length > 1 && (
+                <>
+                    <div
+                        className="absolute left-0 top-0 bottom-0 w-[15%] z-40 flex items-center justify-start pl-4 cursor-pointer transition-colors group"
+                        onClick={handlePrev}
+                        title="上一张 (Previous)"
+                    >
+                        <div className="p-3 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ChevronLeft size={32} />
+                        </div>
                     </div>
-                </div>
-            )}
 
-            {currentIndex < images.length - 1 && (
-                <div
-                    className="absolute right-0 top-0 bottom-0 w-[15%] z-40 flex items-center justify-end pr-4 cursor-pointer transition-colors group"
-                    onClick={handleNext}
-                    title="下一张 (Next)"
-                >
-                    <div className="p-3 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                        <ChevronRight size={32} />
+                    <div
+                        className="absolute right-0 top-0 bottom-0 w-[15%] z-40 flex items-center justify-end pr-4 cursor-pointer transition-colors group"
+                        onClick={handleNext}
+                        title="下一张 (Next)"
+                    >
+                        <div className="p-3 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ChevronRight size={32} />
+                        </div>
                     </div>
-                </div>
+                </>
             )}
 
             {/* 主内容区域 */}
@@ -207,7 +203,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                         controls
                         autoPlay
                         loop
-                        onDoubleClick={onClose}
+                        onDoubleClick={(e) => { e.preventDefault(); onClose(); }}
                         className="max-w-full max-h-full object-contain"
                         style={{
                             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
@@ -221,7 +217,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                         className={`max-w-full max-h-full object-contain transition-transform duration-100 ${!displaySrc || hasError ? 'opacity-0' : ''}`}
                         draggable={false}
                         onMouseDown={handleMouseDown}
-                        onDoubleClick={onClose}
+                        onDoubleClick={(e) => { e.preventDefault(); onClose(); }}
                         onContextMenu={(e) => e.stopPropagation()}
                         onError={() => setHasError(true)}
                         style={{

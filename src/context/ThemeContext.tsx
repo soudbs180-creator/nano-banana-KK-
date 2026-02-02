@@ -14,7 +14,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [theme, setThemeState] = useState<Theme>(() => {
         const stored = localStorage.getItem('theme') || localStorage.getItem('kk_theme');
         if (stored === 'dark' || stored === 'light' || stored === 'system') return stored;
-        return 'system';
+        return 'dark'; // 默认暗色主题
     });
 
     useEffect(() => {

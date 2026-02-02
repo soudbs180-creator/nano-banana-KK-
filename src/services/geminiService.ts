@@ -1,9 +1,10 @@
 import { AspectRatio, ImageSize, ModelType, ReferenceImage, GenerationMode } from "../types";
-import { keyManager } from './keyManager';
+import { keyManager, normalizeModelId } from './keyManager';
 import * as costService from './costService';
 import { AuthMethod, buildApiUrl, buildHeaders, GOOGLE_API_BASE } from './apiConfig';
 import { ProxyModelConfig } from './proxyModelConfig';
 import { logError } from './systemLogService';
+import { getImage } from './imageStorage';
 
 // Fallback control: allow config/env-driven auto-backoff when quota is exhausted
 let __fallbackFlagCache: boolean | null = null;
@@ -248,17 +249,25 @@ function mapToApiModelId(internalId: string, isProxyApi: boolean = false): strin
   // Google 官方 API 模型映射
   const modelMap: Record<string, string> = {
     // Nano Banana 系列 - 内部代号映射到 Google 官方模型
+    // 参考: https://ai.google.dev/gemini-api/docs/image-generation
+    // gemini-2.5-flash-image 是 Google 官方支持的图像生成模型
     'nano-banana': 'gemini-2.5-flash-image',          // 快速图像生成
     'nano-banana-pro': 'gemini-3-pro-image-preview',  // 高质量图像生成
 
     // 标准 Gemini Image 模型 (直接透传)
     'gemini-2.5-flash-image': 'gemini-2.5-flash-image',
+
+    // 标准 Gemini Image 模型 (直接透传，已经是正确的 Google 官方名称)
     'gemini-3-pro-image-preview': 'gemini-3-pro-image-preview',
 
     // Imagen 4 系列 (直接透传)
     'imagen-4.0-generate-001': 'imagen-4.0-generate-001',
     'imagen-4.0-ultra-generate-001': 'imagen-4.0-ultra-generate-001',
     'imagen-4.0-fast-generate-001': 'imagen-4.0-fast-generate-001',
+
+    // Imagen 3 系列 (直接透传)
+    'imagen-3.0-generate-002': 'imagen-3.0-generate-002',
+    'imagen-3.0-generate-001': 'imagen-3.0-generate-001',
   };
 
   // Defensive: Strip '-4k' suffix if present (case insensitive)
@@ -412,6 +421,13 @@ async function generateImageViaBackend(
   const controller = requestId ? abortControllers.get(requestId) : undefined;
   if (controller?.signal.aborted) throw new Error('Generation cancelled');
 
+  // ✨ 自动校正模型 ID（将旧模型迁移到新模型）
+  const normalizedModel = normalizeModelId(model);
+  if (normalizedModel !== model) {
+    console.warn(`[GeminiService] Model "${model}" is deprecated, using "${normalizedModel}" instead`);
+    model = normalizedModel as ModelType;
+  }
+
   let effectiveKey = apiKey;
   if (!effectiveKey) {
     try {
@@ -502,11 +518,62 @@ export const generateImage = async (
         resolvedRatio = AspectRatio.SQUARE;
       }
     } else {
-      // Default to SQUARE if no reference
-      resolvedRatio = AspectRatio.SQUARE;
+      // Default to 16:9 if no reference (Modern Standard)
+      resolvedRatio = AspectRatio.LANDSCAPE_16_9;
     }
   }
   aspectRatio = resolvedRatio;
+
+  // [VERIFY] Log final effective params for User Assurance
+  console.log(`[GeminiService] Generating with Model: ${model}, Ratio: ${aspectRatio}, Size: ${imageSize}`);
+
+  // Critical for correctly handling images dragged from canvas (Blob URLs) or retried history (Remote URLs)
+  // [ENHANCED] Also recover from IndexedDB if data is missing (persistence restore)
+  const processedReferences = await Promise.all((referenceImages || []).map(async (img) => {
+    // 1. If data missing, try IDB
+    if (!img.data) {
+      if (img.storageId || img.id) {
+        try {
+          const cached = await getImage(img.storageId || img.id);
+          if (cached && typeof cached === 'string') {
+            return { ...img, data: cached.replace(/^data:image\/\w+;base64,/, ''), mimeType: 'image/png' }; // Simple patch, logic below handles full data uri
+          }
+        } catch (e) {
+          console.warn('[GeminiService] IDB recovery failed', e);
+        }
+      }
+      return img; // Return as-is (will be skipped later)
+    }
+
+    // 2. Hydrate URL/Blob
+    const isUrl = img.data.startsWith('http') || img.data.startsWith('blob:') || img.data.startsWith('file:');
+    if (isUrl) {
+      try {
+        const response = await fetch(img.data);
+        const blob = await response.blob();
+        return new Promise<ReferenceImage>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const res = reader.result as string;
+            // Standardize to pure base64 for internal logic
+            const match = res.match(/^data:(.+);base64,(.+)$/);
+            if (match) {
+              resolve({ ...img, mimeType: match[1], data: match[2] });
+            } else {
+              // Fallback: use data URI
+              resolve({ ...img, data: res });
+            }
+          };
+          reader.onerror = () => resolve(img);
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        console.warn(`[GeminiService] Failed to hydrate reference image ${img.id}`, e);
+        return img;
+      }
+    }
+    return img;
+  }));
 
   // Create AbortController if requestId provided
   if (requestId && !abortControllers.has(requestId)) {
@@ -538,10 +605,28 @@ export const generateImage = async (
       group = keyData.group;
       provider = keyData.provider;
       compatibilityMode = (keyData as any).compatibilityMode || 'standard';
+      console.log(`[GeminiService] ✓ Key found for model "${model}": Provider=${provider}, BaseUrl=${baseUrl}`);
     } else {
+      // DIAGNOSTIC: Log all available keys and their supported models
+      console.warn(`[GeminiService] ⚠ No API Key found for model "${model}"`);
+      const allSlots = keyManager.getSlots();
+      if (allSlots.length === 0) {
+        console.error('[GeminiService] ✗ No API Keys configured! Please add a key in Settings.');
+      } else {
+        console.group('[GeminiService] Available Keys:');
+        allSlots.forEach((slot: any, i: number) => {
+          console.log(`  [${i + 1}] ${slot.name || slot.id} (${slot.provider || 'Google'})`);
+          console.log(`      Status: ${slot.status || 'unknown'}, Disabled: ${slot.disabled || false}`);
+          console.log(`      Supported Models: ${(slot.supportedModels || []).join(', ') || 'NONE'}`);
+        });
+        console.groupEnd();
+        console.error(`[GeminiService] ✗ None of the above keys support model "${model}". Please edit your key and add this model to the supported list.`);
+      }
+
       // Fallback: Check env var (only for basic local setup)
       if (import.meta.env.VITE_GEMINI_API_KEY) {
         effectiveKey = import.meta.env.VITE_GEMINI_API_KEY;
+        console.log('[GeminiService] Using fallback VITE_GEMINI_API_KEY from environment');
         // Provider stays Google default
       }
     }
@@ -549,7 +634,7 @@ export const generateImage = async (
 
   // If still no key, fallback to backend (if not local dev with no key)
   if (!effectiveKey) {
-    return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId);
+    return await generateImageViaBackend(prompt, aspectRatio, imageSize, processedReferences, model, apiKey, requestId);
   }
 
   // 2. Retry Loop
@@ -562,7 +647,11 @@ export const generateImage = async (
   const cleanBase = normalizeProxyBaseUrl(baseUrl) || baseUrl.trim().replace(/\/$/, '');
 
   // 4. Smart fallback for Cherry API vs Standard NewAPI
-  if (model.includes('nano-banana') || model.includes('gemini-2.5-flash-image')) {
+  // IMPORTANT: Only override apiFormat for PROXY APIs, NOT for Google official API
+  const safeModel = model || '';
+  const isGoogleOfficial = apiFormat === 'gemini'; // Already detected as Google
+
+  if (!isGoogleOfficial && (safeModel.includes('nano-banana'))) {
     apiFormat = 'openai-chat-compat';
   }
 
@@ -579,7 +668,7 @@ export const generateImage = async (
 
         // ... (body construction skipped for brevity, assumed unchanged) ...
         const contentParts: any[] = [{ type: 'text', text: prompt }];
-        referenceImages?.forEach((img) => {
+        processedReferences?.forEach((img) => {
           if (img?.data) {
             let finalUrl = img.data;
             if (!img.data.startsWith('data:') && !img.data.startsWith('http')) {
@@ -589,8 +678,10 @@ export const generateImage = async (
           }
         });
 
+        // Map internal model ID to actual API model ID for proxy APIs
+        const apiModelId = mapToApiModelId(model);
         const requestBody = {
-          model: model,
+          model: apiModelId,
           stream: false,
           messages: [{ role: 'user', content: contentParts }],
           max_tokens: 4096
@@ -613,10 +704,10 @@ export const generateImage = async (
         if (extracted?.dataUrl || extracted?.url) {
           if (keyId) {
             keyManager.reportSuccess(keyId);
-            const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, referenceImages?.length || 0);
+            const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, processedReferences?.length || 0);
             keyManager.addUsage(keyId, tokens);
             keyManager.addCost(keyId, cost);
-            costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, referenceImages?.length || 0);
+            costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, processedReferences?.length || 0);
             usageData = { tokens, cost };
           }
           if (extracted.dataUrl) return { url: extracted.dataUrl, ...usageData };
@@ -626,17 +717,122 @@ export const generateImage = async (
 
       }
       // -----------------------------------------------------------------------
-      // CASE 2: Native Gemini API
-      // -----------------------------------------------------------------------
+      // ====================================================================
+      // Native Gemini API - 严格区分模型类型
+      // ====================================================================
       else if (apiFormat === 'gemini') {
-        const apiUrl = buildApiUrl(cleanBase, model, 'generateContent', authMethod, effectiveKey);
+        const apiModelId = mapToApiModelId(model);
+        const isImagenModel = model.startsWith('imagen-4') || model.startsWith('imagen-3');
+        const isVeoModel = model.startsWith('veo-');
+
+        // ========== 分支 1: Veo 视频模型 ==========
+        // Endpoint: :predictLongRunning
+        // 特点: 异步操作,需要轮询
+        if (isVeoModel) {
+          // 导入VeoVideoService
+          const { startVeoVideoGeneration, pollVeoVideoOperation } = await import('./VeoVideoService');
+
+          // 启动异步生成
+          const { operationId } = await startVeoVideoGeneration(
+            {
+              prompt,
+              aspectRatio,
+              model: apiModelId
+            },
+            effectiveKey,
+            cleanBase
+          );
+
+          // 轮询直到完成
+          const videoResult = await pollVeoVideoOperation(
+            operationId,
+            effectiveKey,
+            cleanBase,
+            (progress) => {
+              console.log(`[Veo] 生成进度: ${progress.toFixed(1)}%`);
+            },
+            controller?.signal
+          );
+
+          if (keyId) {
+            keyManager.reportSuccess(keyId);
+            const cost = 0.5; // 临时成本
+            keyManager.addCost(keyId, cost);
+            usageData = { tokens: 0, cost };
+          }
+
+          return { url: videoResult.url, ...usageData };
+        }
+
+        // ========== 分支 2: Imagen 图像模型 ==========
+        // Endpoint: :predict
+        // 格式: instances + parameters
+        // ⚠️ Imagen实际使用generativelanguage.googleapis.com,但格式不同
+        if (isImagenModel) {
+          // Imagen使用与Gemini相同的base URL
+          const imagenUrl = `${cleanBase}/v1beta/models/${apiModelId}:predict`;
+          const finalUrl = authMethod === 'query' ? `${imagenUrl}?key=${effectiveKey}` : imagenUrl;
+
+          const headers = buildHeaders(authMethod, effectiveKey, headerName);
+          if (group) headers['X-Group'] = group;
+
+          // Imagen API format: instances + parameters
+          const parameters: any = {
+            sampleCount: 1
+          };
+
+          if (aspectRatio && aspectRatio !== AspectRatio.AUTO) {
+            parameters.aspectRatio = aspectRatio;
+          }
+
+          // ⚠️ 只有非Fast版本的Imagen支持sampleImageSize
+          // imagen-4.0-fast-generate-001 不支持此参数
+          const supportsSampleImageSize = !apiModelId.includes('fast');
+          if (imageSize && supportsSampleImageSize) {
+            parameters.sampleImageSize = imageSize;
+          }
+
+          const payload = {
+            instances: [{ prompt }],
+            parameters
+          };
+
+          const response = await fetchWithTimeout(finalUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload)
+          }, 300000, controller?.signal);
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error?.message || `HTTP ${response.status}`);
+          }
+
+          result = await response.json();
+          const imageData = result.predictions?.[0]?.bytesBase64Encoded;
+
+          if (imageData) {
+            if (keyId) {
+              keyManager.reportSuccess(keyId);
+              const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, processedReferences?.length || 0);
+              keyManager.addUsage(keyId, tokens);
+              keyManager.addCost(keyId, cost);
+              costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, processedReferences?.length || 0);
+              usageData = { tokens, cost };
+            }
+            return { url: `data:image/png;base64,${imageData}`, ...usageData };
+          }
+          throw new Error("No image data in Imagen response");
+        }
+
+        // Gemini Image models use :generateContent
+        const apiUrl = buildApiUrl(cleanBase, apiModelId, 'generateContent', authMethod, effectiveKey);
         const headers = buildHeaders(authMethod, effectiveKey, headerName);
         if (group) headers['X-Group'] = group;
 
-        // Append Aspect Ratio to prompt since it's not supported in generationConfig for some models
-        const promptWithRatio = `${prompt} --aspect ${aspectRatio}`;
-        const parts: any[] = [{ text: promptWithRatio }];
-        referenceImages?.forEach((img) => {
+        // Build parts array with clean prompt (no aspect ratio string)
+        const parts: any[] = [{ text: prompt }];
+        processedReferences?.forEach((img) => {
           if (img?.data) {
             let base64Data = img.data;
             let mimeType = img.mimeType || 'image/png';
@@ -650,35 +846,47 @@ export const generateImage = async (
           }
         });
 
-        // Create explicit Image Generation Configuration
+        // Create Image Generation Configuration
         const generationConfig: any = {
-          responseModalities: ['IMAGE', 'TEXT']
+          responseModalities: ["TEXT", "IMAGE"]
         };
 
-        // Inject Image Parameters (Aspect Ratio & Size)
-        const imageParam: any = {};
+        // Gemini Image models use imageConfig with camelCase
+        const imageConfig: any = {};
+
         if (aspectRatio && aspectRatio !== AspectRatio.AUTO) {
-          imageParam.aspectRatio = aspectRatio;
+          imageConfig.aspectRatio = aspectRatio;
         }
-        if (imageSize) {
-          imageParam.imageSize = imageSize; // "1K", "2K", "4K"
+
+        // ⚠️ 只有 gemini-3-pro-image-preview 支持 imageSize
+        // gemini-2.5-flash-image 不支持此参数
+        if (imageSize && model.includes('gemini-3-pro-image')) {
+          imageConfig.imageSize = imageSize;
         }
-        // Only attach if we have parameters (Imagen 3 / Gemini 3 Pro supports this)
-        if (Object.keys(imageParam).length > 0) {
-          // Note: Current Google API docs say parameters go into 'speechConfig' or similar for specialized modalities,
-          // but for Image Generation model 'generateContent', it's often strictly typed.
-          // Correct field for Imagen 3 via Gemini API is often 'imageGenerationConfig' or top-level tools?
-          // Let's use the 'media_resolution' equivalent OR strictly `image_config` if supported.
-          // UPDATE: Google AI Studio sends it as part of `generationConfig`.
-          generationConfig['imageConfig'] = imageParam;
+
+        if (Object.keys(imageConfig).length > 0) {
+          generationConfig.imageConfig = imageConfig;
         }
 
         const tools = enableGrounding ? [{ googleSearch: {} }] : undefined;
 
+        // Construct payload dynamically to avoid sending empty objects/undefined keys
+        const payload: any = {
+          contents: [{ role: 'user', parts }]
+        };
+
+        if (generationConfig && Object.keys(generationConfig).length > 0) {
+          payload.generationConfig = generationConfig;
+        }
+
+        if (tools) {
+          payload.tools = tools;
+        }
+
         const response = await fetchWithTimeout(apiUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig, tools })
+          body: JSON.stringify(payload)
         }, 300000, controller?.signal);
 
         if (!response.ok) {
@@ -692,16 +900,15 @@ export const generateImage = async (
         if (inlineData) {
           if (keyId) {
             keyManager.reportSuccess(keyId);
-            const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, referenceImages?.length || 0);
+            const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, processedReferences?.length || 0);
             keyManager.addUsage(keyId, tokens);
             keyManager.addCost(keyId, cost);
-            costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, referenceImages?.length || 0);
+            costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, processedReferences?.length || 0);
             usageData = { tokens, cost };
           }
           return { url: `data:image/png;base64,${inlineData.data}`, ...usageData };
         }
         throw new Error("No image data in Gemini response");
-
       }
       // -----------------------------------------------------------------------
       // CASE 3: Standard OpenAI Image API (Default)
@@ -755,7 +962,7 @@ export const generateImage = async (
             // Fallback to backend if quota exhausted
             const shouldFallback = await getFallbackFlag();
             if (shouldFallback && (errMsg.toLowerCase().includes('quota') || (errData?.error?.code ?? '').toString().toLowerCase().includes('quota'))) {
-              return await generateImageViaBackend(prompt, aspectRatio, imageSize, referenceImages, model, apiKey, requestId);
+              return await generateImageViaBackend(prompt, aspectRatio, imageSize, processedReferences, model, apiKey, requestId);
             }
             throw new Error(errMsg);
           }
@@ -866,11 +1073,13 @@ export const validateApiKey = async (apiKey: string): Promise<boolean> => {
 /**
  * Generate text conversation (Chat) using Gemini API
  * Supports third-party API proxies via baseUrl configuration
+ * Now supports multimodal input (images, videos, audio)
  */
 export const generateText = async (
   messages: { role: 'user' | 'assistant', content: string }[],
   model: string,
-  apiKey: string = ''
+  apiKey: string = '',
+  inlineData?: { mimeType: string; data: string }[] // 多媒体数据
 ): Promise<string> => {
   let effectiveKey = apiKey;
   let keyId: string | undefined;
@@ -907,10 +1116,23 @@ export const generateText = async (
 
     try {
       // Map 'assistant' role to 'model' for API
-      const contents = messages.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }));
+      // 构建contents,最后一条用户消息包含多媒体数据
+      const contents = messages.map((m, idx) => {
+        const isLastUserMessage = m.role === 'user' && idx === messages.length - 1;
+        const parts: any[] = [{ text: m.content }];
+
+        // 如果是最后一条用户消息且有多媒体数据,添加到parts
+        if (isLastUserMessage && inlineData && inlineData.length > 0) {
+          inlineData.forEach(media => {
+            parts.push({ inlineData: { mimeType: media.mimeType, data: media.data } });
+          });
+        }
+
+        return {
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts
+        };
+      });
 
       const headers = buildHeaders(authMethod, effectiveKey, headerName);
       if (group) {

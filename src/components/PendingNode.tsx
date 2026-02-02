@@ -40,133 +40,172 @@ const PendingNode: React.FC<PendingNodeProps> = ({
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const dragStartPos = useRef({ x: 0, y: 0 });
 
-    const { width: w, totalHeight: h } = getCardDimensions(aspectRatio, true); // Include footer for placeholder height
-    const totalWidth = parallelCount * (w + 20) - 20;
-    // const startX = -(totalWidth / 2) + w / 2; // Unused in final layout logic
+    // 生成计时器
+    const [elapsedTime, setElapsedTime] = useState(0);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-    const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-        // Allow dragging on mobile too (consistency across platforms)
+    // 预览卡30秒超时销毁
+    const [idleTime, setIdleTime] = useState(0);
+    const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-        e.stopPropagation();
-        setIsDragging(true);
-
-        // Handle both Mouse and Touch events
-        let clientX, clientY;
-        if ('touches' in e) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-        } else {
-            clientX = (e as React.MouseEvent).clientX;
-            clientY = (e as React.MouseEvent).clientY;
-        }
-
-        // Store initial mouse position and card position
-        setDragOffset({
-            x: clientX,
-            y: clientY
-        });
-        // Store the starting position of the card
-        dragStartPos.current = { x: position.x, y: position.y };
-    };
-
-    // MUST be called unconditionally - moved before any conditional returns
+    // 计时器逻辑 (生成中计时)
     useEffect(() => {
-        const handleMouseMove = (e: MouseEvent | TouchEvent) => {
-            if (!isDragging) return;
-
-            // Prevent scrolling while dragging
-            if (e.cancelable) e.preventDefault();
-
-            let clientX, clientY;
-            if ('touches' in e) {
-                clientX = (e as TouchEvent).touches[0].clientX;
-                clientY = (e as TouchEvent).touches[0].clientY;
-            } else {
-                clientX = (e as MouseEvent).clientX;
-                clientY = (e as MouseEvent).clientY;
+        if (isGenerating) {
+            setElapsedTime(0);
+            timerRef.current = setInterval(() => {
+                setElapsedTime(prev => prev + 1);
+            }, 1000);
+        } else {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
             }
-
-            // Calculate delta in screen space, then convert to canvas space by dividing by scale
-            const deltaX = (clientX - dragOffset.x) / canvasTransform.scale;
-            const deltaY = (clientY - dragOffset.y) / canvasTransform.scale;
-
-            onPositionChange?.({
-                x: dragStartPos.current.x + deltaX,
-                y: dragStartPos.current.y + deltaY
-            });
-        };
-
-        const handleMouseUp = () => {
-            setIsDragging(false);
-        };
-
-        if (isDragging) {
-            window.addEventListener('mousemove', handleMouseMove);
-            window.addEventListener('mouseup', handleMouseUp);
-            window.addEventListener('touchmove', handleMouseMove, { passive: false });
-            window.addEventListener('touchend', handleMouseUp);
         }
         return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-            window.removeEventListener('touchmove', handleMouseMove);
-            window.removeEventListener('touchend', handleMouseUp);
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+            }
         };
-    }, [isDragging, dragOffset, onPositionChange, canvasTransform.scale]);
+    }, [isGenerating]);
 
-    // Conditional rendering AFTER all hooks
-    if (!prompt) return null;
+    // 30秒无操作自动销毁预览卡
+    useEffect(() => {
+        if (!isGenerating && prompt) {
+            setIdleTime(0);
+            idleTimerRef.current = setInterval(() => {
+                setIdleTime(prev => {
+                    if (prev >= 29) {
+                        onDisconnect?.();
+                        return prev;
+                    }
+                    return prev + 1;
+                });
+            }, 1000);
+        } else {
+            if (idleTimerRef.current) {
+                clearInterval(idleTimerRef.current);
+                idleTimerRef.current = null;
+            }
+            setIdleTime(0);
+        }
+        return () => {
+            if (idleTimerRef.current) {
+                clearInterval(idleTimerRef.current);
+            }
+        };
+    }, [isGenerating, prompt, onDisconnect]);
 
-    // 如果只是在输入中，显示一个跟随的输入气泡
-    // Uses same transform as PromptNodeComponent: translate(-50%, -100%)
+    const { width: w, totalHeight: h } = getCardDimensions(aspectRatio, true);
+
+    const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+        e.stopPropagation();
+        setIsDragging(true);
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+        dragStartPos.current = { x: clientX, y: clientY };
+        setDragOffset({ x: 0, y: 0 });
+    };
+
+    useEffect(() => {
+        if (!isDragging) return;
+
+        const handleMove = (e: MouseEvent | TouchEvent) => {
+            const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+            const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+            const dx = (clientX - dragStartPos.current.x) / canvasTransform.scale;
+            const dy = (clientY - dragStartPos.current.y) / canvasTransform.scale;
+            setDragOffset({ x: dx, y: dy });
+        };
+
+        const handleUp = () => {
+            if (dragOffset.x !== 0 || dragOffset.y !== 0) {
+                onPositionChange?.({
+                    x: position.x + dragOffset.x,
+                    y: position.y + dragOffset.y
+                });
+            }
+            setIsDragging(false);
+            setDragOffset({ x: 0, y: 0 });
+        };
+
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleUp);
+        window.addEventListener('touchmove', handleMove);
+        window.addEventListener('touchend', handleUp);
+
+        return () => {
+            window.removeEventListener('mousemove', handleMove);
+            window.removeEventListener('mouseup', handleUp);
+            window.removeEventListener('touchmove', handleMove);
+            window.removeEventListener('touchend', handleUp);
+        };
+    }, [isDragging, dragOffset, position, canvasTransform.scale, onPositionChange]);
+
+    // 如果不在生成中,显示预览模式
     if (!isGenerating) {
         return (
             <div
-                className="absolute z-50 transition-all duration-300"
+                className="absolute z-40 flex flex-col items-center"
                 style={{
-                    left: position.x,
-                    top: position.y,
-                    transform: 'translate(-50%, -100%)', // Same as PromptNodeComponent
-                    cursor: 'grab'
+                    left: position.x + dragOffset.x,
+                    top: position.y + dragOffset.y,
+                    transform: 'translate(-50%, -100%)',
+                    cursor: isDragging ? 'grabbing' : 'grab'
                 }}
                 onMouseDown={handleMouseDown}
                 onTouchStart={handleMouseDown}
             >
-                {/* Preview Card */}
                 <div
-                    className="rounded-2xl p-3 shadow-xl animate-scaleIn"
+                    className="rounded-xl p-3 border min-w-[280px] max-w-[320px]"
                     style={{
-                        width: getCardDimensions(aspectRatio).width,
-                        backgroundColor: 'rgba(24, 24, 27, 0.6)',
-                        backdropFilter: 'blur(20px) saturate(180%)',
-                        border: '1px solid rgba(99, 102, 241, 0.2)'
+                        background: 'var(--bg-secondary)',
+                        borderColor: 'var(--border-default)',
+                        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)'
                     }}
                 >
-                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500/50 to-purple-500/50 flex items-center justify-center">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
-                                <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" />
-                            </svg>
-                        </div>
-                        <span className="text-xs font-medium text-zinc-400">Prompt Preview</span>
+                    <div className="flex items-center gap-2 text-[var(--text-tertiary)] mb-2">
+                        <Loader2 size={12} className="animate-spin" />
+                        <span className="text-[10px] font-medium">图像正在准备...</span>
+                        {onDisconnect && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onDisconnect(); }}
+                                className="ml-auto w-4 h-4 rounded-full bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-colors"
+                            >
+                                <span className="text-red-400 text-[10px]">×</span>
+                            </button>
+                        )}
                     </div>
-                    <p className="text-zinc-100 text-sm leading-relaxed line-clamp-4 font-normal">
-                        {prompt}
-                        <span className="inline-block w-1.5 h-4 ml-1 bg-indigo-500 animate-pulse align-middle rounded-full" />
-                    </p>
+                    {referenceImages && referenceImages.length > 0 && (
+                        <div className="flex gap-1 mb-1 flex-wrap">
+                            {referenceImages.slice(0, 3).map((img, idx) => (
+                                <img
+                                    key={img.id || idx}
+                                    src={`data:${img.mimeType};base64,${img.data}`}
+                                    alt="Reference"
+                                    className="w-8 h-8 object-cover rounded border border-[var(--border-light)]"
+                                />
+                            ))}
+                            {referenceImages.length > 3 && (
+                                <div className="w-8 h-8 rounded border border-[var(--border-light)] bg-[var(--bg-tertiary)] flex items-center justify-center text-[10px] text-[var(--text-tertiary)]">
+                                    +{referenceImages.length - 3}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    <p className="text-[var(--text-secondary)] text-xs leading-relaxed line-clamp-3">{prompt}</p>
                 </div>
             </div>
         );
     }
 
-    // 如果正在生成中，显示主卡片和连接的子占位符
+    // 生成中状态 - 显示主卡和副占位卡
     const cardWidth = w;
     const cardHeight = h;
-    const gapToPlaceholders = 80;
+    const gapToPlaceholders = 80; // 主卡到副卡的间距
 
-    // Calculate placeholder grid
-    const columns = isMobile ? Math.min(parallelCount, 2) : Math.min(parallelCount, 2);
-    const placeholderGap = isMobile ? 10 : 16;
+    // 2x2 宫格布局参数
+    const COLS = 2;
+    const GAP = 16;
 
     return (
         <div
@@ -180,21 +219,18 @@ const PendingNode: React.FC<PendingNodeProps> = ({
             onMouseDown={handleMouseDown}
             onTouchStart={handleMouseDown}
         >
-
-
-            {/* Main Prompt Node */}
+            {/* 主Prompt卡 */}
             <div
-                className="rounded-2xl p-4 shadow-xl flex flex-col gap-3 animate-fadeIn"
+                className="rounded-xl p-3 border min-w-[280px] max-w-[320px]"
                 style={{
-                    width: getCardDimensions(aspectRatio).width,
-                    backgroundColor: 'rgba(26, 26, 28, 0.6)',
-                    backdropFilter: 'blur(40px) saturate(180%)',
-                    border: '1px solid rgba(99, 102, 241, 0.2)'
+                    background: 'var(--bg-secondary)',
+                    borderColor: 'var(--border-default)',
+                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)'
                 }}
             >
-                <div className="flex items-center gap-2 mb-1">
-                    <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                    <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Generating x{parallelCount}</span>
+                <div className="flex items-center gap-2 text-[var(--text-tertiary)] mb-2">
+                    <div className="w-2 h-2 rounded-full bg-[var(--text-tertiary)] animate-pulse" />
+                    <span className="text-[10px] text-[var(--text-secondary)] font-bold uppercase tracking-wider">Generating x{parallelCount}</span>
                 </div>
                 {referenceImages && referenceImages.length > 0 && (
                     <div className="flex gap-1 mb-1 flex-wrap">
@@ -203,64 +239,169 @@ const PendingNode: React.FC<PendingNodeProps> = ({
                                 key={img.id || idx}
                                 src={`data:${img.mimeType};base64,${img.data}`}
                                 alt="Reference"
-                                className="w-8 h-8 object-cover rounded border border-white/10"
+                                className="w-8 h-8 object-cover rounded border border-[var(--border-light)]"
                             />
                         ))}
                         {referenceImages.length > 3 && (
-                            <div className="w-8 h-8 rounded border border-white/10 bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-400">
+                            <div className="w-8 h-8 rounded border border-[var(--border-light)] bg-[var(--bg-tertiary)] flex items-center justify-center text-[10px] text-[var(--text-tertiary)]">
                                 +{referenceImages.length - 3}
                             </div>
                         )}
                     </div>
                 )}
-                <p className="text-zinc-300 text-xs leading-relaxed line-clamp-3">{prompt}</p>
+                <p className="text-[var(--text-secondary)] text-xs leading-relaxed line-clamp-3">{prompt}</p>
             </div>
 
-            {/* Placeholders */}
+            {/* 副占位卡 - 2x2 宫格布局 */}
             <div className="relative" style={{ height: 0 }}>
                 {Array.from({ length: parallelCount }).map((_, i) => {
-                    const cardW = isMobile ? 170 : w;
-                    const cardH = isMobile ? 260 : h;
+                    const col = i % COLS;
+                    const row = Math.floor(i / COLS);
 
-                    const col = i % columns;
-                    const row = Math.floor(i / columns);
+                    // 计算居中: 实际列数 = min(COLS, parallelCount)
+                    const actualCols = Math.min(COLS, parallelCount);
+                    const totalW = actualCols * cardWidth + (actualCols - 1) * GAP;
 
-                    const itemsInRow = Math.min(columns, parallelCount - row * columns);
-                    const currentGridWidth = itemsInRow * cardW + (itemsInRow - 1) * placeholderGap;
-                    const startX = -currentGridWidth / 2;
+                    // 每个卡片的left偏移 (相对于中心点)
+                    const offsetX = -totalW / 2 + col * (cardWidth + GAP) + cardWidth / 2;
 
-                    const offsetX = startX + col * (cardW + placeholderGap) + cardW / 2;
-                    const offsetY = gapToPlaceholders + cardH + row * (cardH + placeholderGap);
+                    // 每个卡片的top偏移
+                    const offsetY = gapToPlaceholders + row * (cardHeight + GAP);
+
+                    // 格式化计时
+                    const mins = Math.floor(elapsedTime / 60);
+                    const secs = elapsedTime % 60;
+                    const timeStr = mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
 
                     return (
                         <React.Fragment key={i}>
-                            <svg className="pointer-events-none" style={{ position: 'absolute', left: '50%', top: 0, overflow: 'visible', zIndex: 10 }}>
-                                <path d={`M0,0 L${offsetX},${offsetY}`} fill="none" stroke="#3f3f46" strokeWidth="1" strokeDasharray="4 4" />
-                            </svg>
-                            <div
-                                className="absolute rounded-2xl overflow-hidden shadow-lg flex items-center justify-center"
+                            {/* 连接线 */}
+                            <svg
+                                className="pointer-events-none"
                                 style={{
-                                    backgroundColor: 'rgba(26, 26, 28, 0.5)',
-                                    backdropFilter: 'blur(20px)',
-                                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                                    width: cardW,
-                                    height: cardH,
+                                    position: 'absolute',
+                                    left: '50%',
+                                    top: 0,
+                                    overflow: 'visible',
+                                    zIndex: 5
+                                }}
+                            >
+                                <path
+                                    d={`M0,0 L${offsetX},${offsetY}`}
+                                    fill="none"
+                                    stroke="rgba(255,255,255,0.25)"
+                                    strokeWidth="1.5"
+                                    strokeDasharray="6 4"
+                                />
+                            </svg>
+
+                            {/* 副占位卡 - 适配主题背景 + 扫光动画 */}
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    width: cardWidth,
+                                    height: cardHeight,
                                     left: `calc(50% + ${offsetX}px)`,
                                     top: offsetY,
                                     transform: 'translateX(-50%)',
-                                    zIndex: 0
+                                    borderRadius: '16px',
+                                    overflow: 'hidden',
+                                    boxShadow: 'var(--shadow-xl, 0 8px 32px rgba(0,0,0,0.3))',
+                                    border: '1px solid var(--border-medium)',
+                                    background: 'var(--bg-secondary)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    zIndex: 10
                                 }}
                             >
-                                <div className="flex flex-col items-center gap-3 opacity-50">
-                                    <Loader2 size={24} className="text-indigo-400 animate-spin" />
-                                    <span className="text-[10px] text-zinc-500 font-medium">Creating masterpiece...</span>
+                                {/* 45°倾斜扫光动画 + 磨砂效果 */}
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        background: 'linear-gradient(45deg, transparent 0%, transparent 35%, rgba(255,255,255,0.12) 45%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.12) 55%, transparent 65%, transparent 100%)',
+                                        backgroundSize: '300% 300%',
+                                        animation: 'shimmer-move 2.5s ease-in-out infinite',
+                                        pointerEvents: 'none',
+                                        backdropFilter: 'blur(1px)'
+                                    }}
+                                />
+
+                                {/* 脉冲圆形光晕 */}
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        top: '50%',
+                                        left: '50%',
+                                        width: '120px',
+                                        height: '120px',
+                                        transform: 'translate(-50%, -50%)',
+                                        borderRadius: '50%',
+                                        background: 'radial-gradient(circle, rgba(99,102,241,0.2) 0%, transparent 70%)',
+                                        animation: 'pulse-ring 2s ease-in-out infinite',
+                                        pointerEvents: 'none'
+                                    }}
+                                />
+
+                                {/* 内容 */}
+                                <div style={{
+                                    position: 'relative',
+                                    zIndex: 10,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                }}>
+                                    <div style={{
+                                        width: 44,
+                                        height: 44,
+                                        borderRadius: '50%',
+                                        background: 'var(--accent-primary-alpha, rgba(99,102,241,0.15))',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}>
+                                        <Loader2 size={22} style={{ color: 'var(--accent-primary, #818cf8)' }} className="animate-spin" />
+                                    </div>
+                                    <span style={{
+                                        fontSize: '20px',
+                                        color: 'var(--text-primary)',
+                                        fontWeight: 600,
+                                        fontFamily: 'monospace'
+                                    }}>
+                                        {timeStr}
+                                    </span>
+                                    <span style={{
+                                        fontSize: '10px',
+                                        color: 'var(--text-tertiary)',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '1px'
+                                    }}>
+                                        生成中 #{i + 1}
+                                    </span>
                                 </div>
-                                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5" />
                             </div>
                         </React.Fragment>
                     );
                 })}
             </div>
+
+            {/* 动画CSS */}
+            <style>{`
+                @keyframes shimmer-move {
+                    0% { background-position: 200% 200%; }
+                    100% { background-position: -100% -100%; }
+                }
+                @keyframes pulse-ring {
+                    0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.8); }
+                    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+                }
+            `}</style>
         </div>
     );
 };

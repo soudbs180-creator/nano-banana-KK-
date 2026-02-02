@@ -64,15 +64,32 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-[92vw] md:max-w-lg bg-[#1a1a1c] border border-white/10 rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+        <div
+            className="fixed inset-0 z-[3000] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)' }}
+        >
+            <div
+                className="w-full max-w-[92vw] md:max-w-lg p-6 shadow-2xl animate-modal-in"
+                style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-xl)', // 16px
+                    boxShadow: 'var(--shadow-xl)'
+                }}
+            >
                 {/* Header */}
                 <div className="text-center mb-6">
-                    <div className="w-14 h-14 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-xl mx-auto mb-4 flex items-center justify-center">
+                    <div
+                        className="w-14 h-14 mx-auto mb-4 flex items-center justify-center"
+                        style={{
+                            background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                            borderRadius: 'var(--radius-lg)'
+                        }}
+                    >
                         <HardDrive className="text-white" size={28} />
                     </div>
-                    <h2 className="text-xl font-bold text-white mb-2">选择图片存储方式</h2>
-                    <p className="text-sm text-zinc-400">原图大小约 1-5 MB，请选择保存位置</p>
+                    <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>选择图片存储方式</h2>
+                    <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>原图大小约 1-5 MB,请选择保存位置</p>
                 </div>
 
                 {/* Options */}
@@ -186,7 +203,15 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
 
                 {/* Error Message */}
                 {error && (
-                    <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
+                    <div
+                        className="mb-4 p-3 text-sm"
+                        style={{
+                            backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                            border: '1px solid rgba(220, 38, 38, 0.3)',
+                            borderRadius: 'var(--radius-md)',
+                            color: 'var(--accent-red)'
+                        }}
+                    >
                         {error}
                     </div>
                 )}
@@ -202,7 +227,16 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
                 <button
                     onClick={handleConfirm}
                     disabled={!selectedMode || isLoading}
-                    className="w-full h-12 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
+                    className="w-full h-12 text-white font-medium flex items-center justify-center gap-2 transition-all active:scale-95"
+                    style={{
+                        backgroundColor: 'var(--accent-blue)',
+                        borderRadius: 'var(--radius-md)',
+                        opacity: (!selectedMode || isLoading) ? 0.5 : 1,
+                        cursor: (!selectedMode || isLoading) ? 'not-allowed' : 'pointer',
+                        transitionDuration: 'var(--duration-fast)'
+                    }}
+                    onMouseEnter={(e) => { if (selectedMode && !isLoading) e.currentTarget.style.filter = 'brightness(1.1)'; }}
+                    onMouseLeave={(e) => (e.currentTarget.style.filter = 'brightness(1)')}
                 >
                     {isLoading ? (
                         <>

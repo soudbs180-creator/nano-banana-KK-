@@ -3,35 +3,50 @@ import { createPortal } from 'react-dom';
 import {
     X, Plus, Trash2, Activity, Pencil, Zap,
     DollarSign, Check, Pause, Play, RefreshCw, Server,
-    Globe, Shield, Box, Key, Terminal
+    Globe, Shield, Box, Key, Terminal, Sparkles, Clock, Maximize2
 } from 'lucide-react';
-import { KeySlot, keyManager, DEFAULT_GOOGLE_MODELS, parseModelString } from '../services/keyManager';
-import { generateImage } from "../services/geminiService";
-import { comprehensiveConnectionTest } from "../services/connectionTest"; // Use new test service
+import keyManager, { KeySlot, autoDetectAndConfigureModels, parseModelString, categorizeModels } from '../services/keyManager';
+import { comprehensiveConnectionTest } from "../services/connectionTest";
 import { notify } from '../services/notificationService';
 import { CHAT_MODEL_PRESETS } from '../services/modelPresets';
 
-// Helper to split model strings respecting parentheses
+
+// Helper to split model strings respecting parentheses and group labels
 const splitModelStrings = (input: string): string[] => {
-    const result: string[] = [];
-    let current = '';
-    let depth = 0;
+    if (!input || !input.trim()) return [];
 
-    for (let i = 0; i < input.length; i++) {
-        const char = input[i];
-        if (char === '(') depth++;
-        if (char === ')') depth--;
+    // 移除emoji和分组标签(如"📸 图像:"、"🎬 视频:"等)
+    const cleanInput = input
+        .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // 移除emoji
+        .replace(/(图像|视频|聊天|其他)\s*:/g, '') // 移除中文标签
+        .replace(/(image|video|chat|other)\s*:/gi, ''); // 移除英文标签 (可选)
 
-        if ((char === ',' || char === '，' || char === '\n') && depth === 0) {
-            if (current.trim()) result.push(current.trim());
-            current = '';
-        } else {
-            current += char;
-        }
-    }
-    if (current.trim()) result.push(current.trim());
-    return result;
+    // 使用parseModelString处理每个模型
+    return cleanInput
+        .split(/[,\n]/) // 按逗号或换行符分割
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(s => parseModelString(s).id); // 只保留ID
 };
+
+// Google默认模型列表
+const DEFAULT_GOOGLE_MODELS = [
+    // 图片模型
+    'gemini-2.5-flash-image',
+    'gemini-3-pro-image-preview',
+    'imagen-4.0-generate-001',
+    'imagen-4.0-ultra-generate-001',
+    'imagen-4.0-fast-generate-001',
+    // 视频模型
+    'veo-3.1-generate-preview',
+    'veo-3.1-fast-generate-preview',
+    // 聊天模型
+    'gemini-3-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite'
+];
 
 // Preset Providers Configuration
 const PRESET_PROVIDERS = [
@@ -39,7 +54,7 @@ const PRESET_PROVIDERS = [
     { label: 'Gemini-API.cn', url: 'https://gemini-api.cn', provider: 'OpenAI', mode: 'standard', models: 'gemini-2.5-flash-image, gemini-3-pro-image-preview, imagen-3.0-generate-001' },
     { label: 'SiliconFlow (硅基流动)', url: 'https://api.siliconflow.cn', provider: 'OpenAI', mode: 'chat', models: 'deepseek-ai/DeepSeek-V3, deepseek-ai/DeepSeek-R1, black-forest-labs/FLUX.1-schnell, stabilityai/stable-diffusion-3-medium' },
     { label: 'DeepSeek Official', url: 'https://api.deepseek.com', provider: 'OpenAI', mode: 'chat', models: 'deepseek-chat, deepseek-reasoner' },
-    { label: 'OpenRouter', url: 'https://openrouter.ai/api/v1', provider: 'OpenAI', mode: 'standard', models: 'google/gemini-2.0-flash-exp:free, google/gemini-flash-1.5, openai/gpt-4o, anthropic/claude-3.5-sonnet' },
+    { label: 'OpenRouter', url: 'https://openrouter.ai/api/v1', provider: 'OpenAI', mode: 'standard', models: 'google/gemini-2.5-flash:free, google/gemini-3-flash-preview, openai/gpt-4o, anthropic/claude-3.5-sonnet' },
     { label: 'OpenAI Official', url: 'https://api.openai.com/v1', provider: 'OpenAI', mode: 'standard', models: 'dall-e-3(DALL-E 3), gpt-4o(GPT-4o), gpt-4o-mini' },
     { label: 'Google Gemini', url: 'https://generativelanguage.googleapis.com', provider: 'Google', mode: 'standard', models: DEFAULT_GOOGLE_MODELS.join(', ') },
 ];
@@ -66,8 +81,14 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
     const [formProvider, setFormProvider] = useState('Google');
     const [formKey, setFormKey] = useState('');
     const [formBaseUrl, setFormBaseUrl] = useState('');
-    const [formModels, setFormModels] = useState(''); // Comma separated strings
+    // 分组模型state
+    const [formImageModels, setFormImageModels] = useState('');
+    const [formVideoModels, setFormVideoModels] = useState('');
+    const [formChatModels, setFormChatModels] = useState('');
+    const [formOtherModels, setFormOtherModels] = useState('');
     const [formCompatibility, setFormCompatibility] = useState<'standard' | 'chat'>('standard');
+    const [expandedType, setExpandedType] = useState<'image' | 'video' | 'chat' | 'other' | null>(null);
+    const [formBudgetLimit, setFormBudgetLimit] = useState<number>(-1); // -1 = unlimited
     const [isKeyEditing, setIsKeyEditing] = useState(false);
 
     // Auto-detect provider & settings from Key pattern
@@ -77,7 +98,11 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             // Google
             setFormProvider('Google');
             setFormBaseUrl('https://generativelanguage.googleapis.com');
-            setFormModels(DEFAULT_GOOGLE_MODELS.join(', '));
+            // 设置默认Google图像模型
+            setFormImageModels('gemini-2.5-flash-image, gemini-3-pro-image-preview');
+            setFormVideoModels('');
+            setFormChatModels('');
+            setFormOtherModels('');
             setFormCompatibility('standard');
         } else if (k.startsWith('sk-ant')) {
             // Anthropic
@@ -126,7 +151,13 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             setFormProvider(preset.provider);
             setFormCompatibility(preset.mode as any);
             if (preset.models) {
-                setFormModels(preset.models);
+                // 对预设的模型进行分类
+                const models = splitModelStrings(preset.models);
+                const categorized = categorizeModels(models);
+                setFormImageModels(categorized.imageModels.join(', '));
+                setFormVideoModels(categorized.videoModels.join(', '));
+                setFormChatModels(categorized.chatModels.join(', '));
+                setFormOtherModels(categorized.otherModels?.join(', ') || '');
             }
             if (formName === 'New Channel' || !formName) {
                 setFormName(preset.label);
@@ -140,7 +171,17 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
     useEffect(() => {
         const update = () => {
-            setSlots([...keyManager.getSlots()]);
+            const allSlots = keyManager.getSlots();
+            // ✨ 排序逻辑:开启的排前面,暂停的排后面,各自组内按创建时间排序
+            const sortedSlots = allSlots.sort((a, b) => {
+                // 1. 开启的(disabled=false)排在暂停的(disabled=true)前面
+                if (a.disabled !== b.disabled) {
+                    return a.disabled ? 1 : -1;
+                }
+                // 2. 同一状态内,按创建时间升序(旧的在前)
+                return a.createdAt - b.createdAt;
+            });
+            setSlots(sortedSlots);
             setStrategy(keyManager.getStrategy());
         };
         const unsub = keyManager.subscribe(update);
@@ -159,7 +200,12 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         setFormKey('');
         setFormBaseUrl('');
         setFormCompatibility('standard');
-        setFormModels(DEFAULT_GOOGLE_MODELS.join(', '));
+        // 分组初始化
+        setFormImageModels('gemini-2.5-flash-image, gemini-3-pro-image-preview');
+        setFormVideoModels('');
+        setFormChatModels('');
+        setFormOtherModels('');
+        setFormBudgetLimit(-1);
         setTestStatus('idle');
         setTestMessage('');
         setIsModalOpen(true);
@@ -173,7 +219,14 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         setFormKey(slot.key);
         setFormBaseUrl(slot.baseUrl || '');
         setFormCompatibility(slot.compatibilityMode || 'standard');
-        setFormModels((slot.supportedModels || []).join(', '));
+        // 对已有模型进行分类
+        const models = slot.supportedModels || [];
+        const categorized = categorizeModels(models);
+        setFormImageModels(categorized.imageModels.join(', '));
+        setFormVideoModels(categorized.videoModels.join(', '));
+        setFormChatModels(categorized.chatModels.join(', '));
+        setFormOtherModels(categorized.otherModels?.join(', ') || '');
+        setFormBudgetLimit(slot.budgetLimit ?? -1); // Load existing budget
         setTestStatus('idle');
         setTestMessage('');
         setIsModalOpen(true);
@@ -271,10 +324,19 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
         try {
             // Use new comprehensive test
+            // 合并所有分组的模型用于测试
+            const allModels = [
+                ...splitModelStrings(formImageModels),
+                ...splitModelStrings(formVideoModels),
+                ...splitModelStrings(formChatModels),
+                ...splitModelStrings(formOtherModels)
+            ];
+            const testModel = allModels[0] || 'gpt-3.5-turbo';
+
             const results = await comprehensiveConnectionTest({
                 apiKey: formKey,
                 baseUrl: formBaseUrl || (formProvider === 'Google' ? 'https://generativelanguage.googleapis.com' : ''),
-                model: formModels.split(',')[0]?.trim() || 'gpt-3.5-turbo',
+                model: testModel,
                 compatibilityMode: formCompatibility,
                 provider: formProvider
             });
@@ -301,18 +363,15 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         if (!formKey.trim()) return;
         setLoading(true);
 
-        const modelsArray = splitModelStrings(formModels);
-        // If no models specified, and it's Google, default to standard.
-        // But logic is handled in KeyManager mostly. 
-        // If user explicitly leaves it empty, KeyManager might backfill default google models 
-        // ONLY IF it's a legacy migration. 
-        // For new keys, if empty, it might mean "no models" or "all models"? 
-        // Let's assume empty means "Default Google Models" if provider is Google, 
-        // or "Auto-detect" if proxy? 
-        // For now, let's just pass what user typed. If empty, KeyManager defaults to Gemini models in loadState logic, 
-        // but for addKey we should probably handle defaults if empty.
+        // 合并所有分组的模型
+        const allModels = [
+            ...splitModelStrings(formImageModels),
+            ...splitModelStrings(formVideoModels),
+            ...splitModelStrings(formChatModels),
+            ...splitModelStrings(formOtherModels)
+        ];
 
-        let finalModels = modelsArray;
+        let finalModels = allModels;
         if (finalModels.length === 0 && (formProvider === 'Google' || !formBaseUrl)) {
             finalModels = [...DEFAULT_GOOGLE_MODELS];
         }
@@ -323,13 +382,34 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             provider: formProvider,
             baseUrl: formBaseUrl.trim(),
             compatibilityMode: formCompatibility,
-            supportedModels: finalModels
+            supportedModels: finalModels,
+            budgetLimit: formBudgetLimit
         };
 
+        console.log('[ApiChannelsView] 保存前的数据:', {
+            finalModels,
+            allModels,
+            formImageModels,
+            formVideoModels,
+            formChatModels,
+            formOtherModels,
+            keyData
+        });
+
+        let result;
         if (editingId) {
-            keyManager.updateKey(editingId, keyData);
+            await keyManager.updateKey(editingId, keyData);
         } else {
-            await keyManager.addKey(formKey.trim(), keyData);
+            result = await keyManager.addKey(formKey.trim(), keyData);
+        }
+
+        console.log('[ApiChannelsView] 保存结果:', result);
+
+        if (result && !result.success) {
+            console.error('[ApiChannelsView] 保存失败:', result.error);
+            alert(`保存失败: ${result.error}`);
+            setLoading(false);
+            return;
         }
 
         setLoading(false);
@@ -341,7 +421,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         if (value.length <= 8) return value;
         const head = value.slice(0, 4);
         const tail = value.slice(-4);
-        return `${head}...${tail}`;
+        return `${head}...${tail} `;
     };
 
     // Render Logic
@@ -360,7 +440,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
                 <div className="flex items-center gap-3">
                     {/* Strategy Switcher */}
-                    <div className="bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-xl p-1 flex items-center">
+                    <div className="bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-xl h-10 p-1 flex items-center">
                         <button
                             onClick={() => handleStrategyChange('round-robin')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${strategy === 'round-robin'
@@ -414,7 +494,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                     <div className={
                         isSequential
                             ? "flex flex-col gap-3 max-w-3xl mx-auto w-full pb-4 pt-2 px-4"
-                            : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 px-4 pb-6 pt-2"
+                            : "flex flex-col gap-6 px-4 pb-6 pt-2 max-w-3xl mx-auto"
                     }>
                         {slots.map((slot, index) => (
                             <div
@@ -457,11 +537,11 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                             (slot.status === 'invalid' || slot.status === 'rate_limited') ? 'bg-red-500' :
                                                                 'bg-[var(--text-tertiary)]'
                                                     }`} />
-                                                <h4 className="font-medium truncate pr-2" style={{ color: 'var(--text-primary)' }} title={slot.name}>
+                                                <h4 className="text-base font-semibold truncate pr-2" style={{ color: 'var(--text-primary)' }} title={slot.name}>
                                                     {slot.name}
                                                 </h4>
                                             </div>
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${slot.provider === 'Google'
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${slot.provider === 'Google'
                                                 ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
                                                 : 'bg-purple-500/10 text-purple-500 border-purple-500/20'
                                                 }`}>
@@ -472,6 +552,76 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         <div className="flex items-center gap-2 text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
                                             <Key size={12} />
                                             <span className="truncate">{maskApiKey(slot.key)}</span>
+                                        </div>
+
+                                        {/* New: Status Details & Performance Metrics */}
+                                        <div className="flex items-center gap-3 mt-2 pt-2 border-t border-[var(--border-light)]/50">
+                                            {/* Status Indicator */}
+                                            <div className="flex items-center gap-1.5 text-xs">
+                                                {refreshingIds.has(slot.id) ? (
+                                                    <>
+                                                        <Clock className="text-blue-400 animate-pulse" size={12} />
+                                                        <span style={{ color: '#60a5fa' }}>检测中</span>
+                                                    </>
+                                                ) : slot.disabled ? (
+                                                    <>
+                                                        <Pause size={12} />
+                                                        <span style={{ color: 'var(--text-tertiary)' }}>已禁用</span>
+                                                    </>
+                                                ) : slot.status === 'valid' ? (
+                                                    <>
+                                                        <Check className="text-emerald-500" size={12} />
+                                                        <span style={{ color: '#10b981' }}>在线</span>
+                                                    </>
+                                                ) : slot.status === 'rate_limited' ? (
+                                                    <>
+                                                        <Clock className="text-orange-500" size={12} />
+                                                        <span style={{ color: '#f59e0b' }}>限流</span>
+                                                    </>
+                                                ) : slot.status === 'invalid' ? (
+                                                    <>
+                                                        <X className="text-red-500" size={12} />
+                                                        <span style={{ color: '#ef4444' }}>离线</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Activity size={12} style={{ color: 'var(--text-tertiary)' }} />
+                                                        <span style={{ color: 'var(--text-tertiary)' }}>未知</span>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {/* Success Rate */}
+                                            {(slot.successRate !== undefined || (slot.successCount && slot.failCount !== undefined)) && (
+                                                <div className="flex items-center gap-1.5 text-xs" title="成功率">
+                                                    <Activity size={12} style={{ color: 'var(--text-tertiary)' }} />
+                                                    <span style={{
+                                                        color: (slot.successRate || (slot.successCount / (slot.successCount + slot.failCount) * 100)) >= 95
+                                                            ? '#10b981'
+                                                            : (slot.successRate || (slot.successCount / (slot.successCount + slot.failCount) * 100)) >= 80
+                                                                ? '#f59e0b'
+                                                                : '#ef4444'
+                                                    }}>
+                                                        {(slot.successRate ?? ((slot.successCount / Math.max(1, slot.successCount + slot.failCount)) * 100)).toFixed(1)}%
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {/* Average Response Time */}
+                                            {slot.avgResponseTime !== undefined && (
+                                                <div className="flex items-center gap-1.5 text-xs" title="平均响应时间">
+                                                    <Zap size={12} style={{ color: 'var(--text-tertiary)' }} />
+                                                    <span style={{
+                                                        color: slot.avgResponseTime < 1000
+                                                            ? '#10b981'
+                                                            : slot.avgResponseTime < 3000
+                                                                ? '#f59e0b'
+                                                                : '#ef4444'
+                                                    }}>
+                                                        {slot.avgResponseTime < 1000 ? `${slot.avgResponseTime}ms` : `${(slot.avgResponseTime / 1000).toFixed(1)}s`}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -494,7 +644,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             <button
                                                 onClick={(e) => handleRefresh(slot.id, e)}
                                                 disabled={refreshingIds.has(slot.id)}
-                                                className={`p-1.5 rounded-lg transition-colors ${refreshingIds.has(slot.id) ? 'animate-spin text-indigo-500' : 'hover:bg-[var(--toolbar-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
+                                                className={`p - 1.5 rounded - lg transition - colors ${refreshingIds.has(slot.id) ? 'animate-spin text-indigo-500' : 'hover:bg-[var(--toolbar-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'} `}
                                                 title="验证连通性"
                                             >
                                                 <RefreshCw size={14} />
@@ -518,15 +668,60 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             </button>
                                         </div>
                                     </div>
-                                    {/* Stats (Fixed Width for Alignment in Sequential Desktop, Block in Mobile) */}
-                                    <div className={`grid grid-cols-2 gap-2 bg-[var(--bg-tertiary)] rounded-lg p-2 border border-[var(--border-light)] ${isSequential ? 'w-full mt-3' : 'w-full mt-3'}`}>
-                                        <div className="text-center">
-                                            <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Tokens消耗</div>
-                                            <div className="text-xs font-mono text-emerald-500 break-all" style={{ fontWeight: 600 }}>{clampAndFormat(slot.usedTokens)}</div>
+                                    {/* Stats (2-Column Layout: Left=Tokens+Cost stacked, Right=Budget centered) */}
+                                    <div className="flex gap-3 bg-[var(--bg-tertiary)] rounded-xl p-4 border border-[var(--border-light)] mt-3">
+                                        {/* Left Column: Tokens + Cost (Stacked, Vertically Centered) */}
+                                        <div className="flex-1 flex flex-col gap-3 justify-center">
+                                            {/* Tokens消耗 */}
+                                            <div className="flex items-baseline gap-2">
+                                                <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>令牌</div>
+                                                <div className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                                                    {slot.usedTokens?.toLocaleString() || 0}
+                                                </div>
+                                            </div>
+
+                                            {/* 费用消耗 */}
+                                            <div className="flex items-baseline gap-2">
+                                                <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>费用</div>
+                                                <div className="text-xl font-bold text-emerald-400">
+                                                    ${slot.totalCost.toFixed(2)}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="text-center border-l" style={{ borderColor: 'var(--border-light)' }}>
-                                            <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>费用消耗</div>
-                                            <div className="text-xs font-mono text-amber-500 break-all" style={{ fontWeight: 600 }}>${clampAndFormat(slot.totalCost)}</div>
+
+                                        {/* Right Column: Budget (Centered) */}
+                                        <div className="flex-1 flex flex-col justify-center items-center gap-2 border-l border-[var(--border-light)] pl-4">
+                                            <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>💰 预算</div>
+                                            {(slot.budgetLimit && slot.budgetLimit > 0) ? (
+                                                <>
+                                                    <div className="text-2xl font-bold" style={{ color: slot.totalCost >= slot.budgetLimit ? '#ef4444' : 'var(--text-primary)' }}>
+                                                        ${slot.budgetLimit.toFixed(2)}
+                                                    </div>
+                                                    {/* 预算进度条 */}
+                                                    <div className="w-full h-2 bg-[var(--bg-primary)] rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full transition-all duration-300 rounded-full"
+                                                            style={{
+                                                                width: `${Math.min(100, (slot.totalCost / slot.budgetLimit) * 100)}%`,
+                                                                backgroundColor: slot.totalCost >= slot.budgetLimit ? '#ef4444' : slot.totalCost >= slot.budgetLimit * 0.8 ? '#f59e0b' : '#3b82f6'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>
+                                                        {((slot.totalCost / slot.budgetLimit) * 100).toFixed(1)}% 已使用
+                                                    </div>
+                                                    {slot.totalCost >= slot.budgetLimit && (
+                                                        <div className="text-xs font-semibold" style={{ color: '#ef4444' }}>
+                                                            ⚠️ 预算已耗尽
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <div className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                                                    <span>♾️</span>
+                                                    <span className="text-sm">无限制</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -600,19 +795,19 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                     type="button"
                                                     onClick={handleTestConnection}
                                                     disabled={testStatus === 'testing'}
-                                                    className={`text-[10px] px-3 py-1.5 rounded border flex items-center gap-2 transition-colors ${testStatus === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                                    className={`text - [10px] px - 3 py - 1.5 rounded border flex items - center gap - 2 transition - colors ${testStatus === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
                                                         testStatus === 'error' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
                                                             'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border-[var(--border-medium)] hover:text-[var(--text-secondary)]'
-                                                        }`}
+                                                        } `}
                                                 >
                                                     {testStatus === 'testing' ? <Globe size={12} className="animate-spin" /> : <Terminal size={12} />}
                                                     {testStatus === 'testing' ? '测试中...' : '测试连接 (Test Connection)'}
                                                 </button>
                                             </div>
                                             {testMessage && (
-                                                <div className={`text-[10px] mt-2 p-2 rounded text-right ${testStatus === 'success' ? 'text-emerald-400' :
+                                                <div className={`text - [10px] mt - 2 p - 2 rounded text - right ${testStatus === 'success' ? 'text-emerald-400' :
                                                     testStatus === 'error' ? 'text-red-400' : 'text-[var(--text-tertiary)]'
-                                                    }`}>
+                                                    } `}>
                                                     {testMessage}
                                                 </div>
                                             )}
@@ -657,35 +852,88 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         </div>
                                     </div>
 
-                                    {/* Auto Fetch Button */}
+                                    {/* Auto Detect & Fetch Button */}
                                     <div>
                                         <button
                                             onClick={async () => {
-                                                if (!formBaseUrl && !formKey) return;
+                                                if (!formKey) {
+                                                    notify.warning('请先输入API Key', '需要API Key才能检测');
+                                                    return;
+                                                }
                                                 setLoading(true);
 
-                                                // Default URL if empty
-                                                const targetUrl = formBaseUrl || 'https://api.openai.com/v1';
-
                                                 try {
-                                                    const models = await keyManager.fetchRemoteModels(targetUrl, formKey, undefined, undefined, formProvider);
-                                                    if (models.length > 0) {
-                                                        setFormModels(models.join(', '));
-                                                        // Auto-name if still default
-                                                        if (formName === 'New Channel' || !formName) {
-                                                            try {
-                                                                const url = new URL(targetUrl);
-                                                                const domain = url.hostname.split('.').slice(-2).join('.').split('.')[0];
-                                                                setFormName(domain.charAt(0).toUpperCase() + domain.slice(1));
-                                                            } catch (e) {
+                                                    // 检测是否为Google API (Key以AIza开头)
+                                                    const isGoogleApi = formKey.trim().startsWith('AIza');
+
+                                                    if (isGoogleApi) {
+                                                        // Google API: 如果模型框为空,填充默认列表;否则验证
+                                                        const hasModels = formImageModels || formVideoModels || formChatModels;
+
+                                                        if (!hasModels) {
+                                                            // ✨ 填充Google默认模型
+                                                            setFormImageModels('gemini-2.5-flash-image, gemini-3-pro-image-preview, imagen-4.0-generate-001, imagen-4.0-ultra-generate-001, imagen-4.0-fast-generate-001');
+                                                            setFormVideoModels('veo-3.1-generate-preview, veo-3.1-fast-generate-preview');
+                                                            setFormChatModels('gemini-3-pro-preview, gemini-3-flash-preview, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite');
+                                                            setFormOtherModels('');
+
+                                                            if (formName === 'New Channel' || !formName) {
+                                                                setFormName('Google API');
+                                                                setFormProvider('Google');
                                                             }
+
+                                                            notify.success(
+                                                                '✨ 已填充Google默认模型',
+                                                                '📸 图片: 5个\n🎬 视频: 2个\n💬 聊天: 5个\n\n共12个模型'
+                                                            );
+                                                        } else {
+                                                            // ✓ 验证已输入的模型
+                                                            const allModels = [
+                                                                ...formImageModels.split(',').map(m => m.trim()).filter(Boolean),
+                                                                ...formVideoModels.split(',').map(m => m.trim()).filter(Boolean),
+                                                                ...formChatModels.split(',').map(m => m.trim()).filter(Boolean),
+                                                            ];
+
+                                                            notify.success(
+                                                                '✓ 模型格式检验通过',
+                                                                `共 ${allModels.length} 个模型\n\n📸 图片: ${formImageModels.split(',').filter(Boolean).length}个\n🎬 视频: ${formVideoModels.split(',').filter(Boolean).length}个\n💬 聊天: ${formChatModels.split(',').filter(Boolean).length}个`
+                                                            );
                                                         }
-                                                        notify.success('成功获取模型', `成功获取 ${models.length} 个模型！`);
                                                     } else {
-                                                        notify.warning('未发现模型', '请检查 URL 和 Key，或手动输入模型。');
+                                                        // 其他API: 使用原有的自动检测逻辑
+                                                        const result = await autoDetectAndConfigureModels(formKey, formBaseUrl);
+
+                                                        if (result.success && result.models.length > 0) {
+                                                            const { imageModels, videoModels, chatModels, otherModels } = result.categories;
+
+                                                            setFormImageModels(imageModels.join(', '));
+                                                            setFormVideoModels(videoModels.join(', '));
+                                                            setFormChatModels(chatModels.join(', '));
+                                                            setFormOtherModels(otherModels ? otherModels.join(', ') : '');
+
+                                                            if (formName === 'New Channel' || !formName) {
+                                                                if (formBaseUrl) {
+                                                                    try {
+                                                                        const url = new URL(formBaseUrl);
+                                                                        const domain = url.hostname.split('.').slice(-2).join('.').split('.')[0];
+                                                                        setFormName(domain.charAt(0).toUpperCase() + domain.slice(1));
+                                                                    } catch (e) {
+                                                                        setFormName('API Channel');
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            notify.success(
+                                                                '✨ 自动检测成功',
+                                                                `检测到 ${result.models.length} 个模型\n\n📸 图像: ${imageModels.length}个\n🎬 视频: ${videoModels.length}个\n💬 聊天: ${chatModels.length}个${otherModels && otherModels.length > 0 ? `\n🔧 其他: ${otherModels.length}个` : ''}`
+                                                            );
+                                                        } else {
+                                                            notify.warning('未检测到模型', '请检查API Key或手动输入模型');
+                                                        }
                                                     }
                                                 } catch (e: any) {
-                                                    notify.error('连接失败', e.message || '无法连接到 API 服务');
+                                                    console.error('[ApiChannelsView] Model check error:', e);
+                                                    notify.error('检测失败', e.message || '操作失败');
                                                 } finally {
                                                     setLoading(false);
                                                 }
@@ -693,11 +941,11 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                             disabled={loading || !formKey}
                                             className={`w-full py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${loading || !formKey
                                                 ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] cursor-not-allowed'
-                                                : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 border border-indigo-500/20'
+                                                : 'bg-gradient-to-r from-indigo-500/10 to-purple-500/10 text-indigo-400 hover:from-indigo-500/20 hover:to-purple-500/20 hover:text-indigo-300 border border-indigo-500/20'
                                                 }`}
                                         >
-                                            {loading ? <RefreshCw className="animate-spin" size={14} /> : <Zap size={14} />}
-                                            {loading ? '正在获取...' : '自动获取模型列表 (Auto-Fetch)'}
+                                            {loading ? <RefreshCw className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                                            {loading ? '正在检测...' : '检验/填充模型'}
                                         </button>
                                     </div>
                                 </div>
@@ -728,8 +976,11 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                 onChange={e => {
                                                     const nextProvider = e.target.value;
                                                     setFormProvider(nextProvider);
-                                                    if (nextProvider === 'Google' && !formModels.trim()) {
-                                                        setFormModels(DEFAULT_GOOGLE_MODELS.join(', '));
+                                                    if (nextProvider === 'Google' && !formImageModels && !formChatModels) {
+                                                        // Set defaults
+                                                        setFormImageModels('gemini-2.5-flash-image, gemini-3-pro-image-preview');
+                                                        setFormVideoModels('veo-3.1-generate-preview');
+                                                        setFormChatModels('gemini-2.5-flash');
                                                     }
                                                 }}
                                             >
@@ -742,16 +993,143 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                     </div>
 
                                     {/* Models */}
+                                    {/* Models - Grouped Cards */}
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs text-[var(--text-secondary)]">可用模型列表 (按类型分组)</label>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {/* Image Models */}
+                                            <div
+                                                onClick={() => setExpandedType('image')}
+                                                className="bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg p-3 flex flex-col gap-2 relative group cursor-pointer hover:border-indigo-500/50 transition-all"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-secondary)]">
+                                                        <span>📸</span>
+                                                        <span>图像模型 (Image)</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setFormImageModels(''); }}
+                                                        className="text-red-400 hover:text-red-300 p-1 opacity-60 group-hover:opacity-100 transition-all rounded"
+                                                        title="清空图像模型"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                                <textarea
+                                                    className="w-full bg-[var(--bg-primary)] border border-[var(--border-light)] rounded p-2 text-xs font-mono outline-none focus:border-indigo-500/50 min-h-[60px] resize-none"
+                                                    placeholder="gemini-2.5-flash-image..."
+                                                    value={formImageModels}
+                                                    onChange={e => setFormImageModels(e.target.value)}
+                                                />
+                                            </div>
+
+                                            {/* Video Models */}
+                                            <div
+                                                onClick={(e) => { e.stopPropagation(); setExpandedType('video'); }}
+                                                className="bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg p-3 flex flex-col gap-2 relative group cursor-pointer hover:border-indigo-500/30 transition-all">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-secondary)]">
+                                                        <span>🎬</span>
+                                                        <span>视频模型 (Video)</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setFormVideoModels(''); }}
+                                                        className="text-red-400 hover:text-red-300 p-1 opacity-60 group-hover:opacity-100 transition-all rounded"
+                                                        title="清空视频模型"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                                <textarea
+                                                    className="w-full bg-[var(--bg-primary)] border border-[var(--border-light)] rounded p-2 text-xs font-mono outline-none focus:border-indigo-500/50 min-h-[60px] resize-none"
+                                                    placeholder="veo-3.1-generate-preview..."
+                                                    value={formVideoModels}
+                                                    onChange={e => setFormVideoModels(e.target.value)}
+                                                />
+                                            </div>
+
+                                            <div
+                                                onClick={(e) => { e.stopPropagation(); setExpandedType('chat'); }}
+                                                className="bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg p-3 flex flex-col gap-2 relative group cursor-pointer hover:border-indigo-500/30 transition-all">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-secondary)]">
+                                                        <span>💬</span>
+                                                        <span>聊天/推理 (Chat)</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setFormChatModels(''); }}
+                                                        className="text-red-400 hover:text-red-300 p-1 opacity-60 group-hover:opacity-100 transition-all rounded"
+                                                        title="清空聊天模型"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                                <textarea
+                                                    className="w-full bg-[var(--bg-primary)] border border-[var(--border-light)] rounded p-2 text-xs font-mono outline-none focus:border-indigo-500/50 min-h-[60px] resize-none"
+                                                    placeholder="gemini-2.5-flash..."
+                                                    value={formChatModels}
+                                                    onChange={e => setFormChatModels(e.target.value)}
+                                                />
+                                            </div>
+
+                                            {/* Other Models */}
+                                            <div
+                                                onClick={(e) => { e.stopPropagation(); setExpandedType('other'); }}
+                                                className="bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg p-3 flex flex-col gap-2 relative group cursor-pointer hover:border-indigo-500/30 transition-all">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-secondary)]">
+                                                        <span>🔧</span>
+                                                        <span>其他/多模态 (Other)</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setFormOtherModels(''); }}
+                                                        className="text-red-400 hover:text-red-300 p-1 opacity-60 group-hover:opacity-100 transition-all rounded"
+                                                        title="清空其他模型"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                                <textarea
+                                                    className="w-full bg-[var(--bg-primary)] border border-[var(--border-light)] rounded p-2 text-xs font-mono outline-none focus:border-indigo-500/50 min-h-[60px] resize-none"
+                                                    placeholder="其他模型 ID..."
+                                                    value={formOtherModels}
+                                                    onChange={e => setFormOtherModels(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        <p className="text-[10px] text-[var(--text-tertiary)]">
+                                            💡 提示: 点击上方“智能检测模型”会自动填充到对应分类
+                                        </p>
+                                    </div>
+
+                                    {/* Budget Limit */}
                                     <div>
                                         <label className="text-xs text-[var(--text-secondary)] mb-1.5 flex justify-between items-center">
-                                            <span>可用模型 ID (逗号分隔)</span>
+                                            <span>💰 预算限制 (Budget Limit)</span>
+                                            <span className="text-[10px] text-[var(--text-tertiary)]">
+                                                {formBudgetLimit < 0 ? '♾️ 无限制' : `$${formBudgetLimit.toFixed(2)}`}
+                                            </span>
                                         </label>
-                                        <textarea
-                                            className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 min-h-[100px] leading-relaxed resize-none"
-                                            placeholder="模型 ID 列表，支持格式: ID(自定义名称/描述)&#10;建议点击上方“自动获取”按钮来填充可用模型"
-                                            value={formModels}
-                                            onChange={e => setFormModels(e.target.value)}
-                                        />
+                                        <div className="flex items-center gap-2">
+                                            <DollarSign size={14} className="text-[var(--text-secondary)]" />
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="-1"
+                                                className="flex-1 bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
+                                                placeholder="-1"
+                                                value={formBudgetLimit}
+                                                onChange={e => setFormBudgetLimit(parseFloat(e.target.value) || -1)}
+                                            />
+                                            <span className="text-xs text-[var(--text-tertiary)]">USD</span>
+                                        </div>
+                                        <p className="text-[10px] text-[var(--text-tertiary)] mt-1.5 flex items-start gap-1">
+                                            <span>💡</span>
+                                            <span>-1 = 无限制 | &gt;0 = 达到预算后自动停用此通道</span>
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -777,6 +1155,54 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                     document.body
                 )
             }
-        </div >
+
+            {/* Expanded Edit Modal */}
+            {expandedType && createPortal(
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-[var(--bg-secondary)] w-full max-w-2xl rounded-xl shadow-2xl border border-[var(--border-light)] flex flex-col max-h-[80vh] m-4 animate-in zoom-in-95 duration-200">
+                        <div className="p-4 border-b border-[var(--border-light)] flex items-center justify-between">
+                            <h3 className="font-bold flex items-center gap-2">
+                                {expandedType === 'image' && '📸 编辑图像模型'}
+                                {expandedType === 'video' && '🎬 编辑视频模型'}
+                                {expandedType === 'chat' && '💬 编辑聊天模型'}
+                                {expandedType === 'other' && '🔧 编辑其他模型'}
+                            </h3>
+                            <button onClick={() => setExpandedType(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full transition-colors">
+                                <X size={20} className="text-[var(--text-secondary)]" />
+                            </button>
+                        </div>
+                        <div className="flex-1 p-4 flex flex-col min-h-0">
+                            <p className="text-xs text-[var(--text-tertiary)] mb-2">每行一个ID，或用逗号分隔。支持 "ID (别名)" 格式。</p>
+                            <textarea
+                                className="flex-1 w-full bg-[var(--bg-primary)] border border-[var(--border-light)] rounded-lg p-3 text-sm font-mono outline-none focus:border-indigo-500/50 resize-none leading-relaxed"
+                                value={
+                                    expandedType === 'image' ? formImageModels :
+                                        expandedType === 'video' ? formVideoModels :
+                                            expandedType === 'chat' ? formChatModels :
+                                                formOtherModels
+                                }
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    if (expandedType === 'image') setFormImageModels(val);
+                                    else if (expandedType === 'video') setFormVideoModels(val);
+                                    else if (expandedType === 'chat') setFormChatModels(val);
+                                    else setFormOtherModels(val);
+                                }}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="p-4 border-t border-[var(--border-light)] flex justify-end">
+                            <button
+                                onClick={() => setExpandedType(null)}
+                                className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+                            >
+                                完成 (Done)
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+        </div>
     );
 };

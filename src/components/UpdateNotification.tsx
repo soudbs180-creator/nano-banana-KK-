@@ -17,30 +17,16 @@ const UpdateNotification: React.FC = () => {
     return (
         <button
             onClick={(e) => { e.currentTarget.blur(); applyUpdate(); }}
-            tabIndex={-1}
-            className="fixed bottom-16 right-6 z-[10002] group animate-in slide-in-from-right-8 fade-in duration-500 outline-none focus:outline-none"
+            className="group animate-in fade-in zoom-in duration-300 outline-none focus:outline-none"
         >
-            <div className="bg-[var(--bg-secondary)]/80 backdrop-blur-xl border border-[var(--border-light)] rounded-full py-2 pl-3 pr-2 flex items-center gap-3 shadow-2xl hover:border-indigo-500/50 hover:bg-[var(--bg-secondary)] transition-all duration-300 active:scale-95 group-hover:shadow-[0_0_20px_rgba(99,102,241,0.3)]">
-
-                {/* Icon & Pulse */}
-                <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-400 group-hover:bg-indigo-500/20 transition-colors">
-                    <Sparkles size={14} className="animate-pulse" />
-                    <span className="absolute top-0 right-0 w-2 h-2 bg-indigo-500 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.8)] animate-ping" />
-                    <span className="absolute top-0 right-0 w-2 h-2 bg-indigo-500 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
-                </div>
-
-                {/* Text */}
-                <div className="flex flex-col items-start mr-1">
-                    <span className="text-sm font-medium text-[var(--text-primary)] transition-colors">新版本可用</span>
-                </div>
-
-                {/* Action Icon */}
-                <div className="w-8 h-8 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center group-hover:-translate-y-0.5 group-hover:shadow-lg transition-all duration-300">
-                    <ArrowUp size={16} className="text-indigo-600 font-bold" strokeWidth={3} />
-                </div>
+            <div className="glass h-10 px-3 rounded-xl flex items-center gap-2 border border-indigo-500/50 bg-indigo-500/10 hover:bg-indigo-500/20 transition-all cursor-pointer shadow-[0_0_10px_rgba(99,102,241,0.2)]">
+                <Sparkles size={12} className="text-indigo-400 animate-pulse" />
+                <span className="text-xs font-semibold text-indigo-300">新版本可用</span>
+                <ArrowUp size={12} className="text-indigo-400" />
             </div>
         </button>
     );
 };
+
 
 export default UpdateNotification;

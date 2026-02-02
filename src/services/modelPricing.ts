@@ -22,38 +22,47 @@ const PRICING_ALIASES: Record<string, string> = {
 
 const BUILTIN_PRICING: Record<string, ModelPricing> = {
   // Cherry AI Nano Banana 系列 (基于 Cherry API 定价)
-  'nano-banana': { 
-    pricePerImage: 0.003, 
+  'nano-banana': {
+    pricePerImage: 0.003,
     currency: 'USD'
   },
-  'nano-banana-pro': { 
-    pricePerImage: 0.008, 
+  'nano-banana-pro': {
+    pricePerImage: 0.008,
     currency: 'USD'
   },
-  
-  // Imagen 4 系列 (Google 定价)
-  'imagen-4.0-fast-generate-001': { 
-    pricePerImage: 0.02, 
+
+  // ============================================
+  // Imagen 4 系列 (Google 官方定价)
+  // https://ai.google.dev/gemini-api/docs/pricing
+  // ============================================
+  'imagen-4.0-fast-generate-001': {
+    pricePerImage: 0.02,
     currency: 'USD'
   },
-  'imagen-4.0-generate-001': { 
-    pricePerImage: 0.04, 
+  'imagen-4.0-generate-001': {
+    pricePerImage: 0.04,
     currency: 'USD'
   },
-  'imagen-4.0-ultra-generate-001': { 
-    pricePerImage: 0.06, 
+  'imagen-4.0-ultra-generate-001': {
+    pricePerImage: 0.06,
     currency: 'USD'
   },
-  'imagen-3.0-generate-002': { 
-    pricePerImage: 0.04, 
+
+  // Imagen 3 系列
+  'imagen-3.0-generate-002': {
+    pricePerImage: 0.04,
     currency: 'USD'
   },
-  'imagen-3.0-generate-001': { 
-    pricePerImage: 0.04, 
+  'imagen-3.0-generate-001': {
+    pricePerImage: 0.04,
     currency: 'USD'
   },
-  
-  // Gemini 图像模型 (Google 定价)
+
+  // ============================================
+  // Gemini 图像模型 (Token计费)
+  // ============================================
+  // Gemini 2.5 Flash Image
+  // 输出: $30/1M tokens, 1024x1024 = 1290 tokens = $0.039/张
   'gemini-2.5-flash-image': {
     inputPerMillionTokens: 0.075,
     outputPerMillionTokens: 30,
@@ -61,11 +70,43 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
     refImageTokens: DEFAULT_REF_IMAGE_TOKENS,
     currency: 'USD'
   },
+  // Gemini 3 Pro Image Preview
+  // 输出: $120/1M tokens
+  // 1K-2K: 1120 tokens = $0.134/张, 4K: 2000 tokens = $0.24/张
   'gemini-3-pro-image-preview': {
     inputPerMillionTokens: 3.5,
     outputPerMillionTokens: 120,
     tokensPerImage: { standard: 1120, hd: 2000 },
     refImageTokens: DEFAULT_REF_IMAGE_TOKENS,
+    currency: 'USD'
+  },
+
+  // ============================================
+  // Veo 视频生成模型 (固定每视频计费)
+  // https://ai.google.dev/gemini-api/docs/pricing
+  // 注意: Veo 模型需要付费层级,无免费额度
+  // ============================================
+  // Veo 3.1 系列 (最新)
+  'veo-3.1-generate-preview': {
+    pricePerImage: 0.50,  // 每视频估算 $0.50
+    currency: 'USD'
+  },
+  'veo-3.1-fast-generate-preview': {
+    pricePerImage: 0.25,  // 快速版 $0.25
+    currency: 'USD'
+  },
+  // Veo 3 系列 (稳定版)
+  'veo-3.0-generate-001': {
+    pricePerImage: 0.50,
+    currency: 'USD'
+  },
+  'veo-3.0-fast-generate-001': {
+    pricePerImage: 0.25,
+    currency: 'USD'
+  },
+  // Veo 2 系列
+  'veo-2.0-generate-001': {
+    pricePerImage: 0.35,
     currency: 'USD'
   }
 };

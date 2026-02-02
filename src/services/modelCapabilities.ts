@@ -22,6 +22,15 @@ export interface ModelCapability {
 
     /** Whether grounding (web search) is supported */
     supportsGrounding: boolean;
+
+    /** 
+     * Maximum number of reference images allowed
+     * - 0: No reference image support
+     * - 1-10: Limited reference images (Gemini supports up to 10)
+     * - 3: Video models (Veo) support max 3 for first/last frame or reference
+     * - undefined: Defaults to 10 for image models, 3 for video models
+     */
+    maxRefImages?: number;
 }
 
 /**
@@ -35,31 +44,39 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
     // ============================================
     'gemini-3-pro-image-preview': {
         supportedRatios: [
+            AspectRatio.AUTO,
             AspectRatio.SQUARE,
-            AspectRatio.STANDARD_2_3,
-            AspectRatio.STANDARD_3_2,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
             AspectRatio.PORTRAIT_9_16,
             AspectRatio.LANDSCAPE_16_9,
+            AspectRatio.PORTRAIT_3_4,
+            AspectRatio.LANDSCAPE_4_3,
+            AspectRatio.LANDSCAPE_3_2,
+            AspectRatio.STANDARD_2_3,
+            AspectRatio.LANDSCAPE_5_4,
+            AspectRatio.PORTRAIT_4_5,
             AspectRatio.LANDSCAPE_21_9
         ],
         supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
-        supportsGrounding: true
+        supportsGrounding: true,
+        maxRefImages: 10  // Gemini 3 Pro 支持最多10张参考图
     },
     'nano-banana-pro': {
         supportedRatios: [
+            AspectRatio.AUTO,
             AspectRatio.SQUARE,
-            AspectRatio.STANDARD_2_3,
-            AspectRatio.STANDARD_3_2,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
             AspectRatio.PORTRAIT_9_16,
             AspectRatio.LANDSCAPE_16_9,
+            AspectRatio.PORTRAIT_3_4,
+            AspectRatio.LANDSCAPE_4_3,
+            AspectRatio.LANDSCAPE_3_2,
+            AspectRatio.STANDARD_2_3,
+            AspectRatio.LANDSCAPE_5_4,
+            AspectRatio.PORTRAIT_4_5,
             AspectRatio.LANDSCAPE_21_9
         ],
         supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
-        supportsGrounding: true
+        supportsGrounding: true,
+        maxRefImages: 10  // Nano Banana Pro 支持最多10张参考图
     },
 
     // ============================================
@@ -68,6 +85,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
     // ============================================
     'gemini-2.5-flash-image': {
         supportedRatios: [
+            AspectRatio.AUTO,
             AspectRatio.SQUARE,
             AspectRatio.STANDARD_2_3,
             AspectRatio.STANDARD_3_2,
@@ -77,10 +95,12 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
             AspectRatio.LANDSCAPE_16_9
         ],
         supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false // Tools not supported, causes timeout
+        supportsGrounding: false, // Tools not supported, causes timeout
+        maxRefImages: 10  // Gemini 2.5 Flash 支持最多10张参考图
     },
     'nano-banana': {
         supportedRatios: [
+            AspectRatio.AUTO,
             AspectRatio.SQUARE,
             AspectRatio.STANDARD_2_3,
             AspectRatio.STANDARD_3_2,
@@ -90,25 +110,11 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
             AspectRatio.LANDSCAPE_16_9
         ],
         supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
+        supportsGrounding: false,
+        maxRefImages: 10  // Nano Banana 支持最多10张参考图
     },
 
-    // ============================================
-    // Gemini 2.0 Flash (Experimental)
-    // ============================================
-    'gemini-2.0-flash-exp': {
-        supportedRatios: [
-            AspectRatio.SQUARE,
-            AspectRatio.STANDARD_2_3,
-            AspectRatio.STANDARD_3_2,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
-            AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9
-        ],
-        supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
-    },
+
 
     // ============================================
     // Imagen 4 Series
@@ -116,54 +122,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
     // ============================================
     'imagen-4.0-generate-001': {
         supportedRatios: [
-            AspectRatio.SQUARE,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
-            AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9
-        ],
-        supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
-    },
-    'imagen-4.0-ultra-generate-001': {
-        supportedRatios: [
-            AspectRatio.SQUARE,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
-            AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9
-        ],
-        supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
-    },
-    'imagen-4.0-fast-generate-001': {
-        supportedRatios: [
-            AspectRatio.SQUARE,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
-            AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9
-        ],
-        supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
-    },
-
-    // ============================================
-    // Imagen 3 Series (Legacy)
-    // ============================================
-    'imagen-3.0-generate-002': {
-        supportedRatios: [
-            AspectRatio.SQUARE,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
-            AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9
-        ],
-        supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
-    },
-    'imagen-3.0-generate-001': {
-        supportedRatios: [
+            AspectRatio.AUTO,
             AspectRatio.SQUARE,
             AspectRatio.PORTRAIT_3_4,
             AspectRatio.LANDSCAPE_4_3,
@@ -171,7 +130,64 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
             AspectRatio.LANDSCAPE_16_9
         ],
         supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
-        supportsGrounding: false
+        supportsGrounding: false,
+        maxRefImages: 0  // Imagen 不支持参考图片
+    },
+    'imagen-4.0-ultra-generate-001': {
+        supportedRatios: [
+            AspectRatio.AUTO,
+            AspectRatio.SQUARE,
+            AspectRatio.PORTRAIT_3_4,
+            AspectRatio.LANDSCAPE_4_3,
+            AspectRatio.PORTRAIT_9_16,
+            AspectRatio.LANDSCAPE_16_9
+        ],
+        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+        supportsGrounding: false,
+        maxRefImages: 0  // Imagen 不支持参考图片
+    },
+    'imagen-4.0-fast-generate-001': {
+        supportedRatios: [
+            AspectRatio.AUTO,
+            AspectRatio.SQUARE,
+            AspectRatio.PORTRAIT_3_4,
+            AspectRatio.LANDSCAPE_4_3,
+            AspectRatio.PORTRAIT_9_16,
+            AspectRatio.LANDSCAPE_16_9
+        ],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false,
+        maxRefImages: 0  // Imagen 不支持参考图片
+    },
+
+    // ============================================
+    // Imagen 3 Series (Legacy)
+    // ============================================
+    'imagen-3.0-generate-002': {
+        supportedRatios: [
+            AspectRatio.AUTO,
+            AspectRatio.SQUARE,
+            AspectRatio.PORTRAIT_3_4,
+            AspectRatio.LANDSCAPE_4_3,
+            AspectRatio.PORTRAIT_9_16,
+            AspectRatio.LANDSCAPE_16_9
+        ],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false,
+        maxRefImages: 0  // Imagen 不支持参考图片
+    },
+    'imagen-3.0-generate-001': {
+        supportedRatios: [
+            AspectRatio.AUTO,
+            AspectRatio.SQUARE,
+            AspectRatio.PORTRAIT_3_4,
+            AspectRatio.LANDSCAPE_4_3,
+            AspectRatio.PORTRAIT_9_16,
+            AspectRatio.LANDSCAPE_16_9
+        ],
+        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+        supportsGrounding: false,
+        maxRefImages: 0  // Imagen 不支持参考图片
     },
 
     // ============================================
@@ -180,48 +196,58 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
     'veo-3.1-generate-preview': {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
+        supportsGrounding: false,
+        maxRefImages: 3  // Veo 支持最多3张: 首帧/尾帧/参考图
     },
     'veo-3.1-fast-generate-preview': {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
+        supportsGrounding: false,
+        maxRefImages: 3  // Veo 支持最多3张
     },
     'veo-3.0-generate-001': {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
+        supportsGrounding: false,
+        maxRefImages: 3  // Veo 支持最多3张
     },
     'veo-3.0-fast-generate-001': {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
+        supportsGrounding: false,
+        maxRefImages: 3  // Veo 支持最多3张
     },
     'veo-2.0-generate-001': {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false
+        supportsGrounding: false,
+        maxRefImages: 3  // Veo 支持最多3张
     },
 
     // ============================================
-    // Chat Models (for grounding check)
+    // Gemini Chat Models (for grounding check)
     // ============================================
-    'gemini-flash-lite-latest': {
+    'gemini-2.5-pro': {
         supportedRatios: [],
         supportedSizes: [],
         supportsGrounding: true
     },
-    'gemini-flash-latest': {
+    'gemini-2.5-flash': {
         supportedRatios: [],
         supportedSizes: [],
         supportsGrounding: true
     },
-    'gemini-3-flash-preview': {
+    'gemini-2.5-flash-lite': {
         supportedRatios: [],
         supportedSizes: [],
         supportsGrounding: true
     },
     'gemini-3-pro-preview': {
+        supportedRatios: [],
+        supportedSizes: [],
+        supportsGrounding: true
+    },
+    'gemini-3-flash-preview': {
         supportedRatios: [],
         supportedSizes: [],
         supportsGrounding: true
@@ -313,4 +339,35 @@ export function getAvailableSizes(
     return caps?.supportedSizes && caps.supportedSizes.length > 0
         ? caps.supportedSizes
         : Object.values(ImageSize);
+}
+
+/**
+ * Get maximum number of reference images allowed for a model
+ * 
+ * @param modelId - The model ID to query
+ * @returns Maximum reference images:
+ *   - 0: Model doesn't support reference images (e.g., Imagen)
+ *   - 3: Video models (Veo) - supports first frame, last frame, or reference images
+ *   - 10: Gemini image models - supports up to 10 reference images
+ *   - Default: 10 for unknown image models, 3 for unknown video models
+ */
+export function getMaxRefImages(modelId: string): number {
+    const caps = getModelCapabilities(modelId);
+
+    // If explicitly set, use that value
+    if (caps?.maxRefImages !== undefined) {
+        return caps.maxRefImages;
+    }
+
+    // Fallback based on model type
+    const lowerModelId = modelId.toLowerCase();
+    if (lowerModelId.includes('veo')) {
+        return 3; // Video models default to 3
+    }
+    if (lowerModelId.includes('imagen')) {
+        return 0; // Imagen doesn't support reference images
+    }
+
+    // Default for unknown models (assume Gemini-like)
+    return 10;
 }

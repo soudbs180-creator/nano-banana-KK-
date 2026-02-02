@@ -214,7 +214,6 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
                             ref={inputRef}
                             value={label}
                             onChange={(e) => setLabel(e.target.value)}
-                            onBlur={handleRename}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleRename();
                                 if (e.key === 'Escape') {
@@ -224,8 +223,20 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
                                 e.stopPropagation();
                             }}
                             onMouseDown={(e) => e.stopPropagation()} // Allow text alignment/cursor
-                            className="w-32 bg-transparent text-xs font-medium border-none outline-none focus:ring-1 focus:ring-indigo-500/50 rounded px-1"
-                            style={{ color: 'var(--text-primary)' }}
+                            className="w-32 text-xs font-medium border-none outline-none rounded px-1 transition-all"
+                            style={{
+                                backgroundColor: 'transparent',
+                                color: 'var(--text-primary)',
+                                fontSize: '16px',
+                                transitionDuration: 'var(--duration-fast)'
+                            }}
+                            onFocus={(e) => {
+                                e.currentTarget.style.boxShadow = '0 0 0 1px rgba(99, 102, 241, 0.5)';
+                            }}
+                            onBlur={(e) => {
+                                e.currentTarget.style.boxShadow = 'none';
+                                handleRename();
+                            }}
                         />
                     ) : (
                         <span

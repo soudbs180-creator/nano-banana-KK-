@@ -256,29 +256,8 @@ export const PROXY_MODEL_PRESETS: ProxyModelConfig[] = [
         description: '智谱 AI 视频生成'
     },
 
-    // Gemini Series (via Proxy)
-    {
-        id: 'gemini-2.0-flash-exp',
-        label: 'Gemini 2.0 Flash',
-        type: 'chat',
-        provider: 'Google',
-        apiFormat: 'gemini', // Gemini Native format
-        supportedAspectRatios: [],
-        supportedSizes: [],
-        supportsGrounding: true,
-        description: 'Google 最新多模态模型'
-    },
-    {
-        id: 'gemini-1.5-pro-latest',
-        label: 'Gemini 1.5 Pro',
-        type: 'chat',
-        provider: 'Google',
-        apiFormat: 'gemini',
-        supportedAspectRatios: [],
-        supportedSizes: [],
-        supportsGrounding: true,
-        description: 'Google 旗舰推理模型'
-    },
+    // Gemini Series (via Proxy) - 已移除旧版本，请直接使用 Google 官方 API
+    // 最新模型: gemini-2.5-pro, gemini-2.5-flash, gemini-3-pro-preview, gemini-3-flash-preview
 
     // Chat Models (OpenAI format)
     {

@@ -1,9 +1,13 @@
+
+
 import React, { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import UpdateNotification from './UpdateNotification';
 
 export interface InfiniteCanvasHandle {
     zoomIn: () => void;
     zoomOut: () => void;
     resetView: () => void;
+    fitToAll: () => void; // ✅ 缩放到全览所有卡片
     setView: (x: number, y: number, scale: number) => void;
 }
 
@@ -12,6 +16,7 @@ interface InfiniteCanvasProps {
     showGrid?: boolean;
     onTransformChange?: (transform: { x: number; y: number; scale: number }) => void;
     onCanvasClick?: () => void; // Called when clicking empty canvas area
+    onCanvasDoubleClick?: () => void; // [NEW] Called when double clicking empty canvas area
     onAutoArrange?: () => void; // Called when arrange button is clicked
     cardPositions?: { x: number; y: number }[]; // For auto-arrange calculation
     onMouseDown?: (e: React.MouseEvent) => void;
@@ -27,7 +32,7 @@ interface Transform {
     scale: number;
 }
 
-const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onAutoArrange, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, id }, ref) => {
+const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onCanvasDoubleClick, onAutoArrange, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, id }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
     const [isDragging, setIsDragging] = useState(false);
@@ -194,11 +199,53 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         onTransformChange?.(newTransform);
     }, [onTransformChange]);
 
+    // ✅ 缩放到全览所有卡片
+    const fitToAll = useCallback(() => {
+        const container = containerRef.current;
+        if (!container || !cardPositions || cardPositions.length === 0) {
+            resetView();
+            return;
+        }
+
+        // 计算所有卡片的边界
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        cardPositions.forEach(pos => {
+            minX = Math.min(minX, pos.x - 200); // 估算卡片宽度
+            maxX = Math.max(maxX, pos.x + 200);
+            minY = Math.min(minY, pos.y - 400); // 估算卡片高度
+            maxY = Math.max(maxY, pos.y + 100);
+        });
+
+        const contentWidth = maxX - minX;
+        const contentHeight = maxY - minY;
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+
+        const rect = container.getBoundingClientRect();
+        const padding = 100; // 边距
+        const availableWidth = rect.width - padding * 2;
+        const availableHeight = rect.height - padding * 2;
+
+        // 计算适合的缩放比例
+        const scaleX = availableWidth / contentWidth;
+        const scaleY = availableHeight / contentHeight;
+        const newScale = Math.min(Math.max(0.1, Math.min(scaleX, scaleY, 1)), 1); // 最大100%
+
+        // 计算新的x,y使内容居中
+        const newX = rect.width / 2 - centerX * newScale;
+        const newY = rect.height / 2 - centerY * newScale;
+
+        const newTransform = { x: newX, y: newY, scale: newScale };
+        setTransform(newTransform);
+        onTransformChange?.(newTransform);
+    }, [cardPositions, onTransformChange, resetView]);
+
     // Expose methods to parent
     useImperativeHandle(ref, () => ({
         zoomIn,
         zoomOut,
         resetView,
+        fitToAll,
         setView: (x: number, y: number, scale: number) => {
             const newTransform = { x, y, scale };
             setTransform(newTransform);
@@ -307,27 +354,84 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                         e.stopPropagation();
                     }
                 }}
+                onDoubleClick={(e) => {
+                    const isEmptyCanvas = e.target === containerRef.current || (e.target as HTMLElement).classList.contains('canvas-grid');
+                    if (isEmptyCanvas) {
+                        onCanvasDoubleClick?.();
+                    }
+                }}
                 style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
             >
                 {/* Grid Background */}
                 {showGrid && <div className="canvas-grid" />}
 
-                {/* Viewport with transform */}
+                {/* Viewport with transform - GPU accelerated */}
                 <div
                     className="canvas-viewport"
                     style={{
-                        transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                        transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
+                        willChange: isDragging ? 'transform' : 'auto',
+                        backfaceVisibility: 'hidden',
                     }}
                 >
                     {children}
                 </div>
             </div>
 
-            {/* Scale Indicator */}
-            <div className="absolute bottom-4 right-4 z-50">
-                <div className="glass px-3 py-1.5 rounded-lg text-xs text-zinc-400 font-medium">
-                    {Math.round(transform.scale * 100)}%
+            {/* Zoom Slider & Version - Bottom Left */}
+            <div className="absolute bottom-4 left-4 z-50 flex items-center gap-3">
+                {/* Zoom Slider */}
+                <div className="glass h-10 px-4 rounded-xl flex items-center gap-3">
+                    <input
+                        type="range"
+                        min="10"
+                        max="300"
+                        value={Math.round(transform.scale * 100)}
+                        onChange={(e) => {
+                            const newScale = parseInt(e.target.value) / 100;
+                            const container = containerRef.current;
+                            if (!container) return;
+
+                            const rect = container.getBoundingClientRect();
+                            const centerX = rect.width / 2;
+                            const centerY = rect.height / 2;
+
+                            const scaleRatio = newScale / transform.scale;
+                            const newX = centerX - (centerX - transform.x) * scaleRatio;
+                            const newY = centerY - (centerY - transform.y) * scaleRatio;
+
+                            const newTransform = { x: newX, y: newY, scale: newScale };
+                            setTransform(newTransform);
+                            onTransformChange?.(newTransform);
+                        }}
+                        className="w-32 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer
+                            [&::-webkit-slider-thumb]:appearance-none
+                            [&::-webkit-slider-thumb]:w-3
+                            [&::-webkit-slider-thumb]:h-3
+                            [&::-webkit-slider-thumb]:rounded-full
+                            [&::-webkit-slider-thumb]:bg-zinc-400
+                            [&::-webkit-slider-thumb]:hover:bg-white
+                            [&::-webkit-slider-thumb]:transition-colors
+                            [&::-moz-range-thumb]:w-3
+                            [&::-moz-range-thumb]:h-3
+                            [&::-moz-range-thumb]:rounded-full
+                            [&::-moz-range-thumb]:bg-zinc-400
+                            [&::-moz-range-thumb]:hover:bg-white
+                            [&::-moz-range-thumb]:border-0
+                            [&::-moz-range-thumb]:transition-colors"
+                    />
+                    <span className="text-xs text-zinc-400 font-semibold min-w-[3ch] text-right">
+                        {Math.round(transform.scale * 100)}%
+                    </span>
                 </div>
+
+                {/* Version Badge */}
+                <div className="glass h-10 px-3 rounded-xl flex items-center">
+                    <span className="text-xs text-zinc-500 font-semibold">v1.2.5</span>
+                </div>
+
+                {/* Update Notification */}
+                <UpdateNotification />
             </div>
         </div>
     );
