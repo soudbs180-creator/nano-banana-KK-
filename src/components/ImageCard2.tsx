@@ -320,6 +320,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             cancelAnimationFrame(requestRef.current);
             requestRef.current = null;
         }
+
+        // [FIX] 延迟重置wasDraggingRef,确保onClick事件能正确检测到拖拽状态
+        // 但同时确保下一次点击能正常触发追问模式
+        setTimeout(() => {
+            wasDraggingRef.current = false;
+        }, 100);
     };
 
     useEffect(() => {
@@ -479,15 +485,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         // 忽略按钮点击 (如删除/下载)
         if ((e.target as HTMLElement).closest('button')) return;
 
-        // 健壮检查：计算鼠标按下移动距离
-        // 确保响应特定的点击动作，而非拖拽结束
-        const dist = Math.hypot(e.clientX - dragStartPos.current.x, e.clientY - dragStartPos.current.y);
-
-        // 如果移动距离显著 (>15px) 且非双击 -> 视为拖拽，忽略点击
-        // 如果 dragStartPos 为 0,0 (未捕获/未初始化)，则允许通过
-        const isUninitialized = dragStartPos.current.x === 0 && dragStartPos.current.y === 0;
-
-        if (!isUninitialized && dist > 15 && e.type !== 'dblclick' && e.detail !== 2) return;
+        // 如果刚刚拖拽过,忽略点击(防止拖拽结束时误触发)
+        if (wasDraggingRef.current && e.type !== 'dblclick' && e.detail !== 2) return;
 
         // 同步：在状态触发渲染前立即设置打开时间
         openTimeRef.current = Date.now();
@@ -569,7 +568,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         onMouseUp={() => onConnectEnd?.(image.id)}
                     />
 
-                    {/* 图片视图，支持懒加载/虚拟化 */}
+                    {/* 图片视图，支持懒加载/虚拟化 - 单击打开灯箱 */}
                     <div
                         className="relative w-full cursor-pointer bg-[var(--bg-tertiary)]"
                         style={{ aspectRatio: image.aspectRatio.replace(':', '/') }} // [FIX] 强制锁定宽高比，防止恢复时高度跳动
@@ -711,13 +710,18 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                             </div>
                         )}
 
-                        {/* Footer - Compact Two Row Layout */}
+                        {/* Footer - Compact Two Row Layout - 点击进入追问模式 */}
                         <div
-                            className="px-2 py-1 flex flex-col gap-0.5 border-t relative z-10 box-border"
+                            className="px-2 py-1 flex flex-col gap-0.5 border-t relative z-10 box-border cursor-pointer"
                             style={{
                                 backgroundColor: 'var(--bg-elevated)',
                                 borderTopColor: 'var(--border-default)',
                                 minHeight: '36px'
+                            }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                // 单击信息栏进入追问模式
+                                if (!wasDraggingRef.current) onClick?.(image.id);
                             }}
                         >
                             {/* Row 1: Model + Ratio + Size + Buttons */}

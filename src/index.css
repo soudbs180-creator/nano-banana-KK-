@@ -1074,9 +1074,11 @@ input[type=number] {
   transform: translateX(-50%);
   width: 100%;
   max-width: 640px;
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  /* Fallback for browsers without backdrop-filter support */
+  background: rgba(255, 255, 255, 0.85);
+  /* Modern browsers with backdrop-filter */
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
@@ -1085,8 +1087,19 @@ input[type=number] {
   transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
+/* 支持backdrop-filter时使用更透明的背景 */
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .input-bar {
+    background: rgba(255, 255, 255, 0.6);
+  }
+
+  body.dark-mode .input-bar {
+    background: rgba(24, 24, 27, 0.6);
+  }
+}
+
 body.dark-mode .input-bar {
-  background: rgba(24, 24, 27, 0.6);
+  background: rgba(24, 24, 27, 0.85);
 }
 
 .input-bar-inner {
