@@ -59,12 +59,47 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
   },
 
   // ============================================
+  // Gemini 文本模型 (Token计费)
+  // https://ai.google.dev/gemini-api/docs/pricing
+  // ============================================
+  // Gemini 3 Pro 预览版
+  'gemini-3-pro-preview': {
+    inputPerMillionTokens: 2.00,   // <= 20万tokens
+    outputPerMillionTokens: 12.00,  // <= 20万tokens (包括思考token)
+    currency: 'USD'
+  },
+  // Gemini 3 Flash 预览版
+  'gemini-3-flash-preview': {
+    inputPerMillionTokens: 0.50,   // 文字/图片/视频
+    outputPerMillionTokens: 3.00,  // 包括思考token
+    currency: 'USD'
+  },
+  // Gemini 2.5 Pro
+  'gemini-2.5-pro': {
+    inputPerMillionTokens: 1.25,   // <= 20万tokens
+    outputPerMillionTokens: 10.00,  // <= 20万tokens (包括思考token)
+    currency: 'USD'
+  },
+  // Gemini 2.5 Flash
+  'gemini-2.5-flash': {
+    inputPerMillionTokens: 0.30,   // 文字/图片/视频
+    outputPerMillionTokens: 2.50,  // 包括思考token
+    currency: 'USD'
+  },
+  // Gemini 2.5 Flash-Lite
+  'gemini-2.5-flash-lite': {
+    inputPerMillionTokens: 0.10,   // 文字/图片/视频
+    outputPerMillionTokens: 0.40,  // 包括思考token
+    currency: 'USD'
+  },
+
+  // ============================================
   // Gemini 图像模型 (Token计费)
   // ============================================
   // Gemini 2.5 Flash Image
   // 输出: $30/1M tokens, 1024x1024 = 1290 tokens = $0.039/张
   'gemini-2.5-flash-image': {
-    inputPerMillionTokens: 0.075,
+    inputPerMillionTokens: 0.30,
     outputPerMillionTokens: 30,
     tokensPerImage: { standard: 1290 },
     refImageTokens: DEFAULT_REF_IMAGE_TOKENS,
@@ -74,7 +109,7 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
   // 输出: $120/1M tokens
   // 1K-2K: 1120 tokens = $0.134/张, 4K: 2000 tokens = $0.24/张
   'gemini-3-pro-image-preview': {
-    inputPerMillionTokens: 3.5,
+    inputPerMillionTokens: 2.00,
     outputPerMillionTokens: 120,
     tokensPerImage: { standard: 1120, hd: 2000 },
     refImageTokens: DEFAULT_REF_IMAGE_TOKENS,
@@ -82,26 +117,27 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
   },
 
   // ============================================
-  // Veo 视频生成模型 (固定每视频计费)
+  // Veo 视频生成模型 (按秒计费)
   // https://ai.google.dev/gemini-api/docs/pricing
   // 注意: Veo 模型需要付费层级,无免费额度
+  // 价格为每秒价格,需要乘以视频时长
   // ============================================
   // Veo 3.1 系列 (最新)
   'veo-3.1-generate-preview': {
-    pricePerImage: 0.50,  // 每视频估算 $0.50
+    pricePerImage: 0.40,  // 720p/1080p:$0.40/秒, 4K:$0.60/秒 (这里使用平均值)
     currency: 'USD'
   },
   'veo-3.1-fast-generate-preview': {
-    pricePerImage: 0.25,  // 快速版 $0.25
+    pricePerImage: 0.15,  // 720p/1080p:$0.15/秒, 4K:$0.35/秒 (这里使用平均值)
     currency: 'USD'
   },
   // Veo 3 系列 (稳定版)
   'veo-3.0-generate-001': {
-    pricePerImage: 0.50,
+    pricePerImage: 0.40,
     currency: 'USD'
   },
   'veo-3.0-fast-generate-001': {
-    pricePerImage: 0.25,
+    pricePerImage: 0.15,
     currency: 'USD'
   },
   // Veo 2 系列

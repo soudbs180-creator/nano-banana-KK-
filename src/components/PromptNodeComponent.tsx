@@ -620,18 +620,19 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
                     const { width: w, totalHeight: h } = getCardDimensions(node.aspectRatio, true);
 
-                    // 计算实际列数(用于居中)
-                    const actualCols = Math.min(COLS, count);
-                    const totalWidth = actualCols * w + (actualCols - 1) * GAP;
-
                     return (
                         <div className="relative" style={{ height: 0 }}>
                             {Array.from({ length: count }).map((_, i) => {
                                 const col = i % COLS;
                                 const row = Math.floor(i / COLS);
 
+                                // 计算当前行实际有多少张卡片(与App.tsx逻辑一致)
+                                const cardsInCurrentRow = Math.min(COLS, count - row * COLS);
+                                const rowWidth = cardsInCurrentRow * w + (cardsInCurrentRow - 1) * GAP;
+                                const startX = -rowWidth / 2; // 相对主卡中心的起始位置
+
                                 // 居中布局
-                                const offsetX = -totalWidth / 2 + col * (w + GAP) + w / 2;
+                                const offsetX = startX + col * (w + GAP) + w / 2;
                                 const offsetY = gapToPlaceholders + row * (h + GAP);
 
                                 return (
@@ -650,9 +651,10 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             <path
                                                 d={`M0,${cardHeight} C0,${cardHeight + offsetY * 0.5} ${offsetX},${cardHeight + offsetY * 0.5} ${offsetX},${cardHeight + offsetY}`}
                                                 fill="none"
-                                                stroke="var(--border-medium)"
-                                                strokeWidth="1.5"
-                                                strokeDasharray="4 4"
+                                                stroke="#6366f1"
+                                                strokeWidth="2"
+                                                strokeDasharray="6 4"
+                                                opacity="0.6"
                                             />
                                         </svg>
 

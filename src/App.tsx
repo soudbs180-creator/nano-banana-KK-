@@ -183,16 +183,31 @@ const AppContent: React.FC = () => {
   // Mobile Nav Bar Visibility (Swipe to Show, Auto Hide)
   const [isMobileNavVisible, setIsMobileNavVisible] = useState(false);
   const mobileNavTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isPromptFocused, setIsPromptFocused] = useState(false); // 跟踪输入框焦点状态
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false); // 跟踪侧边栏hover状态
+  const lastMouseMoveRef = useRef<number>(Date.now()); // 记录最后一次鼠标移动时间
 
   const handleShowMobileNav = useCallback(() => {
+    const timeSinceLastMouseMove = Date.now() - lastMouseMoveRef.current;
+    const isMouseActive = timeSinceLastMouseMove < 5000; // 5秒内有鼠标活动
+
+    console.log('[handleShowMobileNav] isPromptFocused:', isPromptFocused, 'isSidebarHovered:', isSidebarHovered, 'isMouseActive:', isMouseActive);
     setIsMobileNavVisible(true);
+    // 清除旧定时器
     if (mobileNavTimerRef.current) {
       clearTimeout(mobileNavTimerRef.current);
     }
-    mobileNavTimerRef.current = setTimeout(() => {
-      setIsMobileNavVisible(false);
-    }, 5000); // Auto hide after 5s
-  }, []);
+    // 如果输入框有焦点、鼠标在侧边栏上、或鼠标正在活动,不设置自动隐藏定时器
+    if (!isPromptFocused && !isSidebarHovered && !isMouseActive) {
+      console.log('[handleShowMobileNav] 设置5秒自动隐藏定时器');
+      mobileNavTimerRef.current = setTimeout(() => {
+        console.log('[handleShowMobileNav] 5秒后自动隐藏');
+        setIsMobileNavVisible(false);
+      }, 5000);
+    } else {
+      console.log('[handleShowMobileNav] 不设置定时器 - 有活动:', { isPromptFocused, isSidebarHovered, isMouseActive });
+    }
+  }, [isPromptFocused, isSidebarHovered]);
 
   const handleHideMobileNav = useCallback(() => {
     setIsMobileNavVisible(false);
@@ -200,6 +215,22 @@ const AppContent: React.FC = () => {
       clearTimeout(mobileNavTimerRef.current);
     }
   }, []);
+
+  // 全局鼠标移动监听 - 重置定时器
+  useEffect(() => {
+    const handleGlobalMouseMove = () => {
+      lastMouseMoveRef.current = Date.now();
+      // 鼠标移动时,如果侧边栏可见且没有活动定时器,重新显示并重置定时器
+      if (isMobileNavVisible) {
+        handleShowMobileNav();
+      }
+    };
+
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+    };
+  }, [isMobileNavVisible, handleShowMobileNav]);
 
   // Tagging State
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
@@ -1145,17 +1176,26 @@ const AppContent: React.FC = () => {
         const col = idx % columns;
         const row = Math.floor(idx / columns);
 
+        // 计算当前行实际有多少张卡片
+        const totalCards = validImageData.length;
+        const cardsInCurrentRow = Math.min(columns, totalCards - row * columns);
+
         if (isMobile) {
           const mobileCardWidth = 170;
           const mobileCardHeight = 260;
           const mobileGap = 10;
-          const gridWidth = columns * mobileCardWidth + (columns - 1) * mobileGap;
-          const offsetX = (col - 0.5) * (mobileCardWidth + mobileGap);
+          // 居中计算:先算出当前行的总宽度,然后居中对齐
+          const rowWidth = cardsInCurrentRow * mobileCardWidth + (cardsInCurrentRow - 1) * mobileGap;
+          const startX = -rowWidth / 2; // 相对主卡中心的起始位置
+          const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
           const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
           x = finalPos.x + offsetX;
           y = finalPos.y + offsetY;
         } else {
-          const offsetX = (col - 0.5) * (cardWidth + gap);
+          // 居中计算:先算出当前行的总宽度,然后居中对齐
+          const rowWidth = cardsInCurrentRow * cardWidth + (cardsInCurrentRow - 1) * gap;
+          const startX = -rowWidth / 2; // 相对主卡中心的起始位置
+          const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
           const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
           x = finalPos.x + offsetX;
           y = finalPos.y + offsetY;
@@ -2074,6 +2114,30 @@ const AppContent: React.FC = () => {
           }
         }}
         onAutoArrange={handleAutoArrange}
+        onResetView={() => {
+          // 定位到最新生成的卡片
+          const latestImage = activeCanvas?.imageNodes[activeCanvas.imageNodes.length - 1];
+          const latestPrompt = activeCanvas?.promptNodes[activeCanvas.promptNodes.length - 1];
+
+          // 优先定位到最新的图片,如果没有则定位到最新的提示词
+          const targetNode = latestImage || latestPrompt;
+
+          if (targetNode && canvasRef.current) {
+            // 使用InfiniteCanvas的setView方法定位到目标卡片
+            const container = document.getElementById('canvas-container');
+            if (container) {
+              const rect = container.getBoundingClientRect();
+              const centerX = rect.width / 2;
+              const centerY = rect.height / 2;
+
+              // 计算需要的transform使目标卡片居中
+              const newX = centerX - targetNode.position.x * canvasTransform.scale;
+              const newY = centerY - targetNode.position.y * canvasTransform.scale;
+
+              canvasRef.current.setView(newX, newY, canvasTransform.scale);
+            }
+          }
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -2434,6 +2498,16 @@ const AppContent: React.FC = () => {
             handleHideMobileNav(); // Hide nav when opening settings (optional, but requested behavior implies consistent handling)
           }}
           onInteract={handleShowMobileNav}
+          onFocus={() => {
+            console.log('[PromptBar] onFocus - 设置isPromptFocused=true');
+            setIsPromptFocused(true);
+          }}
+          onBlur={() => {
+            console.log('[PromptBar] onBlur - 设置isPromptFocused=false');
+            setIsPromptFocused(false);
+            // 失去焦点后,立即重新设置5秒定时器
+            setTimeout(() => handleShowMobileNav(), 0);
+          }}
         />
       </div>
 
@@ -2450,6 +2524,7 @@ const AppContent: React.FC = () => {
             setSettingsInitialView(view || 'api-management');
             setShowSettingsPanel(true);
           }}
+          onHoverChange={(isHovered) => setIsSidebarHovered(isHovered)}
         />
       </div>
 

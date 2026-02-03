@@ -18,6 +18,7 @@ interface InfiniteCanvasProps {
     onCanvasClick?: () => void; // Called when clicking empty canvas area
     onCanvasDoubleClick?: () => void; // [NEW] Called when double clicking empty canvas area
     onAutoArrange?: () => void; // Called when arrange button is clicked
+    onResetView?: () => void; // Called when ESC is pressed (定位最新)
     cardPositions?: { x: number; y: number }[]; // For auto-arrange calculation
     onMouseDown?: (e: React.MouseEvent) => void;
     onMouseMove?: (e: React.MouseEvent) => void;
@@ -32,7 +33,7 @@ interface Transform {
     scale: number;
 }
 
-const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onCanvasDoubleClick, onAutoArrange, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, id }, ref) => {
+const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onCanvasDoubleClick, onAutoArrange, onResetView, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, id }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
     const [isDragging, setIsDragging] = useState(false);
@@ -267,7 +268,12 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         }
 
         if (e.key === 'Escape' || e.key === 'Home') {
-            resetView();
+            // 如果有onResetView prop,使用它(定位最新),否则使用resetView(重置到中心)
+            if (onResetView) {
+                onResetView();
+            } else {
+                resetView();
+            }
         }
         if (e.key === '+' || e.key === '=') {
             zoomIn();
@@ -275,7 +281,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         if (e.key === '-' || e.key === '_') {
             zoomOut();
         }
-    }, [resetView, zoomIn, zoomOut]);
+    }, [resetView, zoomIn, zoomOut, onResetView]);
 
     // Touch Handling (Mirroring Mouse Logic)
     const handleTouchStart = useCallback((e: TouchEvent) => {

@@ -252,9 +252,24 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     const resetInactivityTimer = () => {
         if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
         setIsCollapsed(false);
-        inactivityTimerRef.current = setTimeout(() => {
-            setIsCollapsed(true);
-        }, 4000);
+
+        // 检查当前是否有输入框或文本域有焦点
+        const isInputFocused = () => {
+            const activeEl = document.activeElement;
+            return activeEl instanceof HTMLInputElement ||
+                activeEl instanceof HTMLTextAreaElement ||
+                (activeEl as HTMLElement)?.isContentEditable;
+        };
+
+        // 如果输入框有焦点,不设置自动折叠定时器
+        if (!isInputFocused()) {
+            inactivityTimerRef.current = setTimeout(() => {
+                // 再次检查,确保设置定时器后用户没有聚焦输入框
+                if (!isInputFocused()) {
+                    setIsCollapsed(true);
+                }
+            }, 4000);
+        }
     };
 
     useEffect(() => {

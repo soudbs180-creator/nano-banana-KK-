@@ -553,72 +553,155 @@ const CostEstimationView = () => {
                 )}
             </div>
 
-            <div className="text-xs text-zinc-500 p-5 bg-[var(--bg-tertiary)] rounded-[32px] border border-[var(--border-light)]">
-                <p className="font-medium text-zinc-400 mb-3">计费参考 (Google官方定价)</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Imagen 图片 */}
-                    <div className="space-y-1.5">
-                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                            <div className="w-2 h-2 bg-emerald-500 rounded-sm" />
-                            Imagen 4 (图片)
+            <div className="text-xs text-zinc-500 p-6 bg-[var(--bg-tertiary)] rounded-[32px] border border-[var(--border-light)] space-y-6">
+                <div className="flex items-center justify-between mb-4">
+                    <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>💰 官方定价参考</p>
+                    <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener noreferrer" className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
+                        <span>查看官方文档</span>
+                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M10 6.5V10.5C10 10.7761 9.77614 11 9.5 11H1.5C1.22386 11 1 10.7761 1 10.5V2.5C1 2.22386 1.22386 2 1.5 2H5.5M7 1H11M11 1V5M11 1L5 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </a>
+                </div>
+
+                {/* 1. 文本模型 */}
+                <div className="space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                        <div className="w-3 h-3 bg-blue-500 rounded-sm" />
+                        📝 文本模型 (Token计费)
+                    </div>
+                    <div className="bg-[var(--bg-secondary)] rounded-xl p-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                        <div className="flex justify-between items-center">
+                            <span className="text-zinc-400">Gemini 3 Pro Preview</span>
+                            <span className="text-blue-400 font-mono">$2.00/$12.00</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span>Fast: <span className="text-emerald-400 font-mono">$0.02</span>/张</span>
+                        <div className="flex justify-between items-center">
+                            <span className="text-zinc-400">Gemini 3 Flash Preview</span>
+                            <span className="text-blue-400 font-mono">$0.50/$3.00</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span>Standard: <span className="text-emerald-400 font-mono">$0.04</span>/张</span>
+                        <div className="flex justify-between items-center">
+                            <span className="text-zinc-400">Gemini 2.5 Pro</span>
+                            <span className="text-blue-400 font-mono">$1.25/$10.00</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span>Ultra: <span className="text-emerald-400 font-mono">$0.06</span>/张</span>
+                        <div className="flex justify-between items-center">
+                            <span className="text-zinc-400">Gemini 2.5 Flash</span>
+                            <span className="text-blue-400 font-mono">$0.30/$2.50</span>
+                        </div>
+                        <div className="flex justify-between items-center md:col-span-2">
+                            <span className="text-zinc-400">Gemini 2.5 Flash-Lite</span>
+                            <span className="text-blue-400 font-mono">$0.10/$0.40</span>
                         </div>
                     </div>
-                    {/* Gemini 图片 */}
-                    <div className="space-y-1.5">
-                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                            <div className="w-2 h-2 bg-indigo-500 rounded-sm" />
-                            Gemini Image (Token计费)
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span>2.5 Flash: <span className="text-indigo-400 font-mono">$0.039</span>/张</span>
-                            <span className="text-[10px] text-zinc-600">(1290 tokens)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span>3 Pro 1K-2K: <span className="text-indigo-400 font-mono">$0.134</span>/张</span>
-                            <span className="text-[10px] text-zinc-600">(1120 tokens)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span>3 Pro 4K: <span className="text-indigo-400 font-mono">$0.24</span>/张</span>
-                            <span className="text-[10px] text-zinc-600">(2000 tokens)</span>
+                    <div className="text-[10px] text-zinc-600 pl-5">
+                        💡 格式: 输入价格/输出价格 (每100万tokens, 美元)
+                    </div>
+                </div>
+
+                {/* 2. 图像模型 */}
+                <div className="space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                        <div className="w-3 h-3 bg-emerald-500 rounded-sm" />
+                        🖼️ 图像模型
+                    </div>
+
+                    {/* Imagen 4 */}
+                    <div className="bg-[var(--bg-secondary)] rounded-xl p-3 space-y-2">
+                        <div className="text-[10px] text-emerald-400 font-semibold mb-2">Imagen 4 (固定计费)</div>
+                        <div className="grid grid-cols-3 gap-2 text-[11px]">
+                            <div className="flex flex-col items-center gap-1 bg-[var(--bg-tertiary)] rounded-lg py-2">
+                                <span className="text-zinc-500">Fast</span>
+                                <span className="text-emerald-400 font-mono font-bold">$0.02</span>
+                            </div>
+                            <div className="flex flex-col items-center gap-1 bg-[var(--bg-tertiary)] rounded-lg py-2">
+                                <span className="text-zinc-500">Standard</span>
+                                <span className="text-emerald-400 font-mono font-bold">$0.04</span>
+                            </div>
+                            <div className="flex flex-col items-center gap-1 bg-[var(--bg-tertiary)] rounded-lg py-2">
+                                <span className="text-zinc-500">Ultra</span>
+                                <span className="text-emerald-400 font-mono font-bold">$0.06</span>
+                            </div>
                         </div>
                     </div>
-                    {/* Veo 视频 */}
-                    <div className="space-y-1.5">
-                        <div className="text-[10px] text-zinc-300 font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                            <div className="w-2 h-2 bg-purple-500 rounded-sm" />
-                            Veo (视频)
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span>Veo 3.1: <span className="text-purple-400 font-mono">~$0.50</span>/视频</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span>Veo 3.1 Fast: <span className="text-purple-400 font-mono">~$0.25</span>/视频</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span>Veo 2: <span className="text-purple-400 font-mono">~$0.35</span>/视频</span>
+
+                    {/* Gemini Image */}
+                    <div className="bg-[var(--bg-secondary)] rounded-xl p-3 space-y-2">
+                        <div className="text-[10px] text-indigo-400 font-semibold mb-2">Gemini Image (Token计费)</div>
+                        <div className="space-y-1.5 text-[11px]">
+                            <div className="flex justify-between items-center">
+                                <span className="text-zinc-400">2.5 Flash Image</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-indigo-400 font-mono">$0.039</span>
+                                    <span className="text-[9px] text-zinc-600">(1290 tokens)</span>
+                                </div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-zinc-400">3 Pro Image 1K-2K</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-indigo-400 font-mono">$0.134</span>
+                                    <span className="text-[9px] text-zinc-600">(1120 tokens)</span>
+                                </div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-zinc-400">3 Pro Image 4K</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-indigo-400 font-mono">$0.24</span>
+                                    <span className="text-[9px] text-zinc-600">(2000 tokens)</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                {/* 底部说明 */}
-                <div className="mt-4 pt-3 border-t border-[var(--border-light)] grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-zinc-600">
-                    <div>
-                        <span className="text-zinc-500">Token计算:</span> 输入≈4字符/token, 参考图=560tokens/张
+
+                {/* 3. 视频模型 */}
+                <div className="space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                        <div className="w-3 h-3 bg-purple-500 rounded-sm" />
+                        🎬 视频模型 (按秒计费)
                     </div>
-                    <div>
-                        <span className="text-zinc-500">输出价格:</span> Flash=$30/1M, Pro=$120/1M
+                    <div className="bg-[var(--bg-secondary)] rounded-xl p-3 space-y-2 text-[11px]">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                                <div className="text-[10px] text-purple-400 font-semibold mb-1">Veo 3.1 标准</div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-zinc-500">720p/1080p</span>
+                                    <span className="text-purple-400 font-mono">$0.40/秒</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-zinc-500">4K</span>
+                                    <span className="text-purple-400 font-mono">$0.60/秒</span>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <div className="text-[10px] text-purple-400 font-semibold mb-1">Veo 3.1 Fast</div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-zinc-500">720p/1080p</span>
+                                    <span className="text-purple-400 font-mono">$0.15/秒</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-zinc-500">4K</span>
+                                    <span className="text-purple-400 font-mono">$0.35/秒</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="text-[10px] text-zinc-600 pl-5">
+                        ⏱️ 视频费用 = 价格/秒 × 视频时长(秒)
                     </div>
                 </div>
-                <div className="mt-2 text-[10px] text-zinc-600">
-                    <span className="text-zinc-500">视频模式:</span> 0张=文生视频, 1张=首帧生成, 2张=首尾帧, 3张=参考图生成
+
+                {/* 4. 底部说明 */}
+                <div className="pt-3 border-t border-[var(--border-light)] space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-zinc-600">
+                        <div>
+                            <span className="text-zinc-500 font-semibold">Token计算:</span> 输入≈4字符/token, 参考图=560tokens/张
+                        </div>
+                        <div>
+                            <span className="text-zinc-500 font-semibold">输出价格:</span> Flash=$30/1M, Pro=$120/1M
+                        </div>
+                    </div>
+                    <div className="text-[10px] text-zinc-600">
+                        <span className="text-zinc-500 font-semibold">视频模式:</span> 0张=文生视频, 1张=首帧生成, 2张=首尾帧, 3张=参考图生成
+                    </div>
                 </div>
             </div>
         </div >

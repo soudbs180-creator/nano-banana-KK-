@@ -143,9 +143,11 @@ interface PromptBarProps {
     isMobile?: boolean;
     onOpenSettings?: (view?: 'api-management') => void;
     onInteract?: () => void;
+    onFocus?: () => void;  // 输入框获取焦点时调用
+    onBlur?: () => void;   // 输入框失去焦点时调用
 }
 
-const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings, onInteract }) => {
+const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings, onInteract, onFocus, onBlur }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -938,7 +940,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         onChange={handleInput}
                         onKeyDown={handleKeyDown}
                         onPaste={handlePaste}
-                        onFocus={() => setActiveMenu(null)}
+                        onFocus={() => {
+                            setActiveMenu(null);
+                            onFocus?.(); // 通知侧边栏: 输入框有焦点,不要自动隐藏
+                        }}
+                        onBlur={() => {
+                            onBlur?.(); // 通知侧边栏: 输入框失去焦点,可以自动隐藏
+                        }}
                         placeholder={config.mode === GenerationMode.VIDEO ? "描述你想要生成的视频..." : "描述你想要生成的图片..."}
                         className="input-bar-textarea w-full bg-transparent border-none outline-none text-[15px] resize-none mt-1 py-1"
                         style={{

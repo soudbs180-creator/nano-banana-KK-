@@ -11,6 +11,7 @@ interface ChatSidebarProps {
     onClose?: () => void;
     isMobile: boolean;
     onOpenSettings?: (view?: 'api-management') => void;
+    onHoverChange?: (isHovered: boolean) => void; // 通知父组件hover状态变化
 }
 
 // 附件类型
@@ -42,7 +43,7 @@ interface ChatModel {
     description?: string;
 }
 
-const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, isMobile, onOpenSettings }) => {
+const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, isMobile, onOpenSettings, onHoverChange }) => {
     // 1. Model State Management
     // ✨ 支持多模态模型 (image+chat)
     const [availableModels, setAvailableModels] = useState<ChatModel[]>(() =>
@@ -431,10 +432,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     onMouseEnter={() => {
                         setIsHovering(true);
                         clearAutoClose();
+                        onHoverChange?.(true); // 通知App组件
                     }}
                     onMouseLeave={() => {
                         setIsHovering(false);
                         scheduleAutoClose();
+                        onHoverChange?.(false); // 通知App组件
                     }}
                     onMouseDown={registerActivity}
                     onWheel={registerActivity}
