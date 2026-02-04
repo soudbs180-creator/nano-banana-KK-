@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { Canvas, PromptNode, GeneratedImage, AspectRatio, CanvasGroup, CanvasDrawing } from '../types';
-import { saveImage, getImage, deleteImage, getAllImages, clearAllImages } from '../services/imageStorage';
+import { saveImage, getImage, deleteImage, getAllImages, clearAllImages, getImagesPage, getImageCount } from '../services/imageStorage';
 import { syncService } from '../services/syncService';
 import { fileSystemService } from '../services/fileSystemService';
 import { base64ToBlob, safeRevokeBlobUrl } from '../utils/blobUtils';
@@ -27,6 +27,8 @@ interface CanvasState {
     selectedNodeIds: string[];
     // 副卡排列模式 (轮换: row -> grid -> column -> row)
     subCardLayoutMode: SubCardLayout;
+    // 🚀 视口中心位置（动态优先级加载）
+    viewportCenter: { x: number; y: number };
 }
 
 interface CanvasContextType {
@@ -73,6 +75,10 @@ interface CanvasContextType {
     updateGroup: (group: CanvasGroup) => void;
     setNodeTags: (ids: string[], tags: string[]) => void;
     isReady: boolean;
+    // 🚀 设置视口中心（动态优先级加载）
+    setViewportCenter: (center: { x: number; y: number }) => void;
+    // 🚀 迁移选中节点到其他项目
+    migrateNodes: (nodeIds: string[], targetCanvasId: string) => void;
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -97,7 +103,8 @@ const DEFAULT_STATE: CanvasState = {
     fileSystemHandle: null,
     folderName: null,
     selectedNodeIds: [],
-    subCardLayoutMode: 'row' // 默认横向排列
+    subCardLayoutMode: 'row', // 默认横向排列
+    viewportCenter: { x: 0, y: 0 } // 默认画布中心
 };
 
 // Helper to strip image URLs and Reference Image data for localStorage
@@ -249,8 +256,85 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     });
                 });
 
-                // 2. Load Images from IndexedDB
-                const imageMap = await getAllImages();
+                // 2. Load Images from IndexedDB (优化：按需加载)
+                console.log('[CanvasContext] Starting optimized image loading...');
+                const totalImages = await getImageCount();
+                console.log(`[CanvasContext] Total images in DB: ${totalImages}`);
+
+                // 🚀 收集当前状态中需要的图片ID
+                const requiredImageIds = new Set<string>();
+                state.canvases.forEach(c => {
+                    // 收集生成的图片ID
+                    c.imageNodes.forEach(img => {
+                        requiredImageIds.add(img.id);
+                    });
+                    // 收集参考图片ID
+                    c.promptNodes.forEach(pn => {
+                        if (pn.referenceImages) {
+                            pn.referenceImages.forEach(ref => {
+                                requiredImageIds.add(ref.id);
+                            });
+                        }
+                    });
+                });
+
+
+                console.log(`[CanvasContext] Found ${requiredImageIds.size} images needed in current state`);
+
+                // 🚀 紧急优化：限制最大加载数量，防止崩溃
+                const MAX_INITIAL_LOAD = 30; // 最多加载30张（全局查看优化）
+                let imageIdsArray = Array.from(requiredImageIds);
+
+                // 🚀 优先加载靠近视口中心的图片（动态更新）
+                const viewportX = state.viewportCenter.x;
+                const viewportY = state.viewportCenter.y;
+                const imagesWithDistance = imageIdsArray.map(id => {
+                    let minDistance = Infinity;
+                    state.canvases.forEach(c => {
+                        const node = c.imageNodes.find(n => n.id === id);
+                        if (node) {
+                            // 使用视口中心计算距离，优先加载屏幕中间的图片
+                            const dx = node.position.x - viewportX;
+                            const dy = node.position.y - viewportY;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            minDistance = Math.min(minDistance, distance);
+                        }
+                    });
+                    return { id, distance: minDistance };
+                });
+
+                // 按距离排序，优先加载中心区域
+                imagesWithDistance.sort((a, b) => a.distance - b.distance);
+                imageIdsArray = imagesWithDistance.slice(0, MAX_INITIAL_LOAD).map(item => item.id);
+
+                if (requiredImageIds.size > MAX_INITIAL_LOAD) {
+                    console.warn(`[CanvasContext] Too many images (${requiredImageIds.size}), loading only ${MAX_INITIAL_LOAD} nearest to center`);
+                }
+
+                // 🚀 按需加载：只加载当前状态需要的图片
+                const imageMap = new Map<string, string>();
+                const BATCH_SIZE = 5; // 减小批次大小，避免内存峰值
+
+                for (let i = 0; i < imageIdsArray.length; i += BATCH_SIZE) {
+                    const batch = imageIdsArray.slice(i, i + BATCH_SIZE);
+                    const batchPromises = batch.map(id => getImage(id));
+                    const batchResults = await Promise.all(batchPromises);
+
+                    batch.forEach((id, index) => {
+                        const url = batchResults[index];
+                        if (url) {
+                            imageMap.set(id, url);
+                        }
+                    });
+
+                    console.log(`[CanvasContext] Loaded batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(imageIdsArray.length / BATCH_SIZE)} (${imageMap.size}/${imageIdsArray.length})`);
+                }
+
+                console.log(`[CanvasContext] Successfully loaded ${imageMap.size}/${requiredImageIds.size} required images`);
+
+                if (imageMap.size < requiredImageIds.size) {
+                    console.warn(`[CanvasContext] ${requiredImageIds.size - imageMap.size} images not found in IndexedDB`);
+                }
 
                 // Migrate old images: if localStorage has URLs but IndexedDB doesn't, save them
                 // Also migrate Reference Images
@@ -561,7 +645,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 fileSystemHandle: prev.fileSystemHandle,
                 folderName: prev.folderName,
                 selectedNodeIds: [],
-                subCardLayoutMode: prev.subCardLayoutMode
+                subCardLayoutMode: prev.subCardLayoutMode,
+                viewportCenter: prev.viewportCenter
             };
         });
     }, []);
@@ -670,8 +755,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Persistence: Save ORIGINAL (Base64) to IndexedDB
             persistenceTasks.push((async () => {
                 try {
-                    // A. IndexedDB (Fast Cache) - Save ORIGINAL URL (Base64)
-                    await saveImage(node.storageId || node.id, node.url);
+                    // 🚀 A. IndexedDB - 保存3个质量级别（缩略图、预览、原图）
+                    const { saveImageWithQualities } = await import('../services/imageStorage');
+                    await saveImageWithQualities(node.storageId || node.id, node.url);
 
                     // B. File System (Persistent Disk)
                     if (state.fileSystemHandle) {
@@ -1091,7 +1177,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             fileSystemHandle: null,
             folderName: null,
             selectedNodeIds: [],
-            subCardLayoutMode: 'row'
+            subCardLayoutMode: 'row',
+            viewportCenter: { x: 0, y: 0 }
         });
     }, [state.canvases]);
 
@@ -1963,7 +2050,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // [NEW] Migration: Save currently loaded images (Temp) to the new Local Folder
             // This ensures work done in Temp mode is not lost/abandoned when switching
             if (handle) {
-                const currentImages = await getAllImages(); // Map<id, base64/url>
+                // 🚀 不再调用getAllImages，只迁移当前状态需要的图片
 
                 // Helper to save base64/blob to disk
                 const saveToDisk = async (id: string, urlOrData: string) => {
@@ -1984,11 +2071,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     }
                 };
 
-                // Identify images in current state
+                // 🚀 只迁移当前状态实际需要的图片
                 const promises: Promise<void>[] = [];
                 state.canvases.forEach(c => {
                     c.imageNodes.forEach(img => {
-                        if (img.id) promises.push(saveToDisk(img.id, img.url || currentImages.get(img.id) || ''));
+                        if (img.id && img.url) {
+                            promises.push(saveToDisk(img.id, img.url));
+                        }
                     });
                     c.promptNodes.forEach(pn => {
                         pn.referenceImages?.forEach(ref => {
@@ -2692,7 +2781,90 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             removeGroup,
             updateGroup,
             setNodeTags,
-            isReady: !isLoading
+            isReady: !isLoading,
+            // 🚀 视口中心动态加载
+            setViewportCenter: (center: { x: number; y: number }) => {
+                setState(prev => ({ ...prev, viewportCenter: center }));
+            },
+            // 🚀 迁移选中节点到其他项目
+            migrateNodes: (nodeIds: string[], targetCanvasId: string) => {
+                setState(prev => {
+                    const sourceCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
+                    const targetCanvas = prev.canvases.find(c => c.id === targetCanvasId);
+                    if (!sourceCanvas || !targetCanvas) return prev;
+
+                    // 找出要迁移的节点
+                    const promptsToMigrate = sourceCanvas.promptNodes.filter(n => nodeIds.includes(n.id));
+                    const imagesToMigrate = sourceCanvas.imageNodes.filter(n => nodeIds.includes(n.id));
+
+                    // 如果迁移的是主卡,也迁移其子图片
+                    const childImageIds = promptsToMigrate.flatMap(p => p.childImageIds || []);
+                    const childImagesToMigrate = sourceCanvas.imageNodes.filter(n => childImageIds.includes(n.id) && !nodeIds.includes(n.id));
+
+                    // 计算偏移量(放在目标画布右侧)
+                    const offsetX = targetCanvas.promptNodes.length > 0
+                        ? Math.max(...targetCanvas.promptNodes.map(n => n.position.x)) + 500
+                        : 0;
+
+                    // 更新迁移节点的位置 - 🔧 保留图片URL确保能正确显示
+                    const migratedPrompts = promptsToMigrate.map(p => ({
+                        ...p,
+                        position: { x: p.position.x + offsetX, y: p.position.y }
+                    }));
+                    const migratedImages = [...imagesToMigrate, ...childImagesToMigrate].map(img => ({
+                        ...img,
+                        position: { x: img.position.x + offsetX, y: img.position.y },
+                        // 🔧 关键：确保URL完整保留以便存储层能正确保存
+                        url: img.url || '',
+                        originalUrl: img.originalUrl || ''
+                    }));
+
+                    // 🔧 迁移后立即保存图片到IndexedDB（异步，不阻塞UI）
+                    (async () => {
+                        try {
+                            const { saveImage, getImage } = await import('../services/imageStorage');
+                            for (const img of migratedImages) {
+                                // 确保图片已存在于IndexedDB
+                                const existingUrl = await getImage(img.id);
+                                if (!existingUrl && (img.url || img.originalUrl)) {
+                                    const urlToSave = img.originalUrl || img.url;
+                                    if (urlToSave && !urlToSave.startsWith('blob:')) {
+                                        await saveImage(img.id, urlToSave);
+                                        console.log(`[MigrateNodes] Saved image ${img.id} to IndexedDB`);
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('[MigrateNodes] Failed to save images to IndexedDB', e);
+                        }
+                    })();
+
+                    // 从源画布删除,添加到目标画布
+                    const allMigratedImageIds = [...imagesToMigrate, ...childImagesToMigrate].map(i => i.id);
+                    const updatedCanvases = prev.canvases.map(c => {
+                        if (c.id === prev.activeCanvasId) {
+                            return {
+                                ...c,
+                                promptNodes: c.promptNodes.filter(n => !nodeIds.includes(n.id)),
+                                imageNodes: c.imageNodes.filter(n => !allMigratedImageIds.includes(n.id)),
+                                lastModified: Date.now()
+                            };
+                        }
+                        if (c.id === targetCanvasId) {
+                            return {
+                                ...c,
+                                promptNodes: [...c.promptNodes, ...migratedPrompts],
+                                imageNodes: [...c.imageNodes, ...migratedImages],
+                                lastModified: Date.now()
+                            };
+                        }
+                        return c;
+                    });
+
+                    console.log(`[MigrateNodes] Migrated ${migratedPrompts.length} prompts, ${migratedImages.length} images to canvas ${targetCanvasId}`);
+                    return { ...prev, canvases: updatedCanvases, selectedNodeIds: [] };
+                });
+            }
         }}>
             {children}
         </CanvasContext.Provider>

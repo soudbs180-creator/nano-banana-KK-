@@ -1,8 +1,8 @@
-# KK Studio v1.2.5
+# KK Studio v1.2.6
 
 **下一代 AI 图像创作工作室 | 无限画布 | 120Hz 极致性能**
 
-![Version](https://img.shields.io/badge/version-1.2.5-indigo.svg)
+![Version](https://img.shields.io/badge/version-1.2.6-indigo.svg)
 ![React](https://img.shields.io/badge/React-19-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
 ![Vite](https://img.shields.io/badge/Vite-6.0-purple)
@@ -185,6 +185,18 @@ KK-Studio-1.0.0/
 ---
 
 ## 📄 更新日志
+
+### v1.2.6 (2026-02-04)
+
+#### ✨ 新功能
+- **副卡模型名称修复**：副卡现在显示用户选择的模型显示名称（如 "Nano Banana Pro"），而不是技术ID
+- **modelLabel 字段**：新增 `modelLabel` 属性，完整保存用户选择时的模型标签
+
+#### 🛠️ 界面优化
+- **模型标签精确显示**：生成后的图片/视频卡片显示正确的模型名称
+- **圆点颜色优化**：不同模型显示不同颜色的标识圆点
+
+---
 
 ### v1.2.5 (2026-02-03)
 

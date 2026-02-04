@@ -27,10 +27,26 @@ export interface ModelCapability {
      * Maximum number of reference images allowed
      * - 0: No reference image support
      * - 1-10: Limited reference images (Gemini supports up to 10)
-     * - 3: Video models (Veo) support max 3 for first/last frame or reference
+     * - 3: Video models (Veo 2) support max 3 for first/last frame or reference
      * - undefined: Defaults to 10 for image models, 3 for video models
      */
     maxRefImages?: number;
+
+    /**
+     * Whether the model supports reference images parameter
+     * - Veo 3/Veo 3 Fast: false (不支持referenceImages参数)
+     * - Veo 2: true (支持referenceImages参数)
+     * - 未定义时默认为true
+     */
+    supportsReferenceImages?: boolean;
+
+    /**
+     * Whether the model supports video extension (video parameter)
+     * - Veo 3/Veo 3 Fast: false (不支持video参数)
+     * - Veo 2: true (支持video扩展)
+     * - 未定义时默认为true
+     */
+    supportsVideoExtension?: boolean;
 }
 
 /**
@@ -197,31 +213,41 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
         supportsGrounding: false,
-        maxRefImages: 3  // Veo 支持最多3张: 首帧/尾帧/参考图
+        maxRefImages: 0,  // Veo 3不支持参考图
+        supportsReferenceImages: false,  // Veo 3不支持referenceImages参数
+        supportsVideoExtension: false    // Veo 3不支持video参数（视频扩展）
     },
     'veo-3.1-fast-generate-preview': {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
         supportsGrounding: false,
-        maxRefImages: 3  // Veo 支持最多3张
+        maxRefImages: 0,  // Veo 3 Fast不支持参考图
+        supportsReferenceImages: false,  // Veo 3 Fast不支持referenceImages参数
+        supportsVideoExtension: false    // Veo 3 Fast不支持video参数
     },
     'veo-3.0-generate-001': {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
         supportsGrounding: false,
-        maxRefImages: 3  // Veo 支持最多3张
+        maxRefImages: 0,  // Veo 3不支持参考图
+        supportsReferenceImages: false,  // Veo 3不支持referenceImages参数
+        supportsVideoExtension: false    // Veo 3不支持video参数
     },
     'veo-3.0-fast-generate-001': {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
         supportsGrounding: false,
-        maxRefImages: 3  // Veo 支持最多3张
+        maxRefImages: 0,  // Veo 3 Fast不支持参考图
+        supportsReferenceImages: false,  // Veo 3 Fast不支持referenceImages参数
+        supportsVideoExtension: false    // Veo 3 Fast不支持video参数
     },
     'veo-2.0-generate-001': {
         supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
         supportedSizes: [ImageSize.SIZE_1K],
         supportsGrounding: false,
-        maxRefImages: 3  // Veo 支持最多3张
+        maxRefImages: 3,  // Veo 2支持最多3张参考图: 首帧/尾帧/参考图
+        supportsReferenceImages: true,   // Veo 2支持referenceImages参数
+        supportsVideoExtension: true     // Veo 2支持video参数（视频扩展）
     },
 
     // ============================================
@@ -370,4 +396,75 @@ export function getMaxRefImages(modelId: string): number {
 
     // Default for unknown models (assume Gemini-like)
     return 10;
+}
+
+/**
+ * 🚀 获取模型的用户友好显示名称
+ * 如果模型有自定义label则返回该label，否则从ID推断
+ * 
+ * @param modelId - 模型ID（如 'gemini-3-pro-image-preview'）
+ * @param customLabel - 可选的自定义显示名称
+ * @returns 用户友好的模型名称
+ */
+export function getModelDisplayName(modelId: string, customLabel?: string): string {
+    // 如果有自定义label，直接返回
+    if (customLabel) return customLabel;
+
+    const lowerModelId = modelId.toLowerCase();
+
+    // Gemini 3 系列
+    if (lowerModelId.includes('gemini-3-pro') || lowerModelId.includes('nano-banana-pro')) {
+        return 'Nano Banana Pro';  // 使用市场名称
+    }
+    if (lowerModelId.includes('gemini-3-flash')) {
+        return 'Gemini 3 Flash';
+    }
+    // Gemini 2.5 系列
+    if (lowerModelId.includes('gemini-2.5-flash-image') || lowerModelId.includes('nano-banana')) {
+        return 'Nano Banana';  // 使用市场名称
+    }
+    if (lowerModelId.includes('gemini-2.5-flash')) {
+        return 'Gemini 2.5 Flash';
+    }
+    if (lowerModelId.includes('gemini-2.5-pro')) {
+        return 'Gemini 2.5 Pro';
+    }
+    // Gemini 2.0 系列
+    if (lowerModelId.includes('gemini-2.0') || lowerModelId.includes('gemini-2-')) {
+        return 'Gemini 2.0 Flash';
+    }
+    // Imagen 4 系列
+    if (lowerModelId.includes('imagen-4') && lowerModelId.includes('ultra')) {
+        return 'Imagen 4 Ultra';
+    }
+    if (lowerModelId.includes('imagen-4') && lowerModelId.includes('fast')) {
+        return 'Imagen 4 Fast';
+    }
+    if (lowerModelId.includes('imagen-4')) {
+        return 'Imagen 4';
+    }
+    // Imagen 3 系列
+    if (lowerModelId.includes('imagen-3')) {
+        return 'Imagen 3';
+    }
+    // Veo 3 系列
+    if (lowerModelId.includes('veo-3.1') && lowerModelId.includes('fast')) {
+        return 'Veo 3.1 Fast';
+    }
+    if (lowerModelId.includes('veo-3.1')) {
+        return 'Veo 3.1';
+    }
+    if (lowerModelId.includes('veo-3') && lowerModelId.includes('fast')) {
+        return 'Veo 3 Fast';
+    }
+    if (lowerModelId.includes('veo-3')) {
+        return 'Veo 3';
+    }
+    // Veo 2 系列
+    if (lowerModelId.includes('veo-2') || lowerModelId.includes('veo')) {
+        return 'Veo 2';
+    }
+
+    // 默认返回模型ID
+    return modelId;
 }

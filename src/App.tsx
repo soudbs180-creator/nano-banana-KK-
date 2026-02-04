@@ -10,6 +10,7 @@ import ChatSidebar from './components/ChatSidebar';
 import { AspectRatio, ImageSize, GenerationConfig, PromptNode, GeneratedImage, GenerationMode, KnownModel, CanvasGroup } from './types';
 import { User, LayoutDashboard, LogOut, Settings } from 'lucide-react'; // Added icons for User Menu
 import { SelectionMenu } from './components/SelectionMenu';
+import { MigrateModal } from './components/MigrateModal';
 import { CanvasGroupComponent } from './components/CanvasGroupComponent';
 import { generateImage, cancelGeneration } from './services/geminiService';
 import { keyManager } from './services/keyManager';
@@ -82,7 +83,10 @@ const AppContent: React.FC = () => {
     setNodeTags,
     arrangeAllNodes,
     moveSelectedNodes,
-    isReady
+    isReady,
+    setViewportCenter, // 🚀 视口中心动态优先级
+    state, // 🚀 迁移需要访问canvases列表
+    migrateNodes // 🚀 迁移节点到其他项目
   } = useCanvas();
 
   // Canvas Ref for Zoom/Pan Controls
@@ -105,6 +109,7 @@ const AppContent: React.FC = () => {
   // [新功能] 全局灯箱状态 (针对图片浏览)
   const [previewImages, setPreviewImages] = useState<GeneratedImage[] | null>(null);
   const [previewInitialIndex, setPreviewInitialIndex] = useState(0);
+  const [showMigrateModal, setShowMigrateModal] = useState(false); // 🚀 迁移弹窗状态
 
   const handleOpenPreview = useCallback((imageId: string) => {
     const canvas = activeCanvasRef.current;
@@ -552,6 +557,14 @@ const AppContent: React.FC = () => {
     scale: 1
   });
 
+  // 🚀 同步视口中心到CanvasContext（用于动态优先级加载）
+  useEffect(() => {
+    // 计算当前视口中心在画布坐标中的位置
+    const centerX = (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale;
+    const centerY = (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale;
+    setViewportCenter({ x: centerX, y: centerY });
+  }, [canvasTransform, setViewportCenter]);
+
   // Derived Pending Position: Always Center (or linked to source)
   const pendingPosition = React.useMemo(() => {
     if (activeSourceImage && activeCanvas) {
@@ -867,8 +880,31 @@ const AppContent: React.FC = () => {
     }, 100);
   }, [selectNodes, arrangeAllNodes]);
 
+  // 🚀 定位卡组：优先定位选中卡组，无选中时定位最新
   const handleResetView = useCallback(() => {
     if (!activeCanvas) return;
+
+    // 1. 如果有选中的节点，优先定位到选中的卡组
+    if (selectedNodeIds.length > 0) {
+      // 找到选中的提示词节点和图片节点
+      const selectedPrompts = activeCanvas.promptNodes.filter(p => selectedNodeIds.includes(p.id));
+      const selectedImages = activeCanvas.imageNodes.filter(img => selectedNodeIds.includes(img.id));
+
+      // 计算选中节点的中心位置
+      const allPositions = [
+        ...selectedPrompts.map(p => p.position),
+        ...selectedImages.map(img => img.position)
+      ];
+
+      if (allPositions.length > 0) {
+        const avgX = allPositions.reduce((sum, pos) => sum + pos.x, 0) / allPositions.length;
+        const avgY = allPositions.reduce((sum, pos) => sum + pos.y, 0) / allPositions.length;
+        handleNavigateToNode(avgX, avgY);
+        return;
+      }
+    }
+
+    // 2. 无选中时，定位到最新生成的卡组
     const prompts = activeCanvas.promptNodes;
     if (prompts.length === 0) {
       handleNavigateToNode(0, 0);
@@ -896,7 +932,74 @@ const AppContent: React.FC = () => {
 
       handleNavigateToNode(targetX, targetY);
     }
-  }, [activeCanvas, handleNavigateToNode]);
+  }, [activeCanvas, handleNavigateToNode, selectedNodeIds]);
+
+  // 处理拖入图片创建孤独副卡
+  const handleImageDrop = useCallback(async (file: File, canvasPosition: { x: number; y: number }) => {
+    if (!activeCanvas) return;
+
+    try {
+      // 读取图片
+      const reader = new FileReader();
+      reader.onload = async (e: ProgressEvent<FileReader>) => {
+        const dataUrl = e.target?.result as string;
+        if (!dataUrl) return;
+
+        // 获取图片尺寸
+        const img = new Image();
+        img.onload = async () => {
+          const calc = await import('./utils/imageUtils');
+          const storageId = await calc.calculateImageHash(dataUrl.split(',')[1]);
+
+          // 保存到存储
+          const storage = await import('./services/imageStorage');
+          await storage.saveImage(storageId, dataUrl).catch(err =>
+            console.error("Failed to save dropped image", err)
+          );
+
+          // 计算宽高比
+          const calcAspect = (w: number, h: number): AspectRatio => {
+            const ratio = w / h;
+            if (Math.abs(ratio - 1) < 0.1) return AspectRatio.SQUARE;
+            if (ratio < 1) return AspectRatio.PORTRAIT_3_4;
+            return AspectRatio.LANDSCAPE_4_3;
+          };
+
+          // 创建孤独副卡
+          const newImage: GeneratedImage = {
+            id: Date.now().toString(),
+            storageId,
+            url: dataUrl,
+            prompt: `拖入图片: ${file.name}`,
+            aspectRatio: calcAspect(img.width, img.height),
+            timestamp: Date.now(),
+            model: 'uploaded',
+            canvasId: activeCanvas.id,
+            parentPromptId: '', // 孤独卡片无父节点
+            position: canvasPosition,
+            dimensions: `${img.width}×${img.height}`,
+            orphaned: true, // 标记为孤独卡片
+            fileName: file.name,
+            fileSize: file.size
+          };
+
+          addImageNodes([newImage]);
+
+          // 通知用户
+          import('./services/notificationService').then(({ notify }) => {
+            notify.success('图片已添加', `${file.name} (${img.width}×${img.height})`);
+          });
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Failed to process dropped image:', error);
+      import('./services/notificationService').then(({ notify }) => {
+        notify.error('图片处理失败', '请重试');
+      });
+    }
+  }, [activeCanvas, addImageNodes]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1168,7 +1271,7 @@ const AppContent: React.FC = () => {
       const validResults: GeneratedImage[] = validImageData.map((item, mapIndex) => {
         // 使用 mapIndex 作为后备，因为 item.index 已在 filter 中验证
         const idx = item.index ?? mapIndex;
-        const { url, originalUrl, generationTime, base64, tokens, cost } = item;
+        const { url, originalUrl, generationTime, base64, mode: itemMode, tokens, cost } = item;  // 🚀 添加mode
         let x, y;
 
         // ✅ 统一布局: 固定2列,使用和PendingNode相同的计算公式
@@ -1215,6 +1318,24 @@ const AppContent: React.FC = () => {
           imageSize: node.imageSize, // Add imageSize field
           timestamp: Date.now(),
           model: effectiveModel,
+          modelLabel: (() => {
+            // 🚀 同步获取模型显示名称
+            const m = effectiveModel.toLowerCase();
+            if (m.includes('gemini-3-pro') || m.includes('nano-banana-pro')) return 'Nano Banana Pro';
+            if (m.includes('gemini-2.5-flash-image') || m.includes('nano-banana')) return 'Nano Banana';
+            if (m.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
+            if (m.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
+            if (m.includes('imagen-4') && m.includes('ultra')) return 'Imagen 4 Ultra';
+            if (m.includes('imagen-4') && m.includes('fast')) return 'Imagen 4 Fast';
+            if (m.includes('imagen-4')) return 'Imagen 4';
+            if (m.includes('veo-3.1') && m.includes('fast')) return 'Veo 3.1 Fast';
+            if (m.includes('veo-3.1')) return 'Veo 3.1';
+            if (m.includes('veo-3') && m.includes('fast')) return 'Veo 3 Fast';
+            if (m.includes('veo-3')) return 'Veo 3';
+            if (m.includes('veo')) return 'Veo 2';
+            return effectiveModel;  // 默认返回原始ID
+          })(),
+          mode: itemMode,  // 🚀 添加mode属性用于区分视频/图片
           canvasId: activeCanvas?.id || 'default',
           parentPromptId: promptNodeId,
           position: { x, y },
@@ -1821,8 +1942,8 @@ const AppContent: React.FC = () => {
       return { visiblePromptNodes: [], visibleImageNodes: [], visibleGroups: [] };
     }
 
-    // Buffer: Load 1 screen worth of content around the viewport to prevent flash on scroll
-    const BUFFER = 2000;
+    // Buffer: Load 2 screens worth of content around the viewport to prevent flash on drag
+    const BUFFER = 5000; // 🚀 增大缓冲区防止拖动时消失
 
     // Viewport Render Bounds in Canvas Coordinates
     // Screen (0,0) -> Canvas (vLeft, vTop)
@@ -1839,9 +1960,9 @@ const AppContent: React.FC = () => {
 
     // 2. Filter Prompt Nodes
     const visiblePromptNodes = activeCanvas.promptNodes.filter(n => {
-      // Estimate Bounds (Center X, Bottom Y)
-      const w = 500; // Generous width
-      const h = 500; // Generous height
+      // Estimate Bounds (Center X, Bottom Y) - 🚀 增大估算确保不消失
+      const w = 800;
+      const h = 800;
       const x = n.position.x - w / 2;
       const y = n.position.y - h;
       return !(x > vRight || x + w < vLeft || y > vBottom || y + h < vTop);
@@ -1849,9 +1970,9 @@ const AppContent: React.FC = () => {
 
     // 3. Filter Image Nodes
     const visibleImageNodes = activeCanvas.imageNodes.filter(n => {
-      // Estimate Bounds (Center X, Bottom Y)
-      const w = 400;
-      const h = 700; // Vertical images can be tall
+      // Estimate Bounds (Center X, Bottom Y) - 🚀 增大估算确保不消失
+      const w = 800;
+      const h = 1200;
       const x = n.position.x - w / 2;
       const y = n.position.y - h;
       return !(x > vRight || x + w < vLeft || y > vBottom || y + h < vTop);
@@ -2011,72 +2132,93 @@ const AppContent: React.FC = () => {
         />
       )}
       {/* Selection Menu Overlay */}
-      {selectionMenuPosition && selectedNodeIds.length > 0 && (
-        <SelectionMenu
-          position={selectionMenuPosition}
-          selectedCount={selectedNodeIds.length}
-          onDelete={() => {
-            if (activeCanvas) {
-              const prompts = activeCanvas.promptNodes.filter(n => selectedNodeIds.includes(n.id));
-              const images = activeCanvas.imageNodes.filter(n => selectedNodeIds.includes(n.id));
-              prompts.forEach(n => deletePromptNode(n.id));
-              images.forEach(n => deleteImageNode(n.id));
-              clearSelection();
-            }
-            setSelectionMenuPosition(null);
-          }}
-          onGroup={() => {
-            if (!activeCanvas) return;
-            // Calculate bounds
-            const prompts = activeCanvas.promptNodes.filter(n => selectedNodeIds.includes(n.id));
+      {selectionMenuPosition && selectedNodeIds.length > 0 && (() => {
+        // 🚀 计算详细统计：组数/图片数/视频数
+        const selectedPrompts = activeCanvas?.promptNodes.filter(n => selectedNodeIds.includes(n.id)) || [];
+        const selectedImages = activeCanvas?.imageNodes.filter(n => selectedNodeIds.includes(n.id)) || [];
 
-            // [FIX] Include child images of selected prompts for adaptive bounding
-            const childImageIds = prompts.flatMap(p => p.childImageIds || []);
-            const images = activeCanvas.imageNodes.filter(n => selectedNodeIds.includes(n.id) || childImageIds.includes(n.id));
+        const groupCount = selectedPrompts.length; // 主卡 = 组
+        const videoCount = selectedImages.filter(img =>
+          img.mode === GenerationMode.VIDEO ||
+          img.url?.includes('.mp4') ||
+          img.url?.startsWith('data:video')
+        ).length;
+        const imageCount = selectedImages.length - videoCount; // 图片 = 副卡总数 - 视频数
 
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-            prompts.forEach(n => {
-              const w = 380; // Assuming prompt width
-              const h = n.height || 200;
-              minX = Math.min(minX, n.position.x - w / 2);
-              maxX = Math.max(maxX, n.position.x + w / 2);
-              minY = Math.min(minY, n.position.y - h); // Anchor bottom
-              maxY = Math.max(maxY, n.position.y);
-            });
-
-            images.forEach(n => {
-              const { width, totalHeight } = getCardDimensions(n.aspectRatio, true);
-              minX = Math.min(minX, n.position.x - width / 2);
-              maxX = Math.max(maxX, n.position.x + width / 2);
-              minY = Math.min(minY, n.position.y - totalHeight);
-              maxY = Math.max(maxY, n.position.y);
-            });
-
-            if (minX === Infinity) {
+        return (
+          <SelectionMenu
+            position={selectionMenuPosition}
+            selectedCount={selectedNodeIds.length}
+            groupCount={groupCount}
+            imageCount={imageCount}
+            videoCount={videoCount}
+            onDelete={() => {
+              if (activeCanvas) {
+                const prompts = activeCanvas.promptNodes.filter(n => selectedNodeIds.includes(n.id));
+                const images = activeCanvas.imageNodes.filter(n => selectedNodeIds.includes(n.id));
+                prompts.forEach(n => deletePromptNode(n.id));
+                images.forEach(n => deleteImageNode(n.id));
+                clearSelection();
+              }
               setSelectionMenuPosition(null);
-              return;
-            }
+            }}
+            onGroup={() => {
+              if (!activeCanvas) return;
+              // Calculate bounds
+              const prompts = activeCanvas.promptNodes.filter(n => selectedNodeIds.includes(n.id));
 
-            const padding = 20;
-            const group: CanvasGroup = {
-              id: Date.now().toString(),
-              nodeIds: [...prompts.map(n => n.id), ...images.map(n => n.id)],
-              bounds: {
-                x: minX - padding,
-                y: minY - padding,
-                width: (maxX - minX) + padding * 2,
-                height: (maxY - minY) + padding * 2
-              },
-              type: 'custom'
-            };
-            addGroup(group);
-            clearSelection();
-            setSelectionMenuPosition(null);
-          }}
-          onTag={handleTag}
-        />
-      )}
+              // [FIX] Include child images of selected prompts for adaptive bounding
+              const childImageIds = prompts.flatMap(p => p.childImageIds || []);
+              const images = activeCanvas.imageNodes.filter(n => selectedNodeIds.includes(n.id) || childImageIds.includes(n.id));
+
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+              prompts.forEach(n => {
+                const w = 380; // Assuming prompt width
+                const h = n.height || 200;
+                minX = Math.min(minX, n.position.x - w / 2);
+                maxX = Math.max(maxX, n.position.x + w / 2);
+                minY = Math.min(minY, n.position.y - h); // Anchor bottom
+                maxY = Math.max(maxY, n.position.y);
+              });
+
+              images.forEach(n => {
+                const { width, totalHeight } = getCardDimensions(n.aspectRatio, true);
+                minX = Math.min(minX, n.position.x - width / 2);
+                maxX = Math.max(maxX, n.position.x + width / 2);
+                minY = Math.min(minY, n.position.y - totalHeight);
+                maxY = Math.max(maxY, n.position.y);
+              });
+
+              if (minX === Infinity) {
+                setSelectionMenuPosition(null);
+                return;
+              }
+
+              const padding = 20;
+              const group: CanvasGroup = {
+                id: Date.now().toString(),
+                nodeIds: [...prompts.map(n => n.id), ...images.map(n => n.id)],
+                bounds: {
+                  x: minX - padding,
+                  y: minY - padding,
+                  width: (maxX - minX) + padding * 2,
+                  height: (maxY - minY) + padding * 2
+                },
+                type: 'custom'
+              };
+              addGroup(group);
+              clearSelection();
+              setSelectionMenuPosition(null);
+            }}
+            onTag={handleTag}
+            onMigrate={() => {
+              setSelectionMenuPosition(null);
+              setShowMigrateModal(true);
+            }}
+          />
+        );
+      })()}
 
 
 
@@ -2096,9 +2238,13 @@ const AppContent: React.FC = () => {
 
           // Clear input when clicking empty canvas, but NOT during generation
           // and NOT when in "continue from image" mode
+          // Clear input when clicking empty canvas? NO, user reported this is annoying.
+          // Keep the prompt draft even if deselected.
+          /*
           if (!isGenerating && !activeSourceImage) {
             setConfig(prev => ({ ...prev, prompt: '' }));
           }
+          */
           // Always clear selection on empty click
           clearSelection();
           setSelectionMenuPosition(null);
@@ -2142,6 +2288,7 @@ const AppContent: React.FC = () => {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onContextMenu={handleContextMenu}
+        onImageDrop={handleImageDrop}
       >
         {/* 1. Connection Lines Layer (SVG) - Below all cards */}
         <svg
@@ -2727,6 +2874,20 @@ const AppContent: React.FC = () => {
           `}</style>
         </button>
       </div>
+
+      {/* 🚀 迁移弹窗 */}
+      <MigrateModal
+        isOpen={showMigrateModal}
+        onClose={() => setShowMigrateModal(false)}
+        canvases={state.canvases}
+        currentCanvasId={state.activeCanvasId}
+        selectedCount={selectedNodeIds.length}
+        onMigrate={(targetCanvasId) => {
+          migrateNodes(selectedNodeIds, targetCanvasId);
+          setShowMigrateModal(false);
+          clearSelection();
+        }}
+      />
     </div>
   );
 };

@@ -7,9 +7,13 @@ import { calculateImageHash } from '../utils/imageUtils';
 import { saveImage, getImage } from '../services/imageStorage'; // [NEW] Import getImage
 import ImageOptionsPanel from './ImageOptionsPanel';
 import VideoOptionsPanel from './VideoOptionsPanel';
+import ImagePreview from './ImagePreview';
 
 // [FIX] Robust Image Component that self-heals from Storage if data is missing
-const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeType?: string, storageId?: string } }> = ({ image }) => {
+const ReferenceThumbnail: React.FC<{
+    image: { id: string, data?: string, mimeType?: string, storageId?: string };
+    onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
+}> = ({ image, onClick }) => {
     const [data, setData] = useState<string | undefined>(image.data);
     const [loading, setLoading] = useState(!image.data);
     const [error, setError] = useState(false);
@@ -25,11 +29,6 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
 
         // If no data and no storageId, it's a dead link (or just created invalidly)
         if (!image.storageId) {
-            // Wait a bit? No, it's invalid.
-            // But maybe it's just being created? 
-            // If it's a fresh upload, data usually comes first. 
-            // If it's empty, we might not want to show error immediately if it's transient?
-            // But here "image" is from config.referenceImages.
             setLoading(false);
             setError(true);
             return;
@@ -59,7 +58,7 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
             });
 
         return () => { active = false; };
-    }, [image.data, image.storageId]); // Re-run if prop data arrives or ID changes
+    }, [image.data, image.storageId]);
 
     if (error) {
         return (
@@ -82,14 +81,20 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
     }
 
     // Robust Src Construction
-    const src = data.startsWith('data:') ? data : `data:${image.mimeType || 'image/png'}; base64, ${data} `;
+    const src = data.startsWith('data:') ? data : `data:${image.mimeType || 'image/png'};base64,${data}`;
 
     return (
-        <img
-            src={src}
-            className="w-12 h-12 object-cover rounded-lg border border-white/10 shadow-sm pointer-events-none bg-[var(--bg-tertiary)]"
-            alt="Reference"
-        />
+        <div
+            onClick={onClick}
+            className="w-12 h-12 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all"
+            title="点击放大查看"
+        >
+            <img
+                src={src}
+                className="w-full h-full object-cover"
+                alt="Reference"
+            />
+        </div>
     );
 };
 
@@ -164,6 +169,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         targetX: number;
         targetY: number;
     } | null>(null);
+
+    // [NEW] 参考图放大状态
+    const [previewImage, setPreviewImage] = useState<{ url: string; originRect: DOMRect } | null>(null);
     const refContainerRef = useRef<HTMLDivElement>(null);
     const optionsPanelRef = useRef<HTMLDivElement>(null); // [NEW] Ref for options panel
 
@@ -868,7 +876,17 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 setDropTargetIndex(null);
                                             }}
                                         >
-                                            <ReferenceThumbnail image={img} />
+                                            <ReferenceThumbnail
+                                                image={img}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    const src = img.data?.startsWith('data:')
+                                                        ? img.data
+                                                        : `data:${img.mimeType || 'image/png'};base64,${img.data}`;
+                                                    setPreviewImage({ url: src, originRect: rect });
+                                                }}
+                                            />
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -964,14 +982,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     {/* Left: Model & Settings */}
                     {/* Model Button */}
                     {/* Model Button */}
-                    <div className="relative inline-flex">
+                    <div className="relative inline-flex flex-shrink-0">
                         <button
                             id="models-dropdown-trigger"
-                            className={`input-bar-model flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
+                            className={`input-bar-model flex items-center justify-center gap-2 px-2 md:px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
                                 ? 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-tertiary)] cursor-not-allowed'
                                 : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50'
                                 }`}
-                            style={{ width: '200px', minWidth: '200px', maxWidth: '200px' }}
+                            style={{ minWidth: isMobile ? '120px' : '200px', maxWidth: isMobile ? '140px' : '200px' }}
                             onClick={() => {
                                 if (isModelListEmpty) {
                                     onOpenSettings?.('api-management');
@@ -1162,7 +1180,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <path d="M8.5 16.3a5 5 0 0 1 7 0" />
                                 <line x1="12" y1="20" x2="12.01" y2="20" />
                             </svg>
-                            <span>联网</span>
+                            <span className="hidden md:inline">联网</span>
                         </button >
 
                     </div >
@@ -1180,7 +1198,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 }}
                                 title="并发数量"
                             >
-                                <span className="text-[11px] font-medium">数量 {config.parallelCount}</span>
+                                <span className="text-[11px] font-medium"><span className="hidden md:inline">数量 </span>{config.parallelCount}</span>
                                 <svg className={`w-2.5 h-2.5 opacity-50 flex-shrink-0 transition-transform duration-200 ${activeMenu === 'count' ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
                             </button>
                             {
@@ -1252,6 +1270,15 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             </div >
 
             <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={(e) => e.target.files && processFiles(e.target.files)} />
+
+            {/* [NEW] 参考图放大浮层 */}
+            {previewImage && (
+                <ImagePreview
+                    imageUrl={previewImage.url}
+                    originRect={previewImage.originRect}
+                    onClose={() => setPreviewImage(null)}
+                />
+            )}
         </div >
     );
 };

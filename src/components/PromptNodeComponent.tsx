@@ -3,6 +3,7 @@ import { PromptNode, AspectRatio, GenerationMode } from '../types';
 import { Sparkles, Loader2, Video, Image } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
+import ImagePreview from './ImagePreview';
 
 interface PromptNodeProps {
     node: PromptNode;
@@ -168,7 +169,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     highlighted
 }) => {
     const [isDragging, setIsDragging] = useState(false);
-    const [cardHeight, setCardHeight] = useState(200); // 默认高度�?00px,会在渲染后更�?
+    const [cardHeight, setCardHeight] = useState(200); // 默认高度??00px,会在渲染后更??
+    const [previewImage, setPreviewImage] = useState<{ url: string; originRect: DOMRect } | null>(null);
     const dragStartPos = useRef({ x: 0, y: 0 });
     const dragStartCanvasPos = useRef({ x: 0, y: 0 });
 
@@ -206,7 +208,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         return () => observer.disconnect();
     }, [node.id, onHeightChange, node.height]); // Depend on node.height to prevent loop if stable
 
-    // 动态更新cardHeight用于连接线起�?
+    // 动态更新cardHeight用于连接线起??
     useEffect(() => {
         const updateHeight = () => {
             if (cardRef.current) {
@@ -220,7 +222,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         // 初始更新
         updateHeight();
 
-        // 利用已有的ResizeObserver来监听高度变�?
+        // 利用已有的ResizeObserver来监听高度变??
         const observer = new ResizeObserver(updateHeight);
         if (cardRef.current) {
             observer.observe(cardRef.current);
@@ -387,7 +389,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 `}
                 style={{
                     width: getCardDimensions(node.aspectRatio).width,
-                    backgroundColor: 'var(--bg-surface)', // ✅ 不透明背景
+                    backgroundColor: 'var(--bg-surface)', // ? 不透明背景
                     borderColor: node.isGenerating ?
                         'var(--border-subtle)' :
                         node.isDraft ?
@@ -536,8 +538,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                             </div>
                             <span className="text-xs font-medium text-[var(--text-secondary)] flex-1">
                                 {node.mode === GenerationMode.VIDEO
-                                    ? (node.childImageIds && node.childImageIds.length > 0 ? '视频生成完成! 🎬' : '视频模式 📹')
-                                    : (node.childImageIds && node.childImageIds.length > 0 ? '大功告成! 🎉' : '准备就绪 🚀')}
+                                    ? (node.childImageIds && node.childImageIds.length > 0 ? '视频生成完成 🎬' : '视频模式 🎬')
+                                    : (node.childImageIds && node.childImageIds.length > 0 ? '图片生成完成 ✨' : '准备就绪 ✏️')}
                             </span>
                             {/* Delete Button (Always show for idle/success nodes too) */}
                             {onDelete && (
@@ -563,10 +565,24 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 {node.referenceImages && node.referenceImages.length > 0 && (
                     <div className="flex gap-1 mb-2 flex-wrap">
                         {node.referenceImages.slice(0, 4).map((img, idx) => (
-                            <ReferenceThumbnail
+                            <div
                                 key={img.id || idx}
-                                image={img}
-                            />
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const refThumb = e.currentTarget.querySelector('img');
+                                    if (refThumb) {
+                                        const rect = refThumb.getBoundingClientRect();
+                                        const src = img.data?.startsWith('data:') || img.data?.startsWith('http') || img.data?.startsWith('blob:')
+                                            ? img.data
+                                            : `data:${img.mimeType || 'image/png'};base64,${img.data}`;
+                                        setPreviewImage({ url: src, originRect: rect });
+                                    }
+                                }}
+                            >
+                                <ReferenceThumbnail
+                                    image={img}
+                                />
+                            </div>
                         ))}
                         {node.referenceImages.length > 4 && (
                             <div className="w-10 h-10 rounded border border-[var(--border-light)] bg-[var(--bg-tertiary)] flex items-center justify-center text-xs text-[var(--text-secondary)]">
@@ -637,7 +653,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
                                 return (
                                     <React.Fragment key={i}>
-                                        {/* 连接线 */}
+                                        {/* 能量流动线 */}
                                         <svg
                                             className="pointer-events-none"
                                             style={{
@@ -648,14 +664,94 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                 zIndex: 1
                                             }}
                                         >
+                                            <defs>
+                                                {/* 发光滤镜 */}
+                                                <filter id={`glow-${i}`} x="-50%" y="-50%" width="200%" height="200%">
+                                                    <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                                                    <feMerge>
+                                                        <feMergeNode in="coloredBlur" />
+                                                        <feMergeNode in="SourceGraphic" />
+                                                    </feMerge>
+                                                </filter>
+
+                                                {/* 能量流动渐变 */}
+                                                <linearGradient id={`energy-gradient-${i}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                                    <stop offset="0%" stopColor="#6366f1" stopOpacity="0">
+                                                        <animate attributeName="offset" values="0;0.3;0" dur="1.5s" repeatCount="indefinite" />
+                                                    </stop>
+                                                    <stop offset="30%" stopColor="#8b5cf6" stopOpacity="1">
+                                                        <animate attributeName="offset" values="0.3;0.7;0.3" dur="1.5s" repeatCount="indefinite" />
+                                                    </stop>
+                                                    <stop offset="60%" stopColor="#a855f7" stopOpacity="0.8">
+                                                        <animate attributeName="offset" values="0.6;1;0.6" dur="1.5s" repeatCount="indefinite" />
+                                                    </stop>
+                                                    <stop offset="100%" stopColor="#c084fc" stopOpacity="0" />
+                                                </linearGradient>
+                                            </defs>
+
+                                            {/* 外发光层 */}
                                             <path
-                                                d={`M0,${cardHeight} C0,${cardHeight + offsetY * 0.5} ${offsetX},${cardHeight + offsetY * 0.5} ${offsetX},${cardHeight + offsetY}`}
+                                                d={`M0,0 C0,${offsetY * 0.5} ${offsetX},${offsetY * 0.5} ${offsetX},${offsetY}`}
+                                                fill="none"
+                                                stroke="#8b5cf6"
+                                                strokeWidth="8"
+                                                opacity="0.1"
+                                                filter={`url(#glow-${i})`}
+                                            />
+
+                                            {/* 基础线条(脉冲效果) */}
+                                            <path
+                                                d={`M0,0 C0,${offsetY * 0.5} ${offsetX},${offsetY * 0.5} ${offsetX},${offsetY}`}
                                                 fill="none"
                                                 stroke="#6366f1"
                                                 strokeWidth="2"
-                                                strokeDasharray="6 4"
-                                                opacity="0.6"
+                                                opacity="0.3"
+                                            >
+                                                <animate attributeName="opacity" values="0.2;0.5;0.2" dur="2s" repeatCount="indefinite" />
+                                            </path>
+
+                                            {/* 能量流动线 */}
+                                            <path
+                                                d={`M0,0 C0,${offsetY * 0.5} ${offsetX},${offsetY * 0.5} ${offsetX},${offsetY}`}
+                                                fill="none"
+                                                stroke={`url(#energy-gradient-${i})`}
+                                                strokeWidth="4"
+                                                strokeLinecap="round"
+                                                filter={`url(#glow-${i})`}
                                             />
+
+                                            {/* 能量粒子1 - 快速 */}
+                                            <circle r="4" fill="#a855f7" opacity="0" filter={`url(#glow-${i})`}>
+                                                <animateMotion
+                                                    dur="1.5s"
+                                                    repeatCount="indefinite"
+                                                    path={`M0,0 C0,${offsetY * 0.5} ${offsetX},${offsetY * 0.5} ${offsetX},${offsetY}`}
+                                                />
+                                                <animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite" />
+                                                <animate attributeName="r" values="2;4;2" dur="1.5s" repeatCount="indefinite" />
+                                            </circle>
+
+                                            {/* 能量粒子2 - 中速 */}
+                                            <circle r="3" fill="#8b5cf6" opacity="0" filter={`url(#glow-${i})`}>
+                                                <animateMotion
+                                                    dur="1.8s"
+                                                    repeatCount="indefinite"
+                                                    begin="0.3s"
+                                                    path={`M0,0 C0,${offsetY * 0.5} ${offsetX},${offsetY * 0.5} ${offsetX},${offsetY}`}
+                                                />
+                                                <animate attributeName="opacity" values="0;0.8;0" dur="1.8s" repeatCount="indefinite" begin="0.3s" />
+                                            </circle>
+
+                                            {/* 能量粒子3 - 慢速 */}
+                                            <circle r="2.5" fill="#6366f1" opacity="0" filter={`url(#glow-${i})`}>
+                                                <animateMotion
+                                                    dur="2s"
+                                                    repeatCount="indefinite"
+                                                    begin="0.6s"
+                                                    path={`M0,0 C0,${offsetY * 0.5} ${offsetX},${offsetY * 0.5} ${offsetX},${offsetY}`}
+                                                />
+                                                <animate attributeName="opacity" values="0;0.6;0" dur="2s" repeatCount="indefinite" begin="0.6s" />
+                                            </circle>
                                         </svg>
 
                                         {/* 副占位卡 */}
@@ -676,7 +772,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             <div
                                                 className="absolute inset-0 pointer-events-none"
                                                 style={{
-                                                    background: 'linear-gradient(90deg, transparent 0%, transparent 35%, var(--shimmer-color, rgba(255,255,255,0.08)) 50%, transparent 65%, transparent 100%)',
+                                                    background: 'linear-gradient(110deg, transparent 30%, var(--shimmer-color, rgba(255,255,255,0.05)) 45%, var(--shimmer-color, rgba(255,255,255,0.2)) 50%, var(--shimmer-color, rgba(255,255,255,0.05)) 55%, transparent 70%)',
                                                     backgroundSize: '200% 100%',
                                                     animation: 'shimmer-sweep 2s linear infinite'
                                                 }}
@@ -702,19 +798,35 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                         border: '1px solid var(--border-light)'
                                                     }}
                                                 >
-                                                    <span className={`w-1 h-1 rounded-full ${(node.model || '').includes('ultra') ? 'bg-purple-500' :
-                                                        (node.model || '').includes('imagen-4') ? 'bg-blue-500' :
-                                                            (node.model || '').includes('pro') ? 'bg-amber-500' :
-                                                                (node.model || '').includes('flash') ? 'bg-yellow-500' :
-                                                                    'bg-zinc-500'
-                                                        }`}></span>
+                                                    <span className={`w-1 h-1 rounded-full ${(() => {
+                                                        const m = (node.model || '').toLowerCase();
+                                                        if (m.includes('gemini-3-pro') || m.includes('nano-banana-pro')) return 'bg-purple-600';
+                                                        if (m.includes('gemini-3-flash')) return 'bg-cyan-500';
+                                                        if (m.includes('gemini-2.5-flash') || m.includes('nano-banana')) return 'bg-yellow-500';
+                                                        if (m.includes('gemini-2.5-pro')) return 'bg-amber-500';
+                                                        if (m.includes('imagen-4') && m.includes('ultra')) return 'bg-purple-500';
+                                                        if (m.includes('imagen-4')) return 'bg-blue-500';
+                                                        if (m.includes('veo-3')) return 'bg-purple-500';
+                                                        if (m.includes('veo')) return 'bg-violet-500';
+                                                        return 'bg-zinc-500';
+                                                    })()}`}></span>
                                                     <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
                                                         {(() => {
-                                                            const m = node.model || '';
-                                                            if (m.includes('ultra')) return 'Imagen 4 Ultra';
+                                                            const m = (node.model || '').toLowerCase();
+                                                            if (m.includes('gemini-3-pro') || m.includes('nano-banana-pro')) return 'Gemini 3 Pro';
+                                                            if (m.includes('gemini-3-flash')) return 'Gemini 3 Flash';
+                                                            if (m.includes('gemini-2.5-flash') || m.includes('nano-banana')) return 'Gemini 2.5 Flash';
+                                                            if (m.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
+                                                            if (m.includes('gemini-2.0') || m.includes('gemini-2-')) return 'Gemini 2.0 Flash';
+                                                            if (m.includes('imagen-4') && m.includes('ultra')) return 'Imagen 4 Ultra';
+                                                            if (m.includes('imagen-4') && m.includes('fast')) return 'Imagen 4 Fast';
                                                             if (m.includes('imagen-4')) return 'Imagen 4';
-                                                            if (m.includes('pro')) return 'Gemini 2.5 Pro';
-                                                            if (m.includes('flash')) return 'Gemini 2.0 Flash';
+                                                            if (m.includes('imagen-3')) return 'Imagen 3';
+                                                            if (m.includes('veo-3.1') && m.includes('fast')) return 'Veo 3.1 Fast';
+                                                            if (m.includes('veo-3.1')) return 'Veo 3.1';
+                                                            if (m.includes('veo-3') && m.includes('fast')) return 'Veo 3 Fast';
+                                                            if (m.includes('veo-3')) return 'Veo 3';
+                                                            if (m.includes('veo-2') || m.includes('veo')) return 'Veo 2';
                                                             return 'AI Model';
                                                         })()}
                                                     </span>
@@ -754,6 +866,15 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             }
 
             {/* Visual Guide Line (optional, only when dragging maybe?) */}
+
+            {/* [NEW] 参考图放大浮层 */}
+            {previewImage && (
+                <ImagePreview
+                    imageUrl={previewImage.url}
+                    originRect={previewImage.originRect}
+                    onClose={() => setPreviewImage(null)}
+                />
+            )}
         </div >
     );
 });

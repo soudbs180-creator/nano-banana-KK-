@@ -4,6 +4,10 @@ import { AspectRatio, GeneratedImage, GenerationMode } from '../types';
 import { Download, Trash2, Loader2, ImageOff } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
+import { useLazyImage } from '../hooks/useLazyImage';
+import { getImage } from '../services/imageStorage';
+import { loadImage, cancelImageLoad } from '../services/imageLoader';
+import { ImageQuality } from '../services/imageQuality';
 
 interface ImageNodeProps {
     image: GeneratedImage;
@@ -21,6 +25,7 @@ interface ImageNodeProps {
     onSelect?: () => void;
     highlighted?: boolean;
     onPreview?: (imageId: string) => void;
+    isVisible?: boolean; // 🚀 视口可见性控制（从父组件传入）
 }
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
@@ -37,7 +42,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     isSelected = false,
     onSelect,
     highlighted,
-    onPreview
+    onPreview,
+    isVisible = true // 🚀 默认可见（向后兼容）
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -75,23 +81,115 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
     const [imgError, setImgError] = useState(false);
     const [isRecovering, setIsRecovering] = useState(false); // [NEW] Track active recovery to hide broken IMG
+    const recoveryAttemptsRef = useRef(0); // 🚀 防止恢复循环 - 最多尝试2次
     const [lightboxOriginalUrl, setLightboxOriginalUrl] = useState<string | null>(null);
     const [isLoadingOriginal, setIsLoadingOriginal] = useState(false);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false); // 视频默认暂停
     const videoRef = useRef<HTMLVideoElement>(null);
 
-    // Robust Image Loading State
-    const [displaySrc, setDisplaySrc] = useState<string | undefined>(image.url);
+    // 🚀 Robust Image Loading State - 初始化为undefined强制队列加载
+    const [displaySrc, setDisplaySrc] = useState<string | undefined>(undefined);
+    const [currentQuality, setCurrentQuality] = useState<string>('original');
+    const qualityLoadingRef = useRef(false); // 防止重复加载
+    const lastZoomRef = useRef(zoomScale || 1.0); // 防抖：只在显著变化时切换
+    const loadedRef = useRef(false); // 🚀 标记是否已从队列加载
+    const [isLoading, setIsLoading] = useState(true); // 🚀 明确的加载状态
+    const qualityDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 🚀 质量切换防抖
 
-    // Sync displaySrc when prop changes
+    // 🚀 根据画布缩放自动选择合适质量 - 使用队列加载优化
     useEffect(() => {
-        // [FIX] Prevent overwriting valid local blob with empty string from context
-        // and avoid unnecessary updates if URL is effectively the same or if dragging
-        if (image.url && image.url !== displaySrc) {
-            setDisplaySrc(image.url);
-            setImgError(false);
+        // 🚀 如果不可见，取消加载并跳过
+        if (!isVisible) {
+            cancelImageLoad(image.id);
+            if (qualityDebounceRef.current) {
+                clearTimeout(qualityDebounceRef.current);
+            }
+            return;
         }
-    }, [image.url]); // Remove displaySrc dependency to avoid loop, rely on guard
+
+        // 🚀 如果已加载过且有显示图，完全跳过质量切换（大幅提升性能）
+        // 只在首次加载或缩放变化非常大(>50%)时才切换质量
+        const currentZoom = zoomScale || 1.0;
+        const zoomChange = Math.abs(currentZoom - lastZoomRef.current) / lastZoomRef.current;
+
+        if (displaySrc && loadedRef.current && zoomChange < 0.5) {
+            // 🚀 已加载的图片，缩放变化<50%时完全跳过
+            return;
+        }
+
+        // 正在加载时跳过
+        if (qualityLoadingRef.current) return;
+
+        // 🚀 防抖：等待500ms缩放稳定后再切换质量（关键性能优化）
+        if (qualityDebounceRef.current) {
+            clearTimeout(qualityDebounceRef.current);
+        }
+
+        qualityDebounceRef.current = setTimeout(async () => {
+            let isCancelled = false;
+
+            try {
+                qualityLoadingRef.current = true;
+                lastZoomRef.current = currentZoom;
+
+                const { getAppropriateQuality } = await import('../services/imageQuality');
+
+                const scale = currentZoom;
+                const quality = getAppropriateQuality(scale);
+
+                // 🚀 使用队列加载，优先级基于缩放（越接近1.0优先级越高）
+                const priority = Math.round(100 - Math.abs(scale - 1) * 50);
+                const url = await loadImage(image.id, quality, priority);
+
+                // 🚀 关键：只有成功获取新图后才替换，防止闪烁
+                if (!isCancelled && url) {
+                    setDisplaySrc(url);
+                    setCurrentQuality(quality);
+                    loadedRef.current = true;
+                    setIsLoading(false); // 🚀 加载成功
+                } else if (!isCancelled && !url) {
+                    // 🚀 队列返回null - IndexedDB中没有，尝试使用image自带的URL作为fallback
+                    const fallbackUrl = image.originalUrl || image.url;
+                    if (fallbackUrl && (fallbackUrl.startsWith('data:') || fallbackUrl.startsWith('http') || fallbackUrl.startsWith('blob:'))) {
+                        console.log(`[ImageCard] Queue returned null, using fallback URL for ${image.id}`);
+                        setDisplaySrc(fallbackUrl);
+                        loadedRef.current = true;
+                        setIsLoading(false);
+                    } else {
+                        // 🚀 没有可用fallback，触发恢复流程
+                        console.log(`[ImageCard] No fallback available, triggering recovery for ${image.id}`);
+                        setIsLoading(false);
+                        // 延迟触发恢复避免立即循环
+                        setTimeout(() => recoverImage(), 100);
+                    }
+                }
+            } catch (error) {
+                console.error('[ImageCard] Failed to load quality image:', error);
+            } finally {
+                qualityLoadingRef.current = false;
+            }
+        }, displaySrc ? 500 : 100); // 🚀 已有图片时延迟500ms，首次加载时100ms
+
+        return () => {
+            if (qualityDebounceRef.current) {
+                clearTimeout(qualityDebounceRef.current);
+            }
+            cancelImageLoad(image.id);
+        };
+    }, [zoomScale, image.id, isVisible]); // 移除displaySrc依赖
+
+    // 🚀 释放Bl ob URL防止内存泄漏
+    useEffect(() => {
+        return () => {
+            if (displaySrc && displaySrc.startsWith('blob:')) {
+                URL.revokeObjectURL(displaySrc);
+                console.log(`[ImageCard] Revoked Blob URL for ${image.id}`);
+            }
+        };
+    }, [displaySrc, image.id]);
+
+    // 🚀 [已移除] 之前这里有一个会覆盖displaySrc的useEffect，导致加载循环
+    // 现在完全依赖队列加载流程，不再同步image.url到displaySrc
 
 
 
@@ -99,9 +197,18 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const recoverImage = useCallback(async () => {
         if (isRecovering) return;
 
+        // 🚀 防止恢复循环：超过2次直接失败
+        if (recoveryAttemptsRef.current >= 2) {
+            console.warn(`[ImageCard] Max recovery attempts reached for ${image.id}`);
+            setImgError(true);
+            setIsRecovering(false);
+            return;
+        }
+        recoveryAttemptsRef.current++;
+
         setIsRecovering(true);
         setImgError(false);
-        console.log(`[ImageCard] Attempting recovery for ${image.id}...`);
+        console.log(`[ImageCard] Attempting recovery (${recoveryAttemptsRef.current}/2) for ${image.id}...`);
 
         try {
             // 1. Try IndexedDB
@@ -155,29 +262,38 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }
     }, [image.id, image.url, image.originalUrl]);
 
-    // [NEW] Auto-recover if URL is missing (moved after recoverImage to fix lint error)
-    useEffect(() => {
-        if (!displaySrc && !image.url && !isRecovering && !imgError) {
-            console.log('[ImageCard] Auto-triggering recovery for empty URL', image.id);
-            recoverImage();
-        }
-    }, [displaySrc, image.url, isRecovering, imgError, recoverImage, image.id]);
+    // 🚀 [简化] 自动恢复逻辑已移除，现在由主队列加载流程的fallback统一处理
 
     // Construct high-res URL for lightbox
     const highResUrl = image.originalUrl || displaySrc || image.url;
 
-    // Load original from IndexedDB when lightbox opens
+    // 🚀 Load lightbox image: 先显示预览，后台加载原图
     useEffect(() => {
-        if (showLightbox && !lightboxOriginalUrl && !isLoadingOriginal) {
+        if (showLightbox && !isLoadingOriginal) {
             setIsLoadingOriginal(true);
             (async () => {
-                const { getImage, saveImage } = await import('../services/imageStorage');
-                // const { getStorageMode, saveOriginalToLocalFolder } = await import('../services/storagePreference');
+                const { getImageByQuality, saveImage } = await import('../services/imageStorage');
+                const { ImageQuality, getQualityStorageId } = await import('../services/imageQuality');
 
-                const cached = await getImage(image.id);
-                if (cached && cached.startsWith('data:')) {
-                    setLightboxOriginalUrl(cached);
+                // 🚀 优化：先立即显示preview质量，然后加载原图
+                if (!lightboxOriginalUrl) {
+                    // Step 1: 先显示preview（如果有）
+                    const previewImage = await getImageByQuality(image.id, ImageQuality.PREVIEW);
+                    if (previewImage && previewImage.startsWith('data:')) {
+                        setLightboxOriginalUrl(previewImage);
+                        console.log(`[Lightbox] Showing PREVIEW first for ${image.id}`);
+                    } else {
+                        // Fallback: 显示当前displaySrc
+                        setLightboxOriginalUrl(displaySrc || image.url);
+                    }
+                }
+
+                // Step 2: 后台加载原图
+                const originalImage = await getImageByQuality(image.id, ImageQuality.ORIGINAL);
+                if (originalImage && originalImage.startsWith('data:')) {
+                    setLightboxOriginalUrl(originalImage);
                     setIsLoadingOriginal(false);
+                    console.log(`[Lightbox] Loaded ORIGINAL quality for ${image.id}`);
                     return;
                 }
 
@@ -191,8 +307,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         reader.onloadend = () => {
                             const result = reader.result as string;
                             setLightboxOriginalUrl(result);
-                            // Also cache it if needed
-                            saveImage(image.id, result);
+                            // 保存为原图质量
+                            const storageId = getQualityStorageId(image.id, ImageQuality.ORIGINAL);
+                            saveImage(storageId, result);
                         };
                         reader.readAsDataURL(blob);
                     } catch (e) { console.error(e); }
@@ -584,7 +701,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                         src={displaySrc}
                                         className="w-full h-full object-cover block select-none"
                                         muted loop playsInline
-                                        onError={() => recoverImage()}
+                                        onError={() => {
+                                            console.warn('[ImageCard] Video load error for', image.id, '- attempting recovery...');
+                                            recoverImage(); // 尝试从本地存储恢复视频
+                                        }}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             if (videoRef.current) {
@@ -661,18 +781,41 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                             <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-[var(--text-secondary)] p-4 text-center">
 
-                                {!imgError && !displaySrc || isRecovering ? (
-                                    <>
-                                        <Loader2 size={24} className="mb-2 text-indigo-400 animate-spin" />
-                                        <span className="text-xs">
+                                {/* 🚀 加载/恢复状态 - 居中显示 */}
+                                {(isLoading || isRecovering || (!imgError && !displaySrc)) ? (
+                                    /* 边框往内弥散白光 - 覆盖整个卡片，z-50确保在顶层 */
+                                    <div
+                                        className="absolute inset-0 z-50 rounded-lg flex items-center justify-center bg-black/60"
+                                        style={{
+                                            animation: 'shimmerInward 2s ease-in-out infinite'
+                                        }}
+                                    >
+                                        <span className="text-xs text-white/70">
                                             {isRecovering ? '正在恢复...' : '正在加载...'}
                                         </span>
-                                    </>
+                                    </div>
                                 ) : (
                                     <>
                                         <ImageOff size={24} className="mb-2 opacity-50 text-rose-400" />
-                                        <span className="text-xs text-rose-300">图片加载失败</span>
-                                        <span className="text-[9px] opacity-60">(Image Load Error)</span>
+                                        <span className="text-xs text-rose-300">
+                                            {/* 统一视频判断：mode/data:video/.mp4/image.url */}
+                                            {(image.mode === GenerationMode.VIDEO ||
+                                                image.url?.includes('.mp4') ||
+                                                image.url?.startsWith('data:video') ||
+                                                displaySrc?.includes('.mp4') ||
+                                                displaySrc?.startsWith('data:video'))
+                                                ? '视频加载失败'
+                                                : '图片加载失败'}
+                                        </span>
+                                        <span className="text-[9px] opacity-60">
+                                            {(image.mode === GenerationMode.VIDEO ||
+                                                image.url?.includes('.mp4') ||
+                                                image.url?.startsWith('data:video') ||
+                                                displaySrc?.includes('.mp4') ||
+                                                displaySrc?.startsWith('data:video'))
+                                                ? '(Video Load Error)'
+                                                : '(Image Load Error)'}
+                                        </span>
                                         {/* Retry Button */}
                                         <button
                                             onClick={(e) => { e.stopPropagation(); recoverImage(); }}
@@ -724,87 +867,129 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                 if (!wasDraggingRef.current) onClick?.(image.id);
                             }}
                         >
-                            {/* Row 1: Model + Ratio + Size + Buttons */}
+                            {/* Row 1: 模型信息 OR 文件信息 + 比例尺寸 + 按钮 */}
                             <div className="flex items-center gap-1">
-                                {/* Model Info Container - Compact style */}
-                                {(() => {
-                                    const model = image.model || '';
-                                    let label = 'AI';
-                                    let dotColor = 'bg-zinc-500';
+                                {/* 孤独副卡：显示文件名 */}
+                                {image.orphaned && image.fileName ? (
+                                    <div
+                                        className="flex items-center gap-1 px-1.5 py-0.5 rounded border flex-1 min-w-0"
+                                        style={{
+                                            backgroundColor: 'var(--bg-tertiary)',
+                                            borderColor: 'var(--border-light)'
+                                        }}
+                                        title={image.fileName}
+                                    >
+                                        <span className="w-1 h-1 rounded-full bg-zinc-500"></span>
+                                        <span className="text-[7px] font-medium text-[var(--text-secondary)] truncate">
+                                            {image.fileName}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    /* 普通卡片：显示模型信息 */
+                                    (() => {
+                                        const model = (image.model || '').toLowerCase();
 
-                                    // ✅ 优先级：先检查具体模型，再检查通用关键字
-                                    if (model.includes('ultra')) {
-                                        label = 'Imagen 4 Ultra';
-                                        dotColor = 'bg-purple-500';
-                                    } else if (model.includes('imagen-4')) {
-                                        label = 'Imagen 4';
-                                        dotColor = 'bg-blue-500';
-                                    } else if (model.includes('gemini-3')) {
-                                        // Gemini 3 系列（必须在 pro/flash 之前检查）
-                                        if (model.includes('flash')) {
-                                            label = 'Gemini 3 Flash';
-                                            dotColor = 'bg-cyan-500';
-                                        } else if (model.includes('pro')) {
-                                            label = 'Gemini 3 Pro';
+                                        // 🚀 优先使用用户选择时的显示名称
+                                        let label = image.modelLabel || '';
+                                        let dotColor = 'bg-zinc-500';
+
+                                        // 如果没有保存modelLabel，则从ID推断（兼容旧数据）
+                                        if (!label) {
+                                            label = 'AI';
+                                            if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) {
+                                                label = 'Gemini 3 Pro';
+                                                dotColor = 'bg-purple-600';
+                                            } else if (model.includes('gemini-3-flash')) {
+                                                label = 'Gemini 3 Flash';
+                                                dotColor = 'bg-cyan-500';
+                                                // Gemini 2.5 系列
+                                            } else if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) {
+                                                label = 'Gemini 2.5 Flash';
+                                                dotColor = 'bg-yellow-500';
+                                            } else if (model.includes('gemini-2.5-pro')) {
+                                                label = 'Gemini 2.5 Pro';
+                                                dotColor = 'bg-amber-500';
+                                                // Gemini 2.0 系列
+                                            } else if (model.includes('gemini-2.0') || model.includes('gemini-2-')) {
+                                                if (model.includes('flash')) {
+                                                    label = 'Gemini 2.0 Flash';
+                                                } else {
+                                                    label = 'Gemini 2.0';
+                                                }
+                                                dotColor = 'bg-orange-500';
+                                                // Imagen 4 系列
+                                            } else if (model.includes('imagen-4') && model.includes('ultra')) {
+                                                label = 'Imagen 4 Ultra';
+                                                dotColor = 'bg-purple-500';
+                                            } else if (model.includes('imagen-4') && model.includes('fast')) {
+                                                label = 'Imagen 4 Fast';
+                                                dotColor = 'bg-blue-400';
+                                            } else if (model.includes('imagen-4')) {
+                                                label = 'Imagen 4';
+                                                dotColor = 'bg-blue-500';
+                                                // Imagen 3 系列
+                                            } else if (model.includes('imagen-3')) {
+                                                label = 'Imagen 3';
+                                                dotColor = 'bg-blue-400';
+                                                // Veo 3 系列
+                                            } else if (model.includes('veo-3.1') && model.includes('fast')) {
+                                                label = 'Veo 3.1 Fast';
+                                                dotColor = 'bg-fuchsia-500';
+                                            } else if (model.includes('veo-3.1')) {
+                                                label = 'Veo 3.1';
+                                                dotColor = 'bg-purple-500';
+                                            } else if (model.includes('veo-3') && model.includes('fast')) {
+                                                label = 'Veo 3 Fast';
+                                                dotColor = 'bg-fuchsia-500';
+                                            } else if (model.includes('veo-3')) {
+                                                label = 'Veo 3';
+                                                dotColor = 'bg-purple-500';
+                                                // Veo 2 系列
+                                            } else if (model.includes('veo-2') || (model.includes('veo') && !model.includes('veo-3'))) {
+                                                label = 'Veo 2';
+                                                dotColor = 'bg-violet-500';
+                                                // 上传图片
+                                            } else if (model === 'uploaded') {
+                                                label = '上传';
+                                                dotColor = 'bg-gray-500';
+                                            }
+                                        }
+
+                                        // 根据模型ID设置圆点颜色（如果有modelLabel也需要设置颜色）
+                                        if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) {
                                             dotColor = 'bg-purple-600';
-                                        } else {
-                                            label = 'Gemini 3';
-                                            dotColor = 'bg-purple-500';
-                                        }
-                                    } else if (model.includes('gemini-2.5')) {
-                                        // Gemini 2.5 系列
-                                        if (model.includes('flash')) {
-                                            label = 'Gemini 2.5 Flash';
+                                        } else if (model.includes('gemini-3-flash')) {
+                                            dotColor = 'bg-cyan-500';
+                                        } else if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) {
                                             dotColor = 'bg-yellow-500';
-                                        } else if (model.includes('pro')) {
-                                            label = 'Gemini 2.5 Pro';
+                                        } else if (model.includes('gemini-2.5-pro')) {
                                             dotColor = 'bg-amber-500';
-                                        } else {
-                                            label = 'Gemini 2.5';
-                                            dotColor = 'bg-amber-500';
+                                        } else if (model.includes('imagen-4') && model.includes('ultra')) {
+                                            dotColor = 'bg-purple-500';
+                                        } else if (model.includes('imagen-4')) {
+                                            dotColor = 'bg-blue-500';
+                                        } else if (model.includes('veo-3')) {
+                                            dotColor = 'bg-purple-500';
+                                        } else if (model.includes('veo')) {
+                                            dotColor = 'bg-violet-500';
                                         }
-                                    } else if (model.includes('gemini-2.0') || model.includes('gemini-2-')) {
-                                        // Gemini 2.0 系列
-                                        if (model.includes('flash')) {
-                                            label = 'Gemini 2.0 Flash';
-                                            dotColor = 'bg-orange-500';
-                                        } else {
-                                            label = 'Gemini 2.0';
-                                            dotColor = 'bg-orange-500';
-                                        }
-                                    } else if (model.includes('flash')) {
-                                        // 通用 Flash（未匹配到具体版本）
-                                        label = 'Gemini Flash';
-                                        dotColor = 'bg-yellow-500';
-                                    } else if (model.includes('pro')) {
-                                        // 通用 Pro（未匹配到具体版本）
-                                        label = 'Gemini Pro';
-                                        dotColor = 'bg-amber-500';
-                                    } else if (model.includes('veo-3.1') || model.includes('veo-3')) {
-                                        // Veo 3 系列视频模型
-                                        label = model.includes('fast') ? 'Veo 3.1 Fast' : 'Veo 3.1';
-                                        dotColor = 'bg-purple-500';
-                                    } else if (model.includes('veo-2') || model.includes('veo')) {
-                                        // Veo 2 系列视频模型
-                                        label = 'Veo 2';
-                                        dotColor = 'bg-violet-500';
-                                    }
 
-                                    return (
-                                        <div
-                                            className="flex items-center gap-1 px-1.5 py-0.5 rounded border"
-                                            style={{
-                                                backgroundColor: 'var(--bg-tertiary)',
-                                                borderColor: 'var(--border-light)'
-                                            }}
-                                        >
-                                            <span className={`w-1 h-1 rounded-full ${dotColor}`}></span>
-                                            <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
-                                                {label}
-                                            </span>
-                                        </div>
-                                    );
-                                })()}
+                                        return (
+                                            <div
+                                                className="flex items-center gap-1 px-1.5 py-0.5 rounded border"
+                                                style={{
+                                                    backgroundColor: 'var(--bg-tertiary)',
+                                                    borderColor: 'var(--border-light)'
+                                                }}
+                                            >
+                                                <span className={`w-1 h-1 rounded-full ${dotColor}`}></span>
+                                                <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                                                    {label}
+                                                </span>
+                                            </div>
+                                        );
+                                    })()
+                                )}
 
                                 {/* Ratio + Size Container - Compact style */}
                                 <div
@@ -856,27 +1041,49 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                             {/* Divider between rows */}
                             <div className="w-full my-1" style={{ height: '0.5px', backgroundColor: 'var(--border-light)', opacity: 0.5 }}></div>
 
-                            {/* Row 2: Time + Tokens + Cost - Centered with dividers */}
-                            <div className="flex items-center justify-center gap-2 text-[7px] font-mono">
-                                {/* Time */}
-                                {image.generationTime && (
-                                    <>
+                            {/* Row 2: 孤独副卡显示分辨率+文件大小 OR 普通卡片显示耗时+令牌+费用 */}
+                            {image.orphaned ? (
+                                /* 孤独副卡信息 */
+                                <div className="flex items-center justify-center gap-2 text-[7px] font-mono">
+                                    {/* 分辨率 */}
+                                    {image.dimensions && (
+                                        <>
+                                            <span className="text-[var(--text-tertiary)]">
+                                                分辨率 <span className="text-[var(--text-secondary)]">{image.dimensions}</span>
+                                            </span>
+                                            <span className="text-[var(--border-medium)]">|</span>
+                                        </>
+                                    )}
+                                    {/* 文件大小 */}
+                                    {image.fileSize && (
                                         <span className="text-[var(--text-tertiary)]">
-                                            耗时 <span className="text-[var(--text-secondary)]">{(image.generationTime / 1000).toFixed(1)}s</span>
+                                            大小 <span className="text-[var(--text-secondary)]">{(image.fileSize / 1024).toFixed(1)} KB</span>
                                         </span>
-                                        <span className="text-[var(--border-medium)]">|</span>
-                                    </>
-                                )}
-                                {/* Tokens */}
-                                <span className="text-emerald-500/70">
-                                    令牌 <span className="text-emerald-500/90">{image.tokens || 0}</span>
-                                </span>
-                                <span className="text-[var(--border-medium)]">|</span>
-                                {/* Cost */}
-                                <span className="text-amber-500/70" title={`$${(image.cost || 0).toFixed(6)}`}>
-                                    费用 <span className="text-amber-500/90">${(image.cost || 0).toFixed(4)}</span>
-                                </span>
-                            </div>
+                                    )}
+                                </div>
+                            ) : (
+                                /* 普通卡片信息 */
+                                <div className="flex items-center justify-center gap-2 text-[7px] font-mono">
+                                    {/* Time */}
+                                    {image.generationTime && (
+                                        <>
+                                            <span className="text-[var(--text-tertiary)]">
+                                                耗时 <span className="text-[var(--text-secondary)]">{(image.generationTime / 1000).toFixed(1)}s</span>
+                                            </span>
+                                            <span className="text-[var(--border-medium)]">|</span>
+                                        </>
+                                    )}
+                                    {/* Tokens */}
+                                    <span className="text-emerald-500/70">
+                                        令牌 <span className="text-emerald-500/90">{image.tokens || 0}</span>
+                                    </span>
+                                    <span className="text-[var(--border-medium)]">|</span>
+                                    {/* Cost */}
+                                    <span className="text-amber-500/70" title={`$${(image.cost || 0).toFixed(6)}`}>
+                                        费用 <span className="text-amber-500/90">${(image.cost || 0).toFixed(4)}</span>
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

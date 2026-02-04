@@ -95,6 +95,7 @@ export interface GeneratedImage {
   imageSize?: ImageSize; // Image size/quality setting
   timestamp: number;
   model: ModelType;
+  modelLabel?: string; // 🚀 模型显示名称（用户选择时看到的名字）
   canvasId: string;
   parentPromptId: string;
   position: { x: number; y: number };
@@ -104,6 +105,9 @@ export interface GeneratedImage {
   tags?: string[]; // Search tags
   tokens?: number; // New: Token usage
   cost?: number; // New: Estimated cost
+  orphaned?: boolean; // 孤独副卡（无父节点）
+  fileName?: string; // 原始文件名
+  fileSize?: number; // 文件大小（字节）
 }
 
 export interface PromptNode {
@@ -113,6 +117,7 @@ export interface PromptNode {
   aspectRatio: AspectRatio;
   imageSize: ImageSize;
   model: ModelType;
+  modelLabel?: string; // 🚀 模型显示名称（用户选择时看到的名字）
   childImageIds: string[];
   referenceImages?: ReferenceImage[];
   timestamp: number;
@@ -124,6 +129,7 @@ export interface PromptNode {
   height?: number; // Dynamic height for connection line anchoring
   tags?: string[]; // Search tags
   isDraft?: boolean; // Preview/Draft state
+  orphaned?: boolean; // 孤独主卡（拖动pending卡转换而来）
 }
 
 export interface CanvasGroup {
@@ -153,6 +159,19 @@ export interface Canvas {
   lastModified: number;
 }
 
+/**
+ * 视频分辨率与支持时长的映射
+ * 根据官方文档: https://ai.google.dev/gemini-api/docs/video?hl=zh-cn
+ * - 720p: 支持 4s, 6s, 8s
+ * - 1080p: 仅支持 8s
+ * - 4k: 仅支持 8s
+ */
+export const VIDEO_RESOLUTION_DURATION_MAP = {
+  '720p': ['4s', '6s', '8s'],
+  '1080p': ['8s'],
+  '4k': ['8s']
+} as const;
+
 export interface GenerationConfig {
   prompt: string;
   aspectRatio: AspectRatio;
@@ -164,6 +183,6 @@ export interface GenerationConfig {
   mode: GenerationMode;
   // 视频配置字段
   videoResolution?: string; // '720p' | '1080p' | '4k'
-  videoDuration?: string;   // '4s' | '6s' | '8s'
+  videoDuration?: string;   // 根据分辨率动态支持：720p支持4s/6s/8s，1080p和4k仅支持8s
   videoAudio?: boolean;     //生成音频
 }

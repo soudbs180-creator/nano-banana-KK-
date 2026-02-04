@@ -1,18 +1,22 @@
 /**
  * Veo 视频生成服务
- * 独立于图片生成,使用 Google Veo 3.1 API
+ * 独立于图片生成,使用 Google Veo API
  * 
  * 图片数量决定生成模式:
  * - 0张图片: 文生视频 (Text-to-Video)
  * - 1张图片: 首帧生成 (Image-to-Video, first frame)
  * - 2张图片: 首尾帧生成 (Interpolation, first & last frame)
- * - 3张图片: 参考图生成 (Reference images as style guide)
+ * - 3张图片: 参考图生成 (Reference images as style guide) - 仅Veo 2支持
  * 
+ * 注意：Veo 3/Veo 3 Fast不支持referenceImages参数
  * 视频模式下最多支持上传3张图片
  */
 
+import { getModelCapabilities } from './modelCapabilities';
+
 export interface VideoGenerationConfig {
     prompt: string;
+    model?: string; // 默认: 'veo-3.1-generate-preview'
     aspectRatio?: '16:9' | '9:16';
     negativePrompt?: string;
     /** 
@@ -20,7 +24,7 @@ export interface VideoGenerationConfig {
      * 最多3张:
      * - 1张: 作为首帧
      * - 2张: 作为首尾帧
-     * - 3张: 作为参考图片
+     * - 3张: 作为参考图片 (仅Veo 2支持)
      */
     referenceImages?: string[];
 }
@@ -44,8 +48,13 @@ export async function generateVideo(
     signal?: AbortSignal
 ): Promise<VideoGenerationResult> {
     const startTime = Date.now();
+    const model = config.model || 'veo-3.1-generate-preview';
     const images = config.referenceImages || [];
     const imageCount = Math.min(images.length, 3); // 最多3张
+
+    // 检查模型能力
+    const modelCaps = getModelCapabilities(model);
+    const supportsReferenceImages = modelCaps?.supportsReferenceImages !== false; // 默认为true
 
     // 确定生成模式
     let mode: VideoGenerationResult['mode'];
@@ -60,8 +69,16 @@ export async function generateVideo(
         mode = 'interpolation';
         modeLabel = '首尾帧生成';
     } else {
-        mode = 'reference';
-        modeLabel = '参考图生成';
+        // 3张图片使用referenceImages
+        if (!supportsReferenceImages) {
+            // Veo 3不支持referenceImages，降级为只使用首帧
+            console.warn(`[VideoService] 模型 ${model} 不支持referenceImages参数，使用首帧模式`);
+            mode = 'first-frame';
+            modeLabel = '首帧生成';
+        } else {
+            mode = 'reference';
+            modeLabel = '参考图生成';
+        }
     }
 
     onProgress?.(`${modeLabel} - 准备中...`);
@@ -98,8 +115,9 @@ export async function generateVideo(
         instance.lastFrame = {
             bytesBase64Encoded: images[1]
         };
-    } else if (imageCount >= 3) {
+    } else if (imageCount >= 3 && supportsReferenceImages) {
         // 3张图片: 参考图 (referenceImages in parameters)
+        // 仅当模型支持时才发送referenceImages参数
         parameters.referenceImages = images.slice(0, 3).map(img => ({
             image: {
                 inlineData: {
@@ -109,6 +127,11 @@ export async function generateVideo(
             },
             referenceType: 'asset'
         }));
+    } else if (imageCount >= 3 && !supportsReferenceImages) {
+        // Veo 3不支持referenceImages，只使用第一张图作为首帧
+        instance.image = {
+            bytesBase64Encoded: images[0]
+        };
     }
 
     // 构建请求体
@@ -121,7 +144,7 @@ export async function generateVideo(
         requestBody.parameters = parameters;
     }
 
-    return await executeVideoGeneration(requestBody, apiKey, onProgress, signal, startTime, mode, modeLabel);
+    return await executeVideoGeneration(requestBody, apiKey, model, onProgress, signal, startTime, mode, modeLabel);
 }
 
 /**
@@ -130,6 +153,7 @@ export async function generateVideo(
 async function executeVideoGeneration(
     requestBody: Record<string, unknown>,
     apiKey: string,
+    model: string,
     onProgress: ((status: string) => void) | undefined,
     signal: AbortSignal | undefined,
     startTime: number,
@@ -140,7 +164,7 @@ async function executeVideoGeneration(
     // 1. 发起生成请求
     onProgress?.('开始视频生成...');
     const initResponse = await fetch(
-        `${BASE_URL}/models/veo-3.1-generate-preview:predictLongRunning`,
+        `${BASE_URL}/models/${model}:predictLongRunning`,
         {
             method: 'POST',
             headers: {

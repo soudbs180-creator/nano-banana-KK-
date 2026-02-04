@@ -37,8 +37,10 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         setIsLoading(true);
         setHasError(false);
         setDisplaySrc(null);
-        setZoom(1);
-        setPan({ x: 0, y: 0 });
+        // 🚀 修复：切换图片时保持当前缩放和位置，不再重置
+        // setZoom(1);
+        // setPan({ x: 0, y: 0 });
+
 
         const loadContent = async () => {
             try {

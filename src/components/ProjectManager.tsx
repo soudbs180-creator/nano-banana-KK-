@@ -535,7 +535,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 <button
                     onClick={(e) => { e.stopPropagation(); onResetView(); }}
                     className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all outline-none focus:outline-none"
-                    title="重置视图 / 定位最新 (Reset View)"
+                    title="定位卡组 (Locate Group)"
                     tabIndex={-1}
                 >
                     <Focus size={20} />

@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { AspectRatio } from '../types';
+import React, { useMemo, useEffect } from 'react';
+import { AspectRatio, VIDEO_RESOLUTION_DURATION_MAP } from '../types';
 import { Fullscreen, Volume2, VolumeOff } from 'lucide-react';
 
 interface VideoOptionsPanelProps {
@@ -33,7 +33,18 @@ const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
     ]
 }) => {
     const resolutions = ['720p', '1080p', '4k'];
-    const durations = ['4s', '6s', '8s'];
+
+    // 根据选中的分辨率动态计算可用时长
+    const availableDurations = useMemo(() => {
+        return VIDEO_RESOLUTION_DURATION_MAP[resolution as keyof typeof VIDEO_RESOLUTION_DURATION_MAP] || ['4s', '6s', '8s'];
+    }, [resolution]);
+
+    // 当分辨率变化时，如果当前时长不可用，自动切换到第一个可用时长
+    useEffect(() => {
+        if (!availableDurations.includes(duration)) {
+            onDurationChange(availableDurations[0]);
+        }
+    }, [resolution, duration, availableDurations, onDurationChange]);
 
     // 计算比例图标的尺寸
     const getRatioDimensions = (ratio: AspectRatio): { width: number; height: number } => {
@@ -91,14 +102,15 @@ const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
 
     // 计算滑动背景位置（时长）
     const durationSlide = useMemo(() => {
-        const index = durations.indexOf(duration);
-        const buttonWidthPercent = 100 / durations.length;
+        const allDurations = ['4s', '6s', '8s'];
+        const index = allDurations.indexOf(duration);
+        const buttonWidthPercent = 100 / allDurations.length;
 
         return {
             left: `calc(${buttonWidthPercent * index}% + 2px)`,
             width: `calc(${buttonWidthPercent}% - 4px)`
         };
-    }, [duration, durations]);
+    }, [duration]);
 
     // 计算滑动背景位置（音频）
     const audioSlide = useMemo(() => {
@@ -268,18 +280,22 @@ const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
                         }}
                     />
 
-                    {durations.map(dur => (
-                        <button
-                            key={dur}
-                            onClick={() => onDurationChange(dur)}
-                            className="relative z-10 flex-1 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)]"
-                            style={{
-                                color: duration === dur ? 'var(--text-primary)' : 'var(--text-tertiary)'
-                            }}
-                        >
-                            {dur}
-                        </button>
-                    ))}
+                    {['4s', '6s', '8s'].map(dur => {
+                        const isAvailable = availableDurations.includes(dur);
+                        return (
+                            <button
+                                key={dur}
+                                onClick={() => isAvailable && onDurationChange(dur)}
+                                disabled={!isAvailable}
+                                className="relative z-10 flex-1 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)] disabled:opacity-40 disabled:cursor-not-allowed"
+                                style={{
+                                    color: duration === dur && isAvailable ? 'var(--text-primary)' : 'var(--text-tertiary)'
+                                }}
+                            >
+                                {dur}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
         </div>

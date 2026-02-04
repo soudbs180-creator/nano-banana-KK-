@@ -24,6 +24,7 @@ interface InfiniteCanvasProps {
     onMouseMove?: (e: React.MouseEvent) => void;
     onMouseUp?: (e: React.MouseEvent) => void;
     onContextMenu?: (e: React.MouseEvent) => void;
+    onImageDrop?: (file: File, canvasPosition: { x: number; y: number }) => void; // [NEW] 拖入图片创建副卡
     id?: string;
 }
 
@@ -33,12 +34,22 @@ interface Transform {
     scale: number;
 }
 
-const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onCanvasDoubleClick, onAutoArrange, onResetView, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, id }, ref) => {
+const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onCanvasDoubleClick, onAutoArrange, onResetView, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, onImageDrop, id }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
     const [isDragging, setIsDragging] = useState(false);
     const dragStart = useRef({ x: 0, y: 0 });
     const lastTransform = useRef({ x: 0, y: 0 });
+
+    // 🚀 性能优化：拖动时的临时transform，不触发重绘
+    const [tempTransform, setTempTransform] = useState<Transform | null>(null);
+    const isDraggingRef = useRef(false);
+
+    // 🚀 性能优化：缩放防抖
+    const zoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const [isImageDragOver, setIsImageDragOver] = useState(false); // 图片拖拽悬停状态
+    const dragCounter = useRef(0); // 防止拖拽事件抖动
 
     // Center the canvas on mount OR restore from localStorage
     useEffect(() => {
@@ -80,6 +91,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     }, [transform]);
 
     // Handle mouse wheel zoom
+    // 🚀 优化：缩放时使用临时transform + 防抖 + 缓动曲线
     const handleWheel = useCallback((e: WheelEvent) => {
         e.preventDefault();
 
@@ -90,20 +102,97 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        // Zoom factor
-        const zoomIntensity = 0.001;
+        // 🚀 动态缓动：根据滚轮速度自适应intensity
+        // 快速滚动时响应更大，慢速滚动时更精细
+        const rawDelta = Math.abs(e.deltaY);
+        const speedFactor = Math.min(1, rawDelta / 100); // 0-1，100+为快速滚动
+
+        // 缓动曲线：easeOutQuad - 快速开始，缓慢结束
+        const easedFactor = 1 - (1 - speedFactor) * (1 - speedFactor);
+
+        // intensity范围：0.0005（慢）到 0.002（快）
+        const minIntensity = 0.0005;
+        const maxIntensity = 0.002;
+        const zoomIntensity = minIntensity + easedFactor * (maxIntensity - minIntensity);
+
         const delta = -e.deltaY * zoomIntensity;
-        const newScale = Math.max(0.1, Math.min(3, transform.scale * (1 + delta)));
+        const currentTransform = tempTransform || transform;
+        const newScale = Math.max(0.1, Math.min(3, currentTransform.scale * (1 + delta)));
 
         // Zoom towards mouse position
-        const scaleRatio = newScale / transform.scale;
-        const newX = mouseX - (mouseX - transform.x) * scaleRatio;
-        const newY = mouseY - (mouseY - transform.y) * scaleRatio;
+        const scaleRatio = newScale / currentTransform.scale;
+        const newX = mouseX - (mouseX - currentTransform.x) * scaleRatio;
+        const newY = mouseY - (mouseY - currentTransform.y) * scaleRatio;
 
         const newTransform = { x: newX, y: newY, scale: newScale };
-        setTransform(newTransform);
-        onTransformChange?.(newTransform);
-    }, [transform, onTransformChange]);
+
+        // 🚀 立即更新临时transform，视觉上立即响应
+        setTempTransform(newTransform);
+
+        // 🚀 防抖：50ms后再提交最终transform
+        if (zoomTimeoutRef.current) {
+            clearTimeout(zoomTimeoutRef.current);
+        }
+        zoomTimeoutRef.current = setTimeout(() => {
+            setTransform(newTransform);
+            onTransformChange?.(newTransform);
+            setTempTransform(null);
+        }, 50);
+    }, [transform, tempTransform, onTransformChange]);
+
+    // 图片拖拽处理
+    const handleDragEnter = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current += 1;
+
+        if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+            setIsImageDragOver(true);
+        }
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+    }, []);
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current -= 1;
+
+        if (dragCounter.current <= 0) {
+            dragCounter.current = 0;
+            setIsImageDragOver(false);
+        }
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current = 0;
+        setIsImageDragOver(false);
+
+        if (!onImageDrop) return;
+
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            const imageFile = Array.from(files).find(f => f.type.startsWith('image/'));
+            if (imageFile) {
+                const container = containerRef.current;
+                if (!container) return;
+
+                const rect = container.getBoundingClientRect();
+                const clientX = e.clientX - rect.left;
+                const clientY = e.clientY - rect.top;
+
+                const canvasX = (clientX - transform.x) / transform.scale;
+                const canvasY = (clientY - transform.y) / transform.scale;
+
+                onImageDrop(imageFile, { x: canvasX, y: canvasY });
+            }
+        }
+    }, [onImageDrop, transform]);
 
     // Handle mouse down for panning
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -117,14 +206,16 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         if (e.button === 1 || (isEmptyCanvas && e.button === 0)) {
             e.preventDefault();
             setIsDragging(true);
+            isDraggingRef.current = true; // 🚀 设置拖动标记
             dragStart.current = { x: e.clientX, y: e.clientY };
             lastTransform.current = { x: transform.x, y: transform.y };
         }
     }, [transform, onMouseDown]);
 
     // Handle mouse move for panning
+    // 🚀 优化：拖动时只更新临时transform，不触发重绘
     const handleMouseMove = useCallback((e: MouseEvent) => {
-        if (!isDragging) return;
+        if (!isDraggingRef.current) return;
 
         const dx = e.clientX - dragStart.current.x;
         const dy = e.clientY - dragStart.current.y;
@@ -134,20 +225,33 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             y: lastTransform.current.y + dy,
             scale: transform.scale
         };
-        setTransform(newTransform);
-        onTransformChange?.(newTransform);
-    }, [isDragging, transform.scale, onTransformChange]);
+
+        // 只更新临时transform，不调用onTransformChange（避免重绘）
+        setTempTransform(newTransform);
+    }, [transform.scale]);
 
     // Handle mouse up
+    // 🚀 优化：mouseUp时才提交最终transform，触发一次重绘
     const handleMouseUp = useCallback((e: MouseEvent) => {
-        if (isDragging) {
+        if (isDraggingRef.current) {
             const dist = Math.hypot(e.clientX - dragStart.current.x, e.clientY - dragStart.current.y);
+
+            // 提交最终transform（触发重绘）
+            if (tempTransform) {
+                setTransform(tempTransform);
+                onTransformChange?.(tempTransform);
+                setTempTransform(null);
+            }
+
+            // 检查是否是点击（移动距离<5px）
             if (dist < 5 && e.button === 0) {
                 onCanvasClick?.();
             }
+
+            isDraggingRef.current = false;
             setIsDragging(false);
         }
-    }, [isDragging, onCanvasClick]);
+    }, [tempTransform, onTransformChange, onCanvasClick]);
 
     // Zoom controls
     const zoomIn = useCallback(() => {
@@ -347,11 +451,15 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             {/* Canvas Container */}
             <div
                 ref={containerRef}
-                className="canvas-container outline-none focus:outline-none"
+                className={`canvas-container outline-none focus:outline-none ${isImageDragOver ? 'ring-4 ring-indigo-500' : ''}`}
                 tabIndex={-1}
                 onMouseDown={handleMouseDown}
                 onMouseMove={onMouseMove}
                 onMouseUp={onMouseUp}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
                 onContextMenu={(e) => {
                     if (onContextMenu) {
                         onContextMenu(e);
@@ -368,6 +476,14 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 }}
                 style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
             >
+                {/* 拖拽悬停提示 */}
+                {isImageDragOver && (
+                    <div className="absolute inset-0 z-[9999] bg-indigo-500/10 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+                        <div className="px-6 py-3 bg-indigo-500/20 border-2 border-indigo-400 rounded-xl">
+                            <span className="text-lg font-semibold text-white drop-shadow-lg">释放以创建图片卡片</span>
+                        </div>
+                    </div>
+                )}
                 {/* Grid Background */}
                 {showGrid && <div className="canvas-grid" />}
 
@@ -375,7 +491,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 <div
                     className="canvas-viewport"
                     style={{
-                        transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
+                        transform: `translate3d(${(tempTransform || transform).x}px, ${(tempTransform || transform).y}px, 0) scale(${(tempTransform || transform).scale})`,
                         willChange: isDragging ? 'transform' : 'auto',
                         backfaceVisibility: 'hidden',
                     }}
@@ -433,7 +549,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
                 {/* Version Badge */}
                 <div className="glass h-10 px-3 rounded-xl flex items-center">
-                    <span className="text-xs text-zinc-500 font-semibold">v1.2.5</span>
+                    <span className="text-xs text-zinc-500 font-semibold">v1.2.6</span>
                 </div>
 
                 {/* Update Notification */}

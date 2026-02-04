@@ -127,41 +127,49 @@ export function generateImageId(): string {
 }
 
 /**
- * 保存图片（双存储：内存 + IndexedDB）
+ * 🚀 保存图片（Blob模式 - 不占用JS堆内存）
  * @param id 图片唯一ID
- * @param url 图片数据（base64 data URL）
+ * @param dataURL 图片数据（base64 data URL）
  */
-export async function saveImage(id: string, url: string): Promise<void> {
-    // 1. 立即写入内存缓存（同步，快速可用）
-    memoryCache.set(id, url);
-
-    // 2. 异步写入IndexedDB（持久化）
+export async function saveImage(id: string, dataURL: string): Promise<void> {
     try {
+        // 🚀 转换为Blob（不占JS内存）
+        const { dataURLToBlob } = await import('./blobUtils');
+        const blob = await dataURLToBlob(dataURL);
+
+        // 1. 内存缓存：存储Blob URL（轻量）
+        const blobURL = URL.createObjectURL(blob);
+        memoryCache.set(id, blobURL);
+
+        // 2. IndexedDB：存储Blob对象（不占JS内存）
         const db = await openDB();
         const transaction = db.transaction(IMAGES_STORE, 'readwrite');
         const store = transaction.objectStore(IMAGES_STORE);
 
         await new Promise<void>((resolve, reject) => {
-            const request = store.put({ id, url });
+            // 🚀 关键：保存Blob而非Base64字符串
+            const request = store.put({ id, blob });
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
+
+        console.log(`[ImageStorage] Saved ${id} as Blob (memory-efficient)`);
     } catch (error) {
-        console.error('[ImageStorage] Failed to save to IndexedDB:', error);
-        // 注意：即使IDB失败，内存缓存仍然有效
+        console.error('[ImageStorage] Failed to save image:', error);
+        // Fallback: 至少保存到内存缓存
+        memoryCache.set(id, dataURL);
     }
 }
 
 /**
- * 获取图片（优先内存，再IndexedDB）
+ * 🚀 获取图片（Blob URL模式 - 不占用JS堆内存）
  * @param id 图片唯一ID
- * @returns 图片数据或null
+ * @returns Blob URL或null
  */
 export async function getImage(id: string): Promise<string | null> {
     // 1. 优先从内存缓存读取（快速路径）
     if (memoryCache.has(id)) {
         const url = memoryCache.get(id);
-        // console.log(`[ImageStorage] Cache HIT for ${id}`);
         return url;
     }
 
@@ -171,21 +179,32 @@ export async function getImage(id: string): Promise<string | null> {
         const transaction = db.transaction(IMAGES_STORE, 'readonly');
         const store = transaction.objectStore(IMAGES_STORE);
 
-        const url = await new Promise<string | null>((resolve, reject) => {
+        const result: { id: string; blob?: Blob; url?: string } | undefined = await new Promise((resolve, reject) => {
             const request = store.get(id);
-            request.onsuccess = () => {
-                resolve(request.result?.url || null);
-            };
+            request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
         });
 
-        // 3. 如果IndexedDB有数据，同步到内存缓存
-        if (url) {
-            memoryCache.set(id, url);
-            console.log(`[ImageStorage] Cache MISS, loaded from IndexedDB: ${id}`);
+        if (!result) {
+            return null;
         }
 
-        return url;
+        // 🚀 关键：优先使用Blob，创建Blob URL
+        if (result.blob) {
+            const blobURL = URL.createObjectURL(result.blob);
+            memoryCache.set(id, blobURL);
+            console.log(`[ImageStorage] Loaded ${id} as Blob URL`);
+            return blobURL;
+        }
+
+        // Fallback: 旧数据为Base64字符串（兼容）
+        if (result.url) {
+            console.warn(`[ImageStorage] ${id} is old Base64 format`);
+            memoryCache.set(id, result.url);
+            return result.url;
+        }
+
+        return null;
     } catch (error) {
         console.error('[ImageStorage] Failed to get from IndexedDB:', error);
         return null;
@@ -217,6 +236,8 @@ export async function deleteImage(id: string): Promise<void> {
 
 /**
  * 获取所有图片（从IndexedDB读取，并同步到内存）
+ * ⚠️ 注意：此函数会加载所有图片到内存，可能导致内存溢出！
+ * 建议使用 getImagesPage() 进行分页加载
  */
 export async function getAllImages(): Promise<Map<string, string>> {
     const images = new Map<string, string>();
@@ -246,6 +267,100 @@ export async function getAllImages(): Promise<Map<string, string>> {
     }
 
     return images;
+}
+
+/**
+ * 获取图片总数（不加载数据，只统计）
+ */
+export async function getImageCount(): Promise<number> {
+    try {
+        const db = await openDB();
+        const transaction = db.transaction(IMAGES_STORE, 'readonly');
+        const store = transaction.objectStore(IMAGES_STORE);
+
+        return new Promise<number>((resolve, reject) => {
+            const request = store.count();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        console.error('[ImageStorage] Failed to count images:', error);
+        return 0;
+    }
+}
+
+/**
+ * 分页获取图片（推荐：避免一次性加载过多数据）
+ * @param offset 起始位置
+ * @param limit 获取数量
+ * @returns 图片Map和是否还有更多数据
+ */
+export async function getImagesPage(offset: number, limit: number): Promise<{
+    images: Map<string, string>;
+    hasMore: boolean;
+    total: number;
+}> {
+    const images = new Map<string, string>();
+    let hasMore = false;
+    let total = 0;
+
+    try {
+        const db = await openDB();
+        const transaction = db.transaction(IMAGES_STORE, 'readonly');
+        const store = transaction.objectStore(IMAGES_STORE);
+
+        // 先获取总数
+        total = await new Promise<number>((resolve, reject) => {
+            const countRequest = store.count();
+            countRequest.onsuccess = () => resolve(countRequest.result);
+            countRequest.onerror = () => reject(countRequest.error);
+        });
+
+        // 使用cursor分页
+        await new Promise<void>((resolve, reject) => {
+            const request = store.openCursor();
+            let currentIndex = 0;
+            let loaded = 0;
+
+            request.onsuccess = (event) => {
+                const cursor = (event.target as IDBRequest).result;
+
+                if (!cursor) {
+                    resolve();
+                    return;
+                }
+
+                // 跳过offset之前的记录
+                if (currentIndex < offset) {
+                    currentIndex++;
+                    cursor.continue();
+                    return;
+                }
+
+                // 加载limit数量的记录
+                if (loaded < limit) {
+                    const { id, url } = cursor.value;
+                    images.set(id, url);
+                    // 同步到内存缓存
+                    memoryCache.set(id, url);
+                    loaded++;
+                    currentIndex++;
+                    cursor.continue();
+                } else {
+                    // 达到limit，检查是否还有更多
+                    hasMore = true;
+                    resolve();
+                }
+            };
+            request.onerror = () => reject(request.error);
+        });
+
+        console.log(`[ImageStorage] Loaded page: offset=${offset}, limit=${limit}, got=${images.size}, total=${total}`);
+    } catch (error) {
+        console.error('[ImageStorage] Failed to get images page:', error);
+    }
+
+    return { images, hasMore, total };
 }
 
 /**
@@ -332,26 +447,37 @@ export async function cleanupOriginals(): Promise<{ count: number; savedBytes: n
     const MAX_THUMB_SIZE = 300;
     const SIZE_THRESHOLD = 50 * 1024;
 
+
     let count = 0;
     let savedBytes = 0;
 
     try {
-        const images = await getAllImages();
+        // 🚀 改为分批加载避免内存溢出
+        const BATCH_SIZE = 10;
+        const totalImages = await getImageCount();
         const db = await openDB();
 
-        for (const [id, url] of images.entries()) {
-            if (url.length < SIZE_THRESHOLD) continue;
+        console.log(`[compressLargeImages] Processing ${totalImages} images in batches of ${BATCH_SIZE}`);
 
-            try {
-                const compressedUrl = await compressImage(url, MAX_THUMB_SIZE);
-                if (compressedUrl.length < url.length) {
-                    await saveImage(id, compressedUrl);
-                    savedBytes += (url.length - compressedUrl.length);
-                    count++;
+        for (let offset = 0; offset < totalImages; offset += BATCH_SIZE) {
+            const { images } = await getImagesPage(offset, BATCH_SIZE);
+
+            for (const [id, url] of images.entries()) {
+                if (url.length < SIZE_THRESHOLD) continue;
+
+                try {
+                    const compressedUrl = await compressImage(url, MAX_THUMB_SIZE);
+                    if (compressedUrl.length < url.length) {
+                        await saveImage(id, compressedUrl);
+                        savedBytes += (url.length - compressedUrl.length);
+                        count++;
+                    }
+                } catch (err) {
+                    console.warn(`[compressLargeImages] Failed to compress ${id}`, err);
                 }
-            } catch (err) {
-                console.warn(`[ImageStorage] Failed to compress ${id}:`, err);
             }
+
+            console.log(`[compressLargeImages] Processed batch ${Math.floor(offset / BATCH_SIZE) + 1}/${Math.ceil(totalImages / BATCH_SIZE)}`);
         }
     } catch (error) {
         console.error('[ImageStorage] Cleanup failed:', error);
@@ -397,4 +523,74 @@ function compressImage(dataUrl: string, maxDimension: number): Promise<string> {
         img.onerror = () => reject(new Error('Failed to load image'));
         img.src = dataUrl;
     });
+}
+
+// ============================================
+// 🚀 图片质量分级功能
+// ============================================
+
+import { ImageQuality, generateAllQualities, getQualityStorageId } from './imageQuality';
+
+/**
+ * 🚀 保存图片（支持质量分级）
+ * 自动生成３个质量级别：缩略图、预览图、原图
+ * @param id 图片唯一ID
+ * @param originalUrl 原图Base64数据
+ */
+export async function saveImageWithQualities(id: string, originalUrl: string): Promise<void> {
+    try {
+        console.log(`[ImageQuality] Generating qualities for ${id}...`);
+
+        // 1. 生成所有质量级别
+        const qualities = await generateAllQualities(originalUrl);
+
+        // 2. 保存每个质量
+        const savePromises = Object.entries(qualities).map(([quality, data]) => {
+            const storageId = getQualityStorageId(id, quality as ImageQuality);
+            return saveImage(storageId, data);
+        });
+
+        await Promise.all(savePromises);
+
+        console.log(`[ImageQuality] Saved ${id} with all quality levels`);
+    } catch (error) {
+        console.error(`[ImageQuality] Failed to save qualities for ${id}:`, error);
+        // Fallback: 至少保存原图
+        await saveImage(id, originalUrl);
+    }
+}
+
+/**
+ * 🚀 获取指定质量的图片
+ * @param id 图片ID
+ * @param quality 质量级别
+ * @returns 图片数据或null
+ */
+export async function getImageByQuality(
+    id: string,
+    quality: ImageQuality = ImageQuality.ORIGINAL
+): Promise<string | null> {
+    const storageId = getQualityStorageId(id, quality);
+    const image = await getImage(storageId);
+
+    // 如果指定质量不存在，fallback到原图
+    if (!image && quality !== ImageQuality.ORIGINAL) {
+        console.warn(`[ImageQuality] Quality ${quality} not found for ${id}, using original`);
+        return getImage(id);
+    }
+
+    return image;
+}
+
+/**
+ * 🚀 删除图片的所有质量级别
+ * @param id 图片ID
+ */
+export async function deleteImageAllQualities(id: string): Promise<void> {
+    const deletePromises = Object.values(ImageQuality).map(quality => {
+        const storageId = getQualityStorageId(id, quality);
+        return deleteImage(storageId);
+    });
+
+    await Promise.all(deletePromises);
 }

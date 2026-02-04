@@ -24,6 +24,7 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
 
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
+    const lastClickedIndexRef = useRef<number>(-1); // 🚀 记录上次点击位置用于Shift区间选择
 
     // Normalize query
     const lowerQuery = query.toLowerCase();
@@ -209,9 +210,25 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                             return (
                                 <div
                                     key={item.data.id}
-                                    onClick={() => {
+                                    onClick={(e) => {
                                         if (isMultiSelectMode) {
-                                            toggleMultiSelect(item);
+                                            // 🚀 Shift+点击区间选择
+                                            if (e.shiftKey && lastClickedIndexRef.current >= 0) {
+                                                const start = Math.min(lastClickedIndexRef.current, index);
+                                                const end = Math.max(lastClickedIndexRef.current, index);
+                                                setMultiSelectedIds(prev => {
+                                                    const next = new Set(prev);
+                                                    for (let i = start; i <= end; i++) {
+                                                        if (results[i]) {
+                                                            next.add(results[i].data.id);
+                                                        }
+                                                    }
+                                                    return next;
+                                                });
+                                            } else {
+                                                toggleMultiSelect(item);
+                                            }
+                                            lastClickedIndexRef.current = index;
                                         } else {
                                             handleSelect(item);
                                         }
@@ -288,9 +305,14 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                             <kbd className="px-1.5 py-0.5 bg-[var(--bg-primary)] rounded border border-[var(--border-light)] font-sans">↑↓</kbd> 导航
                         </span>
                         {isMultiSelectMode ? (
-                            <span className="flex items-center gap-1 text-indigo-400 font-medium">
-                                <kbd className="px-1.5 py-0.5 bg-indigo-500/20 rounded border border-indigo-500/30 font-sans text-indigo-400">Ctrl+Enter</kbd> 确认整理 ({multiSelectedIds.size})
-                            </span>
+                            <>
+                                <span className="flex items-center gap-1 text-indigo-400 font-medium">
+                                    <kbd className="px-1.5 py-0.5 bg-indigo-500/20 rounded border border-indigo-500/30 font-sans text-indigo-400">Shift+点击</kbd> 区间选择
+                                </span>
+                                <span className="flex items-center gap-1 text-indigo-400 font-medium">
+                                    <kbd className="px-1.5 py-0.5 bg-indigo-500/20 rounded border border-indigo-500/30 font-sans text-indigo-400">Ctrl+Enter</kbd> 确认整理 ({multiSelectedIds.size})
+                                </span>
+                            </>
                         ) : (
                             <span className="flex items-center gap-1">
                                 <kbd className="px-1.5 py-0.5 bg-[var(--bg-primary)] rounded border border-[var(--border-light)] font-sans">Enter</kbd> 定位
