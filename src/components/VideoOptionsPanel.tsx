@@ -41,7 +41,7 @@ const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
 
     // 当分辨率变化时，如果当前时长不可用，自动切换到第一个可用时长
     useEffect(() => {
-        if (!availableDurations.includes(duration)) {
+        if (!availableDurations.includes(duration as never)) {
             onDurationChange(availableDurations[0]);
         }
     }, [resolution, duration, availableDurations, onDurationChange]);
@@ -280,8 +280,8 @@ const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
                         }}
                     />
 
-                    {['4s', '6s', '8s'].map(dur => {
-                        const isAvailable = availableDurations.includes(dur);
+                    {(['4s', '6s', '8s'] as const).map(dur => {
+                        const isAvailable = availableDurations.includes(dur as never);
                         return (
                             <button
                                 key={dur}

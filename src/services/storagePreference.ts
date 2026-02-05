@@ -1,11 +1,12 @@
 /**
  * Storage Preference Service
- * Manages user's storage mode preference (local folder vs browser IndexedDB)
+ * Manages user's storage mode preference (local folder vs browser IndexedDB vs OPFS)
  */
 
 import { supabase } from '../lib/supabase';
 
-export type StorageMode = 'local' | 'browser';
+// 🚀 新增OPFS模式支持手机端
+export type StorageMode = 'local' | 'browser' | 'opfs';
 
 const FOLDER_HANDLE_KEY = 'kk_studio_local_folder_handle';
 const STORAGE_MODE_KEY = 'kk_studio_storage_mode';
@@ -15,10 +16,38 @@ let cachedMode: StorageMode | null = null;
 let cachedFolderHandle: FileSystemDirectoryHandle | null = null;
 
 /**
- * Check if File System Access API is supported
+ * Check if File System Access API is supported (PC端)
  */
 export function isFileSystemAccessSupported(): boolean {
     return 'showDirectoryPicker' in window;
+}
+
+/**
+ * Check if OPFS is supported (手机端)
+ */
+export function isOPFSSupported(): boolean {
+    return 'storage' in navigator && 'getDirectory' in navigator.storage;
+}
+
+/**
+ * 是否为移动设备
+ */
+export function isMobileDevice(): boolean {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+/**
+ * 获取推荐的存储模式
+ * PC端推荐local，手机端推荐opfs
+ */
+export function getRecommendedStorageMode(): StorageMode {
+    if (isFileSystemAccessSupported() && !isMobileDevice()) {
+        return 'local';
+    } else if (isOPFSSupported()) {
+        return 'opfs';
+    } else {
+        return 'browser';
+    }
 }
 
 /**

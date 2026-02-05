@@ -8,8 +8,13 @@ import { calculateImageHash } from '../utils/imageUtils';
 
 const MAX_CANVASES = 10;
 
+
 // 副卡排列模式: 横向 | 宫格 | 竖向
 export type SubCardLayout = 'row' | 'grid' | 'column';
+
+// 整理模式: 宫格(6列) | 横向 | 纵向
+export type ArrangeMode = 'grid' | 'row' | 'column';
+
 
 interface CanvasState {
     canvases: Canvas[];
@@ -34,13 +39,13 @@ interface CanvasState {
 interface CanvasContextType {
     state: CanvasState;
     activeCanvas: Canvas | undefined;
-    createCanvas: () => boolean; // Returns false if max reached
+    createCanvas: () => string | null; // Returns new canvas ID or null if max reached
     switchCanvas: (id: string) => void;
     deleteCanvas: (id: string) => void;
     renameCanvas: (id: string, newName: string) => void;
-    addPromptNode: (node: PromptNode) => void;
-    updatePromptNode: (node: PromptNode) => void;
-    addImageNodes: (nodes: GeneratedImage[]) => void;
+    addPromptNode: (node: PromptNode) => Promise<void>;
+    updatePromptNode: (node: PromptNode) => Promise<void>;
+    addImageNodes: (nodes: GeneratedImage[]) => Promise<void>;
     updatePromptNodePosition: (id: string, pos: { x: number; y: number }, options?: { moveChildren?: boolean; ignoreSelection?: boolean }) => void;
     updateImageNodePosition: (id: string, pos: { x: number; y: number }, options?: { ignoreSelection?: boolean }) => void;
     updateImageNodeDimensions: (id: string, dimensions: string) => void;
@@ -55,7 +60,7 @@ interface CanvasContextType {
     pushToHistory: () => void;
     canUndo: boolean;
     canRedo: boolean;
-    arrangeAllNodes: () => void; // Auto-layout cards in compact grid
+    arrangeAllNodes: (mode?: ArrangeMode) => void; // Auto-layout cards: grid(6列) | row | column
     getNextCardPosition: () => { x: number; y: number }; // Get next available position for new card
     // File System
     connectLocalFolder: () => Promise<void>;
@@ -65,7 +70,7 @@ interface CanvasContextType {
     isConnectedToLocal: boolean;
     currentFolderName: string | null;
     selectedNodeIds: string[];
-    selectNodes: (ids: string[], exclusive?: boolean) => void;
+    selectNodes: (ids: string[], mode?: 'replace' | 'add' | 'remove' | 'toggle') => void;
     clearSelection: () => void;
     moveSelectedNodes: (delta: { x: number; y: number }) => void;
     findSmartPosition: (x: number, y: number, width: number, height: number, buffer?: number) => { x: number; y: number };
@@ -188,6 +193,22 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return DEFAULT_STATE;
     });
 
+    // 🚀 [防刷新丢失] 追踪未完成的保存任务
+    const pendingSavesRef = useRef<Set<Promise<void>>>(new Set());
+
+    // 🚀 [防刷新丢失] beforeunload 事件警告用户
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (pendingSavesRef.current.size > 0) {
+                e.preventDefault();
+                e.returnValue = '图片正在保存中，离开可能导致数据丢失';
+                return e.returnValue;
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, []);
+
     // Load image URLs from IndexedDB AND Restore Folder Handle
     useEffect(() => {
         const init = async () => {
@@ -208,7 +229,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                     // This overrides localStorage state with the true file state
                                     try {
                                         const { fileSystemService } = await import('../services/fileSystemService');
-                                        const { canvases, images } = await fileSystemService.loadProjectWithThumbs(handle);
+                                        const { canvases, images, activeCanvasId: savedActiveCanvasId } = await fileSystemService.loadProjectWithThumbs(handle);
 
                                         // Hydrate IDB images (Background)
                                         for (const [id, data] of images.entries()) {
@@ -216,6 +237,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                         }
 
                                         if (canvases.length > 0) {
+                                            // 🚀 恢复上次活动的项目，如果找不到则使用第一个
+                                            const validActiveId = savedActiveCanvasId && canvases.some(c => c.id === savedActiveCanvasId)
+                                                ? savedActiveCanvasId
+                                                : canvases[0].id;
+
                                             setState(prev => ({
                                                 ...prev,
                                                 canvases: canvases.map(c => ({
@@ -232,7 +258,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                                         })) || []
                                                     }))
                                                 })),
-                                                activeCanvasId: canvases[0].id,
+                                                activeCanvasId: validActiveId,
                                                 fileSystemHandle: handle,
                                                 folderName: handle.name
                                             }));
@@ -264,15 +290,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 // 🚀 收集当前状态中需要的图片ID
                 const requiredImageIds = new Set<string>();
                 state.canvases.forEach(c => {
-                    // 收集生成的图片ID
+                    // 收集生成的图片ID - 使用storageId优先（保存时用的是storageId）
                     c.imageNodes.forEach(img => {
-                        requiredImageIds.add(img.id);
+                        requiredImageIds.add(img.storageId || img.id);
                     });
                     // 收集参考图片ID
                     c.promptNodes.forEach(pn => {
                         if (pn.referenceImages) {
                             pn.referenceImages.forEach(ref => {
-                                requiredImageIds.add(ref.id);
+                                requiredImageIds.add(ref.storageId || ref.id);
                             });
                         }
                     });
@@ -281,19 +307,38 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 console.log(`[CanvasContext] Found ${requiredImageIds.size} images needed in current state`);
 
-                // 🚀 紧急优化：限制最大加载数量，防止崩溃
-                const MAX_INITIAL_LOAD = 30; // 最多加载30张（全局查看优化）
-                let imageIdsArray = Array.from(requiredImageIds);
+                // 🚀 分离参考图和生成图
+                const referenceImageIds = new Set<string>();
+                const generatedImageIds = new Set<string>();
 
-                // 🚀 优先加载靠近视口中心的图片（动态更新）
+                state.canvases.forEach(c => {
+                    // 生成的图片
+                    c.imageNodes.forEach(img => {
+                        generatedImageIds.add(img.storageId || img.id);
+                    });
+                    // 参考图 - 单独收集，确保优先加载
+                    c.promptNodes.forEach(pn => {
+                        if (pn.referenceImages) {
+                            pn.referenceImages.forEach(ref => {
+                                referenceImageIds.add(ref.storageId || ref.id);
+                            });
+                        }
+                    });
+                });
+
+                // 🚀 [修复] 参考图必须全部加载，不受限制
+                // 生成图才限制数量
+                const MAX_GENERATED_LOAD = 5;
+                let generatedIdsArray = Array.from(generatedImageIds);
+
+                // 🚀 优先加载靠近视口中心的生成图
                 const viewportX = state.viewportCenter.x;
                 const viewportY = state.viewportCenter.y;
-                const imagesWithDistance = imageIdsArray.map(id => {
+                const imagesWithDistance = generatedIdsArray.map(id => {
                     let minDistance = Infinity;
                     state.canvases.forEach(c => {
-                        const node = c.imageNodes.find(n => n.id === id);
+                        const node = c.imageNodes.find(n => (n.storageId || n.id) === id);
                         if (node) {
-                            // 使用视口中心计算距离，优先加载屏幕中间的图片
                             const dx = node.position.x - viewportX;
                             const dy = node.position.y - viewportY;
                             const distance = Math.sqrt(dx * dx + dy * dy);
@@ -305,11 +350,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 // 按距离排序，优先加载中心区域
                 imagesWithDistance.sort((a, b) => a.distance - b.distance);
-                imageIdsArray = imagesWithDistance.slice(0, MAX_INITIAL_LOAD).map(item => item.id);
+                generatedIdsArray = imagesWithDistance.slice(0, MAX_GENERATED_LOAD).map(item => item.id);
 
-                if (requiredImageIds.size > MAX_INITIAL_LOAD) {
-                    console.warn(`[CanvasContext] Too many images (${requiredImageIds.size}), loading only ${MAX_INITIAL_LOAD} nearest to center`);
+                // 🚀 [关键修复] 合并：参考图 + 限制后的生成图
+                const imageIdsArray = [...Array.from(referenceImageIds), ...generatedIdsArray];
+
+                if (generatedImageIds.size > MAX_GENERATED_LOAD) {
+                    console.warn(`[CanvasContext] Too many generated images (${generatedImageIds.size}), loading only ${MAX_GENERATED_LOAD} nearest to center`);
                 }
+                console.log(`[CanvasContext] Loading ${referenceImageIds.size} reference images + ${generatedIdsArray.length} generated images`);
 
                 // 🚀 按需加载：只加载当前状态需要的图片
                 const imageMap = new Map<string, string>();
@@ -317,7 +366,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 for (let i = 0; i < imageIdsArray.length; i += BATCH_SIZE) {
                     const batch = imageIdsArray.slice(i, i + BATCH_SIZE);
-                    const batchPromises = batch.map(id => getImage(id));
+                    // 🚀 [OOM修复] 加载MICRO质量（最小缩略图<50KB）而不是THUMBNAIL
+                    const { getImageByQuality } = await import('../services/imageStorage');
+                    const { ImageQuality } = await import('../services/imageQuality');
+                    const batchPromises = batch.map(id => getImageByQuality(id, ImageQuality.MICRO));
                     const batchResults = await Promise.all(batchPromises);
 
                     batch.forEach((id, index) => {
@@ -480,8 +532,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         const projectFile = await state.fileSystemHandle.getFileHandle('project.json', { create: true });
                         // @ts-ignore
                         const writable = await projectFile.createWritable();
-                        // Save minimal state (canvases only) to keep project.json clean compatible with other tools
-                        await writable.write(JSON.stringify({ canvases: stateToSave.canvases }, null, 2));
+                        // Save minimal state (canvases + activeCanvasId) to keep project.json clean compatible with other tools
+                        await writable.write(JSON.stringify({
+                            canvases: stateToSave.canvases,
+                            activeCanvasId: state.activeCanvasId  // 🚀 记住当前活动项目
+                        }, null, 2));
                         await writable.close();
                     } catch (e) {
                         // Permission might be lost or handle invalid
@@ -589,9 +644,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
     const canCreateCanvas = state.canvases.length < MAX_CANVASES;
 
-    const createCanvas = useCallback((): boolean => {
+    const createCanvas = useCallback((): string | null => {
         if (state.canvases.length >= MAX_CANVASES) {
-            return false; // Max reached
+            return null; // Max reached
         }
 
         // Find next available number for "项目X"
@@ -617,7 +672,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             canvases: [...prev.canvases, newCanvas],
             activeCanvasId: newCanvas.id
         }));
-        return true;
+        return newCanvas.id; // 返回新画布ID便于迁移
     }, [state.canvases.length, state.canvases]);
 
     const switchCanvas = useCallback((id: string) => {
@@ -662,20 +717,27 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
     }, []);
 
-    const addPromptNode = useCallback((node: PromptNode) => {
-        // Save reference images to IndexedDB
-        if (node.referenceImages) {
-            node.referenceImages.forEach(ref => {
+    const addPromptNode = useCallback(async (node: PromptNode) => {
+        // 🚀 [关键修复] 先保存参考图再添加节点 - 防止刷新丢失
+        if (node.referenceImages && node.referenceImages.length > 0) {
+            const saveTasks = node.referenceImages.map(async ref => {
                 if (ref.data) {
                     const mime = ref.mimeType || 'image/png';
                     let fullUrl = ref.data;
                     if (!fullUrl.startsWith('data:') && !fullUrl.startsWith('blob:') && !fullUrl.startsWith('http')) {
                         fullUrl = `data:${mime};base64,${ref.data}`;
                     }
-                    saveImage(ref.id, fullUrl);
+                    try {
+                        await saveImage(ref.id, fullUrl);
+                        console.log(`[CanvasContext] ✅ Saved reference image ${ref.id}`);
+                    } catch (e) {
+                        console.error(`[CanvasContext] ❌ Failed to save reference image ${ref.id}`, e);
+                    }
                 }
             });
+            await Promise.all(saveTasks);
         }
+
         updateCanvas(c => ({
             ...c,
             promptNodes: [...c.promptNodes, node]
@@ -706,19 +768,24 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
     }, [state.activeCanvasId, state.canvases]);
 
-    const updatePromptNode = useCallback((node: PromptNode) => {
-        // Save reference images to IndexedDB
-        if (node.referenceImages) {
-            node.referenceImages.forEach(ref => {
+    const updatePromptNode = useCallback(async (node: PromptNode) => {
+        // 🚀 [关键修复] 先保存参考图再更新节点 - 防止刷新丢失
+        if (node.referenceImages && node.referenceImages.length > 0) {
+            const saveTasks = node.referenceImages.map(async ref => {
                 if (ref.data) {
                     const mime = ref.mimeType || 'image/png';
                     let fullUrl = ref.data;
                     if (!fullUrl.startsWith('data:') && !fullUrl.startsWith('blob:') && !fullUrl.startsWith('http')) {
                         fullUrl = `data:${mime};base64,${ref.data}`;
                     }
-                    saveImage(ref.id, fullUrl);
+                    try {
+                        await saveImage(ref.id, fullUrl);
+                    } catch (e) {
+                        console.error(`[CanvasContext] ❌ Failed to save reference image ${ref.id}`, e);
+                    }
                 }
             });
+            await Promise.all(saveTasks);
         }
         updateCanvas(c => ({
             ...c,
@@ -755,34 +822,132 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Persistence: Save ORIGINAL (Base64) to IndexedDB
             persistenceTasks.push((async () => {
                 try {
-                    // 🚀 A. IndexedDB - 保存3个质量级别（缩略图、预览、原图）
-                    const { saveImageWithQualities } = await import('../services/imageStorage');
-                    await saveImageWithQualities(node.storageId || node.id, node.url);
+                    const isVideo = node.mode === 'video' || node.url.startsWith('data:video/');
+                    const storageId = node.storageId || node.id;
 
-                    // B. File System (Persistent Disk)
-                    if (state.fileSystemHandle) {
+                    // 🚀 [关键修复] 先保存原图到本地文件系统（最安全的存储）
+                    // A. File System First (持久化到本地磁盘 - 优先级最高)
+                    // 🚀 [闭包修复] 使用getLocalFolderHandle动态获取最新handle，不依赖陈旧的state
+                    const { getLocalFolderHandle } = await import('../services/storagePreference');
+                    const currentHandle = await getLocalFolderHandle();
+
+                    if (currentHandle) {
                         try {
                             const res = await fetch(node.url); // works with data: or blob:
                             const blob = await res.blob();
-                            await fileSystemService.saveImageToHandle(state.fileSystemHandle, node.storageId || node.id, blob);
+
+                            if (isVideo) {
+                                // 视频：保存为.mp4
+                                // @ts-ignore
+                                const videosDir = await currentHandle.getDirectoryHandle('videos', { create: true });
+                                // @ts-ignore
+                                const fileHandle = await videosDir.getFileHandle(`${storageId}.mp4`, { create: true });
+                                // @ts-ignore
+                                const writable = await fileHandle.createWritable();
+                                await writable.write(blob);
+                                await writable.close();
+                                console.log(`[CanvasContext] ✅ Saved ORIGINAL video ${storageId} to LOCAL DISK`);
+                            } else {
+                                // 图片：保存原图到本地
+                                await fileSystemService.saveImageToHandle(currentHandle, storageId, blob);
+                                console.log(`[CanvasContext] ✅ Saved ORIGINAL image ${storageId} to LOCAL DISK`);
+                            }
                         } catch (e) {
-                            console.warn(`[CanvasContext] Failed to save image ${node.id} to disk`, e);
+                            console.error(`[CanvasContext] ❌ Failed to save ${isVideo ? 'video' : 'image'} ${node.id} to LOCAL DISK`, e);
+                        }
+                    } else {
+                        // 🚀 [新增] 没有本地文件夹时，检测是否支持OPFS（手机端）
+                        const { isOPFSAvailable, saveToOPFS } = await import('../services/opfsService');
+
+                        if (isOPFSAvailable()) {
+                            // 手机端：使用OPFS保存原图
+                            try {
+                                const res = await fetch(node.url);
+                                const blob = await res.blob();
+
+                                if (isVideo) {
+                                    await saveToOPFS(blob, storageId, 'video');
+                                    console.log(`[CanvasContext] ✅ Saved video ${storageId} to OPFS`);
+                                } else {
+                                    await saveToOPFS(blob, storageId, 'image');
+                                    console.log(`[CanvasContext] ✅ Saved ORIGINAL image ${storageId} to OPFS`);
+                                }
+                            } catch (e) {
+                                console.error(`[CanvasContext] ❌ Failed to save to OPFS`, e);
+                            }
+                        } else {
+                            console.log(`[CanvasContext] No local folder or OPFS available, using IndexedDB for ${storageId}`);
+                        }
+                    }
+
+                    // B. IndexedDB (浏览器缓存) - 始终保存缩略图
+                    if (isVideo) {
+                        // 视频：直接保存，不压缩
+                        const { saveImage } = await import('../services/imageStorage');
+                        await saveImage(storageId, node.url);
+                        console.log(`[CanvasContext] Saved video ${storageId} to IndexedDB cache`);
+                    } else {
+                        const { saveImage } = await import('../services/imageStorage');
+                        const { getQualityStorageId, ImageQuality } = await import('../services/imageQuality');
+
+                        // 🚀 [优化] 使用Web Worker生成缩略图，不阻塞主线程
+                        try {
+                            const { generateThumbnailWithPreset } = await import('../workers/thumbnailService');
+                            const { blob } = await generateThumbnailWithPreset(node.url, 'MICRO');
+
+                            // 转换为base64保存到IndexedDB
+                            const reader = new FileReader();
+                            const microData = await new Promise<string>((resolve, reject) => {
+                                reader.onload = () => resolve(reader.result as string);
+                                reader.onerror = reject;
+                                reader.readAsDataURL(blob);
+                            });
+
+                            const microId = getQualityStorageId(storageId, ImageQuality.MICRO);
+                            await saveImage(microId, microData);
+                            console.log(`[CanvasContext] ✅ Saved MICRO thumbnail (Worker) for ${storageId}`);
+                        } catch (workerError) {
+                            // Worker失败时回退到主线程
+                            console.warn(`[CanvasContext] Worker failed, falling back to main thread:`, workerError);
+                            const { compressImageToQuality, QUALITY_CONFIGS } = await import('../services/imageQuality');
+                            const microData = await compressImageToQuality(node.url, QUALITY_CONFIGS[ImageQuality.MICRO]);
+                            const microId = getQualityStorageId(storageId, ImageQuality.MICRO);
+                            await saveImage(microId, microData);
+                            console.log(`[CanvasContext] ✅ Saved MICRO thumbnail (main thread) for ${storageId}`);
+                        }
+
+                        // 🚀 [关键修复] 如果没有本地文件夹也没有OPFS，保存ORIGINAL到IndexedDB
+                        const { isOPFSAvailable: checkOPFS } = await import('../services/opfsService');
+                        if (!currentHandle && !checkOPFS()) {
+                            await saveImage(storageId, node.url);
+                            console.log(`[CanvasContext] ✅ Saved ORIGINAL for ${storageId} to IndexedDB (no local folder or OPFS)`);
                         }
                     }
                 } catch (e) {
-                    console.error(`[CanvasContext] Failed to save image ${node.id}`, e);
+                    console.error(`[CanvasContext] Failed to save ${node.id}`, e);
                 }
             })());
         }
 
-        // 1. Optimistic Update: Add to State immediately (using Blob URLs)
+        // 🚀 [修复] 先立即显示图片（乐观更新），保持连续发送能力
         updateCanvas(c => ({
             ...c,
             imageNodes: [...c.imageNodes, ...stateNodes]
         }));
 
-        // 2. Execute Persistence in Background
-        await Promise.all(persistenceTasks);
+        // 🚀 后台执行持久化任务（不阻塞UI）
+        // 使用全局追踪器防止刷新时丢失
+        const savePromise = Promise.all(persistenceTasks).then(() => {
+            console.log(`[CanvasContext] ✅ All ${persistenceTasks.length} images saved`);
+        }).catch(e => {
+            console.error('[CanvasContext] ❌ Some persistence tasks failed:', e);
+        });
+
+        // 追踪未完成的保存任务
+        pendingSavesRef.current.add(savePromise);
+        savePromise.finally(() => {
+            pendingSavesRef.current.delete(savePromise);
+        });
     }, [updateCanvas]);
 
     const updatePromptNodePosition = useCallback((
@@ -1188,7 +1353,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
      * - Projects arranged left-to-right (horizontal)
      * - No overlapping
      */
-    const arrangeAllNodes = useCallback(() => {
+    const arrangeAllNodes = useCallback((mode: ArrangeMode = 'grid') => {
         pushToHistory(); // Allow undo
 
         // --- Configuration ---
@@ -1330,14 +1495,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 let syncChildren = false;
 
                 if (isPromptOnly) {
-                    // [MODE A] Prompt Only: Sort Prompts independent of children
+                    // [MODE A] Prompt Only: 🚀 改为同步子卡，实现卡组整体整理
                     roots = selectedPrompts.map(p => ({
                         id: p.id, type: 'prompt', obj: p,
                         x: p.position.x, y: p.position.y,
                         width: PROMPT_WIDTH, height: p.height || 200,
                         visualCx: p.position.x, visualCy: p.position.y - (p.height || 200) / 2
                     }));
-                    syncChildren = false;
+                    syncChildren = true; // 🚀 启用子卡同步，让副卡跟随主卡移动
                 }
                 else if (isImageOnly) {
                     // [MODE B] Image Only: Sort Images independent of parents
@@ -1391,38 +1556,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
 
                 if (roots.length >= 2) {
-                    // 2. Decide Strategy
-                    let strategy: 'matrix' | 'row' | 'column' = 'row';
-                    const GAP = 80; // ✅ 增大分组间距防止堆叠
-
-                    // [NEW] 纯副卡模式: 使用subCardLayoutMode轮换
-                    if (isImageOnly) {
-                        // 使用当前模式
-                        const currentMode = state.subCardLayoutMode;
-                        if (currentMode === 'row') {
-                            strategy = 'row';
-                        } else if (currentMode === 'grid') {
-                            strategy = 'matrix';
-                        } else {
-                            strategy = 'column';
-                        }
-                        // 轮换到下一个模式 (row -> grid -> column -> row)
-                        const nextMode: SubCardLayout = currentMode === 'row' ? 'grid' : currentMode === 'grid' ? 'column' : 'row';
-                        setState(prev => ({ ...prev, subCardLayoutMode: nextMode }));
-                    } else if (roots.length >= 4) {
-                        strategy = 'matrix';
-                    } else {
-                        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-                        roots.forEach(r => {
-                            minX = Math.min(minX, r.x);
-                            maxX = Math.max(maxX, r.x);
-                            minY = Math.min(minY, r.y);
-                            maxY = Math.max(maxY, r.y);
-                        });
-                        if ((maxY - minY) > (maxX - minX) * 1.5) { // Bias towards row unless clearly column
-                            strategy = 'column';
-                        }
-                    }
+                    // 2. 使用传入的mode确定策略
+                    const strategy: 'matrix' | 'row' | 'column' = mode === 'grid' ? 'matrix' : mode;
+                    const GAP = 80; // 分组间距
+                    const GRID_COLUMNS = 6; // 宫格模式固定6列
 
                     // 3. Arrange
                     const newPositions: Record<string, { x: number, y: number }> = {};
@@ -1434,8 +1571,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             return a.visualCx - b.visualCx;
                         });
 
-                        // Determine Grid Dimensions
-                        const columns = Math.ceil(Math.sqrt(roots.length));
+                        // 使用固定6列
+                        const columns = GRID_COLUMNS;
                         // Center around average center
                         const avgX = roots.reduce((s, r) => s + r.x, 0) / roots.length;
                         const avgY = roots.reduce((s, r) => s + r.y, 0) / roots.length;
@@ -1643,7 +1780,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     const subCardsStartY = startY + rowMaxPromptHeight + PROMPT_TO_SUB_GAP;
 
                     layoutRow.groups.forEach(group => {
-                        const groupCenterX = rowX + maxGroupWidth / 2;
+                        // 🚀 [修复] 使用当前组的实际宽度计算中心点
+                        const groupCenterX = rowX + group.width / 2;
 
                         if (group.prompt) {
                             newPositions[group.prompt.id] = {
@@ -1677,7 +1815,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             newPositions[img.id] = { x: groupCenterX, y: subCardsStartY + dims.h };
                         }
 
-                        rowX += maxGroupWidth + GROUP_GAP_X;
+                        // 🚀 [修复] 使用当前组的实际宽度而不是maxGroupWidth，防止重叠
+                        rowX += group.width + GROUP_GAP_X;
                     });
 
                     startY += layoutRow.maxTotalHeight + GROUP_GAP_Y;
@@ -2003,32 +2142,34 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
         }
 
-        // --- 6. Apply & Save ---
-        const newCanvases = state.canvases.map(c =>
-            c.id === state.activeCanvasId ? {
-                ...c,
-                promptNodes: c.promptNodes.map(pn => ({ ...pn, position: positions[pn.id] || pn.position })),
-                imageNodes: c.imageNodes.map(img => ({ ...img, position: positions[img.id] || img.position })),
-                lastModified: Date.now()
-            } : c
-        );
+        setState(prev => {
+            // 🚀 使用prev获取最新状态，重新计算newCanvases
+            const updatedCanvases = prev.canvases.map(c =>
+                c.id === prev.activeCanvasId ? {
+                    ...c,
+                    promptNodes: c.promptNodes.map(pn => ({ ...pn, position: positions[pn.id] || pn.position })),
+                    imageNodes: c.imageNodes.map(img => ({ ...img, position: positions[img.id] || img.position })),
+                    lastModified: Date.now()
+                } : c
+            );
 
-        setState(prev => ({ ...prev, canvases: newCanvases }));
-
-        // Force Save
-        if (!state.fileSystemHandle) {
-            try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                    ...state,
-                    canvases: stripImageUrls(newCanvases),
-                    history: {}
-                }));
-            } catch (e) {
-                console.error('Failed to save layout:', e);
+            // Force Save - 使用更新后的状态
+            if (!prev.fileSystemHandle) {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                        ...prev,
+                        canvases: stripImageUrls(updatedCanvases),
+                        history: {}
+                    }));
+                } catch (e) {
+                    console.error('Failed to save layout:', e);
+                }
             }
-        }
 
-    }, [state]);
+            return { ...prev, canvases: updatedCanvases };
+        });
+
+    }, [pushToHistory]); // 🚀 移除state依赖，使用函数式更新
 
     // --- File System Implementation ---
 
@@ -2438,42 +2579,39 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     /**
      * Get the next available position for a new card (to the right of existing cards)
      */
-    const selectNodes = useCallback((ids: string[], exclusive = true) => {
+    const selectNodes = useCallback((ids: string[], mode: 'replace' | 'add' | 'remove' | 'toggle' = 'replace') => {
         setState(prev => {
-            // Toggle logic if not exclusive? No, usually shift-click adds.
-            // If exclusive, replace. If not, append unique.
-            // Actually, for toggle behavior (click on selected to deselect), the caller usually handles logic or we can add it.
-            // But strict "add to selection" is safer for now.
-            // Let's support naive "add".
-            // If the user wants to toggle, they can pass the new list.
-            // Wait, UI usually does: if shift, new = old + clicked. If not, new = clicked.
-            // App.tsx handles the logic?
-            // "onSelect={() => selectNodes([node.id], !window.event?.shiftKey)}"
-            // So if exclusive (no shift), we pass just [id]. If not exclusive (shift), we pass [id].
-            // My App.tsx logic: "selectNodes([node.id], !window.event?.shiftKey)"
-            // If shift is pressed, exclusive=false.
-            // So we need to MERGE `ids` with current.
-            // But usually shift-click on ALREADY selected item DESELECTS it.
-            // Let's implement smart toggle if exclusive=false && ids.length===1?
-            // "selectedNodeIds.includes(node.id)" is passed in props but logic is here.
-
-            if (exclusive) {
-                return { ...prev, selectedNodeIds: ids };
-            }
-
-            // Additive mode
             const current = new Set(prev.selectedNodeIds || []);
-            let modified = false;
-            ids.forEach(id => {
-                if (current.has(id)) {
-                    current.delete(id); // Toggle off
-                } else {
-                    current.add(id); // Toggle on
-                }
-                modified = true;
-            });
 
-            return modified ? { ...prev, selectedNodeIds: Array.from(current) } : prev;
+            switch (mode) {
+                case 'replace':
+                    // 完全替换选择
+                    return { ...prev, selectedNodeIds: ids };
+
+                case 'add':
+                    // 添加到选择（Shift+框选）
+                    ids.forEach(id => current.add(id));
+                    return { ...prev, selectedNodeIds: Array.from(current) };
+
+                case 'remove':
+                    // 从选择中移除（Alt+框选）
+                    ids.forEach(id => current.delete(id));
+                    return { ...prev, selectedNodeIds: Array.from(current) };
+
+                case 'toggle':
+                    // 切换选择（Ctrl+点击）
+                    ids.forEach(id => {
+                        if (current.has(id)) {
+                            current.delete(id);
+                        } else {
+                            current.add(id);
+                        }
+                    });
+                    return { ...prev, selectedNodeIds: Array.from(current) };
+
+                default:
+                    return { ...prev, selectedNodeIds: ids };
+            }
         });
     }, []);
 
@@ -2760,6 +2898,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
     }, [updateCanvas]);
 
+    // 🚀 视口中心动态加载 - 使用useCallback防止无限循环
+    const setViewportCenter = useCallback((center: { x: number; y: number }) => {
+        setState(prev => ({ ...prev, viewportCenter: center }));
+    }, []);
+
     return (
         <CanvasContext.Provider value={{
             state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
@@ -2782,10 +2925,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             updateGroup,
             setNodeTags,
             isReady: !isLoading,
-            // 🚀 视口中心动态加载
-            setViewportCenter: (center: { x: number; y: number }) => {
-                setState(prev => ({ ...prev, viewportCenter: center }));
-            },
+            // 🚀 视口中心动态加载（使用useCallback版本防止无限循环）
+            setViewportCenter,
             // 🚀 迁移选中节点到其他项目
             migrateNodes: (nodeIds: string[], targetCanvasId: string) => {
                 setState(prev => {

@@ -110,9 +110,10 @@ export const fileSystemService = {
     /**
      * Load project from directory with Thumbnail Generation
      */
-    async loadProjectWithThumbs(handle: FileSystemDirectoryHandle): Promise<{ canvases: Canvas[], images: Map<string, { url: string, originalUrl?: string }> }> {
+    async loadProjectWithThumbs(handle: FileSystemDirectoryHandle): Promise<{ canvases: Canvas[], images: Map<string, { url: string, originalUrl?: string }>, activeCanvasId: string | null }> {
         const images = new Map<string, { url: string, originalUrl?: string }>();
         let canvases: Canvas[] = [];
+        let activeCanvasId: string | null = null;  // 🚀 记录上次活动的项目
 
         logInfo('FileSystem', `正在加载项目`, `folder: ${handle.name}`);
 
@@ -132,7 +133,8 @@ export const fileSystemService = {
             const text = await file.text();
             const data = JSON.parse(text);
             canvases = data.canvases || [];
-            logInfo('FileSystem', `已加载项目配置`, `${canvases.length} 个画布`);
+            activeCanvasId = data.activeCanvasId || null;  // 🚀 恢复上次活动的项目
+            logInfo('FileSystem', `已加载项目配置`, `${canvases.length} 个画布, activeCanvasId: ${activeCanvasId}`);
         } catch (e) {
             logInfo('FileSystem', '暂无项目文件，将创建新项目', 'project.json not found');
         }
@@ -182,7 +184,7 @@ export const fileSystemService = {
             }
         }
 
-        return { canvases, images };
+        return { canvases, images, activeCanvasId };
     },
     /**
      * Get usage of images folder in bytes (Recursive)

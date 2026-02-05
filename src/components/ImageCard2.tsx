@@ -87,8 +87,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const [isVideoPlaying, setIsVideoPlaying] = useState(false); // 视频默认暂停
     const videoRef = useRef<HTMLVideoElement>(null);
 
-    // 🚀 Robust Image Loading State - 初始化为undefined强制队列加载
-    const [displaySrc, setDisplaySrc] = useState<string | undefined>(undefined);
+    // 🚀 Robust Image Loading State - 优先使用image自带URL作为初始显示（防止刚生成的图片加载失败）
+    // 🚀 FIX: 确保空字符串不会被选中（image.url可能是''）
+    const initialUrl = (image.url && image.url.length > 0) ? image.url : (image.originalUrl || '');
+    const [displaySrc, setDisplaySrc] = useState<string | undefined>(
+        initialUrl && (initialUrl.startsWith('data:') || initialUrl.startsWith('blob:') || initialUrl.startsWith('http'))
+            ? initialUrl
+            : undefined
+    );
     const [currentQuality, setCurrentQuality] = useState<string>('original');
     const qualityLoadingRef = useRef(false); // 防止重复加载
     const lastZoomRef = useRef(zoomScale || 1.0); // 防抖：只在显著变化时切换
@@ -178,15 +184,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         };
     }, [zoomScale, image.id, isVisible]); // 移除displaySrc依赖
 
-    // 🚀 释放Bl ob URL防止内存泄漏
-    useEffect(() => {
-        return () => {
-            if (displaySrc && displaySrc.startsWith('blob:')) {
-                URL.revokeObjectURL(displaySrc);
-                console.log(`[ImageCard] Revoked Blob URL for ${image.id}`);
-            }
-        };
-    }, [displaySrc, image.id]);
+    // 🚀 [修复] 移除过于激进的Blob URL回收 - 这会导致图片消失
+    // Blob URL现在由CanvasContext在节点删除时统一管理
+    // 不在这里回收，因为displaySrc变化时可能只是质量切换，原URL仍在使用
 
     // 🚀 [已移除] 之前这里有一个会覆盖displaySrc的useEffect，导致加载循环
     // 现在完全依赖队列加载流程，不再同步image.url到displaySrc
@@ -194,11 +194,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
 
     // Helper: Attempt to recover image from cache
-    const recoverImage = useCallback(async () => {
-        if (isRecovering) return;
+    const recoverImage = useCallback(async (force = false) => {
+        if (isRecovering && !force) return;
 
-        // 🚀 防止恢复循环：超过2次直接失败
-        if (recoveryAttemptsRef.current >= 2) {
+        // 🚀 强制重试时重置计数器
+        if (force) {
+            recoveryAttemptsRef.current = 0;
+            console.log(`[ImageCard] Force retry for ${image.id}`);
+        }
+
+        // 🚀 防止恢复循环：超过3次直接失败
+        if (recoveryAttemptsRef.current >= 3) {
             console.warn(`[ImageCard] Max recovery attempts reached for ${image.id}`);
             setImgError(true);
             setIsRecovering(false);
@@ -208,14 +214,22 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
         setIsRecovering(true);
         setImgError(false);
-        console.log(`[ImageCard] Attempting recovery (${recoveryAttemptsRef.current}/2) for ${image.id}...`);
+        console.log(`[ImageCard] Attempting recovery (${recoveryAttemptsRef.current}/3) for ${image.id}...`);
 
         try {
+            // 0. 首先尝试使用 originalUrl（最可靠的来源）
+            if (image.originalUrl && image.originalUrl.startsWith('data:')) {
+                console.log(`[ImageCard] Recovered ${image.id} from originalUrl (base64)`);
+                setDisplaySrc(image.originalUrl);
+                setIsRecovering(false);
+                return;
+            }
+
             // 1. Try IndexedDB
             const { getImage } = await import('../services/imageStorage');
             // Fast timeout for IDB
             const idbPromise = getImage(image.id);
-            const timeoutPromise = new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 2000));
+            const timeoutPromise = new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 3000));
 
             const cached = await Promise.race([idbPromise, timeoutPromise]);
 
@@ -243,7 +257,23 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 }
             }
 
-            // 3. Fallback: If Original URL exists and is different, try it once
+            // 3. 🚀 [新增] Try OPFS (移动端高性能存储)
+            const { isOPFSAvailable, getOPFSBlobUrl } = await import('../services/opfsService');
+            if (isOPFSAvailable()) {
+                try {
+                    const opfsUrl = await getOPFSBlobUrl(image.id, 'image');
+                    if (opfsUrl) {
+                        console.log(`[ImageCard] Recovered ${image.id} from OPFS`);
+                        setDisplaySrc(opfsUrl);
+                        setIsRecovering(false);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn(`[ImageCard] OPFS recovery failed for ${image.id}`, e);
+                }
+            }
+
+            // 4. Fallback: If Original URL exists and is different, try it once
             if (image.originalUrl && image.originalUrl !== image.url) {
                 setDisplaySrc(image.originalUrl);
                 setIsRecovering(false); // Let the browser try to load this new src
@@ -260,66 +290,117 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             setImgError(true);
             setIsRecovering(false);
         }
-    }, [image.id, image.url, image.originalUrl]);
+    }, [image.id, image.url, image.originalUrl, isRecovering]);
 
     // 🚀 [简化] 自动恢复逻辑已移除，现在由主队列加载流程的fallback统一处理
 
     // Construct high-res URL for lightbox
     const highResUrl = image.originalUrl || displaySrc || image.url;
 
-    // 🚀 Load lightbox image: 先显示预览，后台加载原图
+    // 🚀 Load lightbox image: 先显示预览，后台加载原图（优先本地文件系统）
     useEffect(() => {
         if (showLightbox && !isLoadingOriginal) {
+            // 🚀 [关键修复] 立即显示当前可用的图片，防止黑屏
+            if (!lightboxOriginalUrl) {
+                const immediateUrl = displaySrc || image.url || image.originalUrl;
+                if (immediateUrl) {
+                    setLightboxOriginalUrl(immediateUrl);
+                    console.log(`[Lightbox] Showing immediate URL for ${image.id}`);
+                }
+            }
+
             setIsLoadingOriginal(true);
             (async () => {
                 const { getImageByQuality, saveImage } = await import('../services/imageStorage');
                 const { ImageQuality, getQualityStorageId } = await import('../services/imageQuality');
+                const storageId = image.storageId || image.id;
 
-                // 🚀 优化：先立即显示preview质量，然后加载原图
+                // 🚀 Step 1: 先立即显示preview质量（快速响应）
                 if (!lightboxOriginalUrl) {
-                    // Step 1: 先显示preview（如果有）
-                    const previewImage = await getImageByQuality(image.id, ImageQuality.PREVIEW);
+                    const previewImage = await getImageByQuality(storageId, ImageQuality.PREVIEW);
                     if (previewImage && previewImage.startsWith('data:')) {
                         setLightboxOriginalUrl(previewImage);
                         console.log(`[Lightbox] Showing PREVIEW first for ${image.id}`);
                     } else {
-                        // Fallback: 显示当前displaySrc
                         setLightboxOriginalUrl(displaySrc || image.url);
                     }
                 }
 
-                // Step 2: 后台加载原图
-                const originalImage = await getImageByQuality(image.id, ImageQuality.ORIGINAL);
+                // 🚀 Step 2: 尝试从本地文件系统加载原图（优先级最高）
+                try {
+                    const { getLocalFolderHandle } = await import('../services/storagePreference');
+                    const handle = await getLocalFolderHandle();
+                    if (handle) {
+                        const { fileSystemService } = await import('../services/fileSystemService');
+                        const blob = await fileSystemService.loadOriginalFromDisk(handle, storageId);
+                        if (blob) {
+                            const blobUrl = URL.createObjectURL(blob);
+                            setLightboxOriginalUrl(blobUrl);
+                            setIsLoadingOriginal(false);
+                            console.log(`[Lightbox] ✅ Loaded ORIGINAL from LOCAL DISK for ${image.id}`);
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[Lightbox] Local disk load failed for ${image.id}:`, e);
+                }
+
+                // 🚀 Step 3: 从OPFS加载原图（移动端）
+                const { isOPFSAvailable, getOPFSBlobUrl } = await import('../services/opfsService');
+                if (isOPFSAvailable()) {
+                    try {
+                        const opfsUrl = await getOPFSBlobUrl(storageId, 'image');
+                        if (opfsUrl) {
+                            setLightboxOriginalUrl(opfsUrl);
+                            setIsLoadingOriginal(false);
+                            console.log(`[Lightbox] ✅ Loaded ORIGINAL from OPFS for ${image.id}`);
+                            return;
+                        }
+                    } catch (e) {
+                        console.warn(`[Lightbox] OPFS load failed for ${image.id}:`, e);
+                    }
+                }
+
+                // 🚀 Step 4: 从IndexedDB加载原图（回退方案）
+                const originalImage = await getImageByQuality(storageId, ImageQuality.ORIGINAL);
                 if (originalImage && originalImage.startsWith('data:')) {
                     setLightboxOriginalUrl(originalImage);
                     setIsLoadingOriginal(false);
-                    console.log(`[Lightbox] Loaded ORIGINAL quality for ${image.id}`);
+                    console.log(`[Lightbox] Loaded ORIGINAL from IndexedDB for ${image.id}`);
                     return;
                 }
 
-                // Fallback fetch
-                let targetUrl = image.originalUrl || displaySrc || image.url;
-                if (targetUrl && !targetUrl.startsWith('data:')) {
-                    try {
-                        const res = await fetch(targetUrl);
-                        const blob = await res.blob();
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            const result = reader.result as string;
-                            setLightboxOriginalUrl(result);
-                            // 保存为原图质量
-                            const storageId = getQualityStorageId(image.id, ImageQuality.ORIGINAL);
-                            saveImage(storageId, result);
-                        };
-                        reader.readAsDataURL(blob);
-                    } catch (e) { console.error(e); }
+                // 🚀 Step 4: Fallback - 使用当前显示的src作为最终备选
+                // 刚生成的图片可能还在内存中通过displaySrc显示
+                const targetUrl = image.originalUrl || image.url || displaySrc;
+                if (targetUrl) {
+                    if (targetUrl.startsWith('data:') || targetUrl.startsWith('blob:')) {
+                        // 已经是可用的URL，直接使用
+                        setLightboxOriginalUrl(targetUrl);
+                        console.log(`[Lightbox] Using existing URL for ${image.id}`);
+                    } else {
+                        // 尝试从网络获取
+                        try {
+                            const res = await fetch(targetUrl);
+                            const blob = await res.blob();
+                            const blobUrl = URL.createObjectURL(blob);
+                            setLightboxOriginalUrl(blobUrl);
+                            console.log(`[Lightbox] Fetched from URL for ${image.id}`);
+                        } catch (e) {
+                            // 如果网络也失败，使用displaySrc
+                            console.warn(`[Lightbox] Fetch failed, using displaySrc for ${image.id}`);
+                            setLightboxOriginalUrl(displaySrc ?? targetUrl);
+                        }
+                    }
                 } else {
-                    setLightboxOriginalUrl(targetUrl);
+                    // 没有任何可用URL，使用displaySrc
+                    console.warn(`[Lightbox] No URL available, using displaySrc for ${image.id}`);
+                    setLightboxOriginalUrl(displaySrc ?? null);
                 }
                 setIsLoadingOriginal(false);
             })();
         }
-    }, [showLightbox, lightboxOriginalUrl, isLoadingOriginal, image.id, image.originalUrl, displaySrc, image.url]);
+    }, [showLightbox, lightboxOriginalUrl, isLoadingOriginal, image.id, image.storageId, image.originalUrl, displaySrc, image.url]);
 
     // Auto-recover if URL is missing initially
     useEffect(() => {
@@ -525,12 +606,20 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         };
     }, [showLightbox]);
 
-    // Reset pan and zoom when lightbox opens
+    // Reset pan and zoom when lightbox opens/closes
     useEffect(() => {
         if (showLightbox) {
             setLightboxZoom(1);
             setLightboxPan({ x: 0, y: 0 });
             // openTimeRef is now set synchronously in handleImageClick
+        } else {
+            // 🚀 [内存优化] 灯箱关闭时释放原图内存
+            if (lightboxOriginalUrl && lightboxOriginalUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(lightboxOriginalUrl);
+                console.log(`[Lightbox] Released blob URL memory for ${image.id}`);
+            }
+            setLightboxOriginalUrl(null);
+            setIsLoadingOriginal(false);
         }
     }, [showLightbox]);
 
@@ -818,7 +907,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                         </span>
                                         {/* Retry Button */}
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); recoverImage(); }}
+                                            onClick={(e) => { e.stopPropagation(); recoverImage(true); }}
                                             className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 underline"
                                         >
                                             点击重试
@@ -891,24 +980,24 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                                         // 🚀 优先使用用户选择时的显示名称
                                         let label = image.modelLabel || '';
-                                        let dotColor = 'bg-zinc-500';
+                                        let textColor = 'text-zinc-400';
 
                                         // 如果没有保存modelLabel，则从ID推断（兼容旧数据）
                                         if (!label) {
                                             label = 'AI';
                                             if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) {
                                                 label = 'Gemini 3 Pro';
-                                                dotColor = 'bg-purple-600';
+                                                textColor = 'text-purple-400';
                                             } else if (model.includes('gemini-3-flash')) {
                                                 label = 'Gemini 3 Flash';
-                                                dotColor = 'bg-cyan-500';
+                                                textColor = 'text-cyan-400';
                                                 // Gemini 2.5 系列
                                             } else if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) {
                                                 label = 'Gemini 2.5 Flash';
-                                                dotColor = 'bg-yellow-500';
+                                                textColor = 'text-yellow-400';
                                             } else if (model.includes('gemini-2.5-pro')) {
                                                 label = 'Gemini 2.5 Pro';
-                                                dotColor = 'bg-amber-500';
+                                                textColor = 'text-amber-400';
                                                 // Gemini 2.0 系列
                                             } else if (model.includes('gemini-2.0') || model.includes('gemini-2-')) {
                                                 if (model.includes('flash')) {
@@ -916,62 +1005,62 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                 } else {
                                                     label = 'Gemini 2.0';
                                                 }
-                                                dotColor = 'bg-orange-500';
+                                                textColor = 'text-orange-400';
                                                 // Imagen 4 系列
                                             } else if (model.includes('imagen-4') && model.includes('ultra')) {
                                                 label = 'Imagen 4 Ultra';
-                                                dotColor = 'bg-purple-500';
+                                                textColor = 'text-purple-400';
                                             } else if (model.includes('imagen-4') && model.includes('fast')) {
                                                 label = 'Imagen 4 Fast';
-                                                dotColor = 'bg-blue-400';
+                                                textColor = 'text-blue-300';
                                             } else if (model.includes('imagen-4')) {
                                                 label = 'Imagen 4';
-                                                dotColor = 'bg-blue-500';
+                                                textColor = 'text-blue-400';
                                                 // Imagen 3 系列
                                             } else if (model.includes('imagen-3')) {
                                                 label = 'Imagen 3';
-                                                dotColor = 'bg-blue-400';
+                                                textColor = 'text-blue-300';
                                                 // Veo 3 系列
                                             } else if (model.includes('veo-3.1') && model.includes('fast')) {
                                                 label = 'Veo 3.1 Fast';
-                                                dotColor = 'bg-fuchsia-500';
+                                                textColor = 'text-fuchsia-400';
                                             } else if (model.includes('veo-3.1')) {
                                                 label = 'Veo 3.1';
-                                                dotColor = 'bg-purple-500';
+                                                textColor = 'text-purple-400';
                                             } else if (model.includes('veo-3') && model.includes('fast')) {
                                                 label = 'Veo 3 Fast';
-                                                dotColor = 'bg-fuchsia-500';
+                                                textColor = 'text-fuchsia-400';
                                             } else if (model.includes('veo-3')) {
                                                 label = 'Veo 3';
-                                                dotColor = 'bg-purple-500';
+                                                textColor = 'text-purple-400';
                                                 // Veo 2 系列
                                             } else if (model.includes('veo-2') || (model.includes('veo') && !model.includes('veo-3'))) {
                                                 label = 'Veo 2';
-                                                dotColor = 'bg-violet-500';
+                                                textColor = 'text-violet-400';
                                                 // 上传图片
                                             } else if (model === 'uploaded') {
                                                 label = '上传';
-                                                dotColor = 'bg-gray-500';
+                                                textColor = 'text-gray-400';
                                             }
                                         }
 
-                                        // 根据模型ID设置圆点颜色（如果有modelLabel也需要设置颜色）
+                                        // 根据模型ID设置文字颜色（如果有modelLabel也需要设置颜色）
                                         if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) {
-                                            dotColor = 'bg-purple-600';
+                                            textColor = 'text-purple-400';
                                         } else if (model.includes('gemini-3-flash')) {
-                                            dotColor = 'bg-cyan-500';
+                                            textColor = 'text-cyan-400';
                                         } else if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) {
-                                            dotColor = 'bg-yellow-500';
+                                            textColor = 'text-yellow-400';
                                         } else if (model.includes('gemini-2.5-pro')) {
-                                            dotColor = 'bg-amber-500';
+                                            textColor = 'text-amber-400';
                                         } else if (model.includes('imagen-4') && model.includes('ultra')) {
-                                            dotColor = 'bg-purple-500';
+                                            textColor = 'text-purple-400';
                                         } else if (model.includes('imagen-4')) {
-                                            dotColor = 'bg-blue-500';
+                                            textColor = 'text-blue-400';
                                         } else if (model.includes('veo-3')) {
-                                            dotColor = 'bg-purple-500';
+                                            textColor = 'text-purple-400';
                                         } else if (model.includes('veo')) {
-                                            dotColor = 'bg-violet-500';
+                                            textColor = 'text-violet-400';
                                         }
 
                                         return (
@@ -982,8 +1071,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                     borderColor: 'var(--border-light)'
                                                 }}
                                             >
-                                                <span className={`w-1 h-1 rounded-full ${dotColor}`}></span>
-                                                <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                                                <span className={`text-[7px] font-medium whitespace-nowrap ${textColor}`}>
                                                     {label}
                                                 </span>
                                             </div>

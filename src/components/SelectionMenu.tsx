@@ -1,5 +1,6 @@
-import React from 'react';
-import { Trash2, Group, Tag, Layers, FolderOutput } from 'lucide-react';
+import React, { useState } from 'react';
+import { Trash2, Group, Tag, FolderOutput, LayoutGrid, Rows, Columns } from 'lucide-react';
+import { ArrangeMode } from '../context/CanvasContext';
 
 interface SelectionMenuProps {
     position: { x: number; y: number };
@@ -12,6 +13,7 @@ interface SelectionMenuProps {
     onGroup: () => void;
     onTag: () => void;
     onMigrate?: () => void; // 🚀 迁移到其他项目
+    onArrange?: (mode: ArrangeMode) => void; // 🚀 整理选中项
 }
 
 export const SelectionMenu: React.FC<SelectionMenuProps> = ({
@@ -23,8 +25,10 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
     onDelete,
     onGroup,
     onTag,
-    onMigrate
+    onMigrate,
+    onArrange
 }) => {
+    const [showArrangeMenu, setShowArrangeMenu] = useState(false);
     // 🚀 生成详细标识文本
     const getSelectionLabel = () => {
         const parts: string[] = [];
@@ -78,6 +82,44 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
                 >
                     <FolderOutput size={18} />
                 </button>
+            )}
+
+            {/* 🚀 整理按钮 */}
+            {onArrange && (
+                <div className="relative">
+                    <button
+                        onClick={() => setShowArrangeMenu(!showArrangeMenu)}
+                        className="touch-target hover:bg-white/10 rounded-lg text-cyan-400 hover:text-cyan-300 transition-colors haptic-press"
+                        title="整理选中项 (Arrange)"
+                    >
+                        <LayoutGrid size={18} />
+                    </button>
+                    {showArrangeMenu && (
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-zinc-800 border border-white/10 rounded-lg shadow-xl p-1 flex flex-col gap-1 min-w-[100px]">
+                            <button
+                                onClick={() => { onArrange('grid'); setShowArrangeMenu(false); }}
+                                className="flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/10 rounded transition-colors whitespace-nowrap"
+                            >
+                                <LayoutGrid size={14} />
+                                宫格(6列)
+                            </button>
+                            <button
+                                onClick={() => { onArrange('row'); setShowArrangeMenu(false); }}
+                                className="flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/10 rounded transition-colors whitespace-nowrap"
+                            >
+                                <Rows size={14} />
+                                横向排列
+                            </button>
+                            <button
+                                onClick={() => { onArrange('column'); setShowArrangeMenu(false); }}
+                                className="flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/10 rounded transition-colors whitespace-nowrap"
+                            >
+                                <Columns size={14} />
+                                纵向排列
+                            </button>
+                        </div>
+                    )}
+                </div>
             )}
 
             <div className="w-px h-5 bg-white/10 mx-1" />

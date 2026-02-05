@@ -1120,9 +1120,26 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                 step="0.01"
                                                 min="-1"
                                                 className="flex-1 bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
-                                                placeholder="-1"
-                                                value={formBudgetLimit}
-                                                onChange={e => setFormBudgetLimit(parseFloat(e.target.value) || -1)}
+                                                placeholder="-1 表示无限制"
+                                                value={formBudgetLimit === -1 ? '' : formBudgetLimit}
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    if (val === '' || val === '-') {
+                                                        setFormBudgetLimit(-1);
+                                                    } else {
+                                                        const num = parseFloat(val);
+                                                        if (!isNaN(num)) {
+                                                            setFormBudgetLimit(num);
+                                                        }
+                                                    }
+                                                }}
+                                                onBlur={e => {
+                                                    // 失去焦点时确保有效值
+                                                    const val = parseFloat(e.target.value);
+                                                    if (isNaN(val) || val < 0) {
+                                                        setFormBudgetLimit(-1);
+                                                    }
+                                                }}
                                             />
                                             <span className="text-xs text-[var(--text-tertiary)]">USD</span>
                                         </div>

@@ -86,7 +86,9 @@ const AppContent: React.FC = () => {
     isReady,
     setViewportCenter, // 🚀 视口中心动态优先级
     state, // 🚀 迁移需要访问canvases列表
-    migrateNodes // 🚀 迁移节点到其他项目
+    migrateNodes, // 🚀 迁移节点到其他项目
+    createCanvas, // 🚀 创建新项目
+    switchCanvas  // 🚀 切换项目
   } = useCanvas();
 
   // Canvas Ref for Zoom/Pan Controls
@@ -563,28 +565,52 @@ const AppContent: React.FC = () => {
     const centerX = (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale;
     const centerY = (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale;
     setViewportCenter({ x: centerX, y: centerY });
-  }, [canvasTransform, setViewportCenter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasTransform]); // 🚀 移除setViewportCenter依赖防止无限循环
 
   // Derived Pending Position: Always Center (or linked to source)
   const pendingPosition = React.useMemo(() => {
     if (activeSourceImage && activeCanvas) {
       const sourceImage = activeCanvas.imageNodes.find(img => img.id === activeSourceImage);
       if (sourceImage) {
-        // Calculate actual source image height dynamically
-        let sourceHeight = 320; // Fallback
+        // 🚀 追问模式：新主卡放在原父卡组下方
+        const parentPromptId = sourceImage.parentPromptId;
+        const parentPrompt = activeCanvas.promptNodes.find(p => p.id === parentPromptId);
+
+        if (parentPrompt) {
+          // 找到父主卡下所有子卡，计算最大Y位置
+          const siblingImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === parentPromptId);
+          let maxY = parentPrompt.position.y; // 父主卡的Y位置（底部锚点）
+
+          // 计算所有子卡的最大Y位置（底部）
+          siblingImages.forEach(img => {
+            const { totalHeight } = getCardDimensions(img.aspectRatio, true);
+            const imgBottom = img.position.y + totalHeight;
+            maxY = Math.max(maxY, imgBottom);
+          });
+
+          const GAP = 60; // 新主卡与子卡组的间距
+          return {
+            x: parentPrompt.position.x,  // 与父主卡X对齐
+            y: maxY + GAP  // 放在最下方子卡的下面
+          };
+        }
+
+        // 如果没有父主卡（孤儿副卡），放在源图片下方
+        let sourceHeight = 320;
         if (sourceImage.dimensions) {
           const [w, h] = sourceImage.dimensions.split('x').map(Number);
           if (w && h) {
             const ratio = w / h;
             const cardWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
-            sourceHeight = (cardWidth / ratio) + 40; // Image height + footer
+            sourceHeight = (cardWidth / ratio) + 40;
           }
         } else {
           const { totalHeight } = getCardDimensions(sourceImage.aspectRatio, true);
           sourceHeight = totalHeight;
         }
 
-        const GAP = 40; // Gap between source image and follow-up prompt
+        const GAP = 40;
         return {
           x: sourceImage.position.x,
           y: sourceImage.position.y + sourceHeight + GAP
@@ -670,9 +696,11 @@ const AppContent: React.FC = () => {
     } else {
       // Config is empty.
       // If we are linked to a draft, delete it to clear the "Preview Box"
+      // 🚀 [修复] 追问模式的draft不要删除（有sourceImageId的）
       if (draftNodeId) {
         const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
-        if (node) {
+        if (node && !node.sourceImageId) {
+          // 只删除普通draft，不删除追问模式的draft
           deletePromptNode(draftNodeId);
           setDraftNodeId(null);
         }
@@ -693,6 +721,20 @@ const AppContent: React.FC = () => {
       });
     }
   }, [activeCanvas, updatePromptNode, draftNodeId, setActiveSourceImage]);
+
+  // 🚀 清除追问源图片，同时删除追问Draft节点
+  const handleClearSource = useCallback(() => {
+    setActiveSourceImage(null);
+    // 如果有追问Draft且没有内容，删除它
+    if (draftNodeId) {
+      const draftNode = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
+      if (draftNode && draftNode.sourceImageId && !draftNode.prompt.trim()) {
+        // 只有当Draft是追问模式(有sourceImageId)且没有内容时才删除
+        deletePromptNode(draftNodeId);
+        setDraftNodeId(null);
+      }
+    }
+  }, [draftNodeId, activeCanvas, deletePromptNode]);
 
   // Right-Click Selection State
   const [selectionBox, setSelectionBox] = useState<{ start: { x: number; y: number }; current: { x: number; y: number }; active: boolean } | null>(null);
@@ -784,9 +826,11 @@ const AppContent: React.FC = () => {
 
         nextSelectionIds = ids;
         if (ids.length > 0) {
-          selectNodes(ids, !e.shiftKey);
+          // 🚀 Shift=加选, Ctrl=减选, 无修饰键=替换
+          const mode = e.ctrlKey ? 'remove' : (e.shiftKey ? 'add' : 'replace');
+          selectNodes(ids, mode);
         } else {
-          if (!e.shiftKey) clearSelection();
+          if (!e.shiftKey && !e.ctrlKey) clearSelection();
         }
       } else {
         // Clicked without drag
@@ -874,7 +918,7 @@ const AppContent: React.FC = () => {
 
   const handleMultiSelectConfirm = useCallback((ids: string[]) => {
     if (!ids || ids.length === 0) return;
-    selectNodes(ids, true);
+    selectNodes(ids, 'replace');
     setTimeout(() => {
       arrangeAllNodes();
     }, 100);
@@ -1179,25 +1223,24 @@ const AppContent: React.FC = () => {
           clearTimeout(timeoutId);
 
           const generationTime = Date.now() - startTime;
-          let originalUrl = '';
+          // 🚀 FIX: 始终保持 base64 作为 originalUrl 的备份，确保图片不会丢失
+          let originalUrl = generatedBase64; // 默认使用 base64 作为 originalUrl
           let displayUrl = generatedBase64;
 
-          // Cloud Sync / Upload
-          try {
-            if (generatedBase64) {
-              const res = await fetch(generatedBase64);
-              const blob = await res.blob();
-              const id = `${Date.now()}_${index}`;
-              import('./services/syncService').then(async ({ syncService }) => {
-                const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
-                if (!thumbnail.startsWith('blob:')) {
-                  originalUrl = original;
-                  displayUrl = thumbnail;
-                }
-              });
-            }
-          } catch (e) {
-            console.warn('Cloud upload failed, falling back to local base64:', e);
+          // Cloud Sync / Upload (后台执行，不阻塞返回)
+          if (generatedBase64 && generatedBase64.startsWith('data:')) {
+            // 后台上传到云端，但不影响本地显示
+            import('./services/syncService').then(async ({ syncService }) => {
+              try {
+                const res = await fetch(generatedBase64);
+                const blob = await res.blob();
+                const id = `${Date.now()}_${index}`;
+                await syncService.uploadImagePair(id, blob);
+                // 云端上传成功后不更新本地状态，因为本地已有 base64
+              } catch (e) {
+                console.warn('Cloud upload failed (non-blocking):', e);
+              }
+            }).catch(() => { });
           }
 
           if (isVideo) {
@@ -1512,16 +1555,16 @@ const AppContent: React.FC = () => {
     };
 
     if (isReusingDraft) {
-      updatePromptNode(generatingNode);
+      await updatePromptNode(generatingNode);
     } else {
-      addPromptNode(generatingNode);
+      await addPromptNode(generatingNode);
     }
 
     setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
     setActiveSourceImage(null);
     setIsGenerating(false); // Global spinner off, local spinner on
 
-    // Execute immediately
+    // Execute immediately after save completed
     executeGeneration(generatingNode);
 
   }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight]);
@@ -1877,14 +1920,66 @@ const AppContent: React.FC = () => {
   }, [setConfig]);
 
   const handleImageClick = useCallback((imageId: string) => {
-    // Click to select
-    selectNodes([imageId], !(window.event as any)?.shiftKey);
+    // 🚀 Shift=切换(向后兼容), 无修饰键=替换
+    selectNodes([imageId], (window.event as any)?.shiftKey ? 'toggle' : 'replace');
 
     // Set this image as source for continuing conversation
     setActiveSourceImage(imageId);
     // Clear prompt and existing references to start fresh continue-conversation
     setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
-  }, [selectNodes, setConfig]);
+
+    // 🚀 立即创建追问模式的Draft节点
+    // 删除现有的draft（如果有）
+    if (draftNodeId) {
+      deletePromptNode(draftNodeId);
+    }
+
+    // 计算追问Draft的位置（在父卡组下方）
+    const sourceImage = activeCanvas?.imageNodes.find(img => img.id === imageId);
+    if (sourceImage) {
+      const parentPromptId = sourceImage.parentPromptId;
+      const parentPrompt = activeCanvas?.promptNodes.find(p => p.id === parentPromptId);
+
+      // 🚀 计算源图片的底部Y（图片使用底部锚点，position.y就是底部）
+      const sourceBottom = sourceImage.position.y;
+
+      let draftPos = { x: sourceImage.position.x, y: sourceBottom + 100 }; // fallback：源图片下方100px
+
+      if (parentPrompt) {
+        // 找到父主卡下所有子卡，计算最大Y位置（底部）
+        const siblingImages = activeCanvas?.imageNodes.filter(img => img.parentPromptId === parentPromptId) || [];
+        let maxY = parentPrompt.position.y; // 主卡底部锚点
+
+        siblingImages.forEach(img => {
+          // 🚀 FIX: 图片使用底部锚点，position.y就是底部，无需再加高度
+          maxY = Math.max(maxY, img.position.y);
+        });
+
+        draftPos = {
+          x: parentPrompt.position.x,
+          y: maxY + 80  // 在最底部的卡片下方80px
+        };
+      }
+
+      const newId = Date.now().toString();
+      addPromptNode({
+        id: newId,
+        prompt: '',  // 空prompt，等待用户输入
+        position: draftPos,
+        aspectRatio: config.aspectRatio,
+        imageSize: config.imageSize,
+        model: config.model,
+        childImageIds: [],
+        referenceImages: [],  // 源图片会在handleGenerate时自动添加
+        timestamp: Date.now(),
+        sourceImageId: imageId,
+        isDraft: true,
+        mode: config.mode,
+        tags: []
+      });
+      setDraftNodeId(newId);
+    }
+  }, [selectNodes, setConfig, draftNodeId, deletePromptNode, activeCanvas, addPromptNode, config, getCardDimensions]);
 
   // Dynamic Group Bounds Calculation
   const getComputedGroupBounds = useCallback((group: CanvasGroup) => {
@@ -2215,6 +2310,10 @@ const AppContent: React.FC = () => {
             onMigrate={() => {
               setSelectionMenuPosition(null);
               setShowMigrateModal(true);
+            }}
+            onArrange={(mode) => {
+              arrangeAllNodes(mode);
+              setSelectionMenuPosition(null);
             }}
           />
         );
@@ -2548,7 +2647,7 @@ const AppContent: React.FC = () => {
               const allNodesSelected = nodeIds.every(nid => alreadySelected.includes(nid));
 
               if (isMultiSelect) {
-                selectNodes(nodeIds, true);
+                selectNodes(nodeIds, 'replace');
                 return;
               }
 
@@ -2556,7 +2655,7 @@ const AppContent: React.FC = () => {
                 return;
               }
 
-              selectNodes(nodeIds, false);
+              selectNodes(nodeIds, 'toggle');
             }}
             onGroupDrag={(delta) => moveSelectedNodes(delta)}
             onUpdateGroup={updateGroup}
@@ -2572,7 +2671,7 @@ const AppContent: React.FC = () => {
             onPositionChange={updatePromptNodePosition}
             isSelected={selectedNodeIds.includes(node.id)}
             highlighted={highlightedId === node.id}
-            onSelect={() => selectNodes([node.id], !(window.event as any)?.shiftKey)}
+            onSelect={() => selectNodes([node.id], (window.event as any)?.shiftKey ? 'toggle' : 'replace')}
             onClickPrompt={handlePromptClick}
             onConnectStart={handleConnectStart}
             zoomScale={canvasTransform.scale}
@@ -2607,7 +2706,7 @@ const AppContent: React.FC = () => {
             onClick={handleImageClick}
             isActive={node.id === activeSourceImage}
             isSelected={selectedNodeIds.includes(node.id)}
-            onSelect={() => selectNodes([node.id], !(window.event as any)?.shiftKey)}
+            onSelect={() => selectNodes([node.id], (window.event as any)?.shiftKey ? 'toggle' : 'replace')}
             zoomScale={canvasTransform.scale}
             isMobile={isMobile}
             onPreview={handleOpenPreview}
@@ -2637,7 +2736,7 @@ const AppContent: React.FC = () => {
               prompt: activeCanvas.imageNodes.find(n => n.id === activeSourceImage)!.prompt
             } : null) : null
           }
-          onClearSource={() => setActiveSourceImage(null)}
+          onClearSource={handleClearSource}
           isMobile={isMobile}
           onOpenSettings={(view) => {
             setSettingsInitialView(view || 'api-management');
@@ -2883,7 +2982,32 @@ const AppContent: React.FC = () => {
         currentCanvasId={state.activeCanvasId}
         selectedCount={selectedNodeIds.length}
         onMigrate={(targetCanvasId) => {
-          migrateNodes(selectedNodeIds, targetCanvasId);
+          // 🚀 处理"新建项目并迁移"
+          if (targetCanvasId === '__new__') {
+            // 创建新项目（返回新画布ID）
+            const newCanvasId = createCanvas();
+            if (newCanvasId) {
+              // 🚀 直接使用返回的新画布ID进行迁移，无需等待state更新
+              // 保存当前项目ID用于迁移
+              const originalCanvasId = state.activeCanvasId;
+
+              // 切换回原项目执行迁移
+              switchCanvas(originalCanvasId);
+
+              // 稍等一下确保切换完成后执行迁移
+              setTimeout(() => {
+                migrateNodes(selectedNodeIds, newCanvasId);
+                switchCanvas(newCanvasId);
+
+                import('./services/notificationService').then(({ notify }) => {
+                  notify.success('迁移成功', `已创建新项目并迁移 ${selectedNodeIds.length} 个项目`);
+                });
+              }, 50);
+            }
+          } else {
+            // 迁移到现有项目
+            migrateNodes(selectedNodeIds, targetCanvasId);
+          }
           setShowMigrateModal(false);
           clearSelection();
         }}

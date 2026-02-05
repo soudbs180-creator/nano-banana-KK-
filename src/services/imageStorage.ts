@@ -533,7 +533,7 @@ import { ImageQuality, generateAllQualities, getQualityStorageId } from './image
 
 /**
  * 🚀 保存图片（支持质量分级）
- * 自动生成３个质量级别：缩略图、预览图、原图
+ * 自动生成4个质量级别：微缩图、缩略图、预览图、原图
  * @param id 图片唯一ID
  * @param originalUrl 原图Base64数据
  */

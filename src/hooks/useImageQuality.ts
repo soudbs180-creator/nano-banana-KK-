@@ -15,7 +15,7 @@ export function useImageQuality(imageId: string, currentScale: number): string |
     const quality = getAppropriateQuality(currentScale);
 
     useEffect(() => {
-        let isCancel led = false;
+        let isCancelled = false;
 
         (async () => {
             try {

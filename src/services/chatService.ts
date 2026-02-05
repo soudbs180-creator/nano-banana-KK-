@@ -80,7 +80,7 @@ class ChatService {
      * Send a message and get a response from Gemini
      * Supports third-party API proxies via keyManager configuration
      */
-    async sendMessage(content: string, model: ChatModelType = ChatModelType.GEMINI_LITE): Promise<string> {
+    async sendMessage(content: string, model: ChatModelType = ChatModelType.GEMINI_2_5_FLASH_LITE): Promise<string> {
         const session = this.getCurrentSession();
         if (!session) {
             throw new Error('No active session');

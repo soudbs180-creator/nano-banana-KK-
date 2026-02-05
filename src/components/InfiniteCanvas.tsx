@@ -476,14 +476,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 }}
                 style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
             >
-                {/* 拖拽悬停提示 */}
-                {isImageDragOver && (
-                    <div className="absolute inset-0 z-[9999] bg-indigo-500/10 backdrop-blur-sm flex items-center justify-center pointer-events-none">
-                        <div className="px-6 py-3 bg-indigo-500/20 border-2 border-indigo-400 rounded-xl">
-                            <span className="text-lg font-semibold text-white drop-shadow-lg">释放以创建图片卡片</span>
-                        </div>
-                    </div>
-                )}
+                {/* 拖拽悬停效果 - 只显示边框高亮，不显示提示文字 */}
                 {/* Grid Background */}
                 {showGrid && <div className="canvas-grid" />}
 

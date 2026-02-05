@@ -916,11 +916,22 @@ export const generateImage = async (
       else {
         const apiUrl = `${cleanBase}/v1/images/generations`;
         const size = mapToOpenAISize(aspectRatio, imageSize, model);
+
+        // Map imageSize to quality parameter for Antigravity/OneAPI compatibility
+        // 4K → "hd", 2K → "medium", 1K → "standard"
+        const qualityMap: Record<string, string> = {
+          [ImageSize.SIZE_4K]: 'hd',
+          [ImageSize.SIZE_2K]: 'medium',
+          [ImageSize.SIZE_1K]: 'standard'
+        };
+        const quality = qualityMap[imageSize] || 'standard';
+
         const requestBody = {
           model: model,
           prompt: prompt,
           n: 1,
           size: size,
+          quality: quality,  // Antigravity: "hd" = 4K, "medium" = 2K, "standard" = 1K
           response_format: 'b64_json'
         };
         const headers = buildProxyHeaders(authMethod, effectiveKey, headerName, group);
@@ -1115,6 +1126,77 @@ export const generateText = async (
     if (!effectiveKey) break;
 
     try {
+      // Detect API format based on baseUrl
+      const apiFormat = detectApiFormat(baseUrl);
+      const cleanBase = normalizeProxyBaseUrl(baseUrl);
+
+      // =====================================================
+      // OpenAI Chat API Format (for proxies like Antigravity)
+      // =====================================================
+      if (apiFormat === 'openai' || apiFormat === 'openai-chat-compat') {
+        const apiUrl = `${cleanBase}/v1/chat/completions`;
+
+        // Convert messages to OpenAI format
+        const openaiMessages = messages.map(m => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content
+        }));
+
+        // Add multimodal content to last user message if present
+        if (inlineData && inlineData.length > 0) {
+          const lastUserIdx = openaiMessages.map(m => m.role).lastIndexOf('user');
+          if (lastUserIdx >= 0) {
+            const textContent = openaiMessages[lastUserIdx].content;
+            const contentParts: any[] = [{ type: 'text', text: textContent }];
+            inlineData.forEach(media => {
+              contentParts.push({
+                type: 'image_url',
+                image_url: { url: `data:${media.mimeType};base64,${media.data}` }
+              });
+            });
+            (openaiMessages[lastUserIdx] as any).content = contentParts;
+          }
+        }
+
+        const requestBody = {
+          model: model,
+          messages: openaiMessages,
+          stream: false
+        };
+
+        const headers = buildProxyHeaders(authMethod, effectiveKey, headerName, group);
+
+        const response = await fetchWithTimeout(apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody)
+        }, 120000);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        const text = result.choices?.[0]?.message?.content;
+
+        if (text) {
+          if (keyId) {
+            keyManager.reportSuccess(keyId);
+            const inputLen = messages.reduce((acc, m) => acc + m.content.length, 0);
+            const outputLen = text.length;
+            const tokens = Math.ceil((inputLen + outputLen) * 0.3);
+            keyManager.addUsage(keyId, tokens);
+          }
+          return text;
+        }
+
+        throw new Error("No text response from OpenAI-compatible API");
+      }
+
+      // =====================================================
+      // Gemini API Format (Google official)
+      // =====================================================
       // Map 'assistant' role to 'model' for API
       // 构建contents,最后一条用户消息包含多媒体数据
       const contents = messages.map((m, idx) => {

@@ -3,6 +3,7 @@ import { PromptNode, AspectRatio, GenerationMode } from '../types';
 import { Sparkles, Loader2, Video, Image } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
+import { getModelDisplayName } from '../services/modelCapabilities';
 import ImagePreview from './ImagePreview';
 
 interface PromptNodeProps {
@@ -420,7 +421,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
                             </div>
-                            <span className="text-xs font-medium text-black dark:text-white flex-1">画师正在挥毫...</span>
+                            <span className="text-xs font-medium text-black dark:text-white flex-1">别催了！在生成呐</span>
 
                             {/* Stop Button */}
                             {onCancel && (
@@ -798,37 +799,19 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                         border: '1px solid var(--border-light)'
                                                     }}
                                                 >
-                                                    <span className={`w-1 h-1 rounded-full ${(() => {
+                                                    <span className={`text-[7px] font-medium whitespace-nowrap ${(() => {
                                                         const m = (node.model || '').toLowerCase();
-                                                        if (m.includes('gemini-3-pro') || m.includes('nano-banana-pro')) return 'bg-purple-600';
-                                                        if (m.includes('gemini-3-flash')) return 'bg-cyan-500';
-                                                        if (m.includes('gemini-2.5-flash') || m.includes('nano-banana')) return 'bg-yellow-500';
-                                                        if (m.includes('gemini-2.5-pro')) return 'bg-amber-500';
-                                                        if (m.includes('imagen-4') && m.includes('ultra')) return 'bg-purple-500';
-                                                        if (m.includes('imagen-4')) return 'bg-blue-500';
-                                                        if (m.includes('veo-3')) return 'bg-purple-500';
-                                                        if (m.includes('veo')) return 'bg-violet-500';
-                                                        return 'bg-zinc-500';
-                                                    })()}`}></span>
-                                                    <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
-                                                        {(() => {
-                                                            const m = (node.model || '').toLowerCase();
-                                                            if (m.includes('gemini-3-pro') || m.includes('nano-banana-pro')) return 'Gemini 3 Pro';
-                                                            if (m.includes('gemini-3-flash')) return 'Gemini 3 Flash';
-                                                            if (m.includes('gemini-2.5-flash') || m.includes('nano-banana')) return 'Gemini 2.5 Flash';
-                                                            if (m.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
-                                                            if (m.includes('gemini-2.0') || m.includes('gemini-2-')) return 'Gemini 2.0 Flash';
-                                                            if (m.includes('imagen-4') && m.includes('ultra')) return 'Imagen 4 Ultra';
-                                                            if (m.includes('imagen-4') && m.includes('fast')) return 'Imagen 4 Fast';
-                                                            if (m.includes('imagen-4')) return 'Imagen 4';
-                                                            if (m.includes('imagen-3')) return 'Imagen 3';
-                                                            if (m.includes('veo-3.1') && m.includes('fast')) return 'Veo 3.1 Fast';
-                                                            if (m.includes('veo-3.1')) return 'Veo 3.1';
-                                                            if (m.includes('veo-3') && m.includes('fast')) return 'Veo 3 Fast';
-                                                            if (m.includes('veo-3')) return 'Veo 3';
-                                                            if (m.includes('veo-2') || m.includes('veo')) return 'Veo 2';
-                                                            return 'AI Model';
-                                                        })()}
+                                                        if (m.includes('gemini-3-pro') || m.includes('nano-banana-pro')) return 'text-purple-400';
+                                                        if (m.includes('gemini-3-flash')) return 'text-cyan-400';
+                                                        if (m.includes('gemini-2.5-flash') || m.includes('nano-banana')) return 'text-yellow-400';
+                                                        if (m.includes('gemini-2.5-pro')) return 'text-amber-400';
+                                                        if (m.includes('imagen-4') && m.includes('ultra')) return 'text-purple-400';
+                                                        if (m.includes('imagen-4')) return 'text-blue-400';
+                                                        if (m.includes('veo-3')) return 'text-purple-400';
+                                                        if (m.includes('veo')) return 'text-violet-400';
+                                                        return 'text-[var(--text-secondary)]';
+                                                    })()}`}>
+                                                        {getModelDisplayName(node.model || '')}
                                                     </span>
                                                     <span className="text-[var(--border-medium)] text-[7px]">|</span>
                                                     <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">

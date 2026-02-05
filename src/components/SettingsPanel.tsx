@@ -12,6 +12,7 @@ import { getStorageUsage, cleanupOriginals } from '../services/imageStorage';
 import { fileSystemService } from '../services/fileSystemService';
 import ApiManagementView from './ApiManagementView';
 
+
 export type SettingsView = 'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs';
 
 interface SettingsPanelProps {
@@ -716,6 +717,12 @@ const StorageSettingsView = () => {
     // Usage Stats
     const [browserUsage, setBrowserUsage] = useState<number>(0);
     const [localUsage, setLocalUsage] = useState<number>(0);
+    const [opfsUsage, setOpfsUsage] = useState<number>(0);
+
+    // 🚀 新增：移动设备检测
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const supportsOPFS = 'storage' in navigator && 'getDirectory' in navigator.storage;
+    const supportsNativeFS = 'showDirectoryPicker' in window;
 
     const loadStats = async () => {
         try {
@@ -729,6 +736,17 @@ const StorageSettingsView = () => {
                 setLocalUsage(lUsage);
             } else {
                 setLocalUsage(0);
+            }
+
+            // 🚀 新增：加载OPFS使用量
+            if (supportsOPFS) {
+                try {
+                    const { getOPFSUsage } = await import('../services/opfsService');
+                    const oUsage = await getOPFSUsage();
+                    setOpfsUsage(oUsage);
+                } catch {
+                    setOpfsUsage(0);
+                }
             }
         } catch (e) {
             console.error('Failed to load stats', e);
@@ -800,14 +818,23 @@ const StorageSettingsView = () => {
                     存储管理
                     <div className={`text-xs ml-2 font-normal px-2 py-0.5 rounded-full border ${isConnectedToLocal
                         ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                        : 'bg-[var(--bg-tertiary)] border-[var(--border-light)]'
-                        }`} style={{ color: !isConnectedToLocal ? 'var(--text-tertiary)' : undefined }}>
-                        {isConnectedToLocal ? '本地 (Local)' : '临时 (Temp)'}
+                        : supportsOPFS && isMobile
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : 'bg-[var(--bg-tertiary)] border-[var(--border-light)]'
+                        }`} style={{ color: !isConnectedToLocal && !(supportsOPFS && isMobile) ? 'var(--text-tertiary)' : undefined }}>
+                        {isConnectedToLocal ? '本地 (Local)' : supportsOPFS && isMobile ? 'OPFS (移动端)' : '临时 (Temp)'}
                     </div>
+                    {isMobile && (
+                        <div className="text-xs font-normal px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            📱 Mobile
+                        </div>
+                    )}
                 </h3>
             </div>
             <p className="text-zinc-500 text-sm mt-1 text-left w-full">
-                数据存储偏好设置。可在临时浏览器存储和本地文件系统之间切换。
+                {isMobile
+                    ? '移动端存储设置。数据将保存在浏览器私有文件系统(OPFS)中，性能接近原生。'
+                    : '数据存储偏好设置。可在临时浏览器存储和本地文件系统之间切换。'}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
@@ -941,6 +968,56 @@ const StorageSettingsView = () => {
                         )}
                     </div>
                 </div>
+
+                {/* 🚀 新增：OPFS存储卡片 (仅移动端显示) */}
+                {isMobile && supportsOPFS && (
+                    <div className="col-span-full relative p-5 md:p-8 rounded-[24px] md:rounded-[32px] border transition-all duration-300 bg-emerald-600/5 border-emerald-500/50 shadow-[0_0_40px_-10px_rgba(16,185,129,0.2)]">
+                        <div className="flex justify-between items-start">
+                            <div className="p-4 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/30">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="2" y="6" width="20" height="12" rx="2" />
+                                    <path d="M12 10v4" />
+                                    <path d="M8 10v4" />
+                                    <path d="M16 10v4" />
+                                </svg>
+                            </div>
+                            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                移动端专用 (OPFS)
+                            </div>
+                        </div>
+
+                        <div className="mt-6">
+                            <h4 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>私有文件系统 (OPFS)</h4>
+                            <div className="text-3xl font-mono font-bold mt-2 text-emerald-400">
+                                {formatBytes(opfsUsage)}
+                            </div>
+                            <p className="text-xs text-zinc-500 mt-4 leading-relaxed">
+                                📱 移动端高性能存储，接近原生性能。
+                                <br />
+                                <span className="opacity-70">数据保存在浏览器私有文件系统中，不会被普通缓存清理删除。</span>
+                            </p>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-white/5 grid grid-cols-3 gap-4 text-xs">
+                            <div className="text-center">
+                                <div className="text-emerald-400 font-bold">✓ 高性能</div>
+                                <div className="text-zinc-500">接近原生速度</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-emerald-400 font-bold">✓ 大容量</div>
+                                <div className="text-zinc-500">存储上千张图</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-emerald-400 font-bold">✓ 流式写入</div>
+                                <div className="text-zinc-500">不占用内存</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
             {
                 loading && (

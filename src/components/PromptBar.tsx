@@ -998,11 +998,23 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 }
                             }}
                         >
-                            <span className={`w-2 h-2 rounded-full transition-colors duration-300 ${isModelListEmpty
-                                ? 'bg-zinc-600'
-                                : (config.mode === GenerationMode.VIDEO ? 'bg-purple-500' : 'bg-green-500')
-                                }`}></span>
-                            <span className="text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300">
+                            <span className={`text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300 ${isModelListEmpty
+                                ? 'text-zinc-500'
+                                : (() => {
+                                    // 🚀 [修复] 根据模型ID使用对应颜色，与ImageCard2保持一致
+                                    const model = (config.model || '').toLowerCase();
+                                    if (config.mode === GenerationMode.VIDEO) return 'text-purple-400';
+                                    if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) return 'text-purple-400';
+                                    if (model.includes('gemini-3-flash')) return 'text-cyan-400';
+                                    if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) return 'text-yellow-400';
+                                    if (model.includes('gemini-2.5-pro')) return 'text-amber-400';
+                                    if (model.includes('imagen-4') && model.includes('ultra')) return 'text-purple-400';
+                                    if (model.includes('imagen-4')) return 'text-blue-400';
+                                    if (model.includes('veo-3')) return 'text-purple-400';
+                                    if (model.includes('veo')) return 'text-violet-400';
+                                    return 'text-green-400'; // 默认
+                                })()
+                                }`}>
                                 {displayModelLabel}
                             </span>
                         </button>

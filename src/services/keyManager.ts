@@ -112,7 +112,96 @@ interface KeyManagerState {
     rotationStrategy: 'round-robin' | 'sequential'; // New strategy field
 }
 
+/**
+ * 第三方 API 服务商接口
+ * 支持智谱、万清、火山引擎等 OpenAI 兼容 API
+ */
+export interface ThirdPartyProvider {
+    id: string;
+    name: string;                 // 显示名称（如 "智谱 AI"）
+    baseUrl: string;              // API 基础 URL
+    apiKey: string;               // API Key
+    models: string[];             // 支持的模型列表
+    format: 'auto' | 'openai' | 'gemini';  // 协议格式
+    icon?: string;                // 图标 emoji
+    isActive: boolean;            // 是否激活
+
+    // 独立计费
+    usage: {
+        totalTokens: number;
+        totalCost: number;
+        dailyTokens: number;
+        dailyCost: number;
+        lastReset: number;        // 每日重置时间戳
+    };
+
+    // 状态
+    status: 'active' | 'error' | 'checking';
+    lastError?: string;
+    lastChecked?: number;
+
+    // 元数据
+    createdAt: number;
+    updatedAt: number;
+}
+
+/**
+ * 预设的第三方 API 服务商模板
+ */
+export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'apiKey' | 'usage' | 'status' | 'createdAt' | 'updatedAt' | 'isActive'>> = {
+    'zhipu': {
+        name: '智谱 AI',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        models: ['glm-4', 'glm-4-flash', 'glm-4-plus', 'cogview-4'],
+        format: 'openai',
+        icon: '🧠'
+    },
+    'wanqing': {
+        name: '万清 (快手)',
+        baseUrl: 'https://wanqing.streamlakeapi.com/api/gateway/v1/endpoints',
+        models: ['deepseek-reasoner', 'deepseek-v3', 'qwen-max'],
+        format: 'openai',
+        icon: '🎬'
+    },
+    'volcengine': {
+        name: '火山引擎',
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+        models: ['doubao-pro', 'doubao-lite'],
+        format: 'openai',
+        icon: '🌋'
+    },
+    'deepseek': {
+        name: 'DeepSeek',
+        baseUrl: 'https://api.deepseek.com',
+        models: ['deepseek-chat', 'deepseek-reasoner'],
+        format: 'openai',
+        icon: '🔮'
+    },
+    'moonshot': {
+        name: 'Moonshot (月之暗面)',
+        baseUrl: 'https://api.moonshot.cn/v1',
+        models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+        format: 'openai',
+        icon: '🌙'
+    },
+    'siliconflow': {
+        name: 'SiliconFlow',
+        baseUrl: 'https://api.siliconflow.cn/v1',
+        models: ['Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3'],
+        format: 'openai',
+        icon: '💎'
+    },
+    'custom': {
+        name: '自定义',
+        baseUrl: '',
+        models: [],
+        format: 'auto',
+        icon: '⚙️'
+    }
+};
+
 const STORAGE_KEY = 'kk_studio_key_manager';
+const PROVIDERS_STORAGE_KEY = 'kk_studio_third_party_providers';
 const DEFAULT_MAX_FAILURES = 3;
 // 旧版 Gemini 模型（已弃用）
 const LEGACY_GOOGLE_MODELS = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp'];
@@ -1446,8 +1535,35 @@ export class KeyManager {
                         const isGoogleProvider = slot.provider === 'Google' || chatModelIds.has(id);
                         const inferredType = mappedType || inferModelType(id);
 
-                        // Use parsed name/desc if available, otherwise fallback to metadata or default
-                        const finalName = name || (meta ? meta.name : (slot.provider ? `${slot.provider} 模型` : '自定义模型'));
+                        // Use parsed name/desc if available, otherwise use model display name
+                        const displayName = name || (meta ? meta.name : null);
+                        // 如果没有自定义名称也没有 meta，根据模型 ID 推断友好名称
+                        let inferredModelName = `${slot.provider || '自定义'} 模型`;
+                        const lowerId = id.toLowerCase();
+                        if (lowerId.includes('gemini-3-pro') || lowerId.includes('nano-banana-pro')) {
+                            inferredModelName = 'Nano Banana Pro';
+                        } else if (lowerId.includes('gemini-2.5-flash-image') || lowerId.includes('nano-banana')) {
+                            inferredModelName = 'Nano Banana';
+                        } else if (lowerId.includes('imagen-4') && lowerId.includes('ultra')) {
+                            inferredModelName = 'Imagen 4 Ultra';
+                        } else if (lowerId.includes('imagen-4') && lowerId.includes('fast')) {
+                            inferredModelName = 'Imagen 4 Fast';
+                        } else if (lowerId.includes('imagen-4')) {
+                            inferredModelName = 'Imagen 4';
+                        } else if (lowerId.includes('imagen-3')) {
+                            inferredModelName = 'Imagen 3';
+                        } else if (lowerId.includes('veo-3.1') && lowerId.includes('fast')) {
+                            inferredModelName = 'Veo 3.1 Fast';
+                        } else if (lowerId.includes('veo-3.1')) {
+                            inferredModelName = 'Veo 3.1';
+                        } else if (lowerId.includes('veo-3') && lowerId.includes('fast')) {
+                            inferredModelName = 'Veo 3 Fast';
+                        } else if (lowerId.includes('veo-3')) {
+                            inferredModelName = 'Veo 3';
+                        } else if (lowerId.includes('veo')) {
+                            inferredModelName = 'Veo 2';
+                        }
+                        const finalName = displayName || inferredModelName;
                         const finalDesc = description || (meta ? meta.description : `通过 ${slot.name || slot.provider} 调用`);
 
                         if (meta) {
@@ -1550,7 +1666,185 @@ export class KeyManager {
         this.saveState();
     }
 
+    // =========================================================================
+    // 🆕 第三方 API 服务商管理方法
+    // =========================================================================
 
+    private providers: ThirdPartyProvider[] = [];
+
+    /**
+     * 获取所有第三方服务商
+     */
+    getProviders(): ThirdPartyProvider[] {
+        this.loadProviders();
+        return [...this.providers];
+    }
+
+    /**
+     * 获取单个服务商
+     */
+    getProvider(id: string): ThirdPartyProvider | undefined {
+        this.loadProviders();
+        return this.providers.find(p => p.id === id);
+    }
+
+    /**
+     * 添加新的第三方服务商
+     */
+    addProvider(config: Omit<ThirdPartyProvider, 'id' | 'usage' | 'status' | 'createdAt' | 'updatedAt'>): ThirdPartyProvider {
+        this.loadProviders();
+
+        const now = Date.now();
+        const provider: ThirdPartyProvider = {
+            ...config,
+            id: `provider_${now}_${Math.random().toString(36).substr(2, 9)}`,
+            usage: {
+                totalTokens: 0,
+                totalCost: 0,
+                dailyTokens: 0,
+                dailyCost: 0,
+                lastReset: now
+            },
+            status: 'checking',
+            createdAt: now,
+            updatedAt: now
+        };
+
+        this.providers.push(provider);
+        this.saveProviders();
+        this.notifyListeners();
+
+        return provider;
+    }
+
+    /**
+     * 更新服务商配置
+     */
+    updateProvider(id: string, updates: Partial<Omit<ThirdPartyProvider, 'id' | 'createdAt'>>): boolean {
+        this.loadProviders();
+
+        const index = this.providers.findIndex(p => p.id === id);
+        if (index === -1) return false;
+
+        this.providers[index] = {
+            ...this.providers[index],
+            ...updates,
+            updatedAt: Date.now()
+        };
+
+        this.saveProviders();
+        this.notifyListeners();
+        return true;
+    }
+
+    /**
+     * 删除服务商
+     */
+    removeProvider(id: string): boolean {
+        this.loadProviders();
+
+        const index = this.providers.findIndex(p => p.id === id);
+        if (index === -1) return false;
+
+        this.providers.splice(index, 1);
+        this.saveProviders();
+        this.notifyListeners();
+        return true;
+    }
+
+    /**
+     * 记录服务商使用量
+     */
+    addProviderUsage(providerId: string, tokens: number, cost: number): void {
+        this.loadProviders();
+
+        const provider = this.providers.find(p => p.id === providerId);
+        if (!provider) return;
+
+        // 检查是否需要重置每日计数（每天 0 点重置）
+        const now = Date.now();
+        const lastResetDate = new Date(provider.usage.lastReset);
+        const today = new Date(now);
+        if (lastResetDate.toDateString() !== today.toDateString()) {
+            provider.usage.dailyTokens = 0;
+            provider.usage.dailyCost = 0;
+            provider.usage.lastReset = now;
+        }
+
+        provider.usage.totalTokens += tokens;
+        provider.usage.totalCost += cost;
+        provider.usage.dailyTokens += tokens;
+        provider.usage.dailyCost += cost;
+        provider.updatedAt = now;
+
+        this.saveProviders();
+        this.notifyListeners();
+    }
+
+    /**
+     * 获取服务商统计信息
+     */
+    getProviderStats(): {
+        total: number;
+        active: number;
+        totalCost: number;
+        dailyCost: number;
+    } {
+        this.loadProviders();
+
+        return {
+            total: this.providers.length,
+            active: this.providers.filter(p => p.isActive && p.status === 'active').length,
+            totalCost: this.providers.reduce((sum, p) => sum + p.usage.totalCost, 0),
+            dailyCost: this.providers.reduce((sum, p) => sum + p.usage.dailyCost, 0)
+        };
+    }
+
+    /**
+     * 从预设创建服务商
+     */
+    createProviderFromPreset(presetKey: string, apiKey: string, customModels?: string[]): ThirdPartyProvider | null {
+        const preset = PROVIDER_PRESETS[presetKey];
+        if (!preset) return null;
+
+        return this.addProvider({
+            name: preset.name,
+            baseUrl: preset.baseUrl,
+            apiKey,
+            models: customModels || preset.models,
+            format: preset.format,
+            icon: preset.icon,
+            isActive: true
+        });
+    }
+
+    /**
+     * 加载服务商列表
+     */
+    private loadProviders(): void {
+        if (this.providers.length > 0) return; // Already loaded
+
+        try {
+            const stored = localStorage.getItem(PROVIDERS_STORAGE_KEY);
+            if (stored) {
+                this.providers = JSON.parse(stored);
+            }
+        } catch (e) {
+            console.error('[KeyManager] Failed to load providers:', e);
+            this.providers = [];
+        }
+    }
+
+    /**
+     * 保存服务商列表
+     */
+    private saveProviders(): void {
+        try {
+            localStorage.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(this.providers));
+        } catch (e) {
+            console.error('[KeyManager] Failed to save providers:', e);
+        }
+    }
 
 }
 
