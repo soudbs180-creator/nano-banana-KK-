@@ -718,30 +718,49 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const addPromptNode = useCallback(async (node: PromptNode) => {
-        // 🚀 [关键修复] 先保存参考图再添加节点 - 防止刷新丢失
-        if (node.referenceImages && node.referenceImages.length > 0) {
-            const saveTasks = node.referenceImages.map(async ref => {
-                if (ref.data) {
-                    const mime = ref.mimeType || 'image/png';
-                    let fullUrl = ref.data;
-                    if (!fullUrl.startsWith('data:') && !fullUrl.startsWith('blob:') && !fullUrl.startsWith('http')) {
-                        fullUrl = `data:${mime};base64,${ref.data}`;
-                    }
-                    try {
-                        await saveImage(ref.id, fullUrl);
-                        console.log(`[CanvasContext] ✅ Saved reference image ${ref.id}`);
-                    } catch (e) {
-                        console.error(`[CanvasContext] ❌ Failed to save reference image ${ref.id}`, e);
-                    }
-                }
-            });
-            await Promise.all(saveTasks);
-        }
+        console.log('[CanvasContext.addPromptNode] 🚀 开始添加提示词卡片', { nodeId: node.id, prompt: node.prompt?.substring(0, 50) });
 
-        updateCanvas(c => ({
-            ...c,
-            promptNodes: [...c.promptNodes, node]
-        }));
+        try {
+            // 🚀 [防御性修复] 先添加节点到状态，保证UI立即显示
+            updateCanvas(c => ({
+                ...c,
+                promptNodes: [...c.promptNodes, node]
+            }));
+            console.log('[CanvasContext.addPromptNode] ✅ 卡片已添加到画布');
+
+            // 🚀 [关键修复] 异步保存参考图 - 即使失败也不影响卡片显示
+            if (node.referenceImages && node.referenceImages.length > 0) {
+                console.log(`[CanvasContext.addPromptNode] 📸 开始保存 ${node.referenceImages.length} 张参考图`);
+                const saveTasks = node.referenceImages.map(async (ref, index) => {
+                    if (ref.data) {
+                        const mime = ref.mimeType || 'image/png';
+                        let fullUrl = ref.data;
+                        if (!fullUrl.startsWith('data:') && !fullUrl.startsWith('blob:') && !fullUrl.startsWith('http')) {
+                            fullUrl = `data:${mime};base64,${ref.data}`;
+                        }
+                        try {
+                            await saveImage(ref.id, fullUrl);
+                            console.log(`[CanvasContext.addPromptNode] ✅ 参考图 ${index + 1}/${node.referenceImages?.length || 0} 保存成功:`, ref.id);
+                        } catch (e: any) {
+                            console.error(`[CanvasContext.addPromptNode] ❌ 参考图 ${index + 1} 保存失败:`, ref.id, e?.message || e);
+                            // 🔔 通知用户（但不阻止流程）
+                            import('../services/notificationService').then(({ notificationService }) => {
+                                notificationService.warning(`参考图 ${index + 1} 保存失败，刷新后可能丢失`);
+                            });
+                        }
+                    }
+                });
+                await Promise.allSettled(saveTasks); // 使用 allSettled 而不是 all，确保所有任务完成
+                console.log('[CanvasContext.addPromptNode] 📸 参考图保存任务完成');
+            }
+        } catch (error: any) {
+            // 🚨 致命错误：添加卡片失败
+            console.error('[CanvasContext.addPromptNode] 🔥 致命错误：添加卡片失败!', error);
+            import('../services/notificationService').then(({ notificationService }) => {
+                notificationService.error(`添加卡片失败：${error?.message || '未知错误'}`);
+            });
+            throw error; // 重新抛出，让调用者知道失败了
+        }
     }, [updateCanvas]);
 
     const pushToHistory = useCallback(() => {
@@ -794,12 +813,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, [updateCanvas]);
 
     const addImageNodes = useCallback(async (nodes: GeneratedImage[]) => {
-        // Defensive check: filter out any invalid nodes
+        console.log('[CanvasContext.addImageNodes] 🖼️ 开始添加图片节点', { count: nodes?.length });
+
+        // 🛡️ 防御性检查：过滤掉无效节点
         const validNodes = Array.isArray(nodes) ? nodes.filter(n => n && n.id && n.url) : [];
         if (validNodes.length === 0) {
-            console.warn('addImageNodes called with no valid nodes');
+            console.warn('[CanvasContext.addImageNodes] ⚠️ 没有有效的图片节点');
             return;
         }
+        console.log('[CanvasContext.addImageNodes] ✅ 验证通过：', validNodes.length, '个有效节点');
 
         // Process Nodes: Create Blob URLs for State, Keep Base64 for Persistence
         const stateNodes: GeneratedImage[] = [];
@@ -930,17 +952,38 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         // 🚀 [修复] 先立即显示图片（乐观更新），保持连续发送能力
-        updateCanvas(c => ({
-            ...c,
-            imageNodes: [...c.imageNodes, ...stateNodes]
-        }));
+        console.log('[CanvasContext.addImageNodes] 🎨 立即更新UI，添加', stateNodes.length, '个节点到画布');
+        try {
+            updateCanvas(c => ({
+                ...c,
+                imageNodes: [...c.imageNodes, ...stateNodes]
+            }));
+            console.log('[CanvasContext.addImageNodes] ✅ UI更新成功，卡片已显示');
+        } catch (uiError: any) {
+            // 🚨 致命错误：UI更新失败
+            console.error('[CanvasContext.addImageNodes] 🔥 UI更新失败!', uiError);
+            import('../services/notificationService').then(({ notificationService }) => {
+                notificationService.error(`显示图片失败：${uiError?.message || '未知错误'}`);
+            });
+            throw uiError;
+        }
 
         // 🚀 后台执行持久化任务（不阻塞UI）
+        console.log('[CanvasContext.addImageNodes] 💾 开始后台保存任务，共', persistenceTasks.length, '个');
         // 使用全局追踪器防止刷新时丢失
-        const savePromise = Promise.all(persistenceTasks).then(() => {
-            console.log(`[CanvasContext] ✅ All ${persistenceTasks.length} images saved`);
+        const savePromise = Promise.allSettled(persistenceTasks).then((results) => {
+            const successful = results.filter(r => r.status === 'fulfilled').length;
+            const failed = results.filter(r => r.status === 'rejected').length;
+            console.log(`[CanvasContext.addImageNodes] 💾 保存完成：${successful}成功 / ${failed}失败 / ${results.length}总数`);
+
+            if (failed > 0) {
+                console.warn('[CanvasContext.addImageNodes] ⚠️ 部分图片保存失败，刷新后可能丢失');
+                import('../services/notificationService').then(({ notificationService }) => {
+                    notificationService.warning(`${failed}张图片保存失败，建议重新生成`);
+                });
+            }
         }).catch(e => {
-            console.error('[CanvasContext] ❌ Some persistence tasks failed:', e);
+            console.error('[CanvasContext.addImageNodes] ❌ 保存任务异常:', e);
         });
 
         // 追踪未完成的保存任务
