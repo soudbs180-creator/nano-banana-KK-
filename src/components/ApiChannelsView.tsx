@@ -412,6 +412,10 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             return;
         }
 
+        // 🚀 [修复] 保存成功后立即刷新slots，确保金额等数据实时更新
+        setSlots(keyManager.getSlots());
+        console.log('[ApiChannelsView] 已刷新slots状态');
+
         setLoading(false);
         setIsModalOpen(false);
     };

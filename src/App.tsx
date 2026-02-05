@@ -697,12 +697,16 @@ const AppContent: React.FC = () => {
       // Config is empty.
       // If we are linked to a draft, delete it to clear the "Preview Box"
       // 🚀 [修复] 追问模式的draft不要删除（有sourceImageId的）
+      // 🚀 [关键修复] 正在生成的draft不要删除！
       if (draftNodeId) {
         const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
-        if (node && !node.sourceImageId) {
-          // 只删除普通draft，不删除追问模式的draft
+        if (node && !node.sourceImageId && !node.isGenerating) {
+          // 只删除普通draft，不删除追问模式的draft，也不删除正在生成的draft
+          console.log('[App.Draft清理] 删除空的draft节点:', draftNodeId);
           deletePromptNode(draftNodeId);
           setDraftNodeId(null);
+        } else if (node?.isGenerating) {
+          console.log('[App.Draft清理] 保留正在生成的draft:', draftNodeId);
         }
       }
     }
@@ -1184,10 +1188,20 @@ const AppContent: React.FC = () => {
             // 视频宽高比转换
             const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
 
+            // 🚀 [修复] ImageSize → 视频分辨率映射
+            const videoResolution = (() => {
+              const size = node.imageSize?.toLowerCase() || '';
+              if (size.includes('4k') || size.includes('ultra')) return '4k';
+              if (size.includes('1080') || size.includes('hd')) return '1080p';
+              return '720p'; // 默认720p
+            })();
+            console.log(`[App.视频生成] ImageSize: ${node.imageSize} → Resolution: ${videoResolution}`);
+
             const videoResult = await generateVideo(
               {
                 prompt: promptToUse,
                 aspectRatio: videoAspect,
+                resolution: videoResolution, // 🚀 [修复] 传递分辨率参数
                 // 视频模式支持多图片: 0张=文生视频, 1张=首帧, 2张=首尾帧, 3张=参考图
                 referenceImages: files.length > 0
                   ? files.slice(0, 3).map(f => f.data.replace(/^data:image\/[^;]+;base64,/, ''))
