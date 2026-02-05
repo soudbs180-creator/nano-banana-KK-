@@ -759,7 +759,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             import('../services/notificationService').then(({ notificationService }) => {
                 notificationService.error(`添加卡片失败：${error?.message || '未知错误'}`);
             });
-            throw error; // 重新抛出，让调用者知道失败了
+            // ⚠️ 不throw，避免中断后续流程（图片生成）
         }
     }, [updateCanvas]);
 

@@ -539,8 +539,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                             </div>
                             <span className="text-xs font-medium text-[var(--text-secondary)] flex-1">
                                 {node.mode === GenerationMode.VIDEO
-                                    ? (node.childImageIds && node.childImageIds.length > 0 ? '视频生成完成 🎬' : '视频模式 🎬')
-                                    : (node.childImageIds && node.childImageIds.length > 0 ? '图片生成完成 ✨' : '准备就绪 ✏️')}
+                                    ? (node.childImageIds && node.childImageIds.length > 0 ? `视频 (${node.childImageIds.length})` : '视频模式')
+                                    : (node.childImageIds && node.childImageIds.length > 0 ? `已生成 ${node.childImageIds.length} 张` : '准备就绪')}
                             </span>
                             {/* Delete Button (Always show for idle/success nodes too) */}
                             {onDelete && (
