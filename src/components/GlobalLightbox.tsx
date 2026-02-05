@@ -246,7 +246,20 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 onClick={e => e.stopPropagation()}
             >
                 <div className="flex flex-col max-w-[70%]">
-                    <div className="text-sm font-medium line-clamp-2" title={image.prompt}>
+                    <div
+                        className="text-sm font-medium line-clamp-2 cursor-pointer hover:text-indigo-300 transition-colors"
+                        title="点击复制提示词"
+                        onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                                await navigator.clipboard.writeText(image.prompt);
+                                const { notify } = await import('../services/notificationService');
+                                notify.success('已复制', '提示词已复制到剪贴板');
+                            } catch (err) {
+                                console.error('Copy failed', err);
+                            }
+                        }}
+                    >
                         {image.prompt}
                     </div>
                     <div className="flex items-center gap-3 mt-2 text-xs text-[var(--text-tertiary)]">

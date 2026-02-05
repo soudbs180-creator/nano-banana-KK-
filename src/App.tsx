@@ -642,6 +642,15 @@ const AppContent: React.FC = () => {
         const existingDraft = activeCanvas?.promptNodes.find(n => n.isDraft);
         if (existingDraft) {
           setDraftNodeId(existingDraft.id);
+
+          // 🚀 [Deduplicate] If multiple drafts exist (bug), delete others
+          const allDrafts = activeCanvas?.promptNodes.filter(n => n.isDraft) || [];
+          if (allDrafts.length > 1) {
+            console.warn('[App] Found multiple drafts, cleaning up...', allDrafts);
+            allDrafts.forEach(d => {
+              if (d.id !== existingDraft.id) deletePromptNode(d.id);
+            });
+          }
           return;
         }
 
@@ -712,19 +721,7 @@ const AppContent: React.FC = () => {
     }
   }, [config, draftNodeId, activeCanvas, addPromptNode, updatePromptNode, pendingPosition, activeSourceImage]);
 
-  const handleDisconnectPrompt = useCallback((promptId: string) => {
-    const node = activeCanvas?.promptNodes.find(n => n.id === promptId);
-    if (node) {
-      updatePromptNode({ ...node, sourceImageId: undefined });
-      // [Draft Logic] If disconnecting draft, clear global source state too
-      if (node.id === draftNodeId) {
-        setActiveSourceImage(null);
-      }
-      import('./services/notificationService').then(({ notify }) => {
-        notify.info('已断开连接', '该提示词已断开与原图的关联');
-      });
-    }
-  }, [activeCanvas, updatePromptNode, draftNodeId, setActiveSourceImage]);
+
 
   // 🚀 清除追问源图片，同时删除追问Draft节点
   const handleClearSource = useCallback(() => {
@@ -1049,9 +1046,11 @@ const AppContent: React.FC = () => {
     }
   }, [activeCanvas, addImageNodes]);
 
+
+
+  // Handle keys logic (kept as is)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if input is focused
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
@@ -1409,9 +1408,14 @@ const AppContent: React.FC = () => {
         ...node,
         position: finalPos, // ✅ 使用最新位置防止回跳
         isGenerating: false,
-        childImageIds: validResults.map(r => r.id)
+        childImageIds: validResults.map(r => r.id),
+        // Ensure we don't accidentally revert other fields if 'node' was stale
+        // But we need to make sure we keep the latest integrity
       };
 
+      // 🚀 [Critical Fix] Execute updates in sequence/batch to prevent state overwrite race conditions
+      // Using a microtask delay or ensuring Context handles it?
+      // Context operations are usually synchronous state updates.
       updatePromptNode(updatedNode);
       addImageNodes(validResults);
 
@@ -1474,17 +1478,26 @@ const AppContent: React.FC = () => {
     let isReusingDraft = false;
     let currentPos = findNextGroupPosition(); // Fallback for new
 
+    // 🚀 [修复] 如果没有 draftNodeId，尝试在画布上查找已存在的 Draft 节点 (防止创建重复卡片)
+    if (!promptNodeId && activeCanvas) {
+      const existingDraft = activeCanvas.promptNodes.find(n => n.isDraft);
+      if (existingDraft) {
+        promptNodeId = existingDraft.id;
+        console.log('[handleGenerate] Found orphan draft, reusing:', promptNodeId);
+      }
+    }
+
     if (promptNodeId) {
       // We have a draft. Use it.
       const draft = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
       if (draft) {
         isReusingDraft = true;
         // [FIX] Update draft position to current view center (where user sees it)
-        const viewCenter = {
-          x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
-          y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
-        };
-        currentPos = viewCenter;
+        // Only if it was a "fresh" draft (empty prompt). If user moved it, keep it? 
+        // Generaly, if user hits generate, they expect the *active* thing to generate.
+        // Let's keep its position if it exists, unless it's way off screen?
+        // Actually, just keep its position. User might have arranged it.
+        currentPos = draft.position;
       } else {
         // Draft ID stale?
         promptNodeId = Date.now().toString();
@@ -1568,11 +1581,40 @@ const AppContent: React.FC = () => {
       isDraft: false // Ensure it is NOT a draft anymore
     };
 
-    if (isReusingDraft) {
+    // 🚀 [Fix Duplicate Placeholders]
+    // Always check if the ID we are about to add/update actually exists on canvas
+    // If not, revert to add. If yes, update.
+    const existingNode = activeCanvas?.promptNodes.find(n => n.id === generatingNode.id);
+
+    if (existingNode) {
+      console.log('[handleGenerate] Updating existing node:', generatingNode.id);
       await updatePromptNode(generatingNode);
     } else {
-      await addPromptNode(generatingNode);
+      // Safety: Check if ANY draft exists that we might have missed (stale closure)
+      const strayDraft = activeCanvas?.promptNodes.find(n => n.isDraft);
+      if (strayDraft) {
+        console.log('[handleGenerate] Found stray draft during generation, converting it:', strayDraft.id);
+        // Replace the stray draft's ID with our generating ID? 
+        // Or just update the stray draft with our config?
+        // Better to update the stray draft to avoid orphans.
+        const fusedNode = { ...generatingNode, id: strayDraft.id, position: strayDraft.position };
+        await updatePromptNode(fusedNode);
+        // Update our local ID reference for executeGeneration
+        generatingNode.id = strayDraft.id;
+      } else {
+        console.log('[handleGenerate] Creating NEW node:', generatingNode.id);
+        await addPromptNode(generatingNode);
+      }
     }
+
+    // 🚀 [Cleanup] Remove any OTHER drafts if they exist (duplicate prevention)
+    // This is a safety measure.
+    /*
+    const leftovers = activeCanvas?.promptNodes.filter(n => n.isDraft && n.id !== generatingNode.id);
+    if (leftovers && leftovers.length > 0) {
+        leftovers.forEach(n => deletePromptNode(n.id));
+    }
+    */
 
     setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
     setActiveSourceImage(null);
@@ -1637,6 +1679,47 @@ const AppContent: React.FC = () => {
   const handleCutConnection = useCallback((promptId: string, imageId: string) => {
     unlinkNodes(promptId, imageId);
   }, [unlinkNodes]);
+
+  // 🚀 [Strict Logic] Disconnect Parent -> Child Group becomes Normal Group
+  const handleDisconnectPrompt = useCallback((id: string) => {
+    const node = activeCanvas?.promptNodes.find(n => n.id === id);
+    if (node && node.sourceImageId) {
+      updatePromptNode({ ...node, sourceImageId: undefined });
+
+      // [Draft Logic] If disconnecting draft, clear global source state too
+      if (node.id === draftNodeId) {
+        setActiveSourceImage(null);
+      }
+
+      import('./services/notificationService').then(({ notify }) => {
+        notify.success('已断开连接', '卡组已拆分为独立卡组');
+      });
+    }
+  }, [activeCanvas, updatePromptNode, draftNodeId, setActiveSourceImage]);
+
+  // 🚀 [Strict Logic] Pin Draft -> Create Lonely Main Card
+  const handlePinDraft = useCallback((id: string, mode: 'button' | 'drag') => {
+    const node = activeCanvas?.promptNodes.find(n => n.id === id);
+    if (!node) return;
+
+    // Pin: Move up 350px to avoid overlap with where the next preview will appear
+    // Matches user requirement: "Main Card generated ABOVE... DO NOT OVERLAP"
+    const newPos = { ...node.position, y: node.position.y - 350 };
+
+    updatePromptNode({
+      ...node,
+      position: newPos,
+      isDraft: false
+    });
+
+    // Clear Draft ID so next typing creates new draft
+    setDraftNodeId(null);
+    setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
+
+    import('./services/notificationService').then(({ notify }) => {
+      notify.success('已固定', '草稿已转换为独立卡片');
+    });
+  }, [activeCanvas, updatePromptNode, setDraftNodeId, setConfig]);
 
   // Retry Logic (In-Place Regeneration)
   const handleRetryNode = useCallback(async (node: PromptNode) => {
@@ -2347,7 +2430,7 @@ const AppContent: React.FC = () => {
         ]}
         onCanvasClick={() => {
           // [Draft Logic] Detach from draft when clicking background
-          if (draftNodeId) setDraftNodeId(null);
+          // if (draftNodeId) setDraftNodeId(null); // 🚀 [FIX] Prevent detaching draft on background click to avoid "Lonely Main Card" orphans
 
           // Clear input when clicking empty canvas, but NOT during generation
           // and NOT when in "continue from image" mode
@@ -2677,8 +2760,8 @@ const AppContent: React.FC = () => {
           />
         ))}
 
-        {/* 3. 持久化提示词节点 (Filter out Draft Node) */}
-        {visiblePromptNodes.filter(n => n.id !== draftNodeId).map(node => (
+        {/* 3. 持久化提示词节点 */}
+        {visiblePromptNodes.map(node => (
           <PromptNodeComponent
             key={node.id}
             node={node}
@@ -2703,6 +2786,7 @@ const AppContent: React.FC = () => {
                 updatePromptNode({ ...node, height });
               }
             }}
+            onPin={handlePinDraft}
           />
         ))}
 
@@ -2940,6 +3024,7 @@ const AppContent: React.FC = () => {
       {/* AI聊天按钮 - 右下角固定 */}
       <div className={`absolute bottom-6 z-50 transition-all duration-300 ${isChatOpen ? 'right-[404px]' : 'right-6'}`}>
         <button
+          id="chat-trigger-button"
           className="ai-chat-btn flex items-center justify-center cursor-pointer focus-visible:outline-none text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-blue-400/80 hover:shadow-[0_0_35px] bg-transparent overflow-hidden relative rounded-full aspect-square h-10 hover:scale-110 transition-all duration-300 p-2"
           type="button"
           onClick={() => setIsChatOpen(prev => !prev)}

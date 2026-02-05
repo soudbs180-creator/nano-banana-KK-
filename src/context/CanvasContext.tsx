@@ -745,7 +745,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             console.error(`[CanvasContext.addPromptNode] ❌ 参考图 ${index + 1} 保存失败:`, ref.id, e?.message || e);
                             // 🔔 通知用户（但不阻止流程）
                             import('../services/notificationService').then(({ notificationService }) => {
-                                notificationService.warning(`参考图 ${index + 1} 保存失败，刷新后可能丢失`);
+                                notificationService.warning('参考图保存失败', `参考图 ${index + 1} 保存失败，刷新后可能丢失`);
                             });
                         }
                     }
@@ -757,7 +757,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 🚨 致命错误：添加卡片失败
             console.error('[CanvasContext.addPromptNode] 🔥 致命错误：添加卡片失败!', error);
             import('../services/notificationService').then(({ notificationService }) => {
-                notificationService.error(`添加卡片失败：${error?.message || '未知错误'}`);
+                notificationService.error('添加卡片失败', `无法创建卡片：${error?.message || '未知错误'}`);
             });
             // ⚠️ 不throw，避免中断后续流程（图片生成）
         }
@@ -963,7 +963,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 🚨 致命错误：UI更新失败
             console.error('[CanvasContext.addImageNodes] 🔥 UI更新失败!', uiError);
             import('../services/notificationService').then(({ notificationService }) => {
-                notificationService.error(`显示图片失败：${uiError?.message || '未知错误'}`);
+                notificationService.error('显示图片失败', `无法显示图片：${uiError?.message || '未知错误'}`);
             });
             throw uiError;
         }
@@ -979,7 +979,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (failed > 0) {
                 console.warn('[CanvasContext.addImageNodes] ⚠️ 部分图片保存失败，刷新后可能丢失');
                 import('../services/notificationService').then(({ notificationService }) => {
-                    notificationService.warning(`${failed}张图片保存失败，建议重新生成`);
+                    notificationService.warning('图片保存失败', `${failed}张图片保存失败，建议重新保存或重试`);
                 });
             }
         }).catch(e => {
@@ -1256,7 +1256,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 // Also update parent prompt node to remove from child list
                 promptNodes: c.promptNodes.map(p => ({
                     ...p,
-                    childImageIds: p.childImageIds.filter(cid => cid !== id)
+                    childImageIds: p.childImageIds.filter(cid => cid !== id),
+                    // [Ref Fix] Also clear sourceImageId if this image was a source for a follow-up
+                    sourceImageId: p.sourceImageId === id ? undefined : p.sourceImageId
                 }))
             };
         });
@@ -1265,16 +1267,26 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const deletePromptNode = useCallback((id: string) => {
         pushToHistory();
 
-        // 核心修改: 仅删除提示词卡片，保留子图片 (除非是框选删除逻辑在外部处理)
-        // 子图片变为 "游离" 状态 (parentPromptId = undefined)
+        updateCanvas(c => {
+            // [Strict Logic] Delete Main Card -> Sub-cards become Lonely Sub Cards (Orphaned)
+            // DO NOT delete the images. Just clear their parentPromptId.
 
-        updateCanvas(c => ({
-            ...c,
-            promptNodes: c.promptNodes.filter(n => n.id !== id),
-            imageNodes: c.imageNodes.map(img =>
-                img.parentPromptId === id ? { ...img, parentPromptId: '' } : img
-            )
-        }));
+            const newImageNodes = c.imageNodes.map(img => {
+                if (img.parentPromptId === id) {
+                    return { ...img, parentPromptId: '' }; // Orphan it (empty string)
+                }
+                return img;
+            });
+
+            // Filter out the deleted prompt node
+            const newPromptNodes = c.promptNodes.filter(n => n.id !== id);
+
+            return {
+                ...c,
+                promptNodes: newPromptNodes,
+                imageNodes: newImageNodes
+            };
+        });
     }, [updateCanvas, pushToHistory]);
 
     const linkNodes = useCallback((promptId: string, imageId: string) => {

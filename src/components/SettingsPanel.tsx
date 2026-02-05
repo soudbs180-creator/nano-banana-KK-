@@ -1208,7 +1208,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                                 <button
                                     key={item.id}
                                     onClick={() => setActiveView(item.id)}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap"
                                     style={{
                                         backgroundColor: activeView === item.id ? 'var(--toolbar-active)' : 'transparent',
                                         color: activeView === item.id ? 'var(--text-primary)' : 'var(--text-secondary)'

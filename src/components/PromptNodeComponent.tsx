@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { PromptNode, AspectRatio, GenerationMode } from '../types';
-import { Sparkles, Loader2, Video, Image } from 'lucide-react';
+import { Sparkles, Loader2, Video, Image, Pin } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
 import { getModelDisplayName } from '../services/modelCapabilities';
@@ -23,6 +23,7 @@ interface PromptNodeProps {
     onDisconnect?: (id: string) => void;
     onHeightChange?: (id: string, height: number) => void;
     highlighted?: boolean;
+    onPin?: (id: string, mode: 'button' | 'drag') => void; // 🚀 [New Prop] Pin Draft
 }
 
 // [FIX] Self-healing thumbnail component that recovers data from IDB if missing
@@ -167,7 +168,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     onRetry,
     onDisconnect,
     onHeightChange,
-    highlighted
+    highlighted,
+    onPin
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [cardHeight, setCardHeight] = useState(200); // 默认高度??00px,会在渲染后更??
@@ -457,7 +459,23 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                             <div className="w-6 h-6 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/30">
                                 <Sparkles size={12} className="text-indigo-600 dark:text-indigo-400" />
                             </div>
-                            <span className="text-xs font-medium text-[var(--accent-indigo)] flex-1">偷瞄一眼效果..</span>
+                            <span className="text-xs font-medium text-[var(--accent-indigo)] flex-1">
+                                {node.sourceImageId ? '追问模式' : '预览卡片'}
+                            </span>
+
+                            {/* 🚀 [Pin Button] */}
+                            {onPin && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onPin(node.id, 'button');
+                                    }}
+                                    className="p-1 rounded-full text-[var(--accent-indigo)] hover:bg-indigo-500/10 transition-colors opacity-60 hover:opacity-100"
+                                    title="固定为独立卡片"
+                                >
+                                    <Pin size={14} />
+                                </button>
+                            )}
                         </>
                     ) : node.error ? (
                         <>

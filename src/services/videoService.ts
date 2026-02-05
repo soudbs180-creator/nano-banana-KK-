@@ -151,6 +151,14 @@ export async function generateVideo(
         requestBody.parameters = parameters;
     }
 
+    // 🚀 [调试] 打印完整请求体
+    console.log('[VideoService] 发送视频生成请求:', JSON.stringify({
+        model,
+        requestBody,
+        resolution: config.resolution,
+        imageCount
+    }, null, 2));
+
     return await executeVideoGeneration(requestBody, apiKey, model, onProgress, signal, startTime, mode, modeLabel);
 }
 

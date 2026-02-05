@@ -80,15 +80,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const wheelCleanupRef = useRef<(() => void) | null>(null);
 
     const [imgError, setImgError] = useState(false);
-    const [isRecovering, setIsRecovering] = useState(false); // [NEW] Track active recovery to hide broken IMG
-    const recoveryAttemptsRef = useRef(0); // 🚀 防止恢复循环 - 最多尝试2次
-    const [lightboxOriginalUrl, setLightboxOriginalUrl] = useState<string | null>(null);
-    const [isLoadingOriginal, setIsLoadingOriginal] = useState(false);
-    const [isVideoPlaying, setIsVideoPlaying] = useState(false); // 视频默认暂停
-    const videoRef = useRef<HTMLVideoElement>(null);
 
     // 🚀 Robust Image Loading State - 优先使用image自带URL作为初始显示（防止刚生成的图片加载失败）
-    // 🚀 FIX: 确保空字符串不会被选中（image.url可能是''）
     const initialUrl = (image.url && image.url.length > 0) ? image.url : (image.originalUrl || '');
     const [displaySrc, setDisplaySrc] = useState<string | undefined>(
         initialUrl && (initialUrl.startsWith('data:') || initialUrl.startsWith('blob:') || initialUrl.startsWith('http'))
@@ -162,11 +155,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         loadedRef.current = true;
                         setIsLoading(false);
                     } else {
-                        // 🚀 没有可用fallback，触发恢复流程
-                        console.log(`[ImageCard] No fallback available, triggering recovery for ${image.id}`);
+                        // 🚀 没有可用fallback，显示错误占位符
                         setIsLoading(false);
-                        // 延迟触发恢复避免立即循环
-                        setTimeout(() => recoverImage(), 100);
                     }
                 }
             } catch (error) {
@@ -184,446 +174,6 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         };
     }, [zoomScale, image.id, isVisible]); // 移除displaySrc依赖
 
-    // 🚀 [修复] 移除过于激进的Blob URL回收 - 这会导致图片消失
-    // Blob URL现在由CanvasContext在节点删除时统一管理
-    // 不在这里回收，因为displaySrc变化时可能只是质量切换，原URL仍在使用
-
-    // 🚀 [已移除] 之前这里有一个会覆盖displaySrc的useEffect，导致加载循环
-    // 现在完全依赖队列加载流程，不再同步image.url到displaySrc
-
-
-
-    // Helper: Attempt to recover image from cache
-    const recoverImage = useCallback(async (force = false) => {
-        if (isRecovering && !force) return;
-
-        // 🚀 强制重试时重置计数器
-        if (force) {
-            recoveryAttemptsRef.current = 0;
-            console.log(`[ImageCard] Force retry for ${image.id}`);
-        }
-
-        // 🚀 防止恢复循环：超过3次直接失败
-        if (recoveryAttemptsRef.current >= 3) {
-            console.warn(`[ImageCard] Max recovery attempts reached for ${image.id}`);
-            setImgError(true);
-            setIsRecovering(false);
-            return;
-        }
-        recoveryAttemptsRef.current++;
-
-        setIsRecovering(true);
-        setImgError(false);
-        console.log(`[ImageCard] Attempting recovery (${recoveryAttemptsRef.current}/3) for ${image.id}...`);
-
-        try {
-            // 0. 首先尝试使用 originalUrl（最可靠的来源）
-            if (image.originalUrl && image.originalUrl.startsWith('data:')) {
-                console.log(`[ImageCard] Recovered ${image.id} from originalUrl (base64)`);
-                setDisplaySrc(image.originalUrl);
-                setIsRecovering(false);
-                return;
-            }
-
-            // 1. Try IndexedDB
-            const { getImage } = await import('../services/imageStorage');
-            // Fast timeout for IDB
-            const idbPromise = getImage(image.id);
-            const timeoutPromise = new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 3000));
-
-            const cached = await Promise.race([idbPromise, timeoutPromise]);
-
-            if (cached) {
-                console.log(`[ImageCard] Recovered ${image.id} from IDB`);
-                setDisplaySrc(cached);
-                setIsRecovering(false);
-                return;
-            }
-
-            // 2. Try Local File Handle (if applicable)
-            const { getStorageMode, getLocalFolderHandle } = await import('../services/storagePreference');
-            const mode = await getStorageMode();
-            if (mode === 'local') {
-                const handle = await getLocalFolderHandle();
-                if (handle) {
-                    const { fileSystemService } = await import('../services/fileSystemService');
-                    const blob = await fileSystemService.loadOriginalFromDisk(handle, image.id);
-                    if (blob) {
-                        const objectUrl = URL.createObjectURL(blob);
-                        setDisplaySrc(objectUrl);
-                        setIsRecovering(false);
-                        return;
-                    }
-                }
-            }
-
-            // 3. 🚀 [新增] Try OPFS (移动端高性能存储)
-            const { isOPFSAvailable, getOPFSBlobUrl } = await import('../services/opfsService');
-            if (isOPFSAvailable()) {
-                try {
-                    const opfsUrl = await getOPFSBlobUrl(image.id, 'image');
-                    if (opfsUrl) {
-                        console.log(`[ImageCard] Recovered ${image.id} from OPFS`);
-                        setDisplaySrc(opfsUrl);
-                        setIsRecovering(false);
-                        return;
-                    }
-                } catch (e) {
-                    console.warn(`[ImageCard] OPFS recovery failed for ${image.id}`, e);
-                }
-            }
-
-            // 4. Fallback: If Original URL exists and is different, try it once
-            if (image.originalUrl && image.originalUrl !== image.url) {
-                setDisplaySrc(image.originalUrl);
-                setIsRecovering(false); // Let the browser try to load this new src
-                return;
-            }
-
-            // If we got here, recovery failed
-            console.warn(`[ImageCard] Recovery failed to find alternative for ${image.id}`);
-            setImgError(true);
-            setIsRecovering(false);
-
-        } catch (error) {
-            console.error('[ImageCard] Recovery exception:', error);
-            setImgError(true);
-            setIsRecovering(false);
-        }
-    }, [image.id, image.url, image.originalUrl, isRecovering]);
-
-    // 🚀 [简化] 自动恢复逻辑已移除，现在由主队列加载流程的fallback统一处理
-
-    // Construct high-res URL for lightbox
-    const highResUrl = image.originalUrl || displaySrc || image.url;
-
-    // 🚀 Load lightbox image: 先显示预览，后台加载原图（优先本地文件系统）
-    useEffect(() => {
-        if (showLightbox && !isLoadingOriginal) {
-            // 🚀 [关键修复] 立即显示当前可用的图片，防止黑屏
-            if (!lightboxOriginalUrl) {
-                const immediateUrl = displaySrc || image.url || image.originalUrl;
-                if (immediateUrl) {
-                    setLightboxOriginalUrl(immediateUrl);
-                    console.log(`[Lightbox] Showing immediate URL for ${image.id}`);
-                }
-            }
-
-            setIsLoadingOriginal(true);
-            (async () => {
-                const { getImageByQuality, saveImage } = await import('../services/imageStorage');
-                const { ImageQuality, getQualityStorageId } = await import('../services/imageQuality');
-                const storageId = image.storageId || image.id;
-
-                // 🚀 Step 1: 先立即显示preview质量（快速响应）
-                if (!lightboxOriginalUrl) {
-                    const previewImage = await getImageByQuality(storageId, ImageQuality.PREVIEW);
-                    if (previewImage && previewImage.startsWith('data:')) {
-                        setLightboxOriginalUrl(previewImage);
-                        console.log(`[Lightbox] Showing PREVIEW first for ${image.id}`);
-                    } else {
-                        setLightboxOriginalUrl(displaySrc || image.url);
-                    }
-                }
-
-                // 🚀 Step 2: 尝试从本地文件系统加载原图（优先级最高）
-                try {
-                    const { getLocalFolderHandle } = await import('../services/storagePreference');
-                    const handle = await getLocalFolderHandle();
-                    if (handle) {
-                        const { fileSystemService } = await import('../services/fileSystemService');
-                        const blob = await fileSystemService.loadOriginalFromDisk(handle, storageId);
-                        if (blob) {
-                            const blobUrl = URL.createObjectURL(blob);
-                            setLightboxOriginalUrl(blobUrl);
-                            setIsLoadingOriginal(false);
-                            console.log(`[Lightbox] ✅ Loaded ORIGINAL from LOCAL DISK for ${image.id}`);
-                            return;
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`[Lightbox] Local disk load failed for ${image.id}:`, e);
-                }
-
-                // 🚀 Step 3: 从OPFS加载原图（移动端）
-                const { isOPFSAvailable, getOPFSBlobUrl } = await import('../services/opfsService');
-                if (isOPFSAvailable()) {
-                    try {
-                        const opfsUrl = await getOPFSBlobUrl(storageId, 'image');
-                        if (opfsUrl) {
-                            setLightboxOriginalUrl(opfsUrl);
-                            setIsLoadingOriginal(false);
-                            console.log(`[Lightbox] ✅ Loaded ORIGINAL from OPFS for ${image.id}`);
-                            return;
-                        }
-                    } catch (e) {
-                        console.warn(`[Lightbox] OPFS load failed for ${image.id}:`, e);
-                    }
-                }
-
-                // 🚀 Step 4: 从IndexedDB加载原图（回退方案）
-                const originalImage = await getImageByQuality(storageId, ImageQuality.ORIGINAL);
-                if (originalImage && originalImage.startsWith('data:')) {
-                    setLightboxOriginalUrl(originalImage);
-                    setIsLoadingOriginal(false);
-                    console.log(`[Lightbox] Loaded ORIGINAL from IndexedDB for ${image.id}`);
-                    return;
-                }
-
-                // 🚀 Step 4: Fallback - 使用当前显示的src作为最终备选
-                // 刚生成的图片可能还在内存中通过displaySrc显示
-                const targetUrl = image.originalUrl || image.url || displaySrc;
-                if (targetUrl) {
-                    if (targetUrl.startsWith('data:') || targetUrl.startsWith('blob:')) {
-                        // 已经是可用的URL，直接使用
-                        setLightboxOriginalUrl(targetUrl);
-                        console.log(`[Lightbox] Using existing URL for ${image.id}`);
-                    } else {
-                        // 尝试从网络获取
-                        try {
-                            const res = await fetch(targetUrl);
-                            const blob = await res.blob();
-                            const blobUrl = URL.createObjectURL(blob);
-                            setLightboxOriginalUrl(blobUrl);
-                            console.log(`[Lightbox] Fetched from URL for ${image.id}`);
-                        } catch (e) {
-                            // 如果网络也失败，使用displaySrc
-                            console.warn(`[Lightbox] Fetch failed, using displaySrc for ${image.id}`);
-                            setLightboxOriginalUrl(displaySrc ?? targetUrl);
-                        }
-                    }
-                } else {
-                    // 没有任何可用URL，使用displaySrc
-                    console.warn(`[Lightbox] No URL available, using displaySrc for ${image.id}`);
-                    setLightboxOriginalUrl(displaySrc ?? null);
-                }
-                setIsLoadingOriginal(false);
-            })();
-        }
-    }, [showLightbox, lightboxOriginalUrl, isLoadingOriginal, image.id, image.storageId, image.originalUrl, displaySrc, image.url]);
-
-    // Auto-recover if URL is missing initially
-    useEffect(() => {
-        if (!displaySrc) {
-            recoverImage();
-        }
-    }, []);
-
-    // Ref to track latest localPos without triggering effect re-runs
-    // (localPosRef is defined at top level)
-
-    const wasDraggingRef = useRef(false);
-
-    const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-        // Ignore Right Click (2)
-        if ('button' in e && e.button === 2) return;
-
-        // [FIX] Allow Native Drag for Images/Videos (Don't start card drag)
-        // Must check this BEFORE setting isDragging or stopping propagation
-        const target = e.target as HTMLElement;
-        if (target.tagName === 'IMG' || target.tagName === 'VIDEO') {
-            return;
-        }
-
-        // Stop canvas panning
-        e.stopPropagation();
-
-        setIsDragging(true);
-        wasDraggingRef.current = false; // Reset drag flag
-
-        // Only select if not already selected (Preserve Group)
-        if (!isSelected && onSelect) {
-            onSelect();
-        }
-
-        // Handle both Mouse and Touch events
-        let clientX, clientY;
-        if ('touches' in e) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-        } else {
-            clientX = (e as React.MouseEvent).clientX;
-            clientY = (e as React.MouseEvent).clientY;
-        }
-
-
-
-        // Store initial mouse position and card position
-        dragStartPos.current = { x: clientX, y: clientY };
-        dragStartCanvasPos.current = { x: localPosRef.current.x, y: localPosRef.current.y };
-
-        console.log('[ImageCard] Drag Start', { clientX, clientY, localPos: localPosRef.current });
-    };
-
-    const lastGlobalUpdateRef = useRef(0);
-    const requestRef = useRef<number | null>(null);
-
-    const handleMouseMove = (e: MouseEvent | TouchEvent) => {
-        if (!isDragging) return;
-
-        let clientX, clientY;
-        if ('touches' in e) {
-            clientX = (e as TouchEvent).touches[0].clientX;
-            clientY = (e as TouchEvent).touches[0].clientY;
-        } else {
-            clientX = (e as MouseEvent).clientX;
-            clientY = (e as MouseEvent).clientY;
-        }
-
-        // Mark as dragged if moved more than threshold
-        if (Math.abs(clientX - dragStartPos.current.x) > 10 || Math.abs(clientY - dragStartPos.current.y) > 10) {
-            wasDraggingRef.current = true;
-        }
-
-        // Throttle updates using requestAnimationFrame
-        if (requestRef.current !== null) return;
-
-        requestRef.current = requestAnimationFrame(() => {
-            const scale = zoomScale;
-            const deltaX = (clientX - dragStartPos.current.x) / scale;
-            const deltaY = (clientY - dragStartPos.current.y) / scale;
-
-            const newPos = {
-                x: dragStartCanvasPos.current.x + deltaX,
-                y: dragStartCanvasPos.current.y + deltaY
-            };
-
-            // 1. Direct DOM Update (Zero React Overhead)
-            if (containerRef.current) {
-                containerRef.current.style.transform = `translate3d(${newPos.x}px, ${newPos.y}px, 0) translate(-50%, -100%)`;
-            }
-            localPosRef.current = newPos;
-
-            // 2. Throttle Global Update (Connection Lines) to prevent lag
-            // Update only every ~32ms (30fps)
-            const now = Date.now();
-            if (now - lastGlobalUpdateRef.current > 32) {
-                onPositionChange(image.id, newPos);
-                lastGlobalUpdateRef.current = now;
-            }
-
-            requestRef.current = null;
-        });
-    };
-
-    const handleMouseUp = () => {
-        if (isDragging) {
-            setIsDragging(false);
-            console.log('[ImageCard] Drag End', localPosRef.current);
-            // Commit final position to global state using REF value
-            onPositionChange(image.id, localPosRef.current);
-        }
-
-        if (requestRef.current !== null) {
-            cancelAnimationFrame(requestRef.current);
-            requestRef.current = null;
-        }
-
-        // [FIX] 延迟重置wasDraggingRef,确保onClick事件能正确检测到拖拽状态
-        // 但同时确保下一次点击能正常触发追问模式
-        setTimeout(() => {
-            wasDraggingRef.current = false;
-        }, 100);
-    };
-
-    useEffect(() => {
-        if (isDragging) {
-            window.addEventListener('mousemove', handleMouseMove);
-            window.addEventListener('mouseup', handleMouseUp);
-            // Touch listeners (non-passive to prevent scroll)
-            window.addEventListener('touchmove', handleMouseMove, { passive: false });
-            window.addEventListener('touchend', handleMouseUp);
-
-            return () => {
-                window.removeEventListener('mousemove', handleMouseMove);
-                window.removeEventListener('mouseup', handleMouseUp);
-                window.removeEventListener('touchmove', handleMouseMove);
-                window.removeEventListener('touchend', handleMouseUp);
-                if (requestRef.current) {
-                    cancelAnimationFrame(requestRef.current);
-                }
-            };
-        }
-    }, [isDragging, zoomScale]);
-
-    // Handle pan/drag for lightbox image
-    const handleLightboxMouseDown = useCallback((e: React.MouseEvent) => {
-        if (e.button === 2) return;
-        e.preventDefault();
-        e.stopPropagation();
-        setIsPanning(true);
-        panStartRef.current = { x: e.clientX, y: e.clientY };
-        panStartPosRef.current = { x: lightboxPan.x, y: lightboxPan.y };
-    }, [lightboxPan]);
-
-    // Global listener for lightbox panning
-    useEffect(() => {
-        if (!isPanning) return;
-
-        const handleWindowMouseMove = (e: MouseEvent) => {
-            const dx = e.clientX - panStartRef.current.x;
-            const dy = e.clientY - panStartRef.current.y;
-            setLightboxPan({
-                x: panStartPosRef.current.x + dx,
-                y: panStartPosRef.current.y + dy
-            });
-        };
-
-        const handleWindowMouseUp = () => {
-            setIsPanning(false);
-        };
-
-        window.addEventListener('mousemove', handleWindowMouseMove);
-        window.addEventListener('mouseup', handleWindowMouseUp);
-
-        return () => {
-            window.removeEventListener('mousemove', handleWindowMouseMove);
-            window.removeEventListener('mouseup', handleWindowMouseUp);
-        };
-    }, [isPanning]);
-
-    // Handle wheel zoom with non-passive listener
-    useEffect(() => {
-        if (!showLightbox) return;
-
-        const el = lightboxRef.current;
-        if (!el) return;
-
-        const handleWheel = (e: WheelEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const delta = e.deltaY > 0 ? -0.2 : 0.2; // Increase step slightly
-            setLightboxZoom(prev => {
-                const newZoom = Math.min(5, Math.max(0.25, prev + delta));
-                return parseFloat(newZoom.toFixed(2)); // Clean precision
-            });
-        };
-
-        el.addEventListener('wheel', handleWheel, { passive: false });
-
-        return () => {
-            el.removeEventListener('wheel', handleWheel);
-        };
-    }, [showLightbox]);
-
-    // Reset pan and zoom when lightbox opens/closes
-    useEffect(() => {
-        if (showLightbox) {
-            setLightboxZoom(1);
-            setLightboxPan({ x: 0, y: 0 });
-            // openTimeRef is now set synchronously in handleImageClick
-        } else {
-            // 🚀 [内存优化] 灯箱关闭时释放原图内存
-            if (lightboxOriginalUrl && lightboxOriginalUrl.startsWith('blob:')) {
-                URL.revokeObjectURL(lightboxOriginalUrl);
-                console.log(`[Lightbox] Released blob URL memory for ${image.id}`);
-            }
-            setLightboxOriginalUrl(null);
-            setIsLoadingOriginal(false);
-        }
-    }, [showLightbox]);
-
-
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
@@ -632,6 +182,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             const indexedDbImage = await getImage(image.id);
 
             let blob: Blob;
+
+            // Construct high-res URL for lightbox (fallback use)
+            const highResUrl = image.originalUrl || displaySrc || image.url;
 
             if (indexedDbImage && indexedDbImage.startsWith('data:')) {
                 // Found original in IndexedDB - use it (uncompressed)
@@ -685,6 +238,60 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }
     };
 
+    // 🚀 [恢复] 拖拽逻辑所需的引用和处理函数
+    const wasDraggingRef = useRef(false);
+
+    const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+        // 阻止事件冒泡到 Canvas，通过 global listeners 处理拖拽
+        e.stopPropagation();
+
+        const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+
+        setIsDragging(true);
+        wasDraggingRef.current = false;
+        dragStartPos.current = { x: clientX, y: clientY };
+        // Store current position as base
+        localPosRef.current = position;
+
+        // 绑定全局事件
+        const handleMouseMove = (mvEvent: MouseEvent | TouchEvent) => {
+            mvEvent.preventDefault(); // 防止滚动
+            const mvClientX = 'touches' in mvEvent ? mvEvent.touches[0].clientX : (mvEvent as MouseEvent).clientX;
+            const mvClientY = 'touches' in mvEvent ? mvEvent.touches[0].clientY : (mvEvent as MouseEvent).clientY;
+
+            const dx = mvClientX - dragStartPos.current.x;
+            const dy = mvClientY - dragStartPos.current.y;
+
+            // 只有移动超过一定距离才视为拖拽
+            if (dx * dx + dy * dy > 25) {
+                wasDraggingRef.current = true;
+            }
+
+            // 实时更新位置
+            if (onPositionChange) {
+                const scale = zoomScale || 1;
+                const newX = localPosRef.current.x + dx / scale;
+                const newY = localPosRef.current.y + dy / scale;
+                onPositionChange(image.id, { x: newX, y: newY });
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsDragging(false);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('touchmove', handleMouseMove);
+            window.removeEventListener('touchend', handleMouseUp);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove, { passive: false });
+        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('touchmove', handleMouseMove, { passive: false });
+        window.addEventListener('touchend', handleMouseUp);
+
+    }, [image.id, position, zoomScale, onPositionChange]);
+
     const handleImageClick = (e: React.MouseEvent) => {
         e.stopPropagation();
 
@@ -694,14 +301,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         // 如果刚刚拖拽过,忽略点击(防止拖拽结束时误触发)
         if (wasDraggingRef.current && e.type !== 'dblclick' && e.detail !== 2) return;
 
-        // 同步：在状态触发渲染前立即设置打开时间
-        openTimeRef.current = Date.now();
-
-        if (onPreview) {
+        // 🚀 [修复] 不再打开内置灯箱，统一使用onPreview避免重复预览框
+        if (!wasDraggingRef.current && onPreview) {
             onPreview(image.id);
-        } else {
-            setLightboxZoom(1);
-            setShowLightbox(true);
         }
     };
 
@@ -782,39 +384,18 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         onDoubleClick={handleImageClick}
                     >
 
-                        {!imgError && !isRecovering && displaySrc ? (
+                        {!imgError && displaySrc ? (
                             (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
                                 <div className="relative w-full h-full">
                                     <video
-                                        ref={videoRef}
                                         src={displaySrc}
                                         className="w-full h-full object-cover block select-none"
-                                        muted loop playsInline
+                                        muted loop playsInline autoPlay
                                         onError={() => {
-                                            console.warn('[ImageCard] Video load error for', image.id, '- attempting recovery...');
-                                            recoverImage(); // 尝试从本地存储恢复视频
-                                        }}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (videoRef.current) {
-                                                if (videoRef.current.paused) {
-                                                    videoRef.current.play();
-                                                    setIsVideoPlaying(true);
-                                                } else {
-                                                    videoRef.current.pause();
-                                                    setIsVideoPlaying(false);
-                                                }
-                                            }
+                                            console.warn('[ImageCard] Video load error for', image.id);
+                                            setImgError(true);
                                         }}
                                     />
-                                    {/* 播放/暂停指示器 */}
-                                    {!isVideoPlaying && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-                                            <div className="w-12 h-12 rounded-full bg-white/80 flex items-center justify-center">
-                                                <div className="w-0 h-0 border-t-[8px] border-t-transparent border-l-[14px] border-l-gray-800 border-b-[8px] border-b-transparent ml-1" />
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             ) : (
                                 <img
@@ -836,7 +417,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                     }}
 
                                     onError={(e) => {
-                                        recoverImage();
+                                        setImgError(true);
                                     }}
                                     onLoad={(e) => {
                                         setImgError(false);
@@ -871,7 +452,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                             <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-[var(--text-secondary)] p-4 text-center">
 
                                 {/* 🚀 加载/恢复状态 - 居中显示 */}
-                                {(isLoading || isRecovering || (!imgError && !displaySrc)) ? (
+                                {(isLoading || (!imgError && !displaySrc)) ? (
                                     /* 边框往内弥散白光 - 覆盖整个卡片，z-50确保在顶层 */
                                     <div
                                         className="absolute inset-0 z-50 rounded-lg flex items-center justify-center bg-black/60"
@@ -880,7 +461,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                         }}
                                     >
                                         <span className="text-xs text-white/70">
-                                            {isRecovering ? '正在恢复...' : '正在加载...'}
+                                            正在加载...
                                         </span>
                                     </div>
                                 ) : (
@@ -907,7 +488,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                         </span>
                                         {/* Retry Button */}
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); recoverImage(true); }}
+                                            onClick={(e) => { e.stopPropagation(); cancelImageLoad(image.id); setIsLoading(true); qualityDebounceRef.current = null; /* Trigger effect re-run via state/ref reset if needed, simplified here to just reload UI state */ }}
                                             className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 underline"
                                         >
                                             点击重试
@@ -944,10 +525,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                         {/* Footer - Compact Two Row Layout - 点击进入追问模式 */}
                         <div
-                            className="px-2 py-1 flex flex-col gap-0.5 border-t relative z-10 box-border cursor-pointer"
+                            className="px-2 py-1 flex flex-col gap-0.5 border-t-2 relative z-10 box-border cursor-pointer"
                             style={{
                                 backgroundColor: 'var(--bg-elevated)',
-                                borderTopColor: 'var(--border-default)',
+                                borderTopColor: 'var(--border-medium)', // 使用更明显的中等边框颜色
                                 minHeight: '36px'
                             }}
                             onClick={(e) => {
@@ -1177,221 +758,25 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 </div>
             </div>
 
-            {/* Lightbox Modal - Rendered to body via Portal for true top-level z-index */}
-            {
-                showLightbox && ReactDOM.createPortal(
-                    <div
-                        ref={lightboxRef}
-                        className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center animate-fadeIn select-none"
-                        onClick={() => {
-                            // Prevent accidental close from double-click (second click hitting backdrop)
-                            if (Date.now() - openTimeRef.current < 600) return;
-                            !isPanning && setShowLightbox(false);
-                        }}
-                        style={{ backdropFilter: 'blur(8px)', cursor: isPanning ? 'grabbing' : 'default' }}
-                    >
-                        {/* Close Button - Top Right */}
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setShowLightbox(false); }}
-                            className="absolute top-4 right-4 z-[100000] w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-all duration-200 hover:scale-110"
-                            title="关闭"
-                        >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                <path d="M18 6L6 18M6 6l12 12" />
-                            </svg>
-                        </button>
-
-                        {/* Zoom Controls */}
-                        <div className="absolute bottom-6 right-6 z-[100000] flex items-center gap-2 bg-black/50 rounded-lg p-2">
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setLightboxZoom(prev => Math.max(0.25, prev - 0.25)); }}
-                                className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white"
-                                title="缩小"
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                            </button>
-                            <span className="text-white text-sm min-w-[50px] text-center">{Math.round(lightboxZoom * 100)}%</span>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setLightboxZoom(prev => Math.min(5, prev + 0.25)); }}
-                                className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white"
-                                title="放大"
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                            </button>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setLightboxZoom(1); setLightboxPan({ x: 0, y: 0 }); }}
-                                className="w-8 h-8 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-white ml-1"
-                                title="重置"
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="8" /></svg>
-                            </button>
-                        </div>
-
-                        {/* Main Image/Video - Drag to pan, scroll to zoom */}
-                        {(image.mode === GenerationMode.VIDEO || lightboxOriginalUrl?.startsWith('data:video') || highResUrl?.startsWith('data:video') || highResUrl?.endsWith('.mp4')) ? (
-                            <video
-                                src={lightboxOriginalUrl || highResUrl}
-                                controls
-                                autoPlay
-                                loop
-                                className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
-                                style={{
-                                    maxWidth: '95vw',
-                                    maxHeight: '95vh',
-                                    transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
-                                    transition: isPanning ? 'none' : 'transform 0.15s ease-out',
-                                    cursor: isPanning ? 'grabbing' : 'auto'
-                                }}
-                                onClick={(e) => e.stopPropagation()} // Prevent click from closing lightbox
-                                onDoubleClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setShowLightbox(false); // Double click to close
-                                }}
-                            />
-                        ) : (
-                            <img
-                                src={lightboxOriginalUrl || highResUrl}
-                                onError={(e) => {
-                                    console.warn('[Lightbox] Failed to load original, falling back to thumbnail');
-                                }}
-                                alt={image.prompt}
-                                onMouseDown={handleLightboxMouseDown}
-                                onClick={(e) => e.stopPropagation()}
-                                onDoubleClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setShowLightbox(false);
-                                }}
-                                onContextMenu={(e) => e.stopPropagation()}
-                                className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
-                                draggable={false}
-                                style={{
-                                    maxWidth: '95vw',
-                                    maxHeight: '95vh',
-                                    transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})`,
-                                    transition: isPanning ? 'none' : 'transform 0.15s ease-out',
-                                    cursor: isPanning ? 'grabbing' : 'grab',
-                                    // 高质量渲染
-                                    imageRendering: 'auto',
-                                    // GPU 加速
-                                    willChange: isPanning ? 'transform' : 'auto'
-                                }}
-                            />
-                        )}
-
-                        {/* Download Button in Lightbox */}
-                        <button
-                            onClick={handleDownload}
-                            className="absolute bottom-6 left-6 z-[100000] flex items-center gap-2 bg-black/50 hover:bg-white/20 text-white rounded-lg px-4 py-2 transition-colors"
-                            title="下载原图"
-                        >
-                            <Download size={16} />
-                            <span className="text-sm">下载原图</span>
-                        </button>
-
-                        {/* Metadata Overlay (Bottom Center) */}
-                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none select-none z-[100000]">
-                            {/* Metadata Panel */}
-                            <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-3 flex items-center gap-4 shadow-2xl">
-                                {/* Model Badge */}
-                                {(() => {
-                                    const model = image.model || '';
-                                    let label = 'AI';
-                                    let style = 'border-white/20 text-zinc-300 bg-white/5'; // Lightbox specific dark theme style
-
-                                    if (model.includes('ultra')) {
-                                        label = 'Imagen 4 Ultra';
-                                        style = 'border-purple-400/30 text-purple-300 bg-purple-500/20';
-                                    } else if (model.includes('imagen-4')) {
-                                        label = 'Imagen 4';
-                                        style = 'border-blue-400/30 text-blue-300 bg-blue-500/20';
-                                    } else if (model.includes('pro')) {
-                                        label = 'Gemini 3 Pro';
-                                        style = 'border-amber-400/30 text-amber-300 bg-amber-500/20';
-                                    } else if (model.includes('flash')) {
-                                        label = 'Gemini 2.5';
-                                        style = 'border-yellow-400/30 text-yellow-300 bg-yellow-500/20';
-                                    }
-
-                                    return (
-                                        <span className={`text-[10px] px-2 py-1 rounded font-medium border whitespace-nowrap ${style}`}>
-                                            {label}
-                                        </span>
-                                    );
-                                })()}
-
-                                {/* Dimensions */}
-                                <div className="h-6 w-px bg-white/10" />
-                                <div className="flex flex-col items-start gap-0.5">
-                                    <span className="text-[10px] text-white/50 leading-none">Resolution</span>
-                                    <span className="text-xs text-white/90 font-mono tracking-wide leading-none">
-                                        {image.dimensions ? (() => {
-                                            const [w, h] = image.dimensions.split('x').map(Number);
-                                            if (!w || !h) return image.dimensions;
-
-                                            // Mapping common approximate ratios for cleaner display
-                                            let displayRatio = `${w}:${h}`;
-                                            const ratioVal = w / h;
-                                            if (Math.abs(ratioVal - 1) < 0.05) displayRatio = '1:1';
-                                            else if (Math.abs(ratioVal - 4 / 3) < 0.05) displayRatio = '4:3';
-                                            else if (Math.abs(ratioVal - 3 / 4) < 0.05) displayRatio = '3:4';
-                                            else if (Math.abs(ratioVal - 16 / 9) < 0.05) displayRatio = '16:9';
-                                            else if (Math.abs(ratioVal - 9 / 16) < 0.05) displayRatio = '9:16';
-
-                                            let sizeLabel = '1K';
-                                            if (w >= 3000 || h >= 3000) sizeLabel = '4K';
-                                            else if (w >= 1500 || h >= 1500) sizeLabel = '2K';
-
-                                            return `${displayRatio} · ${sizeLabel}`;
-                                        })() : 'Unknown'}
-                                    </span>
-                                </div>
-
-                                {/* Generation Time */}
-                                {image.generationTime && (
-                                    <>
-                                        <div className="h-6 w-px bg-white/10" />
-                                        <div className="flex flex-col items-start gap-0.5">
-                                            <span className="text-[10px] text-white/50 leading-none">Generated in</span>
-                                            <span className="text-xs text-white/90 font-mono leading-none">
-                                                {(image.generationTime / 1000).toFixed(1)}s
-                                            </span>
-                                        </div>
-                                    </>
-                                )}
-
-                                {/* Token & Cost */}
-                                {(image.tokens !== undefined || image.cost !== undefined) && (
-                                    <>
-                                        <div className="h-6 w-px bg-white/10" />
-                                        <div className="flex flex-col items-start gap-0.5">
-                                            {image.tokens && (
-                                                <span className="text-[10px] text-emerald-400 font-mono leading-none">
-                                                    {image.tokens} tokens
-                                                </span>
-                                            )}
-                                            {image.cost !== undefined && (
-                                                <span className="text-[10px] text-emerald-400/80 font-mono leading-none">
-                                                    ${image.cost < 0.0001 && image.cost > 0 ? '<0.0001' : image.cost.toFixed(4)}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            {/* Controls Hint */}
-                            <div className="text-white/30 text-[10px]">
-                                滚轮缩放 · 拖拽平移 · 双击关闭
-                            </div>
-                        </div>
-                    </div>,
-                    document.body
-                )
-            }
         </>
+    );
+}, (prev, next) => {
+    // Custom Comparison for Performance
+    return (
+        prev.image === next.image &&
+        prev.position.x === next.position.x &&
+        prev.position.y === next.position.y &&
+        prev.isActive === next.isActive &&
+        prev.zoomScale === next.zoomScale &&
+        prev.isSelected === next.isSelected &&
+        prev.highlighted === next.highlighted &&
+        prev.isVisible === next.isVisible &&
+        prev.onDimensionsUpdate === next.onDimensionsUpdate &&
+        prev.onClick === next.onClick &&
+        prev.onDelete === next.onDelete &&
+        prev.onPositionChange === next.onPositionChange
     );
 });
 
+export const ImageCard2 = ImageNodeComponent;
 export default ImageNodeComponent;

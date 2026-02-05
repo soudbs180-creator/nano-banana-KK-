@@ -50,12 +50,18 @@ export interface KeySlot {
     key: string;
     name: string;
     provider: string; // 'Google', 'OpenAI', 'Anthropic', etc.
+    type: 'official' | 'proxy' | 'third-party'; // ✨ New field for categorization
 
     // Channel Configuration
     baseUrl?: string;        // Custom base URL (e.g. for proxies)
     group?: string;          // Group selection for proxies
     compatibilityMode?: 'standard' | 'chat'; // 'standard' = /v1/images, 'chat' = /v1/chat
     supportedModels: string[]; // List of model IDs this channel supports
+
+    // Proxy Specific
+    proxyConfig?: {
+        serverName?: string;
+    };
 
     // Auth Configuration
     authMethod?: AuthMethod; // 'query' | 'header'
@@ -95,6 +101,7 @@ export interface KeySlot {
     usedTokens?: number;
     totalCost: number;
     budgetLimit: number; // -1 for unlimited
+    tokenLimit?: number; // ✨ New: -1 for unlimited
     quota?: {
         limitRequests: number;
         remainingRequests: number;
@@ -514,6 +521,8 @@ export class KeyManager {
                         provider,
                         totalCost: s.totalCost || 0,
                         budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
+                        tokenLimit: s.tokenLimit !== undefined ? s.tokenLimit : -1, // Default unlimited
+                        type: s.type || (s.name?.startsWith('[代理]') ? 'proxy' : (provider === 'Google' ? 'official' : 'third-party')),
                         baseUrl,
                         authMethod,
                         headerName,
@@ -571,7 +580,8 @@ export class KeyManager {
                         supportedModels: [...DEFAULT_GOOGLE_MODELS],
                         baseUrl: '',
                         authMethod: 'query',
-                        headerName: 'x-goog-api-key'
+                        headerName: 'x-goog-api-key',
+                        type: 'official' // ✨ Default to official for old keys
                     }));
 
                 if (slots.length > 0) {
@@ -1328,6 +1338,9 @@ export class KeyManager {
         headerName?: string;
         supportedModels?: string[];
         budgetLimit?: number;
+        tokenLimit?: number;
+        type?: 'official' | 'proxy' | 'third-party';
+        proxyConfig?: { serverName?: string };
     }): Promise<{ success: boolean; error?: string; id?: string }> {
         const trimmedKey = key.trim();
 
@@ -1364,7 +1377,10 @@ export class KeyManager {
             id: `key_${Date.now()}`,
             key: trimmedKey,
             name: options?.name || 'My Channel',
+            // Default provider logic
             provider: options?.provider || 'Custom',
+            // Default type logic: if explicit, use it. Else if provider is Google, official. Else third-party.
+            type: options?.type || (options?.provider === 'Google' ? 'official' : 'third-party'),
             baseUrl,
             authMethod,
             headerName,
@@ -1377,7 +1393,9 @@ export class KeyManager {
             disabled: false,
             createdAt: Date.now(),
             totalCost: 0,
-            budgetLimit: options?.budgetLimit ?? -1
+            budgetLimit: options?.budgetLimit ?? -1,
+            tokenLimit: options?.tokenLimit ?? -1,
+            proxyConfig: options?.proxyConfig
         };
 
         this.state.slots.push(newSlot);

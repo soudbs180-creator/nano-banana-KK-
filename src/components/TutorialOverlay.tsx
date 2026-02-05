@@ -21,33 +21,33 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
     const STEPS: TutorialStep[] = React.useMemo(() => [
         {
             // Removed targetId for "Infinite Canvas" to show centered text on dark overlay (better intro)
-            title: "无限画布",
-            description: "这是您的创作空间。您可以在这里自由拖拽、缩放查看作品。\n\n• 双击空白处创建新的图像卡片\n• 双击已有图像可查看大图\n• 鼠标滚轮或双指缩放画布\n• 拖拽可平移视角",
+            title: "欢迎使用无限画布",
+            description: "这是您的自由创作空间，没有任何边界限制。\n\n• 🖱️ 双击空白处：快速创建新的图像卡片\n• 🔍 滚轮缩放：自由缩放查看细节\n• ✋ 按住空格拖拽：平移画布视角\n• 💡这不仅仅是一个画板，更是一个思维导图式的创作流工具。",
             position: "center"
         },
         {
             targetId: "prompt-bar-container",
-            title: "指令输入区",
-            description: "在这里输入您的创意指令来生成图像。\n\n• 左侧选择 AI 模型（Gemini 2.0 Flash 等）\n• 中间输入框输入文字描述\n• 可选择比例（1:1, 16:9 等）和分辨率（1K, 2K, 4K）\n• 点击右侧图片按钮可上传参考图\n• 点击发送按钮开始生成",
+            title: "指令创作中心",
+            description: "这是您的控制台。支持图片与视频双模式创作。\n\n• 🎨 输入描述：在中间输入框描述画面\n• 📐 比例与尺寸：左侧灵活调整画幅与分辨率\n• 🖼️ 参考图：右侧上传参考图，支持多图混搭\n• ⚡ 快捷键：Enter 发送，Shift+Enter 换行",
             position: "top"
         },
         {
             targetId: isMobile ? "mobile-tab-bar" : "project-manager-container",
-            title: "项目管理 & 工具栏",
-            description: "左上角管理您的项目和视图。\n\n• 新建/切换项目\n• 搜索提示词 (Ctrl+K)\n• 放大/缩小/重置视图\n• 切换网格显示\n• 切换亮色/暗色主题",
+            title: "左侧工具栏",
+            description: "管理您的创意资产与视图设置。\n\n• 📁 项目管理：新建、切换与归档不同项目\n• 🔍 全局搜索：Ctrl+K 快速查找历史提示词\n• 📏 视图工具：网格对齐、一键归位、主题切换\n• 📂 导入导出：支持 .kk 格式项目文件",
             position: isMobile ? "top" : "right"
         },
         {
             targetId: "chat-trigger-button",
-            title: "聊天机器人 & 辅助",
-            description: "左下角 AI 助手。\n\n• 点击图标唤起 AI 助手\n• 可询问关于创作的问题\n• 获取提示词优化建议",
-            position: "top" // [FIX] Changed from 'right' to 'top' to avoid bottom edge clipping
+            title: "AI 创意助手",
+            description: "您的全天候创作伙伴。\n\n• 🤖 灵感对话：不知道画什么？问问它\n• ✨ 提示词通过：帮您优化简陋的描述词\n• 📝 自动补全：基于上下文智能建议后续内容",
+            position: "top"
         },
         {
             targetId: "header-user-menu",
-            title: "账户 & API 设置",
-            description: "右上角账户管理。\n\n• 配置 API 密钥\n• 查看今日预算消耗\n• 监控云同步状态",
-            position: isMobile ? "bottom" : "bottom" // [FIX] Changed to 'bottom' to avoid top edge clipping (safe for top-right menu)
+            title: "账户与设置",
+            description: "管理您的个人偏好与资源。\n\n• 🔑 API 管理：配置与切换不同的 AI 模型 Key\n• 📊 成本监控：实时查看今日消耗与剩余预算\n• ☁️ 云端同步：开启多设备自动同步功能",
+            position: isMobile ? "bottom" : "bottom"
         }
     ], [isMobile]);
 
@@ -80,15 +80,28 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
             }
         };
 
+        // Optimize: Use requestAnimationFrame for smoother tracking
+        let rafId: number | null = null;
+        const onFrame = () => {
+            updateRect();
+            rafId = null;
+        };
+        const throttledUpdate = () => {
+            if (rafId === null) {
+                rafId = requestAnimationFrame(onFrame);
+            }
+        };
+
         // Delay slightly to ensure UI is rendered and stable
         const timer = setTimeout(updateRect, 200);
-        window.addEventListener('resize', updateRect);
-        window.addEventListener('scroll', updateRect, true); // Listen to capture scroll
+        window.addEventListener('resize', throttledUpdate);
+        window.addEventListener('scroll', throttledUpdate, true); // Listen to capture scroll
 
         return () => {
             clearTimeout(timer);
-            window.removeEventListener('resize', updateRect);
-            window.removeEventListener('scroll', updateRect, true);
+            if (rafId) cancelAnimationFrame(rafId);
+            window.removeEventListener('resize', throttledUpdate);
+            window.removeEventListener('scroll', throttledUpdate, true);
         };
     }, [currentStepIndex, step.targetId]);
 

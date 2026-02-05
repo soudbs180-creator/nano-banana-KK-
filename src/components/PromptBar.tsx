@@ -495,10 +495,16 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         e.preventDefault();
         e.stopPropagation();
         dragCounter.current += 1;
+
+        // [FIX] Ignore internal drags (e.g. reordering reference images)
+        // If we are dragging an internal item, we don't want the huge "Drop Files" overlay
+        if (dragSourceId) return;
+
+        // Check if it's a file drag from OS
         if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
             setIsDragging(true);
         }
-    }, []);
+    }, [dragSourceId]);
     const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); }, []);
     const handleDragLeave = useCallback((e: React.DragEvent) => {
         e.preventDefault();

@@ -71,7 +71,16 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ imageUrl, originRect, onClo
                         pointerEvents: 'auto',
                         cursor: 'pointer'
                     }}
-                    onClick={onClose}
+                    onClick={(e) => {
+                        // 如果是视频，点击切换播放状态
+                        if (e.currentTarget.tagName === 'VIDEO') {
+                            e.stopPropagation();
+                            const v = e.currentTarget as HTMLVideoElement;
+                            v.paused ? v.play() : v.pause();
+                            return;
+                        }
+                        onClose();
+                    }}
                 />
             </div>
         </>,
