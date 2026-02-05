@@ -8,19 +8,30 @@
  * @returns Blob object
  */
 export const base64ToBlob = (dataURI: string): Blob => {
-    // Split metadata from data
-    const splitDataURI = dataURI.split(',');
-    const byteString = atob(splitDataURI[1]);
-    const mimeString = splitDataURI[0].split(':')[1].split(';')[0];
+    try {
+        // Split metadata from data
+        const splitDataURI = dataURI.split(',');
+        if (splitDataURI.length !== 2) {
+            console.error('[blobUtils] Invalid data URI format');
+            return new Blob([], { type: 'image/png' });
+        }
 
-    const ab = new ArrayBuffer(byteString.length);
-    const ia = new Uint8Array(ab);
+        const byteString = atob(splitDataURI[1]); // ⚠️ 可能抛出InvalidCharacterError
+        const mimeString = splitDataURI[0].split(':')[1].split(';')[0];
 
-    for (let i = 0; i < byteString.length; i++) {
-        ia[i] = byteString.charCodeAt(i);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+
+        for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+        }
+
+        return new Blob([ab], { type: mimeString });
+    } catch (error: any) {
+        console.error('[blobUtils] base64ToBlob failed:', error.message);
+        // 🚀 [关键修复] 返回空Blob而不是崩溃
+        return new Blob([], { type: 'image/png' });
     }
-
-    return new Blob([ab], { type: mimeString });
 };
 
 /**

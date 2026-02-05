@@ -383,13 +383,19 @@ export async function saveGeneratedImage(
     if (typeof base64OrBlob === 'string') {
         const match = base64OrBlob.match(/^data:(.+);base64,(.+)$/);
         if (match) {
-            const byteString = atob(match[2]);
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
+            try {
+                const byteString = atob(match[2]); // ⚠️ 可能抛出InvalidCharacterError
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                blob = new Blob([ab], { type: match[1] });
+            } catch (error: any) {
+                console.error('[StorageAdapter] atob failed:', error.message);
+                // 🚀 [关键修复] 返回失败而不是崩溃
+                return { success: false };
             }
-            blob = new Blob([ab], { type: match[1] });
         } else {
             console.error('[StorageAdapter] Invalid base64 format');
             return { success: false };

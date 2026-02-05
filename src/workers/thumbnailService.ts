@@ -149,12 +149,17 @@ export async function generateThumbnail(
                 throw new Error('Invalid base64 format');
             }
             mimeType = match[1];
-            const binary = atob(match[2]);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) {
-                bytes[i] = binary.charCodeAt(i);
+            try {
+                const binary = atob(match[2]); // ⚠️ 可能抛出InvalidCharacterError
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                arrayBuffer = bytes.buffer;
+            } catch (error: any) {
+                console.error('[ThumbnailService] atob failed:', error.message);
+                throw new Error('Invalid base64 encoding');
             }
-            arrayBuffer = bytes.buffer;
         } else {
             // File或Blob
             mimeType = source.type || 'image/png';
