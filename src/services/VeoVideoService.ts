@@ -57,9 +57,12 @@ export async function startVeoVideoGeneration(
     const model = config.model || 'veo-3.1-generate-preview';
     const cleanBase = baseUrl || 'https://generativelanguage.googleapis.com';
 
-    // 构建请求
-    const apiUrl = buildApiUrl(cleanBase, model, 'predictLongRunning', 'query', apiKey);
-    const headers = buildHeaders('query', apiKey, 'x-goog-api-key');
+    // 构建请求 - 使用 header 认证 (官方文档标准)
+    const apiUrl = `${cleanBase}/v1beta/models/${model}:predictLongRunning`;
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey
+    };
 
     const payload: any = {
         instances: [{ prompt: config.prompt }]
@@ -103,7 +106,8 @@ export async function pollVeoVideoOperation(
     signal?: AbortSignal
 ): Promise<VeoVideoResult> {
     const cleanBase = baseUrl || 'https://generativelanguage.googleapis.com';
-    const pollUrl = `${cleanBase}/v1beta/${operationId}?key=${apiKey}`;
+    // 轮询 URL: 使用 header 认证 (不需要 query 参数)
+    const pollUrl = `${cleanBase}/v1beta/${operationId}`;
 
     let pollCount = 0;
     const maxPolls = 180; // 最多轮询3分钟 (每10秒一次)
@@ -182,7 +186,8 @@ export async function cancelVeoVideoOperation(
     baseUrl?: string
 ): Promise<void> {
     const cleanBase = baseUrl || 'https://generativelanguage.googleapis.com';
-    const cancelUrl = `${cleanBase}/v1beta/${operationId}:cancel?key=${apiKey}`;
+    // 取消 URL: 使用 header 认证
+    const cancelUrl = `${cleanBase}/v1beta/${operationId}:cancel`;
 
     const response = await fetch(cancelUrl, {
         method: 'POST',

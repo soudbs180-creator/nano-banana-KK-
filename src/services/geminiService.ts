@@ -765,139 +765,23 @@ export const generateImage = async (
         }
 
         // ========== 分支 2: Imagen 图像模型 ==========
-        // Endpoint: :predict
-        // 格式: instances + parameters
-        // ⚠️ Imagen实际使用generativelanguage.googleapis.com,但格式不同
+        // 使用独立的 ImagenService (官方 API 格式)
         if (isImagenModel) {
-          // Imagen使用与Gemini相同的base URL
-          const imagenUrl = `${cleanBase}/v1beta/models/${apiModelId}:predict`;
-          const finalUrl = authMethod === 'query' ? `${imagenUrl}?key=${effectiveKey}` : imagenUrl;
+          const { generateImagenImage } = await import('./ImagenService');
 
-          const headers = buildHeaders(authMethod, effectiveKey, headerName);
-          if (group) headers['X-Group'] = group;
+          const imagenResult = await generateImagenImage(
+            {
+              prompt,
+              model: apiModelId,
+              aspectRatio,
+              imageSize: imageSize || ImageSize.SIZE_1K,
+              numberOfImages: 1
+            },
+            effectiveKey,
+            cleanBase,
+            controller?.signal
+          );
 
-          // Imagen API format: instances + parameters
-          const parameters: any = {
-            sampleCount: 1
-          };
-
-          if (aspectRatio && aspectRatio !== AspectRatio.AUTO) {
-            parameters.aspectRatio = aspectRatio;
-          }
-
-          // ⚠️ 只有非Fast版本的Imagen支持sampleImageSize
-          // imagen-4.0-fast-generate-001 不支持此参数
-          const supportsSampleImageSize = !apiModelId.includes('fast');
-          if (imageSize && supportsSampleImageSize) {
-            parameters.sampleImageSize = imageSize;
-          }
-
-          const payload = {
-            instances: [{ prompt }],
-            parameters
-          };
-
-          const response = await fetchWithTimeout(finalUrl, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload)
-          }, 300000, controller?.signal);
-
-          if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error?.message || `HTTP ${response.status}`);
-          }
-
-          result = await response.json();
-          const imageData = result.predictions?.[0]?.bytesBase64Encoded;
-
-          if (imageData) {
-            if (keyId) {
-              keyManager.reportSuccess(keyId);
-              const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, processedReferences?.length || 0);
-              keyManager.addUsage(keyId, tokens);
-              keyManager.addCost(keyId, cost);
-              costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, processedReferences?.length || 0);
-              usageData = { tokens, cost };
-            }
-            return { url: `data:image/png;base64,${imageData}`, ...usageData };
-          }
-          throw new Error("No image data in Imagen response");
-        }
-
-        // Gemini Image models use :generateContent
-        const apiUrl = buildApiUrl(cleanBase, apiModelId, 'generateContent', authMethod, effectiveKey);
-        const headers = buildHeaders(authMethod, effectiveKey, headerName);
-        if (group) headers['X-Group'] = group;
-
-        // Build parts array with clean prompt (no aspect ratio string)
-        const parts: any[] = [{ text: prompt }];
-        processedReferences?.forEach((img) => {
-          if (img?.data) {
-            let base64Data = img.data;
-            let mimeType = img.mimeType || 'image/png';
-            if (img.data.startsWith('data:')) {
-              const matches = img.data.match(/^data:(.+);base64,(.+)$/);
-              if (matches) { mimeType = matches[1]; base64Data = matches[2]; }
-            }
-            if (!img.data.startsWith('http') && !img.data.startsWith('blob:')) {
-              parts.push({ inlineData: { mimeType, data: base64Data } });
-            }
-          }
-        });
-
-        // Create Image Generation Configuration
-        const generationConfig: any = {
-          responseModalities: ["TEXT", "IMAGE"]
-        };
-
-        // Gemini Image models use imageConfig with camelCase
-        const imageConfig: any = {};
-
-        if (aspectRatio && aspectRatio !== AspectRatio.AUTO) {
-          imageConfig.aspectRatio = aspectRatio;
-        }
-
-        // ⚠️ 只有 gemini-3-pro-image-preview 支持 imageSize
-        // gemini-2.5-flash-image 不支持此参数
-        if (imageSize && model.includes('gemini-3-pro-image')) {
-          imageConfig.imageSize = imageSize;
-        }
-
-        if (Object.keys(imageConfig).length > 0) {
-          generationConfig.imageConfig = imageConfig;
-        }
-
-        const tools = enableGrounding ? [{ googleSearch: {} }] : undefined;
-
-        // Construct payload dynamically to avoid sending empty objects/undefined keys
-        const payload: any = {
-          contents: [{ role: 'user', parts }]
-        };
-
-        if (generationConfig && Object.keys(generationConfig).length > 0) {
-          payload.generationConfig = generationConfig;
-        }
-
-        if (tools) {
-          payload.tools = tools;
-        }
-
-        const response = await fetchWithTimeout(apiUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload)
-        }, 300000, controller?.signal);
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error?.message || `HTTP ${response.status}`);
-        }
-
-        result = await response.json();
-        const inlineData = result.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData;
-
-        if (inlineData) {
           if (keyId) {
             keyManager.reportSuccess(keyId);
             const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, processedReferences?.length || 0);
@@ -906,9 +790,38 @@ export const generateImage = async (
             costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, processedReferences?.length || 0);
             usageData = { tokens, cost };
           }
-          return { url: `data:image/png;base64,${inlineData.data}`, ...usageData };
+
+          return { url: imagenResult.url, ...usageData };
         }
-        throw new Error("No image data in Gemini response");
+
+        // ========== 分支 3: Gemini Image 模型 ==========
+        // 使用独立的 GeminiImageService (官方 API 格式)
+        const { generateGeminiImage } = await import('./GeminiImageService');
+
+        const geminiResult = await generateGeminiImage(
+          {
+            prompt,
+            model: apiModelId,
+            aspectRatio,
+            imageSize: imageSize || undefined,
+            referenceImages: processedReferences,
+            enableGrounding
+          },
+          effectiveKey,
+          cleanBase,
+          controller?.signal
+        );
+
+        if (keyId) {
+          keyManager.reportSuccess(keyId);
+          const { cost, tokens } = costService.calculateCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt.length, processedReferences?.length || 0);
+          keyManager.addUsage(keyId, tokens);
+          keyManager.addCost(keyId, cost);
+          costService.recordCost(model, imageSize || ImageSize.SIZE_1K, 1, prompt, processedReferences?.length || 0);
+          usageData = { tokens, cost };
+        }
+
+        return { url: geminiResult.url, ...usageData };
       }
       // -----------------------------------------------------------------------
       // CASE 3: Standard OpenAI Image API (Default)
