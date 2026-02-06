@@ -30,10 +30,27 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
     const lowerQuery = query.toLowerCase();
 
     // Filter results
-    const nodeResults: SearchResultItem[] = promptNodes.filter(node =>
-        node.prompt.toLowerCase().includes(lowerQuery) ||
-        (node.tags && node.tags.some(tag => tag.toLowerCase().includes(lowerQuery)))
-    ).map(n => ({ type: 'node', data: n }));
+    // 🚀 Sorting Logic: Tag Match > Recency
+    const nodeResults: SearchResultItem[] = (() => {
+        const matching = promptNodes.filter(node =>
+            node.prompt.toLowerCase().includes(lowerQuery) ||
+            (node.tags && node.tags.some(tag => tag.toLowerCase().includes(lowerQuery)))
+        );
+
+        matching.sort((a, b) => {
+            // 1. Tag Match Priority
+            const aTagMatch = a.tags && a.tags.some(tag => tag.toLowerCase().includes(lowerQuery));
+            const bTagMatch = b.tags && b.tags.some(tag => tag.toLowerCase().includes(lowerQuery));
+
+            if (aTagMatch && !bTagMatch) return -1;
+            if (!aTagMatch && bTagMatch) return 1;
+
+            // 2. Recency (Newest First)
+            return b.timestamp - a.timestamp;
+        });
+
+        return matching.map(n => ({ type: 'node', data: n }));
+    })();
 
     const groupResults: SearchResultItem[] = groups.filter(g =>
         (g.label || 'Group').toLowerCase().includes(lowerQuery)
@@ -68,7 +85,7 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                     break;
                 case 'Enter':
                     e.preventDefault();
-                    if (isMultiSelectMode) {
+                    if (isMultiSelectMode || e.ctrlKey || e.metaKey || e.shiftKey) {
                         if (e.ctrlKey || e.metaKey) {
                             handleConfirmMultiSelect();
                         } else {
@@ -211,8 +228,16 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                                 <div
                                     key={item.data.id}
                                     onClick={(e) => {
-                                        if (isMultiSelectMode) {
-                                            // 🚀 Shift+点击区间选择
+                                        // 🚀 Implicit Multi-Select Logic
+                                        const isModifierHeld = e.shiftKey || e.ctrlKey || e.metaKey;
+
+                                        if (isMultiSelectMode || isModifierHeld) {
+                                            if (!isMultiSelectMode) {
+                                                setIsMultiSelectMode(true);
+                                            }
+                                            e.stopPropagation();
+
+                                            // 1. Shift Range Select
                                             if (e.shiftKey && lastClickedIndexRef.current >= 0) {
                                                 const start = Math.min(lastClickedIndexRef.current, index);
                                                 const end = Math.max(lastClickedIndexRef.current, index);
@@ -225,11 +250,14 @@ const SearchPalette: React.FC<SearchPaletteProps> = ({ isOpen, onClose, promptNo
                                                     }
                                                     return next;
                                                 });
-                                            } else {
+                                            }
+                                            // 2. Ctrl Toggle (Add/Remove)
+                                            else {
                                                 toggleMultiSelect(item);
                                             }
                                             lastClickedIndexRef.current = index;
                                         } else {
+                                            // Normal Select
                                             handleSelect(item);
                                         }
                                     }}

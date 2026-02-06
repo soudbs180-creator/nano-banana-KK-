@@ -108,6 +108,7 @@ export interface GeneratedImage {
   orphaned?: boolean; // 孤独副卡（无父节点）
   fileName?: string; // 原始文件名
   fileSize?: number; // 文件大小（字节）
+  alias?: string; // 🚀 [New] 用户自定义备注名
 }
 
 export interface PromptNode {

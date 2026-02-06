@@ -63,7 +63,7 @@ const AppContent: React.FC = () => {
     addPromptNode,
     updatePromptNode,
     addImageNodes,
-    updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions,
+    updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions, updateImageNode, // 🚀
     deletePromptNode,
     deleteImageNode,
     linkNodes,
@@ -244,6 +244,14 @@ const AppContent: React.FC = () => {
   const [taggingNodeIds, setTaggingNodeIds] = useState<string[]>([]);
   const [initialTags, setInitialTags] = useState<string[]>([]);
 
+  // Tag Constraints State
+  const [tagLimits, setTagLimits] = useState({ maxTags: 10, maxChars: 6 });
+
+  // 🚀 New State for enhanced TagInputModal
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [inheritedTags, setInheritedTags] = useState<string[]>([]);
+  const [isSubCard, setIsSubCard] = useState(false);
+
   const handleTag = useCallback(() => {
     if (selectedNodeIds.length === 0) return;
     setTaggingNodeIds(selectedNodeIds);
@@ -252,16 +260,95 @@ const AppContent: React.FC = () => {
     const promptNode = activeCanvas?.promptNodes.find(n => n.id === firstId);
     const imageNode = activeCanvas?.imageNodes.find(n => n.id === firstId);
 
+    // 🚀 Collect all existing tags from canvas for suggestions
+    const allPromptTags = activeCanvas?.promptNodes.flatMap(n => n.tags || []) || [];
+    const allImageTags = activeCanvas?.imageNodes.flatMap(n => n.tags || []) || [];
+    const uniqueAllTags = [...new Set([...allPromptTags, ...allImageTags])];
+    setAllTags(uniqueAllTags);
+
+    // Determine if editing Sub Card and find inherited tags
+    if (imageNode) {
+      // 🚀 Sub Card - find parent's tags
+      const parentPrompt = activeCanvas?.promptNodes.find(n => n.id === imageNode.parentPromptId);
+      setInheritedTags(parentPrompt?.tags || []);
+      setIsSubCard(true);
+      setTagLimits({ maxTags: 3, maxChars: 6 });
+    } else {
+      // Main Card
+      setInheritedTags([]);
+      setIsSubCard(false);
+      setTagLimits({ maxTags: 8, maxChars: 6 });
+    }
+
     const tags = promptNode?.tags || imageNode?.tags || [];
     setInitialTags(tags);
     setIsTagModalOpen(true);
     setSelectionMenuPosition(null);
   }, [selectedNodeIds, activeCanvas]);
 
-  const handleSaveTags = useCallback((tags: string[]) => {
+  const handleSaveTags = useCallback(async (tags: string[]) => {
+    const firstId = taggingNodeIds[0];
+    const promptNode = activeCanvas?.promptNodes.find(n => n.id === firstId);
+
+    // 🚀 Deduplication Logic: If Main Card adds a tag, remove from its Sub Cards
+    if (promptNode) {
+      // Editing a Main Card
+      const childImageIds = promptNode.childImageIds || [];
+      const newMainTags = tags;
+
+      // For each child sub-card, remove any tag that now exists on the main card
+      childImageIds.forEach(imgId => {
+        const img = activeCanvas?.imageNodes.find(n => n.id === imgId);
+        if (img && img.tags && img.tags.length > 0) {
+          const filteredTags = img.tags.filter(t => !newMainTags.includes(t));
+          if (filteredTags.length !== img.tags.length) {
+            // Tags were removed, update the sub-card
+            setNodeTags([imgId], filteredTags);
+          }
+        }
+      });
+    }
+
     setNodeTags(taggingNodeIds, tags);
     setIsTagModalOpen(false);
-  }, [taggingNodeIds, setNodeTags]);
+
+    // 🚀 File System Shortcut Integration
+    try {
+      const { fileSystemService } = await import('./services/fileSystemService');
+      const handle = fileSystemService.getGlobalHandle();
+
+      if (handle) {
+        for (const nodeId of taggingNodeIds) {
+          const img = activeCanvas?.imageNodes.find(n => n.id === nodeId);
+          // Only process ImageNodes that have a filename (from local storage)
+          // @ts-ignore - filename injected by CanvasContext
+          if (img && img.fileName) {
+            const oldTags = img.tags || [];
+            const newTags = tags;
+
+            // Diff tags
+            const added = newTags.filter(t => !oldTags.includes(t));
+            const removed = oldTags.filter(t => !newTags.includes(t));
+
+            const isVideo = img.url?.startsWith('data:video/') || img.model?.includes('veo') || false;
+
+            // Execute updates
+            // @ts-ignore
+            const filename = img.fileName;
+
+            for (const tag of added) {
+              await fileSystemService.createTagShortcut(handle, tag, filename, isVideo);
+            }
+            for (const tag of removed) {
+              await fileSystemService.removeTagShortcut(handle, tag, filename, isVideo);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[App] Failed to update tag shortcuts:', e);
+    }
+  }, [taggingNodeIds, setNodeTags, activeCanvas]);
 
 
   // Sync user with KeyManager and handle Modal Logic (Storage -> API)
@@ -841,16 +928,57 @@ const AppContent: React.FC = () => {
           clearSelection();
         }
       }
-
+      // 🚀 Show selection menu centered on selection bounds (not at mouse)
       if (e.button === 2) {
-        const hasSelection = nextSelectionIds.length > 0 || selectedNodeIds.length > 0;
-        setSelectionMenuPosition(hasSelection ? { x: selectionBox.current.x, y: selectionBox.current.y } : null);
+        const allSelectedIds = nextSelectionIds.length > 0 ? nextSelectionIds : selectedNodeIds;
+        if (allSelectedIds.length > 0) {
+          // Calculate center position immediately - getSelectionScreenCenter depends on activeCanvas
+          // which may not include newly selected IDs, so we compute manually here
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          let hasNodes = false;
+
+          activeCanvas?.promptNodes
+            .filter(n => allSelectedIds.includes(n.id))
+            .forEach(n => {
+              const w = 380;
+              const h = n.height || 200;
+              minX = Math.min(minX, n.position.x - w / 2);
+              maxX = Math.max(maxX, n.position.x + w / 2);
+              minY = Math.min(minY, n.position.y - h);
+              maxY = Math.max(maxY, n.position.y);
+              hasNodes = true;
+            });
+
+          activeCanvas?.imageNodes
+            .filter(n => allSelectedIds.includes(n.id))
+            .forEach(n => {
+              const { width, totalHeight } = getCardDimensions(n.aspectRatio, true);
+              minX = Math.min(minX, n.position.x - width / 2);
+              maxX = Math.max(maxX, n.position.x + width / 2);
+              minY = Math.min(minY, n.position.y - totalHeight);
+              maxY = Math.max(maxY, n.position.y);
+              hasNodes = true;
+            });
+
+          if (hasNodes) {
+            const centerX = (minX + maxX) / 2;
+            const topY = minY;
+            const screenX = centerX * canvasTransform.scale + canvasTransform.x;
+            const screenY = topY * canvasTransform.scale + canvasTransform.y;
+            setSelectionMenuPosition({ x: screenX, y: screenY });
+          } else {
+            setSelectionMenuPosition(null);
+          }
+        } else {
+          setSelectionMenuPosition(null);
+        }
       } else {
+        // Left click clears position unless clicking on a node (handled separately)
         setSelectionMenuPosition(null);
       }
       setSelectionBox(null);
     }
-  }, [selectionBox, canvasTransform, activeCanvas, selectNodes, clearSelection, selectedNodeIds]);
+  }, [selectionBox, canvasTransform, activeCanvas, selectNodes, clearSelection, selectedNodeIds, getCardDimensions]);
 
 
 
@@ -924,6 +1052,50 @@ const AppContent: React.FC = () => {
       arrangeAllNodes();
     }, 100);
   }, [selectNodes, arrangeAllNodes]);
+
+  // 🚀 Helper: Compute selection bounds center in screen coordinates
+  const getSelectionScreenCenter = useCallback((nodeIds: string[]) => {
+    if (!activeCanvas || nodeIds.length === 0) return null;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let hasNodes = false;
+
+    // Check prompts
+    activeCanvas.promptNodes
+      .filter(n => nodeIds.includes(n.id))
+      .forEach(n => {
+        const w = 380;
+        const h = n.height || 200;
+        minX = Math.min(minX, n.position.x - w / 2);
+        maxX = Math.max(maxX, n.position.x + w / 2);
+        minY = Math.min(minY, n.position.y - h);
+        maxY = Math.max(maxY, n.position.y);
+        hasNodes = true;
+      });
+
+    // Check images
+    activeCanvas.imageNodes
+      .filter(n => nodeIds.includes(n.id))
+      .forEach(n => {
+        const { width, totalHeight } = getCardDimensions(n.aspectRatio, true);
+        minX = Math.min(minX, n.position.x - width / 2);
+        maxX = Math.max(maxX, n.position.x + width / 2);
+        minY = Math.min(minY, n.position.y - totalHeight);
+        maxY = Math.max(maxY, n.position.y);
+        hasNodes = true;
+      });
+
+    if (!hasNodes) return null;
+
+    // Convert canvas coords to screen coords
+    const centerX = (minX + maxX) / 2;
+    const topY = minY; // Use top of bounds for menu position (above selection)
+
+    const screenX = centerX * canvasTransform.scale + canvasTransform.x;
+    const screenY = topY * canvasTransform.scale + canvasTransform.y;
+
+    return { x: screenX, y: screenY };
+  }, [activeCanvas, canvasTransform, getCardDimensions]);
 
   // 🚀 定位卡组：优先定位选中卡组，无选中时定位最新
   const handleResetView = useCallback(() => {
@@ -1608,13 +1780,12 @@ const AppContent: React.FC = () => {
     }
 
     // 🚀 [Cleanup] Remove any OTHER drafts if they exist (duplicate prevention)
-    // This is a safety measure.
-    /*
+    // This is a safety measure - uncommented to fix orphan card issue
     const leftovers = activeCanvas?.promptNodes.filter(n => n.isDraft && n.id !== generatingNode.id);
     if (leftovers && leftovers.length > 0) {
-        leftovers.forEach(n => deletePromptNode(n.id));
+      console.log('[handleGenerate] Cleaning up orphan drafts:', leftovers.map(n => n.id));
+      leftovers.forEach(n => deletePromptNode(n.id));
     }
-    */
 
     setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
     setActiveSourceImage(null);
@@ -1714,7 +1885,9 @@ const AppContent: React.FC = () => {
 
     // Clear Draft ID so next typing creates new draft
     setDraftNodeId(null);
+    // 🚀 [New Requirement] Clear input box and active source
     setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
+    setActiveSourceImage(null);
 
     import('./services/notificationService').then(({ notify }) => {
       notify.success('已固定', '草稿已转换为独立卡片');
@@ -2004,7 +2177,8 @@ const AppContent: React.FC = () => {
       aspectRatio: clickedNode.aspectRatio,
       imageSize: clickedNode.imageSize,
       model: clickedNode.model,
-      referenceImages: referenceImages
+      referenceImages: referenceImages,
+      mode: clickedNode.mode || GenerationMode.IMAGE // 🚀 Sync Mode (Image/Video)
     }));
 
     // [Draft Logic] Resume Draft if clicked on a draft node
@@ -2084,8 +2258,10 @@ const AppContent: React.FC = () => {
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     let hasNodes = false;
-    const PADDING = 48;
-    const TOP_EXTRA = 36;
+    // 🚀 Uniform 40px padding on all sides
+    const PADDING = 40;
+    const TOP_EXTRA = 40; // Extra for header
+    const BOTTOM_EXTRA = 40;
 
     // Helper to merge rect into bounds
     const addRect = (x: number, y: number, w: number, h: number) => {
@@ -2123,7 +2299,7 @@ const AppContent: React.FC = () => {
       x: minX - PADDING,
       y: minY - (PADDING + TOP_EXTRA),
       width: (maxX - minX) + PADDING * 2,
-      height: (maxY - minY) + PADDING + TOP_EXTRA
+      height: (maxY - minY) + PADDING + TOP_EXTRA + BOTTOM_EXTRA
     };
   }, [activeCanvas]);
 
@@ -2150,8 +2326,11 @@ const AppContent: React.FC = () => {
       return !(x > vRight || x + width < vLeft || y > vBottom || y + height < vTop);
     });
 
-    // 2. Filter Prompt Nodes
+    // 2. Filter Prompt Nodes (排除草稿节点，草稿由中心叠加层单独渲染)
     const visiblePromptNodes = activeCanvas.promptNodes.filter(n => {
+      // 🚀 [Fix Bug #1] 草稿节点由固定中心叠加层渲染，此处跳过避免重复
+      if (n.isDraft) return false;
+
       // Estimate Bounds (Center X, Bottom Y) - 🚀 增大估算确保不消失
       const w = 800;
       const h = 800;
@@ -2208,7 +2387,8 @@ const AppContent: React.FC = () => {
 
 
       {/* Top Right User Menu - Desktop Only */}
-      <div id="header-user-menu" className="absolute top-4 right-4 z-[100] hidden md:flex items-center gap-3">
+      {/* Top Right User Menu - Desktop Only */}
+      <div id="header-user-menu" className={`absolute top-4 z-[100] hidden md:flex items-center gap-3 transition-all duration-300 ${isChatOpen ? 'right-[404px]' : 'right-4'}`}>
 
         {/* User Avatar & Dropdown Trigger */}
         <div className="relative group">
@@ -2363,9 +2543,46 @@ const AppContent: React.FC = () => {
               const childImageIds = prompts.flatMap(p => p.childImageIds || []);
               const images = activeCanvas.imageNodes.filter(n => selectedNodeIds.includes(n.id) || childImageIds.includes(n.id));
 
+              // 🚀 Merge Logic: Find existing groups that contain any of the selected nodes
+              const selectedNodeSet = new Set([...prompts.map(n => n.id), ...images.map(n => n.id)]);
+              const existingGroupsInSelection = activeCanvas.groups.filter(g =>
+                g.nodeIds.some(nid => selectedNodeSet.has(nid))
+              );
+
+              // Collect all node IDs from existing groups to ensure they're merged
+              const allMergedNodeIds = new Set<string>();
+              existingGroupsInSelection.forEach(g => g.nodeIds.forEach(nid => allMergedNodeIds.add(nid)));
+              selectedNodeSet.forEach(nid => allMergedNodeIds.add(nid));
+
+              // 🚀 Label Merge Logic
+              let mergedLabel: string | undefined;
+              const existingLabels = existingGroupsInSelection
+                .map(g => g.label?.trim())
+                .filter((l): l is string => !!l && l !== 'Group');
+
+              // Remove duplicates
+              const uniqueLabels = [...new Set(existingLabels)];
+
+              if (uniqueLabels.length === 0) {
+                mergedLabel = undefined; // Use default 'Group'
+              } else if (uniqueLabels.length === 1) {
+                mergedLabel = uniqueLabels[0];
+              } else {
+                // Combine names: "Name1 + Name2"
+                mergedLabel = uniqueLabels.join(' + ');
+              }
+
+              // 🚀 Remove old groups that are being merged
+              existingGroupsInSelection.forEach(g => removeGroup(g.id));
+
+              // Calculate combined bounds (using all merged nodes)
               let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-              prompts.forEach(n => {
+              // Find all prompts and images by ID
+              const allPrompts = activeCanvas.promptNodes.filter(n => allMergedNodeIds.has(n.id));
+              const allImages = activeCanvas.imageNodes.filter(n => allMergedNodeIds.has(n.id));
+
+              allPrompts.forEach(n => {
                 const w = 380; // Assuming prompt width
                 const h = n.height || 200;
                 minX = Math.min(minX, n.position.x - w / 2);
@@ -2374,7 +2591,7 @@ const AppContent: React.FC = () => {
                 maxY = Math.max(maxY, n.position.y);
               });
 
-              images.forEach(n => {
+              allImages.forEach(n => {
                 const { width, totalHeight } = getCardDimensions(n.aspectRatio, true);
                 minX = Math.min(minX, n.position.x - width / 2);
                 maxX = Math.max(maxX, n.position.x + width / 2);
@@ -2387,16 +2604,19 @@ const AppContent: React.FC = () => {
                 return;
               }
 
-              const padding = 20;
+              const padding = 40; // 🚀 Uniform 40px all sides
+              const topExtra = 40;
+              const bottomExtra = 40;
               const group: CanvasGroup = {
                 id: Date.now().toString(),
-                nodeIds: [...prompts.map(n => n.id), ...images.map(n => n.id)],
+                nodeIds: [...allMergedNodeIds],
                 bounds: {
                   x: minX - padding,
-                  y: minY - padding,
+                  y: minY - (padding + topExtra),
                   width: (maxX - minX) + padding * 2,
-                  height: (maxY - minY) + padding * 2
+                  height: (maxY - minY) + padding + topExtra + bottomExtra
                 },
+                label: mergedLabel,
                 type: 'custom'
               };
               addGroup(group);
@@ -2453,6 +2673,11 @@ const AppContent: React.FC = () => {
             // Also clear selection
             clearSelection();
             setSelectionMenuPosition(null);
+            // 🚀 [Fix] Explicitly remove draft node so preview disappears
+            if (draftNodeId) {
+              deletePromptNode(draftNodeId);
+              setDraftNodeId(null);
+            }
           }
         }}
         onAutoArrange={handleAutoArrange}
@@ -2768,7 +2993,14 @@ const AppContent: React.FC = () => {
             onPositionChange={updatePromptNodePosition}
             isSelected={selectedNodeIds.includes(node.id)}
             highlighted={highlightedId === node.id}
-            onSelect={() => selectNodes([node.id], (window.event as any)?.shiftKey ? 'toggle' : 'replace')}
+            onSelect={() => {
+              selectNodes([node.id], (window.event as any)?.shiftKey ? 'toggle' : 'replace');
+              // 🚀 Right Click triggers Selection Menu centered on node bounds
+              if ((window.event as any)?.button === 2) {
+                const pos = getSelectionScreenCenter([node.id]);
+                if (pos) setSelectionMenuPosition(pos);
+              }
+            }}
             onClickPrompt={handlePromptClick}
             onConnectStart={handleConnectStart}
             zoomScale={canvasTransform.scale}
@@ -2787,6 +3019,13 @@ const AppContent: React.FC = () => {
               }
             }}
             onPin={handlePinDraft}
+            onRemoveTag={(id, tag) => {
+              const node = activeCanvas?.promptNodes.find(n => n.id === id);
+              if (node && node.tags) {
+                const newTags = node.tags.filter(t => t !== tag);
+                updatePromptNode({ ...node, tags: newTags });
+              }
+            }}
           />
         ))}
 
@@ -2799,12 +3038,20 @@ const AppContent: React.FC = () => {
             onPositionChange={updateImageNodePosition}
             highlighted={highlightedId === node.id}
             onDimensionsUpdate={updateImageNodeDimensions}
+            onUpdate={updateImageNode} // 🚀
             onDelete={deleteImageNode}
             onConnectEnd={handleConnectEnd}
             onClick={handleImageClick}
             isActive={node.id === activeSourceImage}
             isSelected={selectedNodeIds.includes(node.id)}
-            onSelect={() => selectNodes([node.id], (window.event as any)?.shiftKey ? 'toggle' : 'replace')}
+            onSelect={() => {
+              selectNodes([node.id], (window.event as any)?.shiftKey ? 'toggle' : 'replace');
+              // 🚀 Right Click triggers Selection Menu centered on node bounds
+              if ((window.event as any)?.button === 2) {
+                const pos = getSelectionScreenCenter([node.id]);
+                if (pos) setSelectionMenuPosition(pos);
+              }
+            }}
             zoomScale={canvasTransform.scale}
             isMobile={isMobile}
             onPreview={handleOpenPreview}
@@ -2881,6 +3128,11 @@ const AppContent: React.FC = () => {
         onClose={() => setIsTagModalOpen(false)}
         initialTags={initialTags}
         onSave={handleSaveTags}
+        maxTags={tagLimits.maxTags}
+        maxChars={tagLimits.maxChars}
+        allTags={allTags}
+        inheritedTags={inheritedTags}
+        isSubCard={isSubCard}
       />
       <UserProfileModal
         isOpen={showProfileModal}
@@ -2936,7 +3188,8 @@ const AppContent: React.FC = () => {
       {/* [NEW] Draft Node Overlay (Fixed Center) */}
       {draftNodeId && (() => {
         const draftNode = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
-        if (!draftNode) return null;
+        // 🚀 [Fix] 只有当节点仍然是草稿时才显示叠加层，生成中的节点应该只在画布上显示
+        if (!draftNode || !draftNode.isDraft) return null;
 
         // Mock position 0,0 for component, handle centering via container
         const displayNode = { ...draftNode, position: { x: 0, y: 0 } };
@@ -3009,6 +3262,7 @@ const AppContent: React.FC = () => {
           }
           isVisible={isMobileNavVisible}
           onInteract={handleShowMobileNav}
+          onToggleChat={() => setIsChatOpen(prev => !prev)}
         />
       )}
       {showTutorial && (
@@ -3022,7 +3276,8 @@ const AppContent: React.FC = () => {
 
 
       {/* AI聊天按钮 - 右下角固定 */}
-      <div className={`absolute bottom-6 z-50 transition-all duration-300 ${isChatOpen ? 'right-[404px]' : 'right-6'}`}>
+      {/* AI聊天按钮 - 右下角固定 */}
+      <div className={`absolute bottom-6 z-50 transition-all duration-300 ${isChatOpen ? 'right-[404px]' : 'right-6'} hidden md:block`}>
         <button
           id="chat-trigger-button"
           className="ai-chat-btn flex items-center justify-center cursor-pointer focus-visible:outline-none text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-blue-400/80 hover:shadow-[0_0_35px] bg-transparent overflow-hidden relative rounded-full aspect-square h-10 hover:scale-110 transition-all duration-300 p-2"

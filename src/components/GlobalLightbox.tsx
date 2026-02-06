@@ -44,24 +44,45 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
 
         const loadContent = async () => {
             try {
-                // 确定目标资源：优先使用 originalUrl，其次使用 url
-                // 如果是 blob/data URL，直接使用
-                // 尝试从 IndexedDB 获取原始质量图片
-                const { getImage } = await import('../services/imageStorage');
-                const cached = await getImage(image.id);
+                // 🔒 强制加载原图（新的保护机制）
+                const { getOriginalImage } = await import('../services/imageStorage');
+                const original = await getOriginalImage(image.id);
 
                 if (!active) return;
 
-                if (cached && cached.startsWith('data:')) {
-                    setDisplaySrc(cached);
-                } else if (image.originalUrl) {
-                    setDisplaySrc(image.originalUrl);
+                if (original) {
+                    setDisplaySrc(original);
+                    console.log('[Lightbox] 🔒 ✅ Loaded original from IndexedDB');
                 } else {
-                    setDisplaySrc(image.url);
+                    // 🔒 Fallback 策略：尝试使用storageId
+                    console.warn('[Lightbox] 🔒 ⚠️ Original not found, trying fallback strategies...');
+
+                    // 策略1: 尝试从storageId加载
+                    if (image.storageId && image.storageId !== image.id) {
+                        const fromStorage = await getOriginalImage(image.storageId);
+                        if (fromStorage) {
+                            setDisplaySrc(fromStorage);
+                            console.log('[Lightbox] 🔒 ✅ Recovered from storageId');
+                            return;
+                        }
+                    }
+
+                    // 策略2: 使用originalUrl
+                    if (image.originalUrl) {
+                        setDisplaySrc(image.originalUrl);
+                        console.log('[Lightbox] 🔒 ⚠️ Fallback to originalUrl');
+                    } else if (image.url) {
+                        setDisplaySrc(image.url);
+                        console.log('[Lightbox] 🔒 ⚠️ Fallback to url (may not be original)');
+                    }
                 }
             } catch (e) {
-                console.error("Lightbox load error", e);
-                if (active) setDisplaySrc(image.url); // 兜底方案
+                console.error("[Lightbox] 🔒 ❌ Load error:", e);
+                if (active) {
+                    // 最终兜底
+                    const fallback = image.originalUrl || image.url;
+                    setDisplaySrc(fallback);
+                }
             } finally {
                 if (active) setIsLoading(false);
             }
@@ -147,6 +168,48 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         document.body.removeChild(a);
     };
 
+    // 6. 防止双击过快导致的误触关闭 (600ms安全期 - 支持慢速双击)
+    const [isReady, setIsReady] = useState(false);
+    useEffect(() => {
+        const timer = setTimeout(() => setIsReady(true), 600);
+        return () => clearTimeout(timer);
+    }, []);
+
+    const handleBackgroundClick = useCallback(() => {
+        if (isReady) onClose();
+    }, [isReady, onClose]);
+
+    // 7. [Fix] Native Video DoubleClick Capture
+
+    // React's onDoubleClick bubbles, but video fullscreen often happens on native event.
+    // We use a capture listener to intercept it BEFORE the browser handles it.
+    // 7. [Fix] Native Video DoubleClick Capture (Mousedown Strategy)
+    // Browser fullscreen often triggers on the second mousedown, NOT the dblclick event.
+    // We use capture: true on mousedown to intercept the 2nd click (`e.detail > 1`)
+    // before the video element sees it.
+    const videoRef = useRef<HTMLVideoElement>(null);
+    useEffect(() => {
+        const videoEl = videoRef.current;
+        if (!videoEl) return;
+
+        const handleNativeMousedown = (e: MouseEvent) => {
+            // Check if this is the second click (or more) of a double-click
+            if (e.detail > 1) {
+                // Stop everything immediately
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                onClose();
+            }
+        };
+
+        // Use capture: true to intercept BEFORE the video element
+        videoEl.addEventListener('mousedown', handleNativeMousedown, { capture: true });
+        return () => {
+            videoEl.removeEventListener('mousedown', handleNativeMousedown, { capture: true });
+        };
+    }, [onClose]);
+
     if (!image) return null;
 
     const isVideo = image.mode === GenerationMode.VIDEO || displaySrc?.startsWith('data:video') || displaySrc?.endsWith('.mp4');
@@ -154,7 +217,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     return ReactDOM.createPortal(
         <div
             className="fixed inset-0 z-[99999] bg-black/95 flex flex-col items-center justify-center animate-fadeIn select-none overflow-hidden"
-            onClick={onClose}
+            onClick={handleBackgroundClick}
         >
             {/* 顶栏: 关闭按钮 */}
             <button
@@ -200,18 +263,33 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 {isLoading ? (
                     <div className="text-white">加载中...</div>
                 ) : isVideo ? (
-                    <video
-                        src={displaySrc!}
-                        controls
-                        autoPlay
-                        loop
-                        onDoubleClick={(e) => { e.preventDefault(); onClose(); }}
-                        className="max-w-full max-h-full object-contain"
+                    <div
+                        className="max-w-full max-h-full flex items-center justify-center"
                         style={{
                             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                            cursor: isPanning ? 'grabbing' : 'grab'
+                            cursor: isPanning ? 'grabbing' : 'grab' // Apply cursor to wrapper
                         }}
-                    />
+                        onDoubleClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onClose();
+                        }}
+                    >
+                        <video
+                            ref={videoRef}
+                            src={displaySrc!}
+                            controls
+                            autoPlay
+                            loop
+                            playsInline
+                            className="max-w-full max-h-full object-contain pointer-events-auto"
+                            // Native listener handles double click
+                            style={{
+                                maxWidth: '100%',
+                                maxHeight: '100%'
+                            }}
+                        />
+                    </div>
                 ) : (
                     <img
                         src={displaySrc!}

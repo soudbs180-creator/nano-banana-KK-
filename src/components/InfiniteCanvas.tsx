@@ -175,6 +175,12 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
         if (!onImageDrop) return;
 
+        // 🚀 [FIX] Ignore Internal Drags (prevent orphan creation from internal move)
+        // Check if the drag data includes our internal type
+        if (e.dataTransfer.types.includes('application/x-kk-image-ref')) {
+            return;
+        }
+
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
             const imageFile = Array.from(files).find(f => f.type.startsWith('image/'));
@@ -494,7 +500,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             </div>
 
             {/* Zoom Slider & Version - Bottom Left */}
-            <div className="absolute bottom-4 left-4 z-50 flex items-center gap-3">
+            <div className="absolute bottom-4 left-4 z-50 hidden md:flex items-center gap-3">
                 {/* Zoom Slider */}
                 <div className="glass h-10 px-4 rounded-xl flex items-center gap-3">
                     <input
@@ -542,7 +548,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
                 {/* Version Badge */}
                 <div className="glass h-10 px-3 rounded-xl flex items-center">
-                    <span className="text-xs text-zinc-500 font-semibold">v1.2.7</span>
+                    <span className="text-xs text-zinc-500 font-semibold">v1.2.8</span>
                 </div>
 
                 {/* Update Notification */}

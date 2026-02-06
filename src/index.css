@@ -1438,10 +1438,11 @@ body.dark-mode .input-bar {
   }
 
   .input-bar-footer {
-    flex-wrap: wrap;
-    gap: 8px;
-    flex-direction: column;
-    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: 4px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
 
   .input-bar-model {

@@ -459,7 +459,8 @@ async function syncWithCloud() {
                 }
             }
 
-            // B. Sync API Budgets to KeyManager
+            // B. Sync API Budgets to KeyManager (DISABLED to prevent conflict with KeyManager's own sync)
+            /* 
             if (data.api_budgets && Array.isArray(data.api_budgets)) {
                 const { keyManager } = await import('./keyManager');
                 const slots = keyManager.getSlots();
@@ -486,6 +487,7 @@ async function syncWithCloud() {
                     keyManager.updateBudgetsFromCloud(data.api_budgets);
                 }
             }
+            */
         }
 
         // 3. Prepare Push

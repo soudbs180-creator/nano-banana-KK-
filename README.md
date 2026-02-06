@@ -1,8 +1,8 @@
-# KK Studio v1.2.6
+# KK Studio v1.2.8
 
 **下一代 AI 图像创作工作室 | 无限画布 | 120Hz 极致性能**
 
-![Version](https://img.shields.io/badge/version-1.2.6-indigo.svg)
+![Version](https://img.shields.io/badge/version-1.2.8-indigo.svg)
 ![React](https://img.shields.io/badge/React-19-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
 ![Vite](https://img.shields.io/badge/Vite-6.0-purple)
@@ -185,6 +185,31 @@ KK-Studio-1.0.0/
 ---
 
 ## 📄 更新日志
+
+### v1.2.8 (2026-02-06)
+
+#### ✨ 新功能
+- **移动端布局优化**：修复侧边栏在移动端不可见的问题，禁用自动折叠计时器
+- **移动端 Footer 水平排列**：修复 Footer 按钮在移动端垂直堆叠问题，现改为水平排列
+- **简化移动端界面**：在移动端隐藏模式切换按钮、联网按钮组和生成设置组，优化交互体验
+
+#### 🛠️ 界面优化
+- **CSS 媒体查询修复**：将 `.input-bar-footer` 的 `flex-direction: column` 改为 `row`
+- **按钮布局改进**：移动端按钮使用 `display: contents` 参与 flex 布局
+
+---
+
+### v1.2.7 (2026-02-05)
+
+#### ✨ 新功能
+- **API 渠道重构**：优化 API Key 管理逻辑，支持更灵活的渠道配置
+- **性能优化**：改进缩略图服务和 LOD（Level of Detail）服务
+
+#### 🛠️ 修复
+- **API 崩溃修复**：解决 API 调用时的异常崩溃问题
+- **稳定性提升**：修复多个边缘情况下的错误处理
+
+---
 
 ### v1.2.6 (2026-02-04)
 

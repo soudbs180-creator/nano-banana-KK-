@@ -1,7 +1,7 @@
 {
     "name": "kk-studio",
     "private": true,
-    "version": "1.2.7",
+    "version": "1.2.8",
     "type": "module",
     "scripts": {
         "dev": "node node_modules/vite/bin/vite.js",

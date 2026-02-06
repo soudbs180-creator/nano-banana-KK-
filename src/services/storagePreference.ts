@@ -185,6 +185,10 @@ export async function selectLocalFolder(): Promise<FileSystemDirectoryHandle | n
             startIn: 'pictures'
         });
         await setLocalFolderHandle(handle);
+
+        // 🚀 Auto-merge existing images to the new folder
+        await mergeStorages();
+
         return handle;
     } catch (e: any) {
         if (e.name !== 'AbortError') {
@@ -208,7 +212,8 @@ export async function selectLocalFolder(): Promise<FileSystemDirectoryHandle | n
 export async function saveOriginalToLocalFolder(
     imageId: string,
     blob: Blob,
-    prompt?: string
+    prompt?: string,
+    existingTimestamp?: number
 ): Promise<boolean> {
     const handle = await getLocalFolderHandle();
     if (!handle) {
@@ -217,17 +222,21 @@ export async function saveOriginalToLocalFolder(
     }
 
     try {
-        // Request permission if needed (File System Access API extension)
+        // Request permission if needed
         const permission = await (handle as any).requestPermission({ mode: 'readwrite' });
         if (permission !== 'granted') return false;
 
         // Ensure originals directory exists
-        const DIRS = { ORIGINALS: 'originals' }; // Match fileSystemService
+        const DIRS = { ORIGINALS: 'originals' };
         // @ts-ignore
         const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
 
-        // Use consistent naming: ID.png (prevents duplicates and confusion)
-        const filename = `${imageId}.png`;
+        // Generate filename: YYYY-MM-{id}.png
+        // Use existing timestamp if available (for merge), otherwise current time
+        const date = existingTimestamp ? new Date(existingTimestamp) : new Date();
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const filename = `${year}-${month}-${imageId}.png`;
 
         // Create file and write
         // @ts-ignore
@@ -242,6 +251,84 @@ export async function saveOriginalToLocalFolder(
     } catch (e) {
         console.error('[StoragePreference] Failed to save to local folder:', e);
         return false;
+    }
+}
+
+/**
+ * Merge browser cache images into local folder
+ * Prevents data loss when switching storage modes
+ */
+export async function mergeStorages(): Promise<void> {
+    const handle = await getLocalFolderHandle();
+    if (!handle) return;
+
+    console.log('[StoragePreference] Starting storage merge...');
+
+    try {
+        // Dynamic import to avoid circular dependencies
+        const { getAllImageIds, getImage, getImageMetadata } = await import('./imageStorage');
+        const { dataURLToBlob } = await import('./blobUtils');
+
+        const ids = await getAllImageIds();
+        console.log(`[StoragePreference] Found ${ids.length} images in browser cache to check`);
+
+        let mergedCount = 0;
+        let skippedCount = 0;
+
+        // Notify user about start
+        import('./notificationService').then(({ notify }) => {
+            notify.info('正在同步图片', `正在将 ${ids.length} 张图片同步到本地文件夹...`);
+        });
+
+        for (const id of ids) {
+            const metadata = await getImageMetadata(id);
+            const timestamp = metadata?.timestamp;
+
+            // Check if file already exists locally to skip
+            // We can predict the filename now!
+            if (timestamp) {
+                const date = new Date(timestamp);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const filename = `${year}-${month}-${id}.png`;
+
+                try {
+                    const DIRS = { ORIGINALS: 'originals' };
+                    // @ts-ignore
+                    const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS);
+                    // @ts-ignore
+                    await originalsDir.getFileHandle(filename);
+                    // If found, skip!
+                    skippedCount++;
+                    continue;
+                } catch {
+                    // Not found, proceed to save
+                }
+            }
+
+            const dataUrl = await getImage(id);
+            if (dataUrl) {
+                const blob = await dataURLToBlob(dataUrl);
+                // Pass timestamp to ensure correct filename
+                const saved = await saveOriginalToLocalFolder(id, blob, undefined, timestamp);
+                if (saved) mergedCount++;
+            }
+        }
+
+        console.log(`[StoragePreference] Merge complete. Synced ${mergedCount} images, skipped ${skippedCount}.`);
+
+        if (mergedCount > 0 || skippedCount > 0) {
+            import('./notificationService').then(({ notify }) => {
+                notify.success('同步完成', `成功同步 ${mergedCount} 张图片，跳过 ${skippedCount} 张重复图片`);
+            });
+        }
+
+
+    } catch (e) {
+        console.error('[StoragePreference] Merge failed:', e);
+        import('./notificationService').then(({ notify }) => {
+            notify.error('同步失败', '合并存储时发生错误');
+        });
     }
 }
 

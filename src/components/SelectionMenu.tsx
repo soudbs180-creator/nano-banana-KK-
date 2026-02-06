@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Trash2, Group, Tag, FolderOutput, LayoutGrid, Rows, Columns } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Trash2, Group, Tag, FolderOutput, LayoutGrid, Rows, Columns, GripHorizontal } from 'lucide-react';
 import { ArrangeMode } from '../context/CanvasContext';
 
 interface SelectionMenuProps {
@@ -29,6 +29,47 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
     onArrange
 }) => {
     const [showArrangeMenu, setShowArrangeMenu] = useState(false);
+
+    // 🚀 Drag Logic
+    const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+    const isDraggingRef = useRef(false);
+    const dragStartRef = useRef({ x: 0, y: 0 });
+    const initialOffsetRef = useRef({ x: 0, y: 0 });
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isDraggingRef.current) return;
+            const dx = e.clientX - dragStartRef.current.x;
+            const dy = e.clientY - dragStartRef.current.y;
+            setDragOffset({
+                x: initialOffsetRef.current.x + dx,
+                y: initialOffsetRef.current.y + dy
+            });
+        };
+        const handleMouseUp = () => {
+            isDraggingRef.current = false;
+        };
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, []);
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        // Stop bubbling to canvas
+        e.stopPropagation();
+
+        // Allow dragging unless clicking a button
+        if ((e.target as HTMLElement).closest('button')) return;
+
+        e.preventDefault(); // Prevent text selection
+        isDraggingRef.current = true;
+        dragStartRef.current = { x: e.clientX, y: e.clientY };
+        initialOffsetRef.current = dragOffset;
+    };
+
     // 🚀 生成详细标识文本
     const getSelectionLabel = () => {
         const parts: string[] = [];
@@ -45,15 +86,16 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
 
     return (
         <div
-            className="fixed z-[10000] flex items-center bg-zinc-800 border border-white/10 rounded-lg shadow-xl p-1 animate-in zoom-in-95 duration-200"
+            className="fixed z-[10000] flex items-center bg-zinc-800 border border-white/10 rounded-lg shadow-xl p-1 animate-in zoom-in-95 duration-200 cursor-grab active:cursor-grabbing"
             style={{
-                left: position.x,
-                top: position.y,
+                left: position.x + dragOffset.x,
+                top: position.y + dragOffset.y,
                 transform: 'translate(-50%, -100%) translateY(-12px)'
             }}
-            onMouseDown={(e) => e.stopPropagation()} // Prevent canvas interaction
+            onMouseDown={handleMouseDown}
         >
-            <div className="px-3 text-xs text-zinc-400 border-r border-white/10 mr-1 font-medium">
+            <div className="px-3 text-xs text-zinc-400 border-r border-white/10 mr-1 font-medium flex items-center gap-2">
+                <GripHorizontal size={14} className="text-zinc-600" />
                 {getSelectionLabel()}
             </div>
 

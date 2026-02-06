@@ -24,6 +24,7 @@ interface PromptNodeProps {
     onHeightChange?: (id: string, height: number) => void;
     highlighted?: boolean;
     onPin?: (id: string, mode: 'button' | 'drag') => void; // 🚀 [New Prop] Pin Draft
+    onRemoveTag?: (id: string, tag: string) => void; // 🚀 [New Prop] Remove Tag
 }
 
 // [FIX] Self-healing thumbnail component that recovers data from IDB if missing
@@ -169,7 +170,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     onDisconnect,
     onHeightChange,
     highlighted,
-    onPin
+    onPin,
+    onRemoveTag
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [cardHeight, setCardHeight] = useState(200); // 默认高度??00px,会在渲染后更??
@@ -235,8 +237,12 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     }, [node.prompt, node.referenceImages]);
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-        // Ignore Right Click (2)
-        if ('button' in e && e.button === 2) return;
+        // Handle Right Click (2) - Select Only
+        if ('button' in e && e.button === 2) {
+            e.stopPropagation();
+            onSelect();
+            return;
+        }
 
         // Stop canvas panning when touching the card
         e.stopPropagation();
@@ -619,23 +625,44 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 </div>
 
 
+                {/* 🚀 Main Card Tags: Centered Layout with Hover Blur + X Delete */}
                 {node.tags && node.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2 mb-1 px-3">
-                        {node.tags.map(tag => {
+                    <div className="flex flex-wrap gap-2 mt-3 mb-1 px-2 w-full box-border justify-center">
+                        {node.tags.slice(0, 8).map(tag => {
                             const colors = generateTagColor(tag);
                             return (
-                                <span
+                                <div
                                     key={tag}
-                                    className="px-1.5 py-0.5 text-[10px]"
+                                    className="relative group/tag flex items-center justify-center px-3 py-1 text-xs font-medium rounded-lg border transition-all cursor-default select-none overflow-hidden"
                                     style={{
                                         backgroundColor: colors.bg,
                                         color: colors.text,
-                                        border: `1px solid ${colors.border}`,
-                                        borderRadius: 'var(--radius-sm)' // 4px
+                                        borderColor: colors.border,
+                                        minHeight: '24px' // Consistent height
                                     }}
                                 >
-                                    #{tag}
-                                </span>
+                                    {/* Tag Text - Blurs on hover */}
+                                    <span className="whitespace-nowrap transition-all duration-200 group-hover/tag:blur-sm group-hover/tag:opacity-30">#{tag}</span>
+
+                                    {/* Delete Button - Centered, visible on hover */}
+                                    {onRemoveTag && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onRemoveTag(node.id, tag);
+                                            }}
+                                            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/tag:opacity-100 transition-all duration-200"
+                                            title="移除标签"
+                                        >
+                                            <div className="w-5 h-5 flex items-center justify-center rounded-full bg-red-500/90 text-white shadow-sm">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                                </svg>
+                                            </div>
+                                        </button>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>

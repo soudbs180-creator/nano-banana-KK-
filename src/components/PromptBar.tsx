@@ -5,6 +5,7 @@ import { keyManager, getModelMetadata } from '../services/keyManager'; // Added 
 import { getModelCapabilities, modelSupportsGrounding } from '../services/modelCapabilities';
 import { calculateImageHash } from '../utils/imageUtils';
 import { saveImage, getImage } from '../services/imageStorage'; // [NEW] Import getImage
+import { fileSystemService } from '../services/fileSystemService'; // 🚀 参考图持久化
 import ImageOptionsPanel from './ImageOptionsPanel';
 import VideoOptionsPanel from './VideoOptionsPanel';
 import ImagePreview from './ImagePreview';
@@ -402,12 +403,19 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         const data = matches[2];
                         const storageId = await calculateImageHash(data);
 
-                        // [OPTIMIZATION] Fire-and-forget save to IndexedDB
-                        // Do not await this. UI should update immediately.
-                        const fullDataUrl = `data:${mimeType}; base64, ${data} `;
+                        // 🚀 [FIX] 立即保存到 IndexedDB（使用正确格式）
+                        const fullDataUrl = `data:${mimeType};base64,${data}`;
                         saveImage(storageId, fullDataUrl).catch(err =>
-                            console.error("Failed to save image to local storage", err)
+                            console.error("[PromptBar] Failed to save image to IndexedDB:", err)
                         );
+
+                        // 🚀 [NEW] 同时保存到本地文件系统（如果已连接项目文件夹）
+                        const handle = fileSystemService.getGlobalHandle();
+                        if (handle) {
+                            fileSystemService.saveReferenceImage(handle, storageId, data, mimeType).catch(err =>
+                                console.error("[PromptBar] Failed to save reference to file system:", err)
+                            );
+                        }
 
                         resolve({
                             id: Date.now() + Math.random().toString(),
@@ -626,19 +634,69 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     const displayModelLabel = truncateModelLabel(currentModelLabel);
 
+    // 🚀 [Mobile Layout] Dock to bottom on mobile
+    const mobileStyle: React.CSSProperties = isMobile ? {
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        width: '100%',
+        maxWidth: '100%',
+        margin: 0,
+        borderRadius: 0, // Flat for docked bar
+        borderTop: '1px solid rgba(255,255,255,0.1)',
+        borderBottom: 'none',
+        borderLeft: 'none',
+        borderRight: 'none',
+        zIndex: 50,
+        padding: '12px 16px',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+        backdropFilter: 'blur(20px)',
+        backgroundColor: 'rgba(20, 20, 23, 0.85)', // Dark translucent iOS style
+        boxShadow: '0 -4px 30px rgba(0,0,0,0.5)',
+        alignItems: 'center'
+    } : {
+        // Desktop floating style handling...
+    };
+
+    // Swipe Detection State
+    const wrapperTouchStartY = useRef<number | null>(null);
+
+    const handleContainerTouchStart = (e: React.TouchEvent) => {
+        wrapperTouchStartY.current = e.touches[0].clientY;
+        handleTouchStart(e); // Keep existing handler
+    };
+
+    const handleContainerTouchEnd = (e: React.TouchEvent) => {
+        if (wrapperTouchStartY.current !== null) {
+            const touchEndY = e.changedTouches[0].clientY;
+            const deltaY = touchEndY - wrapperTouchStartY.current;
+
+            // Swipe Up Detection (threshold 30px)
+            if (deltaY < -30) {
+                onInteract?.(); // Trigger Nav Show
+            }
+            wrapperTouchStartY.current = null;
+        }
+        handleTouchEnd(e); // Keep existing handler
+    };
+
     return (
         <div
             id="prompt-bar-container"
-            className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
+            className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500' : ''} ${isMobile ? 'mobile-docked' : ''}`}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-            onClick={() => onInteract?.()}
+            onTouchStart={handleContainerTouchStart} // Use new handler
+            onTouchEnd={handleContainerTouchEnd}     // Use new handler
+            // onClick removed for mobile to prevent accidental showing. 
+            // We can keep onClick for desktop if needed, but 'onInteract' was mainly for mobile nav.
             style={{
-                bottom: isMobile ? 'calc(96px + env(safe-area-inset-bottom))' : '32px'
+                ...mobileStyle,
+                // On mobile, bottom is 0 (fixed). On desktop, existing logic applies.
+                bottom: isMobile ? 0 : '32px'
             }}
         >
             {/* Drag Overlay */}
@@ -680,7 +738,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 </div>
             )}
 
-            <div className="input-bar-inner" style={{ position: 'relative' }}>
+            <div
+                className="input-bar-inner"
+                style={{
+                    position: 'relative'
+                    // Mobile: No capsule wrapper - keep it clean and flat
+                }}
+            >
 
                 {/* Mode Toggle (Floating above on Desktop, or Integrated?)
                      Design choice: Put it inside "Tools" or main bar?
@@ -716,36 +780,38 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     </div>
                 )}
 
-                {/* Mode Toggle - Always visible at top of input area */}
-                <div className="flex justify-center mb-2">
-                    <div className="relative inline-flex items-center p-1 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', width: 'auto' }}>
-                        {/* Sliding highlight background */}
-                        <div
-                            className="absolute h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
-                            style={{
-                                width: '80px',
-                                left: config.mode === GenerationMode.IMAGE ? '4px' : 'calc(50% + 2px)',
-                                backgroundColor: config.mode === GenerationMode.IMAGE ? 'rgba(99, 102, 241, 0.2)' : 'rgba(168, 85, 247, 0.2)',
-                                boxShadow: config.mode === GenerationMode.IMAGE
-                                    ? '0 0 8px rgba(99, 102, 241, 0.3)'
-                                    : '0 0 8px rgba(168, 85, 247, 0.3)'
-                            }}
-                        />
+                {/* Mode Toggle - HIDE on mobile (mode is in MobileTabBar) */}
+                {!isMobile && (
+                    <div className="flex justify-center mb-2">
+                        <div className="relative inline-flex items-center p-1 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', width: 'auto' }}>
+                            {/* Sliding highlight background */}
+                            <div
+                                className="absolute h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
+                                style={{
+                                    width: '80px',
+                                    left: config.mode === GenerationMode.IMAGE ? '4px' : 'calc(50% + 2px)',
+                                    backgroundColor: config.mode === GenerationMode.IMAGE ? 'rgba(99, 102, 241, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                                    boxShadow: config.mode === GenerationMode.IMAGE
+                                        ? '0 0 8px rgba(99, 102, 241, 0.3)'
+                                        : '0 0 8px rgba(168, 85, 247, 0.3)'
+                                }}
+                            />
 
-                        <button
-                            className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.IMAGE ? 'text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
-                        >
-                            图片
-                        </button>
-                        <button
-                            className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.VIDEO ? 'text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
-                        >
-                            视频
-                        </button>
+                            <button
+                                className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.IMAGE ? 'text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
+                            >
+                                图片
+                            </button>
+                            <button
+                                className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.VIDEO ? 'text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
+                            >
+                                视频
+                            </button>
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Input Area Wrapper with hover detection */}
                 <div
@@ -983,19 +1049,19 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     />
                 </div> {/* End of input area hover wrapper */}
 
-                {/* Footer */}
-                <div className="input-bar-footer flex items-center justify-between pt-3 mt-1" style={{ borderTop: '1px solid var(--border-light)' }}>
+                {/* Footer - Mobile: Simplified compact horizontal row. Desktop: Normal layout. */}
+                <div className={`input-bar-footer flex items-center ${isMobile ? 'justify-evenly gap-0 flex-nowrap px-0' : 'justify-between'} pt-3 mt-1`} style={isMobile ? {} : { borderTop: '1px solid var(--border-light)' }}>
                     {/* Left: Model & Settings */}
+                    {/* Model Button - compact on mobile */}
                     {/* Model Button */}
-                    {/* Model Button */}
-                    <div className="relative inline-flex flex-shrink-0">
+                    <div className={`relative ${isMobile ? 'flex-shrink' : 'inline-flex flex-shrink-0'}`} style={isMobile ? { display: 'contents' } : {}}>
                         <button
                             id="models-dropdown-trigger"
-                            className={`input-bar-model flex items-center justify-center gap-2 px-2 md:px-3 py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
+                            className={`input-bar-model flex items-center justify-center gap-1 px-1.5 md:px-3 py-1 md:py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
                                 ? 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-tertiary)] cursor-not-allowed'
                                 : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50'
                                 }`}
-                            style={{ minWidth: isMobile ? '120px' : '200px', maxWidth: isMobile ? '140px' : '200px' }}
+                            style={{ minWidth: isMobile ? 'auto' : '200px', maxWidth: isMobile ? '80px' : '200px', flexShrink: isMobile ? 1 : 0 }}
                             onClick={() => {
                                 if (isModelListEmpty) {
                                     onOpenSettings?.('api-management');
@@ -1081,8 +1147,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         )}
                     </div >
 
-                    {/* Options Button - Shows current ratio and size */}
-                    <div className="relative inline-flex">
+                    {/* Options Button - Shows current ratio and size, shrink on mobile */}
+                    <div className={`relative ${isMobile ? 'flex-shrink' : 'inline-flex'}`} style={isMobile ? { display: 'contents' } : {}}>
                         <button
                             data-options-toggle
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium whitespace-nowrap flex-shrink-0"
@@ -1169,71 +1235,75 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     {/* End of Left Group Items */}
 
                     {/* Right: Actions Group */}
-                    {/* Group 1: Network & Provider Settings - Hidden but space reserved in VIDEO mode */}
-                    <div
-                        className="flex items-center gap-0.5 p-0.5 rounded-lg border h-[32px] transition-opacity duration-200"
-                        style={{
-                            backgroundColor: 'var(--bg-tertiary)',
-                            borderColor: 'var(--border-light)',
-                            opacity: config.mode === GenerationMode.VIDEO ? 0 : 1,
-                            visibility: config.mode === GenerationMode.VIDEO ? 'hidden' : 'visible',
-                            pointerEvents: config.mode === GenerationMode.VIDEO ? 'none' : 'auto'
-                        }}
-                    >
-                        {/* Grounding Tool - Now with capability check */}
-                        <button
-                            className={`flex items-center gap-1.5 px-3 h-full rounded-md transition-all text-[11px] font-medium whitespace-nowrap ${!groundingSupported
-                                ? 'opacity-40 cursor-not-allowed text-[var(--text-tertiary)]'
-                                : config.enableGrounding
-                                    ? 'bg-indigo-500/15 text-indigo-500 shadow-sm'
-                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]'
-                                }`}
-                            onClick={() => groundingSupported && setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }))}
-                            disabled={!groundingSupported}
-                            title={groundingSupported ? "Grounding with Google Search" : "当前模型不支持联网模式"}
+                    {/* Group 1: Network & Provider Settings - Hidden on mobile for compact layout */}
+                    {!isMobile && (
+                        <div
+                            className="flex items-center gap-0.5 p-0.5 rounded-lg border h-[32px] transition-opacity duration-200"
+                            style={{
+                                backgroundColor: 'var(--bg-tertiary)',
+                                borderColor: 'var(--border-light)',
+                                opacity: config.mode === GenerationMode.VIDEO ? 0 : 1,
+                                visibility: config.mode === GenerationMode.VIDEO ? 'hidden' : 'visible',
+                                pointerEvents: config.mode === GenerationMode.VIDEO ? 'none' : 'auto'
+                            }}
                         >
-                            <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M2 8.8a15 15 0 0 1 20 0" />
-                                <path d="M5 12.5a10 10 0 0 1 14 0" />
-                                <path d="M8.5 16.3a5 5 0 0 1 7 0" />
-                                <line x1="12" y1="20" x2="12.01" y2="20" />
-                            </svg>
-                            <span className="hidden md:inline">联网</span>
-                        </button >
-
-                    </div >
-
-                    {/* Group 2: Generation Settings */}
-                    <div className="flex items-center gap-0.5 p-0.5 rounded-lg border h-[32px]" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
-                        {/* Parallel Count */}
-                        <div className="relative h-full">
+                            {/* Grounding Tool - Now with capability check */}
                             <button
-                                className="flex items-center gap-1.5 px-3 h-full rounded-md transition-all whitespace-nowrap text-[11px] font-medium"
-                                style={{ color: 'var(--text-secondary)' }}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleMenu('count');
-                                }}
-                                title="并发数量"
+                                className={`flex items-center gap-1.5 px-3 h-full rounded-md transition-all text-[11px] font-medium whitespace-nowrap ${!groundingSupported
+                                    ? 'opacity-40 cursor-not-allowed text-[var(--text-tertiary)]'
+                                    : config.enableGrounding
+                                        ? 'bg-indigo-500/15 text-indigo-500 shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]'
+                                    }`}
+                                onClick={() => groundingSupported && setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }))}
+                                disabled={!groundingSupported}
+                                title={groundingSupported ? "Grounding with Google Search" : "当前模型不支持联网模式"}
                             >
-                                <span className="text-[11px] font-medium"><span className="hidden md:inline">数量 </span>{config.parallelCount}</span>
-                                <svg className={`w-2.5 h-2.5 opacity-50 flex-shrink-0 transition-transform duration-200 ${activeMenu === 'count' ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
-                            </button>
-                            {
-                                activeMenu === 'count' && (
-                                    <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-                                        <div className="dropdown static w-24 animate-scaleIn origin-bottom p-1 flex flex-col gap-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                            {[1, 2, 3, 4].map(count => (
-                                                <button key={count} className={`dropdown-item justify-between rounded-md ${config.parallelCount === count ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, parallelCount: count })); setActiveMenu(null); }}>
-                                                    <span>{count} 张</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )
-                            }
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M2 8.8a15 15 0 0 1 20 0" />
+                                    <path d="M5 12.5a10 10 0 0 1 14 0" />
+                                    <path d="M8.5 16.3a5 5 0 0 1 7 0" />
+                                    <line x1="12" y1="20" x2="12.01" y2="20" />
+                                </svg>
+                                <span className="hidden md:inline">联网</span>
+                            </button >
+
                         </div >
-                    </div >
+                    )}
+
+                    {/* Group 2: Generation Settings - Hidden on mobile for compact footer */}
+                    {!isMobile && (
+                        <div className="flex items-center gap-0.5 p-0.5 rounded-lg border h-[32px]" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
+                            {/* Parallel Count */}
+                            <div className="relative h-full">
+                                <button
+                                    className="flex items-center gap-1.5 px-3 h-full rounded-md transition-all whitespace-nowrap text-[11px] font-medium"
+                                    style={{ color: 'var(--text-secondary)' }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleMenu('count');
+                                    }}
+                                    title="并发数量"
+                                >
+                                    <span className="text-[11px] font-medium"><span className="hidden md:inline">数量 </span>{config.parallelCount}</span>
+                                    <svg className={`w-2.5 h-2.5 opacity-50 flex-shrink-0 transition-transform duration-200 ${activeMenu === 'count' ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+                                </button>
+                                {
+                                    activeMenu === 'count' && (
+                                        <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                            <div className="dropdown static w-24 animate-scaleIn origin-bottom p-1 flex flex-col gap-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
+                                                {[1, 2, 3, 4].map(count => (
+                                                    <button key={count} className={`dropdown-item justify-between rounded-md ${config.parallelCount === count ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, parallelCount: count })); setActiveMenu(null); }}>
+                                                        <span>{count} 张</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )
+                                }
+                            </div >
+                        </div >
+                    )}
 
                     <button
                         onClick={isGenerating ? onCancel : onGenerate}

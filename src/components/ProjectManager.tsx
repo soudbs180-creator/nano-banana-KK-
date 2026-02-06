@@ -263,7 +263,8 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
         };
 
         // 如果输入框有焦点,不设置自动折叠定时器
-        if (!isInputFocused()) {
+        // 🚀 [Mobile Fix] NEVER auto-collapse on mobile - sidebar should always be visible
+        if (!isMobile && !isInputFocused()) {
             inactivityTimerRef.current = setTimeout(() => {
                 // 再次检查,确保设置定时器后用户没有聚焦输入框
                 if (!isInputFocused()) {
@@ -289,9 +290,10 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     return (
         <div
             id="project-manager-container"
-            className={`fixed left-4 z-50 flex flex-col items-start gap-2 select-none transition-all duration-300 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
+            // Mobile: Fixed Top-Left (2,2) to match standard drawer position. Desktop: Dynamic.
+            className={`fixed ${isMobile ? 'top-2 left-2' : 'left-4'} z-50 flex flex-col items-center gap-2 select-none transition-all duration-300 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
             style={{
-                top: isMobile ? 20 : topPosition,
+                top: isMobile ? undefined : topPosition,
                 // Move sidebar up when keyboard is open on mobile
                 transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : undefined
             }}
@@ -300,7 +302,8 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
         >
             {/* Project Module Container */}
             <div
-                className={`flex flex-col gap-2 p-1.5 glass-strong rounded-2xl transition-colors cursor-grab active:cursor-grabbing ${isDragging ? 'scale-[0.98]' : ''}`}
+                // Mobile: Slightly bigger (w-12), proper padding for centered icons.
+                className={`flex flex-col ${isMobile ? 'gap-0.5 p-1 w-12' : 'gap-2 p-1.5'} items-center justify-center glass-strong rounded-2xl transition-colors cursor-grab active:cursor-grabbing ${isDragging ? 'scale-[0.98]' : ''}`}
                 style={{
                     borderColor: 'var(--border-light)',
                     boxShadow: 'var(--shadow-xl)'
@@ -308,10 +311,12 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 onMouseDown={handleDragStart}
                 onTouchStart={handleDragStart}
             >
-                {/* Drag Handle Indicator */}
-                <div className="w-full flex justify-center py-0.5 opacity-20 hover:opacity-50">
-                    <div className="w-4 h-0.5 rounded-full" style={{ backgroundColor: 'var(--text-primary)' }} />
-                </div>
+                {/* Drag Handle Indicator - Hide on mobile for compactness */}
+                {!isMobile && (
+                    <div className="w-full flex justify-center py-0.5 opacity-20 hover:opacity-50">
+                        <div className="w-4 h-0.5 rounded-full" style={{ backgroundColor: 'var(--text-primary)' }} />
+                    </div>
+                )}
 
                 {/* 1. Sidebar Toggle REMOVED as per user request (Extra Icon) */}
                 {/* 
@@ -331,7 +336,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                     <button
                         id="project-manager-trigger"
                         onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown); }}
-                        className="p-2 rounded-lg transition-all group relative flex items-center justify-center outline-none focus:outline-none"
+                        className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg transition-all group relative flex items-center justify-center outline-none focus:outline-none`}
                         style={{ color: 'var(--text-secondary)' }}
                         onMouseEnter={(e) => {
                             e.currentTarget.style.color = 'var(--text-primary)';

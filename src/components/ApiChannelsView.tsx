@@ -416,6 +416,11 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         setSlots(keyManager.getSlots());
         console.log('[ApiChannelsView] 已刷新slots状态');
 
+        // 🚀 Trigger Cost Service Sync to update 'api_budgets' reporting
+        import('../services/costService').then(({ forceSync }) => {
+            forceSync().then(() => console.log('[ApiChannelsView] Cost service synced'));
+        });
+
         setLoading(false);
         setIsModalOpen(false);
     };

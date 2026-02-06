@@ -11,18 +11,51 @@ const THUMB_SUFFIX = '_thumb.jpg';
 export const syncService = {
     // --- Database Sync (Canvas State) ---
 
-    async saveCanvas(canvas: Canvas) {
-        // PERMITTED: Sync Metadata Only (if needed for user profile stats)
-        // BUT for "Local Only" request, we disable saving the heavy canvas data.
-        // We can optionally update a 'last_active' timestamp if we had a table for it,
-        // but for now, we simply do nothing to ensure data sovereignty.
-        return;
+    async saveLayout(canvases: Canvas[]) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        try {
+            const blob = new Blob([JSON.stringify(canvases)], { type: 'application/json' });
+            const fileName = `${user.id}/layout.json`;
+
+            const { error } = await supabase.storage
+                .from(BUCKET_NAME)
+                .upload(fileName, blob, {
+                    contentType: 'application/json',
+                    upsert: true
+                });
+
+            if (error) throw error;
+            console.log('[SyncService] Layout saved to cloud');
+        } catch (e) {
+            console.error('[SyncService] Failed to save layout:', e);
+        }
     },
 
-    async loadCanvases(): Promise<Canvas[]> {
-        // Return empty or fetch strictly metadata if we had it.
-        // Since we are moving to FileSystem/LocalStorage, cloud load is disabled.
-        return [];
+    async loadLayout(): Promise<Canvas[]> {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+
+        try {
+            const fileName = `${user.id}/layout.json`;
+            const { data, error } = await supabase.storage
+                .from(BUCKET_NAME)
+                .download(fileName);
+
+            if (error) {
+                // If file not found, return empty (clean state)
+                if (error.message.includes('not found') || error.name === 'StorageUnknownError') return [];
+                throw error;
+            }
+
+            const text = await data.text();
+            const canvases = JSON.parse(text) as Canvas[];
+            return canvases;
+        } catch (e) {
+            console.error('[SyncService] Failed to load layout:', e);
+            return [];
+        }
     },
 
     // --- Storage Sync (Images) ---

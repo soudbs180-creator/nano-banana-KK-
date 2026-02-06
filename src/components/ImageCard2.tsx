@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { AspectRatio, GeneratedImage, GenerationMode } from '../types';
-import { Download, Trash2, Loader2, ImageOff } from 'lucide-react';
+import { Download, Trash2, Loader2, ImageOff, Play, Pause } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
 import { useLazyImage } from '../hooks/useLazyImage';
@@ -26,6 +26,7 @@ interface ImageNodeProps {
     highlighted?: boolean;
     onPreview?: (imageId: string) => void;
     isVisible?: boolean; // 🚀 视口可见性控制（从父组件传入）
+    onUpdate?: (id: string, updates: Partial<GeneratedImage>) => void; // 🚀 [New] 更新回调
 }
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
@@ -43,9 +44,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     onSelect,
     highlighted,
     onPreview,
-    isVisible = true // 🚀 默认可见（向后兼容）
+    isVisible = true, // 🚀 默认可见（向后兼容）
+    onUpdate
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const dragCleanupRef = useRef<(() => void) | null>(null); // 🚀 [Fix] Drag Cleanup Ref
 
     const [isDragging, setIsDragging] = useState(false);
 
@@ -94,6 +97,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const loadedRef = useRef(false); // 🚀 标记是否已从队列加载
     const [isLoading, setIsLoading] = useState(true); // 🚀 明确的加载状态
     const qualityDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 🚀 质量切换防抖
+
+    // Video Control
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [isPlaying, setIsPlaying] = useState(true); // Default autoPlay is true
 
     // 🚀 根据画布缩放自动选择合适质量 - 使用队列加载优化
     useEffect(() => {
@@ -147,15 +154,35 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     loadedRef.current = true;
                     setIsLoading(false); // 🚀 加载成功
                 } else if (!isCancelled && !url) {
-                    // 🚀 队列返回null - IndexedDB中没有，尝试使用image自带的URL作为fallback
+                    // 🚀 队列返回null - IndexedDB中没有，尝试多种fallback策略
+                    console.warn(`[ImageCard] Queue returned null for ${image.id}, trying fallback recovery...`);
+
+                    // 策略1: 尝试使用storageId直接加载
+                    if (image.storageId && image.storageId !== image.id) {
+                        try {
+                            const recoveredFromStorage = await getImage(image.storageId);
+                            if (recoveredFromStorage) {
+                                console.log(`[ImageCard] ✅ Recovered from storageId: ${image.storageId}`);
+                                setDisplaySrc(recoveredFromStorage);
+                                loadedRef.current = true;
+                                setIsLoading(false);
+                                return; // 恢复成功，退出
+                            }
+                        } catch (err) {
+                            console.warn(`[ImageCard] Failed to recover from storageId:`, err);
+                        }
+                    }
+
+                    // 策略2: 使用image自带的URL作为fallback
                     const fallbackUrl = image.originalUrl || image.url;
                     if (fallbackUrl && (fallbackUrl.startsWith('data:') || fallbackUrl.startsWith('http') || fallbackUrl.startsWith('blob:'))) {
-                        console.log(`[ImageCard] Queue returned null, using fallback URL for ${image.id}`);
+                        console.log(`[ImageCard] Using fallback URL for ${image.id}`);
                         setDisplaySrc(fallbackUrl);
                         loadedRef.current = true;
                         setIsLoading(false);
                     } else {
                         // 🚀 没有可用fallback，显示错误占位符
+                        console.error(`[ImageCard] ❌ All recovery strategies failed for ${image.id}`);
                         setIsLoading(false);
                     }
                 }
@@ -242,6 +269,13 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const wasDraggingRef = useRef(false);
 
     const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+        // Handle Right Click (2) - Select Only
+        if ('button' in e && e.button === 2) {
+            e.stopPropagation();
+            if (onSelect) onSelect();
+            return;
+        }
+
         // 阻止事件冒泡到 Canvas，通过 global listeners 处理拖拽
         e.stopPropagation();
 
@@ -283,7 +317,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             window.removeEventListener('mouseup', handleMouseUp);
             window.removeEventListener('touchmove', handleMouseMove);
             window.removeEventListener('touchend', handleMouseUp);
+            dragCleanupRef.current = null;
         };
+
+        // 🚀 Store cleanup for external cancellation (e.g. HTML5 Drag)
+        dragCleanupRef.current = handleMouseUp;
 
         window.addEventListener('mousemove', handleMouseMove, { passive: false });
         window.addEventListener('mouseup', handleMouseUp);
@@ -292,16 +330,28 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
     }, [image.id, position, zoomScale, onPositionChange]);
 
+    // 🚀 [New] Alias Editing Logic
+    const [isEditingAlias, setIsEditingAlias] = useState(false);
+    const [aliasValue, setAliasValue] = useState(image.alias || image.fileName || 'Image');
+
+    const handleAliasCommit = () => {
+        setIsEditingAlias(false);
+        if (aliasValue !== image.alias) {
+            onUpdate?.(image.id, { alias: aliasValue });
+        }
+    };
+
     const handleImageClick = (e: React.MouseEvent) => {
         e.stopPropagation();
 
         // 忽略按钮点击 (如删除/下载)
         if ((e.target as HTMLElement).closest('button')) return;
+        if ((e.target as HTMLElement).closest('input')) return; // Ignore input clicks
 
         // 如果刚刚拖拽过,忽略点击(防止拖拽结束时误触发)
         if (wasDraggingRef.current && e.type !== 'dblclick' && e.detail !== 2) return;
 
-        // 🚀 [修复] 不再打开内置灯箱，统一使用onPreview避免重复预览框
+        // 🚀 [修复] 单击/双击均打开灯箱
         if (!wasDraggingRef.current && onPreview) {
             onPreview(image.id);
         }
@@ -338,7 +388,6 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     e.stopPropagation();
                     if (!wasDraggingRef.current) onClick?.(image.id);
                 }}
-                onDoubleClick={handleImageClick}
             >
                 <div
                     className={`
@@ -386,16 +435,34 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                         {!imgError && displaySrc ? (
                             (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
-                                <div className="relative w-full h-full">
+                                <div className="relative w-full h-full group/video">
                                     <video
+                                        ref={videoRef}
                                         src={displaySrc}
                                         className="w-full h-full object-cover block select-none"
-                                        muted loop playsInline autoPlay
+                                        muted loop playsInline
+                                        onPlay={() => setIsPlaying(true)}
+                                        onPause={() => setIsPlaying(false)}
                                         onError={() => {
                                             console.warn('[ImageCard] Video load error for', image.id);
                                             setImgError(true);
                                         }}
                                     />
+                                    {/* Play/Pause Overlay with smooth transitions */}
+                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/video:opacity-100 transition-opacity duration-300 bg-black/0 hover:bg-black/20">
+                                        <button
+                                            className="w-12 h-12 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-sm text-white transition-all duration-300 transform hover:scale-110 active:scale-95 shadow-lg border border-white/20"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (videoRef.current) {
+                                                    if (videoRef.current.paused) videoRef.current.play();
+                                                    else videoRef.current.pause();
+                                                }
+                                            }}
+                                        >
+                                            {isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" className="ml-0.5" />}
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
                                 <img
@@ -436,6 +503,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                         if (url) {
                                             e.dataTransfer.setData('text/plain', url);
                                             // [NEW] Pass structured data for efficient reuse (consistent with PromptNode)
+                                            // 🚀 [FIX] Stop Canvas Drag when HTML5 Drag starts
+                                            if (dragCleanupRef.current) dragCleanupRef.current();
+
                                             e.dataTransfer.setData('application/x-kk-image-ref', JSON.stringify({
                                                 storageId: image.storageId || image.id,
                                                 mimeType: 'image/png', // Default, hard to know without fetch or magic
@@ -500,263 +570,142 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
 
 
-                        {/* Tags Layer */}
-                        {image.tags && image.tags.length > 0 && (
-                            <div className="absolute bottom-[36px] left-0 right-0 p-2 flex flex-wrap gap-1 justify-end pointer-events-none">
-                                {image.tags.map(tag => {
+                        {/* Tags Layer - REMOVED: Tags are now only in footer row, not floating on image */}
+
+
+                        {/* Footer - Stricter Two Row Layout with Divider */}
+                        <div
+                            className="px-2 py-1 flex flex-col gap-0 border-t-2 relative z-10 box-border cursor-pointer"
+                            style={{
+                                backgroundColor: 'var(--bg-elevated)',
+                                borderTopColor: 'var(--border-medium)',
+                                minHeight: '44px' // Slightly taller to accommodate 2 rows + divider
+                            }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (!wasDraggingRef.current) onClick?.(image.id);
+                            }}
+                        >
+                            {/* Row 1: Model Info (OR File Info) + Tags (Max 3) */}
+                            {/* Row 1: Parameters + Tags + Actions */}
+                            <div className="flex items-center gap-1.5 h-5">
+                                {/* Model / File Name - Consistent height and rounded-lg */}
+                                {image.orphaned ? (
+                                    // 🚀 [Orphan Mode] Simplified UI with Renaming
+                                    <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)] min-w-0" title={image.fileName}>
+                                        <span className="w-1 h-1 rounded-full bg-indigo-500"></span>
+                                        {isEditingAlias ? (
+                                            <input
+                                                className="w-[120px] bg-transparent border-none outline-none text-[10px] text-[var(--text-primary)] leading-none p-0"
+                                                value={aliasValue}
+                                                onChange={(e) => setAliasValue(e.target.value)}
+                                                onBlur={handleAliasCommit}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') handleAliasCommit(); }}
+                                                autoFocus
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                        ) : (
+                                            <span
+                                                className="text-[10px] font-medium text-[var(--text-secondary)] truncate max-w-[120px] cursor-text hover:text-[var(--text-primary)]"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setAliasValue(image.alias || image.fileName || 'Image');
+                                                    setIsEditingAlias(true);
+                                                }}
+                                            >
+                                                {image.alias || image.fileName || 'Reference Image'}
+                                            </span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    // Normal Mode
+                                    <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
+                                        <span className={`text-[8px] font-medium whitespace-nowrap ${(() => {
+                                            // Dynamic Model Color Matching PromptBar logic
+                                            const model = (image.model || '').toLowerCase();
+                                            // Video Modes
+                                            if (image.mode === GenerationMode.VIDEO) return 'text-purple-400';
+
+                                            // Specific Model Matches
+                                            if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) return 'text-purple-400';
+                                            if (model.includes('gemini-3-flash')) return 'text-cyan-400';
+                                            if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) return 'text-yellow-400';
+                                            if (model.includes('gemini-2.5-pro')) return 'text-amber-400';
+                                            if (model.includes('imagen-4') && model.includes('ultra')) return 'text-purple-400';
+                                            if (model.includes('imagen-4')) return 'text-blue-400';
+                                            if (model.includes('veo-3')) return 'text-purple-400';
+                                            if (model.includes('veo')) return 'text-violet-400';
+
+                                            // Default / Fallback
+                                            if (image.modelLabel) return 'text-indigo-400'; // Legacy default
+                                            return 'text-zinc-400'; // Unknown
+                                        })()}`}>
+                                            {image.modelLabel || 'AI'}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Specs (Pill) - Same height and rounded-lg */}
+                                <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
+                                    <span className="text-[8px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                                        {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || (image.imageSize as any) === 'Video') ? '720p' : (image.imageSize || '1K')}
+                                    </span>
+                                </div>
+
+                                {/* Tags (Max 3) - Same height and rounded-lg to match main card */}
+                                {image.tags && image.tags.slice(0, 3).map(tag => {
                                     const colors = generateTagColor(tag);
                                     return (
                                         <span
                                             key={tag}
-                                            className="px-1.5 py-0.5 backdrop-blur-sm text-[9px] shadow-sm"
+                                            className="flex items-center justify-center px-2 h-5 text-[8px] font-medium rounded-lg whitespace-nowrap border"
                                             style={{
                                                 backgroundColor: colors.bg,
                                                 color: colors.text,
-                                                border: `1px solid ${colors.border}`,
-                                                borderRadius: 'var(--radius-sm)' // 4px
+                                                borderColor: colors.border
                                             }}
                                         >
                                             #{tag}
                                         </span>
                                     );
                                 })}
-                            </div>
-                        )}
 
-                        {/* Footer - Compact Two Row Layout - 点击进入追问模式 */}
-                        <div
-                            className="px-2 py-1 flex flex-col gap-0.5 border-t-2 relative z-10 box-border cursor-pointer"
-                            style={{
-                                backgroundColor: 'var(--bg-elevated)',
-                                borderTopColor: 'var(--border-medium)', // 使用更明显的中等边框颜色
-                                minHeight: '36px'
-                            }}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                // 单击信息栏进入追问模式
-                                if (!wasDraggingRef.current) onClick?.(image.id);
-                            }}
-                        >
-                            {/* Row 1: 模型信息 OR 文件信息 + 比例尺寸 + 按钮 */}
-                            <div className="flex items-center gap-1">
-                                {/* 孤独副卡：显示文件名 */}
-                                {image.orphaned && image.fileName ? (
-                                    <div
-                                        className="flex items-center gap-1 px-1.5 py-0.5 rounded border flex-1 min-w-0"
-                                        style={{
-                                            backgroundColor: 'var(--bg-tertiary)',
-                                            borderColor: 'var(--border-light)'
-                                        }}
-                                        title={image.fileName}
-                                    >
-                                        <span className="w-1 h-1 rounded-full bg-zinc-500"></span>
-                                        <span className="text-[7px] font-medium text-[var(--text-secondary)] truncate">
-                                            {image.fileName}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    /* 普通卡片：显示模型信息 */
-                                    (() => {
-                                        const model = (image.model || '').toLowerCase();
-
-                                        // 🚀 优先使用用户选择时的显示名称
-                                        let label = image.modelLabel || '';
-                                        let textColor = 'text-zinc-400';
-
-                                        // 如果没有保存modelLabel，则从ID推断（兼容旧数据）
-                                        if (!label) {
-                                            label = 'AI';
-                                            if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) {
-                                                label = 'Gemini 3 Pro';
-                                                textColor = 'text-purple-400';
-                                            } else if (model.includes('gemini-3-flash')) {
-                                                label = 'Gemini 3 Flash';
-                                                textColor = 'text-cyan-400';
-                                                // Gemini 2.5 系列
-                                            } else if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) {
-                                                label = 'Gemini 2.5 Flash';
-                                                textColor = 'text-yellow-400';
-                                            } else if (model.includes('gemini-2.5-pro')) {
-                                                label = 'Gemini 2.5 Pro';
-                                                textColor = 'text-amber-400';
-                                                // Gemini 2.0 系列
-                                            } else if (model.includes('gemini-2.0') || model.includes('gemini-2-')) {
-                                                if (model.includes('flash')) {
-                                                    label = 'Gemini 2.0 Flash';
-                                                } else {
-                                                    label = 'Gemini 2.0';
-                                                }
-                                                textColor = 'text-orange-400';
-                                                // Imagen 4 系列
-                                            } else if (model.includes('imagen-4') && model.includes('ultra')) {
-                                                label = 'Imagen 4 Ultra';
-                                                textColor = 'text-purple-400';
-                                            } else if (model.includes('imagen-4') && model.includes('fast')) {
-                                                label = 'Imagen 4 Fast';
-                                                textColor = 'text-blue-300';
-                                            } else if (model.includes('imagen-4')) {
-                                                label = 'Imagen 4';
-                                                textColor = 'text-blue-400';
-                                                // Imagen 3 系列
-                                            } else if (model.includes('imagen-3')) {
-                                                label = 'Imagen 3';
-                                                textColor = 'text-blue-300';
-                                                // Veo 3 系列
-                                            } else if (model.includes('veo-3.1') && model.includes('fast')) {
-                                                label = 'Veo 3.1 Fast';
-                                                textColor = 'text-fuchsia-400';
-                                            } else if (model.includes('veo-3.1')) {
-                                                label = 'Veo 3.1';
-                                                textColor = 'text-purple-400';
-                                            } else if (model.includes('veo-3') && model.includes('fast')) {
-                                                label = 'Veo 3 Fast';
-                                                textColor = 'text-fuchsia-400';
-                                            } else if (model.includes('veo-3')) {
-                                                label = 'Veo 3';
-                                                textColor = 'text-purple-400';
-                                                // Veo 2 系列
-                                            } else if (model.includes('veo-2') || (model.includes('veo') && !model.includes('veo-3'))) {
-                                                label = 'Veo 2';
-                                                textColor = 'text-violet-400';
-                                                // 上传图片
-                                            } else if (model === 'uploaded') {
-                                                label = '上传';
-                                                textColor = 'text-gray-400';
-                                            }
-                                        }
-
-                                        // 根据模型ID设置文字颜色（如果有modelLabel也需要设置颜色）
-                                        if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) {
-                                            textColor = 'text-purple-400';
-                                        } else if (model.includes('gemini-3-flash')) {
-                                            textColor = 'text-cyan-400';
-                                        } else if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) {
-                                            textColor = 'text-yellow-400';
-                                        } else if (model.includes('gemini-2.5-pro')) {
-                                            textColor = 'text-amber-400';
-                                        } else if (model.includes('imagen-4') && model.includes('ultra')) {
-                                            textColor = 'text-purple-400';
-                                        } else if (model.includes('imagen-4')) {
-                                            textColor = 'text-blue-400';
-                                        } else if (model.includes('veo-3')) {
-                                            textColor = 'text-purple-400';
-                                        } else if (model.includes('veo')) {
-                                            textColor = 'text-violet-400';
-                                        }
-
-                                        return (
-                                            <div
-                                                className="flex items-center gap-1 px-1.5 py-0.5 rounded border"
-                                                style={{
-                                                    backgroundColor: 'var(--bg-tertiary)',
-                                                    borderColor: 'var(--border-light)'
-                                                }}
-                                            >
-                                                <span className={`text-[7px] font-medium whitespace-nowrap ${textColor}`}>
-                                                    {label}
-                                                </span>
-                                            </div>
-                                        );
-                                    })()
-                                )}
-
-                                {/* Ratio + Size Container - Compact style */}
-                                <div
-                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded border"
-                                    style={{
-                                        backgroundColor: 'var(--bg-tertiary)',
-                                        borderColor: 'var(--border-light)'
-                                    }}
-                                >
-                                    <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
-                                        {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || image.model?.toLowerCase().includes('veo') || image.url?.startsWith('data:video')) ? '720p' : (image.imageSize || '1K')}
-                                    </span>
-                                </div>
-
-                                {/* Spacer */}
                                 <div className="flex-1" />
 
-                                {/* Download */}
-                                <button
-                                    onClick={handleDownload}
-                                    className="flex items-center justify-center transition-all active:scale-95 hover:bg-[var(--bg-hover)]"
-                                    title="下载"
-                                    style={{
-                                        color: 'var(--accent-blue)',
-                                        borderRadius: 'var(--radius-sm)',
-                                        width: '20px',
-                                        height: '20px'
-                                    }}
-                                >
-                                    <Download size={10} strokeWidth={2} />
-                                </button>
-
-                                {/* Delete */}
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onDelete(image.id); }}
-                                    className="flex items-center justify-center transition-all active:scale-95 hover:bg-[var(--bg-hover)]"
-                                    title="删除"
-                                    style={{
-                                        color: 'var(--accent-red)',
-                                        borderRadius: 'var(--radius-sm)',
-                                        width: '20px',
-                                        height: '20px'
-                                    }}
-                                >
-                                    <Trash2 size={10} strokeWidth={2} />
-                                </button>
+                                {/* Actions */}
+                                <div className="flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
+                                    <button onClick={handleDownload} className="hover:text-[var(--accent-blue)] transition-colors p-0.5" title="下载">
+                                        <Download size={10} />
+                                    </button>
+                                    <button onClick={(e) => { e.stopPropagation(); onDelete(image.id); }} className="hover:text-[var(--accent-red)] transition-colors p-0.5" title="删除">
+                                        <Trash2 size={10} />
+                                    </button>
+                                </div>
                             </div>
 
-                            {/* Divider between rows */}
-                            <div className="w-full my-1" style={{ height: '0.5px', backgroundColor: 'var(--border-light)', opacity: 0.5 }}></div>
+                            {/* Divider Line */}
+                            <div className="w-full my-1 h-[0.5px] bg-[var(--border-light)] opacity-70"></div>
 
-                            {/* Row 2: 孤独副卡显示分辨率+文件大小 OR 普通卡片显示耗时+令牌+费用 */}
-                            {image.orphaned ? (
-                                /* 孤独副卡信息 */
-                                <div className="flex items-center justify-center gap-2 text-[7px] font-mono">
-                                    {/* 分辨率 */}
-                                    {image.dimensions && (
-                                        <>
-                                            <span className="text-[var(--text-tertiary)]">
-                                                分辨率 <span className="text-[var(--text-secondary)]">{image.dimensions}</span>
-                                            </span>
-                                            <span className="text-[var(--border-medium)]">|</span>
-                                        </>
-                                    )}
-                                    {/* 文件大小 */}
-                                    {image.fileSize && (
-                                        <span className="text-[var(--text-tertiary)]">
-                                            大小 <span className="text-[var(--text-secondary)]">{(image.fileSize / 1024).toFixed(1)} KB</span>
-                                        </span>
-                                    )}
-                                </div>
-                            ) : (
-                                /* 普通卡片信息 */
-                                <div className="flex items-center justify-center gap-2 text-[7px] font-mono">
-                                    {/* Time */}
-                                    {image.generationTime && (
-                                        <>
-                                            <span className="text-[var(--text-tertiary)]">
-                                                耗时 <span className="text-[var(--text-secondary)]">{(image.generationTime / 1000).toFixed(1)}s</span>
-                                            </span>
-                                            <span className="text-[var(--border-medium)]">|</span>
-                                        </>
-                                    )}
-                                    {/* Tokens */}
-                                    <span className="text-emerald-500/70">
-                                        令牌 <span className="text-emerald-500/90">{image.tokens || 0}</span>
-                                    </span>
-                                    <span className="text-[var(--border-medium)]">|</span>
-                                    {/* Cost */}
-                                    <span className="text-amber-500/70" title={`$${(image.cost || 0).toFixed(6)}`}>
-                                        费用 <span className="text-amber-500/90">${(image.cost || 0).toFixed(4)}</span>
-                                    </span>
-                                </div>
-                            )}
+                            {/* Row 2: Stats (Time | Tokens | Cost) */}
+                            <div className="flex items-center justify-center gap-1 h-[16px] text-[7px] font-mono text-[var(--text-secondary)]">
+                                {image.generationTime ? (
+                                    <span title="耗时" className="text-blue-400">耗时 {(image.generationTime / 1000).toFixed(1)}s</span>
+                                ) : (
+                                    <span className="text-blue-400/50">耗时 --</span>
+                                )}
+
+                                <span className="text-[var(--border-medium)] mx-0.5">|</span>
+
+                                <span title="Token消耗" className="text-emerald-400">令牌 {image.tokens || 0}</span>
+
+                                <span className="text-[var(--border-medium)] mx-0.5">|</span>
+
+                                <span title="费用" className="text-amber-400">费用 ${image.cost ? image.cost.toFixed(4) : '0.0000'}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </div >
 
         </>
     );
@@ -774,6 +723,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         prev.onDimensionsUpdate === next.onDimensionsUpdate &&
         prev.onClick === next.onClick &&
         prev.onDelete === next.onDelete &&
+        prev.onUpdate === next.onUpdate && // 🚀
         prev.onPositionChange === next.onPositionChange
     );
 });

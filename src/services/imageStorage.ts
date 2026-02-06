@@ -11,6 +11,8 @@
  * - 删除：同时从内存和IndexedDB删除
  */
 
+import { fileSystemService } from './fileSystemService';
+
 const DB_NAME = 'kk_studio_db';
 const DB_VERSION = 1;
 const IMAGES_STORE = 'images';
@@ -594,3 +596,201 @@ export async function deleteImageAllQualities(id: string): Promise<void> {
 
     await Promise.all(deletePromises);
 }
+
+// ========== 🔒 原图双层保护函数 ==========
+
+/**
+ * 🔒 保存原图（带重试机制和受保护标记）
+ * @param id 图片唯一ID
+ * @param dataURL 原图数据（base64 data URL）
+ */
+export async function saveOriginalImage(id: string, dataURL: string): Promise<void> {
+    const MAX_RETRIES = 3;
+
+    for (let i = 0; i < MAX_RETRIES; i++) {
+        try {
+            // 转换为Blob
+            const { dataURLToBlob } = await import('./blobUtils');
+            const blob = await dataURLToBlob(dataURL);
+
+            // 1. 内存缓存：存储Blob URL
+            const blobURL = URL.createObjectURL(blob);
+            memoryCache.set(id, blobURL);
+
+            // 2. IndexedDB：存储Blob对象（带保护标记）
+            const db = await openDB();
+            const transaction = db.transaction(IMAGES_STORE, 'readwrite');
+            const store = transaction.objectStore(IMAGES_STORE);
+
+            await new Promise<void>((resolve, reject) => {
+                // 🔒 关键：标记为原图，永不删除
+                const request = store.put({
+                    id,
+                    blob,
+                    quality: 'original',
+                    timestamp: Date.now(),
+                    protected: true // 🔒 受保护标记
+                });
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+
+            // 3. 🚀 自动备份到本地文件 SYSTEM (如果已连接)
+            const globalHandle = fileSystemService.getGlobalHandle();
+            if (globalHandle) {
+                try {
+                    await fileSystemService.saveImageToHandle(globalHandle, id, blob);
+                    console.log(`[ImageStorage] 🔒 Auto-backed up to local file: ${id}`);
+                } catch (e) {
+                    console.error(`[ImageStorage] ⚠️ Failed to auto-backup ${id}`, e);
+                    // 不中断流程，因为IndexedDB已经保存成功
+                }
+            }
+
+            console.log(`[ImageStorage] 🔒 Original image saved successfully (attempt ${i + 1}/${MAX_RETRIES})`);
+            return; // 成功，退出
+        } catch (error) {
+            console.warn(`[ImageStorage] 🔒 Save retry ${i + 1}/${MAX_RETRIES}:`, error);
+            if (i === MAX_RETRIES - 1) {
+                // 最后一次失败，至少保存到内存
+                console.error('[ImageStorage] 🔒 All retries failed, saving to memory only');
+                memoryCache.set(id, dataURL);
+                throw error;
+            }
+            // 等待一小段时间再重试
+            await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
+        }
+    }
+}
+
+/**
+ * 🔒 获取原图（强制加载，绝对优先级）
+ * @param id 图片唯一ID
+ * @returns 原图数据URL或Blob URL
+ */
+export async function getOriginalImage(id: string): Promise<string | null> {
+    // 1. 先检查内存缓存
+    if (memoryCache.has(id)) {
+        const cached = memoryCache.get(id);
+        console.log(`[ImageStorage] 🔒 Original found in memory cache: ${id}`);
+        return cached;
+    }
+
+    // 2. 从IndexedDB加载原图
+    try {
+        const db = await openDB();
+        const transaction = db.transaction(IMAGES_STORE, 'readonly');
+        const store = transaction.objectStore(IMAGES_STORE);
+
+        const result: { id: string; blob?: Blob; url?: string; quality?: string } | undefined = await new Promise((resolve, reject) => {
+            const request = store.get(id);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+
+        if (!result) {
+            console.warn(`[ImageStorage] 🔒 Original not found in IndexedDB: ${id}`);
+
+            // 🚀 Fallback: 尝试从本地文件加载 (最后的防线)
+            const globalHandle = fileSystemService.getGlobalHandle();
+            if (globalHandle) {
+                try {
+                    const blob = await fileSystemService.loadOriginalFromDisk(globalHandle, id);
+                    if (blob) {
+                        const blobURL = URL.createObjectURL(blob);
+                        // 恢复到内存
+                        memoryCache.set(id, blobURL);
+
+                        // 恢复到 IndexedDB (以便下次快速读取)
+                        // 注意：这里我们异步恢复，不阻塞返回
+                        saveOriginalImage(id, blobURL).catch(e =>
+                            console.warn('[ImageStorage] Failed to restore fallback image to DB', e)
+                        );
+
+                        console.log(`[ImageStorage] 🔒 Recovered ${id} from local disk fallback`);
+                        return blobURL;
+                    }
+                } catch (e) {
+                    console.warn(`[ImageStorage] Failed to load from local disk fallback: ${id}`, e);
+                }
+            }
+
+            return null;
+        }
+
+        // 优先使用Blob
+        if (result.blob) {
+            const blobURL = URL.createObjectURL(result.blob);
+            memoryCache.set(id, blobURL);
+            console.log(`[ImageStorage] 🔒 Original loaded from IndexedDB (Blob): ${id}`);
+            return blobURL;
+        }
+
+        // 兼容旧格式（data URL）
+        if (result.url) {
+            memoryCache.set(id, result.url);
+            console.log(`[ImageStorage] 🔒 Original loaded from IndexedDB (data URL): ${id}`);
+            return result.url;
+        }
+
+        console.warn(`[ImageStorage] 🔒 Original record exists but no data: ${id}`);
+        return null;
+    } catch (error) {
+        console.error('[ImageStorage] 🔒 Failed to get original from IndexedDB:', error);
+        return null;
+    }
+}
+
+/**
+ * 🔒 获取所有图片ID列表（用于批量导出）
+ * @returns 所有图片ID数组
+ */
+export async function getAllImageIds(): Promise<string[]> {
+    try {
+        const db = await openDB();
+        const transaction = db.transaction(IMAGES_STORE, 'readonly');
+        const store = transaction.objectStore(IMAGES_STORE);
+
+        const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+            const request = store.getAllKeys();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+
+        const ids = keys.map(k => k.toString());
+        console.log(`[ImageStorage] 🔒 Found ${ids.length} images in IndexedDB`);
+        return ids;
+    } catch (error) {
+        console.error('[ImageStorage] 🔒 Failed to get all image IDs:', error);
+        return [];
+    }
+}
+
+/**
+ * 获取图片元数据 (用于同步等)
+ */
+export async function getImageMetadata(id: string): Promise<{ timestamp?: number; quality?: string; protected?: boolean } | null> {
+    try {
+        const db = await openDB();
+        const transaction = db.transaction(IMAGES_STORE, 'readonly');
+        const store = transaction.objectStore(IMAGES_STORE);
+
+        const result: any = await new Promise((resolve, reject) => {
+            const request = store.get(id);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+
+        if (!result) return null;
+
+        return {
+            timestamp: result.timestamp,
+            quality: result.quality,
+            protected: result.protected
+        };
+    } catch (error) {
+        console.error('[ImageStorage] Failed to get metdata:', error);
+        return null;
+    }
+}
+

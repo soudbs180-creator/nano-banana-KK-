@@ -5,6 +5,7 @@ import { syncService } from '../services/syncService';
 import { fileSystemService } from '../services/fileSystemService';
 import { base64ToBlob, safeRevokeBlobUrl } from '../utils/blobUtils';
 import { calculateImageHash } from '../utils/imageUtils';
+import { supabase } from '../lib/supabase'; // Import supabase for auth check
 
 const MAX_CANVASES = 10;
 
@@ -49,6 +50,7 @@ interface CanvasContextType {
     updatePromptNodePosition: (id: string, pos: { x: number; y: number }, options?: { moveChildren?: boolean; ignoreSelection?: boolean }) => void;
     updateImageNodePosition: (id: string, pos: { x: number; y: number }, options?: { ignoreSelection?: boolean }) => void;
     updateImageNodeDimensions: (id: string, dimensions: string) => void;
+    updateImageNode: (id: string, updates: Partial<GeneratedImage>) => void; // 🚀 [New] Generic Update
     deleteImageNode: (id: string) => void;
     deletePromptNode: (id: string) => void;
     linkNodes: (promptId: string, imageId: string) => void;
@@ -177,6 +179,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     drawings: canvas.drawings || []
                 }));
 
+                // 🚀 [Critical Fix] FileSystemHandle 不能从 localStorage 恢复 (会变成普通对象)
+                // 必须强制设为 null，依赖 useEffect + IndexedDB 恢复
+                parsed.fileSystemHandle = null;
+                // FolderName 可以保留用于 UI 显示，但如果不连接也没意义，不过保留着也没坏处
+                // parsed.folderName = null; 
+
                 return parsed;
             }
         } catch (e) {
@@ -236,6 +244,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                             if (data.url) saveImage(id, data.url).catch(e => console.warn('Cache failed', e));
                                         }
 
+                                        // 🚀 [NEW] 加载参考图映射并用于恢复丢失的参考图
+                                        let refUrls = new Map<string, string>();
+                                        try {
+                                            refUrls = await fileSystemService.loadAllReferenceImages(handle);
+                                        } catch (e) {
+                                            console.warn('[CanvasContext] Failed to load reference images', e);
+                                        }
+
                                         if (canvases.length > 0) {
                                             // 🚀 恢复上次活动的项目，如果找不到则使用第一个
                                             const validActiveId = savedActiveCanvasId && canvases.some(c => c.id === savedActiveCanvasId)
@@ -253,8 +269,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                                     })),
                                                     promptNodes: c.promptNodes.map(pn => ({
                                                         ...pn,
+                                                        // 🚀 恢复丢失的参考图：如果data为空但有storageId，尝试从refs/恢复
                                                         referenceImages: pn.referenceImages?.map(ref => ({
                                                             ...ref,
+                                                            // 如果有storageId但没有data，使用refs/中的URL
+                                                            ...((!ref.data && ref.storageId && refUrls.has(ref.storageId)) ? {
+                                                                data: refUrls.get(ref.storageId) // 这里是URL而非base64，ReferenceThumbnail会处理
+                                                            } : {})
                                                         })) || []
                                                     }))
                                                 })),
@@ -497,8 +518,127 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 setIsLoading(false);
             }
         };
+
         init();
     }, []);
+
+    // Helper: Strip image URLs for storage
+
+
+    // Helper: Merge Canvases with Latest Wins strategy
+    const mergeCanvases = (local: Canvas[], cloud: Canvas[]): Canvas[] => {
+        const map = new Map<string, Canvas>();
+        cloud.forEach(c => map.set(c.id, c));
+
+        local.forEach(l => {
+            const c = map.get(l.id);
+            if (c) {
+                // If local is newer (or very close), keep local
+                // Add buffer to avoid ping-pong if clocks skew drastically? 
+                // Just simple comparison.
+                if ((l.lastModified || 0) > (c.lastModified || 0)) {
+                    map.set(l.id, l);
+                }
+            } else {
+                map.set(l.id, l);
+            }
+        });
+        return Array.from(map.values());
+    };
+
+    // 🚀 Cloud Sync: Load & Merge on Init
+    useEffect(() => {
+        const loadCloud = async () => {
+            // Wait for auth? 
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            try {
+                const cloudCanvases = await syncService.loadLayout();
+                if (cloudCanvases && cloudCanvases.length > 0) {
+                    setState(prev => {
+                        const merged = mergeCanvases(prev.canvases, cloudCanvases);
+                        // Check if anything changed
+                        if (JSON.stringify(merged) !== JSON.stringify(prev.canvases)) {
+                            console.log('[CanvasContext] Merged cloud layout.', { local: prev.canvases.length, cloud: cloudCanvases.length, merged: merged.length });
+
+                            // 🚀 Hydrate newly added nodes (simulated)
+                            // Since we don't have URLs, we rely on IDB hydration loop or trigger it?
+                            // Re-triggering full init is heavy.
+                            // Let's rely on lazy hydration if accessed?
+                            // Or simple re-hydration loop for the merged set.
+
+                            // Trigger background hydration
+                            hydrateMergedImages(merged).catch(console.error);
+
+                            return { ...prev, canvases: merged };
+                        }
+                        return prev;
+                    });
+                }
+            } catch (e) {
+                console.error('[CanvasContext] Cloud load failed', e);
+            }
+        };
+
+        const hydrateMergedImages = async (canvases: Canvas[]) => {
+            // Try to find images in IDB for nodes that are missing URLs
+            const { getImage } = await import('../services/imageStorage');
+            let hasUpdates = false;
+
+            // Map IDs to URLs
+            const urlMap = new Map<string, string>();
+            const promises: Promise<void>[] = [];
+
+            for (const c of canvases) {
+                for (const img of c.imageNodes) {
+                    if (!img.url && (img.storageId || img.id)) {
+                        promises.push(
+                            getImage(img.storageId || img.id).then(url => {
+                                if (url) {
+                                    urlMap.set(img.id, url);
+                                    hasUpdates = true;
+                                }
+                            }).catch(() => { })
+                        );
+                    }
+                }
+            }
+
+            if (promises.length === 0) return;
+
+            await Promise.all(promises);
+
+            if (hasUpdates) {
+                setState(prev => ({
+                    ...prev,
+                    canvases: prev.canvases.map(c => ({
+                        ...c,
+                        imageNodes: c.imageNodes.map(img =>
+                            urlMap.has(img.id) ? { ...img, url: urlMap.get(img.id)! } : img
+                        )
+                    }))
+                }));
+                console.log(`[CanvasContext] Hydrated ${urlMap.size} images from cloud layout.`);
+            }
+        };
+
+        if (!isLoading) loadCloud();
+    }, [isLoading]);
+
+    // 🚀 Cloud Sync: Auto-Save
+    useEffect(() => {
+        if (isLoading || state.canvases.length === 0) return;
+
+        const timer = setTimeout(() => {
+            const stripped = stripImageUrls(state.canvases);
+            syncService.saveLayout(stripped).catch(e => console.error('[CanvasContext] Cloud save failed', e));
+        }, 3000); // 3s debounce
+
+        return () => clearTimeout(timer);
+    }, [state.canvases, isLoading]);
+
+
 
     // State Ref for stable access in event listeners
     const stateRef = useRef(state);
@@ -1239,6 +1379,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
     }, [updateCanvas]);
 
+    const updateImageNode = useCallback((id: string, updates: Partial<GeneratedImage>) => {
+        updateCanvas(c => ({
+            ...c,
+            imageNodes: c.imageNodes.map(img =>
+                img.id === id ? { ...img, ...updates } : img
+            )
+        }));
+    }, [updateCanvas]);
+
     const deleteImageNode = useCallback((id: string) => {
         pushToHistory();
         // Delete from IndexedDB
@@ -1425,15 +1574,17 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (w && h) {
                     const ratio = w / h;
                     const cardWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
-                    const imageHeight = (cardWidth / ratio) + 40;
+                    // 🚀 [FIX] Increased buffer from +40 to +100 to account for Header + Footer
+                    const imageHeight = (cardWidth / ratio) + 100;
                     return { w: cardWidth, h: imageHeight };
                 }
             }
+            // 🚀 [FIX] Updated hardcoded defaults with +60px height (original +40 -> +100 total buffer)
             switch (aspectRatio) {
-                case '16:9': return { w: 320, h: 220 };
-                case '9:16': return { w: 200, h: 395 };
+                case '16:9': return { w: 320, h: 280 }; // Was 220
+                case '9:16': return { w: 200, h: 455 }; // Was 395
                 case '1:1':
-                default: return { w: 280, h: 320 };
+                default: return { w: 280, h: 380 }; // Was 320
             }
         };
 
@@ -1599,8 +1750,42 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                     roots = Array.from(uniqueRootsMap.values()).map(r => {
                         const node = r.obj;
-                        const width = r.type === 'prompt' ? PROMPT_WIDTH : getImageDims(node.aspectRatio, node.dimensions).w;
-                        const height = r.type === 'prompt' ? (node.height || 200) : getImageDims(node.aspectRatio, node.dimensions).h;
+                        let width, height;
+
+                        if (r.type === 'prompt') {
+                            // 🚀 [FIX] Calculate Bounding Box of Prompt + All Children
+                            const children = currentCanvas.imageNodes.filter(img => img.parentPromptId === node.id);
+
+                            // 1. Initial Bounds (Prompt itself) - Anchor: Bottom Center
+                            const pH = node.height || 200;
+                            let minTop = node.position.y - pH;
+                            let maxBottom = node.position.y;
+                            let minLeft = node.position.x - PROMPT_WIDTH / 2;
+                            let maxRight = node.position.x + PROMPT_WIDTH / 2;
+
+                            // 2. Expand with Children
+                            children.forEach(child => {
+                                const dims = getImageDims(child.aspectRatio, child.dimensions);
+                                // Anchor: Bottom Center (Assuming consistent system)
+                                const cTop = child.position.y - dims.h;
+                                const cBottom = child.position.y;
+                                const cLeft = child.position.x - dims.w / 2;
+                                const cRight = child.position.x + dims.w / 2;
+
+                                if (cTop < minTop) minTop = cTop;
+                                if (cBottom > maxBottom) maxBottom = cBottom;
+                                if (cLeft < minLeft) minLeft = cLeft;
+                                if (cRight > maxRight) maxRight = cRight;
+                            });
+
+                            width = maxRight - minLeft;
+                            height = maxBottom - minTop;
+                        } else {
+                            const dims = getImageDims(node.aspectRatio, node.dimensions);
+                            width = dims.w;
+                            height = dims.h;
+                        }
+
                         return {
                             ...r,
                             x: node.position.x, y: node.position.y,
@@ -1613,7 +1798,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (roots.length >= 2) {
                     // 2. 使用传入的mode确定策略
                     const strategy: 'matrix' | 'row' | 'column' = mode === 'grid' ? 'matrix' : mode;
-                    const GAP = 80; // 分组间距
+                    const GAP = 120; // ✅ 增大分组间距 (Was 80)
                     const GRID_COLUMNS = 6; // 宫格模式固定6列
 
                     // 3. Arrange
@@ -2249,7 +2434,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 // 🚀 不再调用getAllImages，只迁移当前状态需要的图片
 
                 // Helper to save base64/blob to disk
-                const saveToDisk = async (id: string, urlOrData: string) => {
+                const saveToDisk = async (id: string, urlOrData: string, isVideo: boolean = false) => {
                     try {
                         let blob: Blob;
                         if (urlOrData.startsWith('data:')) {
@@ -2261,7 +2446,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             blob = await res.blob();
                         }
 
-                        await fileSystemService.saveImageToHandle(handle!, id, blob);
+                        // 🚀 使用新版 saveImageToHandle (支持视频和图片分离)
+                        await fileSystemService.saveImageToHandle(handle!, id, blob, isVideo);
                     } catch (e) {
                         console.warn(`Failed to migrate image ${id} to local folder`, e);
                     }
@@ -2272,21 +2458,40 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 state.canvases.forEach(c => {
                     c.imageNodes.forEach(img => {
                         if (img.id && img.url) {
-                            promises.push(saveToDisk(img.id, img.url));
+                            // 检查是否是视频
+                            const isVideo = img.url.startsWith('data:video/') || img.model?.includes('veo') || false;
+                            promises.push(saveToDisk(img.id, img.url, isVideo));
                         }
                     });
                     c.promptNodes.forEach(pn => {
                         pn.referenceImages?.forEach(ref => {
-                            if (ref.id && ref.data) {
-                                const data = ref.data.startsWith('data:') ? ref.data : `data:${ref.mimeType};base64,${ref.data}`;
-                                promises.push(saveToDisk(ref.id, data));
+                            // 🚀 使用专门的 saveReferenceImage 函数（保存到 refs/ 并压缩）
+                            if (ref.storageId && ref.data) {
+                                // saveReferenceImage expects base64 string without "data:mimeType;base64," prefix
+                                const base64Data = ref.data.startsWith('data:') ? ref.data.split(',')[1] : ref.data;
+                                promises.push(
+                                    fileSystemService.saveReferenceImage(handle!, ref.storageId, base64Data, ref.mimeType)
+                                );
+                            } else if (ref.id && ref.data) {
+                                // Fallback for old refs without storageId
+                                // saveReferenceImage expects base64 string without "data:mimeType;base64," prefix
+                                const base64Data = ref.data.startsWith('data:') ? ref.data.split(',')[1] : ref.data;
+                                promises.push(
+                                    fileSystemService.saveReferenceImage(handle!, ref.id, base64Data, ref.mimeType)
+                                );
                             }
                         });
                     });
                 });
 
-                if (promises.length > 0) {
+                // 等待所有保存完成
+                try {
                     await Promise.allSettled(promises);
+                } catch (e) {
+                    console.warn('Migration partial failure', e);
+                }
+
+                if (promises.length > 0) {
                     // eslint-disable-next-line @typescript-eslint/no-var-requires
                     const { notify } = await import('../services/notificationService');
                     notify.success('数据迁移', `已将 ${promises.length} 张临时图片保存到本地文件夹`);
@@ -2343,7 +2548,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             return {
                                 ...img,
                                 url: localData?.url || img.url || '',
-                                originalUrl: localData?.originalUrl || img.originalUrl
+                                originalUrl: localData?.originalUrl || img.originalUrl,
+                                filename: localData?.filename // 🚀 Inject filename for tag shortcuts
                             };
                         }),
                         promptNodes: c.promptNodes.map(pn => ({
@@ -2366,6 +2572,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     folderName: handle.name
                 }));
             }
+
+            // 🚀 [Fix] Persist handle to IndexedDB so it can be restored on reload
+            import('../services/storagePreference').then(({ setLocalFolderHandle }) => {
+                if (handle) setLocalFolderHandle(handle);
+            });
 
         } catch (error) {
             console.error('Failed to connect local folder:', error);
@@ -2453,6 +2664,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     fileSystemHandle: newHandle,
                     folderName: newHandle.name
                 }));
+
+                // 🚀 [Fix] Persist new handle
+                import('../services/storagePreference').then(({ setLocalFolderHandle }) => {
+                    setLocalFolderHandle(newHandle);
+                });
 
                 alert('项目移动成功！');
 
@@ -2961,7 +3177,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return (
         <CanvasContext.Provider value={{
             state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
-            addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions,
+            addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions, updateImageNode,
             deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
             undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition,
             // File System

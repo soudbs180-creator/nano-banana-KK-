@@ -82,7 +82,7 @@ const NotificationToast: React.FC = () => {
                 <div
                     className="fixed z-[99999] flex gap-3 pointer-events-none w-full max-w-[400px]
                     /* Mobile: Top Centered / Full Width */
-                    top-4 left-4 right-4 bottom-auto flex-col
+                    top-[max(16px,env(safe-area-inset-top))] left-4 right-4 bottom-auto flex-col
                     /* Desktop: Bottom Left, Above Slider (留出180px给滑块+版本号) */
                     md:top-auto md:bottom-20 md:left-4 md:right-auto md:flex-col-reverse"
                 >

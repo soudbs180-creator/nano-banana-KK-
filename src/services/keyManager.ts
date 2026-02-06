@@ -102,6 +102,9 @@ export interface KeySlot {
     totalCost: number;
     budgetLimit: number; // -1 for unlimited
     tokenLimit?: number; // ✨ New: -1 for unlimited
+
+    // Sync
+    updatedAt?: number; // Timestamp of last modification for sync conflict resolution
     quota?: {
         limitRequests: number;
         remainingRequests: number;
@@ -470,7 +473,7 @@ export class KeyManager {
         const slot = this.state.slots.find(s => s.id === keyId);
         if (slot) {
             slot.usedTokens = (slot.usedTokens || 0) + tokens;
-
+            slot.updatedAt = Date.now(); // Update timestamp
 
             // Check budget - 预算耗尽时自动轮换
             if (slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit) {
@@ -482,6 +485,7 @@ export class KeyManager {
             this.notifyListeners();
         }
     }
+
 
 
 
@@ -529,7 +533,8 @@ export class KeyManager {
                         compatibilityMode: s.compatibilityMode || 'standard',
                         supportedModels,
                         disabled: s.disabled ?? false,
-                        status: s.status || 'valid'
+                        status: s.status || 'valid',
+                        updatedAt: s.updatedAt || s.createdAt || Date.now() // Backfill updatedAt
                     };
                 });
 
@@ -577,11 +582,13 @@ export class KeyManager {
                         createdAt: Date.now(),
                         totalCost: 0,
                         budgetLimit: -1,
+                        tokenLimit: -1,
                         supportedModels: [...DEFAULT_GOOGLE_MODELS],
                         baseUrl: '',
                         authMethod: 'query',
                         headerName: 'x-goog-api-key',
-                        type: 'official' // ✨ Default to official for old keys
+                        type: 'official', // ✨ Default to official for old keys
+                        updatedAt: Date.now() // Set initial timestamp
                     }));
 
                 if (slots.length > 0) {
@@ -718,24 +725,73 @@ export class KeyManager {
                         totalCost: s.totalCost || 0,
 
                         budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
-                        supportedModels: s.supportedModels || []
+                        tokenLimit: s.tokenLimit !== undefined ? s.tokenLimit : -1,
+                        supportedModels: s.supportedModels || [],
+                        updatedAt: s.updatedAt || s.createdAt || Date.now() // Backfill updatedAt
                     }));
 
-                    // ✨ 改为本地优先策略
-                    // 如果本地有数据,优先使用本地数据并上传覆盖云端
+                    // ✨ 改为"最新优先" (Latest Wins) 策略
+                    // 解决多端同步冲突: 比较本地和云端的时间戳,谁新用谁
+                    const mergedSlots = new Map<string, KeySlot>();
+
+                    // 1. 先放入所有云端数据
+                    cloudSlots.forEach(s => mergedSlots.set(s.id, s));
+
+                    let needsCloudUpdate = false;
+                    let needsLocalUpdate = false;
+
+                    // 2. 遍历本地数据进行合并
                     if (localKeys.length > 0) {
-                        console.log('[KeyManager] 本地有数据,优先使用本地并同步到云端');
-                        this.state.slots = localKeys;
-                        // 立即上传本地数据覆盖云端
-                        await this.saveToCloud(this.state);
+                        for (const localSlot of localKeys) {
+                            const cloudSlot = mergedSlots.get(localSlot.id);
+
+                            if (cloudSlot) {
+                                // 冲突解决: 比较时间戳
+                                const localTime = localSlot.updatedAt || 0;
+                                const cloudTime = cloudSlot.updatedAt || 0;
+
+                                if (localTime > cloudTime) {
+                                    // 本地更新 -> 覆盖云端
+                                    mergedSlots.set(localSlot.id, localSlot);
+                                    needsCloudUpdate = true;
+                                    console.log(`[KeyManager] Conflict: Keep Local (newer) ${localSlot.name}`);
+                                } else if (cloudTime > localTime) {
+                                    // 云端更新 -> 覆盖本地 (implicit)
+                                    // mergedSlots already has cloudSlot
+                                    needsLocalUpdate = true;
+                                    console.log(`[KeyManager] Conflict: Keep Cloud (newer) ${cloudSlot.name}`);
+                                } else {
+                                    // Same time, usually safe to keep either. 
+                                    // But checking budget might be useful.
+                                    // Assume synced.
+                                    // Special case: if local has budget change but no timestamp update (legacy)
+                                    // We can't know. Trusting timestamp.
+                                }
+                            } else {
+                                // 本地有但云端没有 -> 新增 (Keep Local)
+                                mergedSlots.set(localSlot.id, localSlot);
+                                needsCloudUpdate = true;
+                            }
+                        }
                     } else {
-                        // 本地为空,使用云端数据
-                        console.log('[KeyManager] 本地为空,使用云端数据');
-                        this.state.slots = cloudSlots;
+                        needsLocalUpdate = true;
                     }
 
+                    this.state.slots = Array.from(mergedSlots.values());
 
-                    // 直接保存到localStorage,不触发云端上传(避免递归)
+                    console.log('[KeyManager] Merge complete.', {
+                        total: this.state.slots.length,
+                        needsCloudUpdate,
+                        needsLocalUpdate
+                    });
+
+                    // 3. 根据情况保存
+                    if (needsCloudUpdate) {
+                        console.log('[KeyManager] Syncing merged state up to cloud...');
+                        await this.saveToCloud(this.state);
+                    }
+
+                    // Always save to local storage to persist merged state
                     const key = this.getStorageKey();
                     localStorage.setItem(key, JSON.stringify(this.state));
                     this.notifyListeners();
@@ -1395,7 +1451,8 @@ export class KeyManager {
             totalCost: 0,
             budgetLimit: options?.budgetLimit ?? -1,
             tokenLimit: options?.tokenLimit ?? -1,
-            proxyConfig: options?.proxyConfig
+            proxyConfig: options?.proxyConfig,
+            updatedAt: Date.now() // Initial timestamp
         };
 
         this.state.slots.push(newSlot);
@@ -1434,6 +1491,7 @@ export class KeyManager {
                 // ✅ 直接使用用户提供的模型,不自动过滤或修改
                 slot.supportedModels = updates.supportedModels;
             }
+            slot.updatedAt = Date.now(); // Update timestamp
             await this.saveState();
             this.notifyListeners();
         }

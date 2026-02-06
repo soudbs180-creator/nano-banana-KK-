@@ -93,8 +93,6 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
     const [newBudget, setNewBudget] = React.useState('');
     const [latency, setLatency] = React.useState<number>(0);
 
-    const [, setTick] = React.useState(0); // Force re-render
-
     useEffect(() => {
         import('../services/costService').then(mod => {
             setBudget(mod.getDailyBudget());
@@ -115,16 +113,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
         };
         checkLatency();
         const interval = setInterval(checkLatency, 5000);
-
-        // Subscribe to KeyManager updates
-        const unsubscribe = keyManager.subscribe(() => {
-            setTick(t => t + 1);
-        });
-
-        return () => {
-            clearInterval(interval);
-            unsubscribe();
-        };
+        return () => clearInterval(interval);
     }, []);
 
     const handleSaveBudget = async () => {
@@ -370,7 +359,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>版本</div>
-                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.8</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.7</div>
                     </div>
                 </div>
             </div>
@@ -728,12 +717,12 @@ const StorageSettingsView = () => {
     // Usage Stats
     const [browserUsage, setBrowserUsage] = useState<number>(0);
     const [localUsage, setLocalUsage] = useState<number>(0);
-    const [localCount, setLocalCount] = useState<number>(0);
     const [opfsUsage, setOpfsUsage] = useState<number>(0);
 
     // 🚀 新增：移动设备检测
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const supportsOPFS = 'storage' in navigator && 'getDirectory' in navigator.storage;
+    const supportsNativeFS = 'showDirectoryPicker' in window;
 
     const loadStats = async () => {
         try {
@@ -743,12 +732,10 @@ const StorageSettingsView = () => {
 
             // If local, load local usage
             if (state.fileSystemHandle) {
-                const { size, count } = await fileSystemService.getFolderUsage(state.fileSystemHandle);
-                setLocalUsage(size);
-                setLocalCount(count);
+                const lUsage = await fileSystemService.getFolderUsage(state.fileSystemHandle);
+                setLocalUsage(lUsage);
             } else {
                 setLocalUsage(0);
-                setLocalCount(0);
             }
 
             // 🚀 新增：加载OPFS使用量
@@ -801,17 +788,15 @@ const StorageSettingsView = () => {
         setLoading(false);
     };
 
-    const handleDisconnectLocal = () => {
-        if (confirm('确定要断开本地备份文件夹吗？\n断开后，新生成的图片将仅保存在临时缓存中。')) {
-            setLoading(true);
-            disconnectLocalFolder();
-            setLoading(false);
-        }
+    const handleConnectBrowser = () => {
+        setLoading(true);
+        disconnectLocalFolder();
+        setLoading(false);
     };
 
     const handleClearCache = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (confirm('⚠️ 警告：确定要清理浏览器缓存吗？\n\n这将彻底删除缓存在浏览器中的所有图片！\n如果没有本地备份，这些数据将无法恢复。')) {
+        if (confirm('确定要清理浏览器缓存吗？\n这将彻底删除缓存在浏览器中的所有临时图片。\n此操作不会影响「本地文件夹」中的文件。')) {
             setLoading(true);
             try {
                 const { clearAllImages } = await import('../services/imageStorage');
@@ -827,179 +812,224 @@ const StorageSettingsView = () => {
     };
 
     return (
-        <div className="space-y-4 h-full flex flex-col px-1">
-            <div className="shrink-0">
-                <h3 className="text-xl font-bold flex items-center gap-2 text-left" style={{ color: 'var(--text-primary)' }}>
-                    配置储存
-                    {isConnectedToLocal && (
-                        <div className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                            双重备份已激活
+        <div className="space-y-8 h-full flex flex-col px-1">
+            <div className="flex-1">
+                <h3 className="text-2xl font-bold flex items-center gap-3 text-left" style={{ color: 'var(--text-primary)' }}>
+                    存储管理
+                    <div className={`text-xs ml-2 font-normal px-2 py-0.5 rounded-full border ${isConnectedToLocal
+                        ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                        : supportsOPFS && isMobile
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : 'bg-[var(--bg-tertiary)] border-[var(--border-light)]'
+                        }`} style={{ color: !isConnectedToLocal && !(supportsOPFS && isMobile) ? 'var(--text-tertiary)' : undefined }}>
+                        {isConnectedToLocal ? '本地 (Local)' : supportsOPFS && isMobile ? 'OPFS (移动端)' : '临时 (Temp)'}
+                    </div>
+                    {isMobile && (
+                        <div className="text-xs font-normal px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            📱 Mobile
                         </div>
                     )}
                 </h3>
             </div>
+            <p className="text-zinc-500 text-sm mt-1 text-left w-full">
+                {isMobile
+                    ? '移动端存储设置。数据将保存在浏览器私有文件系统(OPFS)中，性能接近原生。'
+                    : '数据存储偏好设置。可在临时浏览器存储和本地文件系统之间切换。'}
+            </p>
 
-            <div className="flex flex-col gap-3 flex-1 min-h-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
 
-                {/* Card 1: 临时缓存 (Temporary Cache) - Compact */}
-                <div className="relative p-4 rounded-2xl border border-[var(--border-light)] bg-[var(--bg-secondary)] flex flex-row items-center justify-between shadow-sm shrink-0">
-                    {/* Left: Info & Stats */}
-                    <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <div className="p-1.5 rounded-lg bg-[var(--bg-tertiary)] text-zinc-500">
-                                <Globe size={18} />
-                            </div>
-                            <h4 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>临时缓存</h4>
-                            <div className="flex items-center gap-1 text-zinc-400 text-[10px] font-bold px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full border border-[var(--border-light)]">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                运行中
-                            </div>
+
+                <div
+                    onClick={!isConnectedToLocal ? undefined : handleConnectBrowser}
+                    className={`relative p-5 md:p-8 rounded-[24px] md:rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
+                    ${!isConnectedToLocal
+                            ? 'bg-indigo-600/5 border-indigo-500/50 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]'
+                            : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-indigo-500/30 hover:bg-white/5 opacity-60 hover:opacity-100'
+                        }`}>
+
+                    <div className="flex justify-between items-start">
+                        <div className={`p-4 rounded-2xl ${!isConnectedToLocal ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-[var(--bg-tertiary)] text-zinc-500'}`}>
+                            <Globe size={24} />
                         </div>
-                        <div className="flex items-baseline gap-2">
-                            <span className="text-xs text-zinc-500">占用空间</span>
-                            <span className="text-2xl font-mono font-bold text-[var(--accent-amber)] tracking-tight">
-                                {formatBytes(browserUsage)}
-                            </span>
+                        {!isConnectedToLocal && (
+                            <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold px-3 py-1 bg-indigo-500/10 rounded-full border border-indigo-500/20">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                </span>
+                                已激活 (ACTIVE)
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mt-8">
+                        <h4 className={`text-lg font-bold ${!isConnectedToLocal ? '' : 'text-zinc-400'}`} style={{ color: !isConnectedToLocal ? 'var(--text-primary)' : undefined }}>临时文件 (Temp)</h4>
+                        <div className={`text-4xl font-mono font-bold mt-2 ${!isConnectedToLocal ? 'text-indigo-400' : 'text-zinc-600'}`}>
+                            {formatBytes(browserUsage)}
                         </div>
-                        <p className="text-[10px] text-zinc-500 mt-0.5 max-w-[280px]">
-                            浏览器缓存。<span className="text-orange-500/80">空间不足时可能被自动清理。</span>
+                        <p className="text-xs text-zinc-500 mt-4 leading-relaxed">
+                            数据存储在浏览器缓存中。
+                            <br />
+                            <span className="opacity-70">浏览器清理缓存时可能会丢失。</span>
                         </p>
                     </div>
 
-                    {/* Right: Actions */}
-                    <div className="flex flex-col items-end justify-center">
+                    <div className="mt-6 pt-6 border-t border-white/5 flex gap-3">
                         <button
-                            onClick={handleClearCache}
-                            className="px-4 py-2 rounded-xl bg-red-500/5 hover:bg-red-500/10 text-red-400/80 hover:text-red-400 border border-red-500/10 hover:border-red-500/30 transition-all flex items-center gap-2 text-xs font-bold"
-                            title="清理浏览器缓存"
+                            disabled={!isConnectedToLocal}
+                            className={`flex-1 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
+                            ${!isConnectedToLocal
+                                    ? 'bg-indigo-500/10 text-indigo-400 cursor-default'
+                                    : 'bg-[var(--bg-tertiary)] text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
                         >
-                            <Trash2 size={14} />
-                            清理缓存
+                            {isConnectedToLocal ? '切换至临时模式' : '当前已激活'}
                         </button>
-                    </div>
-                </div>
 
-                {/* Card 2: 本地备份 (Local Backup) - Compact */}
-                <div
-                    className={`relative p-4 rounded-2xl border transition-all duration-300 flex-1 flex flex-row items-center justify-between overflow-hidden
-                    ${isConnectedToLocal
-                            ? 'bg-indigo-600/5 border-indigo-500/50 shadow-[0_0_20px_-10px_rgba(99,102,241,0.2)]'
-                            : 'bg-[var(--bg-secondary)] border-[var(--border-light)]'
-                        }`}>
-
-                    {/* Left: Info, Stats & Path */}
-                    <div className="flex flex-col justify-center gap-2 h-full py-1">
-                        <div className="flex items-center gap-2">
-                            <div className={`p-1.5 rounded-lg ${isConnectedToLocal ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-[var(--bg-tertiary)] text-zinc-500'}`}>
-                                <HardDrive size={18} />
-                            </div>
-                            <h4 className={`text-base font-bold ${isConnectedToLocal ? '' : 'text-zinc-400'}`} style={{ color: isConnectedToLocal ? 'var(--text-primary)' : undefined }}>本地备份</h4>
-
-                            {isConnectedToLocal ? (
-                                <div className="flex items-center gap-1 text-indigo-400 text-[10px] font-bold px-2 py-0.5 bg-indigo-500/10 rounded-full border border-indigo-500/20">
-                                    <span className="relative flex h-1.5 w-1.5">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
-                                    </span>
-                                    已连接
-                                </div>
-                            ) : (
-                                <div className="text-[10px] font-bold px-2 py-0.5 bg-[var(--bg-tertiary)] rounded-full text-zinc-500 border border-[var(--border-light)]">
-                                    未配置
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex items-center gap-6">
-                            <div className="flex flex-col">
-                                <span className={`text-[10px] font-medium ${isConnectedToLocal ? 'text-indigo-300/70' : 'text-zinc-600'}`}>备份大小</span>
-                                <div className={`text-2xl font-mono font-bold tracking-tight ${isConnectedToLocal ? 'text-indigo-400' : 'text-zinc-600'}`}>
-                                    {isConnectedToLocal ? formatBytes(localUsage) : '--'}
-                                </div>
-                            </div>
-                            {isConnectedToLocal && (
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-medium text-emerald-300/70">成功备份</span>
-                                    <div className="text-2xl font-mono font-bold text-emerald-400 tracking-tight">
-                                        {localCount} <span className="text-xs">张</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="text-[10px] text-zinc-500 max-w-[300px] truncate leading-relaxed">
-                            {isConnectedToLocal ? (
-                                <span className="flex items-center gap-1 text-indigo-300/80" title={currentFolderName || undefined}>
-                                    <Check size={10} /> 路径: {currentFolderName}
-                                </span>
-                            ) : (
-                                "连接本地文件夹，实现原图自动双重备份。"
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Right: Action Buttons Group */}
-                    <div className="flex flex-col gap-2 h-full justify-center min-w-[120px]">
-                        {isConnectedToLocal ? (
-                            <>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setLoading(true); changeLocalFolder().finally(() => setLoading(false)); }}
-                                    className="w-full py-2 bg-[var(--bg-tertiary)] hover:bg-white/5 text-zinc-300 rounded-xl text-xs font-bold transition-all border border-[var(--border-light)] text-center"
-                                >
-                                    更改位置
-                                </button>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={handleDisconnectLocal}
-                                        className="flex-1 py-2 bg-red-500/5 hover:bg-red-500/10 text-red-400 rounded-xl text-xs font-bold transition-all border border-red-500/10 hover:border-red-500/30 flex items-center justify-center gap-1"
-                                        title="断开"
-                                    >
-                                        断开
-                                    </button>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
-                                        className="px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-xs font-bold transition-all border border-indigo-500/20 flex items-center justify-center"
-                                        title="刷新"
-                                    >
-                                        <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
+                        {isConnectedToLocal && (
                             <button
-                                onClick={handleConnectLocal}
-                                disabled={loading}
-                                className="w-full py-3 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all bg-[var(--bg-tertiary)] text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg border border-[var(--border-light)] hover:border-indigo-500"
+                                onClick={handleClearCache}
+                                className="px-4 py-3 rounded-xl bg-[var(--bg-tertiary)] text-zinc-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 border border-transparent transition-all flex items-center justify-center cursor-pointer"
+                                title="清理浏览器缓存(Clear Cache)"
                             >
-                                <FolderOpen size={18} />
-                                选择文件夹
+                                <Trash2 size={18} />
                             </button>
                         )}
                     </div>
                 </div>
 
-                {/* 🚀 OPFS存储卡片 (仅移动端显示) - Keeping logic but compact if needed, though mostly hidden on desktop */}
+                {/* Local Storage Card */}
+                <div
+                    onClick={isConnectedToLocal ? undefined : handleConnectLocal}
+                    className={`relative p-5 md:p-8 rounded-[24px] md:rounded-[32px] border transition-all duration-300 group flex flex-col justify-between overflow-hidden cursor-pointer
+                    ${isConnectedToLocal
+                            ? 'bg-indigo-600/5 border-indigo-500/50 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]'
+                            : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-indigo-500/30 hover:bg-white/5 opacity-60 hover:opacity-100'
+                        }`}>
+
+                    <div className="flex justify-between items-start">
+                        <div className={`p-4 rounded-2xl ${isConnectedToLocal ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-[var(--bg-tertiary)] text-zinc-500'}`}>
+                            <FolderOpen size={24} />
+                        </div>
+                        {isConnectedToLocal && (
+                            <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold px-3 py-1 bg-indigo-500/10 rounded-full border border-indigo-500/20">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                </span>
+                                已激活 (ACTIVE)
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mt-8">
+                        <h4 className={`text-lg font-bold ${isConnectedToLocal ? '' : 'text-zinc-400'}`} style={{ color: isConnectedToLocal ? 'var(--text-primary)' : undefined }}>本地文件夹(Local)</h4>
+                        <div className={`text-4xl font-mono font-bold mt-2 ${isConnectedToLocal ? 'text-indigo-400' : 'text-zinc-600'}`}>
+                            {isConnectedToLocal ? formatBytes(localUsage) : '--'}
+                        </div>
+                        <div className="text-xs text-zinc-500 mt-4 leading-relaxed truncate">
+                            {isConnectedToLocal ? (
+                                <span className="flex items-center gap-1 text-indigo-300/80">
+                                    <Check size={12} /> 已连接: {currentFolderName}
+                                </span>
+                            ) : (
+                                "数据已保存到您的本地磁盘。"
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="mt-6 pt-6 border-t border-white/5 space-y-2">
+                        {isConnectedToLocal ? (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setLoading(true); changeLocalFolder().finally(() => setLoading(false)); }}
+                                    className="flex-1 py-3 bg-[var(--bg-tertiary)] hover:bg-white/5 text-zinc-300 rounded-xl text-xs font-bold transition-all border border-[var(--border-light)]"
+                                >
+                                    更改位置
+                                </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
+                                    className="px-4 py-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-xs font-bold transition-all border border-indigo-500/20 flex items-center justify-center"
+                                    title="刷新 & 重新扫描"
+                                >
+                                    <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                disabled={isConnectedToLocal}
+                                className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
+                                ${isConnectedToLocal
+                                        ? 'bg-indigo-500/10 text-indigo-400 cursor-default'
+                                        : 'bg-[var(--bg-tertiary)] text-zinc-300 hover:bg-indigo-600 hover:text-white hover:shadow-lg'}`}
+                            >
+                                切换至本地
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* 🚀 新增：OPFS存储卡片 (仅移动端显示) */}
                 {isMobile && supportsOPFS && (
-                    <div className="relative p-4 rounded-xl border border-emerald-500/50 bg-emerald-600/5 flex flex-row items-center justify-between shrink-0">
-                        <div className="flex flex-col gap-1">
-                            <h4 className="text-sm font-bold text-[var(--text-primary)]">私有文件系统 (OPFS)</h4>
-                            <div className="text-xl font-mono font-bold text-emerald-400">
+                    <div className="col-span-full relative p-5 md:p-8 rounded-[24px] md:rounded-[32px] border transition-all duration-300 bg-emerald-600/5 border-emerald-500/50 shadow-[0_0_40px_-10px_rgba(16,185,129,0.2)]">
+                        <div className="flex justify-between items-start">
+                            <div className="p-4 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/30">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="2" y="6" width="20" height="12" rx="2" />
+                                    <path d="M12 10v4" />
+                                    <path d="M8 10v4" />
+                                    <path d="M16 10v4" />
+                                </svg>
+                            </div>
+                            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                移动端专用 (OPFS)
+                            </div>
+                        </div>
+
+                        <div className="mt-6">
+                            <h4 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>私有文件系统 (OPFS)</h4>
+                            <div className="text-3xl font-mono font-bold mt-2 text-emerald-400">
                                 {formatBytes(opfsUsage)}
+                            </div>
+                            <p className="text-xs text-zinc-500 mt-4 leading-relaxed">
+                                📱 移动端高性能存储，接近原生性能。
+                                <br />
+                                <span className="opacity-70">数据保存在浏览器私有文件系统中，不会被普通缓存清理删除。</span>
+                            </p>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-white/5 grid grid-cols-3 gap-4 text-xs">
+                            <div className="text-center">
+                                <div className="text-emerald-400 font-bold">✓ 高性能</div>
+                                <div className="text-zinc-500">接近原生速度</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-emerald-400 font-bold">✓ 大容量</div>
+                                <div className="text-zinc-500">存储上千张图</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-emerald-400 font-bold">✓ 流式写入</div>
+                                <div className="text-zinc-500">不占用内存</div>
                             </div>
                         </div>
                     </div>
                 )}
             </div>
-            {/* Loading Overlay */}
-            {loading && (
-                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 rounded-[24px]">
-                    <div className="flex flex-col items-center gap-3">
-                        <Loader2 className="animate-spin text-indigo-500" size={32} />
-                        <span className="text-sm font-medium text-white">处理中...</span>
+            {
+                loading && (
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 rounded-[32px]">
+                        <div className="bg-[var(--bg-tertiary)] p-6 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-4 animate-in zoom-in-95">
+                            <Loader2 size={40} className="text-indigo-500 animate-spin" />
+                            <div className="text-white font-medium">正在切换存储模式...</div>
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 
@@ -1188,7 +1218,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                                     {item.label === '仪表盘' ? '仪表盘(Dashboard)' :
                                         item.label === 'API 管理' ? 'API 管理 (Management)' :
                                             item.label === '成本' ? '成本估算 (Cost)' :
-                                                item.label === '存储' ? '配置储存 (Storage)' :
+                                                item.label === '存储' ? '存储位置 (Storage)' :
                                                     '系统日志 (Logs)'}
                                     {activeView === item.id && <ChevronRight size={14} className="ml-auto opacity-50" />}
                                 </button>
@@ -1250,7 +1280,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
                                         '仪表盘': '仪表盘',
                                         'API 管理': 'API 管理',
                                         '成本': '成本估算',
-                                        '存储': '配置储存',
+                                        '存储': '存储位置',
                                         '日志': '系统日志'
                                     };
                                     return map[item.label] || item.label;
