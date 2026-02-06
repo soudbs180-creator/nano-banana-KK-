@@ -860,10 +860,11 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                     </span>
                                                     <span className="text-[var(--border-medium)] text-[7px]">|</span>
                                                     <span className="text-[7px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
-                                                        {node.aspectRatio || '1:1'} · {(node.imageSize as string) === '1024x1024' || (node.imageSize as string) === '1K' ? '1K' :
-                                                            (node.imageSize as string) === '2048x2048' || (node.imageSize as string) === '2K' ? '2K' :
-                                                                (node.imageSize as string) === '4096x4096' || (node.imageSize as string) === '4K' ? '4K' :
-                                                                    (node.imageSize as string) || '1K'}
+                                                        {node.aspectRatio || '1:1'} · {node.mode === GenerationMode.VIDEO ? '720p' :
+                                                            (node.imageSize as string) === '1024x1024' || (node.imageSize as string) === '1K' ? '1K' :
+                                                                (node.imageSize as string) === '2048x2048' || (node.imageSize as string) === '2K' ? '2K' :
+                                                                    (node.imageSize as string) === '4096x4096' || (node.imageSize as string) === '4K' ? '4K' :
+                                                                        (node.imageSize as string) || '1K'}
                                                     </span>
                                                 </div>
                                             </div>
