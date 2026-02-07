@@ -75,7 +75,7 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ imageUrl, originRect, onClo
                         // 如果是视频，点击切换播放状态
                         if (e.currentTarget.tagName === 'VIDEO') {
                             e.stopPropagation();
-                            const v = e.currentTarget as HTMLVideoElement;
+                            const v = e.currentTarget as unknown as HTMLVideoElement;
                             v.paused ? v.play() : v.pause();
                             return;
                         }

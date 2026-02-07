@@ -4,6 +4,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { ThirdPartyProvider, PROVIDER_PRESETS, keyManager } from '../services/keyManager';
+import { testModelsList } from '../services/connectionTest';
 
 interface AddProviderModalProps {
     isOpen: boolean;
@@ -74,27 +75,25 @@ export const AddProviderModal: React.FC<AddProviderModalProps> = ({
         setTestError('');
 
         try {
-            // 测试 /v1/models 端点
-            const testUrl = `${baseUrl.replace(/\/$/, '')}/v1/models`;
-            const response = await fetch(testUrl, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json'
-                }
+            // 使用统一的 testModelsList 进行测试
+            const result = await testModelsList({
+                apiKey,
+                baseUrl,
+                provider: name.includes('Google') || baseUrl.includes('googleapis') ? 'Google' : 'Custom'
             });
 
-            if (response.ok) {
+            if (result.success) {
                 setTestResult('success');
-                // 尝试获取模型列表
-                const data = await response.json();
-                if (data.data && Array.isArray(data.data)) {
-                    const modelIds = data.data.map((m: any) => m.id).slice(0, 10);
-                    setModels(modelIds.join(', '));
+                // 尝试更新模型列表
+                if (result.details && result.details.models && Array.isArray(result.details.models)) {
+                    const modelList = result.details.models;
+                    if (modelList.length > 0) {
+                        setModels(modelList.slice(0, 20).join(', ')); // Limit to first 20 to avoid bloat
+                    }
                 }
             } else {
                 setTestResult('error');
-                setTestError(`HTTP ${response.status}`);
+                setTestError(result.message || '连接失败');
             }
         } catch (error: any) {
             setTestResult('error');

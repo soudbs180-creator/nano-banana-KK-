@@ -52,23 +52,23 @@ export const QUALITY_CONFIGS: Record<ImageQuality, QualityConfig> = {
  * @returns 推荐的图片质量级别
  * 
  * 规则：
- *   <50%  → MICRO (极限压缩，大量卡片流畅)
- *   50%-100% → THUMBNAIL (中等压缩)
- *   100%-150% → PREVIEW (轻度压缩)
- *   >150% → ORIGINAL (无压缩)
+ *   < 0.5  → MICRO (极限压缩，大量卡片流畅)
+ *   0.5 - 0.8 → THUMBNAIL (中等压缩)
+ *   > 0.8  → ORIGINAL (直接使用原图，保证清晰度)
+ *   
+ *   ⚠️ [Fix] 之前 1.0-1.5 使用 PREVIEW 但 PREVIEW 被映射为 MICRO，导致 150% 缩放时模糊。
+ *   现在降低 ORIGINAL 阈值到 0.8，确保正常查看(1.0)和放大查看(>1.0)都必须清晰。
  */
 export function getAppropriateQuality(scale: number): ImageQuality {
     if (scale < 0.5) {
         // 全局查看（缩小很多）→ 微缩图
         return ImageQuality.MICRO;
-    } else if (scale < 1.0) {
+    } else if (scale < 0.8) {
         // 缩小查看 → 缩略图
         return ImageQuality.THUMBNAIL;
-    } else if (scale < 1.5) {
-        // 正常查看 → 预览图
-        return ImageQuality.PREVIEW;
     } else {
-        // 放大查看 → 原图
+        // 正常查看(1.0)及放大(>1.0) → 强制原图
+        // 避开 PREVIEW 档位（之前被错误的映射为了 150px）
         return ImageQuality.ORIGINAL;
     }
 }
@@ -149,10 +149,10 @@ export async function generateAllQualities(
         QUALITY_CONFIGS[ImageQuality.MICRO]
     );
 
-    // 🚀 [OOM修复] THUMBNAIL和PREVIEW不再生成，按需从ORIGINAL压缩或使用MICRO
-    // 如果请求这些质量，fallback逻辑会返回MICRO或ORIGINAL
-    results[ImageQuality.THUMBNAIL] = results[ImageQuality.MICRO]; // 使用MICRO代替
-    results[ImageQuality.PREVIEW] = results[ImageQuality.MICRO]; // 使用MICRO代替
+    // 🚀 [Fix] PREVIEW 必须指向 ORIGINAL，否则 100-150% 缩放时会糊
+    // THUMBNAIL 可以指向 MICRO
+    results[ImageQuality.THUMBNAIL] = results[ImageQuality.MICRO];
+    results[ImageQuality.PREVIEW] = results[ImageQuality.ORIGINAL]; // 关键修复：预览级 == 原图
 
     return results as Record<ImageQuality, string>;
 }

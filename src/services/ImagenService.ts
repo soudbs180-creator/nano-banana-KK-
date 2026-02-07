@@ -48,6 +48,14 @@ export async function generateImagenImage(
     baseUrl?: string,
     signal?: AbortSignal
 ): Promise<ImagenResult> {
+    // ✨ Sanitize API Key (Remove non-ASCII characters)
+    // Fixes: "String contains non ISO-8859-1 code point"
+    const cleanKey = apiKey.replace(/[^\x00-\x7F]/g, "").trim();
+
+    if (!cleanKey) {
+        throw new Error("Invalid API Key: Key is empty after sanitization (contained only non-ASCII characters?)");
+    }
+
     const model = config.model || 'imagen-4.0-generate-001';
     const cleanBase = baseUrl || GOOGLE_API_BASE;
 
@@ -59,7 +67,7 @@ export async function generateImagenImage(
     // 官方使用 x-goog-api-key header 认证
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey
+        'x-goog-api-key': cleanKey
     };
 
     // ========== 构建 Payload ==========

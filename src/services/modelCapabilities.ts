@@ -76,24 +76,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         supportsGrounding: true,
         maxRefImages: 10  // Gemini 3 Pro 支持最多10张参考图
     },
-    'nano-banana-pro': {
-        supportedRatios: [
-            AspectRatio.AUTO,
-            AspectRatio.SQUARE,
-            AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
-            AspectRatio.LANDSCAPE_3_2,
-            AspectRatio.STANDARD_2_3,
-            AspectRatio.LANDSCAPE_5_4,
-            AspectRatio.PORTRAIT_4_5,
-            AspectRatio.LANDSCAPE_21_9
-        ],
-        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
-        supportsGrounding: true,
-        maxRefImages: 10  // Nano Banana Pro 支持最多10张参考图
-    },
+
 
     // ============================================
     // Gemini 2.5 Flash Image / Nano Banana
@@ -114,21 +97,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         supportsGrounding: false, // Tools not supported, causes timeout
         maxRefImages: 10  // Gemini 2.5 Flash 支持最多10张参考图
     },
-    'nano-banana': {
-        supportedRatios: [
-            AspectRatio.AUTO,
-            AspectRatio.SQUARE,
-            AspectRatio.STANDARD_2_3,
-            AspectRatio.STANDARD_3_2,
-            AspectRatio.PORTRAIT_3_4,
-            AspectRatio.LANDSCAPE_4_3,
-            AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9
-        ],
-        supportedSizes: [ImageSize.SIZE_1K],
-        supportsGrounding: false,
-        maxRefImages: 10  // Nano Banana 支持最多10张参考图
-    },
+
 
 
 
@@ -310,12 +279,10 @@ export function getModelCapabilities(
     const lowerModelId = modelId.toLowerCase();
 
     // Google Model Fallback Logic
-    if (lowerModelId.includes('nano-banana-pro') ||
-        lowerModelId.includes('gemini-3-pro')) {
+    if (lowerModelId.includes('gemini-3-pro') || lowerModelId.includes('nano-banana-pro')) {
         return GOOGLE_MODEL_CAPABILITIES['gemini-3-pro-image-preview'];
     }
-    if (lowerModelId.includes('nano-banana') ||
-        lowerModelId.includes('gemini-2.5-flash-image')) {
+    if (lowerModelId.includes('gemini-2.5-flash-image') || lowerModelId.includes('nano-banana')) {
         return GOOGLE_MODEL_CAPABILITIES['gemini-2.5-flash-image'];
     }
     if (lowerModelId.includes('imagen')) {
@@ -413,15 +380,16 @@ export function getModelDisplayName(modelId: string, customLabel?: string): stri
     const lowerModelId = modelId.toLowerCase().split('@')[0]; // Strip suffix for lookup
 
     // Gemini 3 系列
-    if (lowerModelId.includes('gemini-3-pro') || lowerModelId.includes('nano-banana-pro')) {
-        return 'Nano Banana Pro';  // 使用市场名称
+    // Gemini 3 系列
+    if (lowerModelId.includes('gemini-3-pro') || lowerModelId.includes('gemini-3-pro-image') || lowerModelId.includes('nano-banana-pro')) {
+        return 'Nano Banana Pro';  // ✨ Custom Name Request
     }
     if (lowerModelId.includes('gemini-3-flash')) {
         return 'Gemini 3 Flash';
     }
     // Gemini 2.5 系列
     if (lowerModelId.includes('gemini-2.5-flash-image') || lowerModelId.includes('nano-banana')) {
-        return 'Nano Banana';  // 使用市场名称
+        return 'Nano Banana';  // ✨ Custom Name Request
     }
     if (lowerModelId.includes('gemini-2.5-flash')) {
         return 'Gemini 2.5 Flash';
@@ -441,7 +409,7 @@ export function getModelDisplayName(modelId: string, customLabel?: string): stri
         return 'Imagen 4 Fast';
     }
     if (lowerModelId.includes('imagen-4')) {
-        return 'Imagen 4';
+        return 'Imagen 4.0';
     }
     // Imagen 3 系列
     if (lowerModelId.includes('imagen-3')) {
@@ -478,10 +446,10 @@ export function getModelThemeColor(modelId: string): string {
     const lowerId = modelId.toLowerCase().split('@')[0]; // Strip suffix
 
     // 1. 已知模型的特定颜色映射
-    if (lowerId.includes('gemini-3-pro') || lowerId.includes('nano-banana-pro')) return 'text-purple-400 border-purple-400';
+    if (lowerId.includes('gemini-3-pro')) return 'text-purple-400 border-purple-400';
     if (lowerId.includes('gemini-3-flash')) return 'text-cyan-400 border-cyan-400';
     if (lowerId.includes('gemini-2.5-pro')) return 'text-amber-400 border-amber-400';
-    if (lowerId.includes('gemini-2.5-flash') || lowerId.includes('nano-banana')) return 'text-yellow-400 border-yellow-400';
+    if (lowerId.includes('gemini-2.5-flash')) return 'text-yellow-400 border-yellow-400';
 
     // 旧版本 Gemini - 区分颜色
     if (lowerId.includes('gemini-1.5-pro')) return 'text-indigo-400 border-indigo-400';

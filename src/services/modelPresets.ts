@@ -8,19 +8,9 @@ export interface ModelPreset {
 
 export const MODEL_PRESETS: ModelPreset[] = [
     // ============================================
-    // Nano Banana 系列 - Google Gemini Image 核心模型
-    // 参考: https://ai.google.dev/gemini-api/docs/models/gemini
-    // ============================================
-
-    // Nano Banana - 内部代号,映射到 gemini-2.5-flash-image
-    // 定价: 输出 $30/1M tokens, 1024x1024 需 1290 tokens = $0.039/张
-    { id: 'nano-banana', label: 'Nano Banana（极速）', provider: 'Google', type: 'image', description: '极速生成，适合快速验证灵感' },
-
-    // Nano Banana Pro - 内部代号,映射到 gemini-3-pro-image-preview
-    // 定价: 输出 $120/1M tokens
-    // - 1K-2K: 1120 tokens = $0.134/张
-    // - 4K: 2000 tokens = $0.24/张
-    { id: 'nano-banana-pro', label: 'Nano Banana Pro（高质量）', provider: 'Google', type: 'image', description: '增强细节与构图，适合高质量预览' },
+    // Gemini Image 系列
+    { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image', provider: 'Google', type: 'image', description: '极速生成，适合快速验证灵感' },
+    { id: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image (Preview)', provider: 'Google', type: 'image', description: '增强细节与构图，适合高质量预览' },
 
     // ============================================
     // Google Veo 系列 (视频生成)

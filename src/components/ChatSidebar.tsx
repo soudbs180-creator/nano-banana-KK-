@@ -55,9 +55,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     const [availableModels, setAvailableModels] = useState<ChatModel[]>(() => {
         const models = keyManager.getGlobalModelList().filter(model => {
             const idLower = model.id.toLowerCase();
-            // 排除纯图像/视频模型
-            if (model.type === 'image' || model.type === 'video') return false;
+
+            // 🚀 Allow Image Models (for /image command usage)
+            // We consciously allow them so user can select "Imagen 4.0" and use /image
+            if (model.type === 'image') return true;
+            if (model.type === 'video') return false; // Keep video hidden for now unless requested
+
             // 排除Nano Banana/Flux/Midjourney等纯图像生成模型 (即使被误判为chat)
+            // ✨ Update: We WANT Nano Banana (it is image+chat capable usually, or at least image)
+            // If it's pure image, we already allowed it above.
+
+            if (idLower.includes('flux') || idLower.includes('midjourney') || idLower.includes('dall-e') || idLower.includes('stable-diffusion') || idLower.includes('sdxl')) return false;
             if (idLower.includes('nano') && idLower.includes('banana') && model.type !== 'image+chat') return false;
             if (idLower.includes('flux') || idLower.includes('midjourney') || idLower.includes('dall-e') || idLower.includes('stable-diffusion') || idLower.includes('sdxl')) return false;
 
@@ -122,10 +130,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             // ✨ 支持多模态模型 (image+chat) + 🚀 去重
             const rawModels = keyManager.getGlobalModelList().filter(model => {
                 const idLower = model.id.toLowerCase();
-                // 排除纯图像/视频模型
-                if (model.type === 'image' || model.type === 'video') return false;
-                // 排除Nano Banana/Flux/Midjourney等纯图像生成模型
-                if (idLower.includes('nano') && idLower.includes('banana') && model.type !== 'image+chat') return false;
+
+                // 🚀 Allow Image Models
+                if (model.type === 'image') return true;
+                if (model.type === 'video') return false;
+
                 if (idLower.includes('flux') || idLower.includes('midjourney') || idLower.includes('dall-e') || idLower.includes('stable-diffusion') || idLower.includes('sdxl')) return false;
 
                 return model.type === 'chat' || model.type === 'image+chat';
@@ -387,11 +396,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         try {
             // 1. 查找可用的绘图模型
             const allModels = keyManager.getGlobalModelList();
-            // 优先选择 explicit image models
-            const imageModel = allModels.find(m => m.type === 'image' && !m.id.includes('video')) ||
-                allModels.find(m => m.id.includes('imagen')) ||
-                allModels.find(m => m.id.includes('stable-diffusion') || m.id.includes('flux')) ||
-                allModels.find(m => m.type === 'image+chat' && m.id.includes('gemini'));
+
+            // 🚀 Use Selected Model if it supports image generation
+            let imageModel = allModels.find(m => m.id === selectedModel.id && (m.type === 'image' || m.type === 'image+chat'));
+
+            // Fallback strategy
+            if (!imageModel) {
+                imageModel = allModels.find(m => m.type === 'image' && !m.id.includes('video')) ||
+                    allModels.find(m => m.id.includes('imagen')) ||
+                    allModels.find(m => m.id.includes('stable-diffusion') || m.id.includes('flux')) ||
+                    allModels.find(m => m.type === 'image+chat' && m.id.includes('gemini'));
+            }
 
             if (!imageModel) {
                 throw new Error("未找到可用的绘图模型，请在设置中添加支持绘图的模型 (如 Imagen 3/4, Gemini Flash Image等)");
@@ -467,6 +482,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         if (match && currentAttachments.length === 0) {
             const prompt = match[2];
             handleImageGeneration(prompt);
+            return;
+        }
+
+        // 🚀 Guard: Pure Image Models cannot chat
+        if (selectedModel.type === 'image') {
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: `⚠️ "${getModelDisplayInfo(selectedModel).displayName}" 是纯绘图模型，不支持文本对话。\n\n请尝试输入 "/image ${userText}" 来生成图片。`,
+                timestamp: Date.now()
+            }]);
             return;
         }
 

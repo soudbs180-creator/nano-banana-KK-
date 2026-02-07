@@ -109,6 +109,8 @@ export interface GeneratedImage {
   fileName?: string; // 原始文件名
   fileSize?: number; // 文件大小（字节）
   alias?: string; // 🚀 [New] 用户自定义备注名
+  isGenerating?: boolean; // 🚀 [New] True when image is being generated
+  error?: string; // 🚀 [New] Error message for failed generation
 }
 
 export interface PromptNode {

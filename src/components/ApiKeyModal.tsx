@@ -125,11 +125,16 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
             */
         }
 
-        // 🚀 Auto-fetch models if field is empty
+        // 🚀 Auto-fetch models if field is empty OR if it's a Google Key (to force update whitelist)
         let autoFetchedModels: string[] = [];
         const userModels = formData.models.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
 
-        if (userModels.length === 0 && formData.baseUrl) {
+        // Logic: 
+        // 1. If Google -> ALWAYS fetch specific updated list (Strict Whitelist enforcement)
+        // 2. If Third Party -> Only fetch if empty (User might have custom models)
+        const shouldAutoFetch = (formData.provider === 'Google' || formData.baseUrl.includes('googleapis.com')) || userModels.length === 0;
+
+        if (shouldAutoFetch && formData.baseUrl) {
             try {
                 console.log('[ApiKeyModal] 自动获取模型列表...');
                 if (formData.provider === 'Google' || formData.baseUrl.includes('googleapis.com')) {
@@ -151,7 +156,9 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
             provider: formData.provider,
             budgetLimit: formData.budgetLimit,
             tokenLimit: formData.tokenLimit,
-            supportedModels: userModels.length > 0 ? userModels : autoFetchedModels,
+            // If it's Google, we prefer the auto-fetched list (whitelist) over the manual input
+            // For others, we prefer manual input if it exists
+            supportedModels: (formData.provider === 'Google' && autoFetchedModels.length > 0) ? autoFetchedModels : (userModels.length > 0 ? userModels : autoFetchedModels),
         };
 
         if (initialType === 'proxy') {

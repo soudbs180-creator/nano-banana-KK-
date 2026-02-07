@@ -15,19 +15,71 @@ export type ModelPricing = {
 const STORAGE_KEY = 'kk_model_pricing_overrides';
 const DEFAULT_REF_IMAGE_TOKENS = 560;
 
-const PRICING_ALIASES: Record<string, string> = {
-  'nano-banana': 'gemini-2.5-flash-image',
-  'nano-banana-pro': 'gemini-3-pro-image-preview'
-};
+
 
 const BUILTIN_PRICING: Record<string, ModelPricing> = {
-  // Cherry AI Nano Banana 系列 (基于 Cherry API 定价)
-  'nano-banana': {
-    pricePerImage: 0.003,
+
+  // ============================================
+  // OpenAI Models (Official Pricing)
+  // https://openai.com/api/pricing/
+  // ============================================
+  'gpt-4o': {
+    inputPerMillionTokens: 2.50,
+    outputPerMillionTokens: 10.00,
     currency: 'USD'
   },
-  'nano-banana-pro': {
-    pricePerImage: 0.008,
+  'gpt-4o-mini': {
+    inputPerMillionTokens: 0.15,
+    outputPerMillionTokens: 0.60,
+    currency: 'USD'
+  },
+  'o1-preview': {
+    inputPerMillionTokens: 15.00,
+    outputPerMillionTokens: 60.00,
+    currency: 'USD'
+  },
+  'o1-mini': {
+    inputPerMillionTokens: 3.00,
+    outputPerMillionTokens: 12.00,
+    currency: 'USD'
+  },
+  'dall-e-3': {
+    pricePerImage: 0.040, // Standard 1024x1024
+    currency: 'USD'
+  },
+
+  // ============================================
+  // Anthropic Models (Official Pricing)
+  // https://www.anthropic.com/pricing
+  // ============================================
+  'claude-3-5-sonnet-20241022': {
+    inputPerMillionTokens: 3.00,
+    outputPerMillionTokens: 15.00,
+    currency: 'USD'
+  },
+  'claude-3-5-haiku-20241022': {
+    inputPerMillionTokens: 0.25,
+    outputPerMillionTokens: 1.25,
+    currency: 'USD'
+  },
+  'claude-3-opus-20240229': {
+    inputPerMillionTokens: 15.00,
+    outputPerMillionTokens: 75.00,
+    currency: 'USD'
+  },
+
+  // ============================================
+  // DeepSeek Models (Official Pricing)
+  // https://api-docs.deepseek.com/quick_start/pricing
+  // ============================================
+  'deepseek-chat': { // DeepSeek-V3
+    inputPerMillionTokens: 0.14, // ~1 RMB
+    outputPerMillionTokens: 0.28, // ~2 RMB
+    currency: 'USD' // Converted approx
+  },
+  'deepseek-reasoner': { // DeepSeek-R1
+    inputPerMillionTokens: 0.55, // ~4 RMB
+    outputPerMillionTokens: 2.19, // ~16 RMB
     currency: 'USD'
   },
 
@@ -149,9 +201,7 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
 
 const FALLBACK_IMAGE_TOKENS: Record<string, number> = {
   'gemini-2.5-flash-image': 1290,
-  'nano-banana': 1290,
-  'gemini-3-pro-image-preview': 1120,
-  'nano-banana-pro': 1120
+  'gemini-3-pro-image-preview': 1120
 };
 
 const normalizeModelId = (modelId: string): string => modelId.trim().toLowerCase();
@@ -234,9 +284,9 @@ export const setModelPricingOverrides = (input: unknown): void => {
 
 export const getModelPricing = (modelId: string): ModelPricing | null => {
   const normalized = normalizeModelId(modelId);
-  const aliased = PRICING_ALIASES[normalized] || normalized;
+  // ✨ Refactored: Removed legacy aliases (Nano Banana)
   const overrides = loadOverrides();
-  return overrides[aliased] || BUILTIN_PRICING[aliased] || null;
+  return overrides[normalized] || BUILTIN_PRICING[normalized] || null;
 };
 
 export const getRefImageTokenEstimate = (modelId: string): number => {

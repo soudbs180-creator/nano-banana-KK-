@@ -490,9 +490,11 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 <div
                     className="canvas-viewport"
                     style={{
-                        transform: `translate3d(${(tempTransform || transform).x}px, ${(tempTransform || transform).y}px, 0) scale(${(tempTransform || transform).scale})`,
+                        // 🚀 [Fix] 使用 2D translate 代替 translate3d，并移除 backfaceVisibility
+                        // 这能防止浏览器将画布强制视为位图纹理，从而在缩放后重新渲染高清晰度的文字和矢量图标
+                        transform: `translate(${(tempTransform || transform).x}px, ${(tempTransform || transform).y}px) scale(${(tempTransform || transform).scale})`,
                         willChange: isDragging ? 'transform' : 'auto',
-                        backfaceVisibility: 'hidden',
+                        transformOrigin: '0 0', // Explicitly set origin
                     }}
                 >
                     {children}

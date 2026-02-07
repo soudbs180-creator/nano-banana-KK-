@@ -15,7 +15,7 @@ export interface TestResult {
 export interface ConnectionConfig {
   apiKey: string;
   baseUrl: string;
-  model: string;
+  model?: string;
   provider: string;
   compatibilityMode?: 'standard' | 'chat';
 }
@@ -28,20 +28,61 @@ export async function testCherryConnection(config: ConnectionConfig): Promise<Te
 
   try {
     const cleanBase = normalizeProxyBaseUrl(config.baseUrl) || config.baseUrl.replace(/\/$/, '');
+
+    // Google Official API Special Handling
+    if (config.provider === 'Google' || cleanBase.includes('googleapis.com')) {
+      // Use a simple generateContent test for Google
+      const apiUrl = `${cleanBase}/v1beta/models/gemini-2.5-flash:generateContent`;
+      const requestBody = {
+        contents: [{ role: 'user', parts: [{ text: 'Hi' }] }]
+      };
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': config.apiKey
+        },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(30000)
+      });
+
+      const responseTime = Date.now() - startTime;
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return {
+          success: false,
+          message: `连接失败: HTTP ${response.status}`,
+          details: { error: errText },
+          responseTime
+        };
+      }
+
+      const result = await response.json();
+      return {
+        success: true,
+        message: 'Google API 连接成功！',
+        details: { response: result },
+        responseTime
+      };
+    }
+
+    // Standard OpenAI / Proxy Handling
     const apiUrl = `${cleanBase}/v1/chat/completions`;
 
     const requestBody = {
-      model: config.model || 'nano-banana',
+      model: config.model || 'gemini-2.5-flash-image',
       stream: false,
       messages: [
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Test connection - generate a simple circle' }
+            { type: 'text', text: 'Test connection' }
           ]
         }
       ],
-      max_tokens: 50
+      max_tokens: 10
     };
 
     const response = await fetch(apiUrl, {
@@ -75,7 +116,7 @@ export async function testCherryConnection(config: ConnectionConfig): Promise<Te
     if (result.choices && result.choices.length > 0) {
       return {
         success: true,
-        message: 'Cherry API 连接成功！',
+        message: 'API 连接成功！',
         details: {
           model: config.model,
           responseFormat: 'chat-completions',
@@ -111,16 +152,23 @@ export async function testModelsList(config: ConnectionConfig): Promise<TestResu
   try {
     const cleanBase = normalizeProxyBaseUrl(config.baseUrl) || config.baseUrl.replace(/\/$/, '');
     let listUrl: string;
+    let headers: Record<string, string> = {};
 
-    if (config.provider === 'Google') {
-      listUrl = `${cleanBase}/v1beta/models?key=${config.apiKey}`;
+    if (config.provider === 'Google' || cleanBase.includes('googleapis.com')) {
+      // Google Official: URL without query key, verify via Header
+      listUrl = `${cleanBase}/v1beta/models`;
+      headers = {
+        'x-goog-api-key': config.apiKey
+      };
     } else {
+      // API Proxies / OpenAI
       listUrl = `${cleanBase}/v1/models`;
+      headers = buildProxyHeaders('header', config.apiKey, 'Authorization');
     }
 
     const response = await fetch(listUrl, {
       method: 'GET',
-      headers: buildProxyHeaders('header', config.apiKey, 'Authorization'),
+      headers,
       signal: AbortSignal.timeout(10000)
     });
 

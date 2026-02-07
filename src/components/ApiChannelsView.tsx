@@ -51,13 +51,16 @@ const DEFAULT_GOOGLE_MODELS = [
 
 // Preset Providers Configuration
 const PRESET_PROVIDERS = [
-    { label: 'Cherry Studio', url: 'https://future-api.vodeshop.com', provider: 'OpenAI', mode: 'chat', models: 'nano-banana(Nano Banana), nano-banana-pro(Nano Banana Pro), flux-schnell(Flux Fast), gemini-2.5-flash-image(Gemini 2.5 Flash)' },
+    { label: 'Cherry Studio', url: 'https://future-api.vodeshop.com', provider: 'OpenAI', mode: 'chat', models: 'flux-schnell(Flux Fast), flux-dev(Flux Dev), flux-pro(Flux Pro), ideogram(Ideogram), midjourney(Midjourney), suno-v3.5(Suno Music), luma-video(Luma Video), pika-video(Pika), veo-2(Veo Video), gpt-4o-image(GPT-4o Image), gemini-2.5-flash-image(Gemini 2.5 Flash Image), seedream-v4(Seedream)' },
     { label: 'Gemini-API.cn', url: 'https://gemini-api.cn', provider: 'OpenAI', mode: 'standard', models: 'gemini-2.5-flash-image, gemini-3-pro-image-preview, imagen-3.0-generate-001' },
-    { label: 'SiliconFlow (硅基流动)', url: 'https://api.siliconflow.cn', provider: 'OpenAI', mode: 'chat', models: 'deepseek-ai/DeepSeek-V3, deepseek-ai/DeepSeek-R1, black-forest-labs/FLUX.1-schnell, stabilityai/stable-diffusion-3-medium' },
+    { label: 'SiliconFlow (硅基流动)', url: 'https://api.siliconflow.cn/v1', provider: 'SiliconFlow', mode: 'chat', models: 'deepseek-ai/DeepSeek-V3, deepseek-ai/DeepSeek-R1, black-forest-labs/FLUX.1-schnell, stabilityai/stable-diffusion-3-medium' },
+    { label: 'Volcengine (火山引擎)', url: 'https://ark.cn-beijing.volces.com/api/v3', provider: 'Volcengine', mode: 'chat', models: 'doubao-pro-32k, doubao-lite-32k, doubao-pro-128k' },
+    { label: 'Aliyun (阿里云百炼)', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', provider: 'Aliyun', mode: 'chat', models: 'qwen-max, qwen-plus, qwen-turbo, wanx-v1' },
+    { label: 'Tencent Cloud (腾讯云)', url: 'https://api.hunyuan.cloud.tencent.com/v1', provider: 'Tencent', mode: 'chat', models: 'hunyuan-pro, hunyuan-lite, hunyuan-vision' },
     { label: 'DeepSeek Official', url: 'https://api.deepseek.com', provider: 'OpenAI', mode: 'chat', models: 'deepseek-chat, deepseek-reasoner' },
     { label: 'OpenRouter', url: 'https://openrouter.ai/api/v1', provider: 'OpenAI', mode: 'standard', models: 'google/gemini-2.5-flash:free, google/gemini-3-flash-preview, openai/gpt-4o, anthropic/claude-3.5-sonnet' },
     { label: 'OpenAI Official', url: 'https://api.openai.com/v1', provider: 'OpenAI', mode: 'standard', models: 'dall-e-3(DALL-E 3), gpt-4o(GPT-4o), gpt-4o-mini' },
-    { label: 'Google Gemini', url: 'https://generativelanguage.googleapis.com', provider: 'Google', mode: 'standard', models: DEFAULT_GOOGLE_MODELS.join(', ') },
+    { label: 'Google Gemini', url: 'https://generativelanguage.googleapis.com', provider: 'Google', mode: 'standard', models: `gemini-2.5-flash, gemini-2.5-flash-image, gemini-3-pro-image-preview, imagen-4.0-generate-001, imagen-4.0-ultra-generate-001, imagen-4.0-fast-generate-001, veo-3.1-generate-preview, veo-3.1-fast-generate-preview` },
 ];
 
 export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'assets' }) => {
@@ -253,12 +256,26 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         const slot = slots.find(s => s.id === id);
         if (slot) {
             const targetUrl = slot.baseUrl || 'https://generativelanguage.googleapis.com'; // Default to Google if empty
-            const result = await keyManager.testChannel(targetUrl, slot.key, slot.provider, slot.authMethod, slot.headerName);
 
-            if (result.success) {
+            // 🚀 Fix: Use comprehensiveConnectionTest instead of missing testChannel method
+            const results = await comprehensiveConnectionTest({
+                apiKey: slot.key,
+                baseUrl: targetUrl,
+                model: slot.supportedModels?.[0] || 'gemini-2.5-flash',
+                provider: slot.provider,
+                compatibilityMode: slot.compatibilityMode
+            });
+
+            const successTest = results.find(r => r.success);
+            const failTest = results.find(r => !r.success);
+
+            if (successTest) {
                 keyManager.reportSuccess(id);
+                notify.success('连接成功', successTest.message || '');
             } else {
-                keyManager.reportFailure(id, result.message || 'Validation failed');
+                const errorMsg = failTest?.message || '连接失败';
+                keyManager.reportFailure(id, errorMsg);
+                notify.error('连接失败', errorMsg);
             }
         }
 
@@ -380,7 +397,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
         const keyData = {
             name: formName.trim() || 'API Channel',
             key: formKey.trim(),
-            provider: formProvider,
+            provider: formProvider as any, // Cast to any or Provider to fix type error
             baseUrl: formBaseUrl.trim(),
             compatibilityMode: formCompatibility,
             supportedModels: finalModels,
@@ -436,6 +453,11 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
     // Render Logic
     const isSequential = strategy === 'sequential';
+
+    // Filter Keys - 🚀 Updated to use explicit 'type' field
+    const officialGoogleKeys = slots.filter(s => s.type === 'official' || (!s.type && s.provider === 'Google' && (!s.baseUrl || s.baseUrl.includes('googleapis.com'))));
+    const proxyKeys = slots.filter(s => s.type === 'proxy' || (!s.type && s.provider === 'Google' && s.baseUrl && !s.baseUrl.includes('googleapis.com')));
+    const thirdPartyKeys = slots.filter(s => s.type === 'third-party' || (!s.type && s.provider !== 'Google'));
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
@@ -501,244 +523,167 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                         </button>
                     </div>
                 ) : (
-                    <div className={
-                        isSequential
-                            ? "flex flex-col gap-3 max-w-3xl mx-auto w-full pb-4 pt-2 px-4"
-                            : "flex flex-col gap-6 px-4 pb-6 pt-2 max-w-3xl mx-auto"
-                    }>
-                        {slots.map((slot, index) => (
-                            <div
-                                key={slot.id}
-                                draggable={true}
-                                onDragStart={(e) => handleDragStart(e, slot.id)}
-                                onDragOver={handleDragOver}
-                                onDragEnter={(e) => handleDragEnter(e, slot.id)}
-                                onDrop={handleDrop}
-                                onDragEnd={handleDragEnd}
-                                onClick={() => openEditModal(slot)}
-                                className={`
-                                    group relative rounded-xl border cursor-move
-                                    transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
-                                    ${slot.disabled
-                                        ? 'bg-[var(--bg-tertiary)]/30 border-[var(--border-medium)]/50 opacity-60'
-                                        : 'bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/5'
-                                    }
-                                    p-4 w-full
-                                    ${draggedId === slot.id ? 'opacity-20 border-dashed border-indigo-500 scale-[0.98]' : 'hover:-translate-y-1 hover:z-10 relative'}
-                                `}
-                            >
-                                {/* Sequential Order Badge */}
-                                {isSequential && (
-                                    <div className="absolute top-4 left-4 shrink-0 w-6 h-6 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-xs font-mono text-indigo-400 font-semibold">
-                                        {index + 1}
+                    <div className="flex flex-col gap-8 px-4 pb-6 pt-2 max-w-3xl mx-auto">
+                        {[
+                            {
+                                title: '官方直连 (Official)',
+                                keys: officialGoogleKeys,
+                                icon: <Zap size={14} />,
+                                colorClass: 'text-blue-500',
+                                bgClass: 'bg-blue-500/10',
+                                borderClass: 'border-blue-500/20'
+                            },
+                            {
+                                title: '代理服务器 (Proxy)',
+                                keys: proxyKeys,
+                                icon: <Server size={14} />,
+                                colorClass: 'text-emerald-500', // Different color for Proxy
+                                bgClass: 'bg-emerald-500/10',
+                                borderClass: 'border-emerald-500/20'
+                            },
+                            {
+                                title: '第三方 API (Third-Party)',
+                                keys: thirdPartyKeys,
+                                icon: <Globe size={14} />,
+                                colorClass: 'text-purple-500',
+                                bgClass: 'bg-purple-500/10',
+                                borderClass: 'border-purple-500/20'
+                            }
+                        ].map((section) => (
+                            section.keys.length > 0 && (
+                                <div key={section.title} className="flex flex-col gap-3">
+                                    <div className="flex items-center gap-2 px-1">
+                                        <div className={`p-1.5 rounded-lg ${section.bgClass} ${section.colorClass}`}>
+                                            {section.icon}
+                                        </div>
+                                        <h4 className="text-sm font-bold opacity-80" style={{ color: 'var(--text-secondary)' }}>{section.title}</h4>
                                     </div>
-                                )}
-
-                                {/* Card Content Container */}
-                                <div className="flex-1 min-w-0">
-
-                                    {/* Main Info */}
-                                    <div className={`min-w-0 ${isSequential ? 'pl-8' : ''}`}>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className="flex items-center gap-2 min-w-0">
-                                                <div className={`w-2 h-2 rounded-full shrink-0 ${refreshingIds.has(slot.id) ? 'bg-blue-500 animate-pulse' :
-                                                    slot.disabled ? 'bg-[var(--text-tertiary)]' :
-                                                        slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
-                                                            (slot.status === 'invalid' || slot.status === 'rate_limited') ? 'bg-red-500' :
-                                                                'bg-[var(--text-tertiary)]'
-                                                    }`} />
-                                                <h4 className="text-base font-semibold truncate pr-2" style={{ color: 'var(--text-primary)' }} title={slot.name}>
-                                                    {slot.name}
-                                                </h4>
-                                            </div>
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${slot.provider === 'Google'
-                                                ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
-                                                : 'bg-purple-500/10 text-purple-500 border-purple-500/20'
-                                                }`}>
-                                                {slot.provider}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex items-center gap-2 text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
-                                            <Key size={12} />
-                                            <span className="truncate">{maskApiKey(slot.key)}</span>
-                                        </div>
-
-                                        {/* New: Status Details & Performance Metrics */}
-                                        <div className="flex items-center gap-3 mt-2 pt-2 border-t border-[var(--border-light)]/50">
-                                            {/* Status Indicator */}
-                                            <div className="flex items-center gap-1.5 text-xs">
-                                                {refreshingIds.has(slot.id) ? (
-                                                    <>
-                                                        <Clock className="text-blue-400 animate-pulse" size={12} />
-                                                        <span style={{ color: '#60a5fa' }}>检测中</span>
-                                                    </>
-                                                ) : slot.disabled ? (
-                                                    <>
-                                                        <Pause size={12} />
-                                                        <span style={{ color: 'var(--text-tertiary)' }}>已禁用</span>
-                                                    </>
-                                                ) : slot.status === 'valid' ? (
-                                                    <>
-                                                        <Check className="text-emerald-500" size={12} />
-                                                        <span style={{ color: '#10b981' }}>在线</span>
-                                                    </>
-                                                ) : slot.status === 'rate_limited' ? (
-                                                    <>
-                                                        <Clock className="text-orange-500" size={12} />
-                                                        <span style={{ color: '#f59e0b' }}>限流</span>
-                                                    </>
-                                                ) : slot.status === 'invalid' ? (
-                                                    <>
-                                                        <X className="text-red-500" size={12} />
-                                                        <span style={{ color: '#ef4444' }}>离线</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Activity size={12} style={{ color: 'var(--text-tertiary)' }} />
-                                                        <span style={{ color: 'var(--text-tertiary)' }}>未知</span>
-                                                    </>
+                                    <div className="flex flex-col gap-3">
+                                        {section.keys.map((slot, index) => (
+                                            <div
+                                                key={slot.id}
+                                                draggable={true}
+                                                onDragStart={(e) => handleDragStart(e, slot.id)}
+                                                onDragOver={handleDragOver}
+                                                onDragEnter={(e) => handleDragEnter(e, slot.id)}
+                                                onDrop={handleDrop}
+                                                onDragEnd={handleDragEnd}
+                                                onClick={() => openEditModal(slot)}
+                                                className={`
+                                                    group relative rounded-xl border cursor-move
+                                                    transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                                                    ${slot.disabled
+                                                        ? 'bg-[var(--bg-tertiary)]/30 border-[var(--border-medium)]/50 opacity-60'
+                                                        : `bg-[var(--bg-secondary)] border-[var(--border-light)] hover:border-${section.colorClass.split('-')[1]}-500/30 hover:shadow-lg hover:shadow-${section.colorClass.split('-')[1]}-500/5`
+                                                    }
+                                                    p-4 w-full
+                                                    ${draggedId === slot.id ? `opacity-20 border-dashed border-${section.colorClass.split('-')[1]}-500 scale-[0.98]` : 'hover:-translate-y-1 hover:z-10 relative'}
+                                                `}
+                                            >
+                                                {/* Sequential Order Badge */}
+                                                {isSequential && (
+                                                    <div className="absolute top-4 left-4 shrink-0 w-6 h-6 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-xs font-mono text-indigo-400 font-semibold">
+                                                        {index + 1}
+                                                    </div>
                                                 )}
-                                            </div>
 
-                                            {/* Success Rate */}
-                                            {(slot.successRate !== undefined || (slot.successCount && slot.failCount !== undefined)) && (
-                                                <div className="flex items-center gap-1.5 text-xs" title="成功率">
-                                                    <Activity size={12} style={{ color: 'var(--text-tertiary)' }} />
-                                                    <span style={{
-                                                        color: (slot.successRate || (slot.successCount / (slot.successCount + slot.failCount) * 100)) >= 95
-                                                            ? '#10b981'
-                                                            : (slot.successRate || (slot.successCount / (slot.successCount + slot.failCount) * 100)) >= 80
-                                                                ? '#f59e0b'
-                                                                : '#ef4444'
-                                                    }}>
-                                                        {(slot.successRate ?? ((slot.successCount / Math.max(1, slot.successCount + slot.failCount)) * 100)).toFixed(1)}%
-                                                    </span>
-                                                </div>
-                                            )}
-
-                                            {/* Average Response Time */}
-                                            {slot.avgResponseTime !== undefined && (
-                                                <div className="flex items-center gap-1.5 text-xs" title="平均响应时间">
-                                                    <Zap size={12} style={{ color: 'var(--text-tertiary)' }} />
-                                                    <span style={{
-                                                        color: slot.avgResponseTime < 1000
-                                                            ? '#10b981'
-                                                            : slot.avgResponseTime < 3000
-                                                                ? '#f59e0b'
-                                                                : '#ef4444'
-                                                    }}>
-                                                        {slot.avgResponseTime < 1000 ? `${slot.avgResponseTime}ms` : `${(slot.avgResponseTime / 1000).toFixed(1)}s`}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Stats & Actions */}
-                                    <div className="mt-4 pt-4 border-t border-[var(--border-light)] flex items-center justify-between">
-                                        {/* Usage Stats */}
-                                        <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                                            <div className="flex items-center gap-1" title="调用成功次数">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50" />
-                                                {slot.successCount || 0}
-                                            </div>
-                                            <div className="flex items-center gap-1" title="调用失败次数">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500/50" />
-                                                {slot.failCount || 0}
-                                            </div>
-                                        </div>
-
-                                        {/* Action Buttons */}
-                                        <div className="flex items-center gap-1">
-                                            <button
-                                                onClick={(e) => handleRefresh(slot.id, e)}
-                                                disabled={refreshingIds.has(slot.id)}
-                                                className={`p - 1.5 rounded - lg transition - colors ${refreshingIds.has(slot.id) ? 'animate-spin text-indigo-500' : 'hover:bg-[var(--toolbar-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'} `}
-                                                title="验证连通性"
-                                            >
-                                                <RefreshCw size={14} />
-                                            </button>
-                                            <button
-                                                onClick={(e) => handleToggle(slot.id, e)}
-                                                className={`p-1.5 rounded-lg transition-colors ${slot.disabled
-                                                    ? 'hover:bg-emerald-500/10 text-[var(--text-tertiary)] hover:text-emerald-500'
-                                                    : 'hover:bg-amber-500/10 text-emerald-500 hover:text-amber-500'
-                                                    }`}
-                                                title={slot.disabled ? "启用通道" : "禁用通道"}
-                                            >
-                                                {slot.disabled ? <Play size={14} /> : <Pause size={14} />}
-                                            </button>
-                                            <button
-                                                onClick={(e) => handleDelete(slot.id, e)}
-                                                className="p-1.5 hover:bg-red-500/10 text-[var(--text-tertiary)] hover:text-red-500 rounded-lg transition-colors"
-                                                title="删除通道"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                    {/* Stats (2-Column Layout: Left=Tokens+Cost stacked, Right=Budget centered) */}
-                                    <div className="flex gap-3 bg-[var(--bg-tertiary)] rounded-xl p-4 border border-[var(--border-light)] mt-3">
-                                        {/* Left Column: Tokens + Cost (Stacked, Vertically Centered) */}
-                                        <div className="flex-1 flex flex-col gap-3 justify-center">
-                                            {/* Tokens消耗 */}
-                                            <div className="flex items-baseline gap-2">
-                                                <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>令牌</div>
-                                                <div className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                                                    {slot.usedTokens?.toLocaleString() || 0}
-                                                </div>
-                                            </div>
-
-                                            {/* 费用消耗 */}
-                                            <div className="flex items-baseline gap-2">
-                                                <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>费用</div>
-                                                <div className="text-xl font-bold text-emerald-400">
-                                                    ${slot.totalCost.toFixed(2)}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Right Column: Budget (Centered) */}
-                                        <div className="flex-1 flex flex-col justify-center items-center gap-2 border-l border-[var(--border-light)] pl-4">
-                                            <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>💰 预算</div>
-                                            {(slot.budgetLimit && slot.budgetLimit > 0) ? (
-                                                <>
-                                                    <div className="text-2xl font-bold" style={{ color: slot.totalCost >= slot.budgetLimit ? '#ef4444' : 'var(--text-primary)' }}>
-                                                        ${slot.budgetLimit.toFixed(2)}
-                                                    </div>
-                                                    {/* 预算进度条 */}
-                                                    <div className="w-full h-2 bg-[var(--bg-primary)] rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full transition-all duration-300 rounded-full"
-                                                            style={{
-                                                                width: `${Math.min(100, (slot.totalCost / slot.budgetLimit) * 100)}%`,
-                                                                backgroundColor: slot.totalCost >= slot.budgetLimit ? '#ef4444' : slot.totalCost >= slot.budgetLimit * 0.8 ? '#f59e0b' : '#3b82f6'
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>
-                                                        {((slot.totalCost / slot.budgetLimit) * 100).toFixed(1)}% 已使用
-                                                    </div>
-                                                    {slot.totalCost >= slot.budgetLimit && (
-                                                        <div className="text-xs font-semibold" style={{ color: '#ef4444' }}>
-                                                            ⚠️ 预算已耗尽
+                                                {/* Card Content Container */}
+                                                <div className="flex-1 min-w-0">
+                                                    {/* Main Info */}
+                                                    <div className={`min-w-0 ${isSequential ? 'pl-8' : ''}`}>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <div className={`w-2 h-2 rounded-full shrink-0 ${refreshingIds.has(slot.id) ? 'bg-blue-500 animate-pulse' :
+                                                                    slot.disabled ? 'bg-[var(--text-tertiary)]' :
+                                                                        slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
+                                                                            (slot.status === 'invalid' || slot.status === 'rate_limited') ? 'bg-red-500' :
+                                                                                'bg-[var(--text-tertiary)]'
+                                                                    }`} />
+                                                                <h4 className="text-base font-semibold truncate pr-2" style={{ color: 'var(--text-primary)' }} title={slot.name}>
+                                                                    {slot.name}
+                                                                </h4>
+                                                            </div>
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${slot.provider === 'Google'
+                                                                ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                                                : 'bg-purple-500/10 text-purple-500 border-purple-500/20'
+                                                                }`}>
+                                                                {slot.provider}
+                                                            </span>
                                                         </div>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <div className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
-                                                    <span>♾️</span>
-                                                    <span className="text-sm">无限制</span>
+
+                                                        <div className="flex items-center gap-2 text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                                                            <Key size={12} />
+                                                            <span className="truncate">{maskApiKey(slot.key)}</span>
+                                                        </div>
+
+                                                        {/* Status Details & Performance Metrics */}
+                                                        <div className="flex items-center gap-3 mt-2 pt-2 border-t border-[var(--border-light)]/50">
+                                                            <div className="flex items-center gap-1.5 text-xs">
+                                                                {refreshingIds.has(slot.id) ? (
+                                                                    <>
+                                                                        <Clock className="text-blue-400 animate-pulse" size={12} />
+                                                                        <span style={{ color: '#60a5fa' }}>检测中</span>
+                                                                    </>
+                                                                ) : slot.disabled ? (
+                                                                    <>
+                                                                        <Pause size={12} />
+                                                                        <span style={{ color: 'var(--text-tertiary)' }}>已禁用</span>
+                                                                    </>
+                                                                ) : slot.status === 'valid' ? (
+                                                                    <>
+                                                                        <Check className="text-emerald-500" size={12} />
+                                                                        <span style={{ color: '#10b981' }}>在线</span>
+                                                                    </>
+                                                                ) : slot.status === 'rate_limited' ? (
+                                                                    <>
+                                                                        <Clock className="text-orange-500" size={12} />
+                                                                        <span style={{ color: '#f59e0b' }}>限流</span>
+                                                                    </>
+                                                                ) : slot.status === 'invalid' ? (
+                                                                    <>
+                                                                        <X className="text-red-500" size={12} />
+                                                                        <span style={{ color: '#ef4444' }}>离线</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <Activity size={12} style={{ color: 'var(--text-tertiary)' }} />
+                                                                        <span style={{ color: 'var(--text-tertiary)' }}>未知</span>
+                                                                    </>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex-1" />
+                                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <button
+                                                                    onClick={(e) => handleRefresh(slot.id, e)}
+                                                                    className="p-1.5 rounded-lg hover:bg-[var(--bg-primary)] text-[var(--text-tertiary)] hover:text-blue-500 transition-colors"
+                                                                    title="测试连接"
+                                                                >
+                                                                    <RefreshCw size={14} className={refreshingIds.has(slot.id) ? 'animate-spin' : ''} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => handleToggle(slot.id, e)}
+                                                                    className="p-1.5 rounded-lg hover:bg-[var(--bg-primary)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                                                                    title={slot.disabled ? "启用" : "停用"}
+                                                                >
+                                                                    {slot.disabled ? <Play size={14} /> : <Pause size={14} />}
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => handleDelete(slot.id, e)}
+                                                                    className="p-1.5 rounded-lg hover:bg-red-500/10 text-[var(--text-tertiary)] hover:text-red-500 transition-colors"
+                                                                    title="删除"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            )}
-                                        </div>
+                                            </div>
+                                        ))}
                                     </div>
-
-                                    {/* Models Tags */}
-
                                 </div>
-                            </div>
+                            )
                         ))}
                     </div>
                 )}
@@ -1036,17 +981,42 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                 onChange={e => {
                                                     const nextProvider = e.target.value;
                                                     setFormProvider(nextProvider);
-                                                    if (nextProvider === 'Google' && !formImageModels && !formChatModels) {
-                                                        // Set defaults
-                                                        setFormImageModels('gemini-2.5-flash-image, gemini-3-pro-image-preview');
-                                                        setFormVideoModels('veo-3.1-generate-preview');
-                                                        setFormChatModels('gemini-2.5-flash');
+
+                                                    // Auto-fill defaults for known providers
+                                                    if (nextProvider === 'Google') {
+                                                        if (!formImageModels && !formChatModels) {
+                                                            setFormImageModels('gemini-2.5-flash-image, gemini-3-pro-image-preview');
+                                                            setFormVideoModels('veo-3.1-generate-preview');
+                                                            setFormChatModels('gemini-2.5-flash, gemini-2.5-pro');
+                                                        }
+                                                    } else if (nextProvider === 'Aliyun') {
+                                                        setFormChatModels('qwen-max, qwen-plus, qwen-turbo');
+                                                        setFormImageModels('wanx-v1');
+                                                        if (!formBaseUrl) setFormBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1');
+                                                    } else if (nextProvider === 'Tencent') {
+                                                        setFormChatModels('hunyuan-pro, hunyuan-standard, hunyuan-lite');
+                                                        if (!formBaseUrl) setFormBaseUrl('https://api.hunyuan.cloud.tencent.com/v1');
+                                                    } else if (nextProvider === 'Volcengine') {
+                                                        setFormChatModels('doubao-pro-32k, doubao-lite-4k');
+                                                        if (!formBaseUrl) setFormBaseUrl('https://ark.cn-beijing.volces.com/api/v3');
+                                                    } else if (nextProvider === 'SiliconFlow') {
+                                                        setFormChatModels('deepseek-ai/DeepSeek-V3, deepseek-ai/DeepSeek-R1');
+                                                        setFormImageModels('stabilityai/stable-diffusion-3-medium');
+                                                        if (!formBaseUrl) setFormBaseUrl('https://api.siliconflow.cn/v1');
+                                                    } else if (nextProvider === 'DeepSeek') {
+                                                        setFormChatModels('deepseek-chat, deepseek-reasoner');
+                                                        if (!formBaseUrl) setFormBaseUrl('https://api.deepseek.com');
                                                     }
                                                 }}
                                             >
                                                 <option value="Google">Google / Gemini</option>
                                                 <option value="OpenAI">OpenAI Compatible</option>
                                                 <option value="Anthropic">Anthropic</option>
+                                                <option value="Aliyun">Aliyun (DashScope)</option>
+                                                <option value="Tencent">Tencent (Hunyuan)</option>
+                                                <option value="Volcengine">Volcengine (Doubao)</option>
+                                                <option value="SiliconFlow">SiliconFlow</option>
+                                                <option value="DeepSeek">DeepSeek</option>
                                                 <option value="Custom">Custom</option>
                                             </select>
                                         </div>

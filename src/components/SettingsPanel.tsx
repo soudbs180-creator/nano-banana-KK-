@@ -263,13 +263,45 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                 {/* 2. Global Status: Total Consumption Budget */}
                 {(() => {
                     const slots = keyManager.getSlots();
-                    const totalBudget = slots.reduce((acc, s) => acc + (s.budgetLimit > 0 ? s.budgetLimit : 0), 0);
-                    const hasUnlimited = slots.some(s => s.budgetLimit < 0);
-                    const isTotalUnlimited = totalBudget === 0 && hasUnlimited;
-                    const remainingAmount = isTotalUnlimited ? 0 : Math.max(0, totalBudget - totalConsumed);
-                    const remainingPercent = isTotalUnlimited || totalBudget === 0
+                    // 1. Filter active keys
+                    const activeSlots = slots.filter(s => s.status === 'valid' && !s.disabled);
+
+                    // 2. Separate limited and unlimited active keys
+                    const limitedSlots = activeSlots.filter(s => s.budgetLimit > 0);
+                    const unlimitedSlots = activeSlots.filter(s => s.budgetLimit < 0);
+
+                    // 3. Calculate metrics
+                    // Total Tokens: Sum of ALL active keys (regardless of budget type)
+                    // Note: 'totalTokens' prop passed to component is sum of ALL slots, 
+                    // but user requested "according to not prohibited api". 
+                    // We'll trust the 'totalTokens' prop if it's already filtered, 
+                    // OR we calculate active tokens here if the prop is raw.
+                    // Looking at line 1084, totalTokens is sum of ALL slots. 
+                    // Let's recalculate active tokens here for consistency with the request.
+                    const activeTotalTokens = activeSlots.reduce((sum, s) => sum + (s.usedTokens || 0), 0);
+
+                    // Budget Calculation (Only for Finite Keys)
+                    // User: "Unlimited does not participate in calculation"
+                    const finiteMaxBudget = limitedSlots.reduce((acc, s) => acc + s.budgetLimit, 0);
+                    const finiteConsumed = limitedSlots.reduce((acc, s) => acc + (s.totalCost || 0), 0);
+
+                    // Logic:
+                    // If NO active keys -> Budget 0
+                    // If ONLY unlimited keys -> Budget Infinity
+                    // If Mix -> Budget is finite sum (Unlimited ignored)
+
+                    const isTotalUnlimited = activeSlots.length > 0 && limitedSlots.length === 0;
+
+                    const remainingAmount = isTotalUnlimited ? 0 : Math.max(0, finiteMaxBudget - finiteConsumed);
+
+                    // Percentage:
+                    // If Total Unlimited -> 100% (or special state)
+                    // If Finite Budget is 0 (and not unlimited) -> 0%
+                    const remainingPercent = isTotalUnlimited
                         ? 100
-                        : Math.max(0, ((totalBudget - totalConsumed) / totalBudget) * 100);
+                        : finiteMaxBudget === 0
+                            ? 0
+                            : Math.max(0, ((finiteMaxBudget - finiteConsumed) / finiteMaxBudget) * 100);
 
                     // Color Logic: Blue (>50%) -> Yellow (>20%) -> Red (<20%)
                     const progressBarColor = isTotalUnlimited || remainingPercent > 50
@@ -287,7 +319,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                                 </div>
                                 <div className="text-right">
                                     <div className="text-xs uppercase" style={{ color: 'var(--text-tertiary)' }}>Token 总消耗</div>
-                                    <div className="font-mono font-bold text-lg" style={{ color: 'var(--text-primary)' }}>{(totalTokens / 1000).toFixed(1)}k</div>
+                                    <div className="font-mono font-bold text-lg" style={{ color: 'var(--text-primary)' }}>{(activeTotalTokens / 1000).toFixed(1)}k</div>
                                 </div>
                             </div>
 
@@ -295,13 +327,13 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                             <div className="space-y-2">
                                 <div className="flex justify-between text-xs text-zinc-600 dark:text-zinc-500 font-mono">
                                     <span>剩余: {isTotalUnlimited ? '∞' : `$${remainingAmount.toFixed(2)}`}</span>
-                                    <span>总额: {isTotalUnlimited ? '∞' : `$${totalBudget.toFixed(2)}`}</span>
+                                    <span>总额: {isTotalUnlimited ? '∞' : `$${finiteMaxBudget.toFixed(2)}`}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <div className="h-3 flex-1 bg-white/10 rounded-full overflow-hidden">
                                         <div
                                             className={`h-full rounded-full transition-all duration-500 shadow-lg ${progressBarColor}`}
-                                            style={{ width: isTotalUnlimited ? '100%' : `${remainingPercent}%` }}
+                                            style={{ width: `${remainingPercent}%` }}
                                         />
                                     </div>
                                     <div className="text-sm font-bold font-mono text-right w-14" style={{ color: 'var(--text-primary)' }}>
@@ -370,7 +402,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>版本</div>
-                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.9</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.3.0</div>
                     </div>
                 </div>
             </div>
@@ -386,29 +418,46 @@ const CostEstimationView = () => {
     const [entries, setEntries] = useState<any[]>([]);
 
     useEffect(() => {
-        setBreakdown(getCostsByModel());
-        // Load recent entries
-        const todayData = getTodayCosts();
-        if (todayData.entries) {
-            setEntries(todayData.entries.slice(-20).reverse()); // Last 20, newest first
-        }
+        // Load Initial Data
+        import('../services/costService').then(mod => {
+            setBreakdown(mod.getHistorySummary(30)); // 30 days history
+            setEntries(mod.getRecentEntries(50));   // 50 detailed records
+        });
     }, []);
 
     const handleSync = async () => {
         setIsSyncing(true);
         try {
-            const { forceSync, getCostsByModel: refreshData, getTodayCosts: refreshCosts } = await import('../services/costService');
-            await forceSync();
-            setBreakdown(refreshData());
-            const todayData = refreshCosts();
-            if (todayData.entries) {
-                setEntries(todayData.entries.slice(-20).reverse());
-            }
+            const mod = await import('../services/costService');
+            await mod.forceSync();
+            setBreakdown(mod.getHistorySummary(30));
+            setEntries(mod.getRecentEntries(50));
         } catch (e) {
             console.error(e);
         } finally {
             setIsSyncing(false);
         }
+    };
+
+    // Helper: Parse Model Name & Badge
+    const renderModelCell = (fullModelId: string) => {
+        let modelName = fullModelId;
+        let sourceName = 'Official';
+
+        if (fullModelId.includes('@')) {
+            const parts = fullModelId.split('@');
+            modelName = parts[0];
+            sourceName = parts[1];
+        }
+
+        return (
+            <div className="flex flex-col">
+                <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{modelName}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md w-fit mt-0.5 bg-zinc-800 text-zinc-400 border border-zinc-700/50">
+                    {sourceName.toUpperCase()}
+                </span>
+            </div>
+        );
     };
 
     return (
@@ -422,13 +471,13 @@ const CostEstimationView = () => {
                                 onClick={() => setActiveTab('summary')}
                                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeTab === 'summary' ? 'bg-indigo-500/20 text-white' : 'text-zinc-400 hover:text-white'}`}
                             >
-                                模型汇总
+                                模型汇总 (30天)
                             </button>
                             <button
                                 onClick={() => setActiveTab('detailed')}
                                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeTab === 'detailed' ? 'bg-indigo-500/20 text-white' : 'text-zinc-400 hover:text-white'}`}
                             >
-                                详细记录
+                                详细记录 (50条)
                             </button>
                         </div>
                         <button
@@ -441,7 +490,9 @@ const CostEstimationView = () => {
                         </button>
                     </div>
                 </div>
-                <p className="text-xs text-zinc-500 text-center w-full">按模型和规格统计的详细使用记录</p>
+                <p className="text-xs text-zinc-500 text-center w-full">
+                    {activeTab === 'summary' ? '最近 30 天消耗汇总' : '最近 50 条详细生成记录'}
+                </p>
             </div>
 
             {/* Desktop Table View - Summary */}
@@ -459,17 +510,19 @@ const CostEstimationView = () => {
                         </thead>
                         <tbody className="divide-y divide-zinc-800/50">
                             {breakdown.length === 0 ? (
-                                <tr><td colSpan={5} className="p-12 text-center" style={{ color: 'var(--text-tertiary)' }}>今日暂无数据</td></tr>
+                                <tr><td colSpan={5} className="p-12 text-center" style={{ color: 'var(--text-tertiary)' }}>暂无数据</td></tr>
                             ) : (
                                 breakdown.map((item, idx) => (
                                     <tr key={idx} className="hover:bg-[var(--toolbar-hover)] transition-colors group">
-                                        <td className="px-5 py-4 font-medium" style={{ color: 'var(--text-primary)' }}>{item.model}</td>
-                                        <td className="px-5 py-4 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{item.imageSize || 'Default'}</td>
-                                        <td className="px-5 py-4 text-right font-mono" style={{ color: 'var(--text-primary)' }}>{item.count}</td>
-                                        <td className="px-5 py-4 text-right font-mono text-indigo-500 opacity-80 group-hover:opacity-100 transition-opacity">
+                                        <td className="px-5 py-3">
+                                            {renderModelCell(item.model)}
+                                        </td>
+                                        <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{item.imageSize || 'Default'}</td>
+                                        <td className="px-5 py-3 text-right font-mono" style={{ color: 'var(--text-primary)' }}>{item.count}</td>
+                                        <td className="px-5 py-3 text-right font-mono text-indigo-500 opacity-80 group-hover:opacity-100 transition-opacity">
                                             {(item.tokens || 0).toLocaleString()}
                                         </td>
-                                        <td className="px-5 py-4 text-right font-mono text-emerald-500 font-medium">
+                                        <td className="px-5 py-3 text-right font-mono text-emerald-500 font-medium">
                                             ${item.cost.toFixed(5)}
                                         </td>
                                     </tr>
@@ -480,7 +533,7 @@ const CostEstimationView = () => {
                 </div>
             )}
 
-            {/* Desktop Table View - Detailed Entries (Last 20) */}
+            {/* Desktop Table View - Detailed Entries (Last 50) */}
             {activeTab === 'detailed' && (
                 <div className="hidden md:block bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-[32px] overflow-x-auto shadow-sm">
                     <table className="w-full text-left text-sm">
@@ -495,14 +548,16 @@ const CostEstimationView = () => {
                         </thead>
                         <tbody className="divide-y divide-zinc-800/50">
                             {entries.length === 0 ? (
-                                <tr><td colSpan={5} className="p-12 text-center text-zinc-500">今日暂无详细记录</td></tr>
+                                <tr><td colSpan={5} className="p-12 text-center text-zinc-500">暂无详细记录</td></tr>
                             ) : (
                                 entries.map((entry, idx) => (
                                     <tr key={idx} className="hover:bg-white/5 transition-colors">
                                         <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                                            {new Date(entry.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                            {new Date(entry.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                         </td>
-                                        <td className="px-5 py-3 text-sm" style={{ color: 'var(--text-primary)' }}>{entry.model}</td>
+                                        <td className="px-5 py-3 text-sm">
+                                            {renderModelCell(entry.model)}
+                                        </td>
                                         <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{entry.imageSize || '-'}</td>
                                         <td className="px-5 py-3 text-right font-mono text-indigo-400 text-sm">
                                             {(entry.tokens || 0).toLocaleString()}
@@ -516,7 +571,7 @@ const CostEstimationView = () => {
                         </tbody>
                     </table>
                     <div className="px-5 py-3 border-t border-[var(--border-light)] text-xs text-zinc-600 dark:text-zinc-500 text-center">
-                        显示最近 {entries.length} 条记录 (最多 20 条)
+                        显示最近 {entries.length} 条记录 (最多 50 条)
                     </div>
                 </div>
             )}
@@ -525,7 +580,7 @@ const CostEstimationView = () => {
             <div className="md:hidden space-y-3">
                 {breakdown.length === 0 ? (
                     <div className="p-8 text-center text-zinc-500 bg-[var(--bg-secondary)] rounded-[32px] border border-[var(--border-light)]">
-                        今日暂无数据
+                        暂无数据
                     </div>
                 ) : (
                     breakdown.map((item, idx) => (
@@ -534,7 +589,7 @@ const CostEstimationView = () => {
                             <div className="flex justify-between items-start">
                                 <div className="space-y-1">
                                     <span className="text-xs font-mono uppercase" style={{ color: 'var(--text-tertiary)' }}>Model</span>
-                                    <div className="font-bold text-base break-all" style={{ color: 'var(--text-primary)' }}>{item.model}</div>
+                                    {renderModelCell(item.model)}
                                 </div>
                                 <div className="text-right space-y-1">
                                     <span className="text-xs text-zinc-500 font-mono uppercase">Cost</span>

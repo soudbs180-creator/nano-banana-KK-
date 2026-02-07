@@ -11,6 +11,7 @@ import ImageOptionsPanel from './ImageOptionsPanel';
 import VideoOptionsPanel from './VideoOptionsPanel';
 import ImagePreview from './ImagePreview';
 import { sortModels, toggleModelPin, getPinnedModels, filterAndSortModels } from '../utils/modelSorting';
+import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, ChevronUp, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap, Mic, Camera, Brain, Video, Image as ImageIcon } from 'lucide-react'; // [NEW] Mobile Icons
 
 // [FIX] Robust Image Component that self-heals from Storage if data is missing
 const ReferenceThumbnail: React.FC<{
@@ -167,9 +168,10 @@ interface PromptBarProps {
     onInteract?: () => void;
     onFocus?: () => void;  // 输入框获取焦点时调用
     onBlur?: () => void;   // 输入框失去焦点时调用
+    onOpenMore?: () => void; // [NEW] Mobile More Menu
 }
 
-const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings, onInteract, onFocus, onBlur }) => {
+const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings, onInteract, onFocus, onBlur, onOpenMore }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -539,6 +541,17 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     const dragCounter = useRef(0);
     const [isDragging, setIsDragging] = useState(false);
+    const dragSafetyTimer = useRef<NodeJS.Timeout | null>(null);
+
+    // [FIX] 4秒无操作自动复位（防止卡顿）
+    const resetDragSafetyTimer = useCallback(() => {
+        if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
+        dragSafetyTimer.current = setTimeout(() => {
+            console.warn('[PromptBar] Drag timeout - resetting state');
+            setIsDragging(false);
+            dragCounter.current = 0;
+        }, 4000);
+    }, []);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -548,7 +561,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
+        };
     }, []);
 
     // Drag & Drop handlers...
@@ -557,30 +573,46 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         e.stopPropagation();
         dragCounter.current += 1;
 
+        resetDragSafetyTimer(); // Start/Reset timer
+
         // [FIX] Ignore internal drags (e.g. reordering reference images)
-        // If we are dragging an internal item, we don't want the huge "Drop Files" overlay
         if (dragSourceId) return;
 
         // Check if it's a file drag from OS
         if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
             setIsDragging(true);
         }
-    }, [dragSourceId]);
-    const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); }, []);
+    }, [dragSourceId, resetDragSafetyTimer]);
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resetDragSafetyTimer(); // Keep alive
+    }, [resetDragSafetyTimer]);
+
     const handleDragLeave = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
         dragCounter.current -= 1;
+
+        // Don't clear timer here immediately, allow slight buffer or let Over handle it? 
+        // Actually if we leave, we might want to kill it if count is 0.
+        // But if we leave to a child, Over will fire there (bubbling?). 
+        // Safest is to rely on the counter logic + the fallback timer.
+
         if (dragCounter.current <= 0) {
             dragCounter.current = 0;
             setIsDragging(false);
+            if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
         }
     }, []);
+
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
         dragCounter.current = 0;
         setIsDragging(false);
+        if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
 
         // 1. 处理文件 (Prioritize files)
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -737,22 +769,159 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         handleTouchEnd(e); // Keep existing handler
     };
 
+    if (isMobile) {
+        return (
+            <>
+                <div
+                    id="mobile-input-dock"
+                    className="fixed bottom-0 left-0 right-0 z-50 bg-[#141417]/95 backdrop-blur-xl border-t border-white/5 pb-safe transition-all duration-300"
+                    style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
+                >
+                    {/* Function Bar (Floating above) */}
+                    <div className="absolute top-0 left-0 w-full -translate-y-full pb-2 pointer-events-none flex flex-col justify-end bg-gradient-to-t from-black/20 to-transparent pt-8">
+                        <div className="flex justify-evenly items-end px-4 gap-4 pointer-events-auto pb-2">
+                            {/* Deep Reasoning */}
+                            <button
+                                onClick={() => toggleMenu('model')}
+                                className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
+                            >
+                                <div className="w-11 h-11 rounded-full bg-[#1a1a1c] border border-white/10 flex items-center justify-center text-white shadow-lg shadow-black/20">
+                                    <Brain size={20} className="text-purple-400" />
+                                </div>
+                                <span className="text-[10px] font-medium text-white/90 drop-shadow-md">深度思考</span>
+                            </button>
+
+                            {/* Photo QA */}
+                            <button
+                                onClick={() => {
+                                    setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }));
+                                    fileInputRef.current?.click();
+                                }}
+                                className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
+                            >
+                                <div className="w-11 h-11 rounded-full bg-[#1a1a1c] border border-white/10 flex items-center justify-center text-white shadow-lg shadow-black/20">
+                                    <Camera size={20} className="text-blue-400" />
+                                </div>
+                                <span className="text-[10px] font-medium text-white/90 drop-shadow-md">拍照答疑</span>
+                            </button>
+
+                            {/* AI Video */}
+                            <button
+                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
+                                className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
+                            >
+                                <div className="w-11 h-11 rounded-full bg-[#1a1a1c] border border-white/10 flex items-center justify-center text-white shadow-lg shadow-black/20">
+                                    <Video size={20} className="text-pink-400" />
+                                </div>
+                                <span className="text-[10px] font-medium text-white/90 drop-shadow-md">AI生视频</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="px-3 pt-3 flex flex-col gap-3">
+                        {/* Reference Images List */}
+                        {config.referenceImages.length > 0 && (
+                            <div className="flex gap-3 overflow-x-auto py-2 scrollbar-none">
+                                {config.referenceImages.map((img) => (
+                                    <div key={img.id} className="relative flex-shrink-0 group">
+                                        <ReferenceThumbnail image={img} />
+                                        <button
+                                            onClick={() => removeReferenceImage(img.id)}
+                                            className="absolute -top-1 -right-1 w-5 h-5 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur-md"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Input Row */}
+                        <div className="flex items-end gap-3 w-full">
+                            {/* Voice */}
+                            <button className="p-2.5 text-zinc-400 active:text-white transition-colors" onClick={() => alert("语音功能即将上线")}>
+                                <Mic size={24} strokeWidth={1.5} />
+                            </button>
+
+                            {/* Input Field */}
+                            <div className="flex-1 min-h-[44px] bg-white/5 border border-white/10 rounded-[22px] flex items-center px-4 py-2 relative transition-all focus-within:bg-white/10 focus-within:border-white/20">
+                                <textarea
+                                    ref={textareaRef}
+                                    value={config.prompt}
+                                    onChange={handleInput}
+                                    onFocus={onFocus}
+                                    onBlur={onBlur}
+                                    placeholder="发消息、生成图片、视频..."
+                                    className="w-full bg-transparent border-none outline-none text-[15px] text-white placeholder-zinc-500 resize-none py-0.5 leading-6"
+                                    rows={1}
+                                    style={{ maxHeight: '120px' }}
+                                />
+                                {/* Send Button (Shows when text exists) */}
+                                {config.prompt && (
+                                    <button
+                                        onClick={onGenerate}
+                                        disabled={isGenerating}
+                                        className="ml-2 w-8 h-8 flex-shrink-0 flex items-center justify-center bg-blue-600 rounded-full text-white shadow-lg active:scale-90 transition-all hover:bg-blue-500"
+                                    >
+                                        {isGenerating ? <Loader2 className="animate-spin" size={16} /> : <ChevronUp size={20} strokeWidth={3} />}
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Plus / More */}
+                            <button onClick={onOpenMore} className="p-2.5 text-zinc-400 active:text-white transition-colors">
+                                <Plus size={24} strokeWidth={1.5} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Hidden Inputs */}
+                    <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={(e) => e.target.files && processFiles(e.target.files)} />
+
+                    {/* Model Menu (Mobile Overlay) */}
+                    {activeMenu === 'model' && (
+                        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-200">
+                            <div className="bg-[#1e1e20] rounded-t-3xl border-t border-white/10 max-h-[70vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300">
+                                <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                                    <h3 className="text-lg font-bold text-white">选择模型</h3>
+                                    <button onClick={() => setActiveMenu(null)} className="p-2 text-zinc-400 hover:text-white">✕</button>
+                                </div>
+                                <div className="p-4 overflow-y-auto">
+                                    {filterAndSortModels(availableModels, '', modelCustomizations).map((model: any) => (
+                                        <button
+                                            key={model.id}
+                                            onClick={() => {
+                                                setConfig(prev => ({ ...prev, model: model.id }));
+                                                setActiveMenu(null);
+                                            }}
+                                            className={`w-full p-4 flex items-center justify-between rounded-xl mb-2 transition-all ${config.model === model.id ? 'bg-indigo-600/20 border border-indigo-500/50' : 'bg-white/5 border border-white/5'}`}
+                                        >
+                                            <div className="flex flex-col items-start">
+                                                <span className="text-white font-medium text-base">{model.label || model.id}</span>
+                                                <span className="text-xs text-zinc-400 mt-0.5">{model.provider}</span>
+                                            </div>
+                                            {config.model === model.id && <div className="w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" />}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </>
+        );
+    }
+
     return (
         <div
             id="prompt-bar-container"
-            className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500' : ''} ${isMobile ? 'mobile-docked' : ''}`}
+            className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onTouchStart={handleContainerTouchStart} // Use new handler
-            onTouchEnd={handleContainerTouchEnd}     // Use new handler
-            // onClick removed for mobile to prevent accidental showing. 
-            // We can keep onClick for desktop if needed, but 'onInteract' was mainly for mobile nav.
             style={{
-                ...mobileStyle,
-                // On mobile, bottom is 0 (fixed). On desktop, existing logic applies.
-                bottom: isMobile ? 0 : '32px'
+                bottom: '32px'
             }}
         >
             {/* Drag Overlay */}
@@ -772,16 +941,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         backgroundImage: `url(${flyingImage.url})`,
                         backgroundSize: 'cover',
                         transform: `translate(${flyingImage.targetX}px, ${flyingImage.targetY}px) scale(1)`,
-                        // Start scale/pos is handled by initial render, but React might batch it. 
-                        // Ideally we render at start, then next frame set target. 
-                        // For simplicity in this edit, we rely on CSS animation from internal state if we used a library, 
-                        // but here we might need a 2-step state or simple keyframe.
-                        // Actually, 'transition-all' + changing style prop works best if we render once.
-                        // Let's use a keyframe animation instead for guaranteed "fly from A to B".
                         animation: `flyToTarget 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards`,
-                        // We need to inject the dynamic keyframes or use inline styles for start/end.
-                        // Since keyframes are static, let's use Inline Styles + mounted LayoutEffect? 
-                        // EASIER: Just use `transform` and a `useEffect` to trigger the move.
                     }}
                 >
                     <style>{`

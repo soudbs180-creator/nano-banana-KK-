@@ -972,8 +972,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const addImageNodes = useCallback(async (nodes: GeneratedImage[]) => {
         console.log('[CanvasContext.addImageNodes] 🖼️ 开始添加图片节点', { count: nodes?.length });
 
-        // 🛡️ 防御性检查：过滤掉无效节点
-        const validNodes = Array.isArray(nodes) ? nodes.filter(n => n && n.id && n.url) : [];
+        // 🛡️ 防御性检查：过滤掉无效节点 (允许 isGenerating 状态的节点)
+        const validNodes = Array.isArray(nodes) ? nodes.filter(n => n && n.id && (n.url || n.isGenerating)) : [];
         if (validNodes.length === 0) {
             console.warn('[CanvasContext.addImageNodes] ⚠️ 没有有效的图片节点');
             return;
@@ -2707,10 +2707,16 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         if (url.startsWith('blob:') || url.startsWith('data:')) {
                             try {
                                 const res = await fetch(url);
+                                if (!res.ok) throw new Error(`Fetch status: ${res.status}`);
                                 const blob = await res.blob();
                                 imagesToSave.set(id, blob);
-                            } catch (err) {
-                                console.warn(`[CanvasContext] Skip saving image ${id} (fetch failed):`, err);
+                            } catch (err: any) {
+                                // 🚀 [Fix] Ignore known blob errors to prevent console spam
+                                if (err.message && err.message.includes('ERR_UPLOAD_FILE_CHANGED')) {
+                                    console.warn(`[CanvasContext] Blob reference lost for ${id} (file changed/moved), skipping save.`);
+                                } else {
+                                    console.warn(`[CanvasContext] Skip saving image ${id} (fetch failed):`, err);
+                                }
                             }
                         }
                     }

@@ -42,19 +42,20 @@ export const toggleModelPin = (modelId: string) => {
 };
 
 const getModelWeight = (modelId: string, pinned: string[]): number => {
+    let weight = 0;
     const lowerId = modelId.toLowerCase();
 
-    // 1. Nano Banana Priority (Highest)
-    if (NANO_BANANA_KEYWORDS.some(k => lowerId.includes(k))) {
-        return 10000;
-    }
-
-    // 2. User Pinned Priority
+    // 1. User Pinned Priority (Supreme)
     if (pinned.includes(modelId)) {
-        return 5000;
+        weight += 100000; // Ensure pinned items are always at the very top
     }
 
-    return 0; // Standard models
+    // 2. Nano Banana Priority (High)
+    if (NANO_BANANA_KEYWORDS.some(k => lowerId.includes(k))) {
+        weight += 10000;
+    }
+
+    return weight;
 };
 
 const extractVersionNumber = (id: string): number => {

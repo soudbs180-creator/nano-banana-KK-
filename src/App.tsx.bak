@@ -41,6 +41,8 @@ import ProjectManager from './components/ProjectManager';
 import SearchPalette from './components/SearchPalette';
 import { Search } from 'lucide-react'; // Import Search icon
 import MobileTabBar from './components/MobileTabBar';
+import MobileHeader from './components/MobileHeader'; // [NEW]
+import MobileMoreMenu from './components/MobileMoreMenu'; // [NEW]
 import TagInputModal from './components/TagInputModal';
 import TutorialOverlay from './components/TutorialOverlay';
 import { GlobalLightbox } from './components/GlobalLightbox';
@@ -187,6 +189,17 @@ const AppContent: React.FC = () => {
     });
     return unsubscribe;
   }, []);
+
+  // [NEW] Mobile View State (for header/menu)
+  const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobileView(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // [NEW] Mobile More Menu State
+  const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
 
   // Mobile Nav Bar Visibility (Swipe to Show, Auto Hide)
   const [isMobileNavVisible, setIsMobileNavVisible] = useState(false);
@@ -442,7 +455,7 @@ const AppContent: React.FC = () => {
           aspectRatio: parsed.aspectRatio || AspectRatio.AUTO, // [Default: Auto]
           imageSize: parsed.imageSize || ImageSize.SIZE_1K,
           parallelCount: parsed.parallelCount || 1,
-          referenceImages: [], // [FIX] Do not restore old reference images
+          referenceImages: parsed.referenceImages || [], // Load metadata
           model: parsed.model || KnownModel.IMAGEN_3,
           enableGrounding: parsed.enableGrounding || false,
           mode: parsed.mode || GenerationMode.IMAGE
@@ -510,24 +523,23 @@ const AppContent: React.FC = () => {
       // The check `needsHydration` handles this.
 
       setConfig(prev => {
-        // [FIX] Race Condition: The async hydration might finish AFTER the user has deleted an image.
-        // We must NOT overwrite 'prev.referenceImages' with the stale 'hydratedImages' array.
-        // Instead, we update only the images that still exist in 'prev'.
-
         const hydratedMap = new Map(hydratedImages.map(img => [img.id, img]));
 
+        let hasChanges = false;
         const newImages = prev.referenceImages.map(img => {
           // If we found a hydrated version (with data) for this existing image, use it.
           const hydrated = hydratedMap.get(img.id);
           if (hydrated && hydrated.data && !img.data) {
+            hasChanges = true;
             return { ...img, data: hydrated.data };
           }
           return img;
         });
 
-        // Optimization: strict equality check to avoid re-render if nothing effectively changed
-        // But for object references in map, it's safer to just return new state if we are unsure.
-        // Given React batching, this is fine.
+        // 🚀 Optimization: Prevent infinite loop if hydration didn't actually change anything
+        // (e.g. hydration failed, or images already had data)
+        if (!hasChanges) return prev;
+
         return { ...prev, referenceImages: newImages };
       });
     };
@@ -570,10 +582,8 @@ const AppContent: React.FC = () => {
 
   // Persist Active Source Image
   useEffect(() => {
-    // [FIX] Do not restore active source image
-    // const savedSource = localStorage.getItem('kk_active_source_image');
-    // if (savedSource) setActiveSourceImage(savedSource);
-    localStorage.removeItem('kk_active_source_image'); // Ensure it's cleared
+    const savedSource = localStorage.getItem('kk_active_source_image');
+    if (savedSource) setActiveSourceImage(savedSource);
   }, []);
 
   useEffect(() => {
@@ -785,7 +795,8 @@ const AppContent: React.FC = () => {
             node.aspectRatio !== config.aspectRatio ||
             node.imageSize !== config.imageSize ||
             JSON.stringify(node.referenceImages) !== JSON.stringify(config.referenceImages) ||
-            node.sourceImageId !== (activeSourceImage || undefined);
+            node.sourceImageId !== (activeSourceImage || undefined) ||
+            node.parallelCount !== config.parallelCount; // 🚀 [修复] 同步生成数量
 
           if (hasChanged) {
             updatePromptNode({
@@ -796,7 +807,8 @@ const AppContent: React.FC = () => {
               model: config.model,
               referenceImages: config.referenceImages,
               sourceImageId: activeSourceImage || undefined,
-              mode: config.mode
+              mode: config.mode,
+              parallelCount: config.parallelCount // 🚀 [修复] 同步生成数量
             });
           }
         } else {
@@ -805,20 +817,15 @@ const AppContent: React.FC = () => {
         }
       }
     } else {
-      // Config is empty.
-      // If we are linked to a draft, delete it to clear the "Preview Box"
-      // 🚀 [修复] 追问模式的draft不要删除（有sourceImageId的）
-      // 🚀 [关键修复] 正在生成的draft不要删除！
+      // Config is empty (no prompt, no referenceImages).
+      // 🚀 [修复] 不再自动删除草稿卡片，让用户通过双击画布只清空输入框内容
+      // 草稿卡片会保留在画布上，不做任何同步操作
+      // 用户可以继续添加参考图或输入提示词
       if (draftNodeId) {
-        const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
-        if (node && !node.sourceImageId && !node.isGenerating) {
-          // 只删除普通draft，不删除追问模式的draft，也不删除正在生成的draft
-          console.log('[App.Draft清理] 删除空的draft节点:', draftNodeId);
-          deletePromptNode(draftNodeId);
-          setDraftNodeId(null);
-        } else if (node?.isGenerating) {
-          console.log('[App.Draft清理] 保留正在生成的draft:', draftNodeId);
-        }
+        // 🚀 [恢复] 当输入框清空时，自动删除草稿卡片
+        // 用户期望：清空输入框 = 取消预览
+        deletePromptNode(draftNodeId);
+        setDraftNodeId(null);
       }
     }
   }, [config, draftNodeId, activeCanvas, addPromptNode, updatePromptNode, pendingPosition, activeSourceImage]);
@@ -1323,41 +1330,99 @@ const AppContent: React.FC = () => {
 
   // Extracted Execution Logic
   const executeGeneration = useCallback(async (node: PromptNode) => {
-    const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: initialModel, mode, referenceImages: files = [] } = node;
-    let effectiveModel = initialModel;
+    const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: effectiveModel, mode, referenceImages: files = [] } = node;
 
     // [FIX] Get fresh position from canvas state to support moving during generation
-    // ✅ 使用ref获取最新状态,避免闭包问题
     const freshCanvas = activeCanvasRef.current;
     const liveNode = freshCanvas?.promptNodes.find(n => n.id === promptNodeId);
 
-    // 🚀 [修复] 如果找不到节点，使用传入的 node 参数作为后备
-    // 这可能发生在 React 状态更新还没完成时
     if (!liveNode) {
       console.warn('[executeGeneration] Node not found in canvas, using original node as fallback:', promptNodeId);
-      // 继续使用原始 node 参数执行生成，而不是直接退出
     }
-    const effectiveNode = liveNode || node;
+
+    const effectiveNode = liveNode
+      ? { ...liveNode, ...node, position: liveNode.position }
+      : node;
     const livePos = effectiveNode.position;
     const isVideo = mode === GenerationMode.VIDEO;
+
+    // Pre-calculation for Layout (Grid 2 columns)
+    const gapToImages = 80;
+    const gap = 20;
+    const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(node.aspectRatio, true);
+    const columns = 2;
+
+    // Helper to calculate position for index
+    const getPositionForIndex = (idx: number) => {
+      const col = idx % columns;
+      const row = Math.floor(idx / columns);
+      // Assuming 'count' is total cards for centering logic, but placeholders might be added incrementally?
+      // Let's use 'count' as total for centering.
+      const totalCards = count;
+      const cardsInCurrentRow = Math.min(columns, totalCards - row * columns);
+
+      let x = 0;
+      let y = 0;
+
+      if (isMobile) {
+        const mobileCardWidth = 170;
+        const mobileCardHeight = 260;
+        const mobileGap = 10;
+        const rowWidth = cardsInCurrentRow * mobileCardWidth + (cardsInCurrentRow - 1) * mobileGap;
+        const startX = -rowWidth / 2;
+        const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
+        const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
+        x = livePos.x + offsetX;
+        y = livePos.y + offsetY;
+      } else {
+        const rowWidth = cardsInCurrentRow * cardWidth + (cardsInCurrentRow - 1) * gap;
+        const startX = -rowWidth / 2;
+        const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
+        const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
+        x = livePos.x + offsetX;
+        y = livePos.y + offsetY;
+      }
+      return { x, y };
+    };
 
     try {
       const buildTask = (index: number) => async () => {
         const startTime = Date.now();
         const currentRequestId = `${promptNodeId}-${index}`;
 
+        // 1. Create Placeholder ID & Node
+        const placeholderId = `gen-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`;
+        const pos = getPositionForIndex(index);
+
+        const placeholderNode: GeneratedImage = {
+          id: placeholderId,
+          canvasId: activeCanvasRef.current?.id || 'default',
+          url: '', // Will be set when generation completes
+          originalUrl: '',
+          prompt: promptToUse,
+          aspectRatio: node.aspectRatio,
+          imageSize: node.imageSize,
+          model: effectiveModel,
+          timestamp: Date.now(),
+          mode: isVideo ? GenerationMode.VIDEO : GenerationMode.IMAGE,
+          parentPromptId: promptNodeId,
+          position: pos,
+          dimensions: isVideo ? '720p' : (node.imageSize || '1024x1024'),
+        };
+
+        // Add Placeholder to Canvas IMMEDIATELY
+        await addImageNodes([placeholderNode]);
+
         // Timeout Check (4 minutes)
         let isFinished = false;
         const timeoutId = setTimeout(() => {
           if (!isFinished) {
             cancelGeneration(currentRequestId);
-            updatePromptNode({
-              ...node,
-              isGenerating: false,
-              error: '生成超时，请重新发送任务'
-            });
+            updatePromptNode({ ...node, isGenerating: false, error: '生成超时' });
+            // Mark placeholder as error?
+            updateImageNode(placeholderId, { url: '', originalUrl: '', modelLabel: 'Error: Timeout' }); // Ensure it stays "empty" or handle error in UI
             import('./services/notificationService').then(({ notify }) => {
-              notify.warning('生成超时', '已超过4分钟，任务已自动停止。请检查网络后重试。');
+              notify.warning('生成超时', '已超过4分钟，任务已自动停止。');
             });
           }
         }, 240000);
@@ -1367,48 +1432,33 @@ const AppContent: React.FC = () => {
           let videoUrl = '';
           let tokenUsage = 0;
           let costUsd = 0;
-          let currentAspectRatio = node.aspectRatio;
-          let currentSize = node.imageSize;
 
           if (isVideo) {
-            // ✅ 视频生成 - 使用独立的 videoService
             const { generateVideo } = await import('./services/videoService');
             const apiKey = keyManager.getSlots().find(s => !s.disabled && s.status === 'valid')?.key;
-            if (!apiKey) {
-              throw new Error('没有可用的 API Key');
-            }
+            if (!apiKey) throw new Error('没有可用的 API Key');
 
-            // 视频宽高比转换
             const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
-
-            // 🚀 [修复] ImageSize → 视频分辨率映射
             const videoResolution = (() => {
               const size = node.imageSize?.toLowerCase() || '';
               if (size.includes('4k') || size.includes('ultra')) return '4k';
               if (size.includes('1080') || size.includes('hd')) return '1080p';
-              return '720p'; // 默认720p
+              return '720p';
             })();
-            console.log(`[App.视频生成] ImageSize: ${node.imageSize} → Resolution: ${videoResolution}`);
 
             const videoResult = await generateVideo(
               {
                 prompt: promptToUse,
                 aspectRatio: videoAspect,
-                resolution: videoResolution, // 🚀 [修复] 传递分辨率参数
-                // 视频模式支持多图片: 0张=文生视频, 1张=首帧, 2张=首尾帧, 3张=参考图
-                referenceImages: files.length > 0
-                  ? files.slice(0, 3).map(f => f.data.replace(/^data:image\/[^;]+;base64,/, ''))
-                  : undefined
+                resolution: videoResolution,
+                referenceImages: files.length > 0 ? files.slice(0, 3).map(f => f.data.replace(/^data:image\/[^;]+;base64,/, '')) : undefined
               },
               apiKey,
-              undefined, // onProgress 回调
-              undefined  // abort signal
+              undefined,
+              undefined
             );
 
             videoUrl = videoResult.videoUrl;
-            generatedBase64 = ''; // 视频没有base64
-            tokenUsage = 0; // 视频不计算token
-            // 视频成本计算: fast版$0.15, 标准版$0.30
             costUsd = effectiveModel.toLowerCase().includes('fast') ? 0.15 : 0.30;
           } else {
             const result = await generateImage(
@@ -1419,64 +1469,88 @@ const AppContent: React.FC = () => {
               effectiveModel,
               '',
               currentRequestId,
-              false // grounding config not preserved in node? assuming false for resume or need to add to PromptNode
+              false
             );
             generatedBase64 = result.url;
             tokenUsage = result.tokens || 0;
             costUsd = result.cost || 0;
-            // 🚀 Update effective model and size from result if available
-            if (result.model) effectiveModel = result.model;
-            // Capture returned metadata
-            if (result.imageSize) currentSize = result.imageSize;
-            if (result.aspectRatio) currentAspectRatio = result.aspectRatio;
           }
 
           isFinished = true;
           clearTimeout(timeoutId);
 
           const generationTime = Date.now() - startTime;
-          // 🚀 FIX: 始终保持 base64 作为 originalUrl 的备份，确保图片不会丢失
-          let originalUrl = generatedBase64; // 默认使用 base64 作为 originalUrl
+          let originalUrl = generatedBase64;
           let displayUrl = generatedBase64;
 
-          // Cloud Sync / Upload (后台执行，不阻塞返回)
-          if (generatedBase64 && generatedBase64.startsWith('data:')) {
-            // 后台上传到云端，但不影响本地显示
-            import('./services/syncService').then(async ({ syncService }) => {
-              try {
-                const res = await fetch(generatedBase64);
-                const blob = await res.blob();
-                const id = `${Date.now()}_${index}`;
-                await syncService.uploadImagePair(id, blob);
-                // 云端上传成功后不更新本地状态，因为本地已有 base64
-              } catch (e) {
-                console.warn('Cloud upload failed (non-blocking):', e);
-              }
-            }).catch(() => { });
-          }
-
-          if (isVideo) {
+          if (videoUrl) {
             displayUrl = videoUrl;
             originalUrl = videoUrl;
           }
 
+          // Cloud Sync (Background)
+          if (generatedBase64 && generatedBase64.startsWith('data:')) {
+            import('./services/syncService').then(async ({ syncService }) => {
+              try {
+                const res = await fetch(generatedBase64);
+                const blob = await res.blob();
+                await syncService.uploadImagePair(placeholderId, blob); // Use placeholder ID to keep sync
+              } catch (e) { }
+            });
+          }
+
+          // Persist Original to Disk (Background)
+          if (generatedBase64) {
+            import('./services/imageStorage').then(({ saveOriginalImage }) => {
+              saveOriginalImage(placeholderId, generatedBase64).catch(e => console.error("Cache failed", e));
+            });
+          }
+
+          // Calculate Hash
+          const contentHash = await calculateImageHash(displayUrl || 'error');
+
+          // Save to IndexedDB (Persistent Cache)
+          await saveImage(placeholderId, displayUrl);
+
+          // 3. Update Placeholder with Real Data
+          const modelLabel = (() => {
+            const m = effectiveModel.toLowerCase();
+            if (m.includes('gemini-3-pro')) return 'Nano Banana Pro';
+            if (m.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
+            if (m.includes('imagen-4')) return 'Imagen 4';
+            if (m.includes('veo')) return 'Veo';
+            return effectiveModel;
+          })();
+
+          updateImageNode(placeholderId, {
+            url: displayUrl,
+            originalUrl: originalUrl,
+            generationTime,
+            tokens: tokenUsage,
+            cost: costUsd,
+            storageId: contentHash,
+            modelLabel,
+            dimensions: isVideo ? `${node.aspectRatio} · 720p` : `${node.aspectRatio} · ${node.imageSize || '1K'}`,
+          });
+
           return {
+            id: placeholderId,
             index,
             url: displayUrl,
             originalUrl,
-            generationTime,
-            base64: generatedBase64,
-            mode,
-            tokens: tokenUsage,
-            cost: costUsd,
-            effectiveModel,
-            effectiveSize: currentSize,
-            effectiveAspectRatio: currentAspectRatio
+            base64: generatedBase64
           };
+
         } catch (error: any) {
           isFinished = true;
           clearTimeout(timeoutId);
           console.error(`Generation ${index} failed:`, error);
+
+          // 🚀 Update sub-card with error state instead of deleting
+          updateImageNode(placeholderId, {
+            error: error.message || '生成失败',
+          });
+
           return { error: error.message || 'Unknown error' };
         }
       };
@@ -1497,151 +1571,48 @@ const AppContent: React.FC = () => {
         return results;
       };
 
-      const imageData = await runWithConcurrency(tasks, count);
+      const rawResults = await runWithConcurrency(tasks, count);
 
-      // 过滤成功的结果
-      const validImageData = imageData.filter(d => !!d && !('error' in d) && !!d.url && typeof d.index === 'number') as Array<{
-        index: number;
-        url: string;
-        originalUrl: string;
-        generationTime: number;
-        base64: string;
-        mode: GenerationMode;
-        tokens: number;
-        cost: number;
-        effectiveModel?: string; // 🚀 Pass through
-        effectiveSize?: string; // 🚀 Pass through
-        effectiveAspectRatio?: AspectRatio; // 🚀 Pass through
-      }>;
+      // Filter successful results
+      const validResults = rawResults.filter(r => r && !('error' in r) && r.id) as any[];
 
-      if (validImageData.length === 0) {
-        const firstError = imageData.find(d => d && 'error' in d);
-        throw new Error(firstError && 'error' in firstError ? firstError.error : '所有图片生成失败');
+      // Partial Failure Notification
+      if (validResults.length < count) {
+        import('./services/notificationService').then(({ notify }) => {
+          notify.warning('生成完成 (部分失败)', `成功 ${validResults.length}/${count}`);
+        });
       }
 
-      // ✅ 生成完成后重新获取主卡最新位置 (支持生成过程中拖动)
-      const finalCanvas = activeCanvasRef.current;
-      const finalNode = finalCanvas?.promptNodes.find(n => n.id === promptNodeId);
-      const finalPos = finalNode?.position || livePos; // 使用最新位置,如果找不到则回退
+      if (validResults.length === 0) {
+        const firstError = rawResults.find(r => 'error' in r) as any;
+        throw new Error(firstError?.error || 'All failed');
+      }
 
-      // 计算位置
-      const gapToImages = 80; // 主卡和副卡之间的距离
-      const gap = 20; // 副卡之间的间距
-      const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(node.aspectRatio, true);
-
-      const validResults: GeneratedImage[] = validImageData.map((item, mapIndex) => {
-        // 使用 mapIndex 作为后备，因为 item.index 已在 filter 中验证
-        const idx = item.index ?? mapIndex;
-        const { url, originalUrl, generationTime, base64, mode: itemMode, tokens, cost, effectiveModel: resModel, effectiveSize: resSize, effectiveAspectRatio: resRatio } = item;  // 🚀 添加mode
-
-        // 🚀 Use result model/size if available, otherwise fallback
-        const finalModel = resModel || effectiveModel;
-        const finalSize = resSize || node.imageSize;
-        const finalAspectRatio = resRatio || node.aspectRatio;
-        let x, y;
-
-        // ✅ 统一布局: 固定2列,使用和PendingNode相同的计算公式
-        const columns = 2; // 固定2列
-        const col = idx % columns;
-        const row = Math.floor(idx / columns);
-
-
-        // 计算当前行实际有多少张卡片
-        const totalCards = validImageData.length;
-        const cardsInCurrentRow = Math.min(columns, totalCards - row * columns);
-
-        if (isMobile) {
-          const mobileCardWidth = 170;
-          const mobileCardHeight = 260;
-          const mobileGap = 10;
-          // 居中计算:先算出当前行的总宽度,然后居中对齐
-          const rowWidth = cardsInCurrentRow * mobileCardWidth + (cardsInCurrentRow - 1) * mobileGap;
-          const startX = -rowWidth / 2; // 相对主卡中心的起始位置
-          const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
-          const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
-          x = finalPos.x + offsetX;
-          y = finalPos.y + offsetY;
-        } else {
-          // 居中计算:先算出当前行的总宽度,然后居中对齐
-          const rowWidth = cardsInCurrentRow * cardWidth + (cardsInCurrentRow - 1) * gap;
-          const startX = -rowWidth / 2; // 相对主卡中心的起始位置
-          const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
-          const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
-          x = finalPos.x + offsetX;
-          y = finalPos.y + offsetY;
-        }
-
-        const uniqueId = Date.now().toString() + idx + Math.random();
-        if (base64) {
-          saveImage(uniqueId, base64).catch(err => console.error("Failed to cache original locally", err));
-        }
-
-        return {
-          id: uniqueId,
-          url,
-          originalUrl,
-          prompt: promptToUse,
-          aspectRatio: finalAspectRatio, // 🚀 Use resolved ratio
-          imageSize: finalSize, // Add imageSize field
-          timestamp: Date.now(),
-          model: finalModel,
-          modelLabel: (() => {
-            // 🚀 同步获取模型显示名称
-            const m = finalModel.toLowerCase();
-            // Legacy display logic removed
-            if (m.includes('gemini-3-pro')) return 'Gemini 3 Pro Image';
-            if (m.includes('gemini-2.5-flash-image')) return 'Gemini 2.5 Flash Image';
-            if (m.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
-            if (m.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
-            if (m.includes('imagen-4') && m.includes('ultra')) return 'Imagen 4 Ultra';
-            if (m.includes('imagen-4') && m.includes('fast')) return 'Imagen 4 Fast';
-            if (m.includes('imagen-4')) return 'Imagen 4';
-            if (m.includes('veo-3.1') && m.includes('fast')) return 'Veo 3.1 Fast';
-            if (m.includes('veo-3.1')) return 'Veo 3.1';
-            if (m.includes('veo-3') && m.includes('fast')) return 'Veo 3 Fast';
-            if (m.includes('veo-3')) return 'Veo 3';
-            if (m.includes('veo')) return 'Veo 2';
-            return effectiveModel;  // 默认返回原始ID
-          })(),
-          mode: itemMode,  // 🚀 添加mode属性用于区分视频/图片
-          canvasId: activeCanvas?.id || 'default',
-          parentPromptId: promptNodeId,
-          position: { x, y },
-          dimensions: isVideo
-            ? `${node.aspectRatio} · 720p`
-            : `${node.aspectRatio} · ${finalSize || '1K'}`,
-          generationTime,
-          tokens,
-          cost
-        } as GeneratedImage;
-      });
+      // 4. Update Prompt Node (Link to Children)
+      // Note: We DO NOT call addImageNodes here because they are already added!
 
       const updatedNode = {
-        ...node,
-        position: finalPos, // ✅ 使用最新位置防止回跳
+        ...effectiveNode, // Use merged node
+        position: livePos,
+        prompt: promptToUse,
+        referenceImages: node.referenceImages?.length ? node.referenceImages : effectiveNode.referenceImages,
         isGenerating: false,
+        isDraft: false,
         childImageIds: validResults.map(r => r.id),
-        // Ensure we don't accidentally revert other fields if 'node' was stale
-        // But we need to make sure we keep the latest integrity
       };
 
-      // 🚀 [Critical Fix] Execute updates in sequence/batch to prevent state overwrite race conditions
-      // Using a microtask delay or ensuring Context handles it?
-      // Context operations are usually synchronous state updates.
-      updatePromptNode(updatedNode);
-      addImageNodes(validResults);
+      const currentNodeExists = activeCanvasRef.current?.promptNodes.some(n => n.id === updatedNode.id);
+      if (currentNodeExists) {
+        await updatePromptNode(updatedNode);
+      } else {
+        await addPromptNode(updatedNode);
+      }
 
+      // Cost Recording
       import('./services/costService').then(({ recordCost }) => {
-        recordCost(
-          effectiveModel,
-          node.imageSize,
-          validResults.length,
-          promptToUse,
-          files.length
-        );
+        recordCost(effectiveModel, node.imageSize, validResults.length, promptToUse, files.length);
       });
 
-      // Clear active source if it was this node (simple check)
       if (activeSourceImage && activeSourceImage === node.sourceImageId) {
         setActiveSourceImage(null);
       }
@@ -1649,28 +1620,30 @@ const AppContent: React.FC = () => {
     } catch (err: any) {
       console.error('[executeGeneration] Error:', err);
 
-      // 🚀 [修复] 确保错误卡片始终显示
-      // 如果节点不存在于画布中，先添加它再更新错误状态
-      const errorNode = { ...node, isGenerating: false, error: err.message || 'Failed' };
-      const existsInCanvas = activeCanvasRef.current?.promptNodes.some(n => n.id === node.id);
+      // Error State for Prompt Node
+      const errorNode = {
+        ...effectiveNode,
+        isGenerating: false,
+        error: err.message || 'Failed',
+      };
 
+      const existsInCanvas = activeCanvasRef.current?.promptNodes.some(n => n.id === node.id);
       if (existsInCanvas) {
         updatePromptNode(errorNode);
       } else {
-        // 节点不存在，需要先添加
-        console.log('[executeGeneration] Adding missing error node to canvas:', node.id);
         await addPromptNode(errorNode);
       }
 
       import('./services/notificationService').then(({ notify }) => {
-        notify.error('生成任务失败', err.message || "Generation failed.");
+        notify.error('生成任务失败', err.message);
       });
+
       if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
         setShowSettingsPanel(true);
         setSettingsInitialView('api-management');
       }
     }
-  }, [isMobile, updatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions]);
+  }, [isMobile, updatePromptNode, addPromptNode, addImageNodes, updateImageNode, deleteImageNode, activeCanvas, activeSourceImage, getCardDimensions, config, draftNodeId, keyManager]);
 
   // Auto-Resume Effect
   const hasResumedRef = useRef(false);
@@ -1694,9 +1667,21 @@ const AppContent: React.FC = () => {
 
 
   const handleGenerate = useCallback(async () => {
+    // 🐛 DEBUG: Log config at entry
+    console.log('[handleGenerate] 🐛 Entry - config.prompt:', config.prompt);
+    console.log('[handleGenerate] 🐛 Entry - config.referenceImages:', config.referenceImages.length);
+
     if (!config.prompt.trim()) return;
 
     setIsGenerating(true);
+
+    // 🚀 [Fix] Calculate Height FIRST to use in position logic
+    // We assume getPromptHeight is available in scope (imported or defined in App.tsx)
+    // If not found, we use a manual estimate to prevent crash.
+    // @ts-ignore
+    const promptHeight = typeof getPromptHeight === 'function'
+      ? getPromptHeight(config.prompt)
+      : (140 + Math.ceil(config.prompt.length / 40) * 20);
 
     // [Draft Logic] Use existing draft if available
     let promptNodeId = draftNodeId;
@@ -1712,34 +1697,44 @@ const AppContent: React.FC = () => {
       }
     }
 
+    const viewCenter = {
+      x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
+      y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
+    };
+
     if (promptNodeId) {
       // We have a draft. Use it.
       const draft = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
       if (draft) {
         isReusingDraft = true;
-        // [FIX] Update draft position to current view center (where user sees it)
-        // Only if it was a "fresh" draft (empty prompt). If user moved it, keep it? 
-        // Generaly, if user hits generate, they expect the *active* thing to generate.
-        // Let's keep its position if it exists, unless it's way off screen?
-        // Actually, just keep its position. User might have arranged it.
-        currentPos = draft.position;
+
+        // 🚀 [Fix] Update draft position to current viewport center if it's a free-floating draft
+        // (i.e. not a follow-up attached to an image). prevent it from being "left behind" off-screen.
+        if (!draft.sourceImageId) {
+          currentPos = {
+            x: viewCenter.x,
+            y: viewCenter.y + 125 // Visual offset similar to handlePinDraft
+          };
+        } else {
+          // It's a follow-up. Keep its logical position (near parent).
+          currentPos = draft.position;
+        }
       } else {
         // Draft ID stale?
         promptNodeId = Date.now().toString();
       }
     } else {
       promptNodeId = Date.now().toString();
+      // New card -> Center
+      // 🚀 [Fix] Dynamic Centering:
+      // Overlay is visually centered. PromptNode anchor is Bottom-Center.
+      // To align Canvas Node (Anchor) with Overlay Bottom, we need: CenterY + (Height / 2).
+      // promptHeight is an estimate of the card's total height.
+      currentPos = {
+        x: viewCenter.x,
+        y: viewCenter.y + (promptHeight / 2)
+      };
     }
-
-    setDraftNodeId(null); // Detach status immediately
-
-    const viewCenter = {
-      x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
-      y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
-    };
-
-    // Legacy calculation reference, but we used currentPos above.
-    const promptHeight = getPromptHeight(config.prompt);
 
     let finalReferenceImages = [...config.referenceImages];
     if (activeSourceImage) {
@@ -1799,11 +1794,10 @@ const AppContent: React.FC = () => {
       childImageIds: [],
       referenceImages: finalReferenceImages,
       timestamp: Date.now(),
-      isGenerating: true,
       parallelCount: config.parallelCount,
       sourceImageId: activeSourceImage || undefined,
       mode: config.mode,
-      isDraft: false // Ensure it is NOT a draft anymore
+      isDraft: true
     };
 
     // 🚀 [Fix Duplicate Placeholders]
@@ -1848,29 +1842,45 @@ const AppContent: React.FC = () => {
     // Execute immediately after save completed
     executeGeneration(generatingNode);
 
-  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight]);
+  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration]);
 
   // Handle reference images
-  const handleFilesDrop = useCallback((files: File[]) => {
+  const handleFilesDrop = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
-    if (config.referenceImages.length + files.length > 5) {
+    let filesToProcess = [...files];
+    if (config.referenceImages.length + filesToProcess.length > 5) {
       import('./services/notificationService').then(({ notify }) => {
         notify.warning('无法添加图片', "最多支持 5 张参考图");
       });
-      files = files.slice(0, 5 - config.referenceImages.length);
+      filesToProcess = filesToProcess.slice(0, 5 - config.referenceImages.length);
     }
 
-    files.forEach(file => {
+    // 🚀 [Fix] Save to IndexedDB for persistence across page refresh
+    const { saveImage } = await import('./services/imageStorage');
+
+    filesToProcess.forEach(file => {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const matches = (reader.result as string).match(/^data:(.+);base64,(.+)$/);
         if (matches) {
+          const id = `ref-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+          const base64Data = matches[2];
+          const mimeType = matches[1];
+
+          // Save to IndexedDB for later retrieval
+          try {
+            await saveImage(id, base64Data);
+          } catch (e) {
+            console.error('Failed to save reference image to IndexedDB', e);
+          }
+
           setConfig(prev => ({
             ...prev,
             referenceImages: [...prev.referenceImages, {
-              id: Date.now() + Math.random().toString(),
-              data: matches[2],
-              mimeType: matches[1]
+              id,
+              data: base64Data,
+              mimeType,
+              storageId: id // 🚀 Link to IndexedDB entry
             }]
           }));
         }
@@ -1927,9 +1937,16 @@ const AppContent: React.FC = () => {
     const node = activeCanvas?.promptNodes.find(n => n.id === id);
     if (!node) return;
 
-    // Pin: Move up 350px to avoid overlap with where the next preview will appear
-    // Matches user requirement: "Main Card generated ABOVE... DO NOT OVERLAP"
-    const newPos = { ...node.position, y: node.position.y - 350 };
+    // Pin: Move to Viewport Center
+    // Calculate center in canvas coordinates
+    const centerX = (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale;
+    const centerY = (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale;
+
+    // Node anchor is Bottom-Center. To visually center it, we add half height (approx 125px) to Y.
+    const newPos = {
+      x: centerX,
+      y: centerY + 125
+    };
 
     updatePromptNode({
       ...node,
@@ -1946,7 +1963,7 @@ const AppContent: React.FC = () => {
     import('./services/notificationService').then(({ notify }) => {
       notify.success('已固定', '草稿已转换为独立卡片');
     });
-  }, [activeCanvas, updatePromptNode, setDraftNodeId, setConfig]);
+  }, [activeCanvas, updatePromptNode, setDraftNodeId, setConfig, canvasTransform]);
 
   // Retry Logic (In-Place Regeneration)
   const handleRetryNode = useCallback(async (node: PromptNode) => {
@@ -2209,11 +2226,18 @@ const AppContent: React.FC = () => {
 
     // Pre-hydrate if needed to prevent flicker
     // We do this BEFORE setting config so the UI never sees the "loading" state
-    if (referenceImages.some(img => !img.data && img.storageId)) {
+    // 🚀 [Fix] Also check for blob: URLs which may have expired after page refresh
+    const needsHydration = referenceImages.some(img =>
+      (!img.data && img.storageId) ||
+      (img.data?.startsWith('blob:') && img.storageId)
+    );
+
+    if (needsHydration) {
       try {
         const { getImage } = await import('./services/imageStorage');
         const hydrated = await Promise.all(referenceImages.map(async (img) => {
-          if (!img.data && img.storageId) {
+          // If no data, or data is an expired blob URL, try to restore from storage
+          if ((!img.data || img.data.startsWith('blob:')) && img.storageId) {
             const data = await getImage(img.storageId);
             if (data) return { ...img, data };
           }
@@ -2380,17 +2404,22 @@ const AppContent: React.FC = () => {
       return !(x > vRight || x + width < vLeft || y > vBottom || y + height < vTop);
     });
 
-    // 2. Filter Prompt Nodes (排除草稿节点，草稿由中心叠加层单独渲染)
+    // 2. Filter Prompt Nodes (排除空闲草稿节点，草稿由中心叠加层单独渲染)
+    // 2. Filter Prompt Nodes (排除空闲草稿节点，草稿由中心叠加层单独渲染)
     const visiblePromptNodes = activeCanvas.promptNodes.filter(n => {
-      // 🚀 [Fix Bug #1] 草稿节点由固定中心叠加层渲染，此处跳过避免重复
-      if (n.isDraft) return false;
+      // 🚀 [Key Fix] 只隐藏「空闲草稿」节点（未发送的预览卡）
+      // 正在生成的节点必须显示（无论是否是草稿）
+      if (n.isDraft && !n.isGenerating) return false;
+      return true;
 
+      /*
       // Estimate Bounds (Center X, Bottom Y) - 🚀 增大估算确保不消失
       const w = 800;
       const h = 800;
       const x = n.position.x - w / 2;
       const y = n.position.y - h;
       return !(x > vRight || x + w < vLeft || y > vBottom || y + h < vTop);
+      */
     });
 
     // 3. Filter Image Nodes
@@ -2442,7 +2471,7 @@ const AppContent: React.FC = () => {
 
       {/* Top Right User Menu - Desktop Only */}
       {/* Top Right User Menu - Desktop Only */}
-      <div id="header-user-menu" className={`absolute top-4 z-[100] hidden md:flex items-center gap-3 transition-all duration-300 ${isChatOpen ? 'right-[448px]' : 'right-12'}`}>
+      <div id="header-user-menu" className={`absolute top-4 z-[100] hidden md:flex items-center gap-3 transition-all duration-300 ${isChatOpen ? 'right-[444px]' : 'right-4'}`}>
 
         {/* User Avatar & Dropdown Trigger */}
         <div className="relative group">
@@ -2718,6 +2747,8 @@ const AppContent: React.FC = () => {
           // Always clear selection on empty click
           clearSelection();
           setSelectionMenuPosition(null);
+          // 🚀 [Fix] Also clear active source image to prevent "Context Leakage"
+          setActiveSourceImage(null);
         }}
         onCanvasDoubleClick={() => {
           // [NEW] Double click to clear EVERYTHING (Prompt + Images)
@@ -2728,9 +2759,20 @@ const AppContent: React.FC = () => {
             clearSelection();
             setSelectionMenuPosition(null);
             // 🚀 [Fix] Explicitly remove draft node so preview disappears
+            // 🚀 [User Request] Double click should only clear content, NOT delete the card
             if (draftNodeId) {
-              deletePromptNode(draftNodeId);
-              setDraftNodeId(null);
+              const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
+              if (node && !node.isGenerating) {
+                // Keep the card, but clear its content
+                updatePromptNode({
+                  ...node,
+                  prompt: '',
+                  referenceImages: [],
+                  imageSize: node.imageSize, // Keep settings
+                  aspectRatio: node.aspectRatio,
+                  model: node.model
+                });
+              }
             }
           }
         }}
@@ -2929,6 +2971,19 @@ const AppContent: React.FC = () => {
               </g>
             );
           })}
+
+          {/* [NEW] Mobile Header (Top) */}
+          {isMobileView && (
+            <MobileHeader
+              onOpenSidebar={() => setIsSidebarOpen(true)}
+              onShare={() => {
+                // Implement share logic or open a share dialog
+                import('./services/notificationService').then(({ notify }) => {
+                  notify.info('分享功能', '即将上线');
+                });
+              }}
+            />
+          )}
 
           {/* B. Pending Node Connection */}
           {activeSourceImage && (() => {
@@ -3136,11 +3191,12 @@ const AppContent: React.FC = () => {
             } : null) : null
           }
           onClearSource={handleClearSource}
-          isMobile={isMobile}
+
+          isMobile={isMobileView} // Use our specific mobile state
           onOpenSettings={(view) => {
             setSettingsInitialView(view || 'api-management');
             setShowSettingsPanel(true);
-            handleHideMobileNav(); // Hide nav when opening settings (optional, but requested behavior implies consistent handling)
+            handleHideMobileNav();
           }}
           onInteract={handleShowMobileNav}
           onFocus={() => {
@@ -3153,6 +3209,7 @@ const AppContent: React.FC = () => {
             // 失去焦点后,立即重新设置5秒定时器
             setTimeout(() => handleShowMobileNav(), 0);
           }}
+          onOpenMore={() => setShowMobileMoreMenu(true)} // [NEW]
         />
       </div>
 
@@ -3242,8 +3299,11 @@ const AppContent: React.FC = () => {
       {/* [NEW] Draft Node Overlay (Fixed Center) */}
       {draftNodeId && (() => {
         const draftNode = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
-        // 🚀 [Fix] 只有当节点仍然是草稿时才显示叠加层，生成中的节点应该只在画布上显示
-        if (!draftNode || !draftNode.isDraft) return null;
+        // 🚀 [Fix] Hide overlay during generation (Canvas handles it now)
+        // If we keep it visible, we might see double cards or misalignment.
+        // Since we enabled "Generating Drafts" in visiblePromptNodes, Canvas takes over immediately.
+        if (!draftNode) return null;
+        if (!draftNode.isDraft || draftNode.isGenerating) return null;
 
         // Mock position 0,0 for component, handle centering via container
         const displayNode = { ...draftNode, position: { x: 0, y: 0 } };
@@ -3262,6 +3322,7 @@ const AppContent: React.FC = () => {
                 onCancel={handleCancelGeneration}
                 // Disable drag for the overlay
                 onConnectStart={() => { }}
+                onPin={handlePinDraft}
               />
             </div>
           </div>
@@ -3286,39 +3347,27 @@ const AppContent: React.FC = () => {
         onMultiSelectConfirm={handleMultiSelectConfirm}
       />
 
-      {/* VisionOS Mobile Bottom Bar */}
-      {/* VisionOS Mobile Bottom Bar - Hidden in Chat */}
+      {/* VisionOS Mobile Bottom Bar - REMOVED / REPLACED by MobileMoreMenu */}
+      {/* 
       {!isChatOpen && (
-        <MobileTabBar
-          onSetMode={(mode) => {
-            setConfig(prev => ({ ...prev, mode }));
-            setIsSidebarOpen(false);
-            setIsChatOpen(false);
-            setShowSettingsPanel(false);
-            setShowProfileModal(false);
-            handleShowMobileNav(); // Keep visible on interaction
-          }}
-          onOpenSettings={() => {
-            setShowSettingsPanel(true);
-            setIsSidebarOpen(false);
-            handleShowMobileNav();
-          }}
-          onOpenProfile={() => {
-            setShowProfileModal(true);
-            setIsSidebarOpen(false);
-            handleShowMobileNav();
-          }}
-          currentMode={config.mode}
-          currentView={
-            showProfileModal ? 'profile' :
-              showSettingsPanel ? 'settings' :
-                isSidebarOpen ? 'gallery' : 'home'
-          }
-          isVisible={isMobileNavVisible}
-          onInteract={handleShowMobileNav}
-          onToggleChat={() => setIsChatOpen(prev => !prev)}
-        />
+        <MobileTabBar ... />
       )}
+      */}
+
+      {/* [NEW] Mobile More Menu Popup */}
+      <MobileMoreMenu
+        isOpen={showMobileMoreMenu}
+        onClose={() => setShowMobileMoreMenu(false)}
+        onOpenSettings={() => {
+          setShowSettingsPanel(true);
+          setIsSidebarOpen(false);
+        }}
+        onOpenProfile={() => {
+          setShowProfileModal(true);
+          setIsSidebarOpen(false);
+        }}
+      />
+
       {showTutorial && (
         <TutorialOverlay
           onComplete={() => {
@@ -3331,7 +3380,7 @@ const AppContent: React.FC = () => {
 
       {/* AI聊天按钮 - 右下角固定 */}
       {/* AI聊天按钮 - 右下角固定 */}
-      <div className={`absolute bottom-6 z-50 transition-all duration-300 ${isChatOpen ? 'right-[448px]' : 'right-12'} hidden md:block`}>
+      <div className={`absolute bottom-6 z-50 transition-all duration-300 ${isChatOpen ? 'right-[444px]' : 'right-6'} hidden md:block`}>
         <button
           id="chat-trigger-button"
           className="ai-chat-btn flex items-center justify-center cursor-pointer focus-visible:outline-none text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-blue-400/80 hover:shadow-[0_0_35px] bg-transparent overflow-hidden relative rounded-full aspect-square h-10 hover:scale-110 transition-all duration-300 p-2"

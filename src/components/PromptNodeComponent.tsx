@@ -215,6 +215,11 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     onPin,
     onRemoveTag
 }) => {
+    // 🚀 [DEBUG] Trace PromptNode Rendering
+    // if (node.isGenerating) {
+    //    console.log('[PromptNode] Rendering Generating Node:', node.id, 'Parallel:', node.parallelCount);
+    // }
+
     const [isDragging, setIsDragging] = useState(false);
     const [cardHeight, setCardHeight] = useState(200); // 默认高度??00px,会在渲染后更??
     const [previewImage, setPreviewImage] = useState<{ url: string; originRect: DOMRect } | null>(null);
@@ -717,16 +722,53 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
             {/* Loading Placeholders - 2x2 Grid Layout with Shimmer */}
             {
-                node.isGenerating && node.parallelCount && (() => {
-                    const count = node.parallelCount;
+                node.isGenerating && (() => {
+                    // 🚀 [Fix] Force count to at least 1 if undefined, ensuring placeholders appear
+                    const count = node.parallelCount || 1;
                     const COLS = 2; // 固定2列
-                    const GAP = 16;
+                    const GAP = 20; // 🚀 [Fix] Sync with App.tsx (was 16)
                     const gapToPlaceholders = 80;
 
-                    const { width: w, totalHeight: h } = getCardDimensions(node.aspectRatio, true);
+                    // 🚀 [Fix] Auto Aspect Ratio Resolution
+                    // If ratio is AUTO, try to infer from reference image, otherwise default to SQUARE
+                    let resolvedRatio = node.aspectRatio;
+                    if (resolvedRatio === AspectRatio.AUTO && node.referenceImages && node.referenceImages.length > 0) {
+                        // Simply assume the first reference image dictates the ratio for now
+                        // In a real scenario we'd need image dimensions, but here we might default to SQUARE or
+                        // try to adhere to a "best guess" standard if we had metadata.
+                        // Since we don't have ref dimensions easily here without loading, we keep SQUARE as fallback
+                        // BUT if the user explicitly wants "Auto" and has no refs, 1:1 is safe.
+                        // If they HAVE refs, 1:1 is also safe-ish but might be wrong.
+                        // TODO: Better auto-detection requires image metadata.
+                        resolvedRatio = AspectRatio.SQUARE;
+                    }
+
+                    // Actually, if it IS auto, let's just use Square for now as it's the safest generic shape.
+                    // The user issue "frame and image different ratio" likely means they uploaded a 16:9 image,
+                    // selected "Auto", got a Square placeholder, and then the result was 16:9.
+                    // To fix the "jumping" effect, we should ideally know the target ratio.
+                    // Without it, Square is the best we can do.
+                    // UNLESS we check if the user selected a specific model that enforces a ratio?
+
+                    const { width: w, totalHeight: h } = getCardDimensions(resolvedRatio, true);
+
+                    // 🚀 [Fix] Calculate total height of placeholders to prevent GPU clipping during drag
+                    // When 'will-change: transform' promotes the layer, some browsers clip overflow content
+                    // if the parent container has 0 height. By giving it real height, we ensure the layer is large enough.
+                    const rows = Math.ceil(count / COLS);
+                    const totalPlaceholderHeight = gapToPlaceholders + rows * (h + GAP);
 
                     return (
-                        <div className="relative" style={{ height: 0 }}>
+                        <div
+                            className="absolute w-full pointer-events-none"
+                            style={{
+                                top: '100%',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                height: totalPlaceholderHeight, // Keep height for reference? Or auto?
+                                // transition: 'height 0.3s ease' // Transition might look weird with absolute
+                            }}
+                        >
                             {Array.from({ length: count }).map((_, i) => {
                                 const col = i % COLS;
                                 const row = Math.floor(i / COLS);
@@ -754,8 +796,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             }}
                                         >
                                             <defs>
-                                                {/* 发光滤镜 */}
-                                                <filter id={`glow-${i}`} x="-50%" y="-50%" width="200%" height="200%">
+                                                {/* 发光滤镜 - Scoped ID */}
+                                                <filter id={`glow-${node.id}-${i}`} x="-50%" y="-50%" width="200%" height="200%">
                                                     <feGaussianBlur stdDeviation="3" result="coloredBlur" />
                                                     <feMerge>
                                                         <feMergeNode in="coloredBlur" />
@@ -763,8 +805,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                     </feMerge>
                                                 </filter>
 
-                                                {/* 能量流动渐变 */}
-                                                <linearGradient id={`energy-gradient-${i}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                                {/* 能量流动渐变 - Scoped ID */}
+                                                <linearGradient id={`energy-gradient-${node.id}-${i}`} x1="0%" y1="0%" x2="0%" y2="100%">
                                                     <stop offset="0%" stopColor="#6366f1" stopOpacity="0">
                                                         <animate attributeName="offset" values="0;0.3;0" dur="1.5s" repeatCount="indefinite" />
                                                     </stop>
@@ -785,7 +827,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                 stroke="#8b5cf6"
                                                 strokeWidth="8"
                                                 opacity="0.1"
-                                                filter={`url(#glow-${i})`}
+                                                filter={`url(#glow-${node.id}-${i})`}
                                             />
 
                                             {/* 基础线条(脉冲效果) */}
@@ -803,14 +845,14 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             <path
                                                 d={`M0,0 C0,${offsetY * 0.5} ${offsetX},${offsetY * 0.5} ${offsetX},${offsetY}`}
                                                 fill="none"
-                                                stroke={`url(#energy-gradient-${i})`}
+                                                stroke={`url(#energy-gradient-${node.id}-${i})`}
                                                 strokeWidth="4"
                                                 strokeLinecap="round"
-                                                filter={`url(#glow-${i})`}
+                                                filter={`url(#glow-${node.id}-${i})`}
                                             />
 
                                             {/* 能量粒子1 - 快速 */}
-                                            <circle r="4" fill="#a855f7" opacity="0" filter={`url(#glow-${i})`}>
+                                            <circle r="4" fill="#a855f7" opacity="0" filter={`url(#glow-${node.id}-${i})`}>
                                                 <animateMotion
                                                     dur="1.5s"
                                                     repeatCount="indefinite"
@@ -821,7 +863,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             </circle>
 
                                             {/* 能量粒子2 - 中速 */}
-                                            <circle r="3" fill="#8b5cf6" opacity="0" filter={`url(#glow-${i})`}>
+                                            <circle r="3" fill="#8b5cf6" opacity="0" filter={`url(#glow-${node.id}-${i})`}>
                                                 <animateMotion
                                                     dur="1.8s"
                                                     repeatCount="indefinite"
@@ -832,7 +874,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             </circle>
 
                                             {/* 能量粒子3 - 慢速 */}
-                                            <circle r="2.5" fill="#6366f1" opacity="0" filter={`url(#glow-${i})`}>
+                                            <circle r="2.5" fill="#6366f1" opacity="0" filter={`url(#glow-${node.id}-${i})`}>
                                                 <animateMotion
                                                     dur="2s"
                                                     repeatCount="indefinite"
@@ -857,15 +899,16 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                 border: '1px solid var(--border-light)'
                                             }}
                                         >
-                                            {/* 扫光动画层 - 暗色白灰/亮色灰黑 */}
-                                            <div
-                                                className="absolute inset-0 pointer-events-none"
-                                                style={{
-                                                    background: 'linear-gradient(110deg, transparent 30%, var(--shimmer-color, rgba(255,255,255,0.05)) 45%, var(--shimmer-color, rgba(255,255,255,0.2)) 50%, var(--shimmer-color, rgba(255,255,255,0.05)) 55%, transparent 70%)',
-                                                    backgroundSize: '200% 100%',
-                                                    animation: 'shimmer-sweep 2s linear infinite'
-                                                }}
-                                            />
+                                            {/* 扫光动画层 - GPU Accelerated Transform for Drift Fix */}
+                                            <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
+                                                <div
+                                                    className="absolute top-0 bottom-0 left-0 w-[200%] animate-shimmer-transform"
+                                                    style={{
+                                                        background: 'linear-gradient(110deg, transparent 30%, var(--shimmer-color, rgba(255,255,255,0.05)) 45%, var(--shimmer-color, rgba(255,255,255,0.1)) 50%, var(--shimmer-color, rgba(255,255,255,0.05)) 55%, transparent 70%)',
+                                                        transform: 'translateX(-100%)' // Start position
+                                                    }}
+                                                />
+                                            </div>
 
                                             {/* 内容区 */}
                                             <div className="flex-1 flex flex-col items-center justify-center h-full relative z-10">

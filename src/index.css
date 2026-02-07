@@ -2507,10 +2507,12 @@ body.dark-mode .placeholder-breathe {
  * 适用于：需要频繁变换的元素（拖拽、动画、滚动）
  */
 .gpu-accelerated {
-  transform: translateZ(0);
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+  /* 🚀 [Fix] Removed translateZ(0) which causes blurry text at high zoom */
+  /* transform: translateZ(0); */
+  will-change: transform;
+  /* Keep will-change for performance */
+  /* backface-visibility: hidden; */
+  /* Removed to allow proper rasterization */
 }
 
 /**
@@ -2674,9 +2676,65 @@ body.dark-mode .placeholder-breathe {
   }
 }
 
-/* 🚀 高刷新率显示器优化 */
-@media (min-resolution: 2dppx) {
-  .gpu-image {
-    image-rendering: high-quality;
+
+
+/* 🚀 恢复 shimmer-sweep 动画 (User Request) */
+@keyframes shimmer-transform {
+  0% {
+    transform: translateX(-100%);
   }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer-transform {
+  animation: shimmer-transform 1.5s infinite linear;
+  /* Smooth, continuous loop */
+  will-change: transform;
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+
+
+/* 🚀 优化后的内发光动画 (Opacity based, GPU friendly) */
+.shimmer-static-glow {
+  box-shadow: inset 0 0 60px 20px rgba(255, 255, 255, 0.15),
+    inset 0 0 100px 40px rgba(255, 255, 255, 0.08);
+}
+
+@keyframes pulse-opacity {
+
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-pulse-opacity {
+  animation: pulse-opacity 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+.animate-shimmer-inward {
+  /* Legacy fallback or alias to new optimized version if applied directly */
+  animation: pulse-opacity 2s ease-in-out infinite;
+}
+
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 2s linear infinite;
 }
