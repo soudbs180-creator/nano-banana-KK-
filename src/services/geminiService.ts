@@ -246,6 +246,15 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
  */
 function mapToApiModelId(internalId: string, isProxyApi: boolean = false): string {
   // 如果是第三方代理 API (如 NewAPI)，可能需要不同的模型名称
+
+  // 🚀 [Antigravity] Proxy APIs may use different model names
+  // For example, Antigravity uses "gemini-3-pro-image" instead of "gemini-3-pro-image-preview"
+  const proxyModelMap: Record<string, string> = {
+    'nano-banana': 'gemini-2.5-flash-image',
+    'nano-banana-pro': 'gemini-3-pro-image',  // Antigravity uses this format
+    'gemini-3-pro-image-preview': 'gemini-3-pro-image',  // Map to Antigravity format
+  };
+
   // Google 官方 API 模型映射
   const modelMap: Record<string, string> = {
     // Nano Banana 系列 - 内部代号映射到 Google 官方模型
@@ -273,7 +282,12 @@ function mapToApiModelId(internalId: string, isProxyApi: boolean = false): strin
   // Defensive: Strip '-4k' suffix if present (case insensitive)
   const normalizedId = internalId.replace(/-4k$/i, '');
 
-  // 优先匹配映射表 (即使是 Proxy，也应该发送真实的 Gemini 模型 ID，而不是内部代号)
+  // 🚀 [Antigravity] For proxy APIs, use the proxy model map first
+  if (isProxyApi && proxyModelMap[normalizedId]) {
+    return proxyModelMap[normalizedId];
+  }
+
+  // 优先匹配映射表 (Google 官方 API 模型 ID)
   if (modelMap[normalizedId]) {
     return modelMap[normalizedId];
   }
@@ -679,21 +693,38 @@ export const generateImage = async (
         const contentParts: any[] = [{ type: 'text', text: prompt }];
         processedReferences?.forEach((img) => {
           if (img?.data) {
+            // 🚀 [Fix] Strict validation for Blob/File URLs
+            // Blob URLs are local to the browser and cannot be sent to remote APIs.
+            // If hydration failed (e.g. revoked blob), we must error out instead of sending invalid data.
+            if (img.data.startsWith('blob:') || img.data.startsWith('file:')) {
+              throw new Error("引用图片数据无效 (Blob URL失效)，请尝试重新拖入或上传图片");
+            }
+
             let finalUrl = img.data;
             if (!img.data.startsWith('data:') && !img.data.startsWith('http')) {
-              finalUrl = `data:${img.mimeType || 'image/png'};base64,${img.data}`;
+              // Assume it's raw base64
+              const cleanData = img.data.replace(/\s/g, '');
+              finalUrl = `data:${img.mimeType || 'image/png'};base64,${cleanData}`;
             }
             contentParts.push({ type: 'image_url', image_url: { url: finalUrl } });
           }
         });
 
         // Map internal model ID to actual API model ID for proxy APIs
-        const apiModelId = mapToApiModelId(baseModelId);
-        const requestBody = {
+        const apiModelId = mapToApiModelId(baseModelId, true);  // isProxyApi=true for Antigravity
+
+        // 🚀 [Antigravity] Also pass size and quality for image generation control
+        const chatSize = mapToOpenAISize(aspectRatio, imageSize, baseModelId);
+        const chatQuality = imageSize === ImageSize.SIZE_4K ? 'hd' : (imageSize === ImageSize.SIZE_2K ? 'medium' : 'standard');
+
+        const requestBody: Record<string, any> = {
           model: apiModelId,
           stream: false,
           messages: [{ role: 'user', content: contentParts }],
-          max_tokens: 4096
+          max_tokens: 4096,
+          // Antigravity Chat API supports these parameters for image generation
+          size: chatSize,
+          quality: chatQuality
         };
 
         const response = await fetchWithTimeout(apiUrl, {
@@ -776,6 +807,17 @@ export const generateImage = async (
         // ========== 分支 2: Imagen 图像模型 ==========
         // 使用独立的 ImagenService (官方 API 格式)
         if (isImagenModel) {
+
+          // 🚀 [Fix] Reference Images Support for Imagen
+          // Our ImagenService does not support reference images yet.
+          // If references are present, try Chat Mode (Proxy might support it)
+          if (processedReferences && processedReferences.length > 0) {
+            console.log('[GeminiService] Imagen model with references detected, switching to Chat Mode');
+            apiFormat = 'openai-chat-compat';
+            attempt--;
+            continue;
+          }
+
           const { generateImagenImage } = await import('./ImagenService');
 
           const imagenResult = await generateImagenImage(
@@ -848,8 +890,22 @@ export const generateImage = async (
         };
         const quality = qualityMap[imageSize] || 'standard';
 
+        // 🚀 [Fix] Reference Images Support
+        // Standard OpenAI Image API (v1/images/generations) does NOT support reference images.
+        // If we have reference images, we MUST switch to Chat Mode (gpt-4-vision compatible)
+        if (processedReferences && processedReferences.length > 0) {
+          console.log('[GeminiService] Reference images detected, switching standard OpenAI Image API to Chat Compatibility Mode');
+          apiFormat = 'openai-chat-compat';
+          // Retry immediately in current loop with new format
+          attempt--;
+          continue;
+        }
+
+        // 🚀 [Fix] Map internal model ID to API model ID for proxy compatibility
+        const apiModelId = mapToApiModelId(baseModelId, true);
+
         const requestBody = {
-          model: model,
+          model: apiModelId,  // Use mapped model ID, not internal ID
           prompt: prompt,
           n: 1,
           size: size,

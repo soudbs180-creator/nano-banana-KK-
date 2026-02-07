@@ -72,8 +72,13 @@ export async function generateGeminiImage(
 
     // 添加参考图片
     if (config.referenceImages && config.referenceImages.length > 0) {
+        console.log(`[GeminiImageService] 📸 处理 ${config.referenceImages.length} 张参考图...`);
+
         for (const img of config.referenceImages) {
-            if (!img.data) continue;
+            if (!img.data) {
+                console.warn('[GeminiImageService] ⚠️ 参考图缺少 data 字段，跳过');
+                continue;
+            }
 
             let base64Data = img.data;
             let mimeType = img.mimeType || 'image/png';
@@ -86,17 +91,44 @@ export async function generateGeminiImage(
                     base64Data = matches[2];
                 }
             }
+            // 🚀 [关键修复] 处理 blob URL - 转换为 base64
+            else if (img.data.startsWith('blob:')) {
+                try {
+                    console.log('[GeminiImageService] 🔄 转换 blob URL 为 base64...');
+                    const response = await fetch(img.data);
+                    const blob = await response.blob();
+                    mimeType = blob.type || 'image/png';
 
-            // 跳过远程 URL (需要先下载转换)
-            if (!img.data.startsWith('http') && !img.data.startsWith('blob:')) {
-                parts.push({
-                    inlineData: {
-                        mimeType,
-                        data: base64Data
+                    // Blob 转 base64
+                    const arrayBuffer = await blob.arrayBuffer();
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    let binary = '';
+                    for (let i = 0; i < uint8Array.length; i++) {
+                        binary += String.fromCharCode(uint8Array[i]);
                     }
-                });
+                    base64Data = btoa(binary);
+                    console.log('[GeminiImageService] ✅ blob URL 转换成功，大小:', Math.round(base64Data.length / 1024), 'KB');
+                } catch (err) {
+                    console.error('[GeminiImageService] ❌ blob URL 转换失败:', err);
+                    continue; // 跳过这张图
+                }
             }
+            // 跳过远程 HTTP URL (需要服务端代理下载)
+            else if (img.data.startsWith('http')) {
+                console.warn('[GeminiImageService] ⚠️ 跳过远程 URL (不支持):', img.data.substring(0, 50));
+                continue;
+            }
+
+            parts.push({
+                inlineData: {
+                    mimeType,
+                    data: base64Data
+                }
+            });
+            console.log(`[GeminiImageService] ✅ 参考图已添加: ${mimeType}, ${Math.round(base64Data.length / 1024)} KB`);
         }
+
+        console.log(`[GeminiImageService] 📸 共添加 ${parts.length - 1} 张参考图到请求`);
     }
 
     // ========== 构建 Generation Config ==========

@@ -946,9 +946,26 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
             await Promise.all(saveTasks);
         }
+
         updateCanvas(c => ({
             ...c,
-            promptNodes: c.promptNodes.map(n => n.id === node.id ? node : n)
+            promptNodes: c.promptNodes.map(n => {
+                if (n.id === node.id) {
+                    // 🛡️ [Defensive Merge]
+                    // We must ensure we don't accidentally overwrite existing valid data with empty data
+                    // especially during rapid status updates (generating -> success)
+                    return {
+                        ...n,
+                        ...node,
+                        // 🚀 If the incoming node has empty prompt/refs, but the existing one has them, KEEP existing ones!
+                        // Unless we are explicitly clearing them (which usually happens via setConfig/delete)
+                        // But updatePromptNode is mostly used for status updates.
+                        prompt: (node.prompt && node.prompt.length > 0) ? node.prompt : n.prompt,
+                        referenceImages: (node.referenceImages && node.referenceImages.length > 0) ? node.referenceImages : n.referenceImages
+                    };
+                }
+                return n;
+            })
         }));
     }, [updateCanvas]);
 
@@ -1177,66 +1194,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 };
             }
 
-            // [MODIFIED] 卡组内排斥逻辑:主卡靠近副卡时被弹开
-            // 不再让副卡跟随移动,而是保持互相排斥
-            const REPULSION_THRESHOLD = 80;
-            const MIN_DISTANCE = 100;
-
-            let finalPos = { ...pos };
-            const promptHeight = node.height || 200;
-            const promptWidth = 320;
-
-            // 找到该主卡的所有副卡
-            const childImages = c.imageNodes.filter(img => img.parentPromptId === id);
-
-            for (const childImg of childImages) {
-                const imgHeight = 200;
-                const imgWidth = 280;
-
-                // 主卡边界
-                const promptTop = pos.y - promptHeight;
-                const promptBottom = pos.y;
-                const promptLeft = pos.x - promptWidth / 2;
-                const promptRight = pos.x + promptWidth / 2;
-
-                // 副卡边界
-                const imgTop = childImg.position.y - imgHeight;
-                const imgBottom = childImg.position.y;
-                const imgLeft = childImg.position.x - imgWidth / 2;
-                const imgRight = childImg.position.x + imgWidth / 2;
-
-                // 检测重叠
-                const horizontalOverlap = promptLeft < imgRight + REPULSION_THRESHOLD &&
-                    promptRight > imgLeft - REPULSION_THRESHOLD;
-                const verticalOverlap = promptTop < imgBottom + REPULSION_THRESHOLD &&
-                    promptBottom > imgTop - REPULSION_THRESHOLD;
-
-                if (horizontalOverlap && verticalOverlap) {
-                    // 计算中心距离
-                    const promptCenterX = pos.x;
-                    const promptCenterY = pos.y - promptHeight / 2;
-                    const imgCenterX = childImg.position.x;
-                    const imgCenterY = childImg.position.y - imgHeight / 2;
-
-                    const centerDx = promptCenterX - imgCenterX;
-                    const centerDy = promptCenterY - imgCenterY;
-                    const dist = Math.sqrt(centerDx * centerDx + centerDy * centerDy) || 1;
-
-                    // 如果太近,弹开主卡
-                    if (dist < MIN_DISTANCE) {
-                        const pushRatio = MIN_DISTANCE / dist;
-                        finalPos = {
-                            x: imgCenterX + centerDx * pushRatio,
-                            y: imgCenterY + centerDy * pushRatio + promptHeight / 2
-                        };
-                    }
-                }
-            }
-
+            // [MODIFIED] Removed repulsion logic as per user request
+            // Freely update position without checking for overlap/pushing
             return {
                 ...c,
-                promptNodes: c.promptNodes.map(n => n.id === id ? { ...n, position: finalPos } : n),
-                imageNodes: c.imageNodes // 副卡位置不变
+                promptNodes: c.promptNodes.map(n => n.id === id ? { ...n, position: pos } : n),
+                imageNodes: c.imageNodes
             };
         });
     }, [updateCanvas, state.selectedNodeIds]);
@@ -1254,91 +1217,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const dy = pos.y - node.position.y;
             const ignoreSelection = options?.ignoreSelection === true;
 
-            // 辅助函数:当副卡靠近主卡时,推开主卡(实时磁铁效果)
-            const pushPromptAwayFromImage = (
-                imgPos: { x: number; y: number },
-                imgNode: typeof node,
-                promptNodes: typeof c.promptNodes
-            ): typeof c.promptNodes => {
-                // Debug log
-                console.log('[Repulsion] Checking:', imgNode.id, 'parentPromptId:', imgNode.parentPromptId);
-
-                if (!imgNode.parentPromptId) {
-                    console.log('[Repulsion] No parentPromptId, skipping');
-                    return promptNodes;
-                }
-
-                const parentPrompt = promptNodes.find(p => p.id === imgNode.parentPromptId);
-                if (!parentPrompt) {
-                    console.log('[Repulsion] Parent prompt not found');
-                    return promptNodes;
-                }
-
-                // 排斥参数
-                const REPULSION_ZONE = 20; // 边界外多少像素开始排斥
-                const PUSH_STRENGTH = 1.5; // 推力强度
-
-                const promptHeight = parentPrompt.height || 200;
-                const promptWidth = 320;
-                const imgHeight = 200;
-                const imgWidth = 280;
-
-                // 主卡边界 (position是底部中心)
-                const promptTop = parentPrompt.position.y - promptHeight;
-                const promptBottom = parentPrompt.position.y;
-                const promptLeft = parentPrompt.position.x - promptWidth / 2;
-                const promptRight = parentPrompt.position.x + promptWidth / 2;
-
-                // 副卡边界 (position是底部中心)
-                const imgTop = imgPos.y - imgHeight;
-                const imgBottom = imgPos.y;
-                const imgLeft = imgPos.x - imgWidth / 2;
-                const imgRight = imgPos.x + imgWidth / 2;
-
-                // 检测边界框是否重叠或接近
-                const horizontalOverlap = imgRight > promptLeft - REPULSION_ZONE && imgLeft < promptRight + REPULSION_ZONE;
-                const verticalOverlap = imgBottom > promptTop - REPULSION_ZONE && imgTop < promptBottom + REPULSION_ZONE;
-
-                console.log('[Repulsion] Overlap check:', { horizontalOverlap, verticalOverlap });
-
-                if (horizontalOverlap && verticalOverlap) {
-                    // 计算推开方向和距离
-                    const imgCenterX = imgPos.x;
-                    const imgCenterY = imgPos.y - imgHeight / 2;
-                    const promptCenterX = parentPrompt.position.x;
-                    const promptCenterY = parentPrompt.position.y - promptHeight / 2;
-
-                    // 方向向量 (从副卡指向主卡的反方向)
-                    let pushX = promptCenterX - imgCenterX;
-                    let pushY = promptCenterY - imgCenterY;
-
-                    // 归一化并乘以推力
-                    const dist = Math.sqrt(pushX * pushX + pushY * pushY) || 1;
-                    const pushAmount = Math.max(0, (REPULSION_ZONE + 50) - dist) * PUSH_STRENGTH;
-
-                    pushX = (pushX / dist) * pushAmount;
-                    pushY = (pushY / dist) * pushAmount;
-
-                    console.log('[Repulsion] Pushing prompt by:', { pushX, pushY });
-
-                    // 更新主卡位置
-                    return promptNodes.map(p =>
-                        p.id === parentPrompt.id
-                            ? { ...p, position: { x: p.position.x + pushX, y: p.position.y + pushY } }
-                            : p
-                    );
-                }
-                return promptNodes;
-            };
-
             // GROUP MOVE LOGIC
             if (!ignoreSelection) {
                 const selectedIds = new Set(state.selectedNodeIds || []);
                 if (selectedIds.has(id)) {
-                    // 先应用排斥效果
-                    let newPromptNodes = pushPromptAwayFromImage(pos, node, c.promptNodes);
+                    // [MODIFIED] Removed repulsion hook
 
-                    newPromptNodes = newPromptNodes.map(n => {
+                    const newPromptNodes = c.promptNodes.map(n => {
                         if (selectedIds.has(n.id)) {
                             return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
                         }
@@ -1357,12 +1242,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
             }
 
-            // SINGLE MOVE - 副卡拖动时推开主卡
-            const updatedPromptNodes = pushPromptAwayFromImage(pos, node, c.promptNodes);
-
+            // SINGLE MOVE - Removed repulsion logic
             return {
                 ...c,
-                promptNodes: updatedPromptNodes,
+                promptNodes: c.promptNodes, // No changes to prompt nodes
                 imageNodes: c.imageNodes.map(img =>
                     img.id === id ? { ...img, position: pos } : img
                 )
@@ -2822,9 +2705,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     for (const [id, url] of allImages.entries()) {
                         // Only fetch if it's a blob url (local)
                         if (url.startsWith('blob:') || url.startsWith('data:')) {
-                            const res = await fetch(url);
-                            const blob = await res.blob();
-                            imagesToSave.set(id, blob);
+                            try {
+                                const res = await fetch(url);
+                                const blob = await res.blob();
+                                imagesToSave.set(id, blob);
+                            } catch (err) {
+                                console.warn(`[CanvasContext] Skip saving image ${id} (fetch failed):`, err);
+                            }
                         }
                     }
 
@@ -3160,6 +3047,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             groups: (canvas.groups || []).map(g => g.id === group.id ? group : g)
         }));
     }, [updateCanvas]);
+
+
 
     const setNodeTags = useCallback((ids: string[], tags: string[]) => {
         updateCanvas((canvas) => ({

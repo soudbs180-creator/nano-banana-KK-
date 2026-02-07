@@ -29,17 +29,19 @@ interface PromptNodeProps {
 
 // [FIX] Self-healing thumbnail component that recovers data from IDB if missing
 const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeType?: string } }> = ({ image }) => {
-    const [data, setData] = useState<string | undefined>(image.data);
-    const [loading, setLoading] = useState(!image.data);
+    const [data, setData] = useState<string | undefined>(undefined);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (image.data) {
+        // 🚀 [Fix] If data exists and is NOT a blob URL, use it directly
+        // Blob URLs can expire after page refresh, so we should try to recover from IDB
+        if (image.data && !image.data.startsWith('blob:')) {
             setData(image.data);
             setLoading(false);
             return;
         }
 
-        // If data missing, try recover from IDB
+        // If data missing OR is a blob URL (may be expired), try recover from IDB
         let active = true;
         setLoading(true);
         import('../services/imageStorage').then(({ getImage }) => {
@@ -52,11 +54,17 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
                 .then(cached => {
                     if (active && typeof cached === 'string') {
                         setData(cached);
+                    } else if (active && image.data) {
+                        // Fallback to original data if IDB returns nothing
+                        setData(image.data);
                     }
                     if (active) setLoading(false);
                 })
                 .catch((e) => {
-                    // console.warn('Ref load failed/timeout', e);
+                    // Fallback to original data on error
+                    if (active && image.data) {
+                        setData(image.data);
+                    }
                     if (active) setLoading(false);
                 });
         });
@@ -126,26 +134,60 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
     );
 };
 
-// [NEW] Timer for generation status
-const GenerationTimer: React.FC<{ start: number }> = ({ start }) => {
+// [NEW] Timer for generation status - 3档颜色系统
+// ✅ <100s: 绿色 - "正在生成"
+// ⚠️ 100-200s: 黄色 - "等待时间过长"  
+// 🔴 200-300s: 红色 - "建议重新生成"
+// ❌ >300s: 自动取消并转为错误卡
+const GenerationTimer: React.FC<{ start: number; onTimeout?: () => void }> = ({ start, onTimeout }) => {
     const [elapsed, setElapsed] = useState(0);
+    const timeoutTriggered = useRef(false);
 
     useEffect(() => {
         const interval = setInterval(() => {
-            setElapsed(Date.now() - start);
+            const now = Date.now() - start;
+            setElapsed(now);
+
+            // 🚀 超过300秒自动取消
+            if (now > 300000 && !timeoutTriggered.current && onTimeout) {
+                timeoutTriggered.current = true;
+                onTimeout();
+            }
         }, 100);
         return () => clearInterval(interval);
-    }, [start]);
+    }, [start, onTimeout]);
 
-    const seconds = (elapsed / 1000).toFixed(1);
+    const seconds = Math.floor(elapsed / 1000);
+    const displayTime = (elapsed / 1000).toFixed(1);
+
+    // 计算颜色和状态信息
+    let colorClass: string;
+    let statusText: string;
+    let iconColorClass: string;
+
+    if (seconds < 100) {
+        colorClass = 'text-green-400';
+        iconColorClass = 'text-green-400';
+        statusText = '正在生成';
+    } else if (seconds < 200) {
+        colorClass = 'text-yellow-400';
+        iconColorClass = 'text-yellow-400';
+        statusText = '等待时间过长';
+    } else {
+        colorClass = 'text-red-400';
+        iconColorClass = 'text-red-400';
+        statusText = '建议重新生成';
+    }
 
     return (
         <div className="flex flex-col items-center gap-0.5 pointer-events-none select-none">
-            <div className="text-[10px] text-current opacity-60 font-medium tracking-widest mb-0.5 transform scale-90">等待时间</div>
-            <div className="flex items-center gap-2 text-current">
-                <Loader2 className="animate-spin" size={14} />
+            <div className={`text-[10px] opacity-80 font-medium tracking-widest mb-0.5 transform scale-90 ${colorClass}`}>
+                {statusText}
+            </div>
+            <div className={`flex items-center gap-2 ${colorClass}`}>
+                <Loader2 className={`animate-spin ${iconColorClass}`} size={14} />
                 <div className="font-mono text-lg font-medium tabular-nums tracking-wider drop-shadow-sm">
-                    {seconds}s
+                    {displayTime}s
                 </div>
             </div>
         </div>
@@ -218,8 +260,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         const updateHeight = () => {
             if (cardRef.current) {
                 const height = cardRef.current.offsetHeight;
+                // 🚀 [Fix] Only update if height actually changed to prevent infinite loop
                 if (height > 0) {
-                    setCardHeight(height);
+                    setCardHeight(prev => (Math.abs(prev - height) > 2 ? height : prev));
                 }
             }
         };
@@ -618,10 +661,10 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 )}
 
                 <div
-                    className="text-[var(--text-primary)] text-[15px] leading-7 font-normal flex-1 tracking-wide overflow-y-auto max-h-[112px] custom-scrollbar pr-1"
+                    className="text-[var(--text-primary)] text-[15px] leading-7 font-normal flex-1 tracking-wide overflow-y-auto max-h-[112px] custom-scrollbar pr-1 min-h-[28px]"
                     onWheel={(e) => e.stopPropagation()}
                 >
-                    {node.prompt}
+                    {node.prompt || (node.isDraft ? <span className="text-[var(--text-tertiary)] italic">输入提示词...</span> : '')}
                 </div>
 
 
@@ -826,7 +869,10 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
                                             {/* 内容区 */}
                                             <div className="flex-1 flex flex-col items-center justify-center h-full relative z-10">
-                                                <GenerationTimer start={node.timestamp || Date.now()} />
+                                                <GenerationTimer
+                                                    start={node.timestamp || Date.now()}
+                                                    onTimeout={() => onCancel && onCancel(node.id)}
+                                                />
                                             </div>
 
                                             {/* 底部信息栏 */}

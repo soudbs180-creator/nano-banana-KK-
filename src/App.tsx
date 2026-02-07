@@ -510,24 +510,23 @@ const AppContent: React.FC = () => {
       // The check `needsHydration` handles this.
 
       setConfig(prev => {
-        // [FIX] Race Condition: The async hydration might finish AFTER the user has deleted an image.
-        // We must NOT overwrite 'prev.referenceImages' with the stale 'hydratedImages' array.
-        // Instead, we update only the images that still exist in 'prev'.
-
         const hydratedMap = new Map(hydratedImages.map(img => [img.id, img]));
 
+        let hasChanges = false;
         const newImages = prev.referenceImages.map(img => {
           // If we found a hydrated version (with data) for this existing image, use it.
           const hydrated = hydratedMap.get(img.id);
           if (hydrated && hydrated.data && !img.data) {
+            hasChanges = true;
             return { ...img, data: hydrated.data };
           }
           return img;
         });
 
-        // Optimization: strict equality check to avoid re-render if nothing effectively changed
-        // But for object references in map, it's safer to just return new state if we are unsure.
-        // Given React batching, this is fine.
+        // 🚀 Optimization: Prevent infinite loop if hydration didn't actually change anything
+        // (e.g. hydration failed, or images already had data)
+        if (!hasChanges) return prev;
+
         return { ...prev, referenceImages: newImages };
       });
     };
@@ -783,7 +782,8 @@ const AppContent: React.FC = () => {
             node.aspectRatio !== config.aspectRatio ||
             node.imageSize !== config.imageSize ||
             JSON.stringify(node.referenceImages) !== JSON.stringify(config.referenceImages) ||
-            node.sourceImageId !== (activeSourceImage || undefined);
+            node.sourceImageId !== (activeSourceImage || undefined) ||
+            node.parallelCount !== config.parallelCount; // 🚀 [修复] 同步生成数量
 
           if (hasChanged) {
             updatePromptNode({
@@ -794,7 +794,8 @@ const AppContent: React.FC = () => {
               model: config.model,
               referenceImages: config.referenceImages,
               sourceImageId: activeSourceImage || undefined,
-              mode: config.mode
+              mode: config.mode,
+              parallelCount: config.parallelCount // 🚀 [修复] 同步生成数量
             });
           }
         } else {
@@ -803,19 +804,23 @@ const AppContent: React.FC = () => {
         }
       }
     } else {
-      // Config is empty.
-      // If we are linked to a draft, delete it to clear the "Preview Box"
-      // 🚀 [修复] 追问模式的draft不要删除（有sourceImageId的）
-      // 🚀 [关键修复] 正在生成的draft不要删除！
+      // Config is empty (no prompt, no referenceImages).
+      // 🚀 [修复] 不再自动删除草稿卡片，让用户通过双击画布只清空输入框内容
+      // 草稿卡片会保留在画布上，不做任何同步操作
+      // 用户可以继续添加参考图或输入提示词
       if (draftNodeId) {
         const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
-        if (node && !node.sourceImageId && !node.isGenerating) {
-          // 只删除普通draft，不删除追问模式的draft，也不删除正在生成的draft
-          console.log('[App.Draft清理] 删除空的draft节点:', draftNodeId);
-          deletePromptNode(draftNodeId);
-          setDraftNodeId(null);
-        } else if (node?.isGenerating) {
-          console.log('[App.Draft清理] 保留正在生成的draft:', draftNodeId);
+        if (node?.isGenerating) {
+          console.log('[App.Draft] 保留正在生成的draft:', draftNodeId);
+        }
+        // 🚀 [恢复] 同步空状态到草稿节点（保留卡片但清空内容）
+        // 这确保了当用户手动清空输入框时，预览卡片也会清空
+        if (node && !node.isGenerating) {
+          updatePromptNode({
+            ...node,
+            prompt: '',
+            referenceImages: []
+          });
         }
       }
     }
@@ -1334,7 +1339,12 @@ const AppContent: React.FC = () => {
       console.warn('[executeGeneration] Node not found in canvas, using original node as fallback:', promptNodeId);
       // 继续使用原始 node 参数执行生成，而不是直接退出
     }
-    const effectiveNode = liveNode || node;
+    // 🚀 [Fix] Merge liveNode (position) with node (content/config)
+    // We MUST use 'node' for prompt/config because 'liveNode' might be stale (empty prompt) due to async state updates
+    // But we want 'liveNode.position' in case user moved it.
+    const effectiveNode = liveNode
+      ? { ...liveNode, ...node, position: liveNode.position }
+      : node;
     const livePos = effectiveNode.position;
     const isVideo = mode === GenerationMode.VIDEO;
 
@@ -1498,6 +1508,15 @@ const AppContent: React.FC = () => {
         cost: number;
       }>;
 
+      // 🚀 [修复] 检查是否有部分失败，并通知用户
+      if (validImageData.length > 0 && validImageData.length < count) {
+        const failedCount = count - validImageData.length;
+        console.warn(`[App] Partial generation failure: success=${validImageData.length}, failed=${failedCount}`);
+        import('./services/notificationService').then(({ notify }) => {
+          notify.warning('部分图片生成失败', `成功生成 ${validImageData.length} 张，${failedCount} 张生成失败（可能是网络超时或并发限制）。`);
+        });
+      }
+
       if (validImageData.length === 0) {
         const firstError = imageData.find(d => d && 'error' in d);
         throw new Error(firstError && 'error' in firstError ? firstError.error : '所有图片生成失败');
@@ -1551,7 +1570,10 @@ const AppContent: React.FC = () => {
 
         const uniqueId = Date.now().toString() + idx + Math.random();
         if (base64) {
-          saveImage(uniqueId, base64).catch(err => console.error("Failed to cache original locally", err));
+          // 🚀 [Fix] Always use saveOriginalImage to ensure high-res preservation and disk backup
+          import('./services/imageStorage').then(({ saveOriginalImage }) => {
+            saveOriginalImage(uniqueId, base64).catch(err => console.error("Failed to cache original locally", err));
+          });
         }
 
         return {
@@ -1594,19 +1616,45 @@ const AppContent: React.FC = () => {
       });
 
       const updatedNode = {
-        ...node,
+        ...effectiveNode, // 🚀 [Fix] Use derived effectiveNode to ensure we keep merged properties (like prompt)
         position: finalPos, // ✅ 使用最新位置防止回跳
+        prompt: promptToUse, // 🛡️ [Double-Safety] Explicitly force the prompt used for generation
+        referenceImages: node.referenceImages?.length ? node.referenceImages : effectiveNode.referenceImages, // 🛡️ [Double-Safety] Prefer original refs
         isGenerating: false,
         childImageIds: validResults.map(r => r.id),
-        // Ensure we don't accidentally revert other fields if 'node' was stale
-        // But we need to make sure we keep the latest integrity
       };
 
-      // 🚀 [Critical Fix] Execute updates in sequence/batch to prevent state overwrite race conditions
-      // Using a microtask delay or ensuring Context handles it?
-      // Context operations are usually synchronous state updates.
-      updatePromptNode(updatedNode);
-      addImageNodes(validResults);
+      // 🛡️ [Defensive] Ensure position is valid numbers to prevent invisible nodes
+      if (typeof updatedNode.position?.x !== 'number' || typeof updatedNode.position?.y !== 'number' || isNaN(updatedNode.position.x) || isNaN(updatedNode.position.y)) {
+        console.warn('[executeGeneration] ⚠️ Invalid position detected for updatedNode, reseting to 0,0', updatedNode.position);
+        updatedNode.position = { x: 0, y: 0 };
+      }
+
+      console.log('[executeGeneration] 📝 Updating Prompt Node:', {
+        id: updatedNode.id,
+        promptLength: updatedNode.prompt?.length,
+        refs: updatedNode.referenceImages?.length,
+        childIds: updatedNode.childImageIds,
+        pos: updatedNode.position
+      });
+
+      // 🚀 [Critical Fix] Execute updates in sequence to prevent race conditions
+      await updatePromptNode(updatedNode);
+
+      if (validResults.length > 0) {
+        console.log('[executeGeneration] 🖼️ Adding Image Nodes:', validResults.length);
+        // 🛡️ [Defensive] Ensure image nodes have valid positions
+        const safeResults = validResults.map(img => ({
+          ...img,
+          position: {
+            x: (typeof img.position?.x !== 'number' || isNaN(img.position.x)) ? 0 : img.position.x,
+            y: (typeof img.position?.y !== 'number' || isNaN(img.position.y)) ? 0 : img.position.y
+          }
+        }));
+        await addImageNodes(safeResults);
+      } else {
+        console.warn('[executeGeneration] ⚠️ No valid image results to add');
+      }
 
       import('./services/costService').then(({ recordCost }) => {
         recordCost(
@@ -1628,7 +1676,13 @@ const AppContent: React.FC = () => {
 
       // 🚀 [修复] 确保错误卡片始终显示
       // 如果节点不存在于画布中，先添加它再更新错误状态
-      const errorNode = { ...node, isGenerating: false, error: err.message || 'Failed' };
+      const errorNode = {
+        ...effectiveNode,
+        isGenerating: false,
+        error: err.message || 'Failed',
+        prompt: node.prompt || effectiveNode.prompt // 🛡️ [Double-Safety]
+      };
+
       const existsInCanvas = activeCanvasRef.current?.promptNodes.some(n => n.id === node.id);
 
       if (existsInCanvas) {
@@ -1647,7 +1701,7 @@ const AppContent: React.FC = () => {
         setSettingsInitialView('api-management');
       }
     }
-  }, [isMobile, updatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions]);
+  }, [isMobile, updatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions, config, draftNodeId, keyManager]);
 
   // Auto-Resume Effect
   const hasResumedRef = useRef(false);
@@ -1671,6 +1725,10 @@ const AppContent: React.FC = () => {
 
 
   const handleGenerate = useCallback(async () => {
+    // 🐛 DEBUG: Log config at entry
+    console.log('[handleGenerate] 🐛 Entry - config.prompt:', config.prompt);
+    console.log('[handleGenerate] 🐛 Entry - config.referenceImages:', config.referenceImages.length);
+
     if (!config.prompt.trim()) return;
 
     setIsGenerating(true);
@@ -1828,26 +1886,42 @@ const AppContent: React.FC = () => {
   }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight]);
 
   // Handle reference images
-  const handleFilesDrop = useCallback((files: File[]) => {
+  const handleFilesDrop = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
-    if (config.referenceImages.length + files.length > 5) {
+    let filesToProcess = [...files];
+    if (config.referenceImages.length + filesToProcess.length > 5) {
       import('./services/notificationService').then(({ notify }) => {
         notify.warning('无法添加图片', "最多支持 5 张参考图");
       });
-      files = files.slice(0, 5 - config.referenceImages.length);
+      filesToProcess = filesToProcess.slice(0, 5 - config.referenceImages.length);
     }
 
-    files.forEach(file => {
+    // 🚀 [Fix] Save to IndexedDB for persistence across page refresh
+    const { saveImage } = await import('./services/imageStorage');
+
+    filesToProcess.forEach(file => {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const matches = (reader.result as string).match(/^data:(.+);base64,(.+)$/);
         if (matches) {
+          const id = `ref-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+          const base64Data = matches[2];
+          const mimeType = matches[1];
+
+          // Save to IndexedDB for later retrieval
+          try {
+            await saveImage(id, base64Data);
+          } catch (e) {
+            console.error('Failed to save reference image to IndexedDB', e);
+          }
+
           setConfig(prev => ({
             ...prev,
             referenceImages: [...prev.referenceImages, {
-              id: Date.now() + Math.random().toString(),
-              data: matches[2],
-              mimeType: matches[1]
+              id,
+              data: base64Data,
+              mimeType,
+              storageId: id // 🚀 Link to IndexedDB entry
             }]
           }));
         }
@@ -1904,9 +1978,16 @@ const AppContent: React.FC = () => {
     const node = activeCanvas?.promptNodes.find(n => n.id === id);
     if (!node) return;
 
-    // Pin: Move up 350px to avoid overlap with where the next preview will appear
-    // Matches user requirement: "Main Card generated ABOVE... DO NOT OVERLAP"
-    const newPos = { ...node.position, y: node.position.y - 350 };
+    // Pin: Move to Viewport Center
+    // Calculate center in canvas coordinates
+    const centerX = (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale;
+    const centerY = (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale;
+
+    // Node anchor is Bottom-Center. To visually center it, we add half height (approx 125px) to Y.
+    const newPos = {
+      x: centerX,
+      y: centerY + 125
+    };
 
     updatePromptNode({
       ...node,
@@ -1923,7 +2004,7 @@ const AppContent: React.FC = () => {
     import('./services/notificationService').then(({ notify }) => {
       notify.success('已固定', '草稿已转换为独立卡片');
     });
-  }, [activeCanvas, updatePromptNode, setDraftNodeId, setConfig]);
+  }, [activeCanvas, updatePromptNode, setDraftNodeId, setConfig, canvasTransform]);
 
   // Retry Logic (In-Place Regeneration)
   const handleRetryNode = useCallback(async (node: PromptNode) => {
@@ -2186,11 +2267,18 @@ const AppContent: React.FC = () => {
 
     // Pre-hydrate if needed to prevent flicker
     // We do this BEFORE setting config so the UI never sees the "loading" state
-    if (referenceImages.some(img => !img.data && img.storageId)) {
+    // 🚀 [Fix] Also check for blob: URLs which may have expired after page refresh
+    const needsHydration = referenceImages.some(img =>
+      (!img.data && img.storageId) ||
+      (img.data?.startsWith('blob:') && img.storageId)
+    );
+
+    if (needsHydration) {
       try {
         const { getImage } = await import('./services/imageStorage');
         const hydrated = await Promise.all(referenceImages.map(async (img) => {
-          if (!img.data && img.storageId) {
+          // If no data, or data is an expired blob URL, try to restore from storage
+          if ((!img.data || img.data.startsWith('blob:')) && img.storageId) {
             const data = await getImage(img.storageId);
             if (data) return { ...img, data };
           }
@@ -2695,6 +2783,8 @@ const AppContent: React.FC = () => {
           // Always clear selection on empty click
           clearSelection();
           setSelectionMenuPosition(null);
+          // 🚀 [Fix] Also clear active source image to prevent "Context Leakage"
+          setActiveSourceImage(null);
         }}
         onCanvasDoubleClick={() => {
           // [NEW] Double click to clear EVERYTHING (Prompt + Images)
@@ -2705,9 +2795,20 @@ const AppContent: React.FC = () => {
             clearSelection();
             setSelectionMenuPosition(null);
             // 🚀 [Fix] Explicitly remove draft node so preview disappears
+            // 🚀 [User Request] Double click should only clear content, NOT delete the card
             if (draftNodeId) {
-              deletePromptNode(draftNodeId);
-              setDraftNodeId(null);
+              const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
+              if (node && !node.isGenerating) {
+                // Keep the card, but clear its content
+                updatePromptNode({
+                  ...node,
+                  prompt: '',
+                  referenceImages: [],
+                  imageSize: node.imageSize, // Keep settings
+                  aspectRatio: node.aspectRatio,
+                  model: node.model
+                });
+              }
             }
           }
         }}
@@ -3239,6 +3340,7 @@ const AppContent: React.FC = () => {
                 onCancel={handleCancelGeneration}
                 // Disable drag for the overlay
                 onConnectStart={() => { }}
+                onPin={handlePinDraft}
               />
             </div>
           </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Server, Globe, Key, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
-import keyManager, { KeySlot } from '../services/keyManager';
+import keyManager, { KeySlot, fetchOpenAICompatModels, fetchGoogleModels } from '../services/keyManager';
 import { notify } from '../services/notificationService';
 import { comprehensiveConnectionTest } from "../services/connectionTest";
 
@@ -36,6 +36,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
     const [presetValue, setPresetValue] = useState('custom');
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
+    const [isFetchingModels, setIsFetchingModels] = useState(false);
     const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
     useEffect(() => {
@@ -99,7 +100,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
                 apiKey: formData.key,
                 baseUrl: formData.baseUrl,
                 provider: formData.provider,
-                model: formData.models.split(',')[0] || undefined
+                model: formData.models.split(',')[0]?.trim() || ''
             });
 
             const success = results.some(r => r.success);
@@ -124,6 +125,24 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
             */
         }
 
+        // 🚀 Auto-fetch models if field is empty
+        let autoFetchedModels: string[] = [];
+        const userModels = formData.models.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+
+        if (userModels.length === 0 && formData.baseUrl) {
+            try {
+                console.log('[ApiKeyModal] 自动获取模型列表...');
+                if (formData.provider === 'Google' || formData.baseUrl.includes('googleapis.com')) {
+                    autoFetchedModels = await fetchGoogleModels(formData.key);
+                } else {
+                    autoFetchedModels = await fetchOpenAICompatModels(formData.key, formData.baseUrl);
+                }
+                console.log('[ApiKeyModal] 自动获取到模型:', autoFetchedModels);
+            } catch (e) {
+                console.error('[ApiKeyModal] 自动获取模型失败:', e);
+            }
+        }
+
         const payload: any = {
             name: formData.name || formData.serverName || (initialType === 'official' ? 'Google API' : 'API Channel'),
             key: formData.key,
@@ -132,7 +151,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
             provider: formData.provider,
             budgetLimit: formData.budgetLimit,
             tokenLimit: formData.tokenLimit,
-            supportedModels: formData.models.split(/[,，\n]/).map(s => s.trim()).filter(Boolean),
+            supportedModels: userModels.length > 0 ? userModels : autoFetchedModels,
         };
 
         if (initialType === 'proxy') {
@@ -156,7 +175,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
             } else {
                 await keyManager.addKey(payload.key, payload);
             }
-            notify.success('保存成功');
+            notify.success('保存成功', autoFetchedModels.length > 0 ? `自动获取到 ${autoFetchedModels.length} 个模型` : 'API 配置已保存');
             onSave?.();
             onClose();
         } catch (e: any) {
@@ -307,14 +326,52 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
                             </button>
 
                             {showAdvanced && (
-                                <div className="mt-2 animate-in slide-in-from-top-2 duration-200">
-                                    <textarea
-                                        value={formData.models}
-                                        onChange={e => setFormData({ ...formData, models: e.target.value })}
-                                        placeholder="gpt-4o, claude-3-opus (留空则自动获取)"
-                                        rows={3}
-                                        className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-indigo-500 font-mono"
-                                    />
+                                <div className="mt-2 animate-in slide-in-from-top-2 duration-200 space-y-2">
+                                    <div className="flex gap-2">
+                                        <textarea
+                                            value={formData.models}
+                                            onChange={e => setFormData({ ...formData, models: e.target.value })}
+                                            placeholder="gpt-4o, claude-3-opus"
+                                            rows={3}
+                                            className="flex-1 bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-indigo-500 font-mono"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            if (!formData.key || !formData.baseUrl) {
+                                                setTestResult({ success: false, message: '请先填写 Base URL 和 API Key' });
+                                                return;
+                                            }
+                                            setIsFetchingModels(true);
+                                            try {
+                                                let models: string[] = [];
+                                                if (formData.provider === 'Google' || formData.baseUrl.includes('googleapis.com')) {
+                                                    models = await fetchGoogleModels(formData.key);
+                                                } else {
+                                                    models = await fetchOpenAICompatModels(formData.key, formData.baseUrl);
+                                                }
+                                                if (models.length > 0) {
+                                                    setFormData(prev => ({ ...prev, models: models.join(', ') }));
+                                                    setTestResult({ success: true, message: `成功获取 ${models.length} 个模型` });
+                                                } else {
+                                                    setTestResult({ success: false, message: '未获取到模型列表，请检查 API 配置' });
+                                                }
+                                            } catch (e: any) {
+                                                setTestResult({ success: false, message: `获取失败: ${e.message}` });
+                                            } finally {
+                                                setIsFetchingModels(false);
+                                            }
+                                        }}
+                                        disabled={isFetchingModels || !formData.key || !formData.baseUrl}
+                                        className="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border border-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                        {isFetchingModels ? (
+                                            <><Loader2 size={12} className="animate-spin" /> 正在获取...</>
+                                        ) : (
+                                            <>🔍 自动获取模型列表</>
+                                        )}
+                                    </button>
                                 </div>
                             )}
                         </div>

@@ -17,23 +17,30 @@ const ReferenceThumbnail: React.FC<{
     image: { id: string, data?: string, mimeType?: string, storageId?: string };
     onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }> = ({ image, onClick }) => {
-    const [data, setData] = useState<string | undefined>(image.data);
-    const [loading, setLoading] = useState(!image.data);
+    const [data, setData] = useState<string | undefined>(undefined);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
 
     useEffect(() => {
-        // Did parent provide data?
-        if (image.data) {
+        // 🚀 [Fix] If parent provided data and it's NOT a blob URL, use it directly
+        // Blob URLs can expire after page refresh, so we should always try to recover from IDB
+        if (image.data && !image.data.startsWith('blob:')) {
             setData(image.data);
             setLoading(false);
             setError(false);
             return;
         }
 
-        // If no data and no storageId, it's a dead link (or just created invalidly)
+        // If no storageId, try using data directly (even if blob) or mark as error
         if (!image.storageId) {
-            setLoading(false);
-            setError(true);
+            if (image.data) {
+                setData(image.data);
+                setLoading(false);
+                setError(false);
+            } else {
+                setLoading(false);
+                setError(true);
+            }
             return;
         }
 
@@ -47,6 +54,9 @@ const ReferenceThumbnail: React.FC<{
                 if (active) {
                     if (cached) {
                         setData(cached);
+                    } else if (image.data) {
+                        // Fallback to original data if IDB has nothing
+                        setData(image.data);
                     } else {
                         setError(true); // truly missing
                     }
@@ -55,7 +65,11 @@ const ReferenceThumbnail: React.FC<{
             })
             .catch(() => {
                 if (active) {
-                    setError(true);
+                    if (image.data) {
+                        setData(image.data); // Fallback
+                    } else {
+                        setError(true);
+                    }
                     setLoading(false);
                 }
             });
@@ -84,7 +98,7 @@ const ReferenceThumbnail: React.FC<{
     }
 
     // Robust Src Construction
-    const src = data.startsWith('data:') ? data : `data:${image.mimeType || 'image/png'};base64,${data}`;
+    const src = (data.startsWith('data:') || data.startsWith('blob:')) ? data : `data:${image.mimeType || 'image/png'};base64,${data}`;
 
     return (
         <div
@@ -160,6 +174,31 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, modelId: string } | null>(null);
+
+    // [NEW] Model Settings Modal State
+    const [modelSettingsModal, setModelSettingsModal] = useState<{ modelId: string; alias: string; description: string } | null>(null);
+
+    // [NEW] Model Customizations (stored in localStorage)
+    const [modelCustomizations, setModelCustomizations] = useState<Record<string, { alias?: string; description?: string }>>(() => {
+        try {
+            const stored = localStorage.getItem('kk_model_customizations');
+            return stored ? JSON.parse(stored) : {};
+        } catch { return {}; }
+    });
+
+    // Save model customizations to localStorage
+    const saveModelCustomization = (modelId: string, alias: string, description: string) => {
+        const newCustomizations = {
+            ...modelCustomizations,
+            [modelId]: { alias: alias.trim() || undefined, description: description.trim() || undefined }
+        };
+        // Clean up empty entries
+        if (!newCustomizations[modelId].alias && !newCustomizations[modelId].description) {
+            delete newCustomizations[modelId];
+        }
+        setModelCustomizations(newCustomizations);
+        localStorage.setItem('kk_model_customizations', JSON.stringify(newCustomizations));
+    };
 
     // [NEW] Drag-to-Reorder State
     const [dragSourceId, setDragSourceId] = useState<string | null>(null);
@@ -969,7 +1008,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     const rect = e.currentTarget.getBoundingClientRect();
-                                                    const src = img.data?.startsWith('data:')
+                                                    const src = (img.data?.startsWith('data:') || img.data?.startsWith('blob:'))
                                                         ? img.data
                                                         : `data:${img.mimeType || 'image/png'};base64,${img.data}`;
                                                     setPreviewImage({ url: src, originRect: rect });
@@ -1109,8 +1148,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
                                 <div className="dropdown static w-[min(16rem,90vw)] max-w-[90vw] max-h-[360px] overflow-y-auto scrollbar-thin animate-scaleIn origin-bottom p-1 flex flex-col gap-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
                                     {availableModels.map(model => {
-                                        const displayName = model.label || model.id;
-                                        const advantage = model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                        const custom = modelCustomizations[model.id] || {};
+                                        const displayName = custom.alias || model.label || model.id;
+                                        const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
                                         const isPinned = getPinnedModels().includes(model.id);
                                         return (
                                             <button
@@ -1162,13 +1202,17 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                     }
 
                                                     return (
-                                                        <div className="flex flex-wrap gap-2 mt-1">
+                                                        <div className="flex flex-col gap-0.5 mt-1">
                                                             <span className="text-[10px] text-[var(--text-tertiary)] leading-tight break-all">ID: {model.id.split('@')[0]}</span>
-                                                            {features.map((f, i) => (
-                                                                <span key={i} className="text-[10px] text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-1 rounded border border-[var(--border-light)]">
-                                                                    {f}
-                                                                </span>
-                                                            ))}
+                                                            {features.length > 0 && (
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {features.map((f, i) => (
+                                                                        <span key={i} className="text-[10px] text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-1 rounded border border-[var(--border-light)]">
+                                                                            {f}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     );
                                                 })()}
@@ -1349,8 +1393,79 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             }}
                                             className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"
                                         >
-                                            {getPinnedModels().includes(contextMenu.modelId) ? '取消顶置' : '📌 顶置模型'}
+                                            {getPinnedModels().includes(contextMenu.modelId) ? '❌ 取消置顶' : '📌 置顶模型'}
                                         </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const custom = modelCustomizations[contextMenu.modelId] || {};
+                                                setModelSettingsModal({
+                                                    modelId: contextMenu.modelId,
+                                                    alias: custom.alias || '',
+                                                    description: custom.description || ''
+                                                });
+                                                setContextMenu(null);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"
+                                        >
+                                            ⚙️ 设置
+                                        </button>
+                                    </div>,
+                                    document.body
+                                )}
+
+                                {/* Model Settings Modal */}
+                                {modelSettingsModal && ReactDOM.createPortal(
+                                    <div
+                                        className="fixed inset-0 z-[10020] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                                        onClick={() => setModelSettingsModal(null)}
+                                    >
+                                        <div
+                                            className="bg-[#1e1e20] w-full max-w-md rounded-2xl border border-white/10 shadow-2xl p-5 space-y-4"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <div className="flex justify-between items-center">
+                                                <h3 className="text-lg font-bold text-white">模型设置</h3>
+                                                <button onClick={() => setModelSettingsModal(null)} className="text-zinc-400 hover:text-white">✕</button>
+                                            </div>
+                                            <div className="text-xs text-zinc-500 font-mono break-all">ID: {modelSettingsModal.modelId}</div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-zinc-400 mb-1.5">显示别名</label>
+                                                <input
+                                                    value={modelSettingsModal.alias}
+                                                    onChange={(e) => setModelSettingsModal({ ...modelSettingsModal, alias: e.target.value })}
+                                                    placeholder="留空则使用默认名称"
+                                                    className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-zinc-400 mb-1.5">模型介绍</label>
+                                                <textarea
+                                                    value={modelSettingsModal.description}
+                                                    onChange={(e) => setModelSettingsModal({ ...modelSettingsModal, description: e.target.value })}
+                                                    placeholder="留空则使用默认介绍"
+                                                    rows={2}
+                                                    className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+                                                />
+                                            </div>
+                                            <div className="flex justify-end gap-2 pt-2">
+                                                <button
+                                                    onClick={() => setModelSettingsModal(null)}
+                                                    className="px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-white/5"
+                                                >
+                                                    取消
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        saveModelCustomization(modelSettingsModal.modelId, modelSettingsModal.alias, modelSettingsModal.description);
+                                                        setModelSettingsModal(null);
+                                                    }}
+                                                    className="px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white"
+                                                >
+                                                    保存
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>,
                                     document.body
                                 )}

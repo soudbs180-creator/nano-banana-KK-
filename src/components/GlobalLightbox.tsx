@@ -31,28 +31,46 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     const panStartRef = useRef({ x: 0, y: 0 });
     const panStartPosRef = useRef({ x: 0, y: 0 });
 
+    // 🚀 [Fix] Real Dimensions State
+    const [realDimensions, setRealDimensions] = useState<string | null>(null);
+
+    const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+        const img = e.currentTarget;
+        if (img.naturalWidth && img.naturalHeight) {
+            setRealDimensions(`${img.naturalWidth}x${img.naturalHeight}`);
+        }
+    };
+
     // 1. 加载高清图逻辑
     useEffect(() => {
         let active = true;
         setIsLoading(true);
+        setIsLoading(true);
         setHasError(false);
         setDisplaySrc(null);
-        // 🚀 修复：切换图片时保持当前缩放和位置，不再重置
-        // setZoom(1);
-        // setPan({ x: 0, y: 0 });
-
+        // 🚀 Reset zoom on image switch to show full frame
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
 
         const loadContent = async () => {
             try {
                 // 🔒 强制加载原图（新的保护机制）
                 const { getOriginalImage } = await import('../services/imageStorage');
+                // const metadata = await getImageMetadata(image.id); // Check protection status
                 const original = await getOriginalImage(image.id);
 
                 if (!active) return;
 
                 if (original) {
                     setDisplaySrc(original);
-                    console.log('[Lightbox] 🔒 ✅ Loaded original from IndexedDB');
+                    // Check size
+                    if (original.startsWith('blob:')) {
+                        fetch(original).then(r => r.blob()).then(b =>
+                            console.log(`[Lightbox] 🔒 ✅ Loaded Blob: ${(b.size / 1024 / 1024).toFixed(2)} MB`)
+                        );
+                    } else {
+                        console.log(`[Lightbox] 🔒 ✅ Loaded Base64: ${(original.length / 1024 / 1024).toFixed(2)} MB`);
+                    }
                 } else {
                     // 🔒 Fallback 策略：尝试使用storageId
                     console.warn('[Lightbox] 🔒 ⚠️ Original not found, trying fallback strategies...');
@@ -296,6 +314,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                         alt={image.prompt}
                         className={`max-w-full max-h-full object-contain transition-transform duration-100 ${!displaySrc || hasError ? 'opacity-0' : ''}`}
                         draggable={false}
+                        onLoad={handleImageLoad} // 🚀 [Fix] Capture real dimensions
                         onMouseDown={handleMouseDown}
                         onDoubleClick={(e) => { e.preventDefault(); onClose(); }}
                         onContextMenu={(e) => e.stopPropagation()}
@@ -345,7 +364,8 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                             {currentIndex + 1} / {images.length}
                         </span>
                         <span>{image.model.split('/').pop()}</span>
-                        {image.dimensions && <span>{image.dimensions}</span>}
+                        {/* 🚀 [Fix] Show REAL dimensions from loaded image, fallback to metadata */}
+                        <span>{realDimensions || image.dimensions || 'Loading...'}</span>
                         {image.generationTime && <span>{(image.generationTime / 1000).toFixed(1)}s</span>}
                     </div>
                 </div>

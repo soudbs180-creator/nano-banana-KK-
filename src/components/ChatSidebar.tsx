@@ -1,13 +1,14 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ArrowUp, Bot, ChevronDown, Eraser, FileText, Film, Image as ImageIcon, Layout, MessageSquare, Mic, Paperclip, Plus, User, X, Zap } from 'lucide-react';
-import { generateText } from '../services/geminiService';
+import { ArrowUp, Bot, ChevronDown, Eraser, FileText, Film, Image as ImageIcon, Layout, MessageSquare, Mic, Paperclip, Plus, User, X, Zap, Sparkles } from 'lucide-react';
+import { generateText, generateImage } from '../services/geminiService';
 import { notify } from '../services/notificationService';
 import { keyManager } from '../services/keyManager';
 import { agentService, AgentConfig } from '../services/agentService';
 import { getModelDisplayInfo } from '../services/modelCapabilities';
 import { sortModels, toggleModelPin, getPinnedModels } from '../utils/modelSorting';
 import ReactDOM from 'react-dom';
+import { AspectRatio, ImageSize } from '../types';
 
 interface ChatSidebarProps {
     isOpen: boolean;
@@ -31,9 +32,10 @@ interface Attachment {
 interface Message {
     id: string;
     role: 'user' | 'assistant';
-    content: string;
+    content: string; // 可能是Markdown文本，也可能包含图片Markdown
     timestamp: number;
     attachments?: Attachment[]; // 附件列表
+    isImageGeneration?: boolean; // 标记是否为图片生成结果
 }
 
 interface ChatModel {
@@ -49,20 +51,58 @@ interface ChatModel {
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, isMobile, onOpenSettings, onHoverChange }) => {
     // 1. Model State Management
-    // ✨ 支持多模态模型 (image+chat)
-    const [availableModels, setAvailableModels] = useState<ChatModel[]>(() =>
-        keyManager.getGlobalModelList().filter(model => {
-            // 排除图像/视频模型
+    // ✨ 支持多模态模型 (image+chat) + 🚀 去重
+    const [availableModels, setAvailableModels] = useState<ChatModel[]>(() => {
+        const models = keyManager.getGlobalModelList().filter(model => {
+            const idLower = model.id.toLowerCase();
+            // 排除纯图像/视频模型
             if (model.type === 'image' || model.type === 'video') return false;
-            // 排除Nano Banana图像生成模型
-            if (model.id.includes('-image')) return false;
+            // 排除Nano Banana/Flux/Midjourney等纯图像生成模型 (即使被误判为chat)
+            if (idLower.includes('nano') && idLower.includes('banana') && model.type !== 'image+chat') return false;
+            if (idLower.includes('flux') || idLower.includes('midjourney') || idLower.includes('dall-e') || idLower.includes('stable-diffusion') || idLower.includes('sdxl')) return false;
+
+            // 必须是 Chat 或 Image+Chat
             return model.type === 'chat' || model.type === 'image+chat';
-        })
-    );
+        });
+        // 🚀 去重：使用 Map 按 ID 去重
+        const uniqueMap = new Map<string, ChatModel>();
+        models.forEach(m => { if (!uniqueMap.has(m.id)) uniqueMap.set(m.id, m); });
+        return Array.from(uniqueMap.values());
+    });
     const [selectedModel, setSelectedModel] = useState<ChatModel>(() => availableModels[0] || { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'Google', isCustom: false });
     const [showModelMenu, setShowModelMenu] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, modelId: string } | null>(null);
     const [pinnedUpdate, setPinnedUpdate] = useState(0); // Trigger re-render for sorting
+
+    // [NEW] Model Customizations (read from localStorage)
+    const [modelCustomizations, setModelCustomizations] = useState<Record<string, { alias?: string; description?: string }>>(() => {
+        try {
+            const stored = localStorage.getItem('kk_model_customizations');
+            return stored ? JSON.parse(stored) : {};
+        } catch { return {}; }
+    });
+
+    // Listen for storage changes (to sync with PromptBar updates)
+    useEffect(() => {
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === 'kk_model_customizations' && e.newValue) {
+                setModelCustomizations(JSON.parse(e.newValue));
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        // Also poll/check on focus in case change happened in same window but different component
+        const handleFocus = () => {
+            try {
+                const stored = localStorage.getItem('kk_model_customizations');
+                if (stored) setModelCustomizations(JSON.parse(stored));
+            } catch { }
+        };
+        window.addEventListener('focus', handleFocus);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('focus', handleFocus);
+        };
+    }, []);
 
     useEffect(() => {
         // Close menu on click anywhere
@@ -78,14 +118,21 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     // Subscribe to keyManager updates
     useEffect(() => {
         const updateModels = () => {
-            // ✨ 支持多模态模型 (image+chat)
-            const models = keyManager.getGlobalModelList().filter(model => {
-                // 排除图像/视频模型
+            // ✨ 支持多模态模型 (image+chat) + 🚀 去重
+            const rawModels = keyManager.getGlobalModelList().filter(model => {
+                const idLower = model.id.toLowerCase();
+                // 排除纯图像/视频模型
                 if (model.type === 'image' || model.type === 'video') return false;
-                // 排除Nano Banana图像生成模型
-                if (model.id.includes('-image')) return false;
+                // 排除Nano Banana/Flux/Midjourney等纯图像生成模型
+                if (idLower.includes('nano') && idLower.includes('banana') && model.type !== 'image+chat') return false;
+                if (idLower.includes('flux') || idLower.includes('midjourney') || idLower.includes('dall-e') || idLower.includes('stable-diffusion') || idLower.includes('sdxl')) return false;
+
                 return model.type === 'chat' || model.type === 'image+chat';
             });
+            // 🚀 去重：使用 Map 按 ID 去重
+            const uniqueMap = new Map<string, ChatModel>();
+            rawModels.forEach(m => { if (!uniqueMap.has(m.id)) uniqueMap.set(m.id, m); });
+            const models = Array.from(uniqueMap.values());
             setAvailableModels(models);
 
             if (models.length > 0) {
@@ -109,7 +156,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         {
             id: 'welcome',
             role: 'assistant',
-            content: '你好！我是 KK Studio 数字助手。\n有什么我可以帮您？',
+            content: '你好！我是 KK Studio 数字助手。\n有什么我可以帮您？\n\n试试输入 "/image 一只猫" 来生成图片！',
             timestamp: Date.now()
         }
     ]);
@@ -331,10 +378,77 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         setAttachments(prev => prev.filter(a => a.id !== id));
     };
 
+    // ✨ 图片生成逻辑
+    const handleImageGeneration = async (prompt: string) => {
+        setIsThinking(true);
+        registerActivity();
+
+        try {
+            // 1. 查找可用的绘图模型
+            const allModels = keyManager.getGlobalModelList();
+            // 优先选择 explicit image models
+            const imageModel = allModels.find(m => m.type === 'image' && !m.id.includes('video')) ||
+                allModels.find(m => m.id.includes('imagen')) ||
+                allModels.find(m => m.id.includes('stable-diffusion') || m.id.includes('flux')) ||
+                allModels.find(m => m.type === 'image+chat' && m.id.includes('gemini'));
+
+            if (!imageModel) {
+                throw new Error("未找到可用的绘图模型，请在设置中添加支持绘图的模型 (如 Imagen 3/4, Gemini Flash Image等)");
+            }
+
+            // 2. 调用生成服务
+            const result = await generateImage(
+                prompt,
+                AspectRatio.SQUARE, // 默认方形
+                ImageSize.SIZE_1K,  // 默认1K
+                [], // TODO: 支持参考图?
+                imageModel.id as any,
+                '', // apiKey auto-resolved
+                undefined,
+                false
+            );
+
+            // 3. 构建结果消息
+            const aiMsg: Message = {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: `✨ 已为您生成图片: "${prompt}" (使用模型: ${imageModel.name})`,
+                timestamp: Date.now(),
+                isImageGeneration: true,
+                attachments: [{
+                    id: Date.now().toString(),
+                    type: 'image',
+                    name: `generated-${Date.now()}.png`,
+                    data: result.url,
+                    mimeType: 'image/png'
+                }]
+            };
+            setMessages(prev => [...prev, aiMsg]);
+
+        } catch (error: any) {
+            console.error('Image Generation Error:', error);
+            notify.error('图片生成失败', error.message);
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: `⚠️ 图片生成失败: ${error.message}`,
+                timestamp: Date.now()
+            }]);
+        } finally {
+            setIsThinking(false);
+        }
+    };
+
     const handleSend = async () => {
         if ((!input.trim() && attachments.length === 0) || isThinking) return;
 
         const userText = input.trim();
+
+        // ✨ 检查是否为生成图片指令
+        // Regex: /image prompt OR 画 prompt OR 生成 prompt
+        const imageRegex = /^(\/image|画|生成|draw|gen)\s+(.+)/i;
+        const match = userText.match(imageRegex);
+
         const currentAttachments = [...attachments]; // 保存当前附件
         const userMsg: Message = {
             id: Date.now().toString(),
@@ -347,6 +461,14 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setAttachments([]); // 清空附件
+
+        // 如果匹配到绘图指令，且没有附件(暂不支持图生图)，则走绘图流程
+        if (match && currentAttachments.length === 0) {
+            const prompt = match[2];
+            handleImageGeneration(prompt);
+            return;
+        }
+
         setIsThinking(true);
         registerActivity();
 
@@ -487,11 +609,40 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                     }`}>
                                     {msg.role === 'user' ? <User size={14} className="text-[var(--text-tertiary)]" /> : <Bot size={16} className="animate-icon-breathe" />}
                                 </div>
-                                <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
-                                    ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-tr-md border border-[var(--border-light)]'
-                                    : 'bg-blue-500/12 text-[var(--text-primary)] border border-blue-500/25 rounded-tl-md backdrop-blur-sm'
-                                    }`}>
-                                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                                <div className={`max-w-[82%] flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                    {/* 消息文本 */}
+                                    <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                                        ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-tr-md border border-[var(--border-light)]'
+                                        : 'bg-blue-500/12 text-[var(--text-primary)] border border-blue-500/25 rounded-tl-md backdrop-blur-sm'
+                                        }`}>
+                                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                                    </div>
+
+                                    {/* 附件/生成结果展示 */}
+                                    {msg.attachments && msg.attachments.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mt-1">
+                                            {msg.attachments.map(att => (
+                                                <div key={att.id} className="relative group overflow-hidden rounded-xl border border-[var(--border-light)] shadow-sm transition-transform hover:scale-[1.02]">
+                                                    {att.type === 'image' ? (
+                                                        <a href={att.data} target="_blank" rel="noopener noreferrer" className="block cursor-zoom-in">
+                                                            <img
+                                                                src={att.data}
+                                                                alt={att.name}
+                                                                className="max-w-[240px] max-h-[240px] object-cover bg-[var(--bg-secondary)]"
+                                                            />
+                                                        </a>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-tertiary)] cursor-default">
+                                                            {att.type === 'video' && <Film size={16} className="text-purple-400" />}
+                                                            {att.type === 'audio' && <Mic size={16} className="text-green-400" />}
+                                                            {att.type === 'document' && <FileText size={16} className="text-blue-400" />}
+                                                            <span className="text-xs text-[var(--text-secondary)] truncate max-w-[150px]">{att.name}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -628,7 +779,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                         <>
                                             <span className="text-base">{selectedModel.icon || '🤖'}</span>
                                             <span className={`text-[var(--text-secondary)] truncate ${getModelDisplayInfo(selectedModel).badgeColor}`}>
-                                                {getModelDisplayInfo(selectedModel).displayName}
+                                                {modelCustomizations[selectedModel.id]?.alias || getModelDisplayInfo(selectedModel).displayName}
                                             </span>
 
                                             {/* 🚀 [NEW] 来源标签 - 横排 */}
@@ -654,11 +805,21 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                 {showModelMenu && (
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setShowModelMenu(false)} />
-                                        <div className="absolute bottom-full left-0 mb-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-2xl z-20 p-1.5 max-h-[300px] overflow-y-auto scrollbar-thin">
+                                        <div
+                                            className="absolute bottom-full mb-2 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-2xl z-20 p-1.5 max-h-[300px] overflow-y-auto scrollbar-thin"
+                                            style={{
+                                                // 修正位置：向右偏移以覆盖 Send 按钮区域，使下拉框与面板内容区右对齐
+                                                right: '-48px', // size-10 (40px) + gap-2 (8px) = 48px
+                                                // 宽度设置为面板内容区宽度 (380px - 32px padding = 348px)
+                                                width: isMobile ? 'calc(100vw - 2rem)' : '348px',
+                                                maxWidth: 'calc(100vw - 2rem)'
+                                            }}
+                                        >
                                             <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold border-b border-[var(--border-light)] mb-1 select-none">选择模型 (右键可顶置)</div>
                                             {sortModels(availableModels).map(model => {
-                                                const displayName = model.name || model.id;
-                                                const advantage = model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                                const custom = modelCustomizations[model.id] || {};
+                                                const displayName = custom.alias || model.name || model.id;
+                                                const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
                                                 const isPinned = getPinnedModels().includes(model.id);
 
                                                 return (
@@ -678,7 +839,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                                         <div className="flex flex-col gap-0.5 w-full">
                                                             <div className="flex items-center justify-between">
                                                                 <span className={`font-medium ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
-                                                                    {getModelDisplayInfo(model).displayName}
+                                                                    {displayName}
                                                                 </span>
                                                                 {/* 🚀 [NEW] 下拉菜单中的来源标签 - 改为横排，居中对齐，稍微大一点 */}
                                                                 {getModelDisplayInfo(model).badgeText && (

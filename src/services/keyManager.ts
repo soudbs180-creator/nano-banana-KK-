@@ -336,7 +336,7 @@ const inferHeaderName = (provider: string | undefined, baseUrl: string | undefin
     if (authMethod === 'query') return GOOGLE_HEADER_NAME;
     const providerLower = (provider || '').toLowerCase();
     const baseLower = (baseUrl || '').toLowerCase();
-    if (providerLower === 'google' || baseLower.includes('google') || baseLower.includes('gemini')) {
+    if (providerLower === 'google' || baseLower.includes('googleapis.com')) {
         return GOOGLE_HEADER_NAME;
     }
     // OpenRouter / Other OpenAI compatible
@@ -428,7 +428,7 @@ const inferModelType = (modelId: string): GlobalModelType => {
     if (isOpenRouter) return 'chat';
 
 
-    return 'image';
+    return 'chat';
 };
 
 
@@ -944,8 +944,9 @@ export class KeyManager {
                 }
                 // headers['Content-Type'] = 'application/json'; // Not strictly triggered for GET
             } else {
-                // OpenAI Compatible Logic
-                targetUrl = cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`;
+                // OpenAI Compatible Logic - 🚀 [Fix] Use /v1/models for proxy compatibility
+                const cleanBaseUrl = cleanUrl.replace(/\/v1$/, '').replace(/\/v1\/models$/, '').replace(/\/models$/, '');
+                targetUrl = `${cleanBaseUrl}/v1/models`;
                 const headerValue = resolvedHeader.toLowerCase() === 'authorization'
                     ? (key.toLowerCase().startsWith('bearer ') ? key : `Bearer ${key}`)
                     : key;
@@ -1607,7 +1608,7 @@ export class KeyManager {
                         // Use parsed name/desc if available, otherwise use model display name
                         const displayName = name || (meta ? meta.name : null);
                         // 如果没有自定义名称也没有 meta，根据模型 ID 推断友好名称
-                        let inferredModelName = `${slot.provider || '自定义'} 模型`;
+                        let inferredModelName = id;
                         const lowerId = id.toLowerCase();
                         if (lowerId.includes('gemini-3-pro') || lowerId.includes('nano-banana-pro')) {
                             inferredModelName = 'Nano Banana Pro';
@@ -2043,6 +2044,7 @@ function getDefaultGoogleModels(): string[] {
 
 /**
  * 自动获取OpenAI兼容API的模型列表
+ * 🚀 [Enhancement] 自动去重：移除参数后缀，只保留唯一的基础模型
  */
 export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): Promise<string[]> {
     try {
@@ -2060,10 +2062,39 @@ export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): 
         }
 
         const data = await response.json();
-        const models = data.data?.map((m: any) => m.id) || [];
+        const rawModels: string[] = data.data?.map((m: any) => m.id) || [];
 
-        console.log(`[KeyManager] ✓ 检测到 ${models.length} 个代理模型:`, models);
-        return models;
+        console.log(`[KeyManager] ✓ 原始检测到 ${rawModels.length} 个模型`);
+
+        // 🚀 去重逻辑：移除 Antigravity 风格的参数后缀
+        // 例如: gemini-3-pro-image-16x9 -> gemini-3-pro-image
+        //       gemini-3-pro-image-1x1-4k -> gemini-3-pro-image
+        //       claude-3-5-sonnet-20240620 -> claude-3-5-sonnet (移除日期后缀)
+        const stripSuffix = (modelId: string): string => {
+            // 匹配模式: -[宽高比]-[分辨率] 或 -[宽高比] 
+            // 宽高比支持两种格式: 16x9 或 16-9
+            // 分辨率: 4k, 2k, 1k
+            return modelId
+                // 移除 Antigravity 宽高比后缀 (使用 x 或 - 作为分隔符)  
+                .replace(/-(16[x-]9|9[x-]16|1[x-]1|4[x-]3|3[x-]4|21[x-]9|9[x-]21|3[x-]2|2[x-]3|4[x-]5|5[x-]4)(-4k|-2k|-1k)?$/i, '')
+                // 移除单独的分辨率后缀
+                .replace(/(-4k|-2k|-1k)$/i, '')
+                // 移除日期后缀 (如 -20240620, -20251001)
+                .replace(/-\d{8}$/i, '')
+                // 移除通配符后缀 (如 -*)
+                .replace(/-\*$/i, '');
+        };
+
+        // 使用 Set 去重
+        const uniqueModels = new Set<string>();
+        rawModels.forEach(model => {
+            const baseModel = stripSuffix(model);
+            uniqueModels.add(baseModel);
+        });
+
+        const result = Array.from(uniqueModels);
+        console.log(`[KeyManager] ✓ 去重后 ${result.length} 个唯一模型:`, result);
+        return result;
     } catch (error) {
         console.error('[KeyManager] Error fetching proxy models:', error);
         return [];

@@ -147,7 +147,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         ],
         supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
         supportsGrounding: false,
-        maxRefImages: 0  // Imagen 不支持参考图片
+        maxRefImages: 5  // Allow for Proxy Chat Mode
     },
     'imagen-4.0-ultra-generate-001': {
         supportedRatios: [
@@ -160,7 +160,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         ],
         supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
         supportsGrounding: false,
-        maxRefImages: 0  // Imagen 不支持参考图片
+        maxRefImages: 5  // Allow for Proxy Chat Mode
     },
     'imagen-4.0-fast-generate-001': {
         supportedRatios: [
@@ -173,7 +173,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         ],
         supportedSizes: [ImageSize.SIZE_1K],
         supportsGrounding: false,
-        maxRefImages: 0  // Imagen 不支持参考图片
+        maxRefImages: 5  // Allow for Proxy Chat Mode
     },
 
     // ============================================
@@ -190,7 +190,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         ],
         supportedSizes: [ImageSize.SIZE_1K],
         supportsGrounding: false,
-        maxRefImages: 0  // Imagen 不支持参考图片
+        maxRefImages: 5  // Allow for Proxy Chat Mode
     },
     'imagen-3.0-generate-001': {
         supportedRatios: [
@@ -203,7 +203,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         ],
         supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
         supportsGrounding: false,
-        maxRefImages: 0  // Imagen 不支持参考图片
+        maxRefImages: 5  // Allow for Proxy Chat Mode
     },
 
     // ============================================
@@ -391,7 +391,7 @@ export function getMaxRefImages(modelId: string): number {
         return 3; // Video models default to 3
     }
     if (lowerModelId.includes('imagen')) {
-        return 0; // Imagen doesn't support reference images
+        return 1; // Allow 1 reference image (for Proxy Chat Mode compatibility)
     }
 
     // Default for unknown models (assume Gemini-like)
