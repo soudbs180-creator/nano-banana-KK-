@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import {
     X, Plus, Trash2, Activity, Pencil, Zap,
     DollarSign, Check, Pause, Play, RefreshCw, Server,
-    Globe, Shield, Box, Key, Terminal, Sparkles, Clock, Maximize2
+    Globe, Shield, Box, Key, Terminal, Sparkles, Clock, Maximize2,
+    Eye, EyeOff, Loader2
 } from 'lucide-react';
 import keyManager, { KeySlot, autoDetectAndConfigureModels, parseModelString, categorizeModels } from '../services/keyManager';
 import { comprehensiveConnectionTest } from "../services/connectionTest";
@@ -846,7 +847,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         <div className="relative">
                                             <input
                                                 className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg pl-9 pr-10 py-2.5 text-sm text-[var(--text-primary)] font-mono outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
-                                                type={isKeyEditing ? "text" : "password"}
+                                                type="text"
                                                 value={isKeyEditing ? formKey : maskApiKey(formKey)}
                                                 onChange={e => {
                                                     setFormKey(e.target.value);
@@ -858,6 +859,18 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                 autoComplete="off"
                                             />
                                             <Key className="absolute left-3 top-2.5 text-[var(--text-secondary)] pointer-events-none" size={14} />
+                                            {/* Visibility Toggle */}
+                                            <button
+                                                type="button"
+                                                onMouseDown={(e) => {
+                                                    e.preventDefault(); // Prevent focus loss
+                                                    setIsKeyEditing(!isKeyEditing);
+                                                }}
+                                                className="absolute right-3 top-2.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+                                                title={isKeyEditing ? "隐藏 API Key" : "显示完整 API Key"}
+                                            >
+                                                {isKeyEditing ? <EyeOff size={14} /> : <Eye size={14} />}
+                                            </button>
                                         </div>
                                     </div>
 
@@ -937,29 +950,67 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                                                 `检测到 ${result.models.length} 个模型\n\n📸 图像: ${imageModels.length}个\n🎬 视频: ${videoModels.length}个\n💬 聊天: ${chatModels.length}个${otherModels && otherModels.length > 0 ? `\n🔧 其他: ${otherModels.length}个` : ''}`
                                                             );
                                                         } else {
-                                                            notify.warning('未检测到模型', '请检查API Key或手动输入模型');
+                                                            // 🚀 [优化] 针对 NewAPI/中转站的提示
+                                                            const isNewApiLikely = formBaseUrl && (
+                                                                formBaseUrl.includes('newapi') ||
+                                                                formBaseUrl.includes('oneapi') ||
+                                                                formBaseUrl.includes('gemini-api.cn') ||
+                                                                formBaseUrl.includes('vodeshop')
+                                                            );
+
+                                                            // 检查当前输入框中是否已经有模型
+                                                            const hasExistingModels = (formImageModels && formImageModels.length > 0) ||
+                                                                (formVideoModels && formVideoModels.length > 0) ||
+                                                                (formChatModels && formChatModels.length > 0);
+
+                                                            if (hasExistingModels) {
+                                                                notify.success('连接成功', '连接验证通过，但未检测到新模型。已保留您当前配置的模型。');
+                                                            } else if (isNewApiLikely) {
+                                                                notify.warning(
+                                                                    '未检测到模型',
+                                                                    '如果是 NewAPI 服务商，请尝试从“模型广场”的“供应商”中复制配置添加，或者手动输入模型ID。'
+                                                                );
+                                                            } else {
+                                                                notify.warning(
+                                                                    '未检测到模型',
+                                                                    '无法自动获取模型列表，请“自行添加”服务商提供的模型ID。'
+                                                                );
+                                                            }
                                                         }
                                                     }
                                                 } catch (e: any) {
                                                     console.error('[ApiChannelsView] Model check error:', e);
-                                                    notify.error('检测失败', e.message || '操作失败');
+
+                                                    const isNewApiLikely = formBaseUrl && (
+                                                        formBaseUrl.includes('newapi') ||
+                                                        formBaseUrl.includes('oneapi') ||
+                                                        formBaseUrl.includes('gemini-api.cn') ||
+                                                        formBaseUrl.includes('vodeshop')
+                                                    );
+
+                                                    if (isNewApiLikely) {
+                                                        notify.error(
+                                                            '检测失败',
+                                                            `${e.message || '操作失败'}\n\n💡 提示：NewAPI 服务商请尝试从“模型广场”的“供应商”中获取配置。`
+                                                        );
+                                                    } else {
+                                                        notify.error('检测失败', e.message || '操作失败');
+                                                    }
                                                 } finally {
                                                     setLoading(false);
                                                 }
                                             }}
-                                            disabled={loading || !formKey}
-                                            className={`w-full py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${loading || !formKey
-                                                ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] cursor-not-allowed'
-                                                : 'bg-gradient-to-r from-indigo-500/10 to-purple-500/10 text-indigo-400 hover:from-indigo-500/20 hover:to-purple-500/20 hover:text-indigo-300 border border-indigo-500/20'
-                                                }`}
+                                            disabled={loading}
+                                            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                         >
-                                            {loading ? <RefreshCw className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                                            {loading ? '正在检测...' : '检验/填充模型'}
+                                            {loading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                                            {loading ? '检测中...' : '智能检测模型 (Auto Detect Models)'}
                                         </button>
+                                        <p className="text-[10px] text-[var(--text-tertiary)] mt-1.5">
+                                            💡 提示: 自动检测会尝试连接接口并获取可用模型列表，并自动填充到下方。
+                                        </p>
                                     </div>
                                 </div>
-
-                                <div className="border-t border-[var(--border-light)]" />
 
                                 {/* Step 2: Meta Info */}
                                 <div className="space-y-4">
@@ -1183,52 +1234,54 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             }
 
             {/* Expanded Edit Modal */}
-            {expandedType && createPortal(
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-[var(--bg-secondary)] w-full max-w-2xl rounded-xl shadow-2xl border border-[var(--border-light)] flex flex-col max-h-[80vh] m-4 animate-in zoom-in-95 duration-200">
-                        <div className="p-4 border-b border-[var(--border-light)] flex items-center justify-between">
-                            <h3 className="font-bold flex items-center gap-2">
-                                {expandedType === 'image' && '📸 编辑图像模型'}
-                                {expandedType === 'video' && '🎬 编辑视频模型'}
-                                {expandedType === 'chat' && '💬 编辑聊天模型'}
-                                {expandedType === 'other' && '🔧 编辑其他模型'}
-                            </h3>
-                            <button onClick={() => setExpandedType(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full transition-colors">
-                                <X size={20} className="text-[var(--text-secondary)]" />
-                            </button>
+            {
+                expandedType && createPortal(
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-[var(--bg-secondary)] w-full max-w-2xl rounded-xl shadow-2xl border border-[var(--border-light)] flex flex-col max-h-[80vh] m-4 animate-in zoom-in-95 duration-200">
+                            <div className="p-4 border-b border-[var(--border-light)] flex items-center justify-between">
+                                <h3 className="font-bold flex items-center gap-2">
+                                    {expandedType === 'image' && '📸 编辑图像模型'}
+                                    {expandedType === 'video' && '🎬 编辑视频模型'}
+                                    {expandedType === 'chat' && '💬 编辑聊天模型'}
+                                    {expandedType === 'other' && '🔧 编辑其他模型'}
+                                </h3>
+                                <button onClick={() => setExpandedType(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full transition-colors">
+                                    <X size={20} className="text-[var(--text-secondary)]" />
+                                </button>
+                            </div>
+                            <div className="flex-1 p-4 flex flex-col min-h-0">
+                                <p className="text-xs text-[var(--text-tertiary)] mb-2">每行一个ID，或用逗号分隔。支持 "ID (别名)" 格式。</p>
+                                <textarea
+                                    className="flex-1 w-full bg-[var(--bg-primary)] border border-[var(--border-light)] rounded-lg p-3 text-sm font-mono outline-none focus:border-indigo-500/50 resize-none leading-relaxed"
+                                    value={
+                                        expandedType === 'image' ? formImageModels :
+                                            expandedType === 'video' ? formVideoModels :
+                                                expandedType === 'chat' ? formChatModels :
+                                                    formOtherModels
+                                    }
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        if (expandedType === 'image') setFormImageModels(val);
+                                        else if (expandedType === 'video') setFormVideoModels(val);
+                                        else if (expandedType === 'chat') setFormChatModels(val);
+                                        else setFormOtherModels(val);
+                                    }}
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="p-4 border-t border-[var(--border-light)] flex justify-end">
+                                <button
+                                    onClick={() => setExpandedType(null)}
+                                    className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+                                >
+                                    完成 (Done)
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex-1 p-4 flex flex-col min-h-0">
-                            <p className="text-xs text-[var(--text-tertiary)] mb-2">每行一个ID，或用逗号分隔。支持 "ID (别名)" 格式。</p>
-                            <textarea
-                                className="flex-1 w-full bg-[var(--bg-primary)] border border-[var(--border-light)] rounded-lg p-3 text-sm font-mono outline-none focus:border-indigo-500/50 resize-none leading-relaxed"
-                                value={
-                                    expandedType === 'image' ? formImageModels :
-                                        expandedType === 'video' ? formVideoModels :
-                                            expandedType === 'chat' ? formChatModels :
-                                                formOtherModels
-                                }
-                                onChange={e => {
-                                    const val = e.target.value;
-                                    if (expandedType === 'image') setFormImageModels(val);
-                                    else if (expandedType === 'video') setFormVideoModels(val);
-                                    else if (expandedType === 'chat') setFormChatModels(val);
-                                    else setFormOtherModels(val);
-                                }}
-                                autoFocus
-                            />
-                        </div>
-                        <div className="p-4 border-t border-[var(--border-light)] flex justify-end">
-                            <button
-                                onClick={() => setExpandedType(null)}
-                                className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
-                            >
-                                完成 (Done)
-                            </button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-        </div>
+                    </div>,
+                    document.body
+                )
+            }
+        </div >
     );
 };

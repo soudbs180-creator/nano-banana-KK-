@@ -160,12 +160,30 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
             if (!payload.name) payload.name = formData.serverName;
         }
 
-        // Final connection test
-        const testRes = await keyManager.testChannel(payload.baseUrl || '', payload.key, payload.provider);
-        if (!testRes.success) {
-            if (!confirm(`连接测试失败: ${testRes.message}\n是否强制保存?`)) {
-                setIsTesting(false);
-                return;
+        // 🚀 [Enhanced] Auto-Connection Check
+        // If user hasn't manually tested successfully, or key changed since test
+        if (!testResult?.success) {
+            try {
+                const checkResults = await comprehensiveConnectionTest({
+                    apiKey: formData.key,
+                    baseUrl: formData.baseUrl,
+                    provider: formData.provider,
+                    model: userModels.length > 0 ? userModels[0] : (autoFetchedModels[0] || '')
+                });
+
+                const isSuccess = checkResults.some(r => r.success);
+                if (!isSuccess) {
+                    const failMsg = checkResults[0]?.message || '无法连接到 API 服务器';
+                    if (!confirm(`⚠️ 连接测试未通过:\n${failMsg}\n\n可能原因: API Key无效、BaseURL错误或网络问题。\n\n是否仍要强制保存?`)) {
+                        setIsTesting(false);
+                        return;
+                    }
+                }
+            } catch (err: any) {
+                if (!confirm(`⚠️ 连接测试出错: ${err.message}\n\n是否仍要强制保存?`)) {
+                    setIsTesting(false);
+                    return;
+                }
             }
         }
 

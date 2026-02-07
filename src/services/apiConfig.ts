@@ -108,6 +108,56 @@ export function buildHeaders(
 }
 
 /**
+ * Normalize Proxy Base URL (strip trailing slash and /v1)
+ */
+export function normalizeProxyBaseUrl(url: string | undefined): string {
+    if (!url) return '';
+    let clean = url.trim();
+    if (clean.endsWith('/')) clean = clean.slice(0, -1);
+    if (clean.endsWith('/v1')) clean = clean.slice(0, -3);
+    return clean;
+}
+
+/**
+ * Build headers for Proxy API requests (OpenAI-compatible)
+ */
+export function buildProxyHeaders(
+    authMethod: AuthMethod,
+    apiKey: string,
+    headerName: string = 'Authorization',
+    group?: string
+): Record<string, string> {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+    };
+
+    if (authMethod === 'header' && apiKey) {
+        // Special handling for Authorization header: Add Bearer prefix if missing
+        if (headerName === 'Authorization' && !apiKey.startsWith('Bearer ')) {
+            headers[headerName] = `Bearer ${apiKey}`;
+        } else {
+            headers[headerName] = apiKey;
+        }
+    } else if (authMethod === 'query') {
+        // Some proxies accept key in query, handled by URL builder, but we leave headers clean unless needed
+    }
+
+    // OpenRouter Specific Headers for CORS
+    if (apiKey.startsWith('sk-or-') || (headerName && headerName.toLowerCase() === 'authorization')) {
+        if (typeof window !== 'undefined') {
+            headers['HTTP-Referer'] = window.location.origin;
+            headers['X-Title'] = 'KK Studio';
+        }
+    }
+
+    if (group) {
+        headers['X-Group'] = group;
+    }
+
+    return headers;
+}
+
+/**
  * Get default auth method for a base URL
  * Proxy URLs typically use header auth, Google uses query
  */

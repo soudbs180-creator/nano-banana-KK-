@@ -39,7 +39,7 @@ const ApiManagementView = () => {
   const handleDelete = (id: string) => {
     if (confirm('确定要删除此 API 吗？')) {
       keyManager.removeKey(id);
-      notify.success('已删除');
+      notify.success('操作成功', '已删除 API Key');
     }
   };
 
@@ -59,8 +59,8 @@ const ApiManagementView = () => {
       <div className="flex items-center gap-4">
         {/* Status Dot */}
         <div className={`w-2 h-2 rounded-full ${slot.disabled ? 'bg-zinc-600' :
-            slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
-              'bg-red-500'
+          slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
+            'bg-red-500'
           }`} />
 
         <div>

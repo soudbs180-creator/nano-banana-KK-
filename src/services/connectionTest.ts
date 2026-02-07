@@ -3,7 +3,7 @@
  * 用于测试 Cherry API 和其他模型服务的连接状态
  */
 
-import { buildProxyHeaders, normalizeProxyBaseUrl } from './geminiService';
+import { buildProxyHeaders, normalizeProxyBaseUrl } from './apiConfig';
 
 export interface TestResult {
   success: boolean;
@@ -25,7 +25,7 @@ export interface ConnectionConfig {
  */
 export async function testCherryConnection(config: ConnectionConfig): Promise<TestResult> {
   const startTime = Date.now();
-  
+
   try {
     const cleanBase = normalizeProxyBaseUrl(config.baseUrl) || config.baseUrl.replace(/\/$/, '');
     const apiUrl = `${cleanBase}/v1/chat/completions`;
@@ -70,7 +70,7 @@ export async function testCherryConnection(config: ConnectionConfig): Promise<Te
     }
 
     const result = JSON.parse(responseText);
-    
+
     // 检查响应格式
     if (result.choices && result.choices.length > 0) {
       return {
@@ -107,11 +107,11 @@ export async function testCherryConnection(config: ConnectionConfig): Promise<Te
  */
 export async function testModelsList(config: ConnectionConfig): Promise<TestResult> {
   const startTime = Date.now();
-  
+
   try {
     const cleanBase = normalizeProxyBaseUrl(config.baseUrl) || config.baseUrl.replace(/\/$/, '');
     let listUrl: string;
-    
+
     if (config.provider === 'Google') {
       listUrl = `${cleanBase}/v1beta/models?key=${config.apiKey}`;
     } else {
@@ -136,7 +136,7 @@ export async function testModelsList(config: ConnectionConfig): Promise<TestResu
 
     const data = await response.json();
     const models = data.data || data.models || [];
-    
+
     return {
       success: true,
       message: `成功获取 ${models.length} 个模型`,

@@ -52,12 +52,15 @@ const abortControllers = new Map<string, AbortController>();
 function detectApiFormat(baseUrl: string): 'openai' | 'gemini' | 'openai-chat-compat' {
   const url = baseUrl.toLowerCase();
   if (url.includes('googleapis.com') || url.includes('google.com')) return 'gemini';
-  // Check for common OpenAI-compatible proxy signatures or explicit newapi/oneapi patterns
-  if (url.includes('newapi') || url.includes('oneapi') || url.includes('v1/images') || url.includes('vodeshop.com')) return 'openai-chat-compat';
-  // Default to OpenAI format for custom proxies unless it looks like Gemini
+  // Check for specific services known to ONLY support chat-based generation
+  if (url.includes('vodeshop.com')) return 'openai-chat-compat';
+  // Default to OpenAI format for custom proxies (NewAPI/OneAPI usually support /v1/images/generations)
   return 'openai';
 }
 
+/**
+ * Normalize Proxy Base URL (strip trailing slash and /v1)
+ */
 export function normalizeProxyBaseUrl(baseUrl: string): string {
   let clean = (baseUrl || '').trim();
   if (!clean) return '';
@@ -89,6 +92,9 @@ export function normalizeProxyBaseUrl(baseUrl: string): string {
   return clean;
 }
 
+/**
+ * Build headers for Proxy API requests (OpenAI-compatible)
+ */
 export function buildProxyHeaders(
   authMethod: AuthMethod,
   apiKey: string,
@@ -122,6 +128,10 @@ export function buildProxyHeaders(
 
   return headers;
 }
+
+
+
+
 
 function toDataUrl(image: ReferenceImage): string {
   return `data:${image.mimeType};base64,${image.data}`;
@@ -613,7 +623,7 @@ export const generateImage = async (
   let headerName = 'x-goog-api-key';
   let provider: string = 'Google';
   let group: string | undefined;
-  let compatibilityMode: 'standard' | 'chat' = 'standard';
+  let compatibilityMode: 'standard' | 'chat' | undefined;
 
   // If no explicit API key, ask KeyManager
   if (!effectiveKey) {
@@ -626,8 +636,8 @@ export const generateImage = async (
       headerName = keyData.headerName;
       group = keyData.group;
       provider = keyData.provider;
-      compatibilityMode = (keyData as any).compatibilityMode || 'standard';
-      console.log(`[GeminiService] ✓ Key found for model "${originalModelId}": Provider=${provider}, BaseUrl=${baseUrl}`);
+      compatibilityMode = (keyData as any).compatibilityMode; // undefined | 'standard' | 'chat'
+      console.log(`[GeminiService] ✓ Key found for model "${originalModelId}": Provider=${provider}, BaseUrl=${baseUrl}, Mode=${compatibilityMode || 'auto'}`);
     } else {
       // DIAGNOSTIC: Log all available keys and their supported models
       console.warn(`[GeminiService] ⚠ No API Key found for model "${originalModelId}"`);
@@ -674,8 +684,30 @@ export const generateImage = async (
   const safeModel = baseModelId || '';
   const isGoogleOfficial = apiFormat === 'gemini'; // Already detected as Google
 
-  if (!isGoogleOfficial && (safeModel.includes('nano-banana'))) {
-    apiFormat = 'openai-chat-compat';
+  // 🚀 [Antigravity] Smart API Format Detection
+  // 1. Google Official -> Always 'gemini' (native SDK/REST)
+  // 2. Aggregators (NewAPI/OneAPI) -> Usually 'openai-chat-compat' for everything (they wrap models mostly as chat)
+  // 3. Custom/Other -> Default to 'openai' (standard /v1/images/generations) unless specific flags are set
+
+  if (!isGoogleOfficial) {
+    const isAggregator = baseUrl.includes('newapi') || baseUrl.includes('oneapi') || baseUrl.includes('one-api') || baseUrl.includes('vodeshop');
+
+    // For known aggregators, force chat compat for Gemini/Nano models which are typically chat-based there
+    if (isAggregator && (safeModel.includes('gemini') || safeModel.includes('nano'))) {
+      apiFormat = 'openai-chat-compat';
+    }
+    // For other "Custom" providers, we respect the default detection (likely 'openai')
+    // unless the model specifically demands a different handling (implementation specific)
+  }
+
+  // 🚀 [Persistence] Override if key has a known working mode
+  if (!isGoogleOfficial && compatibilityMode) {
+    if (compatibilityMode === 'chat') {
+      apiFormat = 'openai-chat-compat';
+    } else if (compatibilityMode === 'standard') {
+      apiFormat = 'openai';
+    }
+    console.log(`[GeminiService] 🔄 Using persisted compatibility mode: ${compatibilityMode}`);
   }
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -691,24 +723,35 @@ export const generateImage = async (
 
         // ... (body construction skipped for brevity, assumed unchanged) ...
         const contentParts: any[] = [{ type: 'text', text: prompt }];
-        processedReferences?.forEach((img) => {
-          if (img?.data) {
-            // 🚀 [Fix] Strict validation for Blob/File URLs
-            // Blob URLs are local to the browser and cannot be sent to remote APIs.
-            // If hydration failed (e.g. revoked blob), we must error out instead of sending invalid data.
-            if (img.data.startsWith('blob:') || img.data.startsWith('file:')) {
-              throw new Error("引用图片数据无效 (Blob URL失效)，请尝试重新拖入或上传图片");
-            }
 
-            let finalUrl = img.data;
-            if (!img.data.startsWith('data:') && !img.data.startsWith('http')) {
-              // Assume it's raw base64
-              const cleanData = img.data.replace(/\s/g, '');
-              finalUrl = `data:${img.mimeType || 'image/png'};base64,${cleanData}`;
+        if (processedReferences) {
+          for (const img of processedReferences) {
+            if (img?.data) {
+              let finalUrl = img.data;
+
+              // 🚀 [Auto-Fix] Try to convert Blob/File URLs to Base64
+              if (img.data.startsWith('blob:') || img.data.startsWith('file:')) {
+                try {
+                  const blobRes = await fetch(img.data);
+                  const blob = await blobRes.blob();
+                  finalUrl = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(blob);
+                  });
+                  console.log('[GeminiService] Successfully converted blob URL to base64');
+                } catch (e) {
+                  console.warn('[GeminiService] Failed to convert blob URL, passing as-is (likely fail)', e);
+                }
+              } else if (!img.data.startsWith('data:') && !img.data.startsWith('http')) {
+                // Assume it's raw base64
+                const cleanData = img.data.replace(/\s/g, '');
+                finalUrl = `data:${img.mimeType || 'image/png'};base64,${cleanData}`;
+              }
+              contentParts.push({ type: 'image_url', image_url: { url: finalUrl } });
             }
-            contentParts.push({ type: 'image_url', image_url: { url: finalUrl } });
           }
-        });
+        }
 
         // Map internal model ID to actual API model ID for proxy APIs
         const apiModelId = mapToApiModelId(baseModelId, true);  // isProxyApi=true for Antigravity
@@ -734,6 +777,23 @@ export const generateImage = async (
         }, 300000, controller?.signal);
 
         if (!response.ok) {
+          // >>> AUTO-FALLBACK: Chat -> Standard <<<
+          // Fallback on: 404/405 OR 500/503 (Service Error) OR specific "No Channel" errors
+          const isFunctionalError = response.status === 500 || response.status === 503 || response.status === 404 || response.status === 405;
+
+          if (isFunctionalError) {
+            const errText = await response.clone().text().catch(() => '');
+            const isDistributorError = errText.includes('channel') || errText.includes('distributor') || errText.includes('available') || errText.includes('route');
+
+            if (response.status === 404 || response.status === 405 || isDistributorError || response.status === 503) {
+              console.warn(`[GeminiService] Chat endpoint failed (${response.status}), switching to Standard Image API...`);
+              apiFormat = 'openai'; // Switch to standard
+              // Persist the learned preference
+              if (keyId) keyManager.setKeyCompatibilityMode(keyId, 'standard');
+              continue;
+            }
+          }
+
           const errData = await response.json().catch(() => ({}));
           throw new Error(errData.error?.message || `Chat-Image Request Failed: ${response.status}`);
         }
@@ -925,13 +985,25 @@ export const generateImage = async (
           throw netErr;
         }
 
-        // >>> AUTO-FALLBACK LOGIC <<<
-        // If 404/405 (Method Not Allowed), switch to Chat Mode immediately
-        if (response.status === 404 || response.status === 405) {
-          console.log(`[GenService] Image endpoint ${response.status}, switching to Chat Mode (Auto-Fallback)...`);
-          apiFormat = 'openai-chat-compat';
-          attempt--; // Retry immediately
-          continue;
+        // >>> AUTO-FALLBACK LOGIC: Standard -> Chat <<<
+        // Fallback on:
+        // 1. 404/405 (Method Not Allowed / Not Found)
+        // 2. 503/500 (Service Error often means endpoint not supported by upstream)
+        // 3. Specific provider error messages (e.g. "No available channel")
+        const isFunctionalError = response.status === 500 || response.status === 503 || response.status === 404 || response.status === 405;
+
+        if (isFunctionalError) {
+          const errText = await response.clone().text().catch(() => '');
+          // Identify provider-specific "No Channel" errors which usually mean "Try the other endpoint"
+          const isDistributorError = errText.includes('channel') || errText.includes('distributor') || errText.includes('available') || errText.includes('route');
+
+          if (response.status === 404 || response.status === 405 || isDistributorError || response.status === 503) {
+            console.warn(`[GeminiService] Image endpoint failed (${response.status}), switching to Chat Mode (Auto-Fallback)...`);
+            apiFormat = 'openai-chat-compat';
+            // Persist preference
+            if (keyId) keyManager.setKeyCompatibilityMode(keyId, 'chat');
+            continue;
+          }
         }
 
         if (!response.ok) {

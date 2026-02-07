@@ -548,7 +548,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
                 {/* Version Badge */}
                 <div className="glass h-10 px-3 rounded-xl flex items-center">
-                    <span className="text-xs text-zinc-500 font-semibold">v1.2.9</span>
+                    <span className="text-xs text-zinc-500 font-semibold">v1.3.0</span>
                 </div>
 
                 {/* Update Notification */}

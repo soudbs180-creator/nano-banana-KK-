@@ -1159,8 +1159,14 @@ export class KeyManager {
 
             // Check if slot matches the requested pool (via suffix)
             if (suffix) {
-                // Must match ServerName (Proxy) or Provider
+                // Special handling for "Custom" suffix: Match any non-Google key if exact match fails
                 const slotSuffix = s.proxyConfig?.serverName || s.provider || 'Custom';
+
+                if (suffix === 'Custom') {
+                    // unexpected "Custom" request? Default to any non-google key that has this model
+                    return s.provider !== 'Google';
+                }
+
                 return slotSuffix === suffix;
             } else {
                 // No suffix -> Official Google
@@ -1528,8 +1534,26 @@ export class KeyManager {
         }
     }
 
+    /**
+     * Update compatibility mode for a specific key (Persistence)
+     * Used by GeminiService to remember working API format
+     */
+    public setKeyCompatibilityMode(keyId: string, mode: 'standard' | 'chat') {
+        const slotIndex = this.state.slots.findIndex(s => s.id === keyId);
+        if (slotIndex === -1) return;
 
+        console.log(`[KeyManager] Persisting compatibility mode for key ${keyId}: ${mode}`);
 
+        // Update state
+        this.state.slots[slotIndex].compatibilityMode = mode;
+        this.saveState();
+
+        this.notifyListeners();
+    }
+
+    public getKey(id: string): KeySlot | undefined {
+        return this.state.slots.find(s => s.id === id);
+    }
     /**
      * Refresh a single key
      */

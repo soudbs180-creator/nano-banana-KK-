@@ -6,7 +6,7 @@ import { notify } from '../services/notificationService';
 import { keyManager } from '../services/keyManager';
 import { agentService, AgentConfig } from '../services/agentService';
 import { getModelDisplayInfo } from '../services/modelCapabilities';
-import { sortModels, toggleModelPin, getPinnedModels } from '../utils/modelSorting';
+import { sortModels, toggleModelPin, getPinnedModels, filterAndSortModels } from '../utils/modelSorting';
 import ReactDOM from 'react-dom';
 import { AspectRatio, ImageSize } from '../types';
 
@@ -71,6 +71,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     });
     const [selectedModel, setSelectedModel] = useState<ChatModel>(() => availableModels[0] || { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'Google', isCustom: false });
     const [showModelMenu, setShowModelMenu] = useState(false);
+    const [modelSearch, setModelSearch] = useState('');
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, modelId: string } | null>(null);
     const [pinnedUpdate, setPinnedUpdate] = useState(0); // Trigger re-render for sorting
 
@@ -578,7 +579,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     onWheel={registerActivity}
                     className={`fixed z-[100] flex flex-col bg-[var(--bg-secondary)] backdrop-blur-2xl border-l border-[var(--border-light)] shadow-[var(--shadow-lg)] overflow-hidden ${isMobile
                         ? 'inset-0 rounded-none pb-0'
-                        : 'top-0 right-0 bottom-0 w-[380px]'
+                        : 'top-0 right-0 bottom-0 w-[420px]'
                         }`}
                     style={isMobile ? {
                         height: keyboardHeight > 0 ? `${viewportHeight}px` : '100dvh',
@@ -805,60 +806,113 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                 {showModelMenu && (
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setShowModelMenu(false)} />
+
+                                        {/* Container for positioning both modules */}
                                         <div
-                                            className="absolute bottom-full mb-2 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-2xl z-20 p-1.5 max-h-[300px] overflow-y-auto scrollbar-thin"
+                                            className="absolute bottom-full mb-2 z-20 flex flex-col gap-2"
                                             style={{
-                                                // 修正位置：向右偏移以覆盖 Send 按钮区域，使下拉框与面板内容区右对齐
-                                                right: '-48px', // size-10 (40px) + gap-2 (8px) = 48px
-                                                // 宽度设置为面板内容区宽度 (380px - 32px padding = 348px)
-                                                width: isMobile ? 'calc(100vw - 2rem)' : '348px',
+                                                right: '-48px',
+                                                width: isMobile ? 'calc(100vw - 2rem)' : '388px',
                                                 maxWidth: 'calc(100vw - 2rem)'
                                             }}
                                         >
-                                            <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold border-b border-[var(--border-light)] mb-1 select-none">选择模型 (右键可顶置)</div>
-                                            {sortModels(availableModels).map(model => {
-                                                const custom = modelCustomizations[model.id] || {};
-                                                const displayName = custom.alias || model.name || model.id;
-                                                const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
-                                                const isPinned = getPinnedModels().includes(model.id);
+                                            {/* 🔍 Search Module */}
+                                            <div className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-xl p-2">
+                                                <div className="relative flex items-center">
+                                                    <svg className="absolute left-2 w-3.5 h-3.5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                    </svg>
+                                                    <input
+                                                        type="text"
+                                                        value={modelSearch}
+                                                        onChange={(e) => setModelSearch(e.target.value)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        placeholder="搜索模型..."
+                                                        className="w-full bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-xs rounded-xl py-1.5 pl-7 pr-2 outline-none border border-transparent focus:border-indigo-500/50 placeholder-[var(--text-tertiary)]"
+                                                        autoFocus
+                                                    />
+                                                    {modelSearch && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setModelSearch(''); }}
+                                                            className="absolute right-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                                                        >
+                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                            </svg>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
 
-                                                return (
-                                                    <button
-                                                        key={model.id}
-                                                        onClick={() => { setSelectedModel(model); setShowModelMenu(false); }}
-                                                        onContextMenu={(e) => {
-                                                            e.preventDefault();
-                                                            setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
-                                                        }}
-                                                        className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20' : 'text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)] border border-transparent'}`}
-                                                    >
-                                                        <span className="mt-0.5 text-base relative">
-                                                            {model.icon || '🤖'}
-                                                            {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
-                                                        </span>
-                                                        <div className="flex flex-col gap-0.5 w-full">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className={`font-medium ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
-                                                                    {displayName}
+                                            {/* Model List Module */}
+                                            <div
+                                                className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-2xl p-1.5 max-h-[300px] overflow-y-auto scrollbar-thin"
+                                            >
+                                                <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold border-b border-[var(--border-light)] mb-1 select-none flex justify-between items-center">
+                                                    <span>选择模型 (右键可顶置)</span>
+                                                </div>
+
+                                                {filterAndSortModels(availableModels, modelSearch, modelCustomizations)
+                                                    .map((model: any) => {
+                                                        const custom = modelCustomizations[model.id] || {};
+                                                        const displayName = custom.alias || model.name || model.id;
+                                                        const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                                        const isPinned = getPinnedModels().includes(model.id);
+
+                                                        return (
+                                                            <button
+                                                                key={model.id}
+                                                                onClick={() => { setSelectedModel(model); setShowModelMenu(false); setModelSearch(''); }}
+                                                                onContextMenu={(e) => {
+                                                                    e.preventDefault();
+                                                                    setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
+                                                                }}
+                                                                className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-white/10 ring-1 ring-white/20' : 'text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)] border border-transparent'}`}
+                                                            >
+                                                                <span className="mt-0.5 text-base relative">
+                                                                    {model.icon || '🤖'}
+                                                                    {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
                                                                 </span>
-                                                                {/* 🚀 [NEW] 下拉菜单中的来源标签 - 改为横排，居中对齐，稍微大一点 */}
-                                                                {getModelDisplayInfo(model).badgeText && (
-                                                                    <span
-                                                                        className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ml-auto ${getModelDisplayInfo(model).badgeColor}`}
-                                                                        style={{
-                                                                            flexShrink: 0,
-                                                                            whiteSpace: 'nowrap'
-                                                                        }}
-                                                                    >
-                                                                        {getModelDisplayInfo(model).badgeText}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <span className="text-[10px] opacity-70 leading-tight truncate">{advantage}</span>
+                                                                <div className="flex flex-col gap-0.5 w-full">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className={`font-medium ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
+                                                                            {displayName}
+                                                                        </span>
+                                                                        {/* 🚀 [NEW] 下拉菜单中的来源标签 - 改为横排，居中对齐，稍微大一点 */}
+                                                                        {getModelDisplayInfo(model).badgeText && (
+                                                                            <span
+                                                                                className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ml-auto ${getModelDisplayInfo(model).badgeColor}`}
+                                                                                style={{
+                                                                                    flexShrink: 0,
+                                                                                    whiteSpace: 'nowrap'
+                                                                                }}
+                                                                            >
+                                                                                {getModelDisplayInfo(model).badgeText}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <span className="text-[10px] opacity-70 leading-tight truncate">{advantage}</span>
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                {sortModels(availableModels).filter(m => {
+                                                    if (!modelSearch) return true;
+                                                    const custom = modelCustomizations[m.id] || {};
+                                                    const searchLower = modelSearch.toLowerCase();
+                                                    return (
+                                                        m.id.toLowerCase().includes(searchLower) ||
+                                                        (m.name && m.name.toLowerCase().includes(searchLower)) ||
+                                                        (custom.alias && custom.alias.toLowerCase().includes(searchLower)) ||
+                                                        (m.provider && m.provider.toLowerCase().includes(searchLower))
+                                                    );
+                                                }).length === 0 && (
+                                                        <div className="p-4 text-center text-xs text-[var(--text-tertiary)]">
+                                                            未找到匹配的模型
                                                         </div>
-                                                    </button>
-                                                );
-                                            })}
+                                                    )}
+                                            </div>
+
                                         </div>
 
                                         {/* Context Menu for Pinning */}

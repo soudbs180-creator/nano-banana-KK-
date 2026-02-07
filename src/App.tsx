@@ -809,19 +809,10 @@ const AppContent: React.FC = () => {
       // 草稿卡片会保留在画布上，不做任何同步操作
       // 用户可以继续添加参考图或输入提示词
       if (draftNodeId) {
-        const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
-        if (node?.isGenerating) {
-          console.log('[App.Draft] 保留正在生成的draft:', draftNodeId);
-        }
-        // 🚀 [恢复] 同步空状态到草稿节点（保留卡片但清空内容）
-        // 这确保了当用户手动清空输入框时，预览卡片也会清空
-        if (node && !node.isGenerating) {
-          updatePromptNode({
-            ...node,
-            prompt: '',
-            referenceImages: []
-          });
-        }
+        // 🚀 [恢复] 当输入框清空时，自动删除草稿卡片
+        // 用户期望：清空输入框 = 取消预览
+        deletePromptNode(draftNodeId);
+        setDraftNodeId(null);
       }
     }
   }, [config, draftNodeId, activeCanvas, addPromptNode, updatePromptNode, pendingPosition, activeSourceImage]);
@@ -2507,7 +2498,7 @@ const AppContent: React.FC = () => {
 
       {/* Top Right User Menu - Desktop Only */}
       {/* Top Right User Menu - Desktop Only */}
-      <div id="header-user-menu" className={`absolute top-4 z-[100] hidden md:flex items-center gap-3 transition-all duration-300 ${isChatOpen ? 'right-[404px]' : 'right-4'}`}>
+      <div id="header-user-menu" className={`absolute top-4 z-[100] hidden md:flex items-center gap-3 transition-all duration-300 ${isChatOpen ? 'right-[444px]' : 'right-4'}`}>
 
         {/* User Avatar & Dropdown Trigger */}
         <div className="relative group">
@@ -3410,7 +3401,7 @@ const AppContent: React.FC = () => {
 
       {/* AI聊天按钮 - 右下角固定 */}
       {/* AI聊天按钮 - 右下角固定 */}
-      <div className={`absolute bottom-6 z-50 transition-all duration-300 ${isChatOpen ? 'right-[404px]' : 'right-6'} hidden md:block`}>
+      <div className={`absolute bottom-6 z-50 transition-all duration-300 ${isChatOpen ? 'right-[444px]' : 'right-6'} hidden md:block`}>
         <button
           id="chat-trigger-button"
           className="ai-chat-btn flex items-center justify-center cursor-pointer focus-visible:outline-none text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-blue-400/80 hover:shadow-[0_0_35px] bg-transparent overflow-hidden relative rounded-full aspect-square h-10 hover:scale-110 transition-all duration-300 p-2"

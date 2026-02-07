@@ -10,7 +10,7 @@ import { fileSystemService } from '../services/fileSystemService'; // 🚀 参�
 import ImageOptionsPanel from './ImageOptionsPanel';
 import VideoOptionsPanel from './VideoOptionsPanel';
 import ImagePreview from './ImagePreview';
-import { sortModels, toggleModelPin, getPinnedModels } from '../utils/modelSorting';
+import { sortModels, toggleModelPin, getPinnedModels, filterAndSortModels } from '../utils/modelSorting';
 
 // [FIX] Robust Image Component that self-heals from Storage if data is missing
 const ReferenceThumbnail: React.FC<{
@@ -173,6 +173,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
+    const [modelSearch, setModelSearch] = useState('');
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, modelId: string } | null>(null);
 
     // [NEW] Model Settings Modal State
@@ -1146,79 +1147,125 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         {/* Dropdown Menu */}
                         {!isModelListEmpty && activeMenu === 'model' && (
                             <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-                                <div className="dropdown static w-[min(16rem,90vw)] max-w-[90vw] max-h-[360px] overflow-y-auto scrollbar-thin animate-scaleIn origin-bottom p-1 flex flex-col gap-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)' }}>
-                                    {availableModels.map(model => {
-                                        const custom = modelCustomizations[model.id] || {};
-                                        const displayName = custom.alias || model.label || model.id;
-                                        const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
-                                        const isPinned = getPinnedModels().includes(model.id);
-                                        return (
+                                {/* 🔍 Search Input Module - Above the list */}
+                                <div className="mb-2 p-2 bg-[var(--bg-secondary)] border border-[var(--border-medium)] rounded-2xl shadow-xl animate-scaleIn origin-bottom" style={{ width: 'min(16rem,90vw)' }}>
+                                    <div className="relative flex items-center">
+                                        <svg className="absolute left-2 w-3.5 h-3.5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                        </svg>
+                                        <input
+                                            type="text"
+                                            value={modelSearch}
+                                            onChange={(e) => setModelSearch(e.target.value)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            placeholder="搜索模型..."
+                                            className="w-full bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-xs rounded-xl py-1.5 pl-7 pr-2 outline-none border border-transparent focus:border-indigo-500/50 placeholder-[var(--text-tertiary)]"
+                                            autoFocus
+                                        />
+                                        {modelSearch && (
                                             <button
-                                                key={model.id}
-                                                className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/5' : ''}`}
-                                                onClick={() => {
-                                                    setConfig(prev => ({ ...prev, model: model.id }));
-                                                    setActiveMenu(null);
-                                                }}
-                                                onContextMenu={(e) => {
-                                                    e.preventDefault();
-                                                    setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
-                                                }}
+                                                onClick={(e) => { e.stopPropagation(); setModelSearch(''); }}
+                                                className="absolute right-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
                                             >
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`text-xs font-medium ${config.model === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
-                                                            {getModelDisplayInfo(model).displayName}
-                                                        </span>
-                                                        {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
-                                                        {/* 来源标签 */}
-                                                        <span
-                                                            className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ${getModelDisplayInfo(model).badgeColor}`}
-                                                            style={{
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                whiteSpace: 'nowrap'
-                                                            }}
-                                                        >
-                                                            {getModelDisplayInfo(model).badgeText}
-                                                        </span>
-                                                    </div>
-                                                </div>
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
 
-                                                {/* Metadata Display */}
-                                                {(() => {
-                                                    const meta = getModelMetadata(model.id);
-                                                    const features = [];
-                                                    if (meta?.contextLength) features.push(`${Math.round(meta.contextLength / 1000)}K Context`);
-                                                    if (meta?.pricing) {
-                                                        const p = meta.pricing;
-                                                        // Simple cost display: Input/Output per M
-                                                        if (p.prompt === '0' && p.completion === '0') features.push('Free');
-                                                        else features.push(`$${p.prompt}/$${p.completion} per M`);
-                                                    } else {
-                                                        // Fallback or Advantage
-                                                        features.push(advantage);
-                                                    }
+                                <div className="dropdown static w-[min(16rem,90vw)] max-w-[90vw] max-h-[360px] overflow-y-auto scrollbar-thin animate-scaleIn origin-bottom p-1 flex flex-col gap-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)', borderRadius: '1rem' }}>
 
-                                                    return (
-                                                        <div className="flex flex-col gap-0.5 mt-1">
-                                                            <span className="text-[10px] text-[var(--text-tertiary)] leading-tight break-all">ID: {model.id.split('@')[0]}</span>
-                                                            {features.length > 0 && (
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {features.map((f, i) => (
-                                                                        <span key={i} className="text-[10px] text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-1 rounded border border-[var(--border-light)]">
-                                                                            {f}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            )}
+                                    {filterAndSortModels(availableModels, modelSearch, modelCustomizations)
+                                        .map((model: any) => {
+                                            const custom = modelCustomizations[model.id] || {};
+                                            const displayName = custom.alias || model.label || model.id;
+                                            const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                            const isPinned = getPinnedModels().includes(model.id);
+                                            return (
+                                                <button
+                                                    key={model.id}
+                                                    className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/10 ring-1 ring-white/20' : ''}`}
+                                                    onClick={() => {
+                                                        setConfig(prev => ({ ...prev, model: model.id }));
+                                                        setActiveMenu(null);
+                                                        setModelSearch(''); // Clear search on selection
+                                                    }}
+                                                    onContextMenu={(e) => {
+                                                        e.preventDefault();
+                                                        setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
+                                                    }}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs font-medium ${config.model === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
+                                                                {getModelDisplayInfo(model).displayName}
+                                                            </span>
+                                                            {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
+                                                            {/* 来源标签 */}
+                                                            <span
+                                                                className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ${getModelDisplayInfo(model).badgeColor}`}
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    whiteSpace: 'nowrap'
+                                                                }}
+                                                            >
+                                                                {getModelDisplayInfo(model).badgeText}
+                                                            </span>
                                                         </div>
-                                                    );
-                                                })()}
-                                            </button >
+                                                    </div>
+
+                                                    {/* Metadata Display */}
+                                                    {(() => {
+                                                        const meta = getModelMetadata(model.id);
+                                                        const features = [];
+                                                        if (meta?.contextLength) features.push(`${Math.round(meta.contextLength / 1000)}K Context`);
+                                                        if (meta?.pricing) {
+                                                            const p = meta.pricing;
+                                                            // Simple cost display: Input/Output per M
+                                                            if (p.prompt === '0' && p.completion === '0') features.push('Free');
+                                                            else features.push(`$${p.prompt}/$${p.completion} per M`);
+                                                        } else {
+                                                            // Fallback or Advantage
+                                                            features.push(advantage);
+                                                        }
+
+                                                        return (
+                                                            <div className="flex flex-col gap-0.5 mt-1">
+                                                                <span className="text-[10px] text-[var(--text-tertiary)] leading-tight break-all">ID: {model.id.split('@')[0]}</span>
+                                                                {features.length > 0 && (
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {features.map((f, i) => (
+                                                                            <span key={i} className="text-[10px] text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-1 rounded border border-[var(--border-light)]">
+                                                                                {f}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </button >
+                                            );
+                                        })}
+                                    {availableModels.filter(m => {
+                                        if (!modelSearch) return true;
+                                        const custom = modelCustomizations[m.id] || {};
+                                        const searchLower = modelSearch.toLowerCase();
+                                        return (
+                                            m.id.toLowerCase().includes(searchLower) ||
+                                            (m.label && m.label.toLowerCase().includes(searchLower)) ||
+                                            (custom.alias && custom.alias.toLowerCase().includes(searchLower)) ||
+                                            (m.provider && m.provider.toLowerCase().includes(searchLower))
                                         );
-                                    })}
+                                    }).length === 0 && (
+                                            <div className="p-3 text-center text-xs text-[var(--text-tertiary)]">
+                                                未找到匹配的模型
+                                            </div>
+                                        )}
                                 </div >
                             </div >
                         )}
