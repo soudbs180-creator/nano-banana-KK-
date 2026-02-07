@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { X, Server, Globe, Key, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import keyManager, { KeySlot } from '../services/keyManager';
 import { notify } from '../services/notificationService';
@@ -124,7 +125,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
         }
 
         const payload: any = {
-            name: formData.name || (initialType === 'official' ? 'Google API' : 'API Channel'),
+            name: formData.name || formData.serverName || (initialType === 'official' ? 'Google API' : 'API Channel'),
             key: formData.key,
             type: initialType,
             baseUrl: formData.baseUrl,
@@ -136,6 +137,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
 
         if (initialType === 'proxy') {
             payload.proxyConfig = { serverName: formData.serverName };
+            // Ensure name is set to serverName if not provided (which it won't be in UI)
+            if (!payload.name) payload.name = formData.serverName;
         }
 
         // Final connection test
@@ -165,7 +168,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
 
     if (!isOpen) return null;
 
-    return (
+    return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[10005] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-[#1e1e20] w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
                 {/* Header */}
@@ -205,14 +208,14 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
 
                     {/* Common Fields */}
                     <div className="space-y-4">
-                        {/* Name (Hide for preset third-party unless custom) */}
-                        {(initialType !== 'third-party' || presetValue === 'custom') && (
+                        {/* Name (Hide for Proxy, or preset third-party unless custom) */}
+                        {(initialType !== 'proxy' && (initialType !== 'third-party' || presetValue === 'custom')) && (
                             <div>
                                 <label className="block text-xs font-medium text-zinc-400 mb-1.5">名称</label>
                                 <input
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    placeholder={initialType === 'proxy' ? '我的代理服务器' : '给这个 Key 起个名字'}
+                                    placeholder={'给这个 Key 起个名字'}
                                     className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
                                 />
                             </div>
@@ -345,6 +348,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

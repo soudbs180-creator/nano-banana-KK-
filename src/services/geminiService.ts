@@ -487,6 +487,14 @@ export const generateImage = async (
     model = model.replace(/-4k$/i, '') as ModelType;
   }
 
+  // ✨ Handle Suffixed Models (Separated Proxy/Official)
+  // We keep the suffix for getNextKey to find the right channel,
+  // but strip it for the actual API call.
+  // Exception: keep suffix for now, we'll strip it right before usage
+  const originalModelId = model;
+  const baseModelId = model.split('@')[0] as ModelType;
+  const modelSuffix = model.includes('@') ? model.split('@')[1] : undefined;
+
   // Resolve AUTO aspect ratio
   let resolvedRatio = aspectRatio;
   if (aspectRatio === AspectRatio.AUTO) {
@@ -605,10 +613,10 @@ export const generateImage = async (
       group = keyData.group;
       provider = keyData.provider;
       compatibilityMode = (keyData as any).compatibilityMode || 'standard';
-      console.log(`[GeminiService] ✓ Key found for model "${model}": Provider=${provider}, BaseUrl=${baseUrl}`);
+      console.log(`[GeminiService] ✓ Key found for model "${originalModelId}": Provider=${provider}, BaseUrl=${baseUrl}`);
     } else {
       // DIAGNOSTIC: Log all available keys and their supported models
-      console.warn(`[GeminiService] ⚠ No API Key found for model "${model}"`);
+      console.warn(`[GeminiService] ⚠ No API Key found for model "${originalModelId}"`);
       const allSlots = keyManager.getSlots();
       if (allSlots.length === 0) {
         console.error('[GeminiService] ✗ No API Keys configured! Please add a key in Settings.');
@@ -634,7 +642,7 @@ export const generateImage = async (
 
   // If still no key, fallback to backend (if not local dev with no key)
   if (!effectiveKey) {
-    return await generateImageViaBackend(prompt, aspectRatio, imageSize, processedReferences, model, apiKey, requestId);
+    return await generateImageViaBackend(prompt, aspectRatio, imageSize, processedReferences, baseModelId, apiKey, requestId);
   }
 
   // 2. Retry Loop
@@ -648,7 +656,8 @@ export const generateImage = async (
 
   // 4. Smart fallback for Cherry API vs Standard NewAPI
   // IMPORTANT: Only override apiFormat for PROXY APIs, NOT for Google official API
-  const safeModel = model || '';
+  // Use baseModelId for checks
+  const safeModel = baseModelId || '';
   const isGoogleOfficial = apiFormat === 'gemini'; // Already detected as Google
 
   if (!isGoogleOfficial && (safeModel.includes('nano-banana'))) {
@@ -679,7 +688,7 @@ export const generateImage = async (
         });
 
         // Map internal model ID to actual API model ID for proxy APIs
-        const apiModelId = mapToApiModelId(model);
+        const apiModelId = mapToApiModelId(baseModelId);
         const requestBody = {
           model: apiModelId,
           stream: false,
@@ -721,9 +730,9 @@ export const generateImage = async (
       // Native Gemini API - 严格区分模型类型
       // ====================================================================
       else if (apiFormat === 'gemini') {
-        const apiModelId = mapToApiModelId(model);
-        const isImagenModel = model.startsWith('imagen-4') || model.startsWith('imagen-3');
-        const isVeoModel = model.startsWith('veo-');
+        const apiModelId = mapToApiModelId(baseModelId);
+        const isImagenModel = baseModelId.startsWith('imagen-4') || baseModelId.startsWith('imagen-3');
+        const isVeoModel = baseModelId.startsWith('veo-');
 
         // ========== 分支 1: Veo 视频模型 ==========
         // Endpoint: :predictLongRunning

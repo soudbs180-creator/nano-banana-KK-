@@ -410,7 +410,7 @@ export function getModelDisplayName(modelId: string, customLabel?: string): stri
     // 如果有自定义label，直接返回
     if (customLabel) return customLabel;
 
-    const lowerModelId = modelId.toLowerCase();
+    const lowerModelId = modelId.toLowerCase().split('@')[0]; // Strip suffix for lookup
 
     // Gemini 3 系列
     if (lowerModelId.includes('gemini-3-pro') || lowerModelId.includes('nano-banana-pro')) {
@@ -467,4 +467,124 @@ export function getModelDisplayName(modelId: string, customLabel?: string): stri
 
     // 默认返回模型ID
     return modelId;
+}
+
+/**
+ * 获取模型的主题色
+ * 对于已知模型，返回特定颜色。
+ * 对于未知模型，根据ID进行确定性哈希，返回一个固定颜色。
+ */
+export function getModelThemeColor(modelId: string): string {
+    const lowerId = modelId.toLowerCase().split('@')[0]; // Strip suffix
+
+    // 1. 已知模型的特定颜色映射
+    if (lowerId.includes('gemini-3-pro') || lowerId.includes('nano-banana-pro')) return 'text-purple-400 border-purple-400';
+    if (lowerId.includes('gemini-3-flash')) return 'text-cyan-400 border-cyan-400';
+    if (lowerId.includes('gemini-2.5-pro')) return 'text-amber-400 border-amber-400';
+    if (lowerId.includes('gemini-2.5-flash') || lowerId.includes('nano-banana')) return 'text-yellow-400 border-yellow-400';
+
+    // 旧版本 Gemini - 区分颜色
+    if (lowerId.includes('gemini-1.5-pro')) return 'text-indigo-400 border-indigo-400';
+    if (lowerId.includes('gemini-1.5-flash')) return 'text-lime-400 border-lime-400';
+
+    // Imagen 系列
+    if (lowerId.includes('imagen-4') && lowerId.includes('ultra')) return 'text-rose-400 border-rose-400';
+    if (lowerId.includes('imagen')) return 'text-blue-400 border-blue-400';
+
+    // Veo 视频模型
+    if (lowerId.includes('veo-3')) return 'text-fuchsia-400 border-fuchsia-400';
+    if (lowerId.includes('veo')) return 'text-violet-400 border-violet-400';
+
+    // 2. 未知模型的确定性颜色生成
+    const palette = [
+        'text-red-400 border-red-400',
+        'text-orange-400 border-orange-400',
+        'text-amber-400 border-amber-400',
+        'text-yellow-400 border-yellow-400',
+        'text-lime-400 border-lime-400',
+        'text-green-400 border-green-400',
+        'text-emerald-400 border-emerald-400',
+        'text-teal-400 border-teal-400',
+        'text-cyan-400 border-cyan-400',
+        'text-sky-400 border-sky-400',
+        'text-blue-400 border-blue-400',
+        'text-indigo-400 border-indigo-400',
+        'text-violet-400 border-violet-400',
+        'text-purple-400 border-purple-400',
+        'text-fuchsia-400 border-fuchsia-400',
+        'text-pink-400 border-pink-400',
+        'text-rose-400 border-rose-400'
+    ];
+
+    let hash = 0;
+    for (let i = 0; i < modelId.length; i++) {
+        hash = modelId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+
+    const index = Math.abs(hash) % palette.length;
+    return palette[index];
+}
+
+/**
+ * 获取模型的展示信息，包括清洗后的名称、来源类型和徽章样式
+ */
+export function getModelDisplayInfo(model: { id: string, name?: string, provider?: string, custom?: boolean }): {
+    displayName: string;
+    sourceType: 'official' | 'proxy' | 'custom';
+    badgeText: string;
+    badgeColor: string;
+} {
+    const { id, name, provider, custom } = model;
+
+    // Parse ID for suffix
+    const [baseId, suffix] = id.split('@');
+
+    // 1. 确定来源类型
+    let sourceType: 'official' | 'proxy' | 'custom' = 'custom';
+
+    // 官方模型：Provider 为 Google (且无后缀)
+    if (provider === 'Google' && !suffix && !custom) {
+        sourceType = 'official';
+    }
+    // 代理模型：有后缀 (e.g. @MyProxy)
+    else if (suffix) {
+        sourceType = 'proxy';
+    }
+    // 自动探测代理：没有后缀但ID包含官方特征 (fallback)
+    else if (
+        baseId.includes('gemini') ||
+        baseId.includes('imagen') ||
+        baseId.includes('veo') ||
+        baseId.includes('nano-banana')
+    ) {
+        sourceType = 'proxy';
+    }
+
+    // 2. 确定徽章文本和颜色
+    let badgeText = '第三方';
+
+    // 获取统一的主题色
+    const themeColor = getModelThemeColor(baseId); // Use base ID for color lookup
+    let badgeColor = themeColor; // 默认使用主题色
+
+    if (sourceType === 'official') {
+        badgeText = '官方';
+    } else if (sourceType === 'proxy') {
+        // 使用 suffix 作为徽章文本 (e.g. MyProxy)
+        // 如果没有 suffix (自动探测情况)，显示 '代理'
+        badgeText = suffix || '代理';
+        // 代理模型也使用模型本身的主题色
+    }
+
+
+    // 3. 获取清洗后的显示名称
+    // 使用 getModelDisplayName 确保名称格式统一 (e.g. "Nano Banana Pro" 而不是 ID)
+    // 如果 model.name 是用户自定义的（且不等于 ID），优先使用它，否则使用标准名称
+    const standardName = getModelDisplayName(baseId);
+
+    // Check if name provided by KeyManager is just the ID or suffixed ID
+    // KeyManager passes { name: "Nano Banana Pro", ... } usually
+    const displayName = (name && name !== id && name !== baseId) ? name : standardName;
+
+    return { displayName, sourceType, badgeText, badgeColor };
 }

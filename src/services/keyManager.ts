@@ -616,29 +616,31 @@ export class KeyManager {
     }
 
     /**
- * Save state to localStorage
- */
+     * Save state to localStorage (Only for anonymous users) or Cloud (For logged in)
+     */
     private async saveState(state?: KeyManagerState): Promise<void> {
         const toSave = state || this.state;
-        console.log('[KeyManager] 💾 saveState被调用!', {
-            slots数量: toSave.slots.length,
-            第一个slot的模型: toSave.slots[0]?.supportedModels,
-            userId: this.userId,
-            isSyncing: this.isSyncing
-        });
+        const key = this.getStorageKey();
 
         try {
-            const key = this.getStorageKey();
-            localStorage.setItem(key, JSON.stringify(toSave));
-            console.log('[KeyManager] ✅ localStorage保存成功!', key);
+            // 🔒 Security Update: 
+            // 如果用户已登录，不再保存到本地 localStorage，防止泄露。
+            // 仅保存在内存中，并同步到云端。
+            if (this.userId) {
+                console.log('[KeyManager] 🔒 用户已登录，跳过本地存储，仅使用云端同步。');
+                // Optional: Clear existing local storage just in case
+                localStorage.removeItem(key);
 
-            // Sync to cloud if user is logged in (等待完成)
-            if (this.userId && !this.isSyncing) {
-                console.log('[KeyManager] 准备上传到云端...');
-                await this.saveToCloud(toSave);
+                // Sync to cloud
+                if (!this.isSyncing) {
+                    await this.saveToCloud(toSave);
+                }
             } else {
-                console.log('[KeyManager] ⚠️ 跳过云端上传', { userId: this.userId, isSyncing: this.isSyncing });
+                // 匿名用户：必须保存到本地，否则刷新后丢失
+                localStorage.setItem(key, JSON.stringify(toSave));
+                console.log('[KeyManager] ✅ (匿名) localStorage保存成功!', key);
             }
+
         } catch (e) {
             console.error('[KeyManager] ❌ Failed to save state:', e);
         }
@@ -650,169 +652,128 @@ export class KeyManager {
     async setUserId(userId: string | null) {
         if (this.userId === userId) return;
 
-        const previousUserId = this.userId;
-        const localKeys = [...this.state.slots]; // Save local keys before potential clear
-
-        // Only clear keys if switching between different logged-in users
-        // (not when logging in from anonymous or logging out)
-        // Only clear keys if switching between different logged-in users
-        // (not when logging in from anonymous or logging out)
-        // Actually, we should ALWAYS reload state when ID changes to ensure isolation.
+        // Unsubscribe from previous user's channel if exists
+        this.unsubscribeRealtime();
 
         this.userId = userId;
 
-        // Reload state from scoped storage
-        // This effectively "clears" the in-memory state if the new scope is empty
-        this.state = this.loadState();
-        this.notifyListeners(); // Notify UI to clear/update immediately
+        // Reset state to empty/initial before loading from cloud
+        // This ensures no leakage from previous user or anon state
+        this.state = {
+            slots: [],
+            currentIndex: 0,
+            maxFailures: DEFAULT_MAX_FAILURES,
+            rotationStrategy: 'round-robin'
+        };
+        this.notifyListeners();
 
         if (userId) {
-            // Pass local keys to merge with cloud
-            // Note: After loadState(), this.state.slots might be empty (fresh scope)
-            // or contain existing local keys for THIS user.
-            // If we want to import previous anon keys, we would need to pass them explicitly.
-            // But strict isolation means we probably shouldn't auto-merge generic keys into private accounts.
-            // Let's stick to standard sync: Load from cloud.
-            await this.loadFromCloud([]); // Pass empty array as we don't want to merge across scopes implicitly
+            console.log('[KeyManager] 👤 用户登录:', userId);
+
+            // 1. Load from cloud (Authoritative)
+            await this.loadFromCloud();
+
+            // 2. Subscribe to Realtime Changes
+            this.subscribeRealtime(userId);
         } else {
-            // Logging out - just state loaded from 'global' (anon) scope
+            // Logout: Load from global (anon) storage
+            console.log('[KeyManager] 👤 用户登出');
+            this.state = this.loadState();
+            this.notifyListeners();
+        }
+    }
+
+    private realtimeChannel: any = null;
+
+    private subscribeRealtime(userId: string) {
+        console.log('[KeyManager] 🔌 连接实时更新频道...');
+        this.realtimeChannel = supabase.channel(`user_settings:${userId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'user_settings',
+                    filter: `user_id=eq.${userId}`
+                },
+                async (payload) => {
+                    console.log('[KeyManager] ⚡ 收到云端实时更新!', payload);
+                    // Avoid infinite loop if this client caused the update
+                    // Ideally check a 'last_modified_by' field, but strict "Cloud is Truth" works too
+                    // as long as loadFromCloud doesn't trigger saveToCloud immediately.
+                    if (!this.isSyncing) {
+                        await this.loadFromCloud();
+                    }
+                }
+            )
+            .subscribe();
+    }
+
+    private unsubscribeRealtime() {
+        if (this.realtimeChannel) {
+            console.log('[KeyManager] 🔌 断开实时更新频道');
+            supabase.removeChannel(this.realtimeChannel);
+            this.realtimeChannel = null;
         }
     }
 
     /**
-     * Load state from Supabase and merge with local keys
+     * Load state from Supabase (Cloud is Source of Truth)
      */
-    private async loadFromCloud(localKeys: KeySlot[] = []) {
+    private async loadFromCloud(localKeys: KeySlot[] = []) { // localKeys arg kept for compatibility but ignored for logged-in
         if (!this.userId) return;
 
         // Skip cloud load for Dev User
-        if (this.userId.startsWith('dev-user-')) {
-            console.log('[KeyManager] Dev user detected, skipping cloud load. Using local keys.');
-            if (localKeys.length > 0 && this.state.slots.length === 0) {
-                this.state.slots = localKeys;
-                this.saveState();
-            }
-            return;
-        }
+        if (this.userId.startsWith('dev-user-')) return;
 
         try {
             this.isSyncing = true;
+            console.log('[KeyManager] ☁️ 正在从云端拉取数据...');
+
             const { data, error } = await supabase
                 .from('user_settings')
                 .select('api_keys')
                 .eq('user_id', this.userId)
                 .single();
 
-            if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
-                console.warn('[KeyManager] Failed to fetch cloud settings:', error);
-                // Keep local keys if cloud fetch fails
-                if (localKeys.length > 0 && this.state.slots.length === 0) {
-                    this.state.slots = localKeys;
-                    this.saveState();
+            if (error) {
+                if (error.code !== 'PGRST116') {
+                    console.warn('[KeyManager] Cloud fetch failed:', error);
                 }
+                // If not found, it means empty cloud state. 
+                // We do NOT merge local keys anymore strictly.
+                // Or maybe we treat first login as "Import"? 
+                // Let's stick to "Cloud is Truth". If cloud empty -> local empty.
                 return;
             }
 
             if (data && data.api_keys) {
-                // Parse cloud slots and ensure new fields exist
                 let cloudSlots = data.api_keys as KeySlot[];
                 if (Array.isArray(cloudSlots)) {
-                    // Backfill new fields if missing from cloud
+                    // Backfill new fields
                     cloudSlots = cloudSlots.map(s => ({
                         ...s,
                         name: s.name || 'Cloud Key',
                         provider: s.provider || 'Gemini',
                         totalCost: s.totalCost || 0,
-
                         budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
                         tokenLimit: s.tokenLimit !== undefined ? s.tokenLimit : -1,
                         supportedModels: s.supportedModels || [],
-                        updatedAt: s.updatedAt || s.createdAt || Date.now() // Backfill updatedAt
+                        updatedAt: s.updatedAt || s.createdAt || Date.now()
                     }));
 
-                    // ✨ 改为"最新优先" (Latest Wins) 策略
-                    // 解决多端同步冲突: 比较本地和云端的时间戳,谁新用谁
-                    const mergedSlots = new Map<string, KeySlot>();
+                    // 🔒 Security & Sync Update:
+                    // 完全信任云端数据 (Cloud Authoritative)
+                    // 不再进行合并，直接覆盖本地状态。
+                    // 这样 A 电脑删除，Cloud 只有 N-1，B 电脑拉取后也只有 N-1，实现删除同步。
+                    this.state.slots = cloudSlots;
 
-                    // 1. 先放入所有云端数据
-                    cloudSlots.forEach(s => mergedSlots.set(s.id, s));
-
-                    let needsCloudUpdate = false;
-                    let needsLocalUpdate = false;
-
-                    // 2. 遍历本地数据进行合并
-                    if (localKeys.length > 0) {
-                        for (const localSlot of localKeys) {
-                            const cloudSlot = mergedSlots.get(localSlot.id);
-
-                            if (cloudSlot) {
-                                // 冲突解决: 比较时间戳
-                                const localTime = localSlot.updatedAt || 0;
-                                const cloudTime = cloudSlot.updatedAt || 0;
-
-                                if (localTime > cloudTime) {
-                                    // 本地更新 -> 覆盖云端
-                                    mergedSlots.set(localSlot.id, localSlot);
-                                    needsCloudUpdate = true;
-                                    console.log(`[KeyManager] Conflict: Keep Local (newer) ${localSlot.name}`);
-                                } else if (cloudTime > localTime) {
-                                    // 云端更新 -> 覆盖本地 (implicit)
-                                    // mergedSlots already has cloudSlot
-                                    needsLocalUpdate = true;
-                                    console.log(`[KeyManager] Conflict: Keep Cloud (newer) ${cloudSlot.name}`);
-                                } else {
-                                    // Same time, usually safe to keep either. 
-                                    // But checking budget might be useful.
-                                    // Assume synced.
-                                    // Special case: if local has budget change but no timestamp update (legacy)
-                                    // We can't know. Trusting timestamp.
-                                }
-                            } else {
-                                // 本地有但云端没有 -> 新增 (Keep Local)
-                                mergedSlots.set(localSlot.id, localSlot);
-                                needsCloudUpdate = true;
-                            }
-                        }
-                    } else {
-                        needsLocalUpdate = true;
-                    }
-
-                    this.state.slots = Array.from(mergedSlots.values());
-
-                    console.log('[KeyManager] Merge complete.', {
-                        total: this.state.slots.length,
-                        needsCloudUpdate,
-                        needsLocalUpdate
-                    });
-
-                    // 3. 根据情况保存
-                    if (needsCloudUpdate) {
-                        console.log('[KeyManager] Syncing merged state up to cloud...');
-                        await this.saveToCloud(this.state);
-                    }
-
-                    // Always save to local storage to persist merged state
-                    const key = this.getStorageKey();
-                    localStorage.setItem(key, JSON.stringify(this.state));
+                    console.log(`[KeyManager] ✅ 云端数据同步完成 (覆盖模式). Keys: ${this.state.slots.length}`);
                     this.notifyListeners();
-                }
-            } else {
-                // No cloud data, use local keys if available
-                if (localKeys.length > 0) {
-                    this.state.slots = localKeys;
-                    this.saveState();
-                    // Save local keys to cloud for this user
-                    await this.saveToCloud(this.state);
-                    console.log(`[KeyManager] Uploaded ${localKeys.length} local keys to cloud`);
                 }
             }
         } catch (e) {
             console.error('[KeyManager] Error loading from cloud:', e);
-            // Keep local keys on error
-            if (localKeys.length > 0 && this.state.slots.length === 0) {
-                this.state.slots = localKeys;
-                this.saveState();
-            }
         } finally {
             this.isSyncing = false;
         }
@@ -1177,16 +1138,34 @@ export class KeyManager {
         group?: string;
         provider: string;
     } | null {
-        // Normalize the requested model ID: remove 'models/' prefix if present
-        const normalizedModelId = modelId.replace(/^models\//, '');
+        // Parse the requested ID to separate base model and suffix
+        // Format: modelId@Suffix or just modelId
+        const [baseIdPart, suffix] = modelId.split('@');
+        // If no suffix, it implies Official/Google or specific mapping
 
-        // 1. Filter by Model Support
-        const candidates = this.state.slots.filter(s =>
-            (s.supportedModels || []).some(m => {
+        // Normalize the requested model ID: remove 'models/' prefix if present
+        const normalizedModelId = baseIdPart.replace(/^models\//, '');
+
+        // 1. Filter by Model Support AND Provider/Pool match
+        const candidates = this.state.slots.filter(s => {
+            // Check if slot supports the base model
+            const supportsModel = (s.supportedModels || []).some(m => {
                 const storedId = parseModelString(m).id.replace(/^models\//, '');
                 return storedId === normalizedModelId;
-            })
-        );
+            });
+
+            if (!supportsModel) return false;
+
+            // Check if slot matches the requested pool (via suffix)
+            if (suffix) {
+                // Must match ServerName (Proxy) or Provider
+                const slotSuffix = s.proxyConfig?.serverName || s.provider || 'Custom';
+                return slotSuffix === suffix;
+            } else {
+                // No suffix -> Official Google
+                return s.provider === 'Google';
+            }
+        });
 
         if (candidates.length === 0) return null;
 
@@ -1325,8 +1304,11 @@ export class KeyManager {
         if (slot) {
             slot.disabled = !slot.disabled;
             if (!slot.disabled) {
+                // Optimistic unpause: Assume valid to allow immediate usage without auto-check
+                // If it fails, standard error handling will mark it invalid/rate_limited
+                slot.status = 'valid';
                 slot.failCount = 0;
-                slot.status = 'unknown';
+                slot.lastError = null;
             }
             this.saveState();
             this.notifyListeners();
@@ -1604,8 +1586,19 @@ export class KeyManager {
                 slot.supportedModels.forEach(rawModelStr => {
                     const { id, name, description } = parseModelString(rawModelStr);
 
+                    // ✨ Construct Distinct ID based on Provider/Pool
+                    let distinctId = id;
+                    const isGoogleKey = slot.provider === 'Google';
+
+                    if (!isGoogleKey) {
+                        // Suffix with Server Name (preferred for Proxies) or Provider
+                        // e.g., "gemini-1.5-pro@MyProxy"
+                        const suffix = slot.proxyConfig?.serverName || slot.provider || 'Custom';
+                        distinctId = `${id}@${suffix}`;
+                    }
+
                     // Only add if not already present
-                    if (!uniqueModels.has(id)) {
+                    if (!uniqueModels.has(distinctId)) {
                         const meta = GOOGLE_MODEL_METADATA.get(id);
                         const mappedType = MODEL_TYPE_MAP.get(id);
                         const isGoogleProvider = slot.provider === 'Google' || chatModelIds.has(id);
@@ -1645,27 +1638,26 @@ export class KeyManager {
                         if (meta) {
                             // If we have metadata (it's a known model), we still want to use User's Name/Desc overrides if provided
                             // But distinct "isCustom" based on provider
-                            uniqueModels.set(id, {
-                                id: id,
+                            uniqueModels.set(distinctId, {
+                                id: distinctId,
                                 name: finalName,
-                                provider: slot.provider || 'Google',
-                                isCustom: !isGoogleProvider,
+                                provider: slot.provider,
+                                isCustom: false, // It's a known model, just via proxy
                                 type: inferredType,
                                 icon: meta.icon,
                                 description: finalDesc
                             });
-                            return;
+                        } else {
+                            // Truly custom/unknown model
+                            uniqueModels.set(distinctId, {
+                                id: distinctId,
+                                name: finalName,
+                                provider: slot.provider,
+                                isCustom: true,
+                                type: inferredType,
+                                description: finalDesc
+                            });
                         }
-
-                        uniqueModels.set(id, {
-                            id: id,
-                            name: finalName,
-                            provider: slot.name || slot.provider,
-                            isCustom: true,
-                            type: inferredType,
-                            icon: '🔌',
-                            description: finalDesc
-                        });
                     }
                 });
             }

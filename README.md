@@ -1,8 +1,8 @@
-# KK Studio v1.2.8
+# KK Studio v1.2.9
 
 **下一代 AI 图像创作工作室 | 无限画布 | 120Hz 极致性能**
 
-![Version](https://img.shields.io/badge/version-1.2.8-indigo.svg)
+![Version](https://img.shields.io/badge/version-1.2.9-indigo.svg)
 ![React](https://img.shields.io/badge/React-19-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
 ![Vite](https://img.shields.io/badge/Vite-6.0-purple)
@@ -186,18 +186,19 @@ KK-Studio-1.0.0/
 
 ## 📄 更新日志
 
-### v1.2.8 (2026-02-06)
+### v1.2.9 (2026-02-07)
 
 #### ✨ 新功能
-- **移动端布局优化**：修复侧边栏在移动端不可见的问题，禁用自动折叠计时器
-- **移动端 Footer 水平排列**：修复 Footer 按钮在移动端垂直堆叠问题，现改为水平排列
-- **简化移动端界面**：在移动端隐藏模式切换按钮、联网按钮组和生成设置组，优化交互体验
+- **GPU 渲染优化**：新增 GPU 加速工具类，提升画布拖拽/缩放流畅度
+- **粒子背景特效**：新增 `GpuBackground` 组件，自动适配设备性能
 
-#### 🛠️ 界面优化
-- **CSS 媒体查询修复**：将 `.input-bar-footer` 的 `flex-direction: column` 改为 `row`
-- **按钮布局改进**：移动端按钮使用 `display: contents` 参与 flex 布局
+#### 🐛 修复
+- **主卡丢失修复**：修复代理生成失败时主卡（PromptNode）不显示的问题
+- **错误状态显示**：确保生成失败时正确显示带错误信息的主卡
 
 ---
+
+### v1.2.8 (2026-02-06)
 
 ### v1.2.7 (2026-02-05)
 

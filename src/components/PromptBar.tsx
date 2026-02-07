@@ -1,14 +1,16 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { GenerationConfig, AspectRatio, ImageSize, GenerationMode, ModelType } from '../types';
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
 import { keyManager, getModelMetadata } from '../services/keyManager'; // Added getter
-import { getModelCapabilities, modelSupportsGrounding } from '../services/modelCapabilities';
+import { getModelCapabilities, modelSupportsGrounding, getModelDisplayInfo } from '../services/modelCapabilities';
 import { calculateImageHash } from '../utils/imageUtils';
 import { saveImage, getImage } from '../services/imageStorage'; // [NEW] Import getImage
 import { fileSystemService } from '../services/fileSystemService'; // 🚀 参考图持久化
 import ImageOptionsPanel from './ImageOptionsPanel';
 import VideoOptionsPanel from './VideoOptionsPanel';
 import ImagePreview from './ImagePreview';
+import { sortModels, toggleModelPin, getPinnedModels } from '../utils/modelSorting';
 
 // [FIX] Robust Image Component that self-heals from Storage if data is missing
 const ReferenceThumbnail: React.FC<{
@@ -157,6 +159,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, modelId: string } | null>(null);
 
     // [NEW] Drag-to-Reorder State
     const [dragSourceId, setDragSourceId] = useState<string | null>(null);
@@ -210,6 +213,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, [showOptionsPanel]);
+
+    useEffect(() => {
+        const closeMenu = () => setContextMenu(null);
+        window.addEventListener('click', closeMenu);
+        return () => window.removeEventListener('click', closeMenu);
+    }, []);
 
     // Cleanup hover timer on unmount
     useEffect(() => {
@@ -404,10 +413,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         const storageId = await calculateImageHash(data);
 
                         // 🚀 [FIX] 立即保存到 IndexedDB（使用正确格式）
+                        // 🚀 [关键修复] 必须await等待保存完成，否则刷新时可能丢失
                         const fullDataUrl = `data:${mimeType};base64,${data}`;
-                        saveImage(storageId, fullDataUrl).catch(err =>
-                            console.error("[PromptBar] Failed to save image to IndexedDB:", err)
-                        );
+                        try {
+                            await saveImage(storageId, fullDataUrl);
+                            console.log('[PromptBar] ✅ 参考图已保存到 IndexedDB:', storageId);
+                        } catch (err) {
+                            console.error("[PromptBar] ❌ Failed to save image to IndexedDB:", err);
+                        }
 
                         // 🚀 [NEW] 同时保存到本地文件系统（如果已连接项目文件夹）
                         const handle = fileSystemService.getGlobalHandle();
@@ -622,7 +635,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const currentModel = availableModels.find(m => m.id === config.model);
     const currentModelLabel = isModelListEmpty
         ? '无可用模型 (请配置 API)'
-        : (currentModel?.label || currentModel?.id || '未知模型');
+        : (currentModel ? getModelDisplayInfo(currentModel).displayName : '未知模型');
+
+    // 🚀 [NEW] 获取展示信息 (来源标签)
+    const modelDisplayInfo = currentModel ? getModelDisplayInfo(currentModel) : null;
 
     const truncateModelLabel = useCallback((label: string) => {
         const max = isMobile ? 14 : 18;
@@ -1057,7 +1073,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     <div className={`relative ${isMobile ? 'flex-shrink' : 'inline-flex flex-shrink-0'}`} style={isMobile ? { display: 'contents' } : {}}>
                         <button
                             id="models-dropdown-trigger"
-                            className={`input-bar-model flex items-center justify-center gap-1 px-1.5 md:px-3 py-1 md:py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
+                            className={`input-bar-model flex items-center justify-center gap-2 px-1.5 md:px-3 py-1 md:py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
                                 ? 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-tertiary)] cursor-not-allowed'
                                 : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50'
                                 }`}
@@ -1070,25 +1086,22 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 }
                             }}
                         >
-                            <span className={`text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300 ${isModelListEmpty
-                                ? 'text-zinc-500'
-                                : (() => {
-                                    // 🚀 [修复] 根据模型ID使用对应颜色，与ImageCard2保持一致
-                                    const model = (config.model || '').toLowerCase();
-                                    if (config.mode === GenerationMode.VIDEO) return 'text-purple-400';
-                                    if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) return 'text-purple-400';
-                                    if (model.includes('gemini-3-flash')) return 'text-cyan-400';
-                                    if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) return 'text-yellow-400';
-                                    if (model.includes('gemini-2.5-pro')) return 'text-amber-400';
-                                    if (model.includes('imagen-4') && model.includes('ultra')) return 'text-purple-400';
-                                    if (model.includes('imagen-4')) return 'text-blue-400';
-                                    if (model.includes('veo-3')) return 'text-purple-400';
-                                    if (model.includes('veo')) return 'text-violet-400';
-                                    return 'text-green-400'; // 默认
-                                })()
-                                }`}>
+                            <span className={`text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300 ${!isModelListEmpty && modelDisplayInfo ? modelDisplayInfo.badgeColor : ''}`}>
                                 {displayModelLabel}
                             </span>
+
+                            {/* 🚀 [NEW] 来源标签 - 改回横排，与文字居中对齐 */}
+                            {!isModelListEmpty && modelDisplayInfo && (
+                                <span
+                                    className={`text-[9px] px-1 py-0.5 rounded border opacity-80 ${modelDisplayInfo.badgeColor}`}
+                                    style={{
+                                        marginLeft: '4px',
+                                        flexShrink: 0
+                                    }}
+                                >
+                                    {modelDisplayInfo.badgeText}
+                                </span>
+                            )}
                         </button>
 
                         {/* Dropdown Menu */}
@@ -1098,6 +1111,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     {availableModels.map(model => {
                                         const displayName = model.label || model.id;
                                         const advantage = model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                        const isPinned = getPinnedModels().includes(model.id);
                                         return (
                                             <button
                                                 key={model.id}
@@ -1106,11 +1120,30 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                     setConfig(prev => ({ ...prev, model: model.id }));
                                                     setActiveMenu(null);
                                                 }}
+                                                onContextMenu={(e) => {
+                                                    e.preventDefault();
+                                                    setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
+                                                }}
                                             >
                                                 <div className="flex items-center justify-between">
-                                                    <span className={`text-xs font-medium ${config.model === model.id ? 'text-indigo-500' : 'text-[var(--text-primary)]'}`}>
-                                                        {displayName}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`text-xs font-medium ${config.model === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
+                                                            {getModelDisplayInfo(model).displayName}
+                                                        </span>
+                                                        {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
+                                                        {/* 来源标签 */}
+                                                        <span
+                                                            className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ${getModelDisplayInfo(model).badgeColor}`}
+                                                            style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            {getModelDisplayInfo(model).badgeText}
+                                                        </span>
+                                                    </div>
                                                 </div>
 
                                                 {/* Metadata Display */}
@@ -1130,7 +1163,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                                     return (
                                                         <div className="flex flex-wrap gap-2 mt-1">
-                                                            <span className="text-[10px] text-[var(--text-tertiary)] leading-tight break-all">ID: {model.id}</span>
+                                                            <span className="text-[10px] text-[var(--text-tertiary)] leading-tight break-all">ID: {model.id.split('@')[0]}</span>
                                                             {features.map((f, i) => (
                                                                 <span key={i} className="text-[10px] text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-1 rounded border border-[var(--border-light)]">
                                                                     {f}
@@ -1301,6 +1334,26 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                         </div>
                                     )
                                 }
+
+                                {/* Context Menu for Pinning */}
+                                {contextMenu && ReactDOM.createPortal(
+                                    <div
+                                        className="fixed z-[10010] bg-[#2a2a2e] border border-white/10 rounded-lg shadow-xl py-1 w-32 backdrop-blur-md"
+                                        style={{ top: contextMenu.y, left: contextMenu.x }}
+                                    >
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleModelPin(contextMenu.modelId);
+                                                setContextMenu(null);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"
+                                        >
+                                            {getPinnedModels().includes(contextMenu.modelId) ? '取消顶置' : '📌 顶置模型'}
+                                        </button>
+                                    </div>,
+                                    document.body
+                                )}
                             </div >
                         </div >
                     )}
@@ -1360,13 +1413,15 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={(e) => e.target.files && processFiles(e.target.files)} />
 
             {/* [NEW] 参考图放大浮层 */}
-            {previewImage && (
-                <ImagePreview
-                    imageUrl={previewImage.url}
-                    originRect={previewImage.originRect}
-                    onClose={() => setPreviewImage(null)}
-                />
-            )}
+            {
+                previewImage && (
+                    <ImagePreview
+                        imageUrl={previewImage.url}
+                        originRect={previewImage.originRect}
+                        onClose={() => setPreviewImage(null)}
+                    />
+                )
+            }
         </div >
     );
 };

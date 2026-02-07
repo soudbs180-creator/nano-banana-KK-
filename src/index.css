@@ -2496,3 +2496,187 @@ body.dark-mode .placeholder-breathe {
 .ai-chat-btn:hover .uiverse .circle {
   animation-duration: calc(var(--duration) / 3) !important;
 }
+
+/* ============================================
+   GPU 加速工具类 - Client-Side Rendering Optimization
+   ============================================ */
+
+/**
+ * 🚀 GPU 加速基础类
+ * 使用 translateZ(0) 或 translate3d() 强制创建 GPU 合成层
+ * 适用于：需要频繁变换的元素（拖拽、动画、滚动）
+ */
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/**
+ * 🚀 GPU 变换优化
+ * 用于拖拽、缩放等高频变换操作
+ */
+.gpu-transform {
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
+}
+
+/**
+ * 🚀 画布专用 GPU 优化
+ * 针对 InfiniteCanvas 的无限拖拽场景
+ */
+.gpu-canvas {
+  transform: translate3d(var(--canvas-x, 0), var(--canvas-y, 0), 0) scale(var(--canvas-scale, 1));
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout style paint;
+}
+
+/**
+ * 🚀 图片 GPU 加速
+ * 优化图片渲染性能，减少重绘
+ */
+.gpu-image {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+/**
+ * 🚀 动画专用 GPU 加速
+ * 用于有动画的元素
+ */
+.gpu-animate {
+  transform: translateZ(0);
+  will-change: transform, opacity, filter;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/**
+ * 🚀 虚拟化容器优化
+ * 使用 content-visibility 实现虚拟化渲染
+ */
+.gpu-virtualize {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
+}
+
+/**
+ * 🚀 滚动容器优化
+ * 平滑滚动 + GPU 加速
+ */
+.gpu-scroll {
+  transform: translateZ(0);
+  will-change: scroll-position;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+/**
+ * 🚀 模态框 GPU 优化
+ * 用于弹窗、对话框等叠加层
+ */
+.gpu-modal {
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  isolation: isolate;
+}
+
+/**
+ * 🚀 卡片 GPU 优化
+ * 用于可拖拽、可交互的卡片
+ */
+.gpu-card {
+  transform: translateZ(0);
+  will-change: transform, box-shadow;
+  backface-visibility: hidden;
+  contain: layout style;
+}
+
+/**
+ * 🚀 粒子/特效 GPU 优化
+ * 用于粒子效果、背景动画
+ */
+.gpu-particle {
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+/**
+ * 🚀 清除 will-change (性能优化)
+ * 动画结束后应移除 will-change 以释放 GPU 内存
+ */
+.gpu-idle {
+  will-change: auto;
+}
+
+/**
+ * 🚀 高性能选择器
+ * 批量应用 GPU 加速到常用动画元素
+ */
+.animate-fadeIn,
+.animate-scaleIn,
+.animate-slideDown,
+.animate-slideUp,
+.animate-modalIn,
+.animate-cardPopIn,
+.animate-pulse,
+.animate-shimmer,
+.animate-float {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* 🚀 拖拽状态优化 - 禁用过渡提升性能 */
+.is-dragging,
+.is-dragging * {
+  transition: none !important;
+  will-change: transform !important;
+}
+
+/* 🚀 缩放状态优化 */
+.is-zooming {
+  will-change: transform !important;
+  transition: none !important;
+}
+
+/* 🚀 降低动画复杂度 (省电模式/低性能设备) */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .gpu-accelerated,
+  .gpu-transform,
+  .gpu-canvas,
+  .gpu-animate {
+    will-change: auto;
+  }
+}
+
+/* 🚀 高刷新率显示器优化 */
+@media (min-resolution: 2dppx) {
+  .gpu-image {
+    image-rendering: high-quality;
+  }
+}

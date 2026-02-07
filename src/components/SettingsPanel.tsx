@@ -370,7 +370,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>版本</div>
-                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.8</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.2.9</div>
                     </div>
                 </div>
             </div>
@@ -1150,7 +1150,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, initialV
     ];
 
     return (
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/40 backdrop-blur-xl animate-in fade-in duration-200 settings-panel" onClick={onClose}>
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/40 backdrop-blur-xl animate-in fade-in duration-200 settings-panel">
             {!isMobile ? (
                 /* --- Desktop Layout - VisionOS Style --- */
                 <div

@@ -8,6 +8,7 @@ import { useLazyImage } from '../hooks/useLazyImage';
 import { getImage } from '../services/imageStorage';
 import { loadImage, cancelImageLoad } from '../services/imageLoader';
 import { ImageQuality } from '../services/imageQuality';
+import { getModelThemeColor } from '../services/modelCapabilities';
 
 interface ImageNodeProps {
     image: GeneratedImage;
@@ -621,24 +622,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                     // Normal Mode
                                     <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
                                         <span className={`text-[8px] font-medium whitespace-nowrap ${(() => {
-                                            // Dynamic Model Color Matching PromptBar logic
-                                            const model = (image.model || '').toLowerCase();
-                                            // Video Modes
-                                            if (image.mode === GenerationMode.VIDEO) return 'text-purple-400';
-
-                                            // Specific Model Matches
-                                            if (model.includes('gemini-3-pro') || model.includes('nano-banana-pro')) return 'text-purple-400';
-                                            if (model.includes('gemini-3-flash')) return 'text-cyan-400';
-                                            if (model.includes('gemini-2.5-flash') || model.includes('nano-banana')) return 'text-yellow-400';
-                                            if (model.includes('gemini-2.5-pro')) return 'text-amber-400';
-                                            if (model.includes('imagen-4') && model.includes('ultra')) return 'text-purple-400';
-                                            if (model.includes('imagen-4')) return 'text-blue-400';
-                                            if (model.includes('veo-3')) return 'text-purple-400';
-                                            if (model.includes('veo')) return 'text-violet-400';
-
-                                            // Default / Fallback
-                                            if (image.modelLabel) return 'text-indigo-400'; // Legacy default
-                                            return 'text-zinc-400'; // Unknown
+                                            const modelId = image.model || '';
+                                            return getModelThemeColor(modelId);
                                         })()}`}>
                                             {image.modelLabel || 'AI'}
                                         </span>

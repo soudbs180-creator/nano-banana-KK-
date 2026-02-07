@@ -112,7 +112,6 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, us
         <ProfileErrorBoundary onClose={onClose}>
             <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in"
                 style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
-                onClick={handleClose}
             >
                 <div
                     className="w-full max-w-sm shadow-2xl border overflow-hidden animate-modal-in"

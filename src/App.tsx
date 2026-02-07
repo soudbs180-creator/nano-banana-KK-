@@ -44,6 +44,7 @@ import MobileTabBar from './components/MobileTabBar';
 import TagInputModal from './components/TagInputModal';
 import TutorialOverlay from './components/TutorialOverlay';
 import { GlobalLightbox } from './components/GlobalLightbox';
+import GpuBackground from './components/GpuBackground';
 
 const AppContent: React.FC = () => {
   const {
@@ -393,10 +394,10 @@ const AppContent: React.FC = () => {
         setShowStorageModal(true);
       } else {
         // Mode exists -> Check Keys for API Panel
+        // 🚀 [修复] 仅对首次用户显示 API 设置面板，返回用户不自动弹出
         const hasKeys = keyManager.hasValidKeys();
-        if (!hasKeys) {
-          // Optional: Skip API setup for returning users too? User didn't specify, but implies "don't annoy me".
-          // We'll keep it for now as it's critical functionality.
+        if (!hasKeys && !hasLoggedInBefore && !isDevMode) {
+          // 只有首次用户才自动弹出 API 设置面板
           setShowSettingsPanel(true);
           setSettingsInitialView('api-management');
         }
@@ -729,6 +730,18 @@ const AppContent: React.FC = () => {
         const existingDraft = activeCanvas?.promptNodes.find(n => n.isDraft);
         if (existingDraft) {
           setDraftNodeId(existingDraft.id);
+
+          // 🚀 [关键修复] 恢复 draft 节点的数据到 config，确保 PromptBar 显示正确
+          setConfig(prev => ({
+            ...prev,
+            prompt: existingDraft.prompt || prev.prompt,
+            model: existingDraft.model || prev.model,
+            aspectRatio: existingDraft.aspectRatio || prev.aspectRatio,
+            imageSize: existingDraft.imageSize || prev.imageSize,
+            referenceImages: existingDraft.referenceImages || [],
+            mode: existingDraft.mode || prev.mode
+          }));
+          console.log('[App] ✅ 已从草稿节点恢复 config，参考图数量:', existingDraft.referenceImages?.length || 0);
 
           // 🚀 [Deduplicate] If multiple drafts exist (bug), delete others
           const allDrafts = activeCanvas?.promptNodes.filter(n => n.isDraft) || [];
@@ -1314,11 +1327,15 @@ const AppContent: React.FC = () => {
     // ✅ 使用ref获取最新状态,避免闭包问题
     const freshCanvas = activeCanvasRef.current;
     const liveNode = freshCanvas?.promptNodes.find(n => n.id === promptNodeId);
+
+    // 🚀 [修复] 如果找不到节点，使用传入的 node 参数作为后备
+    // 这可能发生在 React 状态更新还没完成时
     if (!liveNode) {
-      console.error("Node lost during generation");
-      return;
+      console.warn('[executeGeneration] Node not found in canvas, using original node as fallback:', promptNodeId);
+      // 继续使用原始 node 参数执行生成，而不是直接退出
     }
-    const livePos = liveNode.position;
+    const effectiveNode = liveNode || node;
+    const livePos = effectiveNode.position;
     const isVideo = mode === GenerationMode.VIDEO;
 
     try {
@@ -1607,8 +1624,21 @@ const AppContent: React.FC = () => {
       }
 
     } catch (err: any) {
-      console.error(err);
-      updatePromptNode({ ...node, isGenerating: false, error: err.message || 'Failed' });
+      console.error('[executeGeneration] Error:', err);
+
+      // 🚀 [修复] 确保错误卡片始终显示
+      // 如果节点不存在于画布中，先添加它再更新错误状态
+      const errorNode = { ...node, isGenerating: false, error: err.message || 'Failed' };
+      const existsInCanvas = activeCanvasRef.current?.promptNodes.some(n => n.id === node.id);
+
+      if (existsInCanvas) {
+        updatePromptNode(errorNode);
+      } else {
+        // 节点不存在，需要先添加
+        console.log('[executeGeneration] Adding missing error node to canvas:', node.id);
+        await addPromptNode(errorNode);
+      }
+
       import('./services/notificationService').then(({ notify }) => {
         notify.error('生成任务失败', err.message || "Generation failed.");
       });
@@ -1617,7 +1647,7 @@ const AppContent: React.FC = () => {
         setSettingsInitialView('api-management');
       }
     }
-  }, [isMobile, updatePromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions]);
+  }, [isMobile, updatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions]);
 
   // Auto-Resume Effect
   const hasResumedRef = useRef(false);
@@ -1776,6 +1806,7 @@ const AppContent: React.FC = () => {
       } else {
         console.log('[handleGenerate] Creating NEW node:', generatingNode.id);
         await addPromptNode(generatingNode);
+        console.log('[handleGenerate] ✅ addPromptNode completed for:', generatingNode.id, 'isDraft:', generatingNode.isDraft);
       }
     }
 
@@ -3400,6 +3431,7 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
       <CanvasProvider>
+        <GpuBackground opacity={0.4} showConnections={true} />
         <NotificationToast />
         {/* <UpdateNotification /> moved to InfiniteCanvas */}
         <AppContent />

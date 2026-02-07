@@ -457,7 +457,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             {/* Canvas Container */}
             <div
                 ref={containerRef}
-                className={`canvas-container outline-none focus:outline-none ${isImageDragOver ? 'ring-4 ring-indigo-500' : ''}`}
+                className={`canvas-container outline-none focus:outline-none gpu-accelerated ${isDragging ? 'is-dragging' : ''} ${isImageDragOver ? 'ring-4 ring-indigo-500' : ''}`}
                 tabIndex={-1}
                 onMouseDown={handleMouseDown}
                 onMouseMove={onMouseMove}
@@ -548,7 +548,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
                 {/* Version Badge */}
                 <div className="glass h-10 px-3 rounded-xl flex items-center">
-                    <span className="text-xs text-zinc-500 font-semibold">v1.2.8</span>
+                    <span className="text-xs text-zinc-500 font-semibold">v1.2.9</span>
                 </div>
 
                 {/* Update Notification */}

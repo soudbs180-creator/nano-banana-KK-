@@ -1,9 +1,13 @@
+
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Bot, User, X, Trash2, ChevronDown, GripVertical, Plus, MessageCircle, ArrowUp, Image, FileText, Link2, Film } from 'lucide-react';
+import { ArrowUp, Bot, ChevronDown, Eraser, FileText, Film, Image as ImageIcon, Layout, MessageSquare, Mic, Paperclip, Plus, User, X, Zap } from 'lucide-react';
 import { generateText } from '../services/geminiService';
 import { notify } from '../services/notificationService';
 import { keyManager } from '../services/keyManager';
 import { agentService, AgentConfig } from '../services/agentService';
+import { getModelDisplayInfo } from '../services/modelCapabilities';
+import { sortModels, toggleModelPin, getPinnedModels } from '../utils/modelSorting';
+import ReactDOM from 'react-dom';
 
 interface ChatSidebarProps {
     isOpen: boolean;
@@ -57,6 +61,15 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     );
     const [selectedModel, setSelectedModel] = useState<ChatModel>(() => availableModels[0] || { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'Google', isCustom: false });
     const [showModelMenu, setShowModelMenu] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, modelId: string } | null>(null);
+    const [pinnedUpdate, setPinnedUpdate] = useState(0); // Trigger re-render for sorting
+
+    useEffect(() => {
+        // Close menu on click anywhere
+        const closeMenu = () => setContextMenu(null);
+        window.addEventListener('click', closeMenu);
+        return () => window.removeEventListener('click', closeMenu);
+    }, []);
 
     // Agent State Management
     const [agentMode, setAgentMode] = useState(false);
@@ -404,7 +417,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 role: 'assistant',
-                content: `⚠️ 出错了: ${error.message}`,
+                content: `⚠️ 出错了: ${error.message} `,
                 timestamp: Date.now()
             }]);
         } finally {
@@ -421,7 +434,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     const getTransformOrigin = () => {
         const x = position.x < window.innerWidth / 2 ? 'left' : 'right';
         const y = position.y < window.innerHeight / 2 ? 'bottom' : 'bottom';
-        return `${x} ${y}`;
+        return `${x} ${y} `;
     };
 
     return (
@@ -604,7 +617,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                             setShowModelMenu(!showModelMenu);
                                         }
                                     }}
-                                    className="w-full py-1.5 px-3 gap-1.5 transition-all flex items-center rounded-lg hover:bg-[var(--toolbar-hover)] text-sm"
+                                    className="w-full py-1.5 px-3 gap-2 transition-all flex items-center justify-center rounded-lg hover:bg-[var(--toolbar-hover)] text-sm"
                                 >
                                     {availableModels.length === 0 ? (
                                         <>
@@ -614,8 +627,25 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                     ) : (
                                         <>
                                             <span className="text-base">{selectedModel.icon || '🤖'}</span>
-                                            <span className="text-[var(--text-secondary)]">{selectedModel.name || selectedModel.id}</span>
-                                            <ChevronDown size={14} className={`text-[var(--text-tertiary)] ml-auto transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                                            <span className={`text-[var(--text-secondary)] truncate ${getModelDisplayInfo(selectedModel).badgeColor}`}>
+                                                {getModelDisplayInfo(selectedModel).displayName}
+                                            </span>
+
+                                            {/* 🚀 [NEW] 来源标签 - 横排 */}
+                                            {getModelDisplayInfo(selectedModel).badgeText && (
+                                                <span
+                                                    className={`text-[9px] px-1 py-0.5 rounded border opacity-80 ${getModelDisplayInfo(selectedModel).badgeColor}`}
+                                                    style={{
+                                                        marginLeft: 'auto',
+                                                        marginRight: '4px',
+                                                        flexShrink: 0
+                                                    }}
+                                                >
+                                                    {getModelDisplayInfo(selectedModel).badgeText}
+                                                </span>
+                                            )}
+
+                                            <ChevronDown size={14} className={`text-[var(--text-tertiary)] flex-shrink-0 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                                         </>
                                     )}
                                 </button>
@@ -624,27 +654,74 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                 {showModelMenu && (
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setShowModelMenu(false)} />
-                                        <div className="absolute bottom-full left-0 mb-2 w-64 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-2xl z-20 p-1.5 max-h-[300px] overflow-y-auto scrollbar-thin">
-                                            <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold border-b border-[var(--border-light)] mb-1 select-none">选择模型</div>
-                                            {availableModels.map(model => {
+                                        <div className="absolute bottom-full left-0 mb-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-xl shadow-2xl z-20 p-1.5 max-h-[300px] overflow-y-auto scrollbar-thin">
+                                            <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold border-b border-[var(--border-light)] mb-1 select-none">选择模型 (右键可顶置)</div>
+                                            {sortModels(availableModels).map(model => {
                                                 const displayName = model.name || model.id;
                                                 const advantage = model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                                const isPinned = getPinnedModels().includes(model.id);
+
                                                 return (
                                                     <button
                                                         key={model.id}
                                                         onClick={() => { setSelectedModel(model); setShowModelMenu(false); }}
-                                                        className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20' : 'text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)] border border-transparent'
-                                                            }`}
+                                                        onContextMenu={(e) => {
+                                                            e.preventDefault();
+                                                            setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
+                                                        }}
+                                                        className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20' : 'text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)] border border-transparent'}`}
                                                     >
-                                                        <span className="mt-0.5 text-base">{model.icon || '🤖'}</span>
-                                                        <div className="flex flex-col gap-0.5">
-                                                            <span className={`font-medium ${selectedModel.id === model.id ? 'text-blue-600' : 'text-[var(--text-primary)]'}`}>{displayName}</span>
-                                                            <span className="text-[10px] opacity-70 leading-tight">{advantage}</span>
+                                                        <span className="mt-0.5 text-base relative">
+                                                            {model.icon || '🤖'}
+                                                            {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
+                                                        </span>
+                                                        <div className="flex flex-col gap-0.5 w-full">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className={`font-medium ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
+                                                                    {getModelDisplayInfo(model).displayName}
+                                                                </span>
+                                                                {/* 🚀 [NEW] 下拉菜单中的来源标签 - 改为横排，居中对齐，稍微大一点 */}
+                                                                {getModelDisplayInfo(model).badgeText && (
+                                                                    <span
+                                                                        className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ml-auto ${getModelDisplayInfo(model).badgeColor}`}
+                                                                        style={{
+                                                                            flexShrink: 0,
+                                                                            whiteSpace: 'nowrap'
+                                                                        }}
+                                                                    >
+                                                                        {getModelDisplayInfo(model).badgeText}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-[10px] opacity-70 leading-tight truncate">{advantage}</span>
                                                         </div>
                                                     </button>
                                                 );
                                             })}
                                         </div>
+
+                                        {/* Context Menu for Pinning */}
+                                        {contextMenu && ReactDOM.createPortal(
+                                            <div
+                                                className="fixed z-[10010] bg-[#2a2a2e] border border-white/10 rounded-lg shadow-xl py-1 w-32 backdrop-blur-md"
+                                                style={{ top: contextMenu.y, left: contextMenu.x }}
+                                            >
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleModelPin(contextMenu.modelId);
+                                                        setContextMenu(null);
+                                                        // Force re-render if needed, but sortModels reads from localStorage directly 
+                                                        // We might need a state trigger here too like in PromptBar
+                                                        setPinnedUpdate(prev => prev + 1);
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"
+                                                >
+                                                    {getPinnedModels().includes(contextMenu.modelId) ? '取消顶置' : '📌 顶置模型'}
+                                                </button>
+                                            </div>,
+                                            document.body
+                                        )}
                                     </>
                                 )}
                             </div>
