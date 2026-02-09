@@ -196,7 +196,59 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
   'veo-2.0-generate-001': {
     pricePerImage: 0.35,
     currency: 'USD'
-  }
+  },
+
+  // ============================================
+  // Flux (Black Forest Labs)
+  // ============================================
+  'flux-pro': { pricePerImage: 0.055, currency: 'USD' },
+  'flux-1.1-pro': { pricePerImage: 0.055, currency: 'USD' },
+  'flux-dev': { pricePerImage: 0.03, currency: 'USD' },
+  'flux-schnell': { pricePerImage: 0.003, currency: 'USD' }, // Very cheap usually
+
+  // ============================================
+  // Midjourney (Proxy)
+  // ============================================
+  'mj-chat': { pricePerImage: 0.05, currency: 'USD' },
+  'midjourney': { pricePerImage: 0.05, currency: 'USD' },
+
+  // ============================================
+  // Suno (Music)
+  // ============================================
+  'suno-v3.5': { pricePerImage: 0.10, currency: 'USD' }, // Tasks often cost 5 credits ~ $0.05-$0.10
+  'suno-v3': { pricePerImage: 0.05, currency: 'USD' },
+
+  // ============================================
+  // Video Generation (Runway/Luma/Kling/Pika)
+  // ============================================
+  'runway-gen3': { pricePerImage: 0.50, currency: 'USD' }, // High cost for video
+  'luma-ray': { pricePerImage: 0.50, currency: 'USD' },
+  'luma-photon': { pricePerImage: 0.05, currency: 'USD' }, // Image model
+  'kling-v1': { pricePerImage: 0.50, currency: 'USD' },
+  'kling-v1-pro': { pricePerImage: 0.80, currency: 'USD' },
+  'pika-art': { pricePerImage: 0.20, currency: 'USD' },
+
+  // ============================================
+  // Recraft / SD3
+  // ============================================
+  'recraft-v3': { pricePerImage: 0.04, currency: 'USD' },
+  'sd3.5-large': { pricePerImage: 0.065, currency: 'USD' },
+  'sd3.5-large-turbo': { pricePerImage: 0.035, currency: 'USD' },
+
+  // ============================================
+  // Alibaba (Wanx/Qwen)
+  // ============================================
+  'wanx-v1': { pricePerImage: 0.02, currency: 'USD' },
+  'qwen-vl-max': { inputPerMillionTokens: 3.0, outputPerMillionTokens: 9.0, currency: 'USD' }, // Approx
+  'qwen-vl-plus': { inputPerMillionTokens: 1.5, outputPerMillionTokens: 4.5, currency: 'USD' },
+
+  // ============================================
+  // Tencent (Hunyuan)
+  // ============================================
+  'hunyuan-video': { pricePerImage: 0.30, currency: 'USD' },
+  'hunyuan-image': { pricePerImage: 0.02, currency: 'USD' },
+
+
 };
 
 const FALLBACK_IMAGE_TOKENS: Record<string, number> = {

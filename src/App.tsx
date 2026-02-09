@@ -1435,9 +1435,35 @@ const AppContent: React.FC = () => {
           clearTimeout(timeoutId);
 
           const generationTime = Date.now() - startTime;
-          // 🚀 FIX: 始终保持 base64 作为 originalUrl 的备份，确保图片不会丢失
-          let originalUrl = generatedBase64; // 默认使用 base64 作为 originalUrl
+
+          // 🚀 FIX: Robust handling of generated URLs (HTTP to Blob)
+          let originalUrl = generatedBase64;
           let displayUrl = generatedBase64;
+
+          // If result is an HTTP URL (typical for proxies/S3), we MUST download it to a Blob
+          // otherwise it might expire or not be cacheable by 'saveImage' effectively if logic is weak.
+          if (generatedBase64.startsWith('http')) {
+            try {
+              const fetchRes = await fetch(generatedBase64);
+              if (fetchRes.ok) {
+                const blob = await fetchRes.blob();
+                // Convert to Blob URL for local usage (efficient and persistent in session)
+                const blobUrl = URL.createObjectURL(blob);
+
+                // Use Blob URL as the primary "Original"
+                originalUrl = blobUrl;
+                displayUrl = blobUrl;
+                // Update base64 to be the Blob URL so downstream saving works with Blob Logic
+                generatedBase64 = blobUrl;
+              }
+            } catch (e) {
+              console.warn('Failed to download generated image from remote URL', e);
+              // Fallback: keep remote URL, but it might expire
+            }
+          } else {
+            // Ensure data: URIs are also treated as original
+            originalUrl = generatedBase64;
+          }
 
           // Cloud Sync / Upload (后台执行，不阻塞返回)
           if (generatedBase64 && generatedBase64.startsWith('data:')) {
@@ -1520,9 +1546,17 @@ const AppContent: React.FC = () => {
       }
 
       // ✅ 生成完成后重新获取主卡最新位置 (支持生成过程中拖动)
+      // 🚀 [Critical Fix] Fetch LATEST node state to prevent overwriting user changes (e.g. text edits during generation)
       const finalCanvas = activeCanvasRef.current;
-      const finalNode = finalCanvas?.promptNodes.find(n => n.id === promptNodeId);
-      const finalPos = finalNode?.position || livePos; // 使用最新位置,如果找不到则回退
+      const latestNode = finalCanvas?.promptNodes.find(n => n.id === promptNodeId);
+
+      if (!latestNode) {
+        console.error("Critical: PromptNode missing after generation", promptNodeId);
+        return; // Should not happen, but safety first
+      }
+
+      const finalPos = latestNode.position;
+      // Use latestNode for all future updates instead of stale 'node' closure
 
       // 计算位置
       const gapToImages = 80; // 主卡和副卡之间的距离
@@ -1608,8 +1642,8 @@ const AppContent: React.FC = () => {
           parentPromptId: promptNodeId,
           position: { x, y },
           dimensions: isVideo
-            ? `${node.aspectRatio} · 720p`
-            : `${node.aspectRatio} · ${finalSize || '1K'}`,
+            ? `${finalAspectRatio} · 720p`
+            : `${finalAspectRatio} · ${finalSize || '1K'}`,
           generationTime,
           tokens,
           cost
@@ -1617,24 +1651,25 @@ const AppContent: React.FC = () => {
       });
 
       const updatedNode = {
-        ...node,
-        position: finalPos, // ✅ 使用最新位置防止回跳
+        ...latestNode, // 🚀 Use latest state
+        position: finalPos,
         isGenerating: false,
         childImageIds: validResults.map(r => r.id),
         // Ensure we don't accidentally revert other fields if 'node' was stale
-        // But we need to make sure we keep the latest integrity
       };
 
       // 🚀 [Critical Fix] Execute updates in sequence/batch to prevent state overwrite race conditions
-      // Using a microtask delay or ensuring Context handles it?
-      // Context operations are usually synchronous state updates.
       updatePromptNode(updatedNode);
       addImageNodes(validResults);
 
       import('./services/costService').then(({ recordCost }) => {
+        // Use the model/size from the first valid result, or fallback to the scope variables
+        const usedModel = validResults[0]?.model || effectiveModel;
+        const usedSize = validResults[0]?.imageSize || latestNode.imageSize;
+
         recordCost(
-          effectiveModel,
-          node.imageSize,
+          usedModel,
+          usedSize,
           validResults.length,
           promptToUse,
           files.length
@@ -1642,7 +1677,7 @@ const AppContent: React.FC = () => {
       });
 
       // Clear active source if it was this node (simple check)
-      if (activeSourceImage && activeSourceImage === node.sourceImageId) {
+      if (activeSourceImage && activeSourceImage === latestNode.sourceImageId) {
         setActiveSourceImage(null);
       }
 
@@ -1651,8 +1686,11 @@ const AppContent: React.FC = () => {
 
       // 🚀 [修复] 确保错误卡片始终显示
       // 如果节点不存在于画布中，先添加它再更新错误状态
-      const errorNode = { ...node, isGenerating: false, error: err.message || 'Failed' };
-      const existsInCanvas = activeCanvasRef.current?.promptNodes.some(n => n.id === node.id);
+      const currentCanvas = activeCanvasRef.current;
+      const currentNode = currentCanvas?.promptNodes.find(n => n.id === node.id) || node; // Try to find latest, fallback to stale
+
+      const errorNode = { ...currentNode, isGenerating: false, error: err.message || 'Failed' };
+      const existsInCanvas = currentCanvas?.promptNodes.some(n => n.id === node.id);
 
       if (existsInCanvas) {
         updatePromptNode(errorNode);

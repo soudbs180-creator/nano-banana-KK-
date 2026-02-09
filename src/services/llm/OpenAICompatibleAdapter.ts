@@ -137,6 +137,16 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             response_format: 'b64_json'
         };
 
+        // 🚀 [Feature] If reference images are provided and are URLs, append to prompt (for MJ-like behaviors on standard slots)
+        if (options.referenceImages && options.referenceImages.length > 0) {
+            const urls = options.referenceImages
+                .filter(img => img && (img.startsWith('http') || img.length < 500)) // Only URLs, not base64
+                .join(' ');
+            if (urls) {
+                body.prompt = `${body.prompt} ${urls}`;
+            }
+        }
+
         const response = await fetch(url, {
             method: 'POST',
             headers,
@@ -197,10 +207,21 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const prompt = options.prompt + (options.aspectRatio ? ` --ar ${options.aspectRatio.replace(':', ':')} ` : '');
 
         // Call chat with strict text return
-        const chatResponse = await this.chat({
+        const chatOptions: ChatOptions = {
             modelId: options.modelId,
             messages: [{ role: 'user', content: prompt }]
-        }, keySlot);
+        };
+
+        // 🚀 [Fix] Pass reference images as inlineData if available
+        if (options.referenceImages && options.referenceImages.length > 0) {
+            // Convert strings (base64) to inlineData format
+            chatOptions.inlineData = options.referenceImages.map(img => ({
+                mimeType: 'image/png', // Assume PNG or detect? ReferenceImage type usually has mimeType.
+                data: img.replace(/^data:image\/\w+;base64,/, '')
+            }));
+        }
+
+        const chatResponse = await this.chat(chatOptions, keySlot);
 
         console.log('[OpenAIAdapter] Chat Response for Image:', chatResponse);
 

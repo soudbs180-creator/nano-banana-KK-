@@ -478,8 +478,11 @@ export interface GenerateImageResult {
   cost?: number;
   model?: string;
   imageSize?: ImageSize;
-  aspectRatio?: AspectRatio;
+  effectiveModel?: string; // 🚀 Actual model used (e.g. if mapped)
+  effectiveSize?: ImageSize; // 🚀 Actual size used (e.g. if mapped)
+  aspectRatio?: AspectRatio; // 🚀 Aspect Ratio
 }
+
 
 export const generateImage = async (
   prompt: string,
@@ -631,8 +634,8 @@ export const generateImage = async (
       url: resultUrl,
       tokens,
       cost,
-      model, // Pass back actual model used
-      imageSize: imageSize || ImageSize.SIZE_1K, // Pass back actual size used
+      effectiveModel: result.model || model, // 🚀 Return actual model used
+      effectiveSize: imageSize || ImageSize.SIZE_1K, // 🚀 Return actual size used
       aspectRatio // 🚀 Return resolved and used aspect ratio
     };
 

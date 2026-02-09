@@ -38,6 +38,8 @@ export interface ImageGenerationResult {
         totalTokens?: number;
         cost?: number; // Explicit cost if returned by API
     };
+    model?: string; // Actual model used
+    imageSize?: string; // Actual size used
 }
 
 export interface LLMAdapter {
