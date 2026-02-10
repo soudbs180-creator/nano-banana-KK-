@@ -25,10 +25,14 @@ interface PromptNodeProps {
     highlighted?: boolean;
     onPin?: (id: string, mode: 'button' | 'drag') => void; // 🚀 [New Prop] Pin Draft
     onRemoveTag?: (id: string, tag: string) => void; // 🚀 [New Prop] Remove Tag
+    onDragDelta?: (delta: { x: number; y: number }) => void; // 🚀 [New Prop] Relative Drag
 }
 
 // [FIX] Self-healing thumbnail component that recovers data from IDB if missing
-const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeType?: string } }> = ({ image }) => {
+const ReferenceThumbnail: React.FC<{
+    image: { id: string, data?: string, mimeType?: string },
+    onClick?: (e: React.MouseEvent) => void
+}> = ({ image, onClick }) => {
     const [data, setData] = useState<string | undefined>(undefined);
     const [loading, setLoading] = useState(true);
 
@@ -80,9 +84,16 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
 
     return (
         <div
-            className="w-10 h-10 rounded border border-[var(--border-light)] overflow-hidden relative bg-[var(--bg-tertiary)] cursor-grab active:cursor-grabbing"
+            className="w-10 h-10 rounded border border-[var(--border-light)] overflow-hidden relative bg-[var(--bg-tertiary)] cursor-pointer active:scale-95 transition-transform"
             draggable={!!src}
-            onMouseDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => {
+                // Allow Standard Click, but prevent Drag unless moved
+                e.stopPropagation();
+            }}
+            onClick={(e) => {
+                e.stopPropagation(); // Prevent card selection
+                if (onClick) onClick(e);
+            }}
             onDragStart={(e) => {
                 if (!src) {
                     e.preventDefault();
@@ -93,14 +104,6 @@ const ReferenceThumbnail: React.FC<{ image: { id: string, data?: string, mimeTyp
                 e.dataTransfer.setData('text/plain', src);
                 e.dataTransfer.setData('text/uri-list', src);
                 // [NEW] Pass structured data for efficient reuse
-                // We include 'data' (the Base64/Blob URL) directly to avoid hydration issues on drop
-                // if 'src' is a Data URL, we pass it as 'data'. 
-                // If it's a blob url, we might not be able to pass it as base64 easily here without reading it,
-                // but our 'src' variable in this component comes from 'data' state which IS base64 (mostly).
-                // Let's check:
-                // const src = data ? (data.startsWith...) : '';
-                // So 'src' is likely the full data URL.
-
                 e.dataTransfer.setData('application/x-kk-image-ref', JSON.stringify({
                     storageId: (image as any).storageId || image.id,
                     mimeType: image.mimeType || 'image/png',
@@ -213,7 +216,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     onHeightChange,
     highlighted,
     onPin,
-    onRemoveTag
+    onRemoveTag,
+    onDragDelta
 }) => {
     // 🚀 [DEBUG] Trace PromptNode Rendering
     // if (node.isGenerating) {
@@ -225,6 +229,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     const [previewImage, setPreviewImage] = useState<{ url: string; originRect: DOMRect } | null>(null);
     const dragStartPos = useRef({ x: 0, y: 0 });
     const dragStartCanvasPos = useRef({ x: 0, y: 0 });
+    const lastMousePos = useRef<{ x: number; y: number } | null>(null);
+    const pendingDelta = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
     const hasMoved = useRef(false);
 
@@ -242,6 +248,47 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             }
         }
     }, [node.position.x, node.position.y, isDragging]);
+
+    // 🚀 [New] Transition Animation from Center (Draft Overlay) to Canvas Position
+    useEffect(() => {
+        // Only trigger for "fresh" nodes (created < 1s ago) that are NOT drafts and NOT generating (or maybe yes generating?)
+        // The transition happens when Draft -> Generating (fixed).
+        // So we look for !isDraft.
+        if (node.isDraft) return;
+
+        const now = Date.now();
+        const isFresh = node.timestamp && (now - node.timestamp < 1000);
+
+        // We only animate if it's fresh AND we have canvas transform data
+        if (isFresh && canvasTransform && containerRef.current) {
+            import('gsap').then(({ default: gsap }) => {
+                // 1. Calculate Screen Center in World Coordinates
+                // ScreenCenter(screenX, screenY) = (WorldX * Scale + TrX, WorldY * Scale + TrY)
+                // WorldX = (ScreenX - TrX) / Scale
+                const screenCenterX = window.innerWidth / 2;
+                const screenCenterY = window.innerHeight / 2;
+
+                const worldCenterX = (screenCenterX - canvasTransform.x) / canvasTransform.scale;
+                const worldCenterY = (screenCenterY - canvasTransform.y) / canvasTransform.scale;
+
+                // 2. Calculate Start Scale (Overlay is 1:1 on Screen, so World Scale is 1/Zoom)
+                // If Zoom is 0.5, Overlay is 2x World Size. We animate from 2x to 1x.
+                const startScale = 1 / canvasTransform.scale;
+
+                // 3. Animate
+                gsap.from(containerRef.current, {
+                    x: worldCenterX - node.position.x, // Relative offset (GSAP 'x' is translate)
+                    y: worldCenterY - node.position.y,
+                    scale: startScale,
+                    opacity: 0, // Fade in slightly
+                    duration: 0.6,
+                    ease: "power3.out",
+                    clearProps: "all" // Cleanup to let React control styles again
+                });
+            });
+        }
+    }, [node.id, node.timestamp, node.isDraft]); // Run once when these change match criteria
+
 
     // Height reporting
     useEffect(() => {
@@ -284,20 +331,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         return () => observer.disconnect();
     }, [node.prompt, node.referenceImages]);
 
+
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-        // Handle Right Click (2) - Select Only
-        if ('button' in e && e.button === 2) {
-            e.stopPropagation();
-            onSelect();
-            return;
-        }
-
-        // Stop canvas panning when touching the card
-        e.stopPropagation();
-
-        setIsDragging(true);
-        hasMoved.current = false; // Reset hasMoved on new drag/click attempt
-
+        if ('button' in e && e.button === 2) return; // Right click
         // Only select if not already selected (Preserve Group)
         if (!isSelected) {
             onSelect();
@@ -315,7 +351,12 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
         // Store initial positions
         dragStartPos.current = { x: clientX, y: clientY };
+        lastMousePos.current = { x: clientX, y: clientY }; // 🚀 Track frame delta
         dragStartCanvasPos.current = { x: localPosRef.current.x, y: localPosRef.current.y };
+
+        setIsDragging(true);
+        hasMoved.current = false;
+        pendingDelta.current = { x: 0, y: 0 };
     };
 
     const requestRef = useRef<number | null>(null);
@@ -344,31 +385,44 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         if (requestRef.current !== null) return;
 
         requestRef.current = requestAnimationFrame(() => {
-            const scale = zoomScale; // Use zoomScale directly
-            const deltaX = (clientX - dragStartPos.current.x) / scale;
-            const deltaY = (clientY - dragStartPos.current.y) / scale;
+            const scale = zoomScale;
+            // 1. Calculate Absolute Delta (For Local Visuals - Smoothness)
+            const absoluteDeltaX = (clientX - dragStartPos.current.x) / scale;
+            const absoluteDeltaY = (clientY - dragStartPos.current.y) / scale;
 
             const newPos = {
-                x: dragStartCanvasPos.current.x + deltaX,
-                y: dragStartCanvasPos.current.y + deltaY
+                x: dragStartCanvasPos.current.x + absoluteDeltaX,
+                y: dragStartCanvasPos.current.y + absoluteDeltaY
             };
 
-            // 1. Direct DOM Update (Zero React Overhead for 120fps smooth drag)
+            // 2. Direct DOM Update (Visuals)
             if (containerRef.current) {
                 containerRef.current.style.transform = `translate3d(${newPos.x}px, ${newPos.y}px, 0) translate(-50%, -100%)`;
             }
             localPosRef.current = newPos;
 
-            // 2. Global Update (Throttled)
-            /* 
-               [NOTE] We maintain a throttled global update to ensure connection lines follow the card.
-               We keep the rate low (e.g. 50ms / 20fps) to avoid choking the main thread,
-               relying on the Direct DOM Update above for perceived smoothness.
-            */
-            const now = Date.now();
-            if (now - lastGlobalUpdateRef.current > 50) {
-                onPositionChange(node.id, newPos);
-                lastGlobalUpdateRef.current = now;
+            // 3. Global Update (Logic)
+            if (onDragDelta && lastMousePos.current) {
+                // 🚀 Relative Delta Mode (Robust against external jumps)
+                const stepDeltaX = (clientX - lastMousePos.current.x) / scale;
+                const stepDeltaY = (clientY - lastMousePos.current.y) / scale;
+
+                lastMousePos.current = { x: clientX, y: clientY };
+
+                // Accumulate
+                pendingDelta.current.x += stepDeltaX;
+                pendingDelta.current.y += stepDeltaY;
+
+                onDragDelta(pendingDelta.current);
+                pendingDelta.current = { x: 0, y: 0 };
+
+            } else {
+                // Fallback: Absolute Position Update (Legacy)
+                const now = Date.now();
+                if (now - lastGlobalUpdateRef.current > 50) {
+                    onPositionChange(node.id, newPos);
+                    lastGlobalUpdateRef.current = now;
+                }
             }
 
             requestRef.current = null;
@@ -378,8 +432,12 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     const handleMouseUp = () => {
         if (isDragging) {
             setIsDragging(false);
-            // Commit final position
-            onPositionChange(node.id, localPosRef.current);
+            // Commit final position IF NOT using Delta Mode
+            // In Delta mode, state is updated incrementally, so we don't need a final absolute commit
+            // which could fight with external state.
+            if (!onDragDelta) {
+                onPositionChange(node.id, localPosRef.current);
+            }
         }
         if (requestRef.current) {
             cancelAnimationFrame(requestRef.current);
@@ -401,7 +459,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             window.removeEventListener('touchmove', handleMouseMove);
             window.removeEventListener('touchend', handleMouseUp);
         };
-    }, [isDragging, zoomScale]); // Use zoomScale here
+    }, [isDragging, zoomScale, onDragDelta]);
 
     return (
         <div
@@ -638,24 +696,18 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 {node.referenceImages && node.referenceImages.length > 0 && (
                     <div className="flex gap-1 mb-2 flex-wrap">
                         {node.referenceImages.slice(0, 4).map((img, idx) => (
-                            <div
+                            <ReferenceThumbnail
                                 key={img.id || idx}
+                                image={img}
                                 onClick={(e) => {
-                                    e.stopPropagation();
                                     const refThumb = e.currentTarget.querySelector('img');
                                     if (refThumb) {
                                         const rect = refThumb.getBoundingClientRect();
-                                        const src = img.data?.startsWith('data:') || img.data?.startsWith('http') || img.data?.startsWith('blob:')
-                                            ? img.data
-                                            : `data:${img.mimeType || 'image/png'};base64,${img.data}`;
+                                        const src = refThumb.src; // Use the rendered src (which is resolved)
                                         setPreviewImage({ url: src, originRect: rect });
                                     }
                                 }}
-                            >
-                                <ReferenceThumbnail
-                                    image={img}
-                                />
-                            </div>
+                            />
                         ))}
                         {node.referenceImages.length > 4 && (
                             <div className="w-10 h-10 rounded border border-[var(--border-light)] bg-[var(--bg-tertiary)] flex items-center justify-center text-xs text-[var(--text-secondary)]">
@@ -993,7 +1045,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                     onClose={() => setPreviewImage(null)}
                 />
             )}
-        </div >
+        </div>
     );
 });
 

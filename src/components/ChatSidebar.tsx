@@ -1,7 +1,8 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ArrowUp, Bot, ChevronDown, Eraser, FileText, Film, Image as ImageIcon, Layout, MessageSquare, Mic, Paperclip, Plus, User, X, Zap, Sparkles } from 'lucide-react';
-import { generateText, generateImage } from '../services/geminiService';
+import { generateImage } from '../services/geminiService';
+import { llmService } from '../services/llm/LLMService';
 import { notify } from '../services/notificationService';
 import { keyManager } from '../services/keyManager';
 import { agentService, AgentConfig } from '../services/agentService';
@@ -534,12 +535,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             history.push({ role: 'user', content: messageContent });
 
             // 调用API (传递附件数据)
-            const responseText = await generateText(
-                history,
-                selectedModel.id,
-                '', // apiKey
-                inlineData.length > 0 ? inlineData : undefined // 传递多媒体数据
-            );
+            const responseText = await llmService.chat({
+                modelId: selectedModel.id,
+                messages: history,
+                inlineData: inlineData.length > 0 ? inlineData : undefined
+            });
 
             const aiMsg: Message = {
                 id: (Date.now() + 1).toString(),

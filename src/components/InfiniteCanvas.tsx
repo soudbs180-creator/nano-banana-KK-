@@ -9,6 +9,7 @@ export interface InfiniteCanvasHandle {
     resetView: () => void;
     fitToAll: () => void; // ✅ 缩放到全览所有卡片
     setView: (x: number, y: number, scale: number) => void;
+    getCurrentTransform: () => { x: number; y: number; scale: number }; // 🚀 获取当前实时的 transform
 }
 
 interface InfiniteCanvasProps {
@@ -361,7 +362,9 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             const newTransform = { x, y, scale };
             setTransform(newTransform);
             onTransformChange?.(newTransform);
-        }
+        },
+        // 🚀 获取当前实时的 transform（包括拖动中的 tempTransform）
+        getCurrentTransform: () => tempTransform || transform
     }));
 
     // Handle keyboard shortcuts

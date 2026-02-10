@@ -28,6 +28,7 @@ interface ImageNodeProps {
     onPreview?: (imageId: string) => void;
     isVisible?: boolean; // 🚀 视口可见性控制（从父组件传入）
     onUpdate?: (id: string, updates: Partial<GeneratedImage>) => void; // 🚀 [New] 更新回调
+    onDragDelta?: (delta: { x: number; y: number }) => void; // 🚀 [New] Relative Drag
 }
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
@@ -46,7 +47,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     highlighted,
     onPreview,
     isVisible = true, // 🚀 默认可见（向后兼容）
-    onUpdate
+    onUpdate,
+    onDragDelta
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const dragCleanupRef = useRef<(() => void) | null>(null); // 🚀 [Fix] Drag Cleanup Ref
@@ -285,9 +287,36 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
         setIsDragging(true);
         wasDraggingRef.current = false;
+
+        // 🚀 [Fix] Auto-Select logic for dragging unselected cards
+        // If we start dragging an unselected card and NOT holding Shift/Ctrl, 
+        // we should select ONLY this card to avoid dragging other selected cards
+        if (!isSelected && onSelect) {
+            // 检查是否按住了多选键
+            const mouseEvent = e as React.MouseEvent;
+            const isMultiSelect = mouseEvent.shiftKey || mouseEvent.ctrlKey || mouseEvent.metaKey;
+
+            if (!isMultiSelect) {
+                // 如果没有按多选键，先清除其他选择，只选中当前卡片
+                // 使用自定义事件标记这是拖拽开始的选择
+                (window as any).__dragSelectStart = true;
+                onSelect();
+                delete (window as any).__dragSelectStart;
+            } else {
+                // 按住了多选键，添加到选择
+                onSelect();
+            }
+        }
+
         dragStartPos.current = { x: clientX, y: clientY };
         // Store current position as base
         localPosRef.current = position;
+
+        // 🚀 Shared state for partial delta
+        const lastMousePos = { x: clientX, y: clientY };
+
+        // 🚀 记录拖拽开始时是否只应该移动当前卡片
+        const shouldMoveOnlyThisCard = !isSelected || (window as any).__dragSelectStart;
 
         // 绑定全局事件
         const handleMouseMove = (mvEvent: MouseEvent | TouchEvent) => {
@@ -303,12 +332,33 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 wasDraggingRef.current = true;
             }
 
-            // 实时更新位置
-            if (onPositionChange) {
+            // 1. Visual Update (Absolute from start) - Smooth local feedback
+            // Force DOM update to match prop
+            if (containerRef.current) {
                 const scale = zoomScale || 1;
+                const visualX = localPosRef.current.x + dx / scale;
+                const visualY = localPosRef.current.y + dy / scale;
+                containerRef.current.style.transform = `translate3d(${visualX}px, ${visualY}px, 0) translate(-50%, -100%)`;
+            }
+
+            // 2. Logic Update
+            const scale = zoomScale || 1;
+            const stepX = (mvClientX - lastMousePos.x) / scale;
+            const stepY = (mvClientY - lastMousePos.y) / scale;
+
+            lastMousePos.x = mvClientX;
+            lastMousePos.y = mvClientY;
+
+            // 🚀 [Fix] 如果只应该移动当前卡片（未选中或多选模式），使用 onPositionChange
+            // 否则使用 onDragDelta（会移动所有选中卡片）
+            if (shouldMoveOnlyThisCard && onPositionChange) {
+                // 只移动当前卡片
                 const newX = localPosRef.current.x + dx / scale;
                 const newY = localPosRef.current.y + dy / scale;
                 onPositionChange(image.id, { x: newX, y: newY });
+            } else if (onDragDelta) {
+                // 移动所有选中卡片
+                onDragDelta({ x: stepX, y: stepY });
             }
         };
 
@@ -319,7 +369,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             window.removeEventListener('touchmove', handleMouseMove);
             window.removeEventListener('touchend', handleMouseUp);
             dragCleanupRef.current = null;
+
+            // Final Commit - Only if NOT using delta (Delta commits incrementally)
+            if (!onDragDelta) {
+                // Calculate final pos
+                // ...
+                // Actually existing code relied on handleMouseMove firing last update.
+                // But handleMouseUp generally doesn't fire move.
+            }
         };
+
+
 
         // 🚀 Store cleanup for external cancellation (e.g. HTML5 Drag)
         dragCleanupRef.current = handleMouseUp;
@@ -524,17 +584,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                                 {/* 🚀 加载/恢复状态 - 居中显示 */}
                                 {(isLoading || (!imgError && !displaySrc)) ? (
-                                    /* 边框往内弥散白光 - 覆盖整个卡片，z-50确保在顶层 */
-                                    <div
-                                        className="absolute inset-0 z-50 rounded-lg flex items-center justify-center bg-black/60"
-                                        style={{
-                                            animation: 'shimmerInward 2s ease-in-out infinite'
-                                        }}
-                                    >
-                                        <span className="text-xs text-white/70">
-                                            正在加载...
-                                        </span>
-                                    </div>
+                                    // 加载状态由全局遮罩处理，这里显示空白占位
+                                    <div className="absolute inset-0 bg-transparent" />
                                 ) : (
                                     <>
                                         <ImageOff size={24} className="mb-2 opacity-50 text-rose-400" />
@@ -573,31 +624,43 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                         {/* Tags Layer - REMOVED: Tags are now only in footer row, not floating on image */}
 
+                        {/* 🚀 全局加载遮罩 - 覆盖整个卡片包括信息栏 */}
+                        {(isLoading || (!imgError && !displaySrc)) && (
+                            <div
+                                className="absolute inset-0 z-50 rounded-lg flex flex-col items-center justify-center bg-black/60"
+                                style={{
+                                    animation: 'shimmerInward 2s ease-in-out infinite',
+                                    top: 0,
+                                    bottom: 0
+                                }}
+                            >
+                                <span className="text-xs text-white/70 mb-2">
+                                    正在加载...
+                                </span>
+                            </div>
+                        )}
 
-                        {/* Footer - Stricter Two Row Layout with Divider */}
+                        {/* Footer - 根据卡片类型显示不同布局 */}
                         <div
-                            className="px-2 py-1 flex flex-col gap-0 border-t-2 relative z-10 box-border cursor-pointer"
+                            className="px-2 py-2 flex flex-col gap-1.5 border-t-2 relative z-10 box-border cursor-pointer"
                             style={{
                                 backgroundColor: 'var(--bg-elevated)',
                                 borderTopColor: 'var(--border-medium)',
-                                minHeight: '44px' // Slightly taller to accommodate 2 rows + divider
+                                minHeight: image.orphaned ? '32px' : (image.isGenerating ? '32px' : 'auto')
                             }}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 if (!wasDraggingRef.current) onClick?.(image.id);
                             }}
                         >
-                            {/* Row 1: Model Info (OR File Info) + Tags (Max 3) */}
-                            {/* Row 1: Parameters + Tags + Actions */}
-                            <div className="flex items-center gap-1.5 h-5">
-                                {/* Model / File Name - Consistent height and rounded-lg */}
-                                {image.orphaned ? (
-                                    // 🚀 [Orphan Mode] Simplified UI with Renaming
-                                    <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)] min-w-0" title={image.fileName}>
-                                        <span className="w-1 h-1 rounded-full bg-indigo-500"></span>
+                            {/* 状态1: 孤独副卡（从外面拖入的图片）- 只有一层 */}
+                            {image.orphaned && (
+                                <div className="flex items-center justify-between h-5">
+                                    {/* 左侧：文件名 + 像素尺寸 */}
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
                                         {isEditingAlias ? (
                                             <input
-                                                className="w-[120px] bg-transparent border-none outline-none text-[10px] text-[var(--text-primary)] leading-none p-0"
+                                                className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-[var(--text-primary)] leading-none p-0"
                                                 value={aliasValue}
                                                 onChange={(e) => setAliasValue(e.target.value)}
                                                 onBlur={handleAliasCommit}
@@ -607,86 +670,147 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                             />
                                         ) : (
                                             <span
-                                                className="text-[10px] font-medium text-[var(--text-secondary)] truncate max-w-[120px] cursor-text hover:text-[var(--text-primary)]"
+                                                className="text-xs font-medium text-[var(--text-secondary)] truncate cursor-text hover:text-[var(--text-primary)]"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setAliasValue(image.alias || image.fileName || 'Image');
                                                     setIsEditingAlias(true);
                                                 }}
+                                                title={image.alias || image.fileName || 'Reference Image'}
                                             >
                                                 {image.alias || image.fileName || 'Reference Image'}
                                             </span>
                                         )}
+                                        {/* 像素尺寸 */}
+                                        {image.dimensions && (
+                                            <span className="text-2xs text-[var(--text-tertiary)] whitespace-nowrap">
+                                                {image.dimensions}
+                                            </span>
+                                        )}
                                     </div>
-                                ) : (
-                                    // Normal Mode
+                                    {/* 右侧：删除按钮 */}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onDelete(image.id); }}
+                                        className="hover:text-[var(--accent-red)] transition-colors p-0.5 ml-2"
+                                        title="删除"
+                                    >
+                                        <Trash2 size={10} />
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* 状态2: 生成过程中 - 只有一层，居中显示 */}
+                            {!image.orphaned && image.isGenerating && (
+                                <div className="flex items-center justify-center h-5 gap-2">
                                     <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
-                                        <span className={`text-[8px] font-medium whitespace-nowrap ${(() => {
+                                        <span className={`text-2xs font-medium whitespace-nowrap ${(() => {
                                             const modelId = image.model || '';
                                             return getModelThemeColor(modelId);
                                         })()}`}>
                                             {image.modelLabel || 'AI'}
                                         </span>
                                     </div>
-                                )}
-
-                                {/* Specs (Pill) - Same height and rounded-lg */}
-                                <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
-                                    <span className="text-[8px] font-medium text-[var(--text-secondary)] whitespace-nowrap">
-                                        {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || (image.imageSize as any) === 'Video') ? '720p' : (image.imageSize || '1K')}
-                                    </span>
-                                </div>
-
-                                {/* Tags (Max 3) - Same height and rounded-lg to match main card */}
-                                {image.tags && image.tags.slice(0, 3).map(tag => {
-                                    const colors = generateTagColor(tag);
-                                    return (
-                                        <span
-                                            key={tag}
-                                            className="flex items-center justify-center px-2 h-5 text-[8px] font-medium rounded-lg whitespace-nowrap border"
-                                            style={{
-                                                backgroundColor: colors.bg,
-                                                color: colors.text,
-                                                borderColor: colors.border
-                                            }}
-                                        >
-                                            #{tag}
+                                    {/* 参数也加框 */}
+                                    <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
+                                        <span className="text-2xs text-[var(--text-secondary)] whitespace-nowrap">
+                                            {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || (image.imageSize as any) === 'Video') ? '720p' : (image.imageSize || '1K')}
                                         </span>
-                                    );
-                                })}
-
-                                <div className="flex-1" />
-
-                                {/* Actions */}
-                                <div className="flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
-                                    <button onClick={handleDownload} className="hover:text-[var(--accent-blue)] transition-colors p-0.5" title="下载">
-                                        <Download size={10} />
-                                    </button>
-                                    <button onClick={(e) => { e.stopPropagation(); onDelete(image.id); }} className="hover:text-[var(--accent-red)] transition-colors p-0.5" title="删除">
-                                        <Trash2 size={10} />
-                                    </button>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
-                            {/* Divider Line */}
-                            <div className="w-full my-1 h-[0.5px] bg-[var(--border-light)] opacity-70"></div>
+                            {/* 状态3: 生成完成 - 两层或三层结构 */}
+                            {!image.orphaned && !image.isGenerating && (
+                                <>
+                                    {/* 第一层：左侧模型和参数，右侧下载和删除 */}
+                                    <div className="flex items-center justify-between h-5">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            {/* Model Name */}
+                                            <div className="flex items-center gap-1 px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)] max-w-[100px]">
+                                                <span className={`text-2xs font-medium whitespace-nowrap truncate ${(() => {
+                                                    const modelId = image.model || '';
+                                                    return getModelThemeColor(modelId);
+                                                })()}`}
+                                                    title={image.modelLabel || image.model}
+                                                >
+                                                    {(image.modelLabel || image.model || 'AI').slice(0, 16)}
+                                                </span>
+                                            </div>
 
-                            {/* Row 2: Stats (Time | Tokens | Cost) */}
-                            <div className="flex items-center justify-center gap-1 h-[16px] text-[7px] font-mono text-[var(--text-secondary)]">
-                                {image.generationTime ? (
-                                    <span title="耗时" className="text-blue-400">耗时 {(image.generationTime / 1000).toFixed(1)}s</span>
-                                ) : (
-                                    <span className="text-blue-400/50">耗时 --</span>
-                                )}
+                                            {/* Provider Tag */}
+                                            {image.provider && (
+                                                <div className="flex items-center gap-1 px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
+                                                    <span className="text-2xs text-[var(--text-secondary)] font-medium whitespace-nowrap" title={image.provider}>
+                                                        {image.provider.slice(0, 6)}
+                                                    </span>
+                                                </div>
+                                            )}
 
-                                <span className="text-[var(--border-medium)] mx-0.5">|</span>
+                                            {/* Aspect Ratio / Size */}
+                                            <div className="flex items-center gap-1 px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
+                                                <span className="text-2xs text-[var(--text-secondary)] whitespace-nowrap">
+                                                    {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || (image.imageSize as any) === 'Video') ? '720p' : (image.imageSize || '1K')}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        {/* 右侧：下载 + 删除 */}
+                                        <div className="flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
+                                            <button onClick={handleDownload} className="hover:text-[var(--accent-blue)] transition-colors p-0.5" title="下载原图">
+                                                <Download size={10} />
+                                            </button>
+                                            <button onClick={(e) => { e.stopPropagation(); onDelete(image.id); }} className="hover:text-[var(--accent-red)] transition-colors p-0.5" title="删除">
+                                                <Trash2 size={10} />
+                                            </button>
+                                        </div>
+                                    </div>
 
-                                <span title="Token消耗" className="text-emerald-400">令牌 {image.tokens || 0}</span>
+                                    {/* Delicate Separator 1 */}
+                                    <div className="w-full h-px bg-[var(--text-primary)]/5 my-0.5"></div>
 
-                                <span className="text-[var(--border-medium)] mx-0.5">|</span>
+                                    {/* 第二层：居中显示耗时、令牌、费用 - 使用缩小字号 */}
+                                    <div className="flex items-center justify-center gap-2 h-5 text-2xs text-[var(--text-secondary)]">
+                                        {image.generationTime ? (
+                                            <span title="耗时" className="text-blue-400">耗时 {(image.generationTime / 1000).toFixed(1)}s</span>
+                                        ) : (
+                                            <span className="text-blue-400/50">耗时 --</span>
+                                        )}
+                                        <span className="text-[var(--border-medium)]">|</span>
+                                        <span title="Token消耗" className="text-emerald-400">令牌 {image.tokens || 0}</span>
+                                        <span className="text-[var(--border-medium)]">|</span>
+                                        <span title="费用" className="text-amber-400">费用 ${image.cost ? image.cost.toFixed(4) : '0.0000'}</span>
+                                    </div>
 
-                                <span title="费用" className="text-amber-400">费用 ${image.cost ? image.cost.toFixed(4) : '0.0000'}</span>
-                            </div>
+                                    {/* Delicate Separator 2 - Only if tags exist */}
+                                    {image.tags && image.tags.length > 0 && (
+                                        <div className="w-full h-px bg-[var(--text-primary)]/5 my-0.5"></div>
+                                    )}
+
+                                    {/* 第三层：标签（如果有），最多4个，每个最多6个字 */}
+                                    {image.tags && image.tags.length > 0 && (
+                                        <div className="flex items-center justify-center gap-1.5 flex-wrap pt-0.5">
+                                            {image.tags.slice(0, 4).map(tag => {
+                                                const colors = generateTagColor(tag);
+                                                // 截断超过6个字的标签
+                                                const displayTag = tag.length > 6 ? tag.slice(0, 6) : tag;
+                                                return (
+                                                    <span
+                                                        key={tag}
+                                                        className="flex items-center justify-center px-2 h-5 text-xs font-medium rounded-lg whitespace-nowrap border"
+                                                        style={{
+                                                            backgroundColor: colors.bg,
+                                                            color: colors.text,
+                                                            borderColor: colors.border
+                                                        }}
+                                                        title={tag}
+                                                    >
+                                                        #{displayTag}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>

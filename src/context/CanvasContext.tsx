@@ -2810,16 +2810,26 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Ideally: Moving a prompt moves its children.
             // Let's match `updatePromptNodePosition` behavior for selected Prompts.
 
-            const movedPromptIds = new Set(selectedIds.filter(id => c.promptNodes.some(p => p.id === id)));
+            // 1. Identify which Prompts are selected (and moving)
+            const selectedPrompts = c.promptNodes.filter(p => selectedIds.includes(p.id));
+
+            // 2. Identify strictly associated child images of these prompts
+            // 🚀 [Fix] Only move images that are explicitly listed in childImageIds
+            // This prevents "lonely" cards (which might stale-keep parentPromptId) from moving
+            const childImageIdsToMove = new Set<string>();
+            selectedPrompts.forEach(p => {
+                if (p.childImageIds) {
+                    p.childImageIds.forEach(id => childImageIdsToMove.add(id));
+                }
+            });
 
             const newImageNodes = c.imageNodes.map(n => {
                 // If explicitly selected, move it.
                 if (selectedIds.includes(n.id)) {
                     return { ...n, position: { x: n.position.x + delta.x, y: n.position.y + delta.y } };
                 }
-                // If parent Prompt was moved, move this image too?
-                // `updatePromptNodePosition` does this.
-                if (n.parentPromptId && movedPromptIds.has(n.parentPromptId)) {
+                // If implicit move via parent relation (Strict Check)
+                if (childImageIdsToMove.has(n.id)) {
                     return { ...n, position: { x: n.position.x + delta.x, y: n.position.y + delta.y } };
                 }
                 return n;

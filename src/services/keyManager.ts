@@ -205,6 +205,13 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
         format: 'openai',
         icon: '🎬'
     },
+    'gemini-api-cn': {
+        name: 'Gemini API CN',
+        baseUrl: 'https://gemini-api.cn',
+        models: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
+        format: 'openai',
+        icon: '🌐'
+    },
     'volcengine': {
         name: '火山引擎',
         baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
@@ -232,6 +239,13 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
         models: ['Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3'],
         format: 'openai',
         icon: '💎'
+    },
+    'antigravity': {
+        name: 'Antigravity (本地)',
+        baseUrl: 'http://127.0.0.1:8045',
+        models: ['gemini-3-pro-image', 'gemini-3-flash', 'gemini-2.5-flash-image', 'gemini-2.5-flash'],
+        format: 'openai',
+        icon: '🌀'
     },
     'custom': {
         name: '自定义',
@@ -862,21 +876,25 @@ export class KeyManager {
                     // ✨ 自动补全: 如果是 Google Key (或旧版 Gemini),确保包含新的 Imagen/Veo 模型 (修复旧 Key 导致的问题)
                     cloudSlots = cloudSlots.map(s => {
                         const isGoogle = s.provider === 'Google' || (s.provider as string) === 'Gemini';
+
+                        // ✨ Force Migrate 'Gemini' -> 'Google'
+                        let newProvider = s.provider;
+                        if ((s.provider as string) === 'Gemini') {
+                            newProvider = 'Google';
+                        }
+
                         if (isGoogle) {
                             const currentModels = s.supportedModels || [];
                             const missingDefaults = DEFAULT_GOOGLE_MODELS.filter(m => !currentModels.includes(m));
-                            if (missingDefaults.length > 0) {
-                                console.log(`[KeyManager] Cloud Sync: Auto-adding missing official models to key ${s.name}:`, missingDefaults);
+
+                            // If missing defaults OR provider needs migration
+                            if (missingDefaults.length > 0 || newProvider !== s.provider) {
+                                console.log(`[KeyManager] Cloud Sync: Auto-adding models/fixing provider for key ${s.name}`);
                                 return {
                                     ...s,
-                                    // 强制标准化 Provider 为 Google
-                                    provider: 'Google',
+                                    provider: 'Google', // Force correct provider
                                     supportedModels: [...currentModels, ...missingDefaults]
                                 };
-                            }
-                            // 即使模型全齐，也要标准化 Provider
-                            if (s.provider !== 'Google') {
-                                return { ...s, provider: 'Google' };
                             }
                         }
                         return s;
@@ -1262,149 +1280,141 @@ export class KeyManager {
         // Parse the requested ID to separate base model and suffix
         // Format: modelId@Suffix or just modelId
         const [baseIdPart, suffix] = modelId.split('@');
-        // If no suffix, it implies Official/Google or specific mapping
 
-        // Normalize the requested model ID: remove 'models/' prefix if present
+        // Normalize the requested model ID
         const normalizedModelId = baseIdPart.replace(/^models\//, '');
 
-        // 1. Filter by Model Support AND Provider/Pool match
-        const candidates = this.state.slots.filter(s => {
-            // Check if slot supports the base model
-            const supportsModel = (s.supportedModels || []).some(m => {
-                const storedId = parseModelString(m).id.replace(/^models\//, '');
-                return storedId === normalizedModelId;
+        // Debug
+        // console.log(`[KeyManager] getNextKey request: ${modelId} (Norm: ${normalizedModelId}, Suffix: ${suffix || 'None'})`);
+
+        // --- STRICT SEPARATION STRATEGY ---
+        // 1. If NO Suffix -> Must use Official Provider (Google)
+        // 2. If Suffix -> Must use Channel/Proxy that matches Suffix
+
+        let candidates: KeySlot[] = [];
+
+        if (!suffix) {
+            // [Official Direct Connection]
+            // Strategy: Strictly find keys with provider="Google"
+            candidates = this.state.slots.filter(s => s.provider === 'Google');
+
+            // Further filter by supported models (unless JIT healing fixes it later)
+            // We do a loose check here: if strict model check fails, JIT might rescue it.
+            // But standard candidates should support it.
+            const strictCandidates = candidates.filter(s => {
+                return (s.supportedModels || []).some(m => {
+                    return parseModelString(m).id.replace(/^models\//, '') === normalizedModelId;
+                });
             });
 
-            if (!supportsModel) return false;
+            // If we have strict candidates, prefer them
+            if (strictCandidates.length > 0) {
+                candidates = strictCandidates;
+            } else {
+                // No key explicitly lists this model. 
+                // Don't empty 'candidates' yet; let JIT/Desperate mode handle the "Implied Support" for Google keys.
+                // console.log(`[KeyManager] No Google key explicitly lists ${normalizedModelId}. Candidates for JIT: ${candidates.length}`);
+            }
 
-            // Check if slot matches the requested pool (via suffix)
-            if (suffix) {
-                // Special handling for "Custom" suffix: Match any non-Google key if exact match fails
+        } else {
+            // [Proxy / Channel Connection]
+            // Strategy: Find keys matching the suffix (Custom Name or Provider Name)
+            candidates = this.state.slots.filter(s => {
                 const slotSuffix = s.proxyConfig?.serverName || s.provider || 'Custom';
 
-                if (suffix === 'Custom') {
-                    // unexpected "Custom" request? Default to any non-google key that has this model
-                    return s.provider !== 'Google';
-                }
+                // Special: "Custom" suffix matches any non-Google
+                if (suffix === 'Custom') return s.provider !== 'Google';
 
                 return slotSuffix === suffix;
-            } else {
-                // No suffix -> Official Google
-                return s.provider === 'Google';
-            }
-        });
-
-        if (candidates.length === 0) {
-            // DIAGNOSTIC LOOP: Why no candidates?
-            const debugCandidates = this.state.slots.filter(s => !s.disabled);
-            console.log(`[KeyManager] No candidates for ${normalizedModelId}. Checking ${debugCandidates.length} active slots...`);
-            debugCandidates.forEach(s => {
-                const supportsModel = (s.supportedModels || []).some(m => parseModelString(m).id.replace(/^models\//, '') === normalizedModelId);
-                const isGoogle = s.provider === 'Google';
-                console.log(`  - Slot ${s.name}: Provider=${s.provider}, Type=${s.type}, SupportsModel=${supportsModel}, IsGoogle=${isGoogle}, BaseUrl=${s.baseUrl}`);
             });
 
-            // ✨ JIT Auto-Repair (运行时自愈): 
-            // 如果请求的是官方模型(Imagen/Veo/Gemini)，但没有 Key 显式声明支持它，
-            // 检查是否有健康的 Google Key，如果有，直接动态授权并使用！
-            // 这能防止因模型列表未同步导致的 "None of the above keys support..." 错误。
-
-            const isOfficialModel = normalizedModelId.startsWith('imagen-') ||
-                normalizedModelId.startsWith('veo-') ||
-                normalizedModelId.startsWith('gemini-') ||
-                // 容错：有些旧 Key 可能用 'Gemini' 作为 Provider
-                normalizedModelId.includes('nano');
-
-            if (isOfficialModel) {
-                console.log(`[KeyManager] JIT Healing triggered for official model: ${normalizedModelId}`);
-                // 1. First try healthy keys (Valid/Unknown)
-                let googleCandidates = this.state.slots.filter(s =>
-                    !s.disabled &&
-                    (s.status === 'valid' || s.status === 'unknown') &&
-                    (s.budgetLimit < 0 || s.totalCost < s.budgetLimit) &&
-                    s.type === 'official' // ✨ Robust Check
-                );
-
-                console.log(`[KeyManager] JIT Candidates (Official & Healthy): ${googleCandidates.length}`);
-
-                // 2. Desperate Mode: If no healthy keys, try ANY non-disabled Google key
-                if (googleCandidates.length === 0) {
-                    googleCandidates = this.state.slots.filter(s =>
-                        !s.disabled &&
-                        (s.budgetLimit < 0 || s.totalCost < s.budgetLimit) &&
-                        s.type === 'official' // ✨ Robust Check
-                    );
-                    if (googleCandidates.length > 0) {
-                        console.warn('[KeyManager] ⚠️ Desperate Mode: Using potentially invalid keys for JIT Healing');
-                    }
-                    console.log(`[KeyManager] JIT Candidates (Desperate): ${googleCandidates.length}`);
-                }
-
-                if (googleCandidates.length > 0) {
-                    console.warn(`[KeyManager] ⚠️ JIT Healing: 自动为 Google Key 启用模型 ${normalizedModelId}`);
-                    // ... (rest of logic)
-
-                    // 1. 选一个最好的 Key (优先选 valid)
-                    const winner = googleCandidates.find(s => s.status === 'valid') || googleCandidates[0];
-
-                    // 2. 永久修正它的 supportedModels
-                    if (!winner.supportedModels) winner.supportedModels = [];
-                    if (!winner.supportedModels.includes(normalizedModelId)) {
-                        winner.supportedModels.push(normalizedModelId);
-                        // 顺便修正 Provider
-                        if (winner.provider !== 'Google') winner.provider = 'Google';
-
-                        // 3. 保存状态 (如果是匿名则存本地，登录则存云端)
-                        this.saveState();
-                    }
-
-                    // 4. 返回结果
-                    return this.prepareKeyResult(winner);
-                }
-            }
-
-            return null;
+            // Filter by model support
+            candidates = candidates.filter(s => {
+                return (s.supportedModels || []).some(m => {
+                    return parseModelString(m).id.replace(/^models\//, '') === normalizedModelId;
+                });
+            });
         }
 
-        // 2. Filter Healthy
-        const healthy = candidates.filter(s =>
-            !s.disabled &&
-            s.status !== 'invalid' &&
-            (s.budgetLimit < 0 || s.totalCost < s.budgetLimit)
-        );
+        // --- DIAGNOSTICS & FILTERING ---
+        // Now filter candidates by HEALTH (Status, Budget, Disabled)
 
-        // ✨ DESPERATE FALLBACK for Official Models
-        // If we found candidates but they are all "invalid" (e.g. network glitch),
-        // and this is an official model, we should TRY ANYWAY.
-        if (healthy.length === 0) {
-            const isOfficialModel = normalizedModelId.startsWith('imagen-') ||
-                normalizedModelId.startsWith('veo-') ||
-                normalizedModelId.startsWith('gemini-') ||
-                normalizedModelId.includes('nano');
+        const validCandidates: KeySlot[] = [];
+        const budgetExhausted: KeySlot[] = [];
+        const disabled: KeySlot[] = [];
+        const invalid: KeySlot[] = [];
 
-            if (isOfficialModel) {
-                const desperateCandidates = candidates.filter(s =>
+        for (const s of candidates) {
+            if (s.disabled) {
+                disabled.push(s);
+                continue;
+            }
+            if (s.budgetLimit > 0 && s.totalCost >= s.budgetLimit) {
+                budgetExhausted.push(s);
+                continue;
+            }
+            // Note: We include 'invalid' status keys in 'validCandidates' initially 
+            // to allow 'Desperate Mode' fallback if all are invalid but under budget.
+            // But strictly speaking, they are candidate keys.
+            validCandidates.push(s);
+        }
+
+        if (validCandidates.length === 0) {
+            console.warn(`[KeyManager] No valid keys found for ${modelId}.
+                - Total Candidates (Provider Correct): ${candidates.length}
+                - Disabled: ${disabled.length}
+                - Budget Exhausted: ${budgetExhausted.length}
+            `);
+
+            // ✨ JIT Auto-Repair (Official Only)
+            // If Official request (no suffix) and we have Google keys that are just missing the model mapping (but healthy), use them.
+            if (!suffix && (normalizedModelId.startsWith('gemini-') || normalizedModelId.startsWith('imagen-') || normalizedModelId.startsWith('veo-'))) {
+
+                // Find any healthy Google key
+                const healingCandidates = this.state.slots.filter(s =>
+                    s.provider === 'Google' &&
                     !s.disabled &&
                     (s.budgetLimit < 0 || s.totalCost < s.budgetLimit)
                 );
 
-                if (desperateCandidates.length > 0) {
-                    console.warn(`[KeyManager] ⚠️ All keys invalid for ${normalizedModelId}, but triggering Desperate Fallback.`);
-                    // Return the first one
-                    return this.prepareKeyResult(desperateCandidates[0]);
+                if (healingCandidates.length > 0) {
+                    console.log(`[KeyManager] JIT Healing: Valid Google key found, auto-authorizing ${normalizedModelId}`);
+                    const selected = healingCandidates[0];
+
+                    // Auto-fix
+                    if (!selected.supportedModels) selected.supportedModels = [];
+                    if (!selected.supportedModels.includes(normalizedModelId)) {
+                        selected.supportedModels.push(normalizedModelId);
+                        this.saveState();
+                    }
+                    return this.prepareKeyResult(selected);
                 }
             }
 
+            // Return Failure with specific hint via console (Caller gets null)
+            if (budgetExhausted.length > 0) {
+                console.error('[KeyManager] All matching keys are over budget!');
+                import('./notificationService').then(({ notify }) => {
+                    notify.error(
+                        '可用 Key 已耗尽',
+                        `无法生成：所有支持该模型的 Key 都已达到预算上限。请在 API 管理中增加预算或重置消费。`
+                    );
+                });
+            }
             return null;
         }
 
         // 3. Apply Strategy
         // Common Sort: Valid > Unknown > Rate Limited
-        healthy.sort((a, b) => {
+        const healthy = validCandidates.filter(s => s.status !== 'invalid' && s.status !== 'rate_limited');
+        const usable = healthy.length > 0 ? healthy : validCandidates; // Fallback to invalid if no healthy ones (Desperate)
+
+        if (usable.length === 0) return null;
+
+        usable.sort((a, b) => {
+            // Prefer Valid
             if (a.status === 'valid' && b.status !== 'valid') return -1;
             if (a.status !== 'valid' && b.status === 'valid') return 1;
-            // Secondary Sort: Stable Order (by Index/ID) for Sequential
-            // tertiary sort by creation time or just preserve index order
             return 0;
         });
 
@@ -1413,13 +1423,11 @@ export class KeyManager {
         let winner: KeySlot;
 
         if (strategy === 'sequential') {
-            // SEQUENTIAL: Always pick the first healthy key (Stable Priority)
-            // This ensures we burn through Key 1 before touching Key 2
-            winner = healthy[0];
+            winner = usable[0];
         } else {
-            // ROUND-ROBIN / CONCURRENT: Pick random from top tier to distribute load
-            const topStatus = healthy[0].status;
-            const topTier = healthy.filter(s => s.status === topStatus);
+            // Round Robin: Pick random from top tier
+            const topStatus = usable[0].status;
+            const topTier = usable.filter(s => s.status === topStatus);
             winner = topTier[Math.floor(Math.random() * topTier.length)];
         }
 
@@ -1554,9 +1562,58 @@ export class KeyManager {
     addCost(keyId: string, cost: number): void {
         const slot = this.state.slots.find(s => s.id === keyId);
         if (slot) {
-            slot.totalCost = (slot.totalCost || 0) + cost;
+            const previousCost = slot.totalCost || 0;
+            slot.totalCost = previousCost + cost;
+
+            // Check Budget Thresholds (only if budget limit exists)
+            if (slot.budgetLimit > 0) {
+                const usageRatio = slot.totalCost / slot.budgetLimit;
+                const previousRatio = previousCost / slot.budgetLimit;
+
+                // Trigger Warning at 90% (only once per crossing)
+                if (usageRatio >= 0.9 && previousRatio < 0.9) {
+                    const { notify } = require('./notificationService'); // Dynamic import to avoid cycles? 
+                    // Actually notificationService is safe to import at top if no cycle. 
+                    // But keyManager is imported by many. Let's try direct if imported.
+                    // We'll use dynamic import to be safe or assuming global notify is available.
+                    // Better to import at top if possible, but let's stick to safe dynamic for now.
+                    import('./notificationService').then(({ notify }) => {
+                        notify.warning(
+                            `预算即将耗尽`,
+                            `API Key "${slot.name}" 已使用 ${(usageRatio * 100).toFixed(0)}% 预算 ($${slot.totalCost.toFixed(2)} / $${slot.budgetLimit})`
+                        );
+                    });
+                }
+
+                // Trigger Error at 100% (only once per crossing)
+                if (usageRatio >= 1.0 && previousRatio < 1.0) {
+                    import('./notificationService').then(({ notify }) => {
+                        notify.error(
+                            `预算已耗尽`,
+                            `API Key "${slot.name}" 已达到预算上限，将停止使用。`
+                        );
+                    });
+                }
+            }
+
             this.saveState();
             this.notifyListeners();
+        }
+    }
+
+    /**
+     * Reset usage statistics for a key
+     */
+    resetUsage(keyId: string): void {
+        const slot = this.state.slots.find(s => s.id === keyId);
+        if (slot) {
+            slot.totalCost = 0;
+            slot.failCount = 0;
+            slot.successCount = 0;
+            slot.status = 'unknown'; // Reset status to re-evaluate
+            this.saveState();
+            this.notifyListeners();
+            console.log(`[KeyManager] Usage reset for key ${slot.name} (${keyId})`);
         }
     }
 

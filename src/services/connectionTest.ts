@@ -169,7 +169,7 @@ export async function testModelsList(config: ConnectionConfig): Promise<TestResu
     const response = await fetch(listUrl, {
       method: 'GET',
       headers,
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(15000) // Increased to 15s
     });
 
     const responseTime = Date.now() - startTime;
@@ -219,18 +219,26 @@ export async function comprehensiveConnectionTest(config: ConnectionConfig): Pro
   });
 
   // 2. API 功能测试
-  if (basicTest.success) {
-    const apiTest = await testCherryConnection(config);
-    results.push({
-      ...apiTest,
-      message: `API功能: ${apiTest.message}`
-    });
-  } else {
-    results.push({
-      success: false,
-      message: 'API功能: 跳过（基础连接失败）'
-    });
+  // 2. API 功能测试 (Run regardless of basic test result to allow "Partial Success")
+  // Often model list fails due to timeout or permissions, but chat/generation works fine.
+  let apiTest: TestResult;
+  try {
+    apiTest = await testCherryConnection(config);
+  } catch (e: any) {
+    apiTest = { success: false, message: e.message || 'Unknown error', responseTime: 0 };
   }
+
+  results.push({
+    ...apiTest,
+    message: `API功能: ${apiTest.message}`
+  });
+
+  // If basic test failed but API test passed, we might want to warn but consider it a success overall in the UI logic
+  if (!basicTest.success && apiTest.success) {
+    console.warn('[ConnectionTest] Model list failed but Generation passed. Considering usable.');
+  }
+
+  return results;
 
   return results;
 }

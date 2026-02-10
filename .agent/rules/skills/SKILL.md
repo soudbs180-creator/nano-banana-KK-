@@ -1,12 +1,183 @@
 ---
-name: kk-studio-design-system
+trigger: glob
 description: KK Studio 完整设计系统 - 暗色主题、动效规范、代码标准
-version: 2.0.0
 ---
 
 # KK Studio 设计系统 v2.0
 
 本文档定义 KK Studio 的完整设计规范，所有 AI 代码助手在修改 UI 时必须严格遵循。
+
+---
+
+## 🛰️ 多渠道 API 调用规范（新增）
+
+目标：输入地址+密钥后自动获取模型、探测能力，并在 UI 里只展示可用参数，避免互相串扰。
+
+### 渠道拆分
+- 谷歌官方（无需填写地址）
+  - baseUrl 固定 `https://generativelanguage.googleapis.com`
+  - 鉴权：`?key=<API_KEY>`（或 header `x-goog-api-key`）
+  - 列表：`GET /v1beta/models`
+  - 调用：`/{v1|v1beta}/models/{model}:generateContent`；Imagen/Veo 用 `:predict`
+  - 仅在此渠道发送：`responseModalities["TEXT","IMAGE"]`、`generationConfig.imageConfig`
+
+- Gemini API CN（示例）
+  - baseUrl `https://gemini-api.cn`
+  - 鉴权：Header `Authorization: Bearer <KEY>`
+  - 端点：`/v1/chat/completions`（图片走 image_url）；若有 `/v1/images/generations` 再补
+  - 不发送谷歌专有字段
+
+- 其他 OpenAI 兼容/代理（OpenRouter/NewAPI/自建等）
+  - 统一用 header `Authorization: Bearer <KEY>`（如有特殊 header 放 extraHeaders）
+  - 端点：`/v1/chat/completions` / `/v1/images/generations`
+  - 模型名保持原样，不做跨渠道映射
+
+### 能力探测流程
+1) 选择渠道 + 填密钥（谷歌不用填地址）。
+2) 拉取模型列表：谷歌用 `/v1beta/models`；其他尝试 `/v1/models`，失败则用内置清单+探针。
+3) 轻量探针：
+   - 文本：最小 prompt
+   - 图片：小 prompt + 最小尺寸；尝试常见 aspectRatio/imageSize，失败即标记不支持
+4) UI 动态表单：只显示模型支持的参数；不支持项隐藏/禁用；调用前做参数校验。
+5) 缓存模型与探测结果（按渠道+key）；提供“重新探测”按钮。
+
+### 路由规则
+- 按 providerId 选择配置，模型映射仅在当前渠道生效。
+- 只有谷歌渠道做 v1/v1beta 选择和 imageConfig/responseModalities；其他渠道不做版本猜测、不发谷歌专有字段。
+- OpenRouter 额外头：`HTTP-Referer`、`X-Title`。
+- 签名渠道（如 volc/aliyun）在 auth.signer 钩子里做签名，不影响其他渠道。
+
+### 预设（代码侧已补）
+- `keyManager` 已新增 `gemini-api-cn` 预设：
+  - baseUrl `https://gemini-api.cn`
+  - format `openai`
+  - 默认模型示例：`gemini-2.5-flash-image`, `gemini-3-pro-image-preview`, `gemini-2.5-flash`, `gemini-3-flash-preview`
+
+- `keyManager` 已新增 `antigravity` 预设（本地代理）：
+  - baseUrl `http://127.0.0.1:8045`
+  - format `openai`
+  - 本地代理服务，支持 Gemini 和 OpenAI 协议
+  - 默认模型：`gemini-3-pro-image`, `gemini-3-flash`, `gemini-2.5-flash-image`, `gemini-2.5-flash`
+  - ⚠️ **推荐使用 Gemini 协议模式**（避免 OpenAI 模式的路径叠加 bug：/v1/chat/completions/responses）
+  - 使用方法：填入 Base URL 后，在协议选择处选 Gemini
+
+---
+
+### 图片生成：Google Imagen 3（使用示例）
+- 端点：`POST https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=API_KEY`
+- Header：`Content-Type: application/json`
+- 请求体示例：
+  ```json
+  {
+    "instances": [{ "prompt": "a calm lake at sunrise" }],
+    "parameters": {
+      "sampleCount": 1,
+      "aspectRatio": "16:9"
+    }
+  }
+  ```
+- 仅在 Google 官方渠道使用；其他代理走各自的 images/chat-completions 兼容端点，不发送 predict/imageConfig。参考开源实现: https://github.com/lbjlaq/Antigravity-Manager
+
+---
+
+### 供应商图片生成调用方法（4种方式）
+
+#### 方式一：OpenAI Images API (推荐)
+```python
+import openai
+
+client = openai.OpenAI(
+    api_key="sk-antigravity",
+    base_url="http://127.0.0.1:8045/v1"
+)
+
+# 生成图片
+response = client.images.generate(
+    model="gemini-3-pro-image",
+    prompt="一座未来主义风格的城市，赛博朋克，霓虹灯",
+    size="1920x1080",      # 支持任意 WIDTHxHEIGHT 格式，自动计算宽高比
+    quality="hd",          # "standard" | "hd" | "medium"
+    n=1,
+    response_format="b64_json"
+)
+
+# 保存图片
+import base64
+image_data = base64.b64decode(response.data[0].b64_json)
+with open("output.png", "wb") as f:
+    f.write(image_data)
+```
+
+**支持的参数：**
+- `size`: 任意 WIDTHxHEIGHT 格式（如 1280x720, 1024x1024, 1920x1080），自动计算并映射到标准宽高比（21:9, 16:9, 9:16, 4:3, 3:4, 1:1）
+- `quality`:
+  - `"hd"` → 4K 分辨率（高质量）
+  - `"medium"` → 2K 分辨率（中等质量）
+  - `"standard"` → 默认分辨率（标准质量）
+- `n`: 生成图片数量（1-10）
+- `response_format`: `"b64_json"` 或 `"url"`（Data URI）
+
+---
+
+#### 方式二：Chat API + 参数设置 (✨ 新增)
+所有协议（OpenAI、Claude）的 Chat API 现在都支持直接传递 size 和 quality 参数：
+
+```python
+# OpenAI Chat API
+response = client.chat.completions.create(
+    model="gemini-3-pro-image",
+    size="1920x1080",      # ✅ 支持任意 WIDTHxHEIGHT 格式
+    quality="hd",          # ✅ "standard" | "hd" | "medium"
+    messages=[{"role": "user", "content": "一座未来主义风格的城市"}]
+)
+```
+
+```bash
+# Claude Messages API
+curl -X POST http://127.0.0.1:8045/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-antigravity" \
+  -d '{
+    "model": "gemini-3-pro-image",
+    "size": "1280x720",
+    "quality": "hd",
+    "messages": [{"role": "user", "content": "一只可爱的猫咪"}]
+  }'
+```
+
+**参数优先级:** 请求体参数 > 模型后缀
+
+---
+
+#### 方式三：Chat 接口 + 模型后缀
+```python
+response = client.chat.completions.create(
+    model="gemini-3-pro-image-16-9-4k",  # 格式：gemini-3-pro-image-[比例]-[质量]
+    messages=[{"role": "user", "content": "一座未来主义风格的城市"}]
+)
+```
+
+**模型后缀说明：**
+- **宽高比**: `-16-9`, `-9-16`, `-4-3`, `-3-4`, `-21-9`, `-1-1`
+- **质量**: `-4k` (4K), `-2k` (2K), 不加后缀（标准）
+- **示例**: `gemini-3-pro-image-16-9-4k` → 16:9 比例 + 4K 分辨率
+
+---
+
+#### 方式四：Cherry Studio 等客户端设置
+在支持 OpenAI 协议的客户端（如 Cherry Studio）中，可以通过模型设置页面配置图片生成参数：
+
+1. **进入模型设置**：选择 gemini-3-pro-image 模型
+2. **配置参数**：
+   - **Size (尺寸)**: 输入任意 WIDTHxHEIGHT 格式（如 1920x1080, 1024x1024）
+   - **Quality (质量)**: 选择 standard / hd / medium
+   - **Number (数量)**: 设置生成图片数量（1-10）
+3. **发送请求**：直接在对话框中输入图片描述即可
+
+**参数映射规则：**
+- `size`: "1920x1080" → 自动计算为 16:9 宽高比
+- `quality`: "hd" → 映射为 4K 分辨率
+- `quality`: "medium" → 映射为 2K 分辨率
 
 ---
 
@@ -986,6 +1157,156 @@ export function calculateFitZoom(bounds: BoundingBox): number {
 - **限制 500 行** - 单个组件/Service
 - **最大 800 行** - 超过必须重构拆分
 
+### 5. 代码注释规范（中文强制）
+
+```typescript
+/**
+ * 生成图片卡片组件
+ * 
+ * 功能说明：
+ * - 显示生成的图片预览
+ * - 支持点击查看原图
+ * - 显示生成信息和操作按钮
+ * 
+ * @param imageUrl - 图片 URL
+ * @param prompt - 生成提示词
+ * @param model - 使用的模型名称
+ * @param aspectRatio - 图片宽高比
+ * @param onDelete - 删除回调
+ * @param onDownload - 下载回调
+ * 
+ * @example
+ * <ImageCard
+ *   imageUrl="https://example.com/image.png"
+ *   prompt="一只可爱的猫咪"
+ *   model="gemini-2.5-flash-image"
+ *   aspectRatio="1:1"
+ *   onDelete={() => handleDelete(id)}
+ * />
+ */
+export interface ImageCardProps {
+  imageUrl: string;
+  prompt: string;
+  model: string;
+  aspectRatio: AspectRatio;
+  onDelete?: () => void;
+  onDownload?: () => void;
+}
+
+// ✅ 复杂逻辑必须注释
+export function calculateImageTokens(model: string, size: ImageSize): number {
+  // 根据模型和尺寸计算 token 数量
+  // 参考 Google 官方定价文档：https://ai.google.dev/pricing
+  const baseTokens = MODEL_TOKEN_MAP[model] ?? 1000;
+  const sizeMultiplier = SIZE_MULTIPLIER_MAP[size] ?? 1;
+  
+  return Math.round(baseTokens * sizeMultiplier);
+}
+
+// ❌ 避免无意义的注释
+const x = 5; // 设置 x 为 5（冗余）
+
+// ✅ 解释"为什么"而非"是什么"
+// 使用防抖而非节流，因为用户可能连续快速输入
+const debouncedSearch = useDebounce(searchQuery, 300);
+```
+
+### 6. 组件复用与组合规范
+
+#### 原子设计原则
+
+```
+Atoms（原子） → Molecules（分子） → Organisms（有机体） → Templates（模板） → Pages（页面）
+```
+
+#### 组件拆分标准
+
+| 场景 | 拆分方式 | 示例 |
+|------|---------|------|
+| 代码行数 > 200 | 拆分子组件 | ImageCard → ImageCardHeader/ImageCardBody |
+| 条件渲染复杂 | 拆分为独立组件 | ConditionalPanel |
+| 多处复用逻辑 | 提取为 Custom Hook | useImageLoader |
+| 纯展示逻辑 | 提取为子组件 | ImageThumbnail |
+
+#### Props 设计原则
+
+```typescript
+// ✅ 使用接口定义 Props，添加 JSDoc
+interface ButtonProps {
+  /** 按钮变体样式 */
+  variant?: 'primary' | 'secondary' | 'danger';
+  /** 按钮尺寸 */
+  size?: 'sm' | 'md' | 'lg';
+  /** 是否禁用 */
+  disabled?: boolean;
+  /** 点击回调 */
+  onClick?: () => void;
+  /** 子元素 */
+  children: React.ReactNode;
+}
+
+// ✅ 提供合理的默认值
+export const Button: React.FC<ButtonProps> = ({
+  variant = 'primary',
+  size = 'md',
+  disabled = false,
+  onClick,
+  children
+}) => {
+  // ...
+};
+```
+
+### 7. 状态管理规范
+
+#### 局部状态 vs 全局状态
+
+| 类型 | 使用场景 | 技术方案 |
+|------|---------|---------|
+| 局部状态 | 组件内部 UI 状态 | useState/useReducer |
+| 跨组件共享 | 多个组件共用 | Context + useReducer |
+| 全局状态 | 应用级数据 | Zustand/Redux Toolkit |
+| 服务端状态 | API 数据缓存 | React Query/SWR |
+
+#### Context 使用规范
+
+```typescript
+// ✅ 一个 Context 一个文件，添加 Provider 组件
+// contexts/ThemeContext.tsx
+
+interface ThemeContextType {
+  theme: 'dark' | 'light';
+  toggleTheme: () => void;
+}
+
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  }, []);
+  
+  const value = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
+  
+  return (
+    <ThemeContext.Provider value={value}>
+      {children}
+    </ThemeContext.Provider>
+  );
+};
+
+// ✅ 提供自定义 Hook
+export const useTheme = (): ThemeContextType => {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error('useTheme must be used within ThemeProvider');
+  }
+  return context;
+};
+```
+
 ---
 
 ## 🛡️ 错误处理规范
@@ -996,6 +1317,90 @@ export function calculateFitZoom(bounds: BoundingBox): number {
 // ✅ 使用 Optional Chaining + Nullish Coalescing
 const userName = user?.profile?.name ?? '匿名用户';
 const itemCount = data?.items?.length ?? 0;
+
+// ✅ 输入验证
+function processImageUrl(url: string): string {
+  if (!url || typeof url !== 'string') {
+    throw new Error('图片 URL 无效');
+  }
+  
+  if (!url.startsWith('http') && !url.startsWith('data:')) {
+    throw new Error('图片 URL 格式错误，必须以 http 或 data: 开头');
+  }
+  
+  return url;
+}
+
+// ✅ API 响应安全检查
+interface ApiResponse<T> {
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+function handleApiResponse<T>(response: ApiResponse<T>): T {
+  if (response.error) {
+    throw new Error(response.error.message);
+  }
+  
+  if (!response.data) {
+    throw new Error('API 返回数据为空');
+  }
+  
+  return response.data;
+}
+```
+
+### 错误边界（Error Boundary）
+
+```typescript
+// components/ErrorBoundary.tsx
+import React from 'react';
+
+interface Props {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends React.Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // 记录到错误追踪服务
+    console.error('组件错误:', error);
+    console.error('错误详情:', errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="error-fallback">
+          <h3>出错了</h3>
+          <p>{this.state.error?.message}</p>
+          <button onClick={() => this.setState({ hasError: false })}>
+            重试
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 ```
 
 ### 用户提示
@@ -1008,6 +1413,51 @@ try {
   const message = error instanceof Error ? error.message : '未知错误';
   notify('error', `操作失败: ${message}`);
 }
+```
+
+### 异步错误处理
+
+```typescript
+// ✅ 使用 try-catch 包裹异步操作
+async function generateImage(params: GenerateParams): Promise<void> {
+  try {
+    setLoading(true);
+    const result = await api.generateImage(params);
+    setImages(prev => [...prev, result]);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      // 处理已知 API 错误
+      notify('error', `生成失败: ${error.message} (错误码: ${error.code})`);
+    } else {
+      // 处理未知错误
+      notify('error', '生成失败，请稍后重试');
+      console.error('生成错误:', error);
+    }
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ✅ 使用 AbortController 支持取消
+const abortControllerRef = useRef<AbortController>();
+
+const handleGenerate = async () => {
+  // 取消之前的请求
+  abortControllerRef.current?.abort();
+  abortControllerRef.current = new AbortController();
+  
+  try {
+    await api.generateImage(params, {
+      signal: abortControllerRef.current.signal
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('请求已取消');
+      return;
+    }
+    throw error;
+  }
+};
 ```
 
 ---
@@ -1055,14 +1505,300 @@ chore: 更新依赖版本
 
 ---
 
+## ⚡ 性能优化规范
+
+### 1. 渲染优化
+
+```typescript
+// ✅ 使用 useMemo 缓存复杂计算
+const expensiveValue = useMemo(() => {
+  return data.map(item => complexTransform(item));
+}, [data]);
+
+// ✅ 使用 useCallback 缓存回调函数
+const handleClick = useCallback(() => {
+  onSelect(id);
+}, [id, onSelect]);
+
+// ✅ 使用 React.memo 避免不必要重渲染
+export const ImageCard = React.memo<ImageCardProps>({
+  imageUrl,
+  prompt,
+  onDelete
+}) => {
+  // 组件逻辑
+});
+
+// ✅ 虚拟列表处理大量数据
+import { FixedSizeList } from 'react-window';
+
+function ImageList({ images }: { images: Image[] }) {
+  return (
+    <FixedSizeList
+      height={600}
+      itemCount={images.length}
+      itemSize={200}
+      width="100%"
+    >
+      {({ index, style }) => (
+        <div style={style}>
+          <ImageCard {...images[index]} />
+        </div>
+      )}
+    </FixedSizeList>
+  );
+}
+```
+
+### 2. 图片优化
+
+```typescript
+// ✅ 使用懒加载
+import { LazyLoadImage } from 'react-lazy-load-image-component';
+
+<LazyLoadImage
+  src={imageUrl}
+  alt={prompt}
+  effect="blur"
+  threshold={100}
+/>
+
+// ✅ 响应式图片
+<picture>
+  <source
+    srcSet={`${imageUrl}?w=400 400w, ${imageUrl}?w=800 800w`}
+    sizes="(max-width: 600px) 400px, 800px"
+  />
+  <img src={imageUrl} alt={prompt} loading="lazy" />
+</picture>
+
+// ✅ 图片尺寸限制
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+
+async function compressImage(file: File): Promise<Blob> {
+  if (file.size <= MAX_IMAGE_SIZE) return file;
+  
+  // 使用 canvas 压缩
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      // 计算压缩后尺寸...
+      canvas.toBlob(resolve, 'image/jpeg', 0.8);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+```
+
+### 3. 代码分割
+
+```typescript
+// ✅ 路由级别懒加载
+const ImageGallery = lazy(() => import('./pages/ImageGallery'));
+const Settings = lazy(() => import('./pages/Settings'));
+
+function App() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <Routes>
+        <Route path="/gallery" element={<ImageGallery />} />
+        <Route path="/settings" element={<Settings />} />
+      </Routes>
+    </Suspense>
+  );
+}
+
+// ✅ 组件级别懒加载（Modal等）
+const ImagePreviewModal = lazy(() => import('./components/ImagePreviewModal'));
+
+function ImageCard() {
+  const [showModal, setShowModal] = useState(false);
+  
+  return (
+    <>
+      <div onClick={() => setShowModal(true)}>...</div>
+      {showModal && (
+        <Suspense fallback={null}>
+          <ImagePreviewModal onClose={() => setShowModal(false)} />
+        </Suspense>
+      )}
+    </>
+  );
+}
+```
+
+### 4. 状态更新优化
+
+```typescript
+// ✅ 批量更新状态
+const [count, setCount] = useState(0);
+const [items, setItems] = useState([]);
+
+// ❌ 不要这样
+setCount(c => c + 1);
+setItems(prev => [...prev, newItem]);
+
+// ✅ 使用函数式更新
+setCount(c => c + 1);
+setItems(prev => [...prev, newItem]);
+
+// ✅ 使用 immer 处理复杂状态
+import produce from 'immer';
+
+setState(prev => produce(prev, draft => {
+  draft.images[0].status = 'completed';
+  draft.images[0].url = imageUrl;
+}));
+```
+
+### 5. 内存管理
+
+```typescript
+// ✅ 清理副作用
+useEffect(() => {
+  const subscription = api.subscribe(data => {
+    setData(data);
+  });
+  
+  return () => {
+    subscription.unsubscribe();
+  };
+}, []);
+
+// ✅ 清理 URL 对象
+useEffect(() => {
+  const objectUrl = URL.createObjectURL(file);
+  setPreviewUrl(objectUrl);
+  
+  return () => {
+    URL.revokeObjectURL(objectUrl);
+  };
+}, [file]);
+
+// ✅ 取消进行中的请求
+useEffect(() => {
+  const abortController = new AbortController();
+  
+  fetchData({ signal: abortController.signal });
+  
+  return () => {
+    abortController.abort();
+  };
+}, [dependency]);
+```
+
+---
+
+## 🧪 测试规范
+
+### 1. 测试文件结构
+
+```
+src/
+├── components/
+│   ├── Button/
+│   │   ├── Button.tsx
+│   │   ├── Button.test.tsx          # 组件测试
+│   │   └── Button.stories.tsx       # Storybook 故事
+│   └── ...
+├── hooks/
+│   ├── useImageLoader.ts
+│   └── useImageLoader.test.ts       # Hook 测试
+├── utils/
+│   ├── formatDate.ts
+│   └── formatDate.test.ts           # 工具函数测试
+```
+
+### 2. 组件测试规范
+
+```typescript
+// Button.test.tsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Button } from './Button';
+
+describe('Button', () => {
+  it('应该正确渲染按钮文本', () => {
+    render(<Button>点击我</Button>);
+    expect(screen.getByText('点击我')).toBeInTheDocument();
+  });
+
+  it('点击时应该触发 onClick 回调', () => {
+    const handleClick = jest.fn();
+    render(<Button onClick={handleClick}>点击</Button>);
+    
+    fireEvent.click(screen.getByText('点击'));
+    expect(handleClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('禁用时应该无法点击', () => {
+    const handleClick = jest.fn();
+    render(<Button disabled onClick={handleClick}>禁用</Button>);
+    
+    fireEvent.click(screen.getByText('禁用'));
+    expect(handleClick).not.toHaveBeenCalled();
+  });
+});
+```
+
+### 3. Hook 测试规范
+
+```typescript
+// useImageLoader.test.ts
+import { renderHook, act } from '@testing-library/react-hooks';
+import { useImageLoader } from './useImageLoader';
+
+describe('useImageLoader', () => {
+  it('应该返回加载状态和图片数据', async () => {
+    const { result, waitForNextUpdate } = renderHook(() => 
+      useImageLoader('https://example.com/image.png')
+    );
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBeNull();
+
+    await waitForNextUpdate();
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.image).toBeDefined();
+  });
+
+  it('加载失败时应该返回错误', async () => {
+    const { result, waitForNextUpdate } = renderHook(() => 
+      useImageLoader('invalid-url')
+    );
+
+    await waitForNextUpdate();
+
+    expect(result.current.error).toBeDefined();
+    expect(result.current.loading).toBe(false);
+  });
+});
+```
+
+### 4. 测试覆盖率要求
+
+- **组件**: 渲染测试 + 交互测试 + 边界测试
+- **Hooks**: 状态变化测试 + 副作用测试
+- **工具函数**: 输入输出测试 + 边界测试
+- **最小覆盖率**: 80%（核心业务逻辑 100%）
+
+---
+
 ## ✅ 代码审查清单
 
 开始编码前确保：
 
+### 基础规范
 - [ ] 所有注释使用简体中文
 - [ ] 使用 CSS Variables，不硬编码颜色
-- [ ] 使用统一的圆角规范
-- [ ] 使用字体层级，不随意设置字号
+- [ ] 使用统一的圆角规范（rounded-lg）
+- [ ] **字体统一使用系统字体族，只用字重和字号区分层级**：
+  - 标题：`text-h1/h2/h3` + `font-semibold`
+  - 正文：`text-body-lg/md/sm` + `font-normal`
+  - 标注：`text-xs/2xs/3xs` + `font-normal`
 - [ ] 同组图标统一 strokeWidth
 - [ ] 选中状态有淡蓝色光晕
 - [ ] 所有交互有动效
@@ -1070,7 +1806,38 @@ chore: 更新依赖版本
 - [ ] 错误处理有用户友好提示
 - [ ] 文件长度不超过 500 行
 
+### 性能与质量
+- [ ] 使用 useMemo/useCallback 优化渲染
+- [ ] 图片使用懒加载
+- [ ] 组件添加 React.memo（必要时）
+- [ ] 清理副作用（useEffect return）
+- [ ] 异步操作支持取消（AbortController）
+- [ ] 复杂状态使用 immer
+
+### 可维护性
+- [ ] 函数添加 JSDoc 注释
+- [ ] Props 接口完整定义
+- [ ] 提供组件使用示例
+- [ ] 错误边界处理
+- [ ] 单元测试覆盖核心逻辑
+
 ---
 
-**KK Studio Design System v2.0**  
-Last updated: 2026-01-30
+**KK Studio Design System v2.1**  
+Last updated: 2026-02-09
+
+## 📋 变更日志
+
+### v2.1 (2026-02-09)
+- 新增多渠道 API 调用规范（Google 官方、Gemini API CN、OpenAI 兼容）
+- 新增 Imagen 3 图片生成调用示例
+- 完善代码注释规范（JSDoc 强制）
+- 新增组件复用与组合规范
+- 新增状态管理规范（Context、Hook 设计）
+- 完善错误处理规范（Error Boundary、AbortController）
+- 新增性能优化规范（渲染优化、图片优化、代码分割）
+- 新增测试规范（组件测试、Hook 测试、覆盖率要求）
+- 更新代码审查清单（性能、可维护性检查项）
+
+### v2.0 (2026-01-30)
+- 初始版本，包含设计系统基础规范

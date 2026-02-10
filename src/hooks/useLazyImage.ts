@@ -32,17 +32,23 @@ export function useLazyImage(
                     // 当元素进入视口时加载图片
                     if (entry.isIntersecting && !imageUrl && !isLoading) {
                         setIsLoading(true);
-                        loadImageFn(imageId)
-                            .then((url) => {
-                                if (url) {
-                                    setImageUrl(url);
-                                }
-                                setIsLoading(false);
-                            })
-                            .catch((err) => {
-                                setError(err);
-                                setIsLoading(false);
-                            });
+
+                        // Use Priority Loader
+                        import('../services/imagePriorityLoader').then(({ priorityLoader }) => {
+                            if (element) {
+                                priorityLoader.addTask(imageId, element, () => loadImageFn(imageId))
+                                    .then((url) => {
+                                        if (url) {
+                                            setImageUrl(url);
+                                        }
+                                        setIsLoading(false);
+                                    })
+                                    .catch((err) => {
+                                        setError(err);
+                                        setIsLoading(false);
+                                    });
+                            }
+                        });
                     }
                 });
             },

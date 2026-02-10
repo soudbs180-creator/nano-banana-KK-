@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { GenerationConfig, AspectRatio, ImageSize, GenerationMode, ModelType } from '../types';
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
 import { keyManager, getModelMetadata } from '../services/keyManager'; // Added getter
-import { getModelCapabilities, modelSupportsGrounding, getModelDisplayInfo } from '../services/modelCapabilities';
+import { getModelCapabilities, modelSupportsGrounding, getModelDisplayInfo, getModelDescription } from '../services/modelCapabilities';
 import { calculateImageHash } from '../utils/imageUtils';
 import { saveImage, getImage } from '../services/imageStorage'; // [NEW] Import getImage
 import { fileSystemService } from '../services/fileSystemService'; // 🚀 参考图持久化
@@ -426,12 +426,16 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     }, [config.prompt]);
 
     const processFiles = useCallback(async (files: FileList | File[]) => {
-        if (config.referenceImages.length >= 5) {
-            alert("最多只能上传 5 张参考图");
+        // 🚀 [修复] 根据模型动态获取最大参考图数量
+        const modelCaps = getModelCapabilities(config.model);
+        const maxRefImages = modelCaps?.maxRefImages ?? 5; // 默认 5 张，Gemini 3 Pro 支持 10 张
+        
+        if (config.referenceImages.length >= maxRefImages) {
+            alert(`最多只能上传 ${maxRefImages} 张参考图`);
             return;
         }
-
-        const remainingSlots = 5 - config.referenceImages.length;
+        
+        const remainingSlots = maxRefImages - config.referenceImages.length;
         const fileArray = Array.from(files).filter(f => f.type.startsWith('image/'));
         // TODO: Video upload support for Video mode
 
@@ -524,18 +528,50 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         if (!items) return;
 
         const imageFiles: File[] = [];
+        let hasImage = false;
+
         for (let i = 0; i < items.length; i++) {
             if (items[i].type.startsWith('image/')) {
                 const file = items[i].getAsFile();
-                if (file) imageFiles.push(file);
+                if (file) {
+                    imageFiles.push(file);
+                    hasImage = true;
+                }
+            } else if (items[i].type === 'text/plain') {
+                // 🚀 [NEW] Handle Image URL Paste
+                items[i].getAsString((text) => {
+                    const url = text.trim();
+                    if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) || url.startsWith('http')) {
+                        // Optimistic check: looks like an image URL?
+                        // Fetch it
+                        fetch(url)
+                            .then(res => {
+                                if (!res.ok) throw new Error('Fetch failed');
+                                const contentType = res.headers.get('content-type');
+                                if (contentType && contentType.startsWith('image/')) {
+                                    return res.blob();
+                                }
+                                throw new Error('Not an image');
+                            })
+                            .then(blob => {
+                                const file = new File([blob], "pasted_image.png", { type: blob.type });
+                                processFiles([file]);
+                            })
+                            .catch(err => {
+                                // Not an image URL, just normal text. 
+                                // We don't interfere with normal text paste if it fails.
+                            });
+                    }
+                });
             }
         }
 
         if (imageFiles.length > 0) {
             e.preventDefault();
-            const fileList = new DataTransfer();
-            imageFiles.forEach(f => fileList.items.add(f));
-            processFiles(fileList.files);
+            // Convert to FileList-like object
+            const dt = new DataTransfer();
+            imageFiles.forEach(f => dt.items.add(f));
+            processFiles(dt.files);
         }
     }, [processFiles]);
 
@@ -630,19 +666,29 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     setConfig(prev => {
                         // Prevent duplicates
                         if (prev.referenceImages.some(img => img.storageId === storageId)) return prev;
-                        if (prev.referenceImages.length >= 5) {
-                            alert("最多只能上传 5 张参考图");
+                        
+                        // 🚀 [修复] 根据模型动态获取最大参考图数量
+                        const modelCaps = getModelCapabilities(config.model);
+                        const maxRefImages = modelCaps?.maxRefImages ?? 5;
+                        
+                        if (prev.referenceImages.length >= maxRefImages) {
+                            alert(`最多只能上传 ${maxRefImages} 张参考图`);
                             return prev;
                         }
 
                         // [FIX] Use passed data if available to avoid loading state
                         let finalData = '';
-                        if (data && data.startsWith('data:')) {
-                            const matches = data.match(/^data:(.+);base64,(.+)$/);
-                            if (matches && matches[2]) {
-                                finalData = matches[2];
+                        if (data) {
+                            if (data.startsWith('data:')) {
+                                const matches = data.match(/^data:(.+);base64,(.+)$/);
+                                if (matches && matches[2]) {
+                                    finalData = matches[2];
+                                } else {
+                                    finalData = data; // Fallback for other data URIs
+                                }
                             } else {
-                                finalData = data; // Fallback
+                                // Allow blob: URLs or raw base64 to pass through
+                                finalData = data;
                             }
                         }
 
@@ -1346,7 +1392,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             return (
                                                 <button
                                                     key={model.id}
-                                                    className={`w-full px-3 py-2.5 text-left flex flex-col gap-0.5 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/10 ring-1 ring-white/20' : ''}`}
+                                                    className={`w-full px-3 py-2.5 text-left flex flex-col gap-1 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/10 ring-1 ring-white/20' : ''}`}
                                                     onClick={() => {
                                                         setConfig(prev => ({ ...prev, model: model.id }));
                                                         setActiveMenu(null);
@@ -1363,47 +1409,33 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                                 {getModelDisplayInfo(model).displayName}
                                                             </span>
                                                             {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
-                                                            {/* 来源标签 */}
-                                                            <span
-                                                                className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ${getModelDisplayInfo(model).badgeColor}`}
-                                                                style={{
-                                                                    display: 'inline-flex',
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'center',
-                                                                    whiteSpace: 'nowrap'
-                                                                }}
-                                                            >
-                                                                {getModelDisplayInfo(model).badgeText}
-                                                            </span>
                                                         </div>
+                                                        {/* 来源标签 - 右对齐 */}
+                                                        <span
+                                                            className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ${getModelDisplayInfo(model).badgeColor}`}
+                                                            style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            {getModelDisplayInfo(model).badgeText}
+                                                        </span>
                                                     </div>
 
-                                                    {/* Metadata Display */}
+                                                    {/* Metadata Display - 三层简洁结构 */}
                                                     {(() => {
-                                                        const meta = getModelMetadata(model.id);
-                                                        const features = [];
-                                                        if (meta?.contextLength) features.push(`${Math.round(meta.contextLength / 1000)}K Context`);
-                                                        if (meta?.pricing) {
-                                                            const p = meta.pricing;
-                                                            // Simple cost display: Input/Output per M
-                                                            if (p.prompt === '0' && p.completion === '0') features.push('Free');
-                                                            else features.push(`$${p.prompt}/$${p.completion} per M`);
-                                                        } else {
-                                                            // Fallback or Advantage
-                                                            features.push(advantage);
-                                                        }
+                                                        const modelDesc = getModelDescription(model.id);
+                                                        const description = modelDesc?.description || advantage;
 
                                                         return (
-                                                            <div className="flex flex-col gap-0.5 mt-1">
-                                                                <span className="text-[10px] text-[var(--text-tertiary)] leading-tight break-all">ID: {model.id.split('@')[0]}</span>
-                                                                {features.length > 0 && (
-                                                                    <div className="flex flex-wrap gap-1">
-                                                                        {features.map((f, i) => (
-                                                                            <span key={i} className="text-[10px] text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-1 rounded border border-[var(--border-light)]">
-                                                                                {f}
-                                                                            </span>
-                                                                        ))}
-                                                                    </div>
+                                                            <div className="flex flex-col gap-1 mt-1">
+                                                                <span className="text-[10px] text-[var(--text-tertiary)] leading-tight break-all opacity-60">ID: {model.id.split('@')[0]}</span>
+                                                                {description && (
+                                                                    <span className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                                                                        {description}
+                                                                    </span>
                                                                 )}
                                                             </div>
                                                         );

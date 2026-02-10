@@ -111,6 +111,37 @@
 
   /* ===== 网格 ===== */
   --grid-dot: rgba(0, 0, 0, 0.1);
+
+  /* ===== 字体系统 - 统一字体族 ===== */
+  --font-sans: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  
+  /* ===== 字体大小系统 ===== */
+  /* 标题层级 */
+  --text-h1: 28px;        /* 大标题：页面标题、Hero区 */
+  --text-h2: 22px;        /* 中标题：区块标题 */
+  --text-h3: 18px;        /* 小标题：卡片标题、列表头 */
+  
+  /* 正文层级 */
+  --text-body-lg: 16px;   /* 大正文：重要内容 */
+  --text-body-md: 14px;   /* 中正文：默认内容（最常用） */
+  --text-body-sm: 13px;   /* 小正文：紧凑内容 */
+  
+  /* 标注层级 */
+  --text-xs: 12px;        /* 大标注：次要信息 */
+  --text-2xs: 11px;       /* 中标注：辅助文字 */
+  --text-3xs: 10px;       /* 小标注：最小文字 */
+  
+  /* 字重 */
+  --font-normal: 400;     /* 正文 */
+  --font-medium: 500;     /* 强调正文、按钮 */
+  --font-semibold: 600;   /* 标题、重要文字 */
+  --font-bold: 700;       /* 特别强调 */
+  
+  /* 行高 */
+  --leading-tight: 1.25;  /* 标题 */
+  --leading-normal: 1.5;  /* 正文 */
+  --leading-relaxed: 1.75; /* 长文阅读 */
 }
 
 /* ===== 主题切换平滑过渡 ===== */
@@ -1884,16 +1915,68 @@ body.dark-mode .input-bar {
   height: 100%;
 }
 
-.text-xs {
-  font-size: 11px;
+/* ===== 字体大小 Utility Classes ===== */
+.text-h1 {
+  font-size: var(--text-h1);
+  line-height: var(--leading-tight);
+  font-weight: var(--font-semibold);
 }
 
+.text-h2 {
+  font-size: var(--text-h2);
+  line-height: var(--leading-tight);
+  font-weight: var(--font-semibold);
+}
+
+.text-h3 {
+  font-size: var(--text-h3);
+  line-height: var(--leading-tight);
+  font-weight: var(--font-semibold);
+}
+
+.text-body-lg {
+  font-size: var(--text-body-lg);
+  line-height: var(--leading-normal);
+}
+
+.text-body-md {
+  font-size: var(--text-body-md);
+  line-height: var(--leading-normal);
+}
+
+.text-body-sm {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-normal);
+}
+
+.text-xs {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.text-2xs {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+}
+
+.text-3xs {
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
+}
+
+/* 兼容旧类名 */
 .text-sm {
-  font-size: 13px;
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-normal);
+}
+
+/* ===== 字重 Utility Classes ===== */
+.font-normal {
+  font-weight: var(--font-normal);
 }
 
 .font-medium {
-  font-weight: 500;
+  font-weight: var(--font-medium);
 }
 
 .font-semibold {

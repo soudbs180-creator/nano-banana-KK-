@@ -240,7 +240,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             {/* 顶栏: 关闭按钮 */}
             <button
                 onClick={onClose}
-                className="absolute top-4 right-4 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                className="absolute top-4 right-4 z-50 p-2 bg-white/10 hover:opacity-80 rounded-full text-white transition-opacity"
                 title="关闭 (Close)"
             >
                 <X size={24} />

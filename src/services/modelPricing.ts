@@ -253,7 +253,13 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
 
 const FALLBACK_IMAGE_TOKENS: Record<string, number> = {
   'gemini-2.5-flash-image': 1290,
-  'gemini-3-pro-image-preview': 1120
+  'gemini-3-pro-image-preview': 1120,
+  // Imagen 4: 1K=1120 tokens, 4K=2000 tokens (估算值)
+  'imagen-4.0-generate-001': 1120,
+  'imagen-4.0-fast-generate-001': 1120,
+  'imagen-4.0-ultra-generate-001': 1120,
+  'imagen-3.0-generate-001': 1120,
+  'imagen-3.0-generate-002': 1120
 };
 
 const normalizeModelId = (modelId: string): string => modelId.trim().toLowerCase();
@@ -350,13 +356,25 @@ export const getImageTokenEstimate = (modelId: string, size: ImageSize): number 
   const pricing = getModelPricing(modelId);
   const tokens = pricing?.tokensPerImage;
   const isHd = size === ImageSize.SIZE_4K;
-  const value = isHd
-    ? (tokens?.hd ?? tokens?.standard)
-    : (tokens?.standard ?? tokens?.hd);
-
-  if (value) return value;
-
+  const is2K = size === ImageSize.SIZE_2K;
+  
+  // 对于支持 HD/2K 的模型，使用对应的 token 数
+  if (tokens) {
+    if (isHd && tokens.hd) return tokens.hd;
+    if (is2K && tokens.hd) return tokens.hd;
+    return tokens.standard || tokens.hd || 0;
+  }
+  
   const fallback = FALLBACK_IMAGE_TOKENS[normalizeModelId(modelId)];
+  
+  // 🚀 [修复] 如果是按张定价的模型（如 Imagen），估算一个合理的 token 数用于显示
+  // Imagen 4: 1K=1120 tokens, 2K=1560 tokens, 4K=2000 tokens (近似值)
+  if ((fallback === 0 || fallback === undefined) && pricing?.pricePerImage) {
+    if (isHd) return 2000;
+    if (is2K) return 1560;
+    return 1120; // Standard 1K
+  }
+  
   return fallback || 0;
 };
 

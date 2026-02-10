@@ -15,6 +15,8 @@ import { CanvasGroupComponent } from './components/CanvasGroupComponent';
 import { generateImage, cancelGeneration } from './services/geminiService';
 import { keyManager } from './services/keyManager';
 import { getCardDimensions } from './utils/styleUtils';
+import { getViewportPreferredPosition, findSafePosition } from './utils/canvasUtils'; // 🚀 Smart Positioning
+
 // Lucide icons replaced with SVGs
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -106,6 +108,9 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     activeCanvasRef.current = activeCanvas;
   }, [activeCanvas]);
+
+  // Track reserved regions for rapid-fire generation to prevent overlaps (before React update reflects)
+  const reservedRegionsRef = useRef<{ bounds: { x: number; y: number; width: number; height: number }; timestamp: number; }[]>([]);
 
 
 
@@ -707,16 +712,14 @@ const AppContent: React.FC = () => {
         };
       }
     }
-    // Smart Center Placement (finding empty space)
-    const viewCenter = {
-      x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
-      y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
-    };
-    // Use findSmartPosition to avoid overlap around center
-    // 350x250 is a safe bounding box for the new card
-    return findSmartPosition(viewCenter.x, viewCenter.y, 350, 250);
+    // Smart Center Placement - Manual Mode (Always Center)
+    // Smart Center Placement - Manual Mode (Always Center)
+    const scale = canvasTransform.scale || 1;
+
+    // 🚀 Use Helper for "Top 30%" Logic
+    return getViewportPreferredPosition(canvasTransform);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSourceImage, activeCanvas, canvasTransform, findSmartPosition]);
+  }, [activeSourceImage, activeCanvas, canvasTransform]);
 
   // [Draft Feature] Persistent Input Card State - Moved to Top
 
@@ -756,13 +759,54 @@ const AppContent: React.FC = () => {
           return;
         }
 
-        // [Create Draft] If no draft linked, create one using pendingPosition logic
+        // [Create Draft] If no draft linked, create one
         const newId = Date.now().toString();
+
+        // 🚀 使用实时 transform 计算位置（考虑追问模式和拖动状态）
+        let draftPosition: { x: number; y: number };
+        const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
+
+        if (activeSourceImage && activeCanvas) {
+          const sourceImage = activeCanvas.imageNodes.find(img => img.id === activeSourceImage);
+          if (sourceImage) {
+            const parentPromptId = sourceImage.parentPromptId;
+            const parentPrompt = activeCanvas.promptNodes.find(p => p.id === parentPromptId);
+
+            if (parentPrompt) {
+              const siblingImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === parentPromptId);
+              let maxY = parentPrompt.position.y;
+              siblingImages.forEach(img => {
+                const { totalHeight } = getCardDimensions(img.aspectRatio, true);
+                const imgBottom = img.position.y + totalHeight;
+                maxY = Math.max(maxY, imgBottom);
+              });
+              draftPosition = { x: parentPrompt.position.x, y: maxY + 60 };
+            } else {
+              let sourceHeight = 320;
+              if (sourceImage.dimensions) {
+                const [w, h] = sourceImage.dimensions.split('x').map(Number);
+                if (w && h) {
+                  const ratio = w / h;
+                  const cardWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
+                  sourceHeight = (cardWidth / ratio) + 40;
+                }
+              } else {
+                const { totalHeight } = getCardDimensions(sourceImage.aspectRatio, true);
+                sourceHeight = totalHeight;
+              }
+              draftPosition = { x: sourceImage.position.x, y: sourceImage.position.y + sourceHeight + 40 };
+            }
+          } else {
+            draftPosition = getViewportPreferredPosition(currentTransform);
+          }
+        } else {
+          draftPosition = getViewportPreferredPosition(currentTransform);
+        }
 
         addPromptNode({
           id: newId,
           prompt: config.prompt,
-          position: pendingPosition,
+          position: draftPosition,
           aspectRatio: config.aspectRatio,
           imageSize: config.imageSize,
           model: config.model,
@@ -1341,6 +1385,9 @@ const AppContent: React.FC = () => {
     const livePos = effectiveNode.position;
     const isVideo = mode === GenerationMode.VIDEO;
 
+    // 🚀 [Safe State Tracking] Track success to prevent error overwrite
+    let successResults: GeneratedImage[] = [];
+
     try {
       const buildTask = (index: number) => async () => {
         const startTime = Date.now();
@@ -1369,6 +1416,8 @@ const AppContent: React.FC = () => {
           let costUsd = 0;
           let currentAspectRatio = node.aspectRatio;
           let currentSize = node.imageSize;
+          let exactDimensions: { width: number; height: number } | undefined = undefined;
+          let provider: string | undefined = undefined; // 🚀 Provider info
 
           if (isVideo) {
             // ✅ 视频生成 - 使用独立的 videoService
@@ -1429,6 +1478,11 @@ const AppContent: React.FC = () => {
             // Capture returned metadata
             if (result.imageSize) currentSize = result.imageSize;
             if (result.aspectRatio) currentAspectRatio = result.aspectRatio;
+            // 🚀 Capture exact dimensions for AUTO mode
+            if (result.dimensions) {
+              exactDimensions = result.dimensions;
+            }
+            if (result.provider) provider = result.provider; // 🚀 Capture provider
           }
 
           isFinished = true;
@@ -1497,7 +1551,9 @@ const AppContent: React.FC = () => {
             cost: costUsd,
             effectiveModel,
             effectiveSize: currentSize,
-            effectiveAspectRatio: currentAspectRatio
+            effectiveAspectRatio: currentAspectRatio,
+            exactDimensions, // 🚀 Pass exact dimensions
+            provider // 🚀 Pass provider
           };
         } catch (error: any) {
           isFinished = true;
@@ -1538,6 +1594,8 @@ const AppContent: React.FC = () => {
         effectiveModel?: string; // 🚀 Pass through
         effectiveSize?: string; // 🚀 Pass through
         effectiveAspectRatio?: AspectRatio; // 🚀 Pass through
+        exactDimensions?: { width: number; height: number }; // 🚀 Pass through
+        provider?: string; // 🚀 Pass through
       }>;
 
       if (validImageData.length === 0) {
@@ -1550,12 +1608,28 @@ const AppContent: React.FC = () => {
       const finalCanvas = activeCanvasRef.current;
       const latestNode = finalCanvas?.promptNodes.find(n => n.id === promptNodeId);
 
-      if (!latestNode) {
-        console.error("Critical: PromptNode missing after generation", promptNodeId);
-        return; // Should not happen, but safety first
+      // 🛡️ [Robust Fallback] If latestNode is missing (e.g. rapid switch) or has invalid pos (0,0 bug), use original node
+      const effectiveNode = latestNode || node;
+
+      console.log('[executeGeneration] Resolving Position:', {
+        originalNodePos: node.position,
+        latestNodePos: latestNode?.position,
+        effectiveNodePos: effectiveNode.position,
+        isResumed: !latestNode
+      });
+
+      let finalPos = effectiveNode.position;
+
+      // 🚀 [Anti-Zero-Bug] If latest position is 0,0 but original was not, use original (prevent jump to center)
+      if (finalPos.x === 0 && finalPos.y === 0 && (node.position.x !== 0 || node.position.y !== 0)) {
+        console.warn('[App] Detected zero-position bug in latestNode, falling back to original position', node.position);
+        finalPos = node.position;
       }
 
-      const finalPos = latestNode.position;
+      if (!latestNode) {
+        console.warn("Critical: PromptNode missing in activeCanvas after generation, using fallback node", promptNodeId);
+        // We continue instead of returning, to ensure we at least show the result
+      }
       // Use latestNode for all future updates instead of stale 'node' closure
 
       // 计算位置
@@ -1563,126 +1637,149 @@ const AppContent: React.FC = () => {
       const gap = 20; // 副卡之间的间距
       const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(node.aspectRatio, true);
 
-      const validResults: GeneratedImage[] = validImageData.map((item, mapIndex) => {
-        // 使用 mapIndex 作为后备，因为 item.index 已在 filter 中验证
-        const idx = item.index ?? mapIndex;
-        const { url, originalUrl, generationTime, base64, mode: itemMode, tokens, cost, effectiveModel: resModel, effectiveSize: resSize, effectiveAspectRatio: resRatio } = item;  // 🚀 添加mode
+      // 🚀 [Safe State Tracking] Inner block
+      try {
+        const results = validImageData.map((item, mapIndex) => {
+          // ... (Mapping Logic) ...
+          // 使用 mapIndex 作为后备，因为 item.index 已在 filter 中验证
+          const idx = item.index ?? mapIndex;
+          const { url, originalUrl, generationTime, base64, mode: itemMode, tokens, cost, effectiveModel: resModel, effectiveSize: resSize, effectiveAspectRatio: resRatio, exactDimensions, provider } = item;
 
-        // 🚀 Use result model/size if available, otherwise fallback
-        const finalModel = resModel || effectiveModel;
-        const finalSize = resSize || node.imageSize;
-        const finalAspectRatio = resRatio || node.aspectRatio;
-        let x, y;
+          // 🚀 Use result model/size if available, otherwise fallback
+          const finalModel = resModel || effectiveModel;
+          const finalSize = resSize || node.imageSize;
+          const finalAspectRatio = resRatio || node.aspectRatio;
+          let x, y;
 
-        // ✅ 统一布局: 固定2列,使用和PendingNode相同的计算公式
-        const columns = 2; // 固定2列
-        const col = idx % columns;
-        const row = Math.floor(idx / columns);
+          // ✅ 统一布局: 固定2列,使用和PendingNode相同的计算公式
+          const columns = 2; // 固定2列
+          const col = idx % columns;
+          const row = Math.floor(idx / columns);
 
 
-        // 计算当前行实际有多少张卡片
-        const totalCards = validImageData.length;
-        const cardsInCurrentRow = Math.min(columns, totalCards - row * columns);
+          // 计算当前行实际有多少张卡片
+          const totalCards = validImageData.length;
+          const cardsInCurrentRow = Math.min(columns, totalCards - row * columns);
 
-        if (isMobile) {
-          const mobileCardWidth = 170;
-          const mobileCardHeight = 260;
-          const mobileGap = 10;
-          // 居中计算:先算出当前行的总宽度,然后居中对齐
-          const rowWidth = cardsInCurrentRow * mobileCardWidth + (cardsInCurrentRow - 1) * mobileGap;
-          const startX = -rowWidth / 2; // 相对主卡中心的起始位置
-          const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
-          const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
-          x = finalPos.x + offsetX;
-          y = finalPos.y + offsetY;
-        } else {
-          // 居中计算:先算出当前行的总宽度,然后居中对齐
-          const rowWidth = cardsInCurrentRow * cardWidth + (cardsInCurrentRow - 1) * gap;
-          const startX = -rowWidth / 2; // 相对主卡中心的起始位置
-          const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
-          const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
-          x = finalPos.x + offsetX;
-          y = finalPos.y + offsetY;
-        }
+          if (isMobile) {
+            const mobileCardWidth = 170;
+            const mobileCardHeight = 260;
+            const mobileGap = 10;
+            // 居中计算:先算出当前行的总宽度,然后居中对齐
+            const rowWidth = cardsInCurrentRow * mobileCardWidth + (cardsInCurrentRow - 1) * mobileGap;
+            const startX = -rowWidth / 2; // 相对主卡中心的起始位置
+            const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
+            const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
+            x = finalPos.x + offsetX;
+            y = finalPos.y + offsetY;
+          } else {
+            // 居中计算:先算出当前行的总宽度,然后居中对齐
+            const rowWidth = cardsInCurrentRow * cardWidth + (cardsInCurrentRow - 1) * gap;
+            const startX = -rowWidth / 2; // 相对主卡中心的起始位置
+            const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
+            const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
+            x = finalPos.x + offsetX;
+            y = finalPos.y + offsetY;
+          }
 
-        const uniqueId = Date.now().toString() + idx + Math.random();
-        if (base64) {
-          saveImage(uniqueId, base64).catch(err => console.error("Failed to cache original locally", err));
-        }
+          const uniqueId = Date.now().toString() + idx + Math.random();
+          if (base64) {
+            saveImage(uniqueId, base64).catch(err => console.error("Failed to cache original locally", err));
+          }
 
-        return {
-          id: uniqueId,
-          url,
-          originalUrl,
-          prompt: promptToUse,
-          aspectRatio: finalAspectRatio, // 🚀 Use resolved ratio
-          imageSize: finalSize, // Add imageSize field
-          timestamp: Date.now(),
-          model: finalModel,
-          modelLabel: (() => {
-            // 🚀 同步获取模型显示名称
-            const m = finalModel.toLowerCase();
-            // Legacy display logic removed
-            if (m.includes('gemini-3-pro')) return 'Gemini 3 Pro Image';
-            if (m.includes('gemini-2.5-flash-image')) return 'Gemini 2.5 Flash Image';
-            if (m.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
-            if (m.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
-            if (m.includes('imagen-4') && m.includes('ultra')) return 'Imagen 4 Ultra';
-            if (m.includes('imagen-4') && m.includes('fast')) return 'Imagen 4 Fast';
-            if (m.includes('imagen-4')) return 'Imagen 4';
-            if (m.includes('veo-3.1') && m.includes('fast')) return 'Veo 3.1 Fast';
-            if (m.includes('veo-3.1')) return 'Veo 3.1';
-            if (m.includes('veo-3') && m.includes('fast')) return 'Veo 3 Fast';
-            if (m.includes('veo-3')) return 'Veo 3';
-            if (m.includes('veo')) return 'Veo 2';
-            return effectiveModel;  // 默认返回原始ID
-          })(),
-          mode: itemMode,  // 🚀 添加mode属性用于区分视频/图片
-          canvasId: activeCanvas?.id || 'default',
-          parentPromptId: promptNodeId,
-          position: { x, y },
-          dimensions: isVideo
-            ? `${finalAspectRatio} · 720p`
-            : `${finalAspectRatio} · ${finalSize || '1K'}`,
-          generationTime,
-          tokens,
-          cost
-        } as GeneratedImage;
-      });
+          return {
+            id: uniqueId,
+            url,
+            originalUrl,
+            prompt: promptToUse,
+            aspectRatio: finalAspectRatio, // 🚀 Use resolved ratio
+            imageSize: finalSize, // Add imageSize field
+            timestamp: Date.now(),
+            model: finalModel,
+            modelLabel: (() => {
+              const m = finalModel.toLowerCase();
+              if (m.includes('gemini-3-pro')) return 'Gemini 3 Pro Image';
+              if (m.includes('gemini-2.5-flash-image')) return 'Gemini 2.5 Flash Image';
+              if (m.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
+              if (m.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
+              if (m.includes('imagen-4') && m.includes('ultra')) return 'Imagen 4 Ultra';
+              if (m.includes('imagen-4') && m.includes('fast')) return 'Imagen 4 Fast';
+              if (m.includes('imagen-4')) return 'Imagen 4';
+              if (m.includes('veo-3.1') && m.includes('fast')) return 'Veo 3.1 Fast';
+              if (m.includes('veo-3.1')) return 'Veo 3.1';
+              if (m.includes('veo-3') && m.includes('fast')) return 'Veo 3 Fast';
+              if (m.includes('veo-3')) return 'Veo 3';
+              if (m.includes('veo')) return 'Veo 2';
+              return effectiveModel;
+            })(),
+            mode: itemMode,
+            canvasId: activeCanvas?.id || 'default',
+            parentPromptId: promptNodeId,
+            position: { x, y },
+            dimensions: isVideo
+              ? `${finalAspectRatio} · 720p`
+              : `${finalAspectRatio} · ${finalSize || '1K'}`,
+            generationTime,
+            tokens,
+            cost,
+            exactDimensions,
+            provider
+          } as GeneratedImage;
+        });
+
+        successResults = results; // ✅ Mark as safe
+      } catch (mapErr) {
+        console.error("Result Mapping Failed", mapErr);
+        throw mapErr;
+      }
 
       const updatedNode = {
-        ...latestNode, // 🚀 Use latest state
+        ...effectiveNode, // 🚀 Use effectiveNode (latest or fallback)
         position: finalPos,
         isGenerating: false,
-        childImageIds: validResults.map(r => r.id),
-        // Ensure we don't accidentally revert other fields if 'node' was stale
+        childImageIds: successResults.map(r => r.id), // Use successResults
+        isDraft: false,
       };
 
       // 🚀 [Critical Fix] Execute updates in sequence/batch to prevent state overwrite race conditions
       updatePromptNode(updatedNode);
-      addImageNodes(validResults);
+      addImageNodes(successResults);
 
       import('./services/costService').then(({ recordCost }) => {
-        // Use the model/size from the first valid result, or fallback to the scope variables
-        const usedModel = validResults[0]?.model || effectiveModel;
-        const usedSize = validResults[0]?.imageSize || latestNode.imageSize;
+        const usedModel = successResults[0]?.model || effectiveModel;
+        const usedSize = successResults[0]?.imageSize || effectiveNode.imageSize;
 
         recordCost(
           usedModel,
           usedSize,
-          validResults.length,
+          successResults.length,
           promptToUse,
           files.length
         );
       });
 
       // Clear active source if it was this node (simple check)
-      if (activeSourceImage && activeSourceImage === latestNode.sourceImageId) {
+      if (activeSourceImage && activeSourceImage === effectiveNode.sourceImageId) {
         setActiveSourceImage(null);
       }
 
     } catch (err: any) {
       console.error('[executeGeneration] Error:', err);
+
+      // 🚀 [Safe Fault Tolerance] If we generated images but failed later (e.g. Cost Service / UI Update),
+      // DO NOT mark the node as failed. Just log it and ensure it's not "Generating".
+      if (successResults.length > 0) {
+        console.warn('[executeGeneration] Partial Success - Images generated but post-processing failed. Ignoring error state.');
+        // Force "Done" state without error
+        const currentCanvas = activeCanvasRef.current;
+        const currentNode = currentCanvas?.promptNodes.find(n => n.id === node.id) || node;
+        updatePromptNode({
+          ...currentNode,
+          isGenerating: false,
+          // Do NOT set error.
+        });
+        return; // 🚀 Exit without showing error notification
+      }
 
       // 🚀 [修复] 确保错误卡片始终显示
       // 如果节点不存在于画布中，先添加它再更新错误状态
@@ -1733,48 +1830,120 @@ const AppContent: React.FC = () => {
 
   const handleGenerate = useCallback(async () => {
     if (!config.prompt.trim()) return;
-
     setIsGenerating(true);
+
+    // 4. Calculate Position (Center of Viewport if not specified)
+    // 🚀 [Smart Positioning] Use the new utility to find a "nice" spot
+    let currentPos = { x: 0, y: 0 };
+    let viewCenter = { x: 0, y: 0 }; // Declare early for scope access
 
     // [Draft Logic] Use existing draft if available
     let promptNodeId = draftNodeId;
     let isReusingDraft = false;
-    let currentPos = findNextGroupPosition(); // Fallback for new
 
-    // 🚀 [修复] 如果没有 draftNodeId，尝试在画布上查找已存在的 Draft 节点 (防止创建重复卡片)
-    if (!promptNodeId && activeCanvas) {
-      const existingDraft = activeCanvas.promptNodes.find(n => n.isDraft);
-      if (existingDraft) {
-        promptNodeId = existingDraft.id;
-        console.log('[handleGenerate] Found orphan draft, reusing:', promptNodeId);
-      }
+    // Check if we are using an existing Draft Node?
+    const existingDraft = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
+
+    if (existingDraft) {
+      console.log('[handleGenerate] Found existing draft, using its position:', existingDraft.position);
+      currentPos = { ...existingDraft.position };
+      viewCenter = { ...existingDraft.position }; // Draft IS the center for this operation
+      isReusingDraft = true;
+    } else {
+      // 🚀 使用实时 transform（包括拖动中的位置）
+      const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
+      viewCenter = getViewportPreferredPosition(currentTransform);
+      currentPos = { x: viewCenter.x, y: viewCenter.y };
+      console.log('[handleGenerate] No draft found. Calculated ViewCenter:', viewCenter, 'Using transform:', currentTransform);
+      // If draft ID was set but not found, it's stale. Generate new ID.
+      promptNodeId = Date.now().toString();
     }
-
     if (promptNodeId) {
       // We have a draft. Use it.
       const draft = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
       if (draft) {
         isReusingDraft = true;
-        // [FIX] Update draft position to current view center (where user sees it)
-        // Only if it was a "fresh" draft (empty prompt). If user moved it, keep it? 
-        // Generaly, if user hits generate, they expect the *active* thing to generate.
-        // Let's keep its position if it exists, unless it's way off screen?
-        // Actually, just keep its position. User might have arranged it.
         currentPos = draft.position;
+
+        // 🚀 [Auto-Center] If draft is off-screen, snap it to current view center
+        // This fixes the issue where users pan away from a draft and then generate, causing the result to be "lost"
+        // 🚀 使用实时 transform（包括拖动中的位置）
+        const currentTransformForVisibility = canvasRef.current?.getCurrentTransform() || canvasTransform;
+        const vLeft = -currentTransformForVisibility.x / currentTransformForVisibility.scale;
+        const vTop = -currentTransformForVisibility.y / currentTransformForVisibility.scale;
+        const vWidth = window.innerWidth / currentTransformForVisibility.scale;
+        const vHeight = window.innerHeight / currentTransformForVisibility.scale;
+
+        // Margin of error (e.g. 100px)
+        const margin = 100;
+        const isVisible =
+          currentPos.x >= vLeft - margin &&
+          currentPos.x <= vLeft + vWidth + margin &&
+          currentPos.y >= vTop - margin &&
+          currentPos.y <= vTop + vHeight + margin;
+
+        if (!isVisible) {
+          console.warn('[handleGenerate] Draft is off-screen, moving to center:', {
+            currentPos,
+            viewCenter,
+            viewport: { vLeft, vRight: vLeft + vWidth, vTop, vBottom: vTop + vHeight }
+          });
+          currentPos = { ...viewCenter };
+        } else {
+          console.log('[handleGenerate] Reusing draft at position (Visible):', currentPos);
+        }
+
+        // 🚀 [Collision Check] Ensure draft doesn't overlap others
+        const freshCanvas = activeCanvasRef.current; // Use Ref for fresh state
+        const now = Date.now();
+
+        // [Rapid-Fire] Prune old reserved regions (>3s)
+        reservedRegionsRef.current = reservedRegionsRef.current.filter(r => now - r.timestamp < 3000);
+
+        const otherNodes = [
+          ...(freshCanvas?.promptNodes || [])
+            .filter(n => n.id !== draft.id)
+            .map(n => ({ x: n.position.x, y: n.position.y, width: n.width || 380, height: n.height || 200 })),
+          ...(freshCanvas?.imageNodes || []).map(n => {
+            const { width, totalHeight } = getCardDimensions(n.aspectRatio, true);
+            return { x: n.position.x, y: n.position.y, width, height: totalHeight };
+          }),
+          ...(reservedRegionsRef.current || []).map(r => ({ x: r.bounds.x, y: r.bounds.y, width: r.bounds.width, height: r.bounds.height }))
+        ];
+
+        // 🚀 [Fix] If reusing a draft (user placed), Respect its position! 
+        // Only use safe-find for completely new/automatic generations.
+        let safePos = currentPos;
+        if (!isReusingDraft) {
+          safePos = findSafePosition(currentPos, otherNodes);
+        } else {
+          // Ensure we are snapping to integer coordinates for sharpness
+          safePos = { x: Math.round(currentPos.x), y: Math.round(currentPos.y) };
+        }
+
+        // 🚀 Always reserve the FINAL position (whether shifted or not)
+        reservedRegionsRef.current.push({
+          timestamp: now,
+          bounds: { x: safePos.x, y: safePos.y, width: 380, height: 200 }
+        });
+
+        if (safePos.x !== currentPos.x || safePos.y !== currentPos.y) {
+          console.log('[handleGenerate] Draft collision detected, shifting to:', safePos);
+          // 💡 Persist the shift to canvas state so it doesn't "jump back" or collide with next card
+          updatePromptNode({ ...draft, position: safePos });
+          currentPos = safePos;
+        }
       } else {
         // Draft ID stale?
         promptNodeId = Date.now().toString();
+        console.log('[handleGenerate] Creating new node at view center (Stale ID):', currentPos);
       }
     } else {
       promptNodeId = Date.now().toString();
+      console.log('[handleGenerate] Creating new node at view center:', currentPos);
     }
 
-    setDraftNodeId(null); // Detach status immediately
-
-    const viewCenter = {
-      x: (window.innerWidth / 2 - canvasTransform.x) / canvasTransform.scale,
-      y: (window.innerHeight / 2 - canvasTransform.y) / canvasTransform.scale
-    };
+    // setDraftNodeId(null); // Moved to end to prevent flicker
 
     // Legacy calculation reference, but we used currentPos above.
     const promptHeight = getPromptHeight(config.prompt);
@@ -1879,6 +2048,7 @@ const AppContent: React.FC = () => {
       leftovers.forEach(n => deletePromptNode(n.id));
     }
 
+    setDraftNodeId(null); // Detach status NOW that the node is updated in canvas
     setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
     setActiveSourceImage(null);
     setIsGenerating(false); // Global spinner off, local spinner on
@@ -1986,6 +2156,47 @@ const AppContent: React.FC = () => {
     });
   }, [activeCanvas, updatePromptNode, setDraftNodeId, setConfig]);
 
+  // 🚀 [New Feature] Pin Image -> Convert to Lonely Main Card (Idea Freeze)
+  const handlePinImage = useCallback(async (imageId: string) => {
+    const imageNode = activeCanvas?.imageNodes.find(n => n.id === imageId);
+    if (!imageNode) return;
+
+    // 1. Create New Prompt Node based on Image
+    const newPromptId = Date.now().toString();
+    const newPromptNode: PromptNode = {
+      id: newPromptId,
+      prompt: imageNode.prompt || '',
+      position: imageNode.position, // Take image's place
+      width: undefined as number | undefined, // Default width
+      height: undefined as number | undefined,
+      isDraft: false, // Lonely Main Card (Permanent)
+      model: imageNode.model,
+      imageSize: imageNode.imageSize || ImageSize.SIZE_1K,
+      aspectRatio: imageNode.aspectRatio,
+      childImageIds: [], // Initialize empty array for new prompt node
+      // 🚀 Use the image itself as a reference to preserve the "Idea"
+      referenceImages: [{
+        id: `ref-${newPromptId}`,
+        storageId: imageNode.storageId || imageNode.id,
+        url: imageNode.url, // Thumbnail
+        data: imageNode.url, // Base64/Blob
+        mimeType: imageNode.mimeType || 'image/png'
+      }],
+      timestamp: Date.now()
+    };
+
+    // 2. Add New Prompt Node
+    addPromptNode(newPromptNode);
+
+    // 3. Delete Original Image Node (Transformation complete)
+    deleteImageNode(imageId);
+
+    import('./services/notificationService').then(({ notify }) => {
+      notify.success('想法已定格', '图片已转换为独立主卡');
+    });
+
+  }, [activeCanvas, addPromptNode, deleteImageNode]);
+
   // Retry Logic (In-Place Regeneration)
   const handleRetryNode = useCallback(async (node: PromptNode) => {
     // 1. Reset state to generating
@@ -1993,6 +2204,7 @@ const AppContent: React.FC = () => {
       ...node,
       isGenerating: true,
       error: undefined,
+      isDraft: false, // 🚀 [Fix] Ensure visibility
       timestamp: Date.now() // Reset timer
     });
 
@@ -2008,7 +2220,12 @@ const AppContent: React.FC = () => {
         const timer = setTimeout(() => {
           if (!isFinished) {
             cancelGeneration(requestId);
-            updatePromptNode({ ...node, isGenerating: false, error: '生成超时' });
+            updatePromptNode({
+              ...node,
+              isGenerating: false,
+              isDraft: false, // 🚀 [Fix] Prevent disappearance on timeout
+              error: '生成超时'
+            });
           }
         }, 360000);
 
@@ -2072,25 +2289,74 @@ const AppContent: React.FC = () => {
           // Calculate Hash/StorageID
           const storageId = await calculateImageHash(url);
 
+          // 🚀 [Fair Billing] Detect ACTUAL dimensions from the blob/image
+          // This ensures we bill for what was received (e.g. 1K), not what was requested (e.g. 4K)
+          // if the API downgraded it.
+          let actualWidth = 1024;
+          let actualHeight = 1024;
+          let displayDimensions = `${node.aspectRatio} · ${node.imageSize || '1K'}`;
+          let computedImageSize = node.imageSize || 'SIZE_1K'; // Default fallback
+
+          try {
+            if (typeof createImageBitmap !== 'undefined' && b64.startsWith('blob:')) {
+              // Fast path for Blobs
+              const res = await fetch(b64);
+              const blob = await res.blob();
+              const bitmap = await createImageBitmap(blob);
+              actualWidth = bitmap.width;
+              actualHeight = bitmap.height;
+              bitmap.close();
+            } else {
+              // Slow path for Data URLs / Remote URLs
+              const img = new Image();
+              await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+                img.src = url;
+              });
+              actualWidth = img.naturalWidth;
+              actualHeight = img.naturalHeight;
+            }
+
+            // Update display string to show REAL pixels
+            displayDimensions = `${actualWidth}x${actualHeight}`;
+
+            // Determine Billing Tier based on Max Dimension
+            // 1K Tier: max <= 1500 (approx)
+            // 2K Tier: max > 1500 && max <= 3000
+            // 4K Tier: max > 3000
+            const maxDim = Math.max(actualWidth, actualHeight);
+            if (maxDim > 3000) {
+              computedImageSize = ImageSize.SIZE_4K; // Map to enum manually or use string
+            } else if (maxDim > 1500) {
+              computedImageSize = ImageSize.SIZE_2K;
+            } else {
+              computedImageSize = ImageSize.SIZE_1K;
+            }
+            console.log(`[Fair Billing] Requested: ${node.imageSize}, Received: ${actualWidth}x${actualHeight}, Billed As: ${computedImageSize}`);
+
+          } catch (e) {
+            console.warn('[App] Failed to detect actual dimensions, falling back to requested', e);
+          }
+
           return {
             canvasId: activeCanvas?.id || 'default',
             parentPromptId: node.id,
-            dimensions: `${node.aspectRatio} · ${node.imageSize || '1K'}`,
+            dimensions: displayDimensions, // 🚀 Use Real Dimensions
             generationTime,
             index,
             url,
             originalUrl,
             prompt: node.prompt,
-            width: 0,
-            height: 0,
+            width: actualWidth,
+            height: actualHeight,
             aspectRatio: node.aspectRatio,
-            imageSize: node.imageSize,
+            imageSize: computedImageSize, // 🚀 Use Computed Cost Tier
             model: node.model,
             seed: -1,
             id: `${Date.now()}_${index}_${Math.random().toString(36).substr(2, 5)}`,
             storageId, // Content-Based ID
-            // 在此分支中 currentMode 只能是 IMAGE（VIDEO 在上面抛出错误）
-            mimeType: 'image/png',
+            mimeType: 'image/png', // TODO: video support
             timestamp: Date.now(),
             mode: currentMode
           };
@@ -2191,15 +2457,19 @@ const AppContent: React.FC = () => {
       updatePromptNode({
         ...node,
         isGenerating: false,
+        isDraft: false, // 🚀 [Fix] Ensure persistence
         childImageIds: newImageNodes.map(n => n.id),
         error: undefined
       });
 
       // Record cost
+      // 🚀 [Fair Billing] Use the computed/effective size from the first result (assuming all in batch are same)
+      const effectiveSize = newImageNodes[0]?.imageSize || node.imageSize; // fallback
+
       import('./services/costService').then(({ recordCost }) => {
         recordCost(
           node.model,
-          node.imageSize,
+          effectiveSize as any, // Cast to ImageSize
           newImageNodes.length,
           node.prompt,
           node.referenceImages?.length || 0
@@ -2213,6 +2483,7 @@ const AppContent: React.FC = () => {
       updatePromptNode({
         ...node,
         isGenerating: false,
+        isDraft: false, // 🚀 [Fix] Prevent disappearance on error
         error: error.message || 'Retry failed'
       });
       import('./services/notificationService').then(({ notify }) => {
@@ -2421,14 +2692,24 @@ const AppContent: React.FC = () => {
     // 2. Filter Prompt Nodes (排除草稿节点，草稿由中心叠加层单独渲染)
     const visiblePromptNodes = activeCanvas.promptNodes.filter(n => {
       // 🚀 [Fix Bug #1] 草稿节点由固定中心叠加层渲染，此处跳过避免重复
-      if (n.isDraft) return false;
+      if (n.isDraft) {
+        // console.log('[App] Filter: Skipping draft node', n.id);
+        return false;
+      }
 
       // Estimate Bounds (Center X, Bottom Y) - 🚀 增大估算确保不消失
       const w = 800;
       const h = 800;
       const x = n.position.x - w / 2;
       const y = n.position.y - h;
-      return !(x > vRight || x + w < vLeft || y > vBottom || y + h < vTop);
+
+      const isVisible = !(x > vRight || x + w < vLeft || y > vBottom || y + h < vTop);
+      if (!isVisible) {
+        // console.log('[App] Filter: Node culled', n.id, { x, y, vLeft, vRight, vTop, vBottom });
+      } else {
+        // console.log('[App] Filter: Node visible', n.id);
+      }
+      return isVisible;
     });
 
     // 3. Filter Image Nodes
@@ -3118,6 +3399,8 @@ const AppContent: React.FC = () => {
                 updatePromptNode({ ...node, tags: newTags });
               }
             }}
+            onDragDelta={moveSelectedNodes} // 🚀 Enable Safe Relative Drag
+            canvasTransform={canvasTransform} // 🚀 Pass Transform for Animation Calculation
           />
         ))}
 
@@ -3147,6 +3430,7 @@ const AppContent: React.FC = () => {
             zoomScale={canvasTransform.scale}
             isMobile={isMobile}
             onPreview={handleOpenPreview}
+            onDragDelta={moveSelectedNodes} // 🚀 Enable Safe Relative Drag
           />
         ))}
 
@@ -3300,6 +3584,7 @@ const AppContent: React.FC = () => {
                 onCancel={handleCancelGeneration}
                 // Disable drag for the overlay
                 onConnectStart={() => { }}
+                onPin={handlePinDraft} // 🚀 [Fix] Add Pin Button to Overlay
               />
             </div>
           </div>

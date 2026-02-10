@@ -316,12 +316,35 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
                     {/* Limits */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-xs font-medium text-zinc-400 mb-1.5">预算限制 ($)</label>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <label className="block text-xs font-medium text-zinc-400">预算限制 ($)</label>
+                                {editingSlot && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            if (confirm('确定要重置此 Key 的消费统计吗？\n当前已用: $' + (editingSlot.totalCost || 0).toFixed(4))) {
+                                                keyManager.resetUsage(editingSlot.id);
+                                                // Update local form state visual only if needed, but the modal re-renders due to listener? 
+                                                // Actually listener updates 'slots', but 'editingSlot' prop is passed from parent.
+                                                // We might need to close/re-open or just trust the parent updates 'editingSlot' reference?
+                                                // 'editingSlot' is just a reference. state 'slots' changes. 
+                                                // ApiManagementView passes 'editingSlot' state, which is STATIC unless parent updates it.
+                                                // Parent 'ApiManagementView' updates 'slots' on change, but 'editingSlot' state there might be stale?
+                                                // Actually 'ApiManagementView.tsx' line 34: setEditingSlot(slot).
+                                                notify.success('重置成功', '已重置消费统计');
+                                            }
+                                        }}
+                                        className="text-[10px] text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                                    >
+                                        重置已用
+                                    </button>
+                                )}
+                            </div>
                             <input
                                 type="number"
                                 value={formData.budgetLimit === -1 ? '' : formData.budgetLimit}
                                 onChange={e => setFormData({ ...formData, budgetLimit: parseFloat(e.target.value) || -1 })}
-                                placeholder="无限制"
+                                placeholder="无限制 (-1)"
                                 className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
                             />
                         </div>

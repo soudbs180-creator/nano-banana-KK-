@@ -81,8 +81,9 @@ export enum ChatModelType {
 export interface ReferenceImage {
   id: string;
   storageId?: string; // Content-based Hash ID for storage deduplication
-  data: string; // Base64
+  data: string; // Base64 or URL
   mimeType: string;
+  url?: string; // Optional URL for thumbnail/reference
 }
 
 export interface GeneratedImage {
@@ -111,6 +112,9 @@ export interface GeneratedImage {
   alias?: string; // 🚀 [New] 用户自定义备注名
   isGenerating?: boolean; // 🚀 [New] True when image is being generated
   error?: string; // 🚀 [New] Error message for failed generation
+  mimeType?: string; // 🚀 [New] Image MIME type (e.g., 'image/png', 'image/jpeg')
+  exactDimensions?: { width: number; height: number }; // 🚀 [New] Exact dimensions for AUTO mode
+  provider?: string; // 🚀 [New] API Provider Name (e.g., Google, OpenAI)
 }
 
 export interface PromptNode {
@@ -129,6 +133,7 @@ export interface PromptNode {
   parallelCount?: number; // Number of images being generated
   error?: string;
   mode?: GenerationMode; // New
+  width?: number; // Dynamic width for layout calculation
   height?: number; // Dynamic height for connection line anchoring
   tags?: string[]; // Search tags
   isDraft?: boolean; // Preview/Draft state
