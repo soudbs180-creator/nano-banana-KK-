@@ -136,8 +136,16 @@ export function generateImageId(): string {
 export async function saveImage(id: string, dataURL: string): Promise<void> {
     try {
         // 🚀 转换为Blob（不占JS内存）
-        const { dataURLToBlob } = await import('./blobUtils');
-        const blob = await dataURLToBlob(dataURL);
+        const { base64ToBlob } = await import('../utils/blobUtils');
+        const blob = await base64ToBlob(dataURL);
+
+        // 如果 blob 为 null（无效URL），直接返回
+        if (!blob) {
+            console.warn(`[ImageStorage] Cannot save ${id}: invalid or expired URL`);
+            // Fallback: 尝试保存原始 dataURL 到内存
+            memoryCache.set(id, dataURL);
+            return;
+        }
 
         // 1. 内存缓存：存储Blob URL（轻量）
         const blobURL = URL.createObjectURL(blob);
@@ -604,20 +612,39 @@ export async function deleteImageAllQualities(id: string): Promise<void> {
  * @param id 图片唯一ID
  * @param dataURL 原图数据（base64 data URL）
  */
-export async function saveOriginalImage(id: string, dataURL: string): Promise<void> {
+export async function saveOriginalImage(id: string, dataURL: string, isVideo: boolean = false): Promise<void> {
     const MAX_RETRIES = 3;
 
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
             // 转换为Blob
-            const { dataURLToBlob } = await import('./blobUtils');
-            const blob = await dataURLToBlob(dataURL);
+            const { base64ToBlob } = await import('../utils/blobUtils');
+            const blob = await base64ToBlob(dataURL);
 
-            // 1. 内存缓存：存储Blob URL
+            // 如果 blob 为 null（无效URL），跳过
+            if (!blob) {
+                console.warn(`[ImageStorage] Cannot save original ${id}: invalid or expired URL`);
+                return;
+            }
+
+            // 1. 🚀【第一优先级】自动备份到本地文件系统 (如果已连接)
+            // 用户要求：本地文件优先保存
+            const globalHandle = fileSystemService.getGlobalHandle();
+            if (globalHandle) {
+                try {
+                    await fileSystemService.saveImageToHandle(globalHandle, id, blob, isVideo);
+                    console.log(`[ImageStorage] 🔒 Local-First: Saved to disk: ${id}`);
+                } catch (e) {
+                    console.error(`[ImageStorage] ⚠️ Failed to save to local disk ${id}`, e);
+                    // 如果本地保存失败，且没有IndexedDB兜底，则继续尝试存入DB
+                }
+            }
+
+            // 2. 内存缓存：存储Blob URL
             const blobURL = URL.createObjectURL(blob);
             memoryCache.set(id, blobURL);
 
-            // 2. IndexedDB：存储Blob对象（带保护标记）
+            // 3. IndexedDB：存储Blob对象（带保护标记）
             const db = await openDB();
             const transaction = db.transaction(IMAGES_STORE, 'readwrite');
             const store = transaction.objectStore(IMAGES_STORE);
@@ -635,19 +662,7 @@ export async function saveOriginalImage(id: string, dataURL: string): Promise<vo
                 request.onerror = () => reject(request.error);
             });
 
-            // 3. 🚀 自动备份到本地文件 SYSTEM (如果已连接)
-            const globalHandle = fileSystemService.getGlobalHandle();
-            if (globalHandle) {
-                try {
-                    await fileSystemService.saveImageToHandle(globalHandle, id, blob);
-                    console.log(`[ImageStorage] 🔒 Auto-backed up to local file: ${id}`);
-                } catch (e) {
-                    console.error(`[ImageStorage] ⚠️ Failed to auto-backup ${id}`, e);
-                    // 不中断流程，因为IndexedDB已经保存成功
-                }
-            }
-
-            console.log(`[ImageStorage] 🔒 Original image saved successfully (attempt ${i + 1}/${MAX_RETRIES})`);
+            console.log(`[ImageStorage] 🔒 Original image saved successfully to IDB (attempt ${i + 1}/${MAX_RETRIES})`);
             return; // 成功，退出
         } catch (error) {
             console.warn(`[ImageStorage] 🔒 Save retry ${i + 1}/${MAX_RETRIES}:`, error);
@@ -689,7 +704,7 @@ export async function getOriginalImage(id: string): Promise<string | null> {
         });
 
         if (!result) {
-            console.warn(`[ImageStorage] 🔒 Original not found in IndexedDB: ${id}`);
+            console.warn(`[ImageStorage] 🔒 Original not found in IndexedDB: ${id}. Attempting disk recovery...`);
 
             // 🚀 Fallback: 尝试从本地文件加载 (最后的防线)
             const globalHandle = fileSystemService.getGlobalHandle();
@@ -702,6 +717,7 @@ export async function getOriginalImage(id: string): Promise<string | null> {
                         memoryCache.set(id, blobURL);
 
                         // 恢复到 IndexedDB (以便下次快速读取)
+                        // 将恢复也视为一次 "saveOriginalImage" 的部分流程，确保护航本地优先的逻辑一致性
                         // 注意：这里我们异步恢复，不阻塞返回
                         saveOriginalImage(id, blobURL).catch(e =>
                             console.warn('[ImageStorage] Failed to restore fallback image to DB', e)

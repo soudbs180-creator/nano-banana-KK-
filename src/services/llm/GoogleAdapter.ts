@@ -3,6 +3,70 @@ import { KeySlot } from '../keyManager';
 import { GOOGLE_API_BASE } from '../apiConfig';
 
 /**
+ * Helper: Convert image data (blob URL, data URL, or base64) to base64 string
+ * Gemini API requires base64 encoded image data
+ */
+async function convertImageToBase64(imageData: string): Promise<string | null> {
+    // If it's already a pure base64 string (no prefix), return as-is
+    if (!imageData.includes(':') && !imageData.includes('/')) {
+        return imageData;
+    }
+
+    // If it's a data URL (data:image/png;base64,...), extract base64 part
+    if (imageData.startsWith('data:')) {
+        const base64Match = imageData.match(/^data:[^;]+;base64,(.+)$/);
+        if (base64Match) {
+            return base64Match[1];
+        }
+        // If data URL but not base64, try to fetch and convert
+        try {
+            const response = await fetch(imageData);
+            const blob = await response.blob();
+            return await blobToBase64(blob);
+        } catch (e) {
+            console.error('[GoogleAdapter] Failed to convert data URL to base64:', e);
+            return null;
+        }
+    }
+
+    // If it's a blob URL (blob:http://...), fetch and convert
+    if (imageData.startsWith('blob:')) {
+        try {
+            const response = await fetch(imageData);
+            const blob = await response.blob();
+            return await blobToBase64(blob);
+        } catch (e) {
+            console.error('[GoogleAdapter] Failed to convert blob URL to base64:', e);
+            return null;
+        }
+    }
+
+    // Unknown format, return as-is and hope for the best
+    return imageData;
+}
+
+/**
+ * Helper: Convert Blob to base64 string
+ */
+function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const result = reader.result as string;
+            // Extract base64 part from data URL
+            const base64Match = result.match(/^data:[^;]+;base64,(.+)$/);
+            if (base64Match) {
+                resolve(base64Match[1]);
+            } else {
+                reject(new Error('Failed to convert blob to base64'));
+            }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+/**
  * Google Adapter - Official Google API Protocol Only
  * 
  * Handles:
@@ -48,18 +112,23 @@ export class GoogleAdapter implements LLMAdapter {
             };
         });
 
+        // 🚀 [12AI 对齐] maxOutputTokens 安全钳位 (限制在 65535 以内)
+        // 官方文档指出：maxOutputTokens 设置为 65537 或更大，Google 会拒绝请求。
+        let maxTokens = options.maxTokens || 20480; // 12AI 建议在 10000～30000 之间以兼顾质量
+        if (maxTokens > 65535) {
+            console.warn(`[GoogleAdapter] maxOutputTokens (${maxTokens}) 超过 Google 限制，自动钳位至 65535`);
+            maxTokens = 65535;
+        }
+
         const generationConfig: any = {
             temperature: options.temperature,
-            maxOutputTokens: options.maxTokens
+            maxOutputTokens: maxTokens
         };
 
-        // 🚀 Support Provider Config
+        // 🚀 支持 Provider Config
         if (options.providerConfig?.google) {
             if (options.providerConfig.google.responseModalities) {
                 generationConfig.responseModalities = options.providerConfig.google.responseModalities;
-            }
-            if (options.providerConfig.google.safetySettings) {
-                // top level in payload, not inside generationConfig
             }
         }
 
@@ -67,6 +136,12 @@ export class GoogleAdapter implements LLMAdapter {
             contents,
             generationConfig
         };
+
+        // 安全性检查: 12AI 限制 Payload 体积 (HK线路 25MB, 主站 50MB)
+        const payloadStr = JSON.stringify(payload);
+        if (payloadStr.length > 45 * 1024 * 1024) {
+            console.error(`[GoogleAdapter] 请求体积 (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) 接近 50MB 上限，可能导致 413 错误`);
+        }
 
         // Safety Settings
         if (options.providerConfig?.google?.safetySettings) {
@@ -76,7 +151,7 @@ export class GoogleAdapter implements LLMAdapter {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: payloadStr
         });
 
         if (!response.ok) {
@@ -102,6 +177,11 @@ export class GoogleAdapter implements LLMAdapter {
         }
 
         // 3. Gemini (Image via generateContent)
+        if (modelId.includes('gemini') && modelId.includes('image')) {
+            return this.generateGeminiImage(options, keySlot);
+        }
+
+        // Default or older Gemini models that might support IMAGE modality
         return this.generateGeminiImage(options, keySlot);
     }
 
@@ -114,12 +194,19 @@ export class GoogleAdapter implements LLMAdapter {
 
         const parts: any[] = [{ text: options.prompt }];
 
-        // Multimodal Reference Images
+        // Multimodal Reference Images - convert blob URLs to base64
         if (options.referenceImages?.length) {
-            options.referenceImages.forEach(b64 => {
-                parts.push({
-                    inlineData: { mimeType: 'image/png', data: b64 }
-                });
+            const convertedImages = await Promise.all(
+                options.referenceImages.map(async (imageData) => {
+                    const base64 = await convertImageToBase64(imageData);
+                    return base64 ? { mimeType: 'image/png', data: base64 } : null;
+                })
+            );
+
+            convertedImages.forEach(inlineData => {
+                if (inlineData) {
+                    parts.push({ inlineData });
+                }
             });
         }
 
@@ -168,18 +255,55 @@ export class GoogleAdapter implements LLMAdapter {
         }
 
         const data = await response.json();
-        const part = data.candidates?.[0]?.content?.parts?.[0];
 
-        if (part?.inlineData) {
+        // 🚀 Robust Multimodal Response Parsing
+        // Google API can return multiple candidates. Usually we want the first.
+        const candidate = data.candidates?.[0];
+        if (!candidate) {
+            throw new Error(`Google API returned no candidates. Finish Reason: ${data.candidates?.[0]?.finishReason || 'Unknown'}`);
+        }
+
+        // Parts can be many: Text description + Image data
+        const candidateParts = candidate.content?.parts || [];
+        const imageParts = candidateParts.filter((p: any) => p.inlineData && p.inlineData.mimeType.startsWith('image/'));
+
+        if (imageParts.length > 0) {
+            // 🚀 [CRITICAL FIX] 4K Support: API returns multiple images (preview + final)
+            // When requesting 4K, we get: 1) Low-res preview (768×1376) 2) High-res final (3072×5504)
+            // We need to select the largest image by data size (base64 length)
+            let bestImage = imageParts[0];
+            let maxDataLength = 0;
+
+            if (imageParts.length > 1) {
+                console.log(`[GoogleAdapter] Detected ${imageParts.length} images in response, selecting largest...`);
+                for (const part of imageParts) {
+                    const dataLength = part.inlineData.data?.length || 0;
+                    if (dataLength > maxDataLength) {
+                        maxDataLength = dataLength;
+                        bestImage = part;
+                    }
+                }
+                console.log(`[GoogleAdapter] Selected image with data length: ${maxDataLength} (${(maxDataLength * 0.75 / 1024 / 1024).toFixed(2)}MB estimated)`);
+            }
+
             return {
-                urls: [`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`],
+                urls: [`data:${bestImage.inlineData.mimeType};base64,${bestImage.inlineData.data}`],
                 provider: 'Google',
                 model: options.modelId,
-                imageSize: imageConfig.imageSize || '1K'
+                imageSize: imageConfig.imageSize || '1K',
+                metadata: {
+                    aspectRatio: imageConfig.aspectRatio
+                }
             };
         }
 
-        throw new Error("No image data in response");
+        // Fallback: Check if there's any text describing why it failed (e.g. Safety)
+        const textPart = candidateParts.find((p: any) => p.text);
+        if (textPart?.text) {
+            throw new Error(`Gemini Image Generation Fail: ${textPart.text}`);
+        }
+
+        throw new Error("No image data in multimodal response");
     }
 
     /**

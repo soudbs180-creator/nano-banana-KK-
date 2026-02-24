@@ -4,9 +4,11 @@ import { GenerationConfig, AspectRatio, ImageSize, GenerationMode, ModelType } f
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
 import { keyManager, getModelMetadata } from '../services/keyManager'; // Added getter
 import { getModelCapabilities, modelSupportsGrounding, getModelDisplayInfo, getModelDescription } from '../services/modelCapabilities';
+import { getModelBadgeInfo, getProviderBadgeColor } from '../utils/modelBadge';
 import { calculateImageHash } from '../utils/imageUtils';
 import { saveImage, getImage } from '../services/imageStorage'; // [NEW] Import getImage
 import { fileSystemService } from '../services/fileSystemService'; // 🚀 参考图持久化
+import { notify } from '../services/notificationService';
 import ImageOptionsPanel from './ImageOptionsPanel';
 import VideoOptionsPanel from './VideoOptionsPanel';
 import ImagePreview from './ImagePreview';
@@ -429,18 +431,18 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         // 🚀 [修复] 根据模型动态获取最大参考图数量
         const modelCaps = getModelCapabilities(config.model);
         const maxRefImages = modelCaps?.maxRefImages ?? 5; // 默认 5 张，Gemini 3 Pro 支持 10 张
-        
+
         if (config.referenceImages.length >= maxRefImages) {
-            alert(`最多只能上传 ${maxRefImages} 张参考图`);
+            notify.warning('参考图数量限制', `最多只能上传 ${maxRefImages} 张参考图`);
             return;
         }
-        
+
         const remainingSlots = maxRefImages - config.referenceImages.length;
         const fileArray = Array.from(files).filter(f => f.type.startsWith('image/'));
         // TODO: Video upload support for Video mode
 
         if (fileArray.length > remainingSlots) {
-            alert(`最多只能上传 5 张参考图，已自动忽略 ${fileArray.length - remainingSlots} 张`);
+            notify.info('参考图已调整', `最多只能上传 ${maxRefImages} 张参考图，已自动忽略 ${fileArray.length - remainingSlots} 张`);
         }
 
         const filesToProcess = fileArray.slice(0, remainingSlots);
@@ -666,13 +668,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     setConfig(prev => {
                         // Prevent duplicates
                         if (prev.referenceImages.some(img => img.storageId === storageId)) return prev;
-                        
+
                         // 🚀 [修复] 根据模型动态获取最大参考图数量
                         const modelCaps = getModelCapabilities(config.model);
                         const maxRefImages = modelCaps?.maxRefImages ?? 5;
-                        
+
                         if (prev.referenceImages.length >= maxRefImages) {
-                            alert(`最多只能上传 ${maxRefImages} 张参考图`);
+                            notify.warning('参考图数量限制', `最多只能上传 ${maxRefImages} 张参考图`);
                             return prev;
                         }
 
@@ -751,22 +753,20 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
 
     const currentModel = availableModels.find(m => m.id === config.model);
-    const currentModelLabel = isModelListEmpty
-        ? '无可用模型 (请配置 API)'
-        : (currentModel ? getModelDisplayInfo(currentModel).displayName : '未知模型');
+    const currentModelName = isModelListEmpty
+        ? '无可用模型'
+        : (currentModel ? (currentModel.label || currentModel.id.split('@')[0]) : '未知模型');
 
     // 🚀 [NEW] 获取展示信息 (来源标签)
     const modelDisplayInfo = currentModel ? getModelDisplayInfo(currentModel) : null;
 
     const truncateModelLabel = useCallback((label: string) => {
-        const max = isMobile ? 14 : 18;
+        const max = isMobile ? 12 : 16;
         if (label.length <= max) return label;
-        const head = Math.max(6, Math.floor(max * 0.6));
-        const tail = Math.max(3, max - head - 3);
-        return `${label.slice(0, head)}...${label.slice(-tail)} `;
+        return label.slice(0, max - 1) + '…';
     }, [isMobile]);
 
-    const displayModelLabel = truncateModelLabel(currentModelLabel);
+    const displayModelLabel = truncateModelLabel(currentModelName);
 
     // 🚀 [Mobile Layout] Dock to bottom on mobile
     const mobileStyle: React.CSSProperties = isMobile ? {
@@ -815,153 +815,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         handleTouchEnd(e); // Keep existing handler
     };
 
-    if (isMobile) {
-        return (
-            <>
-                <div
-                    id="mobile-input-dock"
-                    className="fixed bottom-0 left-0 right-0 z-50 bg-[#141417]/95 backdrop-blur-xl border-t border-white/5 pb-safe transition-all duration-300"
-                    style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
-                >
-                    {/* Function Bar (Floating above) */}
-                    <div className="absolute top-0 left-0 w-full -translate-y-full pb-2 pointer-events-none flex flex-col justify-end bg-gradient-to-t from-black/20 to-transparent pt-8">
-                        <div className="flex justify-evenly items-end px-4 gap-4 pointer-events-auto pb-2">
-                            {/* Deep Reasoning */}
-                            <button
-                                onClick={() => toggleMenu('model')}
-                                className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
-                            >
-                                <div className="w-11 h-11 rounded-full bg-[#1a1a1c] border border-white/10 flex items-center justify-center text-white shadow-lg shadow-black/20">
-                                    <Brain size={20} className="text-purple-400" />
-                                </div>
-                                <span className="text-[10px] font-medium text-white/90 drop-shadow-md">深度思考</span>
-                            </button>
-
-                            {/* Photo QA */}
-                            <button
-                                onClick={() => {
-                                    setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }));
-                                    fileInputRef.current?.click();
-                                }}
-                                className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
-                            >
-                                <div className="w-11 h-11 rounded-full bg-[#1a1a1c] border border-white/10 flex items-center justify-center text-white shadow-lg shadow-black/20">
-                                    <Camera size={20} className="text-blue-400" />
-                                </div>
-                                <span className="text-[10px] font-medium text-white/90 drop-shadow-md">拍照答疑</span>
-                            </button>
-
-                            {/* AI Video */}
-                            <button
-                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
-                                className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
-                            >
-                                <div className="w-11 h-11 rounded-full bg-[#1a1a1c] border border-white/10 flex items-center justify-center text-white shadow-lg shadow-black/20">
-                                    <Video size={20} className="text-pink-400" />
-                                </div>
-                                <span className="text-[10px] font-medium text-white/90 drop-shadow-md">AI生视频</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="px-3 pt-3 flex flex-col gap-3">
-                        {/* Reference Images List */}
-                        {config.referenceImages.length > 0 && (
-                            <div className="flex gap-3 overflow-x-auto py-2 scrollbar-none">
-                                {config.referenceImages.map((img) => (
-                                    <div key={img.id} className="relative flex-shrink-0 group">
-                                        <ReferenceThumbnail image={img} />
-                                        <button
-                                            onClick={() => removeReferenceImage(img.id)}
-                                            className="absolute -top-1 -right-1 w-5 h-5 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur-md"
-                                        >
-                                            ✕
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Input Row */}
-                        <div className="flex items-end gap-3 w-full">
-                            {/* Voice */}
-                            <button className="p-2.5 text-zinc-400 active:text-white transition-colors" onClick={() => alert("语音功能即将上线")}>
-                                <Mic size={24} strokeWidth={1.5} />
-                            </button>
-
-                            {/* Input Field */}
-                            <div className="flex-1 min-h-[44px] bg-white/5 border border-white/10 rounded-[22px] flex items-center px-4 py-2 relative transition-all focus-within:bg-white/10 focus-within:border-white/20">
-                                <textarea
-                                    ref={textareaRef}
-                                    value={config.prompt}
-                                    onChange={handleInput}
-                                    onFocus={onFocus}
-                                    onBlur={onBlur}
-                                    placeholder="发消息、生成图片、视频..."
-                                    className="w-full bg-transparent border-none outline-none text-[15px] text-white placeholder-zinc-500 resize-none py-0.5 leading-6"
-                                    rows={1}
-                                    style={{ maxHeight: '120px' }}
-                                />
-                                {/* Send Button (Shows when text exists) */}
-                                {config.prompt && (
-                                    <button
-                                        onClick={onGenerate}
-                                        disabled={isGenerating}
-                                        className="ml-2 w-8 h-8 flex-shrink-0 flex items-center justify-center bg-blue-600 rounded-full text-white shadow-lg active:scale-90 transition-all hover:bg-blue-500"
-                                    >
-                                        {isGenerating ? <Loader2 className="animate-spin" size={16} /> : <ChevronUp size={20} strokeWidth={3} />}
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* Plus / More */}
-                            <button onClick={onOpenMore} className="p-2.5 text-zinc-400 active:text-white transition-colors">
-                                <Plus size={24} strokeWidth={1.5} />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Hidden Inputs */}
-                    <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={(e) => e.target.files && processFiles(e.target.files)} />
-
-                    {/* Model Menu (Mobile Overlay) */}
-                    {activeMenu === 'model' && (
-                        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-200">
-                            <div className="bg-[#1e1e20] rounded-t-3xl border-t border-white/10 max-h-[70vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300">
-                                <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                                    <h3 className="text-lg font-bold text-white">选择模型</h3>
-                                    <button onClick={() => setActiveMenu(null)} className="p-2 text-zinc-400 hover:text-white">✕</button>
-                                </div>
-                                <div className="p-4 overflow-y-auto">
-                                    {filterAndSortModels(availableModels, '', modelCustomizations).map((model: any) => (
-                                        <button
-                                            key={model.id}
-                                            onClick={() => {
-                                                setConfig(prev => ({ ...prev, model: model.id }));
-                                                setActiveMenu(null);
-                                            }}
-                                            className={`w-full p-4 flex items-center justify-between rounded-xl mb-2 transition-all ${config.model === model.id ? 'bg-indigo-600/20 border border-indigo-500/50' : 'bg-white/5 border border-white/5'}`}
-                                        >
-                                            <div className="flex flex-col items-start">
-                                                <span className="text-white font-medium text-base">{model.label || model.id}</span>
-                                                <span className="text-xs text-zinc-400 mt-0.5">{model.provider}</span>
-                                            </div>
-                                            {config.model === model.id && <div className="w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" />}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </>
-        );
-    }
+    // Desktop floating style handling is used for both now
+    // CSS classes like `w-[calc(100vw-32px)] sm:w-[560px]` will handle responsive scaling
 
     return (
         <div
             id="prompt-bar-container"
-            className={`input-bar transition-all duration-300 ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
+            className={`input-bar transition-all duration-300 w-[calc(100vw-32px)] sm:w-[560px] md:max-w-2xl ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -1042,38 +902,36 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     </div>
                 )}
 
-                {/* Mode Toggle - HIDE on mobile (mode is in MobileTabBar) */}
-                {!isMobile && (
-                    <div className="flex justify-center mb-2">
-                        <div className="relative inline-flex items-center p-1 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', width: 'auto' }}>
-                            {/* Sliding highlight background */}
-                            <div
-                                className="absolute h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
-                                style={{
-                                    width: '80px',
-                                    left: config.mode === GenerationMode.IMAGE ? '4px' : 'calc(50% + 2px)',
-                                    backgroundColor: config.mode === GenerationMode.IMAGE ? 'rgba(99, 102, 241, 0.2)' : 'rgba(168, 85, 247, 0.2)',
-                                    boxShadow: config.mode === GenerationMode.IMAGE
-                                        ? '0 0 8px rgba(99, 102, 241, 0.3)'
-                                        : '0 0 8px rgba(168, 85, 247, 0.3)'
-                                }}
-                            />
+                {/* Mode Toggle - Displayed on both but scaled down via CSS if needed */}
+                <div className="flex justify-center mb-2">
+                    <div className="relative inline-flex items-center p-1 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', width: 'auto' }}>
+                        {/* Sliding highlight background */}
+                        <div
+                            className="absolute h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
+                            style={{
+                                width: '80px',
+                                left: config.mode === GenerationMode.IMAGE ? '4px' : 'calc(50% + 2px)',
+                                backgroundColor: config.mode === GenerationMode.IMAGE ? 'rgba(99, 102, 241, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                                boxShadow: config.mode === GenerationMode.IMAGE
+                                    ? '0 0 8px rgba(99, 102, 241, 0.3)'
+                                    : '0 0 8px rgba(168, 85, 247, 0.3)'
+                            }}
+                        />
 
-                            <button
-                                className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.IMAGE ? 'text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
-                            >
-                                图片
-                            </button>
-                            <button
-                                className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.VIDEO ? 'text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                                onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
-                            >
-                                视频
-                            </button>
-                        </div>
+                        <button
+                            className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.IMAGE ? 'text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
+                        >
+                            图片
+                        </button>
+                        <button
+                            className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.VIDEO ? 'text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
+                        >
+                            视频
+                        </button>
                     </div>
-                )}
+                </div>
 
                 {/* Input Area Wrapper with hover detection */}
                 <div
@@ -1311,19 +1169,18 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     />
                 </div> {/* End of input area hover wrapper */}
 
-                {/* Footer - Mobile: Simplified compact horizontal row. Desktop: Normal layout. */}
-                <div className={`input-bar-footer flex items-center ${isMobile ? 'justify-evenly gap-0 flex-nowrap px-0' : 'justify-between'} pt-3 mt-1`} style={isMobile ? {} : { borderTop: '1px solid var(--border-light)' }}>
+                {/* Footer - Modified to be a standard flex row, flowing or wrapping lightly on mobile */}
+                <div className={`input-bar-footer flex items-center justify-between pt-3 mt-1 border-t border-[var(--border-light)] gap-2`}>
                     {/* Left: Model & Settings */}
-                    {/* Model Button - compact on mobile */}
                     {/* Model Button */}
-                    <div className={`relative ${isMobile ? 'flex-shrink' : 'inline-flex flex-shrink-0'}`} style={isMobile ? { display: 'contents' } : {}}>
+                    <div className="relative inline-flex flex-shrink-0">
                         <button
                             id="models-dropdown-trigger"
                             className={`input-bar-model flex items-center justify-center gap-2 px-1.5 md:px-3 py-1 md:py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
                                 ? 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-tertiary)] cursor-not-allowed'
                                 : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50'
                                 }`}
-                            style={{ minWidth: isMobile ? 'auto' : '200px', maxWidth: isMobile ? '80px' : '200px', flexShrink: isMobile ? 1 : 0 }}
+                            style={{ minWidth: '80px', maxWidth: isMobile ? '120px' : '200px' }}
                             onClick={() => {
                                 if (isModelListEmpty) {
                                     onOpenSettings?.('api-management');
@@ -1332,20 +1189,22 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 }
                             }}
                         >
-                            <span className={`text-xs text-center truncate font-medium whitespace-nowrap transition-all duration-300 ${!isModelListEmpty && modelDisplayInfo ? modelDisplayInfo.badgeColor : ''}`}>
-                                {displayModelLabel}
-                            </span>
+                            {(() => {
+                                const badgeInfo = getModelBadgeInfo({ id: currentModel?.id ?? '', label: currentModel?.label ?? '', provider: currentModel?.provider });
+                                return (
+                                    <span className={`text-xs font-medium ${badgeInfo.colorClass}`} title={badgeInfo.text}>
+                                        {badgeInfo.text}
+                                    </span>
+                                );
+                            })()}
 
-                            {/* 🚀 [NEW] 来源标签 - 改回横排，与文字居中对齐 */}
-                            {!isModelListEmpty && modelDisplayInfo && (
+                            {/* 🚀 [NEW] 供应商标签 - 带框右对齐 */}
+                            {!isModelListEmpty && currentModel?.provider && (
                                 <span
-                                    className={`text-[9px] px-1 py-0.5 rounded border opacity-80 ${modelDisplayInfo.badgeColor}`}
-                                    style={{
-                                        marginLeft: '4px',
-                                        flexShrink: 0
-                                    }}
+                                    className={`text-[9px] px-1.5 py-0.5 rounded border flex-shrink-0 ${getProviderBadgeColor(currentModel.provider)}`}
+                                    style={{ marginLeft: '6px' }}
                                 >
-                                    {modelDisplayInfo.badgeText}
+                                    {currentModel.provider}
                                 </span>
                             )}
                         </button>
@@ -1386,8 +1245,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     {filterAndSortModels(availableModels, modelSearch, modelCustomizations)
                                         .map((model: any) => {
                                             const custom = modelCustomizations[model.id] || {};
-                                            const displayName = custom.alias || model.label || model.id;
-                                            const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                            const baseName = custom.alias || model.label || model.id;
+                                            const advantage = custom.description || model.description || '自定义模型';
                                             const isPinned = getPinnedModels().includes(model.id);
                                             return (
                                                 <button
@@ -1405,23 +1264,18 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 >
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2">
-                                                            <span className={`text-xs font-medium ${config.model === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
-                                                                {getModelDisplayInfo(model).displayName}
-                                                            </span>
+                                                            {(() => {
+                                                                const badgeInfo = getModelBadgeInfo({ id: model.id, label: model.label, provider: model.provider });
+                                                                return <span className={`text-xs font-medium ${badgeInfo.colorClass}`} title={badgeInfo.text}>{badgeInfo.text}</span>;
+                                                            })()}
                                                             {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
                                                         </div>
-                                                        {/* 来源标签 - 右对齐 */}
-                                                        <span
-                                                            className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ${getModelDisplayInfo(model).badgeColor}`}
-                                                            style={{
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                whiteSpace: 'nowrap'
-                                                            }}
-                                                        >
-                                                            {getModelDisplayInfo(model).badgeText}
-                                                        </span>
+                                                        {/* 供应商标签 - 右对齐带框 */}
+                                                        {model.provider && (
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${getProviderBadgeColor(model.provider)}`}>
+                                                                {model.provider}
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     {/* Metadata Display - 三层简洁结构 */}
@@ -1464,7 +1318,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     </div >
 
                     {/* Options Button - Shows current ratio and size, shrink on mobile */}
-                    <div className={`relative ${isMobile ? 'flex-shrink' : 'inline-flex'}`} style={isMobile ? { display: 'contents' } : {}}>
+                    <div className="relative inline-flex flex-shrink-0">
                         <button
                             data-options-toggle
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium whitespace-nowrap flex-shrink-0"

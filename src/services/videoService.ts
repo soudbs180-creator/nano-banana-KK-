@@ -36,7 +36,7 @@ export interface VideoGenerationResult {
     mode: 'text-to-video' | 'first-frame' | 'interpolation' | 'reference';
 }
 
-const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+const DEFAULT_GOOGLE_BASE_URL = 'https://generativelanguage.googleapis.com';
 
 /**
  * 生成视频 - 使用 Veo 3.1 API
@@ -45,6 +45,7 @@ const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 export async function generateVideo(
     config: VideoGenerationConfig,
     apiKey: string,
+    baseUrl?: string, // 🚀 [新增] 支持自定义代理 Base URL
     onProgress?: (status: string) => void,
     signal?: AbortSignal
 ): Promise<VideoGenerationResult> {
@@ -151,15 +152,13 @@ export async function generateVideo(
         requestBody.parameters = parameters;
     }
 
-    // 🚀 [调试] 打印完整请求体
-    console.log('[VideoService] 发送视频生成请求:', JSON.stringify({
-        model,
-        requestBody,
-        resolution: config.resolution,
-        imageCount
-    }, null, 2));
+    // 🚀 [修复] 如果传入了 Base URL，使用它。否则使用官方默认地址。
+    const finalBaseUrl = baseUrl || DEFAULT_GOOGLE_BASE_URL;
+    const cleanBase = finalBaseUrl.replace(/\/+$/, '');
+    // 确保包含版本号 (通常是 v1beta)
+    const apiBase = cleanBase.includes('/v1') ? cleanBase : `${cleanBase}/v1beta`;
 
-    return await executeVideoGeneration(requestBody, apiKey, model, onProgress, signal, startTime, mode, modeLabel);
+    return await executeVideoGeneration(requestBody, apiKey, model, apiBase, onProgress, signal, startTime, mode, modeLabel);
 }
 
 /**
@@ -169,6 +168,7 @@ async function executeVideoGeneration(
     requestBody: Record<string, unknown>,
     apiKey: string,
     model: string,
+    apiBase: string, // 🚀 传入计算后的 apiBase
     onProgress: ((status: string) => void) | undefined,
     signal: AbortSignal | undefined,
     startTime: number,
@@ -179,11 +179,12 @@ async function executeVideoGeneration(
     // 1. 发起生成请求
     onProgress?.('开始视频生成...');
     const initResponse = await fetch(
-        `${BASE_URL}/models/${model}:predictLongRunning`,
+        `${apiBase}/models/${model}:predictLongRunning?key=${apiKey}`, // 🚀 使用 apiBase 并支持 URL key
         {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                // 同时保留 header 认证以增强兼容性
                 'x-goog-api-key': apiKey,
             },
             body: JSON.stringify(requestBody),
@@ -219,7 +220,7 @@ async function executeVideoGeneration(
         onProgress?.(`视频生成中... (${pollCount * 10}秒)`);
 
         const statusResponse = await fetch(
-            `${BASE_URL}/${operationName}`,
+            `${apiBase}/${operationName}?key=${apiKey}`, // 🚀 使用 apiBase
             {
                 headers: {
                     'x-goog-api-key': apiKey,

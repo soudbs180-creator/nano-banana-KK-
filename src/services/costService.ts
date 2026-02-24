@@ -289,7 +289,10 @@ export function getTodayCosts(): DayStats {
                     };
                 }
             }
-        } catch (e) { }
+        } catch (e) {
+            // 统计数据解析失败，返回默认值
+            console.warn('[CostService] Failed to parse stats:', e);
+        }
     }
 
     return stats || {

@@ -17,6 +17,8 @@ import {
     compressIfNeeded
 } from './opfsService';
 
+import { fileSystemService } from './fileSystemService';
+
 // ============================================
 // 设备能力检测
 // ============================================
@@ -276,9 +278,15 @@ export async function deleteImage(item: ImageItem): Promise<boolean> {
         URL.revokeObjectURL(item.originalUrl);
     }
 
+    // 🚀 [关键修复] 强制尝试从物理磁盘删除文件（防止被刷新死灰复燃）
+    const globalHandle = fileSystemService.getGlobalHandle();
+    if (globalHandle) {
+        await fileSystemService.deleteImageFromHandle(globalHandle, item.id);
+    }
+
     switch (item.type) {
         case 'native':
-            // PC端：不需要删除实际文件（只是移除引用）
+            // PC端：原来不需要删除实际文件，现在上面已全局删除
             return true;
 
         case 'opfs':

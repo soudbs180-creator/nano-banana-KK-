@@ -1,41 +1,69 @@
 import React from 'react';
-import { Menu, Share2, LogOut } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { Menu, Settings, User, LayoutDashboard, Search } from 'lucide-react';
 
 interface MobileHeaderProps {
-    onOpenSidebar: () => void;
-    onShare?: () => void;
+    onMenuClick: () => void;
+    onDashboardClick: () => void;
+    onSettingsClick: () => void;
+    onUserClick: () => void;
+    title?: string;
 }
 
-const MobileHeader: React.FC<MobileHeaderProps> = ({ onOpenSidebar, onShare }) => {
-    const { user } = useAuth();
-
+const MobileHeader: React.FC<MobileHeaderProps> = ({
+    onMenuClick,
+    onDashboardClick,
+    onSettingsClick,
+    onUserClick,
+    title = 'KK Studio'
+}) => {
     return (
-        <div className="fixed top-0 left-0 right-0 h-14 z-50 flex items-center justify-between px-4 bg-transparent pointer-events-none">
-            {/* Gradient Background for readability */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
-
-            {/* Left: Menu (Sidebar) */}
-            <button
-                onClick={onOpenSidebar}
-                className="relative z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/20 backdrop-blur-md text-white border border-white/10 active:scale-95 transition-transform pointer-events-auto"
-            >
-                <Menu size={20} />
-            </button>
-
-            {/* Center: Logo / Title */}
-            <div className="relative z-10 flex flex-col items-center pointer-events-auto">
-                <span className="font-bold text-base text-white drop-shadow-md tracking-wide">KK Studio</span>
-                {/* Optional: Status pill or subtitle */}
+        <div
+            className="fixed top-0 left-0 right-0 h-14 z-[90] flex items-center justify-between px-3"
+            style={{
+                background: 'rgba(25, 25, 25, 0.75)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                paddingTop: 'env(safe-area-inset-top)'
+            }}
+        >
+            <div className="flex items-center gap-1">
+                <button
+                    onClick={onMenuClick}
+                    className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] active:scale-95 transition-all"
+                >
+                    <Menu size={22} />
+                </button>
+                <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
+                        <span className="text-white text-xs font-bold leading-none">KK</span>
+                    </div>
+                    <span className="font-semibold text-[var(--text-primary)] tracking-tight text-base font-display">
+                        {title}
+                    </span>
+                </div>
             </div>
 
-            {/* Right: Share / User Action */}
-            <button
-                onClick={onShare}
-                className="relative z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/20 backdrop-blur-md text-white border border-white/10 active:scale-95 transition-transform pointer-events-auto"
-            >
-                <Share2 size={18} />
-            </button>
+            <div className="flex items-center gap-1">
+                <button
+                    onClick={onDashboardClick}
+                    className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] active:scale-95 transition-all"
+                >
+                    <LayoutDashboard size={20} />
+                </button>
+                <button
+                    onClick={onSettingsClick}
+                    className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] active:scale-95 transition-all"
+                >
+                    <Settings size={20} />
+                </button>
+                <button
+                    onClick={onUserClick}
+                    className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] active:scale-95 transition-all"
+                >
+                    <User size={20} />
+                </button>
+            </div>
         </div>
     );
 };

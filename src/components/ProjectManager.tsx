@@ -8,6 +8,7 @@ import {
     Focus, CircleDot, LayoutDashboard, GripVertical, Bot, Grid3x3, Square, Sun, Moon
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { notify } from '../services/notificationService';
 
 interface ProjectManagerProps {
     onSearch: () => void;
@@ -166,7 +167,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
     const handleDownloadAll = async () => {
         if (!activeCanvas || activeCanvas.imageNodes.length === 0) {
-            alert("当前项目没有图片可下载");
+            notify.warning('下载失败', '当前项目没有图片可下载');
             return;
         }
 
@@ -206,7 +207,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
             await Promise.all(promises);
 
             if (count === 0) {
-                alert("下载失败：无法获取图片数据");
+                notify.error('下载失败', '无法获取图片数据');
                 return;
             }
 
@@ -215,7 +216,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
         } catch (err) {
             console.error("Download failed", err);
-            alert("打包下载失败，请重试");
+            notify.error('下载失败', '打包下载失败，请重试');
         } finally {
             setIsDownloading(false);
         }
@@ -223,7 +224,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
     const handleCreateProject = () => {
         if (!canCreateCanvas) {
-            alert('最多只能创建 10 个项目！');
+            notify.warning('项目数量限制', '最多只能创建 10 个项目');
             return;
         }
         createCanvas();

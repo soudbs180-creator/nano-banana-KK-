@@ -56,13 +56,17 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             model: options.modelId,
             messages,
             temperature: options.temperature,
-            max_tokens: options.maxTokens,
+            max_tokens: options.maxTokens || 20480, // [12AI Alignment] Default to 20k for better reasoning
             stream: false
         };
 
+        // 🚀 [12AI 对齐] 多字段 Token 兼容性支持
+        if (body.max_tokens) {
+            body.maxtokens = body.max_tokens;
+            body.maxOutputTokens = body.max_tokens;
+        }
+
         // 🚀 Provider Config (Merge into top level or extra_body?)
-        // OpenAI standard puts 'size', 'quality' in image generation, not chat.
-        // But for Chat Completion we might have specific params.
         if (options.providerConfig?.openai) {
             // Merge openai specific config if applicable
         }
@@ -72,10 +76,16 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             Object.assign(body, options.extraBody);
         }
 
+        // 🚀 [12AI 对齐] 负载体积检查
+        const payloadStr = JSON.stringify(body);
+        if (payloadStr.length > 48 * 1024 * 1024) {
+            console.error(`[OpenAICompatibleAdapter] Chat 请求体积 (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) 接近 50MB 上限!`);
+        }
+
         const response = await fetch(url, {
             method: 'POST',
             headers,
-            body: JSON.stringify(body)
+            body: payloadStr
         });
 
         if (!response.ok) {
@@ -120,26 +130,67 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
         const url = `${cleanBase}/chat/completions`;
 
-        // Map Size
-        let size = '1024x1024';
-        if (options.aspectRatio === '16:9') size = '1280x720';
-        else if (options.aspectRatio === '9:16') size = '720x1280';
-        else if (options.aspectRatio === '4:3') size = '1216x896';
-        else if (options.aspectRatio === '3:4') size = '896x1216'; // Guessing reciprocal
+        // 🚀 [Critical Fix] 4K & Real Pixel Mapping
+        // Detect target resolution based on imageSize modifier
+        const is4K = options.imageSize?.toUpperCase().includes('4K');
+        const is2K = options.imageSize?.toUpperCase().includes('2K');
 
-        // Handle "4K" / "2K" modifiers if present in options.imageSize (User didn't specify mapping for 4K but we can try)
-        // For now, stick to the explicit user examples: 1:1, 16:9, 9:16, 4:3
+        // Base dimensions (1K)
+        let dim = 1024;
+        if (is4K) dim = 4096;
+        else if (is2K) dim = 2048;
+
+        const parts = (options.aspectRatio || '1:1').split(':');
+        const ratio = parseFloat(parts[0]) / parseFloat(parts[1]);
+
+        let sizeString = '1024x1024';
+        if (ratio > 1) sizeString = `${dim}x${Math.round(dim / ratio)}`;
+        else if (ratio < 1) sizeString = `${Math.round(dim * ratio)}x${dim}`;
+        else sizeString = `${dim}x${dim}`;
+
+        console.log(`[OpenAICompatibleAdapter] Mapped Chat Image Size: ${options.imageSize} -> ${sizeString}`);
+
+        // 🚀 [Critical Fix] Multimodal Reference Image Support
+        // Convert reference images to OpenAI Vision format
+        const contentParts: any[] = [{ type: 'text', text: options.prompt }];
+
+        if (options.referenceImages?.length) {
+            options.referenceImages.forEach(imageData => {
+                const dataUrl = imageData.startsWith('data:') ? imageData : `data:image/png;base64,${imageData}`;
+                contentParts.push({
+                    type: 'image_url',
+                    image_url: { url: dataUrl }
+                });
+            });
+            console.log(`[OpenAICompatibleAdapter] Injected ${options.referenceImages.length} reference images into chat completion`);
+        }
+
+        // 🚀 Generate Antigravity Native Params
+        let nativeQuality = 'standard';
+        let nativeImageSizeStr = '1K';
+        if (is4K) { nativeQuality = 'hd'; nativeImageSizeStr = '4K'; }
+        else if (is2K) { nativeQuality = 'medium'; nativeImageSizeStr = '2K'; }
 
         const body: any = {
             model: options.modelId,
             messages: [{
                 role: 'user',
-                content: options.prompt // Just send the prompt directly
+                content: contentParts
             }],
-            // 🚀 Inject 'size' param into top-level body as per user example (via extra_body in python)
-            size: size,
+            // 🚀 Default OpenAI spec
+            size: sizeString,
+            // 🚀 Inject Antigravity-specific Native Params
+            imageSize: nativeImageSizeStr,
+            quality: nativeQuality,
+            max_tokens: 65535,
+            maxtokens: 65535,
+            maxOutputTokens: 65535,
             stream: false
         };
+
+        // 🚀 [12AI 对齐] 为 Gemini 协议代理设置安全钳位
+        if (body.maxOutputTokens > 65535) body.maxOutputTokens = 65535;
+        if (body.maxtokens > 65535) body.maxtokens = 65535;
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -149,10 +200,16 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             headers[keySlot.headerName] = keySlot.key;
         }
 
+        // 🚀 [12AI 对齐] 负载体积检查
+        const payloadStr = JSON.stringify(body);
+        if (payloadStr.length > 48 * 1024 * 1024) {
+            console.error(`[OpenAICompatibleAdapter] Chat-Image 请求体积 (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) 接近 50MB 上限!`);
+        }
+
         const response = await fetch(url, {
             method: 'POST',
             headers,
-            body: JSON.stringify(body)
+            body: payloadStr
         });
 
         if (!response.ok) {
@@ -163,35 +220,46 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content || '';
 
-        // Parse Markdown Image: ![image](data:image/jpeg;base64,...)
-        // Regex to capture the base64 part
-        const match = content.match(/!\[.*?\]\(data:image\/[^;]+;base64,([^)]+)\)/);
-
-        if (match && match[1]) {
-            return {
-                urls: [`data:image/png;base64,${match[1]}`], // Normalize prefix to png if needed, or just use what we have? 
-                // Actually, let's keep the prefix if we can, but the regex captures ONLY the base64.
-                // We'll reconstruct a standard data URI. User's example had jpeg, we can default to png or check headers?
-                // Simpler: Just use png prefix for internal consistency, or try to detect from the original string if we caught the mime type.
-                // Let's adjust regex to capture mime type too.
-                provider: 'OpenAI-Chat',
-                model: options.modelId,
-                imageSize: size
-            };
-        }
-
-        // 🚀 Improved Regex with Mime Capture
+        // 🚀 Improved Regex with Mime Capture (and newline cleanup)
         const detailedMatch = content.match(/!\[.*?\]\(data:(image\/[^;]+);base64,([^)]+)\)/);
         if (detailedMatch && detailedMatch[2]) {
+            const cleanBase64 = detailedMatch[2].replace(/\s+/g, ''); // Fix corrupted base64 with newlines
+            console.log(`[OpenAICompatibleAdapter] Extracted Base64 Image (Length: ${cleanBase64.length})`);
             return {
-                urls: [`data:${detailedMatch[1]};base64,${detailedMatch[2]}`],
+                urls: [`data:${detailedMatch[1]};base64,${cleanBase64}`],
                 provider: 'OpenAI-Chat',
                 model: options.modelId,
-                imageSize: size
+                imageSize: sizeString
             };
         }
 
-        throw new Error('Failed to extract image from chat response. Content: ' + content.substring(0, 50) + '...');
+        // 🚀 Support standard Markdown URLs (http/https)
+        const urlMatch = content.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
+        if (urlMatch && urlMatch[1]) {
+            console.log(`[OpenAICompatibleAdapter] Extracted HTTP Markdown URL: ${urlMatch[1]}`);
+            return {
+                urls: [urlMatch[1]],
+                provider: 'OpenAI-Chat',
+                model: options.modelId,
+                imageSize: sizeString
+            };
+        }
+
+        // 🚀 Support Raw HTTP URLs (if markdown is missing or broken)
+        const rawUrlMatch = content.match(/(https?:\/\/[^\s]+)/);
+        if (rawUrlMatch && rawUrlMatch[1]) {
+            console.log(`[OpenAICompatibleAdapter] Extracted Raw HTTP URL: ${rawUrlMatch[1]}`);
+            return {
+                urls: [rawUrlMatch[1]],
+                provider: 'OpenAI-Chat',
+                model: options.modelId,
+                imageSize: sizeString
+            };
+        }
+
+        // Fallback: If no markdown image found, maybe it's raw base64 or a URL?
+        // But 12AI/Gemini Proxies typically return Markdown
+        throw new Error('Failed to extract image from chat response. Content starts with: ' + content.substring(0, 50));
     }
 
     private async generateImageStandard(
@@ -204,10 +272,16 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
         const url = `${cleanBase}/images/generations`;
 
+        // Logic for Size Calculation
+        const is4K = options.imageSize === '4K' || options.imageSize === 'SIZE_4K';
+        const is2K = options.imageSize === '2K' || options.imageSize === 'SIZE_2K';
+
         // Default Params
         let size = '1024x1024';
         let quality: 'standard' | 'hd' = 'standard';
         let style: 'vivid' | 'natural' | undefined;
+
+        if (is4K || is2K) quality = 'hd';
 
         // 1. Check Provider Config First
         if (options.providerConfig?.openai) {
@@ -218,12 +292,6 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         // 2. Fallback to High Level Options Logic if not in Provider Config
         else {
-            // Logic for Size Calculation
-            const is4K = options.imageSize === '4K' || options.imageSize === 'SIZE_4K';
-            const is2K = options.imageSize === '2K' || options.imageSize === 'SIZE_2K';
-
-            if (is4K || is2K) quality = 'hd';
-
             if (isAntigravity) {
                 // Antigravity Pixel-Perfect Logic
                 const parts = (options.aspectRatio || '1:1').split(':');
@@ -247,9 +315,6 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 if (options.aspectRatio === '16:9') size = '1792x1024';
                 else if (options.aspectRatio === '9:16') size = '1024x1792';
                 else size = '1024x1024';
-
-                // DALL-E 2 only supports 256/512/1024 squares usually.
-                // Assuming DALL-E 3 modern standard.
             }
         }
 
@@ -259,18 +324,11 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             n: options.imageCount || 1,
             size,
             quality,
+            imageSize: (is4K ? '4K' : is2K ? '2K' : '1K'), // 🚀 Antigravity Native Param
             response_format: 'b64_json'
         };
 
         if (style) body.style = style; // DALL-E 3 specific
-
-        // Reference Images (if supported by proxy extensions, usually appended to prompt)
-        if (options.referenceImages?.length) {
-            // Some proxies support 'image_url' in prompt? 
-            // Standard OpenAI Images API does NOT support ref images (except edits/variations endpoints).
-            // We append URLs to prompt for proxies that might handle it (like Midjourney via proxy).
-            // For base64, we can't do much in standard API.
-        }
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -280,10 +338,16 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             headers[keySlot.headerName] = keySlot.key;
         }
 
+        // 🚀 [12AI 对齐] 负载体积检查
+        const payloadStr = JSON.stringify(body);
+        if (payloadStr.length > 48 * 1024 * 1024) {
+            console.error(`[OpenAICompatibleAdapter] Image 请求体积 (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) 接近 50MB 上限!`);
+        }
+
         const response = await fetch(url, {
             method: 'POST',
             headers,
-            body: JSON.stringify(body)
+            body: payloadStr
         });
 
         if (!response.ok) {

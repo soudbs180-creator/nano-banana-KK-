@@ -115,6 +115,7 @@ export interface GeneratedImage {
   mimeType?: string; // 🚀 [New] Image MIME type (e.g., 'image/png', 'image/jpeg')
   exactDimensions?: { width: number; height: number }; // 🚀 [New] Exact dimensions for AUTO mode
   provider?: string; // 🚀 [New] API Provider Name (e.g., Google, OpenAI)
+  providerLabel?: string; // 🚀 [New] User-defined Channel Name (e.g. 'Google Official')
 }
 
 export interface PromptNode {
@@ -138,6 +139,7 @@ export interface PromptNode {
   tags?: string[]; // Search tags
   isDraft?: boolean; // Preview/Draft state
   orphaned?: boolean; // 孤独主卡（拖动pending卡转换而来）
+  userMoved?: boolean; // 🚀 [New] 是否被用户手动移动过（用于智能归位逻辑）
 }
 
 export interface CanvasGroup {

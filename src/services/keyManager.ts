@@ -240,12 +240,26 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
         format: 'openai',
         icon: '💎'
     },
+    '12ai': {
+        name: '12AI',
+        baseUrl: 'https://cdn.12ai.org',
+        models: ['gpt-5.1', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'claude-4-sonnet'],
+        format: 'gemini', // 12AI 对 Gemini 协议支持最好，支持原生 4K 和参考图
+        icon: '🚀'
+    },
     'antigravity': {
         name: 'Antigravity (本地)',
         baseUrl: 'http://127.0.0.1:8045',
         models: ['gemini-3-pro-image', 'gemini-3-flash', 'gemini-2.5-flash-image', 'gemini-2.5-flash'],
         format: 'openai',
         icon: '🌀'
+    },
+    '12ai-nanobanana': {
+        name: '12AI NanoBanana',
+        baseUrl: 'https://new.12ai.org',
+        models: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview'],
+        format: 'gemini',
+        icon: '🍌'
     },
     'custom': {
         name: '自定义',
@@ -1784,7 +1798,10 @@ export class KeyManager {
                     // We can't easily fetch models here without BaseURL.
                     // Let's modify refreshKey to handle the fetching separately or pass BaseURL to validateKey.
                     // To keep validateKey signature simple, we might just return valid:true for others.
-                } catch (e) { }
+                } catch (e) {
+                    // 验证过程中出错，继续返回默认结果
+                    console.warn('[KeyManager] Validation error:', e);
+                }
             }
             return { valid: true };
         }
@@ -2068,7 +2085,9 @@ export class KeyManager {
                             }
                         }
                         const finalName = displayName || inferredModelName;
-                        const finalDesc = description || (meta ? meta.description : `通过 ${slot.name || slot.provider} 调用`);
+                        // 🚀 [FIX] 使用用户命名的 provider 名称，而不是固定的 'Custom'
+                        const displayProvider = slot.provider === 'Google' ? 'Google' : (slot.name || slot.provider || 'Custom');
+                        const finalDesc = description || (meta ? meta.description : `通过 ${displayProvider} 调用`);
 
                         if (meta) {
                             // If we have metadata (it's a known model), we still want to use User's Name/Desc overrides if provided
@@ -2076,7 +2095,7 @@ export class KeyManager {
                             uniqueModels.set(distinctId, {
                                 id: distinctId,
                                 name: finalName,
-                                provider: slot.provider,
+                                provider: displayProvider,
                                 isCustom: false, // It's a known model, just via proxy
                                 type: inferredType,
                                 icon: meta.icon,
@@ -2087,7 +2106,7 @@ export class KeyManager {
                             uniqueModels.set(distinctId, {
                                 id: distinctId,
                                 name: finalName,
-                                provider: slot.provider,
+                                provider: displayProvider,
                                 isCustom: true,
                                 type: inferredType,
                                 description: finalDesc

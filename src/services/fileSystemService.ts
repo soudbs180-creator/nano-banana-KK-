@@ -154,7 +154,10 @@ export const fileSystemService = {
             // @ts-ignore
             await handle.removeEntry(DIRS.THUMBNAILS, { recursive: true });
             logInfo('FileSystem', '已清理缩略图目录', 'thumbnails dir removed');
-        } catch (ignore) { }
+        } catch (err) {
+            // 清理缩略图目录失败，可能是目录不存在
+            console.debug('[FileSystem] Thumbnails cleanup skipped:', err);
+        }
 
         // 1. Load Project JSON
         try {
@@ -268,7 +271,27 @@ export const fileSystemService = {
      */
     async loadOriginalFromDisk(handle: FileSystemDirectoryHandle, id: string): Promise<Blob | null> {
         try {
-            // 1. Try _originals
+            // 1. 先尝试在 picture/ 和 video/ 目录下搜索 (新架构)
+            const mediaDirs = [DIRS.PICTURE, DIRS.VIDEO];
+            for (const dirName of mediaDirs) {
+                try {
+                    // @ts-ignore
+                    const dirHandle = await handle.getDirectoryHandle(dirName);
+                    // 由于新架构下文件名包含日期前缀 (YYYYMM_{id}.ext)，我们需要遍历或精准匹配
+                    // 这里我们尝试通过遍历匹配包含 id 的文件
+                    // @ts-ignore
+                    for await (const entry of dirHandle.values()) {
+                        if (entry.kind === 'file' && entry.name.includes(id)) {
+                            // @ts-ignore
+                            return await entry.getFile();
+                        }
+                    }
+                } catch (e) {
+                    // 目录不存在或读取失败
+                }
+            }
+
+            // 2. 尝试旧版的 originals/ 目录
             try {
                 // @ts-ignore
                 const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS);
@@ -277,10 +300,10 @@ export const fileSystemService = {
                 // @ts-ignore
                 return await fileHandle.getFile();
             } catch (e) {
-                // Not in originals, try legacy
+                // Not in originals
             }
 
-            // 2. Try legacy (root)
+            // 3. 尝试 legacy (images 根目录)
             try {
                 // @ts-ignore
                 const legacyDir = await handle.getDirectoryHandle(DIRS.LEGACY);
@@ -424,6 +447,39 @@ export const fileSystemService = {
             console.error('Failed to save image to handle', e);
             throw e;
         }
+    },
+
+    /**
+     * 🚀 从本地文件夹彻底删除图片或视频文件
+     */
+    async deleteImageFromHandle(handle: FileSystemDirectoryHandle, id: string): Promise<boolean> {
+        let deleted = false;
+        try {
+            // 遍历所有可能的存放目录进行删除
+            const targetDirs = [DIRS.PICTURE, DIRS.VIDEO, DIRS.ORIGINALS, DIRS.LEGACY];
+
+            for (const dirName of targetDirs) {
+                try {
+                    // @ts-ignore
+                    const dirHandle = await handle.getDirectoryHandle(dirName);
+
+                    // @ts-ignore
+                    for await (const entry of dirHandle.values()) {
+                        if (entry.kind === 'file' && entry.name.includes(id)) {
+                            // @ts-ignore
+                            await dirHandle.removeEntry(entry.name);
+                            logInfo('FileSystem', `已从本地删除文件`, `${dirName}/${entry.name}`);
+                            deleted = true;
+                        }
+                    }
+                } catch (e) {
+                    // 目录不存在，忽略
+                }
+            }
+        } catch (e) {
+            console.error('Failed to delete image from handle', e);
+        }
+        return deleted;
     },
 
     /**

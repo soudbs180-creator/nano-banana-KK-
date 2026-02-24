@@ -95,7 +95,9 @@ export interface ImageGenerationResult {
     };
     model?: string; // Actual model used
     imageSize?: string; // Actual size used
-    provider?: string; // 🚀 API Provider
+    provider?: string; // 🚀 API Provider (Internal ID e.g. 'Google')
+    providerName?: string; // 🚀 User-defined Channel Name (e.g. 'Google Official')
+    modelName?: string; // 🚀 User-friendly Model Name (e.g. 'Nano Banana Pro')
 
     // Metadata for debugging/display
     metadata?: {

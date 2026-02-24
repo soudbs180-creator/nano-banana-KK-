@@ -80,7 +80,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
 
     // ============================================
     // Gemini 2.5 Flash Image / Nano Banana
-    // Limited ratios, only 1K, NO grounding support
+    // Limited ratios, supports up to 4K resolution, NO grounding support
     // ============================================
     'gemini-2.5-flash-image': {
         supportedRatios: [
@@ -93,7 +93,7 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
             AspectRatio.PORTRAIT_9_16,
             AspectRatio.LANDSCAPE_16_9
         ],
-        supportedSizes: [ImageSize.SIZE_1K],
+        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
         supportsGrounding: false, // Tools not supported, causes timeout
         maxRefImages: 10  // Gemini 2.5 Flash 支持最多10张参考图
     },

@@ -425,7 +425,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
         if (result && !result.success) {
             console.error('[ApiChannelsView] 保存失败:', result.error);
-            alert(`保存失败: ${result.error}`);
+            notify.error('保存失败', result.error || '未知错误');
             setLoading(false);
             return;
         }

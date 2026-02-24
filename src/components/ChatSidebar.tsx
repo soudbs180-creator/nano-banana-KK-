@@ -620,7 +620,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     {/* Floating Close Button */}
                     <button
                         onClick={onToggle}
-                        className="absolute top-4 right-4 z-10 p-2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)] rounded-full transition-colors backdrop-blur-sm bg-[var(--bg-tertiary)]/80"
+                        className="absolute top-4 right-4 z-10 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)] rounded-full transition-colors backdrop-blur-sm bg-[var(--bg-tertiary)]/80"
                         title="关闭"
                     >
                         <X size={20} />
@@ -759,7 +759,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                             {/* Add Attachment Button */}
                             <button
                                 onClick={() => fileInputRef.current?.click()}
-                                className="p-2 rounded-lg hover:bg-[var(--toolbar-hover)] transition-colors"
+                                className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-[var(--toolbar-hover)] transition-colors active:scale-95"
                                 title="添加附件 (图片/视频/文档)"
                             >
                                 <Plus size={20} className="text-[var(--text-secondary)]" />
@@ -775,7 +775,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                         setCurrentAgent(agentService.getActive());
                                     }
                                 }}
-                                className={`p-2 rounded-lg transition-all ${agentMode
+                                className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all active:scale-95 ${agentMode
                                     ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
                                     : 'hover:bg-[var(--toolbar-hover)] text-[var(--text-secondary)]'
                                     }`}
@@ -795,7 +795,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                             setShowModelMenu(!showModelMenu);
                                         }
                                     }}
-                                    className="w-full py-1.5 px-3 gap-2 transition-all flex items-center justify-center rounded-lg hover:bg-[var(--toolbar-hover)] text-sm"
+                                    className="w-full py-1.5 px-3 min-h-[44px] gap-2 transition-all flex items-center justify-center rounded-lg hover:bg-[var(--toolbar-hover)] active:bg-[var(--bg-tertiary)] text-sm"
                                 >
                                     {availableModels.length === 0 ? (
                                         <>
@@ -833,112 +833,117 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setShowModelMenu(false)} />
 
-                                        {/* Container for positioning both modules */}
+                                        {/* Container for positioning the dropdown */}
                                         <div
                                             className="absolute bottom-full mb-2 z-20 flex flex-col gap-2"
                                             style={{
                                                 right: '-48px',
-                                                width: isMobile ? 'calc(100vw - 2rem)' : '388px',
+                                                width: '388px',
                                                 maxWidth: 'calc(100vw - 2rem)'
                                             }}
                                         >
-                                            {/* 🔍 Search Module */}
-                                            <div className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-xl p-2">
-                                                <div className="relative flex items-center">
-                                                    <svg className="absolute left-2 w-3.5 h-3.5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                                    </svg>
-                                                    <input
-                                                        type="text"
-                                                        value={modelSearch}
-                                                        onChange={(e) => setModelSearch(e.target.value)}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        placeholder="搜索模型..."
-                                                        className="w-full bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-xs rounded-xl py-1.5 pl-7 pr-2 outline-none border border-transparent focus:border-indigo-500/50 placeholder-[var(--text-tertiary)]"
-                                                        autoFocus
-                                                    />
-                                                    {modelSearch && (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); setModelSearch(''); }}
-                                                            className="absolute right-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                                                        >
-                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                            </svg>
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Model List Module */}
                                             <div
-                                                className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-2xl p-1.5 max-h-[300px] overflow-y-auto scrollbar-thin"
+                                                className="contents"
                                             >
-                                                <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold border-b border-[var(--border-light)] mb-1 select-none flex justify-between items-center">
-                                                    <span>选择模型 (右键可顶置)</span>
-                                                </div>
-
-                                                {filterAndSortModels(availableModels, modelSearch, modelCustomizations)
-                                                    .map((model: any) => {
-                                                        const custom = modelCustomizations[model.id] || {};
-                                                        const displayName = custom.alias || model.name || model.id;
-                                                        const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
-                                                        const isPinned = getPinnedModels().includes(model.id);
-
-                                                        return (
-                                                            <button
-                                                                key={model.id}
-                                                                onClick={() => { setSelectedModel(model); setShowModelMenu(false); setModelSearch(''); }}
-                                                                onContextMenu={(e) => {
-                                                                    e.preventDefault();
-                                                                    setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
-                                                                }}
-                                                                className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-white/10 ring-1 ring-white/20' : 'text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)] border border-transparent'}`}
-                                                            >
-                                                                <span className="mt-0.5 text-base relative">
-                                                                    {model.icon || '🤖'}
-                                                                    {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
-                                                                </span>
-                                                                <div className="flex flex-col gap-0.5 w-full">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className={`font-medium ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
-                                                                            {displayName}
-                                                                        </span>
-                                                                        {/* 🚀 [NEW] 下拉菜单中的来源标签 - 改为横排，居中对齐，稍微大一点 */}
-                                                                        {getModelDisplayInfo(model).badgeText && (
-                                                                            <span
-                                                                                className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ml-auto ${getModelDisplayInfo(model).badgeColor}`}
-                                                                                style={{
-                                                                                    flexShrink: 0,
-                                                                                    whiteSpace: 'nowrap'
-                                                                                }}
-                                                                            >
-                                                                                {getModelDisplayInfo(model).badgeText}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <span className="text-[10px] opacity-70 leading-tight truncate">{advantage}</span>
-                                                                </div>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                {sortModels(availableModels).filter(m => {
-                                                    if (!modelSearch) return true;
-                                                    const custom = modelCustomizations[m.id] || {};
-                                                    const searchLower = modelSearch.toLowerCase();
-                                                    return (
-                                                        m.id.toLowerCase().includes(searchLower) ||
-                                                        (m.name && m.name.toLowerCase().includes(searchLower)) ||
-                                                        (custom.alias && custom.alias.toLowerCase().includes(searchLower)) ||
-                                                        (m.provider && m.provider.toLowerCase().includes(searchLower))
-                                                    );
-                                                }).length === 0 && (
-                                                        <div className="p-4 text-center text-xs text-[var(--text-tertiary)]">
-                                                            未找到匹配的模型
+                                                <div className="flex flex-col gap-2">
+                                                    {/* 🔍 Search Module */}
+                                                    <div className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-xl p-2 relative z-30">
+                                                        <div className="relative flex items-center">
+                                                            <svg className="absolute left-2 w-3.5 h-3.5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                            </svg>
+                                                            <input
+                                                                type="text"
+                                                                value={modelSearch}
+                                                                onChange={(e) => setModelSearch(e.target.value)}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                placeholder="搜索模型..."
+                                                                className="w-full bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-xs rounded-xl py-1.5 pl-7 pr-2 outline-none border border-transparent focus:border-indigo-500/50 placeholder-[var(--text-tertiary)]"
+                                                                autoFocus
+                                                            />
+                                                            {modelSearch && (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); setModelSearch(''); }}
+                                                                    className="absolute right-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                                                                >
+                                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                                    </svg>
+                                                                </button>
+                                                            )}
                                                         </div>
-                                                    )}
-                                            </div>
+                                                    </div>
 
+                                                    {/* Model List Module */}
+                                                    <div
+                                                        className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-2xl p-1.5 max-h-[50vh] overflow-y-auto scrollbar-thin relative z-30"
+                                                    >
+                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold border-b border-[var(--border-light)] mb-1 select-none flex justify-between items-center">
+                                                            <span>选择模型 (右键可顶置)</span>
+                                                        </div>
+
+                                                        {filterAndSortModels(availableModels, modelSearch, modelCustomizations)
+                                                            .map((model: any) => {
+                                                                const custom = modelCustomizations[model.id] || {};
+                                                                const displayName = custom.alias || model.name || model.id;
+                                                                const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                                                const isPinned = getPinnedModels().includes(model.id);
+
+                                                                return (
+                                                                    <button
+                                                                        key={model.id}
+                                                                        onClick={() => { setSelectedModel(model); setShowModelMenu(false); setModelSearch(''); }}
+                                                                        onContextMenu={(e) => {
+                                                                            e.preventDefault();
+                                                                            setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
+                                                                        }}
+                                                                        className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-white/10 ring-1 ring-white/20' : 'text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)] border border-transparent'}`}
+                                                                    >
+                                                                        <span className="mt-0.5 text-base relative">
+                                                                            {model.icon || '🤖'}
+                                                                            {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
+                                                                        </span>
+                                                                        <div className="flex flex-col gap-0.5 w-full">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <span className={`font-medium ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
+                                                                                    {displayName}
+                                                                                </span>
+                                                                                {/* 🚀 [NEW] 下拉菜单中的来源标签 - 改为横排，居中对齐，稍微大一点 */}
+                                                                                {getModelDisplayInfo(model).badgeText && (
+                                                                                    <span
+                                                                                        className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ml-auto ${getModelDisplayInfo(model).badgeColor}`}
+                                                                                        style={{
+                                                                                            flexShrink: 0,
+                                                                                            whiteSpace: 'nowrap'
+                                                                                        }}
+                                                                                    >
+                                                                                        {getModelDisplayInfo(model).badgeText}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <span className="text-[10px] opacity-70 leading-tight truncate">{advantage}</span>
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        {sortModels(availableModels).filter(m => {
+                                                            if (!modelSearch) return true;
+                                                            const custom = modelCustomizations[m.id] || {};
+                                                            const searchLower = modelSearch.toLowerCase();
+                                                            return (
+                                                                m.id.toLowerCase().includes(searchLower) ||
+                                                                (m.name && m.name.toLowerCase().includes(searchLower)) ||
+                                                                (custom.alias && custom.alias.toLowerCase().includes(searchLower)) ||
+                                                                (m.provider && m.provider.toLowerCase().includes(searchLower))
+                                                            );
+                                                        }).length === 0 && (
+                                                                <div className="p-4 text-center text-xs text-[var(--text-tertiary)]">
+                                                                    未找到匹配的模型
+                                                                </div>
+                                                            )}
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         {/* Context Menu for Pinning */}
@@ -975,7 +980,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                     }
                                 }}
                                 disabled={isThinking}
-                                className="size-10 rounded-full cursor-pointer flex items-center justify-center bg-[var(--text-tertiary)] text-white hover:bg-[var(--text-secondary)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="min-w-[44px] min-h-[44px] rounded-full cursor-pointer flex items-center justify-center bg-[var(--text-tertiary)] text-white hover:bg-[var(--text-secondary)] transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <ArrowUp size={18} />
                             </button>

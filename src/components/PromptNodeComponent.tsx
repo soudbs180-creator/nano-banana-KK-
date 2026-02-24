@@ -390,9 +390,10 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             const absoluteDeltaX = (clientX - dragStartPos.current.x) / scale;
             const absoluteDeltaY = (clientY - dragStartPos.current.y) / scale;
 
+            // 🚀 [Fix Text Jitter] Map dynamic drag coordinates to absolute integer pixel boundaries
             const newPos = {
-                x: dragStartCanvasPos.current.x + absoluteDeltaX,
-                y: dragStartCanvasPos.current.y + absoluteDeltaY
+                x: Math.round(dragStartCanvasPos.current.x + absoluteDeltaX),
+                y: Math.round(dragStartCanvasPos.current.y + absoluteDeltaY)
             };
 
             // 2. Direct DOM Update (Visuals)

@@ -83,13 +83,23 @@ function calculateImageTokens(model: ModelType): number {
 function normalizeError(error: any): Error {
   const msg = (error.message || error.toString()).toLowerCase();
   if (msg.includes('cancelled')) return new Error("任务已取消");
+
+  // 🚀 [12AI 对齐] 精准网关与状态码映射
+  if (msg.includes('524') || msg.includes('timeout')) return new Error("网络超时 (524)，请尝试切换主/备线路或开启流式输出");
+  if (msg.includes('530') || msg.includes('502') || msg.includes('504')) return new Error("网关错误 (530/502/504)，可能是 12AI 节点波动，建议切换线路");
+  if (msg.includes('413') || msg.includes('payload too large')) return new Error("请求体过大 (413)，请减少待识别的图片数量或压缩图片体积");
+  if (msg.includes('503') && msg.includes('no available channel')) return new Error("服务暂不可用 (503: 无可用渠道)，号池已空，请联系官方说明或稍后重试");
+  if (msg.includes('maxoutputtokens')) return new Error("Token 设置超出限制：请确保最大输出 Token 小于 65536");
+
   if (msg.includes('429') || msg.includes('rate limit') || msg.includes('quota')) return new Error("请求太过频繁 (429)，正在尝试切换线路，请稍后...");
-  if (msg.includes("403") || msg.includes("permission") || msg.includes("api_key_invalid")) return new Error("API Key 无效或已过期 (403)，请检查设置");
+  if (msg.includes("503") || msg.includes("service unavailable") || msg.includes("too busy") || msg.includes("deadlock")) return new Error("服务器繁忙 (503)，请稍后重试或联系API提供商");
+  if (msg.includes("403") || msg.includes("permission") || msg.includes("api_key_invalid")) return new Error("API Key 无效或余额不足 (403)，请检查设置或在 12AI 官网充值");
   if (msg.includes("MISSING_API_KEY")) return new Error("请先在设置中配置有效的 API Key");
-  if (msg.includes("safety") || msg.includes("blocked") || msg.includes("policy")) return new Error("生成内容被安全策略拦截，请修改提示词");
-  if (msg.includes("400") || msg.includes("invalid_argument")) return new Error("请求参数无效：模型可能不支持当前配置");
-  if (msg.includes("500") || msg.includes("internal")) return new Error("谷歌服务器繁忙 (500)，请稍后重试");
+  if (msg.includes("safety") || msg.includes("blocked") || msg.includes("policy")) return new Error("内容触发安全审查 (Safety Blocked)，请更换提示词或尝试非流式模式");
+  if (msg.includes("400") || msg.includes("invalid_argument")) return new Error("请求参数无效：Token 数可能过大或模型不支持当前配置");
+  if (msg.includes("500") || msg.includes("internal")) return new Error("远程服务器故障 (500)，请稍后重试");
   if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) return new Error("网络连接失败 (Network Error)，请检查您的网络设置或代理配置");
+
   return new Error(`生成失败: ${error.message || '未知错误'} (请按 F12 查看控制台详情)`);
 }
 
@@ -106,7 +116,9 @@ export interface GenerateImageResult {
   effectiveSize?: ImageSize; // Actual size used
   aspectRatio?: AspectRatio; // Aspect Ratio
   dimensions?: { width: number; height: number }; // Exact dimensions for AUTO mode
-  provider?: string; // API Provider
+  provider?: string; // API Provider Internal
+  providerName?: string; // User-defined Provider Name
+  modelName?: string; // User-friendly Model Name
 }
 
 /**
@@ -354,12 +366,15 @@ export const generateImage = async (
       tokens = getImageTokenEstimate(model, imageSize);
     }
 
-    if (cost === 0 && tokens > 0) {
+    // 🚀 [Fix Cost Calculation] Don't hide behind 'tokens > 0' check. Some models charge per image strictly.
+    if (cost === 0) {
       const pricing = getModelPricing(model);
-      if (pricing?.outputPerMillionTokens) {
-        cost = (tokens / 1000000) * pricing.outputPerMillionTokens;
-      } else if (pricing?.pricePerImage) {
-        cost = pricing.pricePerImage;
+      if (pricing) {
+        if (pricing.pricePerImage) {
+          cost = pricing.pricePerImage;
+        } else if (pricing.outputPerMillionTokens && tokens > 0) {
+          cost = (tokens / 1000000) * pricing.outputPerMillionTokens;
+        }
       }
     }
 
@@ -367,11 +382,14 @@ export const generateImage = async (
       url: resultUrl,
       tokens,
       cost,
+      imageSize: (result.imageSize as ImageSize) || imageSize || ImageSize.SIZE_1K,
       effectiveModel: result.model || model,
-      effectiveSize: imageSize || ImageSize.SIZE_1K,
+      effectiveSize: (result.imageSize as ImageSize) || imageSize || ImageSize.SIZE_1K,
       aspectRatio,
-      dimensions: autoRatioDimensions,
-      provider: result.provider
+      dimensions: result.metadata?.dimensions || autoRatioDimensions,
+      provider: result.provider,
+      providerName: result.providerName,
+      modelName: result.modelName
     };
 
   } catch (error: any) {

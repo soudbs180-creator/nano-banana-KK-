@@ -37,39 +37,50 @@ const getPromptBarHeight = (): number => {
 
 /**
  * Calculates a preferred position for a new node based on the current viewport.
- * Centers the node in the VISIBLE canvas area (above the PromptBar).
+ * Centers the node in the VISIBLE canvas area (above the PromptBar),
+ * accounting for the Bottom-Center anchor of the card.
  */
 export const getViewportPreferredPosition = (
     transform: CanvasTransform,
-    viewportWidth: number = window.innerWidth,
-    viewportHeight: number = window.innerHeight
+    viewportRect: DOMRect | null = null,
+    avgCardHeight: number = 180, // Approximate height of a prompt card
+    offsets: { left: number; right: number } = { left: 0, right: 0 }
 ): Point => {
-    // Get PromptBar height to calculate visible area
-    const promptBarHeight = getPromptBarHeight();
-    const visibleHeight = viewportHeight - promptBarHeight;
+    // Fallback to window dimensions if rect is not available
+    const vw = viewportRect ? viewportRect.width : window.innerWidth;
+    const vh = viewportRect ? viewportRect.height : window.innerHeight;
 
-    // Center X relative to viewport
-    const screenCenterX = viewportWidth / 2;
+    // Get sidebars impact
+    const leftOffset = offsets.left || 0;
+    const rightOffset = offsets.right || 0;
+    const visibleWidth = vw - leftOffset - rightOffset;
+
+    // Get PromptBar height to calculate visible area
+    const promptBarHeight = 110;
+    const visibleHeight = vh - promptBarHeight;
+
+    // Center X relative to VISIBLE workspace (accounting for sidebars)
+    const screenCenterX = leftOffset + (visibleWidth / 2);
 
     // Center Y relative to VISIBLE area (above PromptBar)
-    // Use 45% of visible area to center it nicely
-    const screenTargetY = promptBarHeight + (visibleHeight * 0.45);
+    // 🚀 [Anchor Compensation] Since cards use Bottom-Center (translate(-50%, -100%)),
+    // to make the CARD CENTER land at the SCREEN CENTER, we must offset the Y target
+    // by half of the expected card height.
+    const screenTargetY = (visibleHeight / 2) + (avgCardHeight / 2) - 10; // -10 for optical balance
 
     // Convert to World Coordinates
     // World = (Screen - Translate) / Scale
     const worldX = (screenCenterX - transform.x) / transform.scale;
     const worldY = (screenTargetY - transform.y) / transform.scale;
 
-    console.log('[canvasUtils] getViewportPreferredPosition:', {
-        transform,
-        viewport: { width: viewportWidth, height: viewportHeight },
-        promptBarHeight,
-        visibleHeight,
+    console.log('[canvasUtils] Refined Multi-Offset Positioning:', {
+        viewport: { w: vw, h: vh },
+        visibleWidth,
+        offsets,
         screen: { x: screenCenterX, y: screenTargetY },
         world: { x: worldX, y: worldY }
     });
 
-    // Round to integer for cleaner values
     return {
         x: Math.round(worldX),
         y: Math.round(worldY)

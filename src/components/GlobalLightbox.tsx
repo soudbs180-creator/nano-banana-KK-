@@ -53,6 +53,16 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         setPan({ x: 0, y: 0 });
 
         const loadContent = async () => {
+            const sanitizeUrl = (url: string | null) => {
+                if (url && url.startsWith('data:')) {
+                    const parts = url.split(',');
+                    if (parts.length === 2) {
+                        return `${parts[0]},${parts[1].replace(/[\r\n\s]+/g, '')}`;
+                    }
+                }
+                return url;
+            };
+
             try {
                 // 🔒 强制加载原图（新的保护机制）
                 const { getOriginalImage } = await import('../services/imageStorage');
@@ -62,7 +72,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 if (!active) return;
 
                 if (original) {
-                    setDisplaySrc(original);
+                    setDisplaySrc(sanitizeUrl(original));
                     // Check size
                     if (original.startsWith('blob:')) {
                         fetch(original).then(r => r.blob()).then(b =>
@@ -79,7 +89,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     if (image.storageId && image.storageId !== image.id) {
                         const fromStorage = await getOriginalImage(image.storageId);
                         if (fromStorage) {
-                            setDisplaySrc(fromStorage);
+                            setDisplaySrc(sanitizeUrl(fromStorage));
                             console.log('[Lightbox] 🔒 ✅ Recovered from storageId');
                             return;
                         }
@@ -87,10 +97,10 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
 
                     // 策略2: 使用originalUrl
                     if (image.originalUrl) {
-                        setDisplaySrc(image.originalUrl);
+                        setDisplaySrc(sanitizeUrl(image.originalUrl));
                         console.log('[Lightbox] 🔒 ⚠️ Fallback to originalUrl');
                     } else if (image.url) {
-                        setDisplaySrc(image.url);
+                        setDisplaySrc(sanitizeUrl(image.url));
                         console.log('[Lightbox] 🔒 ⚠️ Fallback to url (may not be original)');
                     }
                 }
@@ -99,7 +109,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 if (active) {
                     // 最终兜底
                     const fallback = image.originalUrl || image.url;
-                    setDisplaySrc(fallback);
+                    setDisplaySrc(sanitizeUrl(fallback || null));
                 }
             } finally {
                 if (active) setIsLoading(false);

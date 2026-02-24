@@ -1,8 +1,7 @@
-# KK Studio v1.2.9
+# KK Studio v1.3.1
+A visual-first, node-based prompt engineering and generation IDE.
 
-**下一代 AI 图像创作工作室 | 无限画布 | 120Hz 极致性能**
-
-![Version](https://img.shields.io/badge/version-1.2.9-indigo.svg)
+![Version](https://img.shields.io/badge/version-1.3.1-indigo.svg)
 ![React](https://img.shields.io/badge/React-19-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
 ![Vite](https://img.shields.io/badge/Vite-6.0-purple)

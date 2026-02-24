@@ -10,6 +10,7 @@ export interface InfiniteCanvasHandle {
     fitToAll: () => void; // ✅ 缩放到全览所有卡片
     setView: (x: number, y: number, scale: number) => void;
     getCurrentTransform: () => { x: number; y: number; scale: number }; // 🚀 获取当前实时的 transform
+    getCanvasRect: () => DOMRect | null; // 🚀 获取画布容器的实际尺寸
 }
 
 interface InfiniteCanvasProps {
@@ -46,6 +47,9 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     const [tempTransform, setTempTransform] = useState<Transform | null>(null);
     const isDraggingRef = useRef(false);
 
+    // 🚀 实时坐标追踪 Ref (解决 React 状态异步延迟，确保 getCurrentTransform 永远返回物理最新值)
+    const syncTransformRef = useRef<Transform>({ x: 0, y: 0, scale: 1 });
+
     // 🚀 性能优化：缩放防抖
     const zoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -80,6 +84,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             scale: 1
         };
         setTransform(initialTransform);
+        syncTransformRef.current = initialTransform;
         onTransformChange?.(initialTransform);
     }, []);
 
@@ -94,6 +99,10 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     // Handle mouse wheel zoom
     // 🚀 优化：缩放时使用临时transform + 防抖 + 缓动曲线
     const handleWheel = useCallback((e: WheelEvent) => {
+        // 🚀 [FIX] Allow scrolling inside text areas/custom scrollbars
+        if ((e.target as HTMLElement).closest('.custom-scrollbar, textarea, input')) {
+            return;
+        }
         e.preventDefault();
 
         const container = containerRef.current;
@@ -127,7 +136,8 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
         const newTransform = { x: newX, y: newY, scale: newScale };
 
-        // 🚀 立即更新临时transform，视觉上立即响应
+        // 🚀 立即更新 Ref 和 临时状态
+        syncTransformRef.current = newTransform;
         setTempTransform(newTransform);
 
         // 🚀 防抖：50ms后再提交最终transform
@@ -227,12 +237,15 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const dx = e.clientX - dragStart.current.x;
         const dy = e.clientY - dragStart.current.y;
 
+        // 🚀 [Fix Text Jitter] Round coordinates to nearest integer pixel to prevent subpixel antialiasing flutter
         const newTransform = {
-            x: lastTransform.current.x + dx,
-            y: lastTransform.current.y + dy,
+            x: Math.round(lastTransform.current.x + dx),
+            y: Math.round(lastTransform.current.y + dy),
             scale: transform.scale
         };
 
+        // 实时同步到 Ref
+        syncTransformRef.current = newTransform;
         // 只更新临时transform，不调用onTransformChange（避免重绘）
         setTempTransform(newTransform);
     }, [transform.scale]);
@@ -245,8 +258,14 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
             // 提交最终transform（触发重绘）
             if (tempTransform) {
-                setTransform(tempTransform);
-                onTransformChange?.(tempTransform);
+                // 🚀 [Fix Text Jitter] Ensure final committed position is fully integer
+                const finalTransform = {
+                    x: Math.round(tempTransform.x),
+                    y: Math.round(tempTransform.y),
+                    scale: tempTransform.scale
+                };
+                setTransform(finalTransform);
+                onTransformChange?.(finalTransform);
                 setTempTransform(null);
             }
 
@@ -363,8 +382,10 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             setTransform(newTransform);
             onTransformChange?.(newTransform);
         },
-        // 🚀 获取当前实时的 transform（包括拖动中的 tempTransform）
-        getCurrentTransform: () => tempTransform || transform
+        // 🚀 获取当前实时的 transform（使用 Ref 绕过 React 状态异步，解决截图/生成时的坐标偏移）
+        getCurrentTransform: () => syncTransformRef.current,
+        // 🚀 获取画布容器的实际尺寸（用于精准中心计算，自动排除侧边栏影响）
+        getCanvasRect: () => containerRef.current?.getBoundingClientRect() || null
     }));
 
     // Handle keyboard shortcuts
@@ -553,7 +574,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
                 {/* Version Badge */}
                 <div className="glass h-10 px-3 rounded-xl flex items-center">
-                    <span className="text-xs text-zinc-500 font-semibold">v1.3.0</span>
+                    <span className="text-xs text-zinc-500 font-semibold">v1.3.1</span>
                 </div>
 
                 {/* Update Notification */}

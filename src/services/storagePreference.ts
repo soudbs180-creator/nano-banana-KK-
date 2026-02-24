@@ -309,9 +309,13 @@ export async function mergeStorages(): Promise<void> {
             const dataUrl = await getImage(id);
             if (dataUrl) {
                 const blob = await dataURLToBlob(dataUrl);
-                // Pass timestamp to ensure correct filename
-                const saved = await saveOriginalToLocalFolder(id, blob, undefined, timestamp);
-                if (saved) mergedCount++;
+                if (blob) {
+                    // Pass timestamp to ensure correct filename
+                    const saved = await saveOriginalToLocalFolder(id, blob, undefined, timestamp);
+                    if (saved) mergedCount++;
+                } else {
+                    console.warn(`[StoragePreference] Skipping ${id}: invalid data URL`);
+                }
             }
         }
 

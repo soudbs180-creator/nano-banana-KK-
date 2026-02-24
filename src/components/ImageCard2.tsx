@@ -6,9 +6,10 @@ import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
 import { useLazyImage } from '../hooks/useLazyImage';
 import { getImage } from '../services/imageStorage';
+import { getModelBadgeInfo, getProviderBadgeColor } from '../utils/modelBadge';
 import { loadImage, cancelImageLoad } from '../services/imageLoader';
 import { ImageQuality } from '../services/imageQuality';
-import { getModelThemeColor } from '../services/modelCapabilities';
+import { getModelThemeColor, getModelDisplayName } from '../services/modelCapabilities';
 
 interface ImageNodeProps {
     image: GeneratedImage;
@@ -134,13 +135,24 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             clearTimeout(qualityDebounceRef.current);
         }
 
-        qualityDebounceRef.current = setTimeout(async () => {
-            let isCancelled = false;
+        let isCancelled = false;
+
+        const loadQualityImage = async () => {
+            if (qualityLoadingRef.current) return;
+            qualityLoadingRef.current = true;
+
+            const sanitizeUrl = (url: string | null | undefined): string | undefined => {
+                if (url && url.startsWith('data:')) {
+                    const parts = url.split(',');
+                    if (parts.length === 2) {
+                        return `${parts[0]},${parts[1].replace(/[\r\n\s]+/g, '')}`;
+                    }
+                }
+                return url ? url : undefined;
+            };
 
             try {
-                qualityLoadingRef.current = true;
                 lastZoomRef.current = currentZoom;
-
                 const { getAppropriateQuality } = await import('../services/imageQuality');
 
                 const scale = currentZoom;
@@ -152,7 +164,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                 // 🚀 关键：只有成功获取新图后才替换，防止闪烁
                 if (!isCancelled && url) {
-                    setDisplaySrc(url);
+                    setDisplaySrc(sanitizeUrl(url));
                     setCurrentQuality(quality);
                     loadedRef.current = true;
                     setIsLoading(false); // 🚀 加载成功
@@ -166,7 +178,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                             const recoveredFromStorage = await getImage(image.storageId);
                             if (recoveredFromStorage) {
                                 console.log(`[ImageCard] ✅ Recovered from storageId: ${image.storageId}`);
-                                setDisplaySrc(recoveredFromStorage);
+                                setDisplaySrc(sanitizeUrl(recoveredFromStorage));
                                 loadedRef.current = true;
                                 setIsLoading(false);
                                 return; // 恢复成功，退出
@@ -180,7 +192,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     const fallbackUrl = image.originalUrl || image.url;
                     if (fallbackUrl && (fallbackUrl.startsWith('data:') || fallbackUrl.startsWith('http') || fallbackUrl.startsWith('blob:'))) {
                         console.log(`[ImageCard] Using fallback URL for ${image.id}`);
-                        setDisplaySrc(fallbackUrl);
+                        setDisplaySrc(sanitizeUrl(fallbackUrl));
                         loadedRef.current = true;
                         setIsLoading(false);
                     } else {
@@ -194,9 +206,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             } finally {
                 qualityLoadingRef.current = false;
             }
+        };
+
+        qualityDebounceRef.current = setTimeout(() => {
+            loadQualityImage();
         }, displaySrc ? 500 : 100); // 🚀 已有图片时延迟500ms，首次加载时100ms
 
         return () => {
+            isCancelled = true;
             if (qualityDebounceRef.current) {
                 clearTimeout(qualityDebounceRef.current);
             }
@@ -207,62 +224,61 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
-            // PRIORITY: Try IndexedDB first (true original, uncompressed)
-            const { getImage } = await import('../services/imageStorage');
-            const indexedDbImage = await getImage(image.id);
+            const { getOriginalImage } = await import('../services/imageStorage');
+            const { base64ToBlob, triggerDownload } = await import('../utils/downloadUtils');
+            const { notify } = await import('../services/notificationService');
+
+            // 1. 优先从 IndexedDB (受保护层) 或 磁盘恢复 获取原始未压缩数据
+            const originalData = await getOriginalImage(image.id);
 
             let blob: Blob;
 
-            // Construct high-res URL for lightbox (fallback use)
-            const highResUrl = image.originalUrl || displaySrc || image.url;
-
-            if (indexedDbImage && indexedDbImage.startsWith('data:')) {
-                // Found original in IndexedDB - use it (uncompressed)
-                console.log('[ImageCard] Using original from IndexedDB');
-                const res = await fetch(indexedDbImage);
-                blob = await res.blob();
-            } else if (highResUrl && highResUrl.startsWith('data:')) {
-                // Base64 URL directly (already original)
-                console.log('[ImageCard] Using highResUrl base64');
-                const res = await fetch(highResUrl);
-                blob = await res.blob();
-            } else if (image.originalUrl) {
-                // Try original URL from cloud
-                console.log('[ImageCard] Fetching original from cloud');
+            if (originalData) {
+                if (originalData.startsWith('data:')) {
+                    // Base64 -> Blob (避免使用 fetch 处理 Data URL 的潜在限制)
+                    blob = base64ToBlob(originalData);
+                } else if (originalData.startsWith('blob:')) {
+                    // 已经是 Blob URL
+                    const res = await fetch(originalData);
+                    blob = await res.blob();
+                } else {
+                    throw new Error('Unsupported storage format');
+                }
+            } else if (image.originalUrl && image.originalUrl.startsWith('http')) {
+                // 2. 如果本地由于特殊原因找不到，回退到云端原图
+                console.log('[ImageCard] Fetching from cloud fallback');
                 const response = await fetch(image.originalUrl);
-                if (!response.ok) throw new Error('Original fetch failed');
+                if (!response.ok) throw new Error('Cloud fetch failed');
                 blob = await response.blob();
             } else {
-                // Fallback: Use displayed image URL
-                console.warn('[ImageCard] Using thumbnail as fallback');
-                const response = await fetch(image.url);
-                if (!response.ok) throw new Error('Download failed (404)');
-                blob = await response.blob();
+                // 3. 最后兜底：使用当前显示的图片数据
+                const fallbackUrl = displaySrc || image.url;
+                if (!fallbackUrl) throw new Error('No image data found');
+
+                if (fallbackUrl.startsWith('data:')) {
+                    blob = base64ToBlob(fallbackUrl);
+                } else {
+                    const response = await fetch(fallbackUrl);
+                    if (!response.ok) throw new Error('Fallback fetch failed');
+                    blob = await response.blob();
+                }
             }
 
-            // Generate filename
+            // 生成文件名
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const sanitizedPrompt = (image.prompt || 'image').slice(0, 30).replace(/[<>;\"/\\\\|?*]/g, '');
             const filename = `${sanitizedPrompt}_${timestamp}.png`;
 
-            // Browser download - saves to user's Downloads folder
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            // 执行下载
+            triggerDownload(blob, filename);
 
-            const { notify } = await import('../services/notificationService');
             notify.success('下载成功', `已保存到下载文件夹: ${filename}`);
         } catch (err: any) {
             console.error('Download failed:', err);
             const { notify } = await import('../services/notificationService');
             notify.error(
                 '下载失败',
-                '原图可能已被清理或无法访问',
+                '原图可能无法访问',
                 `ImageCard Download Error: ${err.message || err}`
             );
         }
@@ -336,8 +352,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             // Force DOM update to match prop
             if (containerRef.current) {
                 const scale = zoomScale || 1;
-                const visualX = localPosRef.current.x + dx / scale;
-                const visualY = localPosRef.current.y + dy / scale;
+                const visualX = Math.round(localPosRef.current.x + dx / scale);
+                const visualY = Math.round(localPosRef.current.y + dy / scale);
                 containerRef.current.style.transform = `translate3d(${visualX}px, ${visualY}px, 0) translate(-50%, -100%)`;
             }
 
@@ -574,6 +590,27 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                 data: url.startsWith('data:') ? url : undefined
                                             }));
                                             e.dataTransfer.effectAllowed = 'copy';
+
+                                            // 🚀 [NEW] 如果 URL 是 data URL，同时保存到本地文件系统
+                                            if (url.startsWith('data:')) {
+                                                const storageId = image.storageId || image.id;
+                                                import('../services/fileSystemService').then(({ fileSystemService }) => {
+                                                    const handle = fileSystemService.getGlobalHandle();
+                                                    if (handle) {
+                                                        const matches = url.match(/^data:[^,]+,(.+)$/);
+                                                        if (matches && matches[1]) {
+                                                            fileSystemService.saveReferenceImage(
+                                                                handle,
+                                                                storageId,
+                                                                matches[1],
+                                                                image.mimeType || 'image/png'
+                                                            ).catch(err => {
+                                                                console.warn('[ImageCard2] Failed to save reference to file system:', err);
+                                                            });
+                                                        }
+                                                    }
+                                                });
+                                            }
                                         }
                                     }}
                                 />
@@ -723,38 +760,34 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                             {!image.orphaned && !image.isGenerating && (
                                 <>
                                     {/* 第一层：左侧模型和参数，右侧下载和删除 */}
-                                    <div className="flex items-center justify-between h-5">
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                            {/* Model Name */}
-                                            <div className="flex items-center gap-1 px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)] max-w-[100px]">
-                                                <span className={`text-2xs font-medium whitespace-nowrap truncate ${(() => {
-                                                    const modelId = image.model || '';
-                                                    return getModelThemeColor(modelId);
-                                                })()}`}
-                                                    title={image.modelLabel || image.model}
-                                                >
-                                                    {(image.modelLabel || image.model || 'AI').slice(0, 16)}
-                                                </span>
+                                    <div className="flex items-center justify-between h-5 gap-2 w-full">
+                                        <div className="flex flex-1 items-center gap-1.5 min-w-0">
+                                            {/* Model Name + Provider Badge inside ONE box */}
+                                            <div className="flex items-center flex-1 min-w-0 px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)] gap-1.5 overflow-hidden">
+                                                {(() => {
+                                                    const badge = getModelBadgeInfo({ id: image.id, label: (image.model ?? image.id), provider: image.provider });
+                                                    return (
+                                                        <span className={`text-2xs font-medium whitespace-nowrap truncate min-w-0 flex-1 ${badge.colorClass}`} title={badge.text}>
+                                                            {badge.text}
+                                                        </span>
+                                                    );
+                                                })()}
+                                                {image.provider && (
+                                                    <span className={`text-[9px] leading-none px-1 py-0.5 rounded whitespace-nowrap border shrink-0 ${getProviderBadgeColor(image.provider)}`}>
+                                                        {image.provider}
+                                                    </span>
+                                                )}
                                             </div>
 
-                                            {/* Provider Tag */}
-                                            {image.provider && (
-                                                <div className="flex items-center gap-1 px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
-                                                    <span className="text-2xs text-[var(--text-secondary)] font-medium whitespace-nowrap" title={image.provider}>
-                                                        {image.provider.slice(0, 6)}
-                                                    </span>
-                                                </div>
-                                            )}
-
                                             {/* Aspect Ratio / Size */}
-                                            <div className="flex items-center gap-1 px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
-                                                <span className="text-2xs text-[var(--text-secondary)] whitespace-nowrap">
+                                            <div className="flex flex-shrink-0 items-center px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
+                                                <span className="text-2xs text-[var(--text-secondary)] whitespace-nowrap shrink-0">
                                                     {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || (image.imageSize as any) === 'Video') ? '720p' : (image.imageSize || '1K')}
                                                 </span>
                                             </div>
                                         </div>
                                         {/* 右侧：下载 + 删除 */}
-                                        <div className="flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
+                                        <div className="flex items-center gap-1 shrink-0 opacity-60 hover:opacity-100 transition-opacity">
                                             <button onClick={handleDownload} className="hover:text-[var(--accent-blue)] transition-colors p-0.5" title="下载原图">
                                                 <Download size={10} />
                                             </button>
@@ -777,7 +810,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                         <span className="text-[var(--border-medium)]">|</span>
                                         <span title="Token消耗" className="text-emerald-400">令牌 {image.tokens || 0}</span>
                                         <span className="text-[var(--border-medium)]">|</span>
-                                        <span title="费用" className="text-amber-400">费用 ${image.cost ? image.cost.toFixed(4) : '0.0000'}</span>
+                                        <span title="费用" className="text-amber-400">费用 ${image.cost ? image.cost.toFixed(4) : '0'}</span>
                                     </div>
 
                                     {/* Delicate Separator 2 - Only if tags exist */}

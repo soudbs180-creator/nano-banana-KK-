@@ -6,6 +6,7 @@ import { fileSystemService } from '../services/fileSystemService';
 import { base64ToBlob, safeRevokeBlobUrl } from '../utils/blobUtils';
 import { calculateImageHash } from '../utils/imageUtils';
 import { supabase } from '../lib/supabase'; // Import supabase for auth check
+import { notify } from '../services/notificationService';
 
 const MAX_CANVASES = 10;
 
@@ -253,36 +254,49 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                         }
 
                                         if (canvases.length > 0) {
-                                            // 🚀 恢复上次活动的项目，如果找不到则使用第一个
-                                            const validActiveId = savedActiveCanvasId && canvases.some(c => c.id === savedActiveCanvasId)
-                                                ? savedActiveCanvasId
-                                                : canvases[0].id;
+                                            setState(prev => {
+                                                // 🚀 [关键修复] 合并硬盘的 project.json 和刚从 localStorage 加载的最新 state
+                                                // 如果刚刷新页面，localStorage 通常会通过 beforeunload 保存最新状态，
+                                                // 而 project.json 可能因为异步来不及写而陈旧，所以要双向合并防覆盖
+                                                const mergedCanvases = mergeCanvases(prev.canvases, canvases);
 
-                                            setState(prev => ({
-                                                ...prev,
-                                                canvases: canvases.map(c => ({
-                                                    ...c,
-                                                    imageNodes: c.imageNodes.map(img => ({
-                                                        ...img,
-                                                        url: images.get(img.id)?.url || img.url || '',
-                                                        originalUrl: images.get(img.id)?.originalUrl || img.originalUrl
-                                                    })),
-                                                    promptNodes: c.promptNodes.map(pn => ({
-                                                        ...pn,
-                                                        // 🚀 恢复丢失的参考图：如果data为空但有storageId，尝试从refs/恢复
-                                                        referenceImages: pn.referenceImages?.map(ref => ({
-                                                            ...ref,
-                                                            // 如果有storageId但没有data，使用refs/中的URL
-                                                            ...((!ref.data && ref.storageId && refUrls.has(ref.storageId)) ? {
-                                                                data: refUrls.get(ref.storageId) // 这里是URL而非base64，ReferenceThumbnail会处理
-                                                            } : {})
-                                                        })) || []
-                                                    }))
-                                                })),
-                                                activeCanvasId: validActiveId,
-                                                fileSystemHandle: handle,
-                                                folderName: handle.name
-                                            }));
+                                                // 确定到底用哪个活动项目 ID
+                                                const finalActiveId =
+                                                    (prev.activeCanvasId && mergedCanvases.some(c => c.id === prev.activeCanvasId))
+                                                        ? prev.activeCanvasId // 优先信赖 localStorage
+                                                        : (savedActiveCanvasId && mergedCanvases.some(c => c.id === savedActiveCanvasId))
+                                                            ? savedActiveCanvasId
+                                                            : mergedCanvases[0].id;
+
+                                                return {
+                                                    ...prev,
+                                                    canvases: mergedCanvases.map(c => {
+                                                        // 硬盘数据可能多出已绑定的 url，需要与 merge 后的匹配
+                                                        const diskSpecificCanvas = canvases.find(dc => dc.id === c.id);
+                                                        return {
+                                                            ...c,
+                                                            imageNodes: c.imageNodes.map(img => ({
+                                                                ...img,
+                                                                url: images.get(img.id)?.url || img.url || '',
+                                                                originalUrl: images.get(img.id)?.originalUrl || img.originalUrl
+                                                            })),
+                                                            promptNodes: c.promptNodes.map(pn => ({
+                                                                ...pn,
+                                                                // 🚀 恢复丢失的参考图：如果data为空但有storageId，尝试从refs/恢复
+                                                                referenceImages: pn.referenceImages?.map(ref => ({
+                                                                    ...ref,
+                                                                    ...((!ref.data && ref.storageId && refUrls.has(ref.storageId)) ? {
+                                                                        data: refUrls.get(ref.storageId)
+                                                                    } : {})
+                                                                })) || []
+                                                            }))
+                                                        };
+                                                    }),
+                                                    activeCanvasId: finalActiveId,
+                                                    fileSystemHandle: handle,
+                                                    folderName: handle.name
+                                                };
+                                            });
                                         } else {
                                             // Empty project on disk? Just connect.
                                             setState(prev => ({ ...prev, fileSystemHandle: handle, folderName: handle.name }));
@@ -640,9 +654,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 
 
-    // State Ref for stable access in event listeners
     const stateRef = useRef(state);
     const isLoadingRef = useRef(isLoading);
+    // 🚀 [防刷新漏洞] 用于标记需要紧急出盘(绕过200ms防抖)的关键操作
+    const urgentSaveRef = useRef(false);
 
     useLayoutEffect(() => {
         stateRef.current = state;
@@ -689,7 +704,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
         };
 
-        const timer = setTimeout(saveState, 200);
+        let timer: any;
+        if (urgentSaveRef.current) {
+            // 🚀 紧急情况：立即执行保存，绕过防抖，并重置标志
+            urgentSaveRef.current = false;
+            saveState();
+        } else {
+            timer = setTimeout(saveState, 200);
+        }
 
         return () => clearTimeout(timer);
     }, [state, isLoading]);
@@ -807,6 +829,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             drawings: [] as CanvasDrawing[],
             lastModified: Date.now()
         };
+        urgentSaveRef.current = true; // 新建后强制立即保存
         setState(prev => ({
             ...prev,
             canvases: [...prev.canvases, newCanvas],
@@ -816,6 +839,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, [state.canvases.length, state.canvases]);
 
     const switchCanvas = useCallback((id: string) => {
+        urgentSaveRef.current = true; // 切换后强制立即保存
         setState(prev => ({ ...prev, activeCanvasId: id }));
     }, []);
 
@@ -1273,9 +1297,23 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const deleteImageNode = useCallback((id: string) => {
         pushToHistory();
-        // Delete from IndexedDB
+
+        // Delete from IndexedDB (existing logic)
         deleteImage(id);
 
+        // 🚀 [关键修复] 让 storageAdapter 去尝试删除全局磁盘文件/OPFS
+        import('../services/storageAdapter').then(({ deleteImage: deleteImageFromDisk }) => {
+            deleteImageFromDisk({
+                id: id,
+                type: 'native', // Trigger native local disk check
+                width: 0,
+                height: 0,
+                x: 0,
+                y: 0
+            });
+        }).catch(e => console.error('Failed to invoke safe physical deletion', e));
+
+        urgentSaveRef.current = true; // 删除后强制挂载存储
         updateCanvas(c => {
             // Revoke Blob URL to free memory
             const node = c.imageNodes.find(n => n.id === id);
@@ -1299,6 +1337,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const deletePromptNode = useCallback((id: string) => {
         pushToHistory();
 
+        urgentSaveRef.current = true; // 父节点删除后同步存盘
         updateCanvas(c => {
             // [Strict Logic] Delete Main Card -> Sub-cards become Lonely Sub Cards (Orphaned)
             // DO NOT delete the images. Just clear their parentPromptId.
@@ -2304,7 +2343,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             try {
                 const { restoreLocalFolderConnection } = await import('../services/storagePreference');
                 handle = await restoreLocalFolderConnection();
-            } catch (ignore) { }
+            } catch (err) {
+                // 恢复本地文件夹连接失败，将继续使用文件选择器
+                console.warn('[CanvasContext] Failed to restore local folder:', err);
+            }
 
             // 2. Fallback to Full Picker
             if (!handle) {
@@ -2524,7 +2566,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 1. Pick new folder
             const newHandle = await fileSystemService.selectDirectory();
             if (newHandle.name === state.folderName) {
-                alert('您选择了同一个文件夹。');
+                notify.info('提示', '您选择了同一个文件夹');
                 return;
             }
 
@@ -2553,10 +2595,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     setLocalFolderHandle(newHandle);
                 });
 
-                alert('项目移动成功！');
+                notify.success('移动成功', '项目已成功移动到新位置');
 
             } catch (error: any) {
-                alert('迁移失败: ' + error.message);
+                notify.error('移动失败', `迁移失败: ${error.message}`);
                 console.error(error);
             } finally {
                 setIsLoading(false);
@@ -2578,18 +2620,37 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const blobUrl = data.url;
                 if (blobUrl) {
                     try {
-                        const res = await fetch(blobUrl);
-                        const blob = await res.blob();
-                        const reader = new FileReader();
-                        reader.onloadend = async () => {
-                            const base64data = reader.result as string;
-                            if (base64data) {
-                                await saveImage(id, base64data);
-                            }
-                        };
-                        reader.readAsDataURL(blob);
+                        // 检查是否是有效的 blob URL
+                        if (blobUrl.startsWith('blob:')) {
+                            const res = await fetch(blobUrl);
+                            const blob = await res.blob();
+                            const reader = new FileReader();
+                            reader.onloadend = async () => {
+                                const base64data = reader.result as string;
+                                if (base64data) {
+                                    await saveImage(id, base64data);
+                                }
+                            };
+                            reader.readAsDataURL(blob);
+                        }
                     } catch (e) {
-                        console.error(`Failed to cache image ${id}`, e);
+                        // blob URL 已过期，尝试从本地文件系统重新加载
+                        console.warn(`[CanvasContext] Blob URL expired for ${id}, trying to reload from local file system`);
+                        try {
+                            const imgHandle = await handle.getFileHandle(id);
+                            const file = await imgHandle.getFile();
+                            const reader = new FileReader();
+                            reader.onloadend = async () => {
+                                const base64data = reader.result as string;
+                                if (base64data) {
+                                    await saveImage(id, base64data);
+                                    console.log(`[CanvasContext] Reloaded ${id} from local file system`);
+                                }
+                            };
+                            reader.readAsDataURL(file);
+                        } catch (fsErr) {
+                            console.error(`[CanvasContext] Failed to reload ${id} from local file system:`, fsErr);
+                        }
                     }
                 }
             }

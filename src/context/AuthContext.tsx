@@ -74,15 +74,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updated_at: new Date().toISOString()
         };
 
-        const fakeSession: Session = {
-            access_token: 'fake-token',
+        // 开发模式：创建本地会话（仅用于离线开发测试）
+        // 注意：此令牌仅用于本地开发，不会发送到任何服务器
+        const devSession: Session = {
+            access_token: 'dev-mode-local-session',
             token_type: 'bearer',
             expires_in: 3600,
-            refresh_token: 'fake-refresh',
+            refresh_token: 'dev-mode-refresh',
             user: fakeUser
         };
 
-        setSession(fakeSession);
+        setSession(devSession);
         setUser(fakeUser);
         setLoading(false);
     };

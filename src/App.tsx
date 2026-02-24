@@ -13,7 +13,8 @@ import { SelectionMenu } from './components/SelectionMenu';
 import { MigrateModal } from './components/MigrateModal';
 import { CanvasGroupComponent } from './components/CanvasGroupComponent';
 import { generateImage, cancelGeneration } from './services/geminiService';
-import { keyManager } from './services/keyManager';
+import { keyManager, getModelMetadata } from './services/keyManager';
+import { llmService } from './services/llm/LLMService';
 import { getCardDimensions } from './utils/styleUtils';
 import { getViewportPreferredPosition, findSafePosition } from './utils/canvasUtils'; // 🚀 Smart Positioning
 
@@ -43,6 +44,7 @@ import ProjectManager from './components/ProjectManager';
 import SearchPalette from './components/SearchPalette';
 import { Search } from 'lucide-react'; // Import Search icon
 import MobileTabBar from './components/MobileTabBar';
+import MobileHeader from './components/MobileHeader'; // [NEW] Mobile Header
 import TagInputModal from './components/TagInputModal';
 import TutorialOverlay from './components/TutorialOverlay';
 import { GlobalLightbox } from './components/GlobalLightbox';
@@ -724,148 +726,6 @@ const AppContent: React.FC = () => {
   // [Draft Feature] Persistent Input Card State - Moved to Top
 
 
-  // Sync Config -> Draft Node
-  useEffect(() => {
-    // 1. Check if we have content to sync
-    const hasContent = config.prompt || config.referenceImages.length > 0;
-
-    if (hasContent) {
-      if (!draftNodeId) {
-        // [Draft Logic] Recover existing draft from canvas (e.g. after refresh)
-        const existingDraft = activeCanvas?.promptNodes.find(n => n.isDraft);
-        if (existingDraft) {
-          setDraftNodeId(existingDraft.id);
-
-          // 🚀 [关键修复] 恢复 draft 节点的数据到 config，确保 PromptBar 显示正确
-          setConfig(prev => ({
-            ...prev,
-            prompt: existingDraft.prompt || prev.prompt,
-            model: existingDraft.model || prev.model,
-            aspectRatio: existingDraft.aspectRatio || prev.aspectRatio,
-            imageSize: existingDraft.imageSize || prev.imageSize,
-            referenceImages: existingDraft.referenceImages || [],
-            mode: existingDraft.mode || prev.mode
-          }));
-          console.log('[App] ✅ 已从草稿节点恢复 config，参考图数量:', existingDraft.referenceImages?.length || 0);
-
-          // 🚀 [Deduplicate] If multiple drafts exist (bug), delete others
-          const allDrafts = activeCanvas?.promptNodes.filter(n => n.isDraft) || [];
-          if (allDrafts.length > 1) {
-            console.warn('[App] Found multiple drafts, cleaning up...', allDrafts);
-            allDrafts.forEach(d => {
-              if (d.id !== existingDraft.id) deletePromptNode(d.id);
-            });
-          }
-          return;
-        }
-
-        // [Create Draft] If no draft linked, create one
-        const newId = Date.now().toString();
-
-        // 🚀 使用实时 transform 计算位置（考虑追问模式和拖动状态）
-        let draftPosition: { x: number; y: number };
-        const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
-
-        if (activeSourceImage && activeCanvas) {
-          const sourceImage = activeCanvas.imageNodes.find(img => img.id === activeSourceImage);
-          if (sourceImage) {
-            const parentPromptId = sourceImage.parentPromptId;
-            const parentPrompt = activeCanvas.promptNodes.find(p => p.id === parentPromptId);
-
-            if (parentPrompt) {
-              const siblingImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === parentPromptId);
-              let maxY = parentPrompt.position.y;
-              siblingImages.forEach(img => {
-                const { totalHeight } = getCardDimensions(img.aspectRatio, true);
-                const imgBottom = img.position.y + totalHeight;
-                maxY = Math.max(maxY, imgBottom);
-              });
-              draftPosition = { x: parentPrompt.position.x, y: maxY + 60 };
-            } else {
-              let sourceHeight = 320;
-              if (sourceImage.dimensions) {
-                const [w, h] = sourceImage.dimensions.split('x').map(Number);
-                if (w && h) {
-                  const ratio = w / h;
-                  const cardWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
-                  sourceHeight = (cardWidth / ratio) + 40;
-                }
-              } else {
-                const { totalHeight } = getCardDimensions(sourceImage.aspectRatio, true);
-                sourceHeight = totalHeight;
-              }
-              draftPosition = { x: sourceImage.position.x, y: sourceImage.position.y + sourceHeight + 40 };
-            }
-          } else {
-            draftPosition = getViewportPreferredPosition(currentTransform);
-          }
-        } else {
-          draftPosition = getViewportPreferredPosition(currentTransform);
-        }
-
-        addPromptNode({
-          id: newId,
-          prompt: config.prompt,
-          position: draftPosition,
-          aspectRatio: config.aspectRatio,
-          imageSize: config.imageSize,
-          model: config.model,
-          childImageIds: [],
-          referenceImages: config.referenceImages,
-          timestamp: Date.now(),
-          sourceImageId: activeSourceImage || undefined,
-          isDraft: true,
-          mode: config.mode,
-          tags: []
-        });
-        setDraftNodeId(newId);
-      } else {
-        // [Update Draft] Sync changes to existing draft
-        const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
-        if (node) {
-          // Detect changes to avoid loop
-          const hasChanged = node.prompt !== config.prompt ||
-            node.model !== config.model ||
-            node.aspectRatio !== config.aspectRatio ||
-            node.imageSize !== config.imageSize ||
-            JSON.stringify(node.referenceImages) !== JSON.stringify(config.referenceImages) ||
-            node.sourceImageId !== (activeSourceImage || undefined);
-
-          if (hasChanged) {
-            updatePromptNode({
-              ...node,
-              prompt: config.prompt,
-              aspectRatio: config.aspectRatio,
-              imageSize: config.imageSize,
-              model: config.model,
-              referenceImages: config.referenceImages,
-              sourceImageId: activeSourceImage || undefined,
-              mode: config.mode
-            });
-          }
-        } else {
-          // Draft ID exists but node not found (deleted?), reset ID
-          setDraftNodeId(null);
-        }
-      }
-    } else {
-      // Config is empty.
-      // If we are linked to a draft, delete it to clear the "Preview Box"
-      // 🚀 [修复] 追问模式的draft不要删除（有sourceImageId的）
-      // 🚀 [关键修复] 正在生成的draft不要删除！
-      if (draftNodeId) {
-        const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
-        if (node && !node.sourceImageId && !node.isGenerating) {
-          // 只删除普通draft，不删除追问模式的draft，也不删除正在生成的draft
-          console.log('[App.Draft清理] 删除空的draft节点:', draftNodeId);
-          deletePromptNode(draftNodeId);
-          setDraftNodeId(null);
-        } else if (node?.isGenerating) {
-          console.log('[App.Draft清理] 保留正在生成的draft:', draftNodeId);
-        }
-      }
-    }
-  }, [config, draftNodeId, activeCanvas, addPromptNode, updatePromptNode, pendingPosition, activeSourceImage]);
 
 
 
@@ -1065,10 +925,69 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, [isSidebarOpen]);
 
-  // Initial Sidebar State
   useEffect(() => {
     if (!isMobile) setIsSidebarOpen(true);
   }, []);
+
+  // [Draft Sync Effect] Keep the draft node in sync with PromptBar config
+  // AND [Smart Re-centering] Auto-calculate position for new/stale drafts
+  useEffect(() => {
+    if (draftNodeId && activeCanvas) {
+      if (config.prompt.trim()) {
+        const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
+        if (node) {
+          // Detect changes to avoid loop
+          const hasChanged = node.prompt !== config.prompt ||
+            node.model !== config.model ||
+            node.aspectRatio !== config.aspectRatio ||
+            node.imageSize !== config.imageSize ||
+            JSON.stringify(node.referenceImages) !== JSON.stringify(config.referenceImages) ||
+            node.sourceImageId !== (activeSourceImage || undefined);
+
+          const shouldAutoCenter = !node.userMoved && !node.sourceImageId;
+
+          if (hasChanged || shouldAutoCenter) {
+            // 🚀 [Smart Re-centering]
+            // If the user hasn't moved the draft, and it's a normal draft (not follow-up),
+            // auto-sync its position to current viewport center
+            const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
+            const viewportRect = canvasRef.current?.getCanvasRect() || null;
+            const leftOffset = isSidebarOpen && !isMobile ? 260 : (isMobile ? 0 : 60);
+            const rightOffset = isChatOpen && !isMobile ? 420 : 0;
+            const liveCenter = getViewportPreferredPosition(currentTransform, viewportRect, 180, { left: leftOffset, right: rightOffset });
+
+            // Only update position if it actually needs to move (avoid spam)
+            const isPositionDifferent = Math.abs(node.position.x - liveCenter.x) > 1 || Math.abs(node.position.y - liveCenter.y) > 1;
+
+            if (hasChanged || (shouldAutoCenter && isPositionDifferent)) {
+              updatePromptNode({
+                ...node,
+                prompt: config.prompt,
+                aspectRatio: config.aspectRatio,
+                imageSize: config.imageSize,
+                model: config.model,
+                referenceImages: config.referenceImages,
+                sourceImageId: activeSourceImage || undefined,
+                mode: config.mode,
+                position: shouldAutoCenter ? liveCenter : node.position
+              });
+            }
+          }
+        } else {
+          setDraftNodeId(null);
+        }
+      }
+    } else {
+      // Config is empty
+      if (draftNodeId) {
+        const node = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
+        if (node && !node.sourceImageId && !node.isGenerating) {
+          deletePromptNode(draftNodeId);
+          setDraftNodeId(null);
+        }
+      }
+    }
+  }, [config, draftNodeId, activeCanvas, addPromptNode, updatePromptNode, pendingPosition, activeSourceImage, isSidebarOpen, isChatOpen, canvasTransform]);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -1369,6 +1288,10 @@ const AppContent: React.FC = () => {
   const executeGeneration = useCallback(async (node: PromptNode) => {
     const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: initialModel, mode, referenceImages: files = [] } = node;
     let effectiveModel = initialModel;
+    let successResults: GeneratedImage[] = [];
+
+    // 🚀 [Critical Fix] Define finalPos at a higher scope to ensure Error cards also land at latest center
+    let finalPos = node.position;
 
     // [FIX] Get fresh position from canvas state to support moving during generation
     // ✅ 使用ref获取最新状态,避免闭包问题
@@ -1376,17 +1299,14 @@ const AppContent: React.FC = () => {
     const liveNode = freshCanvas?.promptNodes.find(n => n.id === promptNodeId);
 
     // 🚀 [修复] 如果找不到节点，使用传入的 node 参数作为后备
-    // 这可能发生在 React 状态更新还没完成时
     if (!liveNode) {
       console.warn('[executeGeneration] Node not found in canvas, using original node as fallback:', promptNodeId);
-      // 继续使用原始 node 参数执行生成，而不是直接退出
     }
-    const effectiveNode = liveNode || node;
-    const livePos = effectiveNode.position;
+
+    const taskNode = liveNode || node;
     const isVideo = mode === GenerationMode.VIDEO;
 
     // 🚀 [Safe State Tracking] Track success to prevent error overwrite
-    let successResults: GeneratedImage[] = [];
 
     try {
       const buildTask = (index: number) => async () => {
@@ -1418,14 +1338,23 @@ const AppContent: React.FC = () => {
           let currentSize = node.imageSize;
           let exactDimensions: { width: number; height: number } | undefined = undefined;
           let provider: string | undefined = undefined; // 🚀 Provider info
+          let providerLabel: string | undefined = undefined; // 🚀 Provider display name
+          let modelLabel: string | undefined = undefined; // 🚀 Model display name
 
           if (isVideo) {
             // ✅ 视频生成 - 使用独立的 videoService
             const { generateVideo } = await import('./services/videoService');
-            const apiKey = keyManager.getSlots().find(s => !s.disabled && s.status === 'valid')?.key;
-            if (!apiKey) {
-              throw new Error('没有可用的 API Key');
+
+            // 🚀 [修复] 统一使用 resolveKey 获取 Key 和 Base URL (支持 12AI 等代理)
+            const keySlot = llmService.resolveKey(node.model);
+            if (!keySlot) {
+              throw new Error(`没有可用的 API Key 用于模型: ${node.model}`);
             }
+            const apiKey = keySlot.key;
+            const baseUrl = keySlot.baseUrl;
+            provider = keySlot.provider;
+            providerLabel = keySlot.name;
+            modelLabel = getModelMetadata(node.model)?.name || node.model;
 
             // 视频宽高比转换
             const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
@@ -1437,7 +1366,7 @@ const AppContent: React.FC = () => {
               if (size.includes('1080') || size.includes('hd')) return '1080p';
               return '720p'; // 默认720p
             })();
-            console.log(`[App.视频生成] ImageSize: ${node.imageSize} → Resolution: ${videoResolution}`);
+            console.log(`[App.视频生成] 使用通道: ${providerLabel}, URL: ${baseUrl || '官方'}, 分辨率: ${videoResolution}`);
 
             const videoResult = await generateVideo(
               {
@@ -1450,6 +1379,7 @@ const AppContent: React.FC = () => {
                   : undefined
               },
               apiKey,
+              baseUrl,   // 🚀 [修复] 传递动态 Base URL (支持 12AI)
               undefined, // onProgress 回调
               undefined  // abort signal
             );
@@ -1483,6 +1413,8 @@ const AppContent: React.FC = () => {
               exactDimensions = result.dimensions;
             }
             if (result.provider) provider = result.provider; // 🚀 Capture provider
+            if (result.providerName) providerLabel = result.providerName;
+            if (result.modelName) modelLabel = result.modelName;
           }
 
           isFinished = true;
@@ -1553,7 +1485,9 @@ const AppContent: React.FC = () => {
             effectiveSize: currentSize,
             effectiveAspectRatio: currentAspectRatio,
             exactDimensions, // 🚀 Pass exact dimensions
-            provider // 🚀 Pass provider
+            provider, // 🚀 Pass provider
+            providerLabel: providerLabel, // 🚀 Pass Display Provider Name
+            modelName: modelLabel // 🚀 Pass Display Model Name
           };
         } catch (error: any) {
           isFinished = true;
@@ -1596,6 +1530,8 @@ const AppContent: React.FC = () => {
         effectiveAspectRatio?: AspectRatio; // 🚀 Pass through
         exactDimensions?: { width: number; height: number }; // 🚀 Pass through
         provider?: string; // 🚀 Pass through
+        providerLabel?: string; // 🚀 Pass through
+        modelName?: string; // 🚀 Pass through
       }>;
 
       if (validImageData.length === 0) {
@@ -1604,27 +1540,27 @@ const AppContent: React.FC = () => {
       }
 
       // ✅ 生成完成后重新获取主卡最新位置 (支持生成过程中拖动)
-      // 🚀 [Critical Fix] Fetch LATEST node state to prevent overwriting user changes (e.g. text edits during generation)
       const finalCanvas = activeCanvasRef.current;
       const latestNode = finalCanvas?.promptNodes.find(n => n.id === promptNodeId);
+      const effectiveNodeForPos = latestNode || taskNode || node;
 
-      // 🛡️ [Robust Fallback] If latestNode is missing (e.g. rapid switch) or has invalid pos (0,0 bug), use original node
-      const effectiveNode = latestNode || node;
+      // 🚀 [Critical Fix] 直接使用在 handleGenerate 确定的/被用户拖动后的真实位置。
+      // 不再强制动态计算屏幕中心 (latestCenter)，防止用户在生成期间平移画布导致新卡片位置突变。
+      finalPos = effectiveNodeForPos.position;
 
-      console.log('[executeGeneration] Resolving Position:', {
-        originalNodePos: node.position,
-        latestNodePos: latestNode?.position,
-        effectiveNodePos: effectiveNode.position,
-        isResumed: !latestNode
+      console.log('[executeGeneration] Resolving Position (Final Sync):', {
+        original: node.position,
+        latestFromCanvas: latestNode?.position,
+        finalUsed: finalPos,
       });
 
-      let finalPos = effectiveNode.position;
-
-      // 🚀 [Anti-Zero-Bug] If latest position is 0,0 but original was not, use original (prevent jump to center)
+      // 🛡️ [Anti-Zero-Bug]
       if (finalPos.x === 0 && finalPos.y === 0 && (node.position.x !== 0 || node.position.y !== 0)) {
-        console.warn('[App] Detected zero-position bug in latestNode, falling back to original position', node.position);
+        console.warn('[App] Detected zero-position bug, falling back to original position', node.position);
         finalPos = node.position;
       }
+
+      const effectiveNode = effectiveNodeForPos;
 
       if (!latestNode) {
         console.warn("Critical: PromptNode missing in activeCanvas after generation, using fallback node", promptNodeId);
@@ -1643,7 +1579,11 @@ const AppContent: React.FC = () => {
           // ... (Mapping Logic) ...
           // 使用 mapIndex 作为后备，因为 item.index 已在 filter 中验证
           const idx = item.index ?? mapIndex;
-          const { url, originalUrl, generationTime, base64, mode: itemMode, tokens, cost, effectiveModel: resModel, effectiveSize: resSize, effectiveAspectRatio: resRatio, exactDimensions, provider } = item;
+          const {
+            url, originalUrl, generationTime, base64, mode: itemMode, tokens, cost,
+            effectiveModel: resModel, effectiveSize: resSize, effectiveAspectRatio: resRatio,
+            exactDimensions, provider, providerLabel: itemProviderLabel, modelName
+          } = item;
 
           // 🚀 Use result model/size if available, otherwise fallback
           const finalModel = resModel || effectiveModel;
@@ -1670,7 +1610,7 @@ const AppContent: React.FC = () => {
             const startX = -rowWidth / 2; // 相对主卡中心的起始位置
             const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
             const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
-            x = finalPos.x + offsetX;
+            x = finalPos.x + offsetX; // Use FINAL calibrated position
             y = finalPos.y + offsetY;
           } else {
             // 居中计算:先算出当前行的总宽度,然后居中对齐
@@ -1678,7 +1618,7 @@ const AppContent: React.FC = () => {
             const startX = -rowWidth / 2; // 相对主卡中心的起始位置
             const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
             const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
-            x = finalPos.x + offsetX;
+            x = finalPos.x + offsetX; // Use FINAL calibrated position
             y = finalPos.y + offsetY;
           }
 
@@ -1696,7 +1636,7 @@ const AppContent: React.FC = () => {
             imageSize: finalSize, // Add imageSize field
             timestamp: Date.now(),
             model: finalModel,
-            modelLabel: (() => {
+            modelLabel: modelName || (() => {
               const m = finalModel.toLowerCase();
               if (m.includes('gemini-3-pro')) return 'Gemini 3 Pro Image';
               if (m.includes('gemini-2.5-flash-image')) return 'Gemini 2.5 Flash Image';
@@ -1712,6 +1652,8 @@ const AppContent: React.FC = () => {
               if (m.includes('veo')) return 'Veo 2';
               return effectiveModel;
             })(),
+            provider: provider,
+            providerLabel: itemProviderLabel || provider, // ✨ Use custom name if available, else provider ID
             mode: itemMode,
             canvasId: activeCanvas?.id || 'default',
             parentPromptId: promptNodeId,
@@ -1722,8 +1664,7 @@ const AppContent: React.FC = () => {
             generationTime,
             tokens,
             cost,
-            exactDimensions,
-            provider
+            exactDimensions
           } as GeneratedImage;
         });
 
@@ -1781,13 +1722,17 @@ const AppContent: React.FC = () => {
         return; // 🚀 Exit without showing error notification
       }
 
-      // 🚀 [修复] 确保错误卡片始终显示
-      // 如果节点不存在于画布中，先添加它再更新错误状态
-      const currentCanvas = activeCanvasRef.current;
-      const currentNode = currentCanvas?.promptNodes.find(n => n.id === node.id) || node; // Try to find latest, fallback to stale
+      // 🚀 [修复] 确保错误卡片始终显示在计算出的 finalPos 上
+      const currentCanvasForError = activeCanvasRef.current;
+      const currentNode = currentCanvasForError?.promptNodes.find(n => n.id === node.id) || node;
 
-      const errorNode = { ...currentNode, isGenerating: false, error: err.message || 'Failed' };
-      const existsInCanvas = currentCanvas?.promptNodes.some(n => n.id === node.id);
+      const errorNode = {
+        ...currentNode,
+        position: finalPos, // 🚀 Use latest center even on error!
+        isGenerating: false,
+        error: err.message || 'Failed'
+      };
+      const existsInCanvas = currentCanvasForError?.promptNodes.some((n: any) => n.id === node.id);
 
       if (existsInCanvas) {
         updatePromptNode(errorNode);
@@ -1834,8 +1779,16 @@ const AppContent: React.FC = () => {
 
     // 4. Calculate Position (Center of Viewport if not specified)
     // 🚀 [Smart Positioning] Use the new utility to find a "nice" spot
-    let currentPos = { x: 0, y: 0 };
-    let viewCenter = { x: 0, y: 0 }; // Declare early for scope access
+    // 🚀 [Critical Fix] 强制获取物理真实的最新 Transform
+    const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
+    const viewportRect = canvasRef.current?.getCanvasRect() || null;
+    const leftOffset = isSidebarOpen && !isMobile ? 260 : (isMobile ? 0 : 60);
+    const rightOffset = isChatOpen && !isMobile ? 420 : 0;
+    const sidebarOffsets = { left: leftOffset, right: rightOffset };
+
+    const realViewCenter = getViewportPreferredPosition(currentTransform, viewportRect, 180, sidebarOffsets);
+    let viewCenter = { ...realViewCenter };
+    let currentPos = { ...viewCenter };
 
     // [Draft Logic] Use existing draft if available
     let promptNodeId = draftNodeId;
@@ -1845,17 +1798,11 @@ const AppContent: React.FC = () => {
     const existingDraft = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
 
     if (existingDraft) {
-      console.log('[handleGenerate] Found existing draft, using its position:', existingDraft.position);
+      console.log('[handleGenerate] Found existing draft, reusing its position:', existingDraft.position);
       currentPos = { ...existingDraft.position };
-      viewCenter = { ...existingDraft.position }; // Draft IS the center for this operation
       isReusingDraft = true;
     } else {
-      // 🚀 使用实时 transform（包括拖动中的位置）
-      const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
-      viewCenter = getViewportPreferredPosition(currentTransform);
-      currentPos = { x: viewCenter.x, y: viewCenter.y };
-      console.log('[handleGenerate] No draft found. Calculated ViewCenter:', viewCenter, 'Using transform:', currentTransform);
-      // If draft ID was set but not found, it's stale. Generate new ID.
+      console.log('[handleGenerate] No draft found. Using calculated ViewCenter:', viewCenter);
       promptNodeId = Date.now().toString();
     }
     if (promptNodeId) {
@@ -1865,32 +1812,42 @@ const AppContent: React.FC = () => {
         isReusingDraft = true;
         currentPos = draft.position;
 
-        // 🚀 [Auto-Center] If draft is off-screen, snap it to current view center
-        // This fixes the issue where users pan away from a draft and then generate, causing the result to be "lost"
-        // 🚀 使用实时 transform（包括拖动中的位置）
-        const currentTransformForVisibility = canvasRef.current?.getCurrentTransform() || canvasTransform;
-        const vLeft = -currentTransformForVisibility.x / currentTransformForVisibility.scale;
-        const vTop = -currentTransformForVisibility.y / currentTransformForVisibility.scale;
-        const vWidth = window.innerWidth / currentTransformForVisibility.scale;
-        const vHeight = window.innerHeight / currentTransformForVisibility.scale;
+        // 🚀 [Smart Re-centering Fix]
+        // If the draft is an auto-center draft (not moved by user), FORCE it to stay at the REAL center
+        // during the final generation calculation, even if the canvas was panned just now.
+        const shouldAutoCenter = !draft.userMoved && !draft.sourceImageId && !draft.isGenerating;
 
-        // Margin of error (e.g. 100px)
-        const margin = 100;
-        const isVisible =
-          currentPos.x >= vLeft - margin &&
-          currentPos.x <= vLeft + vWidth + margin &&
-          currentPos.y >= vTop - margin &&
-          currentPos.y <= vTop + vHeight + margin;
-
-        if (!isVisible) {
-          console.warn('[handleGenerate] Draft is off-screen, moving to center:', {
-            currentPos,
-            viewCenter,
-            viewport: { vLeft, vRight: vLeft + vWidth, vTop, vBottom: vTop + vHeight }
-          });
+        if (shouldAutoCenter) {
+          console.log('[handleGenerate] Auto-centering draft to latest viewCenter for precise placement');
           currentPos = { ...viewCenter };
         } else {
-          console.log('[handleGenerate] Reusing draft at position (Visible):', currentPos);
+          // 🚀 [Auto-Center Fallback] If draft is off-screen, snap it to current view center
+          // This fixes the issue where users pan away from a draft and then generate, causing the result to be "lost"
+          // 🚀 使用实时 transform（包括拖动中的位置）
+          const currentTransformForVisibility = canvasRef.current?.getCurrentTransform() || canvasTransform;
+          const vLeft = -currentTransformForVisibility.x / currentTransformForVisibility.scale;
+          const vTop = -currentTransformForVisibility.y / currentTransformForVisibility.scale;
+          const vWidth = window.innerWidth / currentTransformForVisibility.scale;
+          const vHeight = window.innerHeight / currentTransformForVisibility.scale;
+
+          // Margin of error (e.g. 100px)
+          const margin = 100;
+          const isVisible =
+            currentPos.x >= vLeft - margin &&
+            currentPos.x <= vLeft + vWidth + margin &&
+            currentPos.y >= vTop - margin &&
+            currentPos.y <= vTop + vHeight + margin;
+
+          if (!isVisible) {
+            console.warn('[handleGenerate] Draft is off-screen, moving to center:', {
+              currentPos,
+              viewCenter,
+              viewport: { vLeft, vRight: vLeft + vWidth, vTop, vBottom: vTop + vHeight }
+            });
+            currentPos = { ...viewCenter };
+          } else {
+            console.log('[handleGenerate] Reusing draft at position (Visible):', currentPos);
+          }
         }
 
         // 🚀 [Collision Check] Ensure draft doesn't overlap others
@@ -1948,7 +1905,59 @@ const AppContent: React.FC = () => {
     // Legacy calculation reference, but we used currentPos above.
     const promptHeight = getPromptHeight(config.prompt);
 
-    let finalReferenceImages = [...config.referenceImages];
+    // [CRITICAL FIX] Hydrate reference images before sending
+    // When dragging from ImageCard, data might be empty (only storageId is passed)
+    const { getImage } = await import('./services/imageStorage');
+    const { fileSystemService } = await import('./services/fileSystemService');
+    const globalHandle = fileSystemService.getGlobalHandle();
+
+    let finalReferenceImages = await Promise.all(
+      config.referenceImages.map(async (img) => {
+        // If data is missing but storageId exists, try to load from IDB first
+        if (!img.data && img.storageId) {
+          try {
+            const dataUrl = await getImage(img.storageId);
+            if (dataUrl) {
+              // Extract base64 from data URL
+              const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
+              if (matches && matches[2]) {
+                return {
+                  ...img,
+                  data: matches[2],
+                  mimeType: matches[1] || img.mimeType || 'image/png'
+                };
+              }
+              // If not standard data URL format, use as-is
+              return { ...img, data: dataUrl };
+            }
+          } catch (e) {
+            console.warn('[handleGenerate] Failed to load from IDB:', img.id, e);
+          }
+
+          // If IDB failed, try to load from local file system (refs/ directory)
+          if (globalHandle) {
+            try {
+              const base64Data = await fileSystemService.loadReferenceImage(globalHandle, img.storageId);
+              if (base64Data) {
+                console.log('[handleGenerate] Loaded ref image from local file system:', img.storageId);
+                return {
+                  ...img,
+                  data: base64Data,
+                  mimeType: 'image/jpeg' // refs/ 目录中的图片都是 JPEG
+                };
+              }
+            } catch (e) {
+              console.warn('[handleGenerate] Failed to load from local file system:', img.storageId, e);
+            }
+          }
+        }
+        return img;
+      })
+    );
+
+    // Filter out images that still don't have data
+    finalReferenceImages = finalReferenceImages.filter(img => img.data);
+
     if (activeSourceImage) {
       const sourceImage = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
       // [FIX] Prefer originalUrl (High Res) over url (Thumbnail) to prevent blurry reference images
@@ -2761,108 +2770,109 @@ const AppContent: React.FC = () => {
 
       {/* Top Right User Menu - Desktop Only */}
       {/* Top Right User Menu - Desktop Only */}
-      <div id="header-user-menu" className={`absolute top-4 z-[100] hidden md:flex items-center gap-3 transition-all duration-300 ${isChatOpen ? 'right-[448px]' : 'right-12'}`}>
-
-        {/* User Avatar & Dropdown Trigger */}
-        <div className="relative group">
-          <button
-            onClick={() => setShowUserMenu(!showUserMenu)}
-            className="relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all shadow-2xl bg-[#1a1a1c] flex items-center justify-center cursor-pointer active:scale-95"
-            style={{ borderColor: 'var(--border-light)' }}
-          >
-            {user?.user_metadata?.avatar_url ? (
-              <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-tr from-indigo-500 via-purple-500 to-amber-500 flex items-center justify-center font-bold text-white text-sm">
-                {user?.email?.[0].toUpperCase() || 'K'}
-              </div>
-            )}
-          </button>
-
-          {/* API Status Dot */}
-          <div className={`absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#09090b] z-10 shadow-lg ${derivedApiStatus === 'success' ? 'bg-green-500' :
-            derivedApiStatus === 'error' ? 'bg-red-500' : 'bg-zinc-500'
-            }`} />
-
-          {/* New User Menu Dropdown */}
-          {showUserMenu && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-              <div className="absolute top-12 right-0 w-64 border rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}>
-
-                {/* User Info Header */}
-                <div className="px-3 py-3 border-b mb-2 rounded-lg transition-colors cursor-pointer group"
-                  style={{ borderColor: 'var(--border-light)' }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  onClick={() => {
-                    setProfileInitialView('main');
-                    setShowProfileModal(true);
-                    setShowUserMenu(false);
-                  }}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold overflow-hidden">
-                      {user?.user_metadata?.avatar_url ? (
-                        <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />
-                      ) : user?.email?.[0].toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user?.user_metadata?.full_name || 'User'}</div>
-                      <div className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>{user?.email}</div>
-                    </div>
-                  </div>
+      {!isMobile && (
+        <div id="header-user-menu" className={`absolute top-4 z-[100] hidden md:flex items-center gap-3 transition-all duration-300 ${isChatOpen ? 'right-[448px]' : 'right-12'}`}>
+          {/* User Avatar & Dropdown Trigger */}
+          <div className="relative group">
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all shadow-2xl bg-[#1a1a1c] flex items-center justify-center cursor-pointer active:scale-95"
+              style={{ borderColor: 'var(--border-light)' }}
+            >
+              {user?.user_metadata?.avatar_url ? (
+                <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-tr from-indigo-500 via-purple-500 to-amber-500 flex items-center justify-center font-bold text-white text-sm">
+                  {user?.email?.[0].toUpperCase() || 'K'}
                 </div>
+              )}
+            </button>
 
-                {/* Menu Items */}
-                <div className="space-y-1">
-                  <button
+            {/* API Status Dot */}
+            <div className={`absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#09090b] z-10 shadow-lg ${derivedApiStatus === 'success' ? 'bg-green-500' :
+              derivedApiStatus === 'error' ? 'bg-red-500' : 'bg-zinc-500'
+              }`} />
+
+            {/* New User Menu Dropdown */}
+            {showUserMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+                <div className="absolute top-12 right-0 w-64 border rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}>
+
+                  {/* User Info Header */}
+                  <div className="px-3 py-3 border-b mb-2 rounded-lg transition-colors cursor-pointer group"
+                    style={{ borderColor: 'var(--border-light)' }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                     onClick={() => {
                       setProfileInitialView('main');
                       setShowProfileModal(true);
                       setShowUserMenu(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left"
-                    style={{ color: 'var(--text-secondary)' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                  >
-                    <div className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-blue)' }}><User size={14} /></div>
-                    个人中心
-                  </button>
+                    }}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold overflow-hidden">
+                        {user?.user_metadata?.avatar_url ? (
+                          <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />
+                        ) : user?.email?.[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user?.user_metadata?.full_name || 'User'}</div>
+                        <div className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>{user?.email}</div>
+                      </div>
+                    </div>
+                  </div>
 
-                  <button
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      setShowSettingsPanel(true);
-                      setSettingsInitialView('dashboard');
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left"
-                    style={{ color: 'var(--text-secondary)' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                  >
-                    <div className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-purple)' }}><LayoutDashboard size={14} /></div>
-                    设置
-                  </button>
+                  {/* Menu Items */}
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => {
+                        setProfileInitialView('main');
+                        setShowProfileModal(true);
+                        setShowUserMenu(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left"
+                      style={{ color: 'var(--text-secondary)' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    >
+                      <div className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-blue)' }}><User size={14} /></div>
+                      个人中心
+                    </button>
 
-                  <div className="h-px my-1" style={{ backgroundColor: 'var(--border-light)' }} />
+                    <button
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        setShowSettingsPanel(true);
+                        setSettingsInitialView('dashboard');
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left"
+                      style={{ color: 'var(--text-secondary)' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    >
+                      <div className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-purple)' }}><LayoutDashboard size={14} /></div>
+                      设置
+                    </button>
 
-                  <button
-                    onClick={() => {
-                      signOut();
-                      setShowUserMenu(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left"
-                  >
-                    <div className="p-1.5 bg-red-500/10 rounded-lg"><LogOut size={14} /></div>
-                    退出登录
-                  </button>
+                    <div className="h-px my-1" style={{ backgroundColor: 'var(--border-light)' }} />
+
+                    <button
+                      onClick={() => {
+                        signOut();
+                        setShowUserMenu(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left"
+                    >
+                      <div className="p-1.5 bg-red-500/10 rounded-lg"><LogOut size={14} /></div>
+                      退出登录
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Selection Box Overlay */}
       {selectionBox && selectionBox.active && (
@@ -3126,13 +3136,17 @@ const AppContent: React.FC = () => {
               // Calculate rough height based on aspect ratio needed for Top anchor
               const { width: cardWidth, totalHeight: theoreticalHeight } = getCardDimensions(childNode.aspectRatio, true);
               let imageHeight = theoreticalHeight;
-              if (childNode.dimensions) {
-                const parts = childNode.dimensions.split('x').map(Number);
-                if (parts.length === 2 && parts[1] > 0) {
+              if (childNode.dimensions && typeof childNode.dimensions === 'string') {
+                const parts = childNode.dimensions.toLowerCase().split('x').map(p => parseInt(p.trim(), 10));
+                if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]) && parts[1] > 0) {
                   const aspect = parts[0] / parts[1];
                   const realParams = getCardDimensions(childNode.aspectRatio, false);
                   imageHeight = (realParams.width / aspect) + 40;
                 }
+              }
+
+              if (isNaN(imageHeight) || imageHeight <= 0) {
+                imageHeight = theoreticalHeight;
               }
               const endX = childNode.position.x + 5000;
               const endY = (childNode.position.y - imageHeight) + 5005;
@@ -3439,7 +3453,7 @@ const AppContent: React.FC = () => {
         {/* <PendingNode ... /> removed */}
       </InfiniteCanvas>
 
-      {/* Mobile Top Right Avatar - Removed by user request */}
+
 
       {/* Prompt Bar */}
       <div className="contents">
@@ -3570,8 +3584,21 @@ const AppContent: React.FC = () => {
         // Mock position 0,0 for component, handle centering via container
         const displayNode = { ...draftNode, position: { x: 0, y: 0 } };
 
+        // 🚀 [Sidebar Responsive Layout]
+        // Calculate center for the overlay (Accurate widths from components)
+        const leftOffset = isSidebarOpen && !isMobile ? 260 : (isMobile ? 0 : 48);
+        const rightOffset = isChatOpen && !isMobile ? 420 : 0;
+
         return (
-          <div className="fixed inset-0 pointer-events-none z-[100] flex items-center justify-center">
+          <div
+            className="fixed inset-0 pointer-events-none z-[100] flex items-center justify-center transition-all duration-300"
+            style={{
+              paddingLeft: leftOffset,
+              paddingRight: rightOffset,
+              // Move layout center above prompt bar
+              paddingBottom: 110
+            }}
+          >
             {/* Wrapper to handle PromptNode's bottom-center anchor */}
             <div className="relative pointer-events-auto transform translate-y-[50%]">
               <PromptNodeComponent
@@ -3609,39 +3636,7 @@ const AppContent: React.FC = () => {
         onMultiSelectConfirm={handleMultiSelectConfirm}
       />
 
-      {/* VisionOS Mobile Bottom Bar */}
-      {/* VisionOS Mobile Bottom Bar - Hidden in Chat */}
-      {!isChatOpen && (
-        <MobileTabBar
-          onSetMode={(mode) => {
-            setConfig(prev => ({ ...prev, mode }));
-            setIsSidebarOpen(false);
-            setIsChatOpen(false);
-            setShowSettingsPanel(false);
-            setShowProfileModal(false);
-            handleShowMobileNav(); // Keep visible on interaction
-          }}
-          onOpenSettings={() => {
-            setShowSettingsPanel(true);
-            setIsSidebarOpen(false);
-            handleShowMobileNav();
-          }}
-          onOpenProfile={() => {
-            setShowProfileModal(true);
-            setIsSidebarOpen(false);
-            handleShowMobileNav();
-          }}
-          currentMode={config.mode}
-          currentView={
-            showProfileModal ? 'profile' :
-              showSettingsPanel ? 'settings' :
-                isSidebarOpen ? 'gallery' : 'home'
-          }
-          isVisible={isMobileNavVisible}
-          onInteract={handleShowMobileNav}
-          onToggleChat={() => setIsChatOpen(prev => !prev)}
-        />
-      )}
+      {/* Navigation and Overlays Removed for Mobile Bottom Dock Consistency */}
       {showTutorial && (
         <TutorialOverlay
           onComplete={() => {

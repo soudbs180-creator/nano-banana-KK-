@@ -4,7 +4,7 @@ import { OpenAICompatibleAdapter } from './OpenAICompatibleAdapter';
 import { AliyunAdapter } from './AliyunAdapter';
 import { TencentAdapter } from './TencentAdapter';
 import { VolcengineAdapter } from './VolcengineAdapter';
-import { KeyManager, KeySlot, Provider } from '../keyManager';
+import { KeyManager, KeySlot, Provider, getModelMetadata } from '../keyManager';
 import { keyManager } from '../keyManager';
 import * as costService from '../costService';
 import { ImageSize } from '../../types';
@@ -153,6 +153,15 @@ export class LLMService {
                     result.provider = keySlot.provider;
                 }
 
+                // ✨ Populate Names for Display
+                if (!result.providerName) {
+                    result.providerName = keySlot.name || keySlot.provider;
+                }
+                if (!result.modelName) {
+                    const metadata = getModelMetadata(baseModelId);
+                    result.modelName = metadata?.name || baseModelId;
+                }
+
                 return result;
             } catch (error: any) {
                 lastError = error;
@@ -163,7 +172,7 @@ export class LLMService {
         throw lastError || new Error("Image generation failed after retries");
     }
 
-    private resolveKey(modelId: string): KeySlot | null {
+    public resolveKey(modelId: string): KeySlot | null {
         const keyData = keyManager.getNextKey(modelId);
         if (!keyData) return null;
         return keyData as KeySlot;
