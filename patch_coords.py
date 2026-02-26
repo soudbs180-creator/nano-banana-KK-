@@ -92,7 +92,7 @@ for i in range(len(lines)-200, len(lines)):
         break
 
 if start2 == -1:
-     for i in range(1600, len(lines)):
+    for i in range(1600, len(lines)):
         if "// 🚀 [修复] 确保错误卡片始终显示" in lines[i]:
             start2 = i
             break

@@ -47,13 +47,20 @@ export interface ModelCapability {
      * - 未定义时默认为true
      */
     supportsVideoExtension?: boolean;
+
+    /**
+     * Whether the video model supports audio generation
+     * - Wan / Seedance (即梦): true
+     * - Others (Luma, Runway, Sora): false
+     */
+    supportsVideoAudio?: boolean;
 }
 
 /**
- * Google official model capabilities (hardcoded based on official documentation)
+ * Built-in model capabilities (hardcoded based on official documentation or common proxy models)
  * Reference: https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn
  */
-export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
+export const BUILTIN_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
     // ============================================
     // Gemini 3 Pro Image / Nano Banana Pro
     // Supports more ratios and up to 4K resolution
@@ -246,6 +253,77 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         supportedRatios: [],
         supportedSizes: [],
         supportsGrounding: true
+    },
+
+    // ============================================
+    // Common Proxy Models Constraints
+    // ============================================
+    'grok-video': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false
+    },
+    'grok-imagine-video': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false
+    },
+    'vidu-q3': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.SQUARE],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false
+    },
+    'vidu-q3-pro': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.SQUARE],
+        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+        supportsGrounding: false
+    },
+    'ray-3': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false
+    },
+    'runway-gen-4.5': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.SQUARE],
+        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+        supportsGrounding: false
+    },
+    'kling-2.5': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.SQUARE],
+        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+        supportsGrounding: false
+    },
+    'kling-2.6': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.SQUARE],
+        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+        supportsGrounding: false
+    },
+    'hailuo-02': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.SQUARE],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false
+    },
+    'wan-2.6-video': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false
+    },
+    'pixverse-v5.5': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.SQUARE],
+        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
+        supportsGrounding: false
+    },
+    'seedance-1.5': {
+        supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false
+    },
+
+    // Quick Flux variants (usually square or landscape)
+    'flux-schnell': {
+        supportedRatios: [AspectRatio.SQUARE, AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
+        supportedSizes: [ImageSize.SIZE_1K],
+        supportsGrounding: false
     }
 };
 
@@ -258,46 +336,184 @@ export const GOOGLE_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
 export function getModelCapabilities(
     modelId: string
 ): ModelCapability | null {
-    // 1. Check exact match in Google Standard Models
-    if (GOOGLE_MODEL_CAPABILITIES[modelId]) {
-        return GOOGLE_MODEL_CAPABILITIES[modelId];
+    // 1. Check exact match in Builtin Models (Highest Priority)
+    if (BUILTIN_MODEL_CAPABILITIES[modelId]) {
+        return BUILTIN_MODEL_CAPABILITIES[modelId];
     }
 
-    // 2. Check Proxy Models via KeyManager
-    const proxyModels = keyManager.getAvailableProxyModels();
-    const proxyModel = proxyModels.find(m => m.id === modelId);
+    const lowerModelId = modelId.toLowerCase();
 
-    if (proxyModel) {
-        return {
-            supportedRatios: proxyModel.supportedAspectRatios,
-            supportedSizes: proxyModel.supportedSizes,
-            supportsGrounding: proxyModel.supportsGrounding
+    // 2. Check if model ID contains known patterns (for Builtin models not in exact list)
+    if (lowerModelId.includes('gemini-3-pro') || lowerModelId.includes('nano-banana-pro')) {
+        return BUILTIN_MODEL_CAPABILITIES['gemini-3-pro-image-preview'];
+    }
+    if (lowerModelId.includes('gemini-2.5-flash-image') || lowerModelId.includes('nano-banana')) {
+        return BUILTIN_MODEL_CAPABILITIES['gemini-2.5-flash-image'];
+    }
+    if (lowerModelId.includes('imagen')) {
+        return BUILTIN_MODEL_CAPABILITIES['imagen-4.0-generate-001'];
+    }
+    if (lowerModelId.includes('veo')) {
+        return BUILTIN_MODEL_CAPABILITIES['veo-3.0-generate-001'];
+    }
+
+    // 3. Fallback capabilities base
+    let fallbackCapabilities: ModelCapability | null = null;
+
+    // 4. Keyword-based matching for common model families (captures Proxy variants)
+    const ALL_IMAGE_RATIOS = [AspectRatio.AUTO, AspectRatio.SQUARE, AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.LANDSCAPE_4_3, AspectRatio.PORTRAIT_3_4];
+    const VIDEO_RATIOS = [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.SQUARE];
+
+    if (lowerModelId.includes('midjourney') || lowerModelId.startsWith('mj-')) {
+        fallbackCapabilities = {
+            supportedRatios: [AspectRatio.SQUARE, AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16, AspectRatio.LANDSCAPE_4_3, AspectRatio.PORTRAIT_3_4, AspectRatio.LANDSCAPE_21_9],
+            supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+            supportsGrounding: false
+        };
+    } else if (lowerModelId.includes('flux')) {
+        let sizes = [ImageSize.SIZE_1K];
+        if (lowerModelId.includes('max')) sizes = [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
+        else if (lowerModelId.includes('pro')) sizes = [ImageSize.SIZE_1K, ImageSize.SIZE_2K];
+
+        fallbackCapabilities = {
+            supportedRatios: ALL_IMAGE_RATIOS,
+            supportedSizes: sizes,
+            supportsGrounding: false
+        };
+    } else if (lowerModelId.includes('kling')) {
+        fallbackCapabilities = {
+            supportedRatios: VIDEO_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+            supportsGrounding: false,
+            supportsVideoAudio: true
+        };
+    } else if (lowerModelId.includes('runway') || lowerModelId.includes('gen-3') || lowerModelId.includes('gen-4')) {
+        fallbackCapabilities = {
+            supportedRatios: VIDEO_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+            supportsGrounding: false,
+            supportsVideoAudio: true
+        };
+    } else if (lowerModelId.includes('luma') || lowerModelId.includes('dream-machine')) {
+        fallbackCapabilities = {
+            supportedRatios: VIDEO_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K],
+            supportsGrounding: false,
+            supportsVideoAudio: true
+        };
+    } else if (lowerModelId.includes('ideogram')) {
+        fallbackCapabilities = {
+            supportedRatios: ALL_IMAGE_RATIOS,
+            supportedSizes: lowerModelId.includes('v3') ? [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K] : [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+            supportsGrounding: false
+        };
+    } else if (lowerModelId.includes('wan')) {
+        fallbackCapabilities = {
+            supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
+            supportedSizes: [ImageSize.SIZE_1K],
+            supportsGrounding: false,
+            supportsVideoAudio: true
+        };
+    } else if (lowerModelId.includes('pixverse')) {
+        fallbackCapabilities = {
+            supportedRatios: VIDEO_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
+            supportsGrounding: false,
+            supportsVideoAudio: true
+        };
+    } else if (lowerModelId.includes('recraft')) {
+        fallbackCapabilities = {
+            supportedRatios: ALL_IMAGE_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
+            supportsGrounding: false
+        };
+    } else if (lowerModelId.includes('cogvideo')) {
+        fallbackCapabilities = {
+            supportedRatios: [AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
+            supportedSizes: [ImageSize.SIZE_1K],
+            supportsGrounding: false,
+            supportsVideoAudio: true
+        };
+    } else if (lowerModelId.includes('minimax') || lowerModelId.includes('hailuo')) {
+        fallbackCapabilities = {
+            supportedRatios: VIDEO_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K],
+            supportsGrounding: false,
+            supportsVideoAudio: true
+        };
+    } else if (lowerModelId.includes('seedance') || lowerModelId.includes('vidu') || lowerModelId.includes('ray-') || lowerModelId.includes('jimeng')) {
+        fallbackCapabilities = {
+            supportedRatios: VIDEO_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K],
+            supportsGrounding: false,
+            supportsVideoAudio: true
+        };
+    } else if (lowerModelId.includes('dall-e') || lowerModelId.includes('dalle')) {
+        fallbackCapabilities = {
+            supportedRatios: [AspectRatio.SQUARE, AspectRatio.LANDSCAPE_16_9, AspectRatio.PORTRAIT_9_16],
+            supportedSizes: [ImageSize.SIZE_1K],
+            supportsGrounding: false
+        };
+    } else if (lowerModelId.includes('pika') || lowerModelId.includes('viggle') || lowerModelId.includes('higgsfield')) {
+        fallbackCapabilities = {
+            supportedRatios: VIDEO_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K],
+            supportsGrounding: false,
+            supportsVideoAudio: true
+        };
+    } else if (lowerModelId.includes('sora')) {
+        fallbackCapabilities = {
+            supportedRatios: VIDEO_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K],
+            supportsGrounding: false,
+            supportsVideoAudio: lowerModelId.includes('sora-2')
+        };
+    } else if (lowerModelId.includes('seedream') || lowerModelId.includes('imagen')) {
+        fallbackCapabilities = {
+            supportedRatios: ALL_IMAGE_RATIOS,
+            supportedSizes: lowerModelId.includes('4.0') || lowerModelId.includes('4') ? [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K] : [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+            supportsGrounding: false
+        };
+    } else if (lowerModelId.includes('qwen-image') || lowerModelId.includes('gemini') || lowerModelId.includes('sdxl') || lowerModelId.includes('stable-diffusion') || lowerModelId.includes('gpt-4o') || lowerModelId.includes('gpt-image') || lowerModelId.includes('nano-banana')) {
+        fallbackCapabilities = {
+            supportedRatios: ALL_IMAGE_RATIOS,
+            supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+            supportsGrounding: false
         };
     }
 
-    // 3. Fallback: check if model ID contains known patterns (for Google models not in exact list)
-    const lowerModelId = modelId.toLowerCase();
+    // 5. If no keyword matched, try KeyManager Proxy Models (Generic Defaults)
+    if (!fallbackCapabilities) {
+        const proxyModels = keyManager.getAvailableProxyModels();
+        const proxyModel = proxyModels.find(m => m.id === modelId);
 
-    // Google Model Fallback Logic
-    if (lowerModelId.includes('gemini-3-pro') || lowerModelId.includes('nano-banana-pro')) {
-        return GOOGLE_MODEL_CAPABILITIES['gemini-3-pro-image-preview'];
-    }
-    if (lowerModelId.includes('gemini-2.5-flash-image') || lowerModelId.includes('nano-banana')) {
-        return GOOGLE_MODEL_CAPABILITIES['gemini-2.5-flash-image'];
-    }
-    if (lowerModelId.includes('imagen')) {
-        return GOOGLE_MODEL_CAPABILITIES['imagen-4.0-generate-001'];
-    }
-    if (lowerModelId.includes('veo')) {
-        return GOOGLE_MODEL_CAPABILITIES['veo-3.0-generate-001'];
+        if (proxyModel) {
+            fallbackCapabilities = {
+                supportedRatios: proxyModel.supportedAspectRatios,
+                supportedSizes: proxyModel.supportedSizes,
+                supportsGrounding: proxyModel.supportsGrounding
+            };
+        } else {
+            // Ultimate Default fallback: allow all options
+            fallbackCapabilities = {
+                supportedRatios: Object.values(AspectRatio),
+                supportedSizes: Object.values(ImageSize),
+                supportsGrounding: false
+            };
+        }
     }
 
-    // 4. Default fallback: allow all options (Assume Custom Proxy with full capabilities if unknown)
-    return {
-        supportedRatios: Object.values(AspectRatio),
-        supportedSizes: Object.values(ImageSize),
-        supportsGrounding: false
-    };
+    // 6. Dynamic Suffix Parsing: Overrides sizes even for Proxy Models
+    // If the model ID explicitly indicates a size (e.g. -4k, -2k, -1k), restrict options to that size
+    if (lowerModelId.includes('-4k') || lowerModelId.endsWith('4k')) {
+        fallbackCapabilities.supportedSizes = [ImageSize.SIZE_4K];
+    } else if (lowerModelId.includes('-2k') || lowerModelId.endsWith('2k')) {
+        fallbackCapabilities.supportedSizes = [ImageSize.SIZE_2K];
+    } else if (lowerModelId.includes('-1k') || lowerModelId.endsWith('1k')) {
+        fallbackCapabilities.supportedSizes = [ImageSize.SIZE_1K];
+    }
+
+    return fallbackCapabilities;
 }
 
 /**
@@ -332,6 +548,26 @@ export function getAvailableSizes(
     return caps?.supportedSizes && caps.supportedSizes.length > 0
         ? caps.supportedSizes
         : Object.values(ImageSize);
+}
+
+/**
+ * Automatically detect proper image size from the model ID.
+ * Features like "-2k" or "-4k" in the model name will adjust the default ImageSize.
+ * @param modelId - The selected model ID
+ * @param currentSize - The currently selected image size in config (fallback)
+ * @returns The best matching ImageSize
+ */
+export function autoDetectImageSize(modelId: string, currentSize: ImageSize): ImageSize {
+    const lowerId = modelId.toLowerCase();
+
+    if (lowerId.includes('-4k') || lowerId.endsWith('4k')) {
+        return ImageSize.SIZE_4K;
+    }
+    if (lowerId.includes('-2k') || lowerId.includes('2k')) { // Changed from endsWith to includes for better matching
+        return ImageSize.SIZE_2K;
+    }
+
+    return currentSize;
 }
 
 /**
@@ -600,262 +836,353 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
     },
     'kimi-k2.5': {
         category: 'LLM',
-        description: '国产第一梯队，擅长深度思考模式与长文本分析',
+        description: '擅长深度思考与长文本分析',
         rank: 'Kimi K2.5'
     },
     'glm-4.7': {
         category: 'LLM',
-        description: '智谱 AI 最新力作，指令遵循度高，中文语境理解极佳',
+        description: '指令遵循度高，中文语境理解佳',
         rank: 'GLM-4.7'
     },
     'deepseek-v3.2': {
         category: 'LLM',
-        description: '开源界性价比之王，推理速度快，逻辑能力比肩闭源',
+        description: '极具性价比，推理速度快',
         rank: 'DeepSeek V3.2 / R1'
     },
     'deepseek-r1': {
         category: 'LLM',
-        description: '开源界性价比之王，推理速度快，逻辑能力比肩闭源',
+        description: '极具性价比，推理深度强',
         rank: 'DeepSeek V3.2 / R1'
     },
     'qwen-3-max': {
         category: 'LLM',
-        description: '阿里通义千问最强版，数学与编程能力表现卓越',
+        description: '数学与编程强化',
         rank: 'Qwen 3 Max'
     },
     'grok-4': {
         category: 'LLM',
-        description: 'xAI 出品，实时性强，依托 X 平台数据，风格犀利',
+        description: '实时性强，风格犀利',
         rank: 'Grok 4'
     },
     'minimax-m2.1': {
         category: 'LLM',
-        description: '国产通用大模型，各方面性能均衡，响应迅速',
+        description: '各方面性能均衡，响应迅速',
         rank: 'MiniMax-M2.1'
     },
     'nova-2.0': {
         category: 'LLM',
-        description: 'AWS 生态核心，含 Pro/Lite 版，适合企业级',
+        description: 'AWS 生态，适合企业级',
         rank: 'Nova 2.0'
     },
     'nova-2.0-pro': {
         category: 'LLM',
-        description: 'AWS 生态核心，含 Pro/Lite 版，适合企业级',
+        description: 'AWS 生态，适合企业级',
         rank: 'Nova 2.0 Pro'
     },
     'nova-2.0-lite': {
         category: 'LLM',
-        description: 'AWS 生态核心，含 Pro/Lite 版，适合企业级',
+        description: 'AWS 生态，适合企业级',
         rank: 'Nova 2.0 Lite'
     },
     'mimo-v2': {
         category: 'LLM',
-        description: '小米出品，极速轻量，成本极低（$0.15）',
+        description: '极速轻量，超低价格',
         rank: 'MiMo-V2'
     },
     'doubao-seed-code': {
         category: 'LLM',
-        description: '字节跳动出品，专注于代码生成，超低成本',
+        description: '专注于代码生成，极低成本',
         rank: 'Doubao Seed Code'
     },
     'ernie-5.0': {
         category: 'LLM',
-        description: '百度文心一言最新版，具备深度思考能力',
+        description: '具备深度思考能力',
         rank: 'ERNIE 5.0'
     },
     'gemini-3-flash': {
         category: 'LLM',
-        description: '谷歌 Flash 版，百万级上下文，多模态最强',
+        description: '百万长上下文，多模态综合强',
         rank: 'Gemini 3 Flash'
     },
     'gemini-3-flash-preview': {
         category: 'LLM',
-        description: '谷歌 Flash 版，百万级上下文，多模态最强',
+        description: '百万长上下文，多模态综合强',
         rank: 'Gemini 3 Flash'
     },
     'qwen-3': {
         category: 'LLM',
-        description: '阿里通义千问，数学与编程强，开源闭源均有',
+        description: '数学与编程能力强',
         rank: 'Qwen 3 系列'
     },
     'qwen-3-32b': {
         category: 'LLM',
-        description: '阿里通义千问，数学与编程强，开源闭源均有',
+        description: '数学与编程能力强',
         rank: 'Qwen 3 32B'
     },
 
     // ===== 二、视觉设计 (图片生成) =====
     'gpt-image-1.5': {
         category: '图像生成',
-        description: '语义理解极强，极其"听话"，精准还原复杂提示词',
+        description: '极强语义理解，精准还原设计',
         rank: 'Elo Score'
     },
     'gemini-3-pro-image-preview': {
         category: '图像生成',
-        description: '擅长精准文字嵌入与多图融合设计',
+        description: '擅长文字嵌入与多图融合',
         rank: 'Nano Banana Pro'
     },
     'nano-banana-pro': {
         category: '图像生成',
-        description: '擅长精准文字嵌入与多图融合设计',
+        description: '擅长文字嵌入与多图融合',
         rank: 'Nano Banana Pro'
     },
     'hunyuan-image-3': {
         category: '图像生成',
-        description: '腾讯混元，对东方审美与中文语义理解极具优势',
+        description: '擅长东方审美与中文语义',
         rank: 'HunyuanImage 3.0'
     },
     'seedream-4.5': {
         category: '图像生成',
-        description: '字节跳动出品，生成速度快，画面细节丰富且稳定',
+        description: '高速生成，画面稳定丰富',
         rank: 'Seedream 4.5'
     },
     'flux.2-pro': {
         category: '图像生成',
-        description: '写实派霸主，光影质感与人体结构逼真度目前最强',
+        description: '写实光影与人体结构标杆',
         rank: 'FLUX.2 (Pro/Max)'
     },
     'flux.2-max': {
         category: '图像生成',
-        description: '写实派霸主，光影质感与人体结构逼真度目前最强',
+        description: '写实光影与人体结构标杆',
         rank: 'FLUX.2 (Pro/Max)'
     },
     'wan-2.6-image': {
         category: '图像生成',
-        description: '阿里万相，在电商场景与人物展示上表现非常出色',
+        description: '擅长电商场景与人物展示',
         rank: 'Wan 2.6 Image'
     },
     'gemini-2.5-flash-image': {
         category: '图像生成',
-        description: '快速图像生成，性价比高，支持多种宽高比',
+        description: '性价比高，极速出图',
         rank: 'Nano Banana'
     },
     'nano-banana': {
         category: '图像生成',
-        description: '快速图像生成，性价比高，支持多种宽高比',
+        description: '性价比高，极速出图',
         rank: 'Nano Banana'
     },
     'reve-v1': {
         category: '图像生成',
-        description: '新晋黑马，综合评分高，画面质感优秀',
+        description: '综合能力佳，质感优秀',
         rank: 'Reve V1'
     },
     'eigen-image': {
         category: '图像生成',
-        description: '小众高分模型，特定风格表现力强',
+        description: '小众高分，特定风格突出',
         rank: 'Eigen Image'
     },
     'qwen-image-edit': {
         category: '图像生成',
-        description: '通义千问图像编辑版，擅长局部重绘与修改',
+        description: '专精图像局部重绘与修改',
         rank: 'Qwen Image Edit'
     },
     'vidu-q2': {
         category: '图像生成',
-        description: '视频大厂出的图像模型，动态捕捉能力下放',
+        description: '具备视频级的动态捕捉感',
         rank: 'Vidu Q2'
     },
     'imagen-4-ultra': {
         category: '图像生成',
-        description: '谷歌上一代旗舰，写实感强，企业级应用多',
+        description: '官方固定计费，写实感强',
         rank: 'Imagen 4 Ultra'
     },
     'imagineart-1.5': {
         category: '图像生成',
-        description: '艺术风格化强，适合创意类插画生成',
+        description: '艺术风格强烈，适合插画',
         rank: 'ImagineArt 1.5'
     },
     'firefly-image-5': {
         category: '图像生成',
-        description: '集成于 PS/Adobe 全家桶，版权合规最安全',
+        description: '无版权争议安全模型',
         rank: 'Firefly Image 5'
     },
     'seedream-4.0': {
         category: '图像生成',
-        description: '字节出品，生成速度快，细节丰富，性价比高',
+        description: '高性价比快速生成',
         rank: 'Seedream 4.0'
     },
 
     // ===== 三、动态视界 (视频生成) =====
     'grok-video': {
         category: '视频生成',
-        description: '马斯克旗下 xAI 新品，动态表现与生成连贯性惊人',
+        description: '动态连贯性惊艳，榜单第一',
         rank: 'Grok Video'
     },
     'vidu-q3-pro': {
         category: '视频生成',
-        description: '国产视频黑马，生成速度快，画面流畅度极高',
+        description: '画面流畅度高，生成速度快',
         rank: 'Vidu Q3 Pro'
     },
     'runway-gen-4.5': {
         category: '视频生成',
-        description: '视频可控性之王，提供专业级运镜与笔刷控制工具',
+        description: '专业运镜与笔刷控制',
         rank: 'Runway Gen-4.5'
     },
     'kling-2.6': {
         category: '视频生成',
-        description: '物理规律模拟最真实，画面与动作连贯性国产第一',
+        description: '物理模拟真实，动作极度连贯',
         rank: 'Kling 2.6 (可灵)'
     },
     'veo-3': {
         category: '视频生成',
-        description: 'Google 出品，4K 影视画质，支持原生音效同步生成',
+        description: '官方按秒计费，支持原生音效',
         rank: 'Veo 3'
     },
     'veo-3.1-generate-preview': {
         category: '视频生成',
-        description: 'Google 出品，4K 影视画质，支持原生音效同步生成',
+        description: '官方按秒计费，支持原生音效',
         rank: 'Veo 3'
     },
     'veo-3.1-fast-generate-preview': {
         category: '视频生成',
-        description: 'Google 出品，4K 影视画质，支持原生音效同步生成',
+        description: '官方按秒计费，支持原生音效',
         rank: 'Veo 3 Fast'
     },
     'sora-2': {
         category: '视频生成',
-        description: '长视频标杆，大场景一致性强，镜头语言丰富',
+        description: '长视频大场景一致性强',
         rank: 'Sora 2'
     },
     'ray-3': {
         category: '视频生成',
-        description: 'Luma Labs 出品，擅长生成高动态、快节奏的酷炫视频',
+        description: '擅长高动态与快节奏镜头',
         rank: 'Ray 3'
     },
     'grok-imagine-video': {
         category: '视频生成',
-        description: '马斯克旗下 xAI 出品，榜单第一，动态连贯，深度集成于 X 平台',
+        description: '动态连贯，多项榜单第一',
         rank: 'Grok Video'
     },
     'kling-2.5': {
         category: '视频生成',
-        description: '快手可灵，物理模拟最真实，版本迭代极快',
+        description: '物理模拟真实，人物动作自然',
         rank: 'Kling 2.5'
     },
     'seedance-1.5': {
         category: '视频生成',
-        description: '字节跳动出品，超低成本（$1.56），适合短视频',
+        description: '超低成本，适合短视频',
         rank: 'Seedance 1.5'
     },
     'hailuo-02': {
         category: '视频生成',
-        description: '海螺视频，人物动态自然，生成价格合理',
+        description: '人物动态生成极度自然',
         rank: 'Hailuo 02'
     },
     'wan-2.6-video': {
         category: '视频生成',
-        description: '阿里万相视频版，电商模特展示效果好',
+        description: '适合电商模特细节展示',
         rank: 'Wan 2.6 Video'
     },
     'pixverse-v5.5': {
         category: '视频生成',
-        description: '专注于视频生成，社区活跃，风格多样',
+        description: '社区活跃，风格化多样',
         rank: 'PixVerse V5.5'
     },
     'vidu-q3': {
         category: '视频生成',
-        description: '国产视频强手，生成流畅，性价比适中',
+        description: '流畅度与性价比均衡推荐',
         rank: 'Vidu Q3'
+    },
+
+    // ===== GPT-Best DALL-E 格式绘图扩展 =====
+    'gpt-image-1': {
+        category: '图像生成',
+        description: '支持 Mask 局部重绘与高级修复',
+        rank: 'GPT Image 1'
+    },
+    'gpt-4o-image': {
+        category: '图像生成',
+        description: '原生图像生成强悍理解',
+        rank: 'GPT-4o Image'
+    },
+    'flux-kontext-pro': {
+        category: '图像生成',
+        description: '高画质参考图生成，风格迁移强',
+        rank: 'Flux Kontext Pro'
+    },
+    'flux-kontext-max': {
+        category: '图像生成',
+        description: '最高画质参考图生成，顶级风格迁移',
+        rank: 'Flux Kontext Max'
+    },
+    'doubao-seedream-4-0-250828': {
+        category: '图像生成',
+        description: '支持多参考图并行，高速生成',
+        rank: 'Doubao Seedream 4.0'
+    },
+    'doubao-seededit-3-0-i2i-250628': {
+        category: '图像生成',
+        description: '专精图生图编辑模式',
+        rank: 'Doubao SeedEdit 3.0'
+    },
+    'qwen-image-edit-2509': {
+        category: '图像生成',
+        description: '支持多图组合输入编辑',
+        rank: 'Qwen Image Edit 2509'
+    },
+    'dall-e-3': {
+        category: '图像生成',
+        description: '文字理解好，风格多样化',
+        rank: 'DALL-E 3'
+    },
+    'recraftv3': {
+        category: '图像生成',
+        description: '矢量图/图标/排版版式专家',
+        rank: 'Recraft V3'
+    },
+    'ideogram-3.0': {
+        category: '图像生成',
+        description: '排版与极难文字嵌入标杆',
+        rank: 'Ideogram 3.0'
+    },
+
+    // ===== GPT-Best 视频模型扩展 =====
+    'seedance-1.0': {
+        category: '视频生成',
+        description: '入门级低成本首选',
+        rank: 'Seedance 1.0'
+    },
+    'higgsfield': {
+        category: '视频生成',
+        description: '支持动作模板与高级预设',
+        rank: 'Higgsfield'
+    },
+    'minimax-video': {
+        category: '视频生成',
+        description: '支持文/单图/多频参考频生成',
+        rank: 'MiniMax Video'
+    },
+    'cogvideo': {
+        category: '视频生成',
+        description: '国产高质量序列模型',
+        rank: 'CogVideo'
+    },
+
+    // ===== GPT-Best 音频模型 =====
+    'suno-v4': {
+        category: '音频生成',
+        description: '支持片段续写、风格迁移等全场景',
+        rank: 'Suno V4'
+    },
+    'suno-v3.5': {
+        category: '音频生成',
+        description: '高性价比流派音乐生成',
+        rank: 'Suno V3.5'
+    },
+    'minimax-tts': {
+        category: '音频生成',
+        description: '多语种高质量人声配音',
+        rank: 'MiniMax TTS'
     }
 };
 
@@ -869,12 +1196,12 @@ export function getModelDescription(modelId: string): { category: string; descri
     if (MODEL_DESCRIPTIONS[modelId]) {
         return MODEL_DESCRIPTIONS[modelId];
     }
-    
+
     // 尝试匹配基础 ID（去掉 @ 后缀）
     const baseId = modelId.split('@')[0];
     if (MODEL_DESCRIPTIONS[baseId]) {
         return MODEL_DESCRIPTIONS[baseId];
     }
-    
+
     return undefined;
 }

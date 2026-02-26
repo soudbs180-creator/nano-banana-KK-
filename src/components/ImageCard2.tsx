@@ -1,15 +1,20 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { AspectRatio, GeneratedImage, GenerationMode } from '../types';
-import { Download, Trash2, Loader2, ImageOff, Play, Pause } from 'lucide-react';
+import { Download, Trash2, Loader2, ImageOff, Play, Pause, Music } from 'lucide-react';
 import { getCardDimensions } from '../utils/styleUtils';
 import { generateTagColor } from '../utils/colorUtils';
 import { useLazyImage } from '../hooks/useLazyImage';
-import { getImage } from '../services/imageStorage';
+import { getImage, getOriginalImage } from '../services/imageStorage';
 import { getModelBadgeInfo, getProviderBadgeColor } from '../utils/modelBadge';
 import { loadImage, cancelImageLoad } from '../services/imageLoader';
 import { ImageQuality } from '../services/imageQuality';
 import { getModelThemeColor, getModelDisplayName } from '../services/modelCapabilities';
+
+const truncateByChars = (text: string, maxChars: number): string => {
+    if (!text) return '';
+    return text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
+};
 
 interface ImageNodeProps {
     image: GeneratedImage;
@@ -53,8 +58,16 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const dragCleanupRef = useRef<(() => void) | null>(null); // 🚀 [Fix] Drag Cleanup Ref
+    const dragRafRef = useRef<number | null>(null);
+    const latestPointerRef = useRef<{ x: number; y: number } | null>(null);
 
     const [isDragging, setIsDragging] = useState(false);
+
+    const getDims = () => {
+        const { width, totalHeight } = getCardDimensions(image.aspectRatio, true);
+        return { w: width, h: totalHeight };
+    };
+    const { w: nodeWidth, h: nodeHeight } = getDims();
 
     // Local display position to avoid global re-renders during drag
     // Ref to track latest localPos without triggering effect re-runs
@@ -64,12 +77,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     useEffect(() => {
         if (!isDragging) {
             localPosRef.current = position;
-            // Force DOM update to match prop
+            // Force update DOM if needed
             if (containerRef.current) {
-                containerRef.current.style.transform = `translate3d(${position.x}px, ${position.y}px, 0) translate(-50%, -100%)`;
+                containerRef.current.style.left = `${Math.round(position.x - nodeWidth / 2)}px`;
+                containerRef.current.style.top = `${Math.round(position.y - nodeHeight)}px`;
+                containerRef.current.style.transform = 'none';
             }
         }
-    }, [position.x, position.y, isDragging]);
+    }, [position.x, position.y, isDragging, nodeWidth, nodeHeight]);
 
     const [showLightbox, setShowLightbox] = useState(false);
     const [lightboxZoom, setLightboxZoom] = useState(1);
@@ -101,6 +116,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const loadedRef = useRef(false); // 🚀 标记是否已从队列加载
     const [isLoading, setIsLoading] = useState(true); // 🚀 明确的加载状态
     const qualityDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 🚀 质量切换防抖
+    const [retryTick, setRetryTick] = useState(0); // 主动重试触发器
+
+    // 使用稳定存储键：优先 storageId，其次 image.id
+    const imageStorageKey = image.storageId || image.id;
 
     // Video Control
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -110,7 +129,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     useEffect(() => {
         // 🚀 如果不可见，取消加载并跳过
         if (!isVisible) {
-            cancelImageLoad(image.id);
+            cancelImageLoad(imageStorageKey);
             if (qualityDebounceRef.current) {
                 clearTimeout(qualityDebounceRef.current);
             }
@@ -160,7 +179,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                 // 🚀 使用队列加载，优先级基于缩放（越接近1.0优先级越高）
                 const priority = Math.round(100 - Math.abs(scale - 1) * 50);
-                const url = await loadImage(image.id, quality, priority);
+                const url = await loadImage(imageStorageKey, quality, priority);
 
                 // 🚀 关键：只有成功获取新图后才替换，防止闪烁
                 if (!isCancelled && url) {
@@ -186,6 +205,20 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         } catch (err) {
                             console.warn(`[ImageCard] Failed to recover from storageId:`, err);
                         }
+                    }
+
+                    // 策略1.5: 通过原图读取通道恢复（支持本地磁盘/OPFS回填到缓存）
+                    try {
+                        const recoveredOriginal = await getOriginalImage(imageStorageKey);
+                        if (recoveredOriginal) {
+                            console.log(`[ImageCard] ✅ Recovered from original channel: ${imageStorageKey}`);
+                            setDisplaySrc(sanitizeUrl(recoveredOriginal));
+                            loadedRef.current = true;
+                            setIsLoading(false);
+                            return;
+                        }
+                    } catch (err) {
+                        console.warn(`[ImageCard] Failed to recover from original channel:`, err);
                     }
 
                     // 策略2: 使用image自带的URL作为fallback
@@ -217,9 +250,24 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             if (qualityDebounceRef.current) {
                 clearTimeout(qualityDebounceRef.current);
             }
-            cancelImageLoad(image.id);
+            cancelImageLoad(imageStorageKey);
         };
-    }, [zoomScale, image.id, isVisible]); // 移除displaySrc依赖
+    }, [zoomScale, image.id, image.storageId, isVisible, retryTick]); // 移除displaySrc依赖
+
+    const handleRetryLoad = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        cancelImageLoad(imageStorageKey);
+        if (qualityDebounceRef.current) {
+            clearTimeout(qualityDebounceRef.current);
+            qualityDebounceRef.current = null;
+        }
+        qualityLoadingRef.current = false;
+        loadedRef.current = false;
+        setImgError(false);
+        setIsLoading(true);
+        setDisplaySrc(undefined);
+        setRetryTick(prev => prev + 1);
+    }, [imageStorageKey]);
 
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -267,7 +315,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             // 生成文件名
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const sanitizedPrompt = (image.prompt || 'image').slice(0, 30).replace(/[<>;\"/\\\\|?*]/g, '');
-            const filename = `${sanitizedPrompt}_${timestamp}.png`;
+            const isVideoMode = image.mode === GenerationMode.VIDEO || (image.url && image.url.includes('.mp4'));
+            const isAudioMode = image.mode === GenerationMode.AUDIO || (image.url && (image.url.includes('.mp3') || image.url.includes('.wav')));
+            const extension = isAudioMode ? 'mp3' : (isVideoMode ? 'mp4' : 'png');
+            const filename = `${sanitizedPrompt}_${timestamp}.${extension}`;
 
             // 执行下载
             triggerDownload(blob, filename);
@@ -275,6 +326,15 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             notify.success('下载成功', `已保存到下载文件夹: ${filename}`);
         } catch (err: any) {
             console.error('Download failed:', err);
+
+            // CORS Fallback for Remote Video URLs
+            const fallbackUrl = displaySrc || image.url;
+            if (fallbackUrl && fallbackUrl.startsWith('http') && err.message === 'Failed to fetch') {
+                console.warn('[ImageCard2] CORS blocked download, opening in new tab instead.');
+                window.open(fallbackUrl, '_blank');
+                return;
+            }
+
             const { notify } = await import('../services/notificationService');
             notify.error(
                 '下载失败',
@@ -286,6 +346,16 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
     // 🚀 [恢复] 拖拽逻辑所需的引用和处理函数
     const wasDraggingRef = useRef(false);
+    const lastMousePos = useRef<{ x: number; y: number } | null>(null); // To track previous mouse position for delta
+
+    useEffect(() => {
+        return () => {
+            if (dragRafRef.current !== null) {
+                cancelAnimationFrame(dragRafRef.current);
+                dragRafRef.current = null;
+            }
+        };
+    }, []);
 
     const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
         // Handle Right Click (2) - Select Only
@@ -325,14 +395,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }
 
         dragStartPos.current = { x: clientX, y: clientY };
-        // Store current position as base
+        // Store current position as fixed base for this drag (avoid cumulative drift)
+        dragStartCanvasPos.current = { x: position.x, y: position.y };
         localPosRef.current = position;
-
-        // 🚀 Shared state for partial delta
-        const lastMousePos = { x: clientX, y: clientY };
-
-        // 🚀 记录拖拽开始时是否只应该移动当前卡片
-        const shouldMoveOnlyThisCard = !isSelected || (window as any).__dragSelectStart;
+        lastMousePos.current = { x: clientX, y: clientY }; // Initialize lastMousePos
 
         // 绑定全局事件
         const handleMouseMove = (mvEvent: MouseEvent | TouchEvent) => {
@@ -340,42 +406,58 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             const mvClientX = 'touches' in mvEvent ? mvEvent.touches[0].clientX : (mvEvent as MouseEvent).clientX;
             const mvClientY = 'touches' in mvEvent ? mvEvent.touches[0].clientY : (mvEvent as MouseEvent).clientY;
 
-            const dx = mvClientX - dragStartPos.current.x;
-            const dy = mvClientY - dragStartPos.current.y;
+            latestPointerRef.current = { x: mvClientX, y: mvClientY };
+            if (dragRafRef.current !== null) return;
 
-            // 只有移动超过一定距离才视为拖拽
-            if (dx * dx + dy * dy > 25) {
-                wasDraggingRef.current = true;
-            }
+            dragRafRef.current = requestAnimationFrame(() => {
+                const pointer = latestPointerRef.current;
+                if (!pointer) {
+                    dragRafRef.current = null;
+                    return;
+                }
 
-            // 1. Visual Update (Absolute from start) - Smooth local feedback
-            // Force DOM update to match prop
-            if (containerRef.current) {
+                const dx = pointer.x - dragStartPos.current.x;
+                const dy = pointer.y - dragStartPos.current.y;
+
+                // 只有移动超过一定距离才视为拖拽
+                if (dx * dx + dy * dy > 25) {
+                    wasDraggingRef.current = true;
+                }
+
                 const scale = zoomScale || 1;
-                const visualX = Math.round(localPosRef.current.x + dx / scale);
-                const visualY = Math.round(localPosRef.current.y + dy / scale);
-                containerRef.current.style.transform = `translate3d(${visualX}px, ${visualY}px, 0) translate(-50%, -100%)`;
-            }
+                const rawPos = {
+                    x: dragStartCanvasPos.current.x + dx / scale,
+                    y: dragStartCanvasPos.current.y + dy / scale
+                };
 
-            // 2. Logic Update
-            const scale = zoomScale || 1;
-            const stepX = (mvClientX - lastMousePos.x) / scale;
-            const stepY = (mvClientY - lastMousePos.y) / scale;
+                // Snap world coords to screen pixel grid (reduces text baseline flutter under zoom)
+                const newPos = {
+                    x: Math.round(rawPos.x * scale) / scale,
+                    y: Math.round(rawPos.y * scale) / scale
+                };
+                const prevPos = localPosRef.current;
 
-            lastMousePos.x = mvClientX;
-            lastMousePos.y = mvClientY;
+                // 2. Direct DOM Update (Visuals)
+                if (containerRef.current) {
+                    containerRef.current.style.left = `${Math.round(newPos.x - nodeWidth / 2)}px`;
+                    containerRef.current.style.top = `${Math.round(newPos.y - nodeHeight)}px`;
+                    containerRef.current.style.transform = 'none';
+                }
 
-            // 🚀 [Fix] 如果只应该移动当前卡片（未选中或多选模式），使用 onPositionChange
-            // 否则使用 onDragDelta（会移动所有选中卡片）
-            if (shouldMoveOnlyThisCard && onPositionChange) {
-                // 只移动当前卡片
-                const newX = localPosRef.current.x + dx / scale;
-                const newY = localPosRef.current.y + dy / scale;
-                onPositionChange(image.id, { x: newX, y: newY });
-            } else if (onDragDelta) {
-                // 移动所有选中卡片
-                onDragDelta({ x: stepX, y: stepY });
-            }
+                localPosRef.current = newPos;
+
+                // 3. Global Update (Logic)
+                if (onDragDelta && lastMousePos.current) {
+                    const stepX = newPos.x - prevPos.x;
+                    const stepY = newPos.y - prevPos.y;
+                    onDragDelta({ x: stepX, y: stepY });
+                } else if (onPositionChange) {
+                    // Fallback 只移动当前卡片
+                    onPositionChange(image.id, newPos);
+                }
+                lastMousePos.current = { x: pointer.x, y: pointer.y };
+                dragRafRef.current = null;
+            });
         };
 
         const handleMouseUp = () => {
@@ -385,6 +467,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             window.removeEventListener('touchmove', handleMouseMove);
             window.removeEventListener('touchend', handleMouseUp);
             dragCleanupRef.current = null;
+            latestPointerRef.current = null;
+            if (dragRafRef.current !== null) {
+                cancelAnimationFrame(dragRafRef.current);
+                dragRafRef.current = null;
+            }
 
             // Final Commit - Only if NOT using delta (Delta commits incrementally)
             if (!onDragDelta) {
@@ -405,7 +492,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         window.addEventListener('touchmove', handleMouseMove, { passive: false });
         window.addEventListener('touchend', handleMouseUp);
 
-    }, [image.id, position, zoomScale, onPositionChange]);
+    }, [
+        image.id,
+        position,
+        zoomScale,
+        onPositionChange,
+        onDragDelta,
+        onSelect,
+        isSelected,
+        nodeWidth,
+        nodeHeight
+    ]);
 
     // 🚀 [New] Alias Editing Logic
     const [isEditingAlias, setIsEditingAlias] = useState(false);
@@ -434,13 +531,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }
     };
 
-    const getDims = () => {
-        // Use shared utility for consistent sizing
-        // Pass 'true' to include footer height
-        const { width, totalHeight } = getCardDimensions(image.aspectRatio, true);
-        return { w: width, h: totalHeight };
-    };
-    const { w: nodeWidth, h: nodeHeight } = getDims();
+    const borderScale = zoomScale || 1;
+    const adaptiveBorderWidth = Math.max(1, 1.5 / borderScale);
+    const adaptiveSubBorderWidth = Math.max(1, 1.2 / borderScale);
+    const renderPos = isDragging ? localPosRef.current : position;
 
     return (
         // ... (Wrapper Divs) ...
@@ -450,14 +544,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 className={`absolute flex flex-col items-center group animate-cardPopIn select-none ${isActive ? 'z-15' : 'z-5'}`}
                 // ... (Style) ...
                 style={{
-                    left: 0,
-                    top: 0,
+                    left: Math.round(renderPos.x - nodeWidth / 2),
+                    top: Math.round(renderPos.y - nodeHeight),
                     width: nodeWidth,
-                    transform: `translate3d(${position.x}px, ${position.y}px, 0) translate(-50%, -100%)`, // Anchor Bottom
+                    transform: 'none',
                     cursor: isDragging ? 'grabbing' : 'grab',
                     transition: isDragging ? 'none' : 'box-shadow 0.2s ease',
-                    willChange: isDragging || isSelected ? 'transform' : 'auto',
-                    backfaceVisibility: 'hidden'
+                    // Ensure subpixel text antialiasing is NOT destroyed entirely 
+                    willChange: 'auto',
                 }}
                 onMouseDown={handleMouseDown}
                 onTouchStart={handleMouseDown}
@@ -470,11 +564,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     className={`
                         relative w-full overflow-hidden
                         border shadow-xl
-                        ${isDragging ? '' : 'transition-all'}
-                        ${isSelected ?
-                            'animate-glow-pulse' :
-                            'hover:shadow-2xl'
-                        }
+                        ${isDragging ? '' : 'transition-shadow'}
+                        ${isSelected ? 'shadow-2xl' : 'hover:shadow-2xl'}
                         ${highlighted ? 'scale-[1.02] z-50' : ''}
                     `}
                     style={{
@@ -487,13 +578,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                     'var(--accent-gold)' :
                                     'var(--border-default)',
                         borderRadius: 'var(--radius-lg)', // 12px
+                        borderWidth: adaptiveBorderWidth,
                         boxShadow: isSelected ?
                             'var(--glow-blue)' :
                             highlighted ?
                                 'var(--glow-gold)' :
                                 'var(--shadow-xl)',
                         transitionDuration: isDragging ? '0ms' : 'var(--duration-normal)',
-                        transitionProperty: 'box-shadow, border-color, transform'
+                        transitionProperty: 'box-shadow, border-color'
                     }}
                 >
                     {/* Connection Point */}
@@ -511,7 +603,26 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     >
 
                         {!imgError && displaySrc ? (
-                            (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
+                            (image.mode === GenerationMode.AUDIO || displaySrc.endsWith('.mp3') || displaySrc.endsWith('.wav')) ? (
+                                <div className="relative w-full h-full group/audio bg-gradient-to-br from-indigo-900/90 to-purple-900/90 flex flex-col items-center justify-center overflow-hidden">
+                                    <Music size={48} className="text-indigo-300/30 mb-4 z-10 pointer-events-none" />
+                                    <audio
+                                        src={displaySrc}
+                                        controls
+                                        controlsList="nodownload"
+                                        className="relative z-10 w-11/12 h-10 opacity-80 hover:opacity-100 transition-opacity"
+                                        onError={() => {
+                                            console.warn('[ImageCard] Audio load error for', image.id);
+                                            setImgError(true);
+                                        }}
+                                        onPlay={(e) => { e.stopPropagation(); setIsPlaying(true); }}
+                                        onPause={(e) => { e.stopPropagation(); setIsPlaying(false); }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onDoubleClick={(e) => e.stopPropagation()}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    />
+                                </div>
+                            ) : (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
                                 <div className="relative w-full h-full group/video">
                                     <video
                                         ref={videoRef}
@@ -637,17 +748,19 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                 : '图片加载失败'}
                                         </span>
                                         <span className="text-[9px] opacity-60">
-                                            {(image.mode === GenerationMode.VIDEO ||
-                                                image.url?.includes('.mp4') ||
-                                                image.url?.startsWith('data:video') ||
-                                                displaySrc?.includes('.mp4') ||
-                                                displaySrc?.startsWith('data:video'))
-                                                ? '(Video Load Error)'
-                                                : '(Image Load Error)'}
+                                            {(image.mode === GenerationMode.AUDIO || displaySrc?.includes('.mp3'))
+                                                ? '(Audio Load Error)'
+                                                : (image.mode === GenerationMode.VIDEO ||
+                                                    image.url?.includes('.mp4') ||
+                                                    image.url?.startsWith('data:video') ||
+                                                    displaySrc?.includes('.mp4') ||
+                                                    displaySrc?.startsWith('data:video'))
+                                                    ? '(Video Load Error)'
+                                                    : '(Image Load Error)'}
                                         </span>
                                         {/* Retry Button */}
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); cancelImageLoad(image.id); setIsLoading(true); qualityDebounceRef.current = null; /* Trigger effect re-run via state/ref reset if needed, simplified here to just reload UI state */ }}
+                                            onClick={handleRetryLoad}
                                             className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 underline"
                                         >
                                             点击重试
@@ -683,6 +796,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                             style={{
                                 backgroundColor: 'var(--bg-elevated)',
                                 borderTopColor: 'var(--border-medium)',
+                                borderTopWidth: adaptiveSubBorderWidth,
                                 minHeight: image.orphaned ? '32px' : (image.isGenerating ? '32px' : 'auto')
                             }}
                             onClick={(e) => {
@@ -738,18 +852,26 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                             {/* 状态2: 生成过程中 - 只有一层，居中显示 */}
                             {!image.orphaned && image.isGenerating && (
-                                <div className="flex items-center justify-center h-5 gap-2">
-                                    <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
-                                        <span className={`text-2xs font-medium whitespace-nowrap ${(() => {
+                                <div className="flex items-center justify-center h-5 gap-2 flex-nowrap">
+                                    <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)] min-w-0 max-w-[170px]">
+                                        <span className={`text-2xs leading-none font-medium whitespace-nowrap truncate ${(() => {
                                             const modelId = image.model || '';
                                             return getModelThemeColor(modelId);
-                                        })()}`}>
-                                            {image.modelLabel || 'AI'}
+                                        })()}`} title={image.modelLabel || image.model || 'AI'}>
+                                            {truncateByChars(image.modelLabel || image.model || 'AI', 15)}
                                         </span>
+                                        {(image.providerLabel || image.provider) && (
+                                            <span
+                                                className={`text-[9px] leading-none px-1 py-0.5 rounded whitespace-nowrap border shrink-0 ${getProviderBadgeColor(image.providerLabel || image.provider)}`}
+                                                title={image.providerLabel || image.provider}
+                                            >
+                                                {truncateByChars(image.providerLabel || image.provider || '', 5)}
+                                            </span>
+                                        )}
                                     </div>
                                     {/* 参数也加框 */}
                                     <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
-                                        <span className="text-2xs text-[var(--text-secondary)] whitespace-nowrap">
+                                        <span className="text-2xs leading-none text-[var(--text-secondary)] whitespace-nowrap">
                                             {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || (image.imageSize as any) === 'Video') ? '720p' : (image.imageSize || '1K')}
                                         </span>
                                     </div>
@@ -763,25 +885,34 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                     <div className="flex items-center justify-between h-5 gap-2 w-full">
                                         <div className="flex flex-1 items-center gap-1.5 min-w-0">
                                             {/* Model Name + Provider Badge inside ONE box */}
-                                            <div className="flex items-center flex-1 min-w-0 px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)] gap-1.5 overflow-hidden">
+                                            <div className="inline-flex items-center w-fit min-w-0 max-w-[240px] shrink px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)] gap-1.5 overflow-hidden">
                                                 {(() => {
-                                                    const badge = getModelBadgeInfo({ id: image.id, label: (image.model ?? image.id), provider: image.provider });
+                                                    const modelIdForBadge = image.model || image.id;
+                                                    const modelTextForBadge = image.modelLabel || image.model || image.id;
+                                                    const badge = getModelBadgeInfo({
+                                                        id: modelIdForBadge,
+                                                        label: modelTextForBadge,
+                                                        provider: image.providerLabel || image.provider
+                                                    });
                                                     return (
-                                                        <span className={`text-2xs font-medium whitespace-nowrap truncate min-w-0 flex-1 ${badge.colorClass}`} title={badge.text}>
-                                                            {badge.text}
+                                                        <span className={`text-2xs leading-none font-medium whitespace-nowrap truncate min-w-0 max-w-[160px] ${badge.colorClass}`} title={badge.text}>
+                                                            {truncateByChars(badge.text, 15)}
                                                         </span>
                                                     );
                                                 })()}
-                                                {image.provider && (
-                                                    <span className={`text-[9px] leading-none px-1 py-0.5 rounded whitespace-nowrap border shrink-0 ${getProviderBadgeColor(image.provider)}`}>
-                                                        {image.provider}
+                                                {(image.providerLabel || image.provider) && (
+                                                    <span
+                                                        className={`text-[9px] leading-none px-1 py-0.5 rounded whitespace-nowrap border shrink-0 ${getProviderBadgeColor(image.providerLabel || image.provider)}`}
+                                                        title={image.provider || image.providerLabel}
+                                                    >
+                                                        {truncateByChars(image.providerLabel || image.provider || '', 5)}
                                                     </span>
                                                 )}
                                             </div>
 
                                             {/* Aspect Ratio / Size */}
                                             <div className="flex flex-shrink-0 items-center px-1.5 h-5 rounded-md border bg-[var(--bg-tertiary)] border-[var(--border-light)]">
-                                                <span className="text-2xs text-[var(--text-secondary)] whitespace-nowrap shrink-0">
+                                                <span className="text-2xs leading-none text-[var(--text-secondary)] whitespace-nowrap shrink-0">
                                                     {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || (image.imageSize as any) === 'Video') ? '720p' : (image.imageSize || '1K')}
                                                 </span>
                                             </div>
@@ -801,7 +932,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                     <div className="w-full h-px bg-[var(--text-primary)]/5 my-0.5"></div>
 
                                     {/* 第二层：居中显示耗时、令牌、费用 - 使用缩小字号 */}
-                                    <div className="flex items-center justify-center gap-2 h-5 text-2xs text-[var(--text-secondary)]">
+                                    <div className="flex items-center justify-center gap-2 h-5 text-2xs leading-none text-[var(--text-secondary)]">
                                         {image.generationTime ? (
                                             <span title="耗时" className="text-blue-400">耗时 {(image.generationTime / 1000).toFixed(1)}s</span>
                                         ) : (
@@ -852,7 +983,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         </>
     );
 }, (prev, next) => {
-    // Custom Comparison for Performance
+    // 🚀 [Fix] Only compare state/data props to avoid rendering on inline function identity changes
     return (
         prev.image === next.image &&
         prev.position.x === next.position.x &&
@@ -861,12 +992,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         prev.zoomScale === next.zoomScale &&
         prev.isSelected === next.isSelected &&
         prev.highlighted === next.highlighted &&
-        prev.isVisible === next.isVisible &&
-        prev.onDimensionsUpdate === next.onDimensionsUpdate &&
-        prev.onClick === next.onClick &&
-        prev.onDelete === next.onDelete &&
-        prev.onUpdate === next.onUpdate && // 🚀
-        prev.onPositionChange === next.onPositionChange
+        prev.isVisible === next.isVisible
     );
 });
 

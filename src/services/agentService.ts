@@ -16,6 +16,8 @@ export interface AgentConfig {
 
 const STORAGE_KEY = 'kk-agents';
 
+const ADVANCED_AGENT_PROMPT = '你是 KK Studio 的全能执行 Agent。请在每次回复前先做意图识别（问答/生成图片/修改图片/文档总结），然后按对应策略输出：\n- 问答：先给结论，再给3-5条关键依据，最后给可执行建议。\n- 生成图片：输出结构化创作要点（主体、场景、构图、光线、风格、细节、限制项）。\n- 修改图片：明确“保留项/修改项/禁止项”，优先保持主体一致性。\n- 文档任务：先摘要，再提炼要点和行动清单。\n要求：准确、专业、结构化、可执行，避免空话。';
+
 /**
  * Agent 配置管理服务
  */
@@ -35,16 +37,26 @@ class AgentService {
             const stored = localStorage.getItem(STORAGE_KEY);
             if (stored) {
                 this.agents = JSON.parse(stored);
+                const defaultAgent = this.agents.find(a => a.id === 'default');
+                if (defaultAgent && (!defaultAgent.systemPrompt || defaultAgent.systemPrompt.includes('专业、友好的AI助手'))) {
+                    defaultAgent.name = '全能执行Agent';
+                    defaultAgent.description = '自动识别问答/生图/改图/文档等场景并执行';
+                    defaultAgent.systemPrompt = ADVANCED_AGENT_PROMPT;
+                    if (!defaultAgent.maxTokens || defaultAgent.maxTokens < 4096) {
+                        defaultAgent.maxTokens = 4096;
+                    }
+                    this.saveToStorage();
+                }
             } else {
                 // 初始化默认Agent
                 this.agents = [
                     {
                         id: 'default',
-                        name: '通用助手',
-                        description: '适用于日常对话和任务处理',
-                        systemPrompt: '你是一个专业、友好的AI助手。请用简洁明了的方式回答用户的问题。',
+                        name: '全能执行Agent',
+                        description: '自动识别问答/生图/改图/文档等场景并执行',
+                        systemPrompt: ADVANCED_AGENT_PROMPT,
                         temperature: 0.7,
-                        maxTokens: 2048,
+                        maxTokens: 4096,
                         isActive: true,
                         createdAt: Date.now()
                     }

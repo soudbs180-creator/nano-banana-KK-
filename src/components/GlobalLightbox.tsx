@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { GeneratedImage, GenerationMode } from '../types';
-import { Download, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Download, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, RotateCcw, Pen } from 'lucide-react';
+import { InpaintModal } from './InpaintModal';
 
 interface GlobalLightboxProps {
     images: GeneratedImage[];
     initialIndex: number;
     onClose: () => void;
+    onInpaint?: (image: GeneratedImage, maskBase64: string, prompt?: string) => void;
+    /** 在 InpaintModal 内部调用 API 获取重绘结果（不关闭弹窗） */
+    onInpaintGenerate?: (imageUrl: string, maskBase64: string, prompt: string) => Promise<string>;
 }
 
 /**
@@ -16,11 +20,12 @@ interface GlobalLightboxProps {
  * @param initialIndex 初始显示的图片索引
  * @param onClose 关闭事件回调
  */
-export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialIndex, onClose }) => {
+export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialIndex, onClose, onInpaint, onInpaintGenerate }) => {
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [isPanning, setIsPanning] = useState(false);
+    const [showInpaint, setShowInpaint] = useState(false);
 
     // 图片加载状态
     const [displaySrc, setDisplaySrc] = useState<string | null>(null);
@@ -44,25 +49,33 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     // 1. 加载高清图逻辑
     useEffect(() => {
         let active = true;
-        setIsLoading(true);
-        setIsLoading(true);
         setHasError(false);
-        setDisplaySrc(null);
         // 🚀 Reset zoom on image switch to show full frame
         setZoom(1);
         setPan({ x: 0, y: 0 });
 
-        const loadContent = async () => {
-            const sanitizeUrl = (url: string | null) => {
-                if (url && url.startsWith('data:')) {
-                    const parts = url.split(',');
-                    if (parts.length === 2) {
-                        return `${parts[0]},${parts[1].replace(/[\r\n\s]+/g, '')}`;
-                    }
+        const sanitizeUrl = (url: string | null) => {
+            if (url && url.startsWith('data:')) {
+                const parts = url.split(',');
+                if (parts.length === 2) {
+                    return `${parts[0]},${parts[1].replace(/[\r\n\s]+/g, '')}`;
                 }
-                return url;
-            };
+            }
+            return url;
+        };
 
+        // 🚀 [Fix] 立即显示传入的已知可用 URL，消除"加载中"黑屏感
+        // The image object has `url` (often the blob URL or base64 rendered on canvas)
+        const initialSrc = image.originalUrl || image.url || null;
+        if (initialSrc) {
+            setDisplaySrc(sanitizeUrl(initialSrc));
+            setIsLoading(false); // 已经有图了，不显示 loading
+        } else {
+            setDisplaySrc(null);
+            setIsLoading(true); // 完全没图才显示 loading
+        }
+
+        const loadContent = async () => {
             try {
                 // 🔒 强制加载原图（新的保护机制）
                 const { getOriginalImage } = await import('../services/imageStorage');
@@ -72,15 +85,13 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 if (!active) return;
 
                 if (original) {
-                    setDisplaySrc(sanitizeUrl(original));
-                    // Check size
-                    if (original.startsWith('blob:')) {
-                        fetch(original).then(r => r.blob()).then(b =>
-                            console.log(`[Lightbox] 🔒 ✅ Loaded Blob: ${(b.size / 1024 / 1024).toFixed(2)} MB`)
-                        );
-                    } else {
-                        console.log(`[Lightbox] 🔒 ✅ Loaded Base64: ${(original.length / 1024 / 1024).toFixed(2)} MB`);
+                    const cleanOriginal = sanitizeUrl(original);
+                    // 只有当加载到的原图和当前显示的不同，才静默替换（避免 flicker）
+                    if (cleanOriginal !== sanitizeUrl(initialSrc)) {
+                        setDisplaySrc(cleanOriginal);
+                        console.log(`[Lightbox] 🔒 ✅ Upgraded to High-Res Original`);
                     }
+                    setIsLoading(false);
                 } else {
                     // 🔒 Fallback 策略：尝试使用storageId
                     console.warn('[Lightbox] 🔒 ⚠️ Original not found, trying fallback strategies...');
@@ -88,31 +99,27 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     // 策略1: 尝试从storageId加载
                     if (image.storageId && image.storageId !== image.id) {
                         const fromStorage = await getOriginalImage(image.storageId);
-                        if (fromStorage) {
-                            setDisplaySrc(sanitizeUrl(fromStorage));
-                            console.log('[Lightbox] 🔒 ✅ Recovered from storageId');
+                        if (fromStorage && active) {
+                            const cleanFromStorage = sanitizeUrl(fromStorage);
+                            if (cleanFromStorage !== sanitizeUrl(initialSrc)) {
+                                setDisplaySrc(cleanFromStorage);
+                                console.log('[Lightbox] 🔒 ✅ Recovered from storageId');
+                            }
+                            setIsLoading(false);
                             return;
                         }
                     }
 
-                    // 策略2: 使用originalUrl
-                    if (image.originalUrl) {
-                        setDisplaySrc(sanitizeUrl(image.originalUrl));
-                        console.log('[Lightbox] 🔒 ⚠️ Fallback to originalUrl');
-                    } else if (image.url) {
-                        setDisplaySrc(sanitizeUrl(image.url));
-                        console.log('[Lightbox] 🔒 ⚠️ Fallback to url (may not be original)');
-                    }
+                    // 策略2: 如果还是没有，已经 fallback 到 initialSrc 了，不用再设置
+                    if (active) setIsLoading(false);
                 }
             } catch (e) {
                 console.error("[Lightbox] 🔒 ❌ Load error:", e);
                 if (active) {
-                    // 最终兜底
-                    const fallback = image.originalUrl || image.url;
-                    setDisplaySrc(sanitizeUrl(fallback || null));
+                    // 最终兜底，维持 initialSrc
+                    if (!initialSrc) setDisplaySrc(sanitizeUrl(image.url || null));
+                    setIsLoading(false);
                 }
-            } finally {
-                if (active) setIsLoading(false);
             }
         };
 
@@ -241,6 +248,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     if (!image) return null;
 
     const isVideo = image.mode === GenerationMode.VIDEO || displaySrc?.startsWith('data:video') || displaySrc?.endsWith('.mp4');
+    const isAudio = image.mode === GenerationMode.AUDIO || displaySrc?.endsWith('.mp3') || displaySrc?.endsWith('.wav');
 
     return ReactDOM.createPortal(
         <div
@@ -290,6 +298,22 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             >
                 {isLoading ? (
                     <div className="text-white">加载中...</div>
+                ) : isAudio ? (
+                    <div className="flex flex-col items-center justify-center gap-6">
+                        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-pink-400/60">
+                            <path d="M9 18V5l12-2v13" />
+                            <circle cx="6" cy="18" r="3" />
+                            <circle cx="18" cy="16" r="3" />
+                        </svg>
+                        <audio
+                            src={displaySrc!}
+                            controls
+                            autoPlay
+                            className="w-80"
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                        />
+                    </div>
                 ) : isVideo ? (
                     <div
                         className="max-w-full max-h-full flex items-center justify-center"
@@ -380,7 +404,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                     {/* 控制栏 */}
                     <div className="flex items-center bg-[var(--bg-tertiary)] rounded-lg p-1">
                         <button onClick={() => setZoom(z => Math.max(0.25, z - 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="缩小"><ZoomOut size={16} /></button>
@@ -388,6 +412,21 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                         <button onClick={() => setZoom(z => Math.min(5, z + 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="放大"><ZoomIn size={16} /></button>
                         <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} className="p-2 hover:bg-[var(--bg-secondary)] rounded ml-1 border-l border-[var(--border-light)]" title="重置"><RotateCcw size={16} /></button>
                     </div>
+
+                    {/* 局部重绘按钮 - 仅对图片显示 */}
+                    {onInpaint && !isVideo && !isAudio && displaySrc && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowInpaint(true);
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-purple-600/80 border border-[var(--border-medium)] hover:border-purple-500 rounded-lg text-sm font-medium transition-all"
+                            title="局部重绘"
+                        >
+                            <Pen size={16} />
+                            重绘
+                        </button>
+                    )}
 
                     <button
                         onClick={handleDownload}
@@ -399,6 +438,22 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     </button>
                 </div>
             </div>
+
+            {/* InpaintModal - 局部重绘弹窗 */}
+            {showInpaint && displaySrc && (
+                <InpaintModal
+                    imageUrl={displaySrc}
+                    onCancel={() => setShowInpaint(false)}
+                    onGenerate={onInpaintGenerate}
+                    onSave={(maskBase64, prompt) => {
+                        setShowInpaint(false);
+                        if (onInpaint) {
+                            onInpaint(image, maskBase64, prompt);
+                        }
+                        onClose();
+                    }}
+                />
+            )}
         </div>,
         document.body
     );

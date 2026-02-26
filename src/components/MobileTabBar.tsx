@@ -1,4 +1,4 @@
-import { Home, Image as ImageIcon, Settings, Video, User, Sparkles } from 'lucide-react';
+import { Home, Image as ImageIcon, Settings, Video, User, Sparkles, Music } from 'lucide-react';
 import { GenerationMode } from '../types';
 
 interface MobileTabBarProps {
@@ -70,6 +70,15 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
                     style={{ color: currentMode === GenerationMode.VIDEO && currentView !== 'settings' && currentView !== 'profile' && currentView !== 'chat' ? 'white' : 'var(--text-tertiary)' }}
                 >
                     <Video size={22} strokeWidth={2} />
+                </button>
+
+                {/* Tab: Audio Mode */}
+                <button
+                    onClick={() => onSetMode(GenerationMode.AUDIO)}
+                    className="flex flex-col items-center justify-center p-2 rounded-full transition-all active:scale-95"
+                    style={{ color: currentMode === GenerationMode.AUDIO && currentView !== 'settings' && currentView !== 'profile' && currentView !== 'chat' ? 'white' : 'var(--text-tertiary)' }}
+                >
+                    <Music size={22} strokeWidth={2} />
                 </button>
 
                 {/* Tab: Profile */}

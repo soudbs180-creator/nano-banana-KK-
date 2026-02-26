@@ -61,6 +61,9 @@ export const KnownModel = {
 export enum GenerationMode {
   IMAGE = 'image',
   VIDEO = 'video',
+  AUDIO = 'audio',  // 🚀 Audio Generation Mode
+  EDIT = 'edit',    // 🚀 General Edit Mode (Recraft style transfer, Ideogram text editing)
+  INPAINT = 'inpaint' // 🚀 Specific Mask-based Inpaint Mode
 }
 
 // ============================================
@@ -121,11 +124,17 @@ export interface GeneratedImage {
 export interface PromptNode {
   id: string;
   prompt: string;
+  originalPrompt?: string;
+  optimizedPromptEn?: string;
+  optimizedPromptZh?: string;
+  promptOptimizationEnabled?: boolean;
   position: { x: number; y: number };
   aspectRatio: AspectRatio;
   imageSize: ImageSize;
   model: ModelType;
   modelLabel?: string; // 🚀 模型显示名称（用户选择时看到的名字）
+  provider?: string; // 🚀 生成通道 provider（内部标识）
+  providerLabel?: string; // 🚀 生成通道显示名称（例如“反代”）
   childImageIds: string[];
   referenceImages?: ReferenceImage[];
   timestamp: number;
@@ -140,6 +149,20 @@ export interface PromptNode {
   isDraft?: boolean; // Preview/Draft state
   orphaned?: boolean; // 孤独主卡（拖动pending卡转换而来）
   userMoved?: boolean; // 🚀 [New] 是否被用户手动移动过（用于智能归位逻辑）
+
+  // Video specific
+  videoResolution?: string;
+  videoDuration?: string;
+  videoFirstFrameUrl?: string; // Optional image to use as start frame
+  videoLastFrameUrl?: string;  // Optional image to use as end frame
+  videoAudio?: boolean; // Whether to generate audio for the video
+
+  // Audio specific
+  audioDuration?: string; // e.g. '120s' or 'auto'
+  audioLyrics?: string;     // custom lyrics for music generation
+
+  // 🚀 Image Editing specific properties
+  maskUrl?: string;
 }
 
 export interface CanvasGroup {
@@ -184,6 +207,7 @@ export const VIDEO_RESOLUTION_DURATION_MAP = {
 
 export interface GenerationConfig {
   prompt: string;
+  enablePromptOptimization?: boolean;
   aspectRatio: AspectRatio;
   imageSize: ImageSize;
   referenceImages: ReferenceImage[];
@@ -195,4 +219,10 @@ export interface GenerationConfig {
   videoResolution?: string; // '720p' | '1080p' | '4k'
   videoDuration?: string;   // 根据分辨率动态支持：720p支持4s/6s/8s，1080p和4k仅支持8s
   videoAudio?: boolean;     //生成音频
+  // 图像编辑扩展
+  maskUrl?: string;         // Base64 蒙版图片 (Inpaint)
+  editMode?: 'inpaint' | 'outpaint' | 'vectorize' | 'reframe' | 'upscale' | 'replace-background' | 'edit';
+  // 音频扩展
+  audioDuration?: string;
+  audioLyrics?: string;
 }

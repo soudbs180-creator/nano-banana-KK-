@@ -372,7 +372,7 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
 
                 {/* Version Badge */}
                 <div className="glass px-3 py-2 rounded-xl">
-                    <span className="text-xs text-zinc-500 font-semibold">v1.3.1</span>
+                    <span className="text-xs text-zinc-500 font-semibold">v1.3.2</span>
                 </div>
             </div>
         </div>

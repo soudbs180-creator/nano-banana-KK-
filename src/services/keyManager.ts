@@ -12,7 +12,17 @@ import { MODEL_PRESETS, CHAT_MODEL_PRESETS } from './modelPresets';
 /**
  * Helper: Parse "id(name, description)" format
  */
-export function parseModelString(input: string): { id: string; name?: string; description?: string } {
+export function parseModelString(input: string): { id: string; name?: string; description?: string; provider?: string } {
+    // Detect custom delimiter format: "id|name|provider"
+    if (input.includes('|')) {
+        const parts = input.split('|');
+        return {
+            id: parts[0].trim(),
+            name: parts[1]?.trim() || undefined,
+            provider: parts[2]?.trim() || undefined
+        };
+    }
+
     // Normalize full-width parentheses to standard ones
     const normalized = input.replace(/（/g, '(').replace(/）/g, ')');
     const match = normalized.match(/^([^()]+)(?:\(([^/]+)(?:\/\s*(.+))?\))?$/);
@@ -69,6 +79,8 @@ export type Provider =
     | 'Tencent'    // 腾讯云
     | 'SiliconFlow'// 硅基流动
     | 'Custom';    // 自定义
+
+const RATE_LIMIT_COOLDOWN_MS = 30 * 1000;
 
 export interface KeySlot {
     id: string;
@@ -212,6 +224,14 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
         format: 'openai',
         icon: '🌐'
     },
+    't8star': {
+        name: 'T8Star',
+        baseUrl: 'https://ai.t8star.cn',
+        // Conservative defaults; users can auto-detect or customize in UI
+        models: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
+        format: 'openai',
+        icon: '⭐'
+    },
     'volcengine': {
         name: '火山引擎',
         baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
@@ -243,14 +263,14 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
     '12ai': {
         name: '12AI',
         baseUrl: 'https://cdn.12ai.org',
-        models: ['gpt-5.1', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'claude-4-sonnet'],
+        models: ['gpt-5.1', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'claude-4-sonnet', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
         format: 'gemini', // 12AI 对 Gemini 协议支持最好，支持原生 4K 和参考图
         icon: '🚀'
     },
     'antigravity': {
         name: 'Antigravity (本地)',
         baseUrl: 'http://127.0.0.1:8045',
-        models: ['gemini-3-pro-image', 'gemini-3-flash', 'gemini-2.5-flash-image', 'gemini-2.5-flash'],
+        models: ['gemini-3-pro-image-preview', 'gemini-3-flash', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'vidu', 'minimax-video', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
         format: 'openai',
         icon: '🌀'
     },
@@ -302,6 +322,8 @@ export const MODEL_MIGRATION_MAP: Record<string, string> = {
     'gemini-flash-lite-latest': 'gemini-2.5-flash-lite',
     'gemini-flash-latest': 'gemini-2.5-flash',
     'gemini-pro-latest': 'gemini-2.5-pro',
+    // Retroactive fixes for old canvas nodes
+    'gemini-3-pro-image': 'gemini-3-pro-image-preview',
 };
 
 /**
@@ -332,6 +354,87 @@ export function normalizeModelId(modelId: string): string {
         return normalized;
     }
     return modelId;
+}
+
+export interface ModelVariantMeta {
+    baseId: string;
+    canonicalId: string; // for dedup (keeps speed tier, strips ratio/quality/date)
+    speed?: 'fast' | 'slow';
+    quality?: '4k' | '2k' | '1k' | 'high' | 'hd' | 'ultra' | 'medium' | 'low' | 'standard';
+    ratio?: string;
+}
+
+/**
+ * Parse vendor-specific suffix patterns and extract variant metadata.
+ * - Keeps speed tier (fast/slow) as model-differentiating signal
+ * - Treats resolution/quality/ratio suffix as parameter-like signal
+ */
+export function parseModelVariantMeta(modelId: string): ModelVariantMeta {
+    const raw = (modelId || '').trim();
+    let working = raw
+        .replace(/-\*$/i, '')
+        .replace(/-\d{8}$/i, '');
+
+    const ratioRegex = /(16[x-]9|9[x-]16|1[x-]1|4[x-]3|3[x-]4|21[x-]9|9[x-]21|3[x-]2|2[x-]3|4[x-]5|5[x-]4)$/i;
+    const qualityRegex = /(4k|2k|1k|hd|high|ultra|medium|low|standard)$/i;
+    const speedRegex = /(fast|slow)$/i;
+
+    let ratio: string | undefined;
+    let quality: ModelVariantMeta['quality'];
+    let speed: ModelVariantMeta['speed'];
+
+    const ratioMatch = working.match(new RegExp(`-${ratioRegex.source}`, 'i'));
+    if (ratioMatch) {
+        ratio = ratioMatch[1].toLowerCase();
+        working = working.replace(new RegExp(`-${ratioRegex.source}$`, 'i'), '');
+    }
+
+    const qualityMatch = working.match(new RegExp(`-${qualityRegex.source}`, 'i'));
+    if (qualityMatch) {
+        quality = qualityMatch[1].toLowerCase() as ModelVariantMeta['quality'];
+        working = working.replace(new RegExp(`-${qualityRegex.source}$`, 'i'), '');
+    }
+
+    const speedMatch = working.match(new RegExp(`-${speedRegex.source}`, 'i'));
+    if (speedMatch) {
+        speed = speedMatch[1].toLowerCase() as ModelVariantMeta['speed'];
+        // Keep speed in canonicalId to distinguish fast/slow model families
+    }
+
+    return {
+        baseId: raw,
+        canonicalId: working,
+        speed,
+        quality,
+        ratio
+    };
+}
+
+export function appendModelVariantLabel(baseName: string, modelId: string): string {
+    const parsed = parseModelVariantMeta(modelId);
+    const tags: string[] = [];
+
+    if (parsed.speed) {
+        tags.push(parsed.speed === 'fast' ? 'Fast' : 'Slow');
+    }
+
+    if (parsed.quality) {
+        const qualityMap: Record<string, string> = {
+            '4k': '4K',
+            '2k': '2K',
+            '1k': '1K',
+            high: 'High',
+            hd: 'HD',
+            ultra: 'Ultra',
+            medium: 'Medium',
+            low: 'Low',
+            standard: 'Standard'
+        };
+        tags.push(qualityMap[parsed.quality] || parsed.quality);
+    }
+
+    if (tags.length === 0) return baseName;
+    return `${baseName} (${tags.join(' · ')})`;
 }
 
 /**
@@ -413,6 +516,35 @@ export const GOOGLE_IMAGE_WHITELIST = [
     'imagen-4.0-ultra-generate-001',
     'imagen-4.0-fast-generate-001'
 ];
+
+// ✅ Video Model Whitelist
+export const VIDEO_MODEL_WHITELIST = [
+    'runway-gen3',
+    'luma-video',
+    'kling-v1',
+    'sv3d',
+    'vidu',
+    'minimax-video',
+    'wan-v1'
+];
+
+// ✅ Advanced Image Editing Whitelist
+export const ADVANCED_IMAGE_MODEL_WHITELIST = [
+    'flux-kontext-max',
+    'recraft-v3-svg',
+    'ideogram-v2'
+];
+
+// ✅ Audio Model Whitelist
+export const AUDIO_MODEL_WHITELIST = [
+    'suno-v3.5',
+    'minimax-t2a-01'
+];
+
+const isGoogleOfficialModelId = (modelId: string): boolean => {
+    const id = String(modelId || '').replace(/^models\//, '').toLowerCase();
+    return id.startsWith('gemini-') || id.startsWith('imagen-') || id.startsWith('veo-');
+};
 
 // 默认 Google 模型列表（仅核心Gemini模型）
 export const DEFAULT_GOOGLE_MODELS = [
@@ -518,14 +650,14 @@ const inferModelType = (modelId: string): GlobalModelType => {
     // OpenRouter Specific: "provider/model" format usually implies chat unless "flux", "sd", "ideogram" etc.
     const isOpenRouter = id.includes('/') && !id.startsWith('models/');
 
-    const isVideo = id.includes('video') || id.includes('veo') || id.includes('kling') || id.includes('runway') || id.includes('luma') || id.includes('sora') || id.includes('pika');
+    const isVideo = id.includes('video') || id.includes('veo') || id.includes('kling') || id.includes('runway') || id.includes('luma') || id.includes('sora') || id.includes('pika') || id.includes('minimax') || id.includes('wan') || id.includes('pixverse') || id.includes('hailuo') || id.includes('seedance') || id.includes('viggle') || id.includes('higgsfield') || id.includes('vidu') || id.includes('ray-') || id.includes('jimeng') || id.includes('cogvideo') || id.includes('hunyuanvideo');
     if (isVideo) return 'video';
 
     // ✨ 优先检查图片关键词,避免 gemini-*-image 被误判为 chat
-    const isImage = id.includes('imagen') || id.includes('image') || id.includes('img') || id.includes('dall-e') || id.includes('midjourney') || id.includes('nano') || id.includes('banana') || id.includes('flux') || id.includes('stable') || id.includes('sd') || id.includes('diffusion') || id.includes('painting') || id.includes('draw');
+    const isImage = id.includes('imagen') || id.includes('image') || id.includes('img') || id.includes('dall-e') || id.includes('midjourney') || id.includes('mj') || id.includes('nano') || id.includes('banana') || id.includes('flux') || id.includes('stable') || id.includes('sd') || id.includes('diffusion') || id.includes('painting') || id.includes('draw') || id.includes('ideogram') || id.includes('recraft') || id.includes('seedream');
     if (isImage) return 'image';
 
-    const isChat = id.includes('gemini') || id.includes('gpt') || id.includes('claude') || id.includes('deepseek') || id.includes('qwen') || id.includes('llama') || id.includes('mistral') || id.includes('yi-') || id.includes(':free');
+    const isChat = id.includes('gemini') || id.includes('gpt') || id.includes('claude') || id.includes('deepseek') || id.includes('qwen') || id.includes('llama') || id.includes('mistral') || id.includes('yi-') || id.includes(':free') || id.includes('moonshot') || id.includes('doubao');
     if (isChat) return 'chat';
 
     // Default OpenRouter to chat if ambivalent
@@ -623,8 +755,9 @@ export class KeyManager {
                         ? [...DEFAULT_GOOGLE_MODELS]
                         : rawModels;
 
-                    // ✨ 自动补全: 如果是 Google Key,确保包含新的 Imagen/Veo 模型 (修复旧 Key 导致的问题)
+                    // ✨ 自动补全: 如果是 Google Key,确保包含官方模型，并剔除非官方模型
                     if (provider === 'Google') {
+                        supportedModels = supportedModels.filter((m: string) => isGoogleOfficialModelId(parseModelString(m).id));
                         const missingDefaults = DEFAULT_GOOGLE_MODELS.filter(m => !supportedModels.includes(m));
                         if (missingDefaults.length > 0) {
                             console.log(`[KeyManager] Auto-adding missing official models to key ${s.name}:`, missingDefaults);
@@ -887,7 +1020,7 @@ export class KeyManager {
                     // 完全信任云端数据 (Cloud Authoritative)
                     // 不再进行合并，直接覆盖本地状态。
 
-                    // ✨ 自动补全: 如果是 Google Key (或旧版 Gemini),确保包含新的 Imagen/Veo 模型 (修复旧 Key 导致的问题)
+                    // ✨ 自动补全: 如果是 Google Key (或旧版 Gemini),确保包含官方模型，并剔除非官方模型
                     cloudSlots = cloudSlots.map(s => {
                         const isGoogle = s.provider === 'Google' || (s.provider as string) === 'Gemini';
 
@@ -898,7 +1031,7 @@ export class KeyManager {
                         }
 
                         if (isGoogle) {
-                            const currentModels = s.supportedModels || [];
+                            const currentModels = (s.supportedModels || []).filter((m: string) => isGoogleOfficialModelId(parseModelString(m).id));
                             const missingDefaults = DEFAULT_GOOGLE_MODELS.filter(m => !currentModels.includes(m));
 
                             // If missing defaults OR provider needs migration
@@ -1285,6 +1418,7 @@ export class KeyManager {
     getNextKey(modelId: string): {
         id: string;
         key: string;
+        name: string;
         baseUrl: string;
         authMethod: AuthMethod;
         headerName: string;
@@ -1295,11 +1429,11 @@ export class KeyManager {
         // Format: modelId@Suffix or just modelId
         const [baseIdPart, suffix] = modelId.split('@');
 
-        // Normalize the requested model ID
-        const normalizedModelId = baseIdPart.replace(/^models\//, '');
-
-        // Debug
-        // console.log(`[KeyManager] getNextKey request: ${modelId} (Norm: ${normalizedModelId}, Suffix: ${suffix || 'None'})`);
+        // Normalize the requested model ID and apply migration mapping
+        let normalizedModelId = baseIdPart.replace(/^models\//, '');
+        if (MODEL_MIGRATION_MAP[normalizedModelId]) {
+            normalizedModelId = MODEL_MIGRATION_MAP[normalizedModelId];
+        }
 
         // --- STRICT SEPARATION STRATEGY ---
         // 1. If NO Suffix -> Must use Official Provider (Google)
@@ -1333,14 +1467,31 @@ export class KeyManager {
         } else {
             // [Proxy / Channel Connection]
             // Strategy: Find keys matching the suffix (Custom Name or Provider Name)
+            const normalizedSuffix = String(suffix || '').trim().toLowerCase();
+            const proxyAliasSet = new Set(['custom', 'proxy', 'proxied', '反代', '代理']);
+
             candidates = this.state.slots.filter(s => {
-                const slotSuffix = s.proxyConfig?.serverName || s.provider || 'Custom';
+                const slotNameLower = String(s.name || '').trim().toLowerCase();
+                const slotSuffix = String(s.proxyConfig?.serverName || s.provider || 'Custom').trim();
+                const slotSuffixLower = slotSuffix.toLowerCase();
+                const providerLower = String(s.provider || '').toLowerCase();
 
-                // Special: "Custom" suffix matches any non-Google
-                if (suffix === 'Custom') return s.provider !== 'Google';
+                // Exact match first (always takes priority)
+                if (slotNameLower === normalizedSuffix) return true;
+                if (slotSuffixLower === normalizedSuffix) return true;
+                if (providerLower === normalizedSuffix) return true;
 
-                return slotSuffix === suffix;
+                // Soft contains match (for renamed channels)
+                if (slotNameLower.includes(normalizedSuffix) || slotSuffixLower.includes(normalizedSuffix)) return true;
+
+                return false;
             });
+
+            // 如果精确匹配没有找到任何候选频道，且后缀是通用代理别名，
+            // 则回退到"任意非Google"的宽松匹配模式
+            if (candidates.length === 0 && proxyAliasSet.has(normalizedSuffix)) {
+                candidates = this.state.slots.filter(s => s.provider !== 'Google');
+            }
 
             // Filter by model support
             candidates = candidates.filter(s => {
@@ -1348,6 +1499,17 @@ export class KeyManager {
                     return parseModelString(m).id.replace(/^models\//, '') === normalizedModelId;
                 });
             });
+
+            // Fallback: suffix model route failed, but model exists on non-Google keys
+            // (avoids hard failure when channel display name changed)
+            if (candidates.length === 0 && proxyAliasSet.has(normalizedSuffix)) {
+                candidates = this.state.slots.filter(s => {
+                    if (s.provider === 'Google') return false;
+                    return (s.supportedModels || []).some(m => {
+                        return parseModelString(m).id.replace(/^models\//, '') === normalizedModelId;
+                    });
+                });
+            }
         }
 
         // --- DIAGNOSTICS & FILTERING ---
@@ -1420,8 +1582,25 @@ export class KeyManager {
 
         // 3. Apply Strategy
         // Common Sort: Valid > Unknown > Rate Limited
-        const healthy = validCandidates.filter(s => s.status !== 'invalid' && s.status !== 'rate_limited');
-        const usable = healthy.length > 0 ? healthy : validCandidates; // Fallback to invalid if no healthy ones (Desperate)
+        const now = Date.now();
+        const cooldownFiltered = validCandidates.filter(s => {
+            if (s.status !== 'rate_limited') return true;
+            if (!s.lastUsed) return false;
+            return now - s.lastUsed >= RATE_LIMIT_COOLDOWN_MS;
+        });
+
+        const healthy = cooldownFiltered.filter(s => s.status !== 'invalid' && s.status !== 'rate_limited');
+        let usable = healthy.length > 0 ? healthy : cooldownFiltered; // prefer non-rate-limited and cooldown-passed keys
+
+        // If all matching keys are still in cooldown, fallback to original candidate list (degraded mode)
+        if (usable.length === 0) {
+            const blocked = validCandidates.filter(s => s.status === 'rate_limited' && s.lastUsed && (now - s.lastUsed < RATE_LIMIT_COOLDOWN_MS));
+            if (blocked.length > 0) {
+                const shortestWaitMs = Math.min(...blocked.map(s => RATE_LIMIT_COOLDOWN_MS - (now - (s.lastUsed || 0))));
+                console.warn(`[KeyManager] All matching keys are in rate-limit cooldown. Fallback enabled. Earliest retry in ~${Math.ceil(shortestWaitMs / 1000)}s`);
+            }
+            usable = validCandidates;
+        }
 
         if (usable.length === 0) return null;
 
@@ -1493,6 +1672,7 @@ export class KeyManager {
         return {
             id: slot.id,
             key: slot.key,
+            name: slot.name || slot.provider || 'Unnamed Channel',
             baseUrl: slot.baseUrl || GOOGLE_API_BASE,
             authMethod: slot.authMethod || 'query',
             headerName: slot.headerName || 'x-goog-api-key',
@@ -1527,10 +1707,31 @@ export class KeyManager {
             slot.lastError = error;
             slot.lastUsed = Date.now();
 
-            if (error.includes('429') || error.includes('rate limit')) {
+            const lowerError = String(error || '').toLowerCase();
+            const isRateLimit =
+                lowerError.includes('429') ||
+                lowerError.includes('rate limit') ||
+                lowerError.includes('too many requests') ||
+                lowerError.includes('quota exceeded');
+
+            const isAuthError =
+                lowerError.includes('401') ||
+                lowerError.includes('403') ||
+                lowerError.includes('unauthorized') ||
+                lowerError.includes('forbidden') ||
+                lowerError.includes('invalid api key') ||
+                lowerError.includes('api key invalid') ||
+                lowerError.includes('authentication') ||
+                lowerError.includes('permission denied') ||
+                lowerError.includes('permission_denied');
+
+            if (isRateLimit) {
                 slot.status = 'rate_limited';
-            } else if (error.includes('401') || error.includes('403') || error.includes('invalid')) {
+            } else if (isAuthError) {
                 slot.status = 'invalid';
+            } else {
+                // 生成失败/网络抖动/上游异常不应永久标红为 invalid，回到 unknown 允许后续自动恢复
+                slot.status = 'unknown';
             }
 
             this.saveState();
@@ -1959,8 +2160,9 @@ export class KeyManager {
                     // normalizeModelList handles deduplication.
 
                     if (slot.provider === 'Google') {
-                        // Google models already include defaults from fetchGoogleModels
-                        slot.supportedModels = newModels;
+                        // Google models must remain official only
+                        slot.supportedModels = normalizeModelList(newModels)
+                            .filter((m: string) => isGoogleOfficialModelId(parseModelString(m).id));
                     } else {
                         // For proxies, we just take what they give us (plus normalization)
                         slot.supportedModels = normalizeModelList(newModels);
@@ -2016,7 +2218,10 @@ export class KeyManager {
             if (slot.disabled || slot.status === 'invalid') return;
             if (slot.supportedModels && slot.supportedModels.length > 0) {
                 // FORCE RE-NORMALIZE to catch any stragglers
-                const cleanModels = normalizeModelList(slot.supportedModels);
+                let cleanModels = normalizeModelList(slot.supportedModels);
+                if (slot.provider === 'Google') {
+                    cleanModels = cleanModels.filter((m: string) => isGoogleOfficialModelId(parseModelString(m).id));
+                }
 
                 cleanModels.forEach(rawModelStr => {
                     // Safety check against blacklist/legacy
@@ -2029,9 +2234,9 @@ export class KeyManager {
                     const isGoogleKey = slot.provider === 'Google';
 
                     if (!isGoogleKey) {
-                        // Suffix with Server Name (preferred for Proxies) or Provider
-                        // e.g., "gemini-1.5-pro@MyProxy"
-                        const suffix = slot.proxyConfig?.serverName || slot.provider || 'Custom';
+                        // Suffix with Slot Name to strictly separate channels
+                        // e.g., "gemini-1.5-pro@My Proxy Name"
+                        const suffix = slot.name || slot.proxyConfig?.serverName || slot.provider || 'Custom';
                         distinctId = `${id}@${suffix}`;
                     }
 
@@ -2084,10 +2289,10 @@ export class KeyManager {
                                 inferredModelName = 'Veo';
                             }
                         }
-                        const finalName = displayName || inferredModelName;
+                        const finalName = displayName || appendModelVariantLabel(inferredModelName, id);
                         // 🚀 [FIX] 使用用户命名的 provider 名称，而不是固定的 'Custom'
                         const displayProvider = slot.provider === 'Google' ? 'Google' : (slot.name || slot.provider || 'Custom');
-                        const finalDesc = description || (meta ? meta.description : `通过 ${displayProvider} 调用`);
+                        const finalDesc = description || meta?.description || '';
 
                         if (meta) {
                             // If we have metadata (it's a known model), we still want to use User's Name/Desc overrides if provided
@@ -2497,37 +2702,51 @@ export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): 
         }
 
         const data = await response.json();
-        const rawModels: string[] = data.data?.map((m: any) => m.id) || [];
+        const rawModels: any[] = data.data || [];
 
         console.log(`[KeyManager] ✓ 原始检测到 ${rawModels.length} 个模型`);
 
-        // 🚀 去重逻辑：移除 Antigravity 风格的参数后缀
-        // 例如: gemini-3-pro-image-16x9 -> gemini-3-pro-image
-        //       gemini-3-pro-image-1x1-4k -> gemini-3-pro-image
-        //       claude-3-5-sonnet-20240620 -> claude-3-5-sonnet (移除日期后缀)
-        const stripSuffix = (modelId: string): string => {
-            // 匹配模式: -[宽高比]-[分辨率] 或 -[宽高比] 
-            // 宽高比支持两种格式: 16x9 或 16-9
-            // 分辨率: 4k, 2k, 1k
-            return modelId
-                // 移除 Antigravity 宽高比后缀 (使用 x 或 - 作为分隔符)  
-                .replace(/-(16[x-]9|9[x-]16|1[x-]1|4[x-]3|3[x-]4|21[x-]9|9[x-]21|3[x-]2|2[x-]3|4[x-]5|5[x-]4)(-4k|-2k|-1k)?$/i, '')
-                // 移除单独的分辨率后缀
-                .replace(/(-4k|-2k|-1k)$/i, '')
-                // 移除日期后缀 (如 -20240620, -20251001)
-                .replace(/-\d{8}$/i, '')
-                // 移除通配符后缀 (如 -*)
-                .replace(/-\*$/i, '');
-        };
+        // 去重策略：
+        // - 分辨率/质量/比例后缀视为“参数型后缀”并折叠
+        // - 快速/慢速(fast/slow)视为“能力型后缀”并保留
+        const rawSet = new Set(rawModels.map(m => m.id));
+        const deduped = new Map<string, string>(); // canonical -> chosen model string
 
-        // 使用 Set 去重
-        const uniqueModels = new Set<string>();
-        rawModels.forEach(model => {
-            const baseModel = stripSuffix(model);
-            uniqueModels.add(baseModel);
+        rawModels.forEach(m => {
+            const modelId = m.id;
+            const modelName = m.name || m.title || m.display_name || '';
+            const modelProvider = m.owned_by || m.provider || '';
+
+            const parsed = parseModelVariantMeta(modelId);
+            const canonical = parsed.canonicalId || modelId;
+
+            let formattedModel = modelId;
+            if (modelName || modelProvider) {
+                formattedModel = `${modelId}|${modelName}|${modelProvider}`;
+            }
+
+            // If canonical exists in provider response, prefer canonical (parameterized variants can be selected by UI options)
+            if (rawSet.has(canonical)) {
+                let formattedCanonical = canonical;
+                const canonicalObj = rawModels.find(obj => obj.id === canonical);
+                if (canonicalObj) {
+                    const cName = canonicalObj.name || canonicalObj.title || canonicalObj.display_name || '';
+                    const cProvider = canonicalObj.owned_by || canonicalObj.provider || '';
+                    if (cName || cProvider) {
+                        formattedCanonical = `${canonical}|${cName}|${cProvider}`;
+                    }
+                }
+                deduped.set(canonical, formattedCanonical);
+                return;
+            }
+
+            // Otherwise keep first concrete model id to avoid producing unsupported synthetic IDs
+            if (!deduped.has(canonical)) {
+                deduped.set(canonical, formattedModel);
+            }
         });
 
-        const result = Array.from(uniqueModels);
+        const result = Array.from(new Set(deduped.values()));
         console.log(`[KeyManager] ✓ 去重后 ${result.length} 个唯一模型:`, result);
         return result;
     } catch (error) {

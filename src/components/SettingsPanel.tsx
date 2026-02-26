@@ -402,7 +402,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>版本</div>
-                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.3.1</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.3.2</div>
                     </div>
                 </div>
             </div>
@@ -770,8 +770,30 @@ const CostEstimationView = () => {
                         <span className="text-zinc-500 font-semibold">视频模式:</span> 0张=文生视频, 1张=首帧生成, 2张=首尾帧, 3张=参考图生成
                     </div>
                 </div>
+
+                {/* 5. 代理商倍率计费参考 */}
+                <div className="pt-3 border-t border-[var(--border-light)] space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                        <div className="w-3 h-3 bg-rose-500 rounded-sm" />
+                        🧮 代理商倍率计费 (如 GPT-Best)
+                    </div>
+                    <div className="bg-[var(--bg-secondary)] rounded-xl p-3 space-y-2 text-[11px] text-zinc-400">
+                        <p className="leading-relaxed">
+                            中转代理采用<strong className="text-rose-400 font-normal">“倍率计费”</strong>模式，系统已将其换算为标准 USD 计价：
+                        </p>
+                        <div className="p-2 bg-[var(--bg-tertiary)] rounded-lg font-mono text-[10px] text-zinc-300 border border-[var(--border-light)]">
+                            <div>1 USD = 500,000 额度</div>
+                            <div className="mt-1 text-rose-300">消耗额度 = 分组倍率 × 模型倍率 × (提示Tokens + 补全Tokens × 补全倍率)</div>
+                        </div>
+                        <ul className="list-disc pl-4 space-y-1 text-zinc-500 mt-2">
+                            <li><span className="text-zinc-300">分组倍率:</span> 账号所在服务组的全局折扣 (通常为 1)</li>
+                            <li><span className="text-zinc-300">模型倍率:</span> 该模型相对于基准价格的收费倍数</li>
+                            <li><span className="text-zinc-300">补全倍率:</span> 模型生成输出Tokens相对于输入Tokens的差价倍数</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
-        </div >
+        </div>
     );
 };
 

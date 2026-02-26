@@ -81,18 +81,19 @@ function calculateImageTokens(model: ModelType): number {
 }
 
 function normalizeError(error: any): Error {
-  const msg = (error.message || error.toString()).toLowerCase();
+  const rawMessage = error?.message || error?.toString?.() || '未知错误';
+  const msg = rawMessage.toLowerCase();
   if (msg.includes('cancelled')) return new Error("任务已取消");
 
   // 🚀 [12AI 对齐] 精准网关与状态码映射
-  if (msg.includes('524') || msg.includes('timeout')) return new Error("网络超时 (524)，请尝试切换主/备线路或开启流式输出");
-  if (msg.includes('530') || msg.includes('502') || msg.includes('504')) return new Error("网关错误 (530/502/504)，可能是 12AI 节点波动，建议切换线路");
+  if (msg.includes('524') || msg.includes('timeout')) return new Error(`网络超时 (524): ${rawMessage.slice(0, 180)}`);
+  if (msg.includes('530') || msg.includes('502') || msg.includes('504')) return new Error(`网关错误 (530/502/504): ${rawMessage.slice(0, 180)}`);
   if (msg.includes('413') || msg.includes('payload too large')) return new Error("请求体过大 (413)，请减少待识别的图片数量或压缩图片体积");
-  if (msg.includes('503') && msg.includes('no available channel')) return new Error("服务暂不可用 (503: 无可用渠道)，号池已空，请联系官方说明或稍后重试");
+  if (msg.includes('503') && msg.includes('no available channel')) return new Error(`服务暂不可用 (503: 无可用渠道): ${rawMessage.slice(0, 180)}`);
   if (msg.includes('maxoutputtokens')) return new Error("Token 设置超出限制：请确保最大输出 Token 小于 65536");
 
   if (msg.includes('429') || msg.includes('rate limit') || msg.includes('quota')) return new Error("请求太过频繁 (429)，正在尝试切换线路，请稍后...");
-  if (msg.includes("503") || msg.includes("service unavailable") || msg.includes("too busy") || msg.includes("deadlock")) return new Error("服务器繁忙 (503)，请稍后重试或联系API提供商");
+  if (msg.includes("503") || msg.includes("service unavailable") || msg.includes("too busy") || msg.includes("deadlock")) return new Error(`服务器繁忙 (503): ${rawMessage.slice(0, 180)}`);
   if (msg.includes("403") || msg.includes("permission") || msg.includes("api_key_invalid")) return new Error("API Key 无效或余额不足 (403)，请检查设置或在 12AI 官网充值");
   if (msg.includes("MISSING_API_KEY")) return new Error("请先在设置中配置有效的 API Key");
   if (msg.includes("safety") || msg.includes("blocked") || msg.includes("policy")) return new Error("内容触发安全审查 (Safety Blocked)，请更换提示词或尝试非流式模式");
@@ -182,6 +183,8 @@ export const generateImage = async (
   options?: {
     size?: string;  // e.g. "1920x1080"
     quality?: 'standard' | 'hd' | 'medium';
+    maskUrl?: string; // 🚀 Advanced Editing
+    editMode?: 'inpaint' | 'outpaint' | 'vectorize' | 'reframe' | 'upscale' | 'replace-background' | 'edit';
   }
 ): Promise<GenerateImageResult> => {
   // 🚀 Parse Model Suffix (Consistency)
@@ -263,27 +266,35 @@ export const generateImage = async (
   console.log(`[GeminiService] Generating with Model: ${model}, Ratio: ${aspectRatio}, Size: ${imageSize}`);
 
   // Process Use Reference Images
-  const processedReferences = await Promise.all((referenceImages || []).map(async (img) => {
+  const processedReferences = (await Promise.all((referenceImages || []).map(async (img) => {
+    let currentData = img.data;
+
     // 1. If data missing, try IDB recovery
-    if (!img.data) {
-      if (img.storageId || img.id) {
-        try {
-          const cached = await getImage(img.storageId || img.id);
-          if (cached && typeof cached === 'string') {
-            return { ...img, data: cached.replace(/^data:image\/\w+;base64,/, ''), mimeType: 'image/png' };
-          }
-        } catch (e) {
-          // ignore
+    if (!currentData && (img.storageId || img.id)) {
+      try {
+        const cached = await getImage(img.storageId || img.id);
+        if (cached && typeof cached === 'string') {
+          currentData = cached;
         }
+      } catch (e) {
+        // ignore
       }
-      return img;
     }
 
+    if (!currentData) return null;
+
     // 2. Hydrate URL/Blob
-    const isUrl = img.data.startsWith('http') || img.data.startsWith('blob:') || img.data.startsWith('file:');
+    const isUrl = currentData.startsWith('http') || currentData.startsWith('blob:') || currentData.startsWith('file:');
     if (isUrl) {
       try {
-        const response = await fetch(img.data);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
+        let response: Response;
+        try {
+          response = await fetch(currentData, { signal: controller.signal });
+        } finally {
+          clearTimeout(timeoutId);
+        }
         const blob = await response.blob();
         return new Promise<ReferenceImage>((resolve) => {
           const reader = new FileReader();
@@ -297,15 +308,19 @@ export const generateImage = async (
               resolve({ ...img, data: res });
             }
           };
-          reader.onerror = () => resolve(img);
+          reader.onerror = () => resolve({ ...img, data: currentData });
           reader.readAsDataURL(blob);
         });
       } catch (e) {
-        return img;
+        // Skip this reference on timeout/fetch error to avoid blocking whole request
+        return null;
       }
     }
-    return img;
-  }));
+
+    // 3. Fallback: Strip data uri prefix if present
+    const cleanData = currentData.replace(/^data:image\/\w+;base64,/, '');
+    return { ...img, data: cleanData };
+  }))).filter((img): img is ReferenceImage => !!img && !!img.data);
 
   // Create AbortController if requestId provided
   if (requestId && !abortControllers.has(requestId)) {
@@ -350,8 +365,10 @@ export const generateImage = async (
     aspectRatio: aspectRatio,
     imageSize: imageSize, // Pass high level enum
     imageCount: 1,
-    referenceImages: processedReferences.map(r => r.data),
-    providerConfig: providerConfig // 🚀 Pass the Universal Config
+    referenceImages: processedReferences.map(r => r.data).filter((d): d is string => !!d && !d.startsWith('http') && !d.startsWith('blob:') && !d.startsWith('file:')),
+    providerConfig: providerConfig, // 🚀 Pass the Universal Config
+    maskUrl: options?.maskUrl, // 🚀 Pass Edit Options
+    editMode: options?.editMode
   };
 
   try {

@@ -10,6 +10,9 @@ export type ModelPricing = {
   };
   refImageTokens?: number;
   currency?: string;
+  groupMultiplier?: number;
+  modelMultiplier?: number;
+  completionMultiplier?: number;
 };
 
 const STORAGE_KEY = 'kk_model_pricing_overrides';
@@ -279,10 +282,25 @@ const convertPricing = (input: any): ModelPricing | null => {
     pricePerImage: toNumber(input.price_per_image ?? input.pricePerImage ?? input.per_image),
     tokensPerImage: input.tokens_per_image ?? input.tokensPerImage,
     refImageTokens: toNumber(input.ref_image_tokens ?? input.refImageTokens),
-    currency: input.currencySymbol ?? input.currency
+    currency: input.currencySymbol ?? input.currency,
+    groupMultiplier: toNumber(input.group_multiplier ?? input.groupMultiplier),
+    modelMultiplier: toNumber(input.model_multiplier ?? input.modelMultiplier),
+    completionMultiplier: toNumber(input.completion_multiplier ?? input.completionMultiplier)
   };
 
-  const hasAny = pricing.inputPerMillionTokens || pricing.outputPerMillionTokens || pricing.pricePerImage || pricing.tokensPerImage;
+  // Convert multiplier pricing to standard USD tokens if missing token pricing
+  // Assumption: 500,000 quota = 1 USD -> 1M tokens = 2 USD base
+  if (pricing.groupMultiplier !== undefined && pricing.modelMultiplier !== undefined) {
+    if (pricing.inputPerMillionTokens === undefined) {
+      pricing.inputPerMillionTokens = (pricing.groupMultiplier * pricing.modelMultiplier) * 2;
+    }
+    if (pricing.outputPerMillionTokens === undefined) {
+      const compMult = pricing.completionMultiplier ?? 1; // Default to 1 if not provided
+      pricing.outputPerMillionTokens = (pricing.groupMultiplier * pricing.modelMultiplier * compMult) * 2;
+    }
+  }
+
+  const hasAny = pricing.inputPerMillionTokens !== undefined || pricing.outputPerMillionTokens !== undefined || pricing.pricePerImage !== undefined || pricing.tokensPerImage !== undefined || pricing.groupMultiplier !== undefined;
   return hasAny ? pricing : null;
 };
 
@@ -357,16 +375,16 @@ export const getImageTokenEstimate = (modelId: string, size: ImageSize): number 
   const tokens = pricing?.tokensPerImage;
   const isHd = size === ImageSize.SIZE_4K;
   const is2K = size === ImageSize.SIZE_2K;
-  
+
   // 对于支持 HD/2K 的模型，使用对应的 token 数
   if (tokens) {
     if (isHd && tokens.hd) return tokens.hd;
     if (is2K && tokens.hd) return tokens.hd;
     return tokens.standard || tokens.hd || 0;
   }
-  
+
   const fallback = FALLBACK_IMAGE_TOKENS[normalizeModelId(modelId)];
-  
+
   // 🚀 [修复] 如果是按张定价的模型（如 Imagen），估算一个合理的 token 数用于显示
   // Imagen 4: 1K=1120 tokens, 2K=1560 tokens, 4K=2000 tokens (近似值)
   if ((fallback === 0 || fallback === undefined) && pricing?.pricePerImage) {
@@ -374,7 +392,7 @@ export const getImageTokenEstimate = (modelId: string, size: ImageSize): number 
     if (is2K) return 1560;
     return 1120; // Standard 1K
   }
-  
+
   return fallback || 0;
 };
 

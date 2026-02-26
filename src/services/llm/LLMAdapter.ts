@@ -52,6 +52,7 @@ export interface ChatOptions {
     maxTokens?: number;
     systemPrompt?: string; // Optional system instruction override
     onStream?: (chunk: string) => void;
+    signal?: AbortSignal;
     inlineData?: { mimeType: string; data: string }[]; // Multimodal support
 
     // 🚀 Standardized Provider Config
@@ -83,6 +84,10 @@ export interface ImageGenerationOptions {
     imageSize?: string;
 
     referenceImages?: string[]; // Base64 strings
+
+    // 🚀 Advanced Editing Options
+    maskUrl?: string; // Base64 mask for inpainting
+    editMode?: 'inpaint' | 'outpaint' | 'vectorize' | 'reframe' | 'upscale' | 'replace-background' | 'edit';
 }
 
 export interface ImageGenerationResult {
@@ -105,6 +110,66 @@ export interface ImageGenerationResult {
         dimensions?: { width: number; height: number };
         requestId?: string;
     };
+}
+
+export interface VideoGenerationOptions {
+    modelId: string;
+    prompt: string;
+    imageUrl?: string; // 图生视频 - 首帧图
+    imageTailUrl?: string; // 首尾帧视频 - 尾帧图
+    videoUrl?: string; // 视频生视频 - 原始视频 URL
+    aspectRatio?: string; // '16:9', '9:16', '1:1'
+    videoDuration?: string; // 向后兼容
+    duration?: number; // v2 统一格式：视频时长（秒）
+    resolution?: string; // v2 统一格式：'480P', '720P', '1080P'
+    size?: string; // 像素尺寸 '1024x576'
+    watermark?: boolean; // 是否添加水印
+    providerConfig?: ProviderConfig;
+}
+
+export interface VideoGenerationResult {
+    url: string; // The generated MP4/video URL
+    taskId?: string; // If async
+    status?: 'pending' | 'processing' | 'success' | 'failed';
+    progress?: number;
+    usage?: {
+        totalTokens?: number;
+        cost?: number;
+    };
+    model?: string;
+    provider?: string;
+    providerName?: string;
+    modelName?: string;
+}
+
+export interface AudioGenerationOptions {
+    modelId: string;
+    prompt: string;
+    audioDuration?: string; // 音频时长
+    audioLyrics?: string; // Suno 歌词
+    audioStyle?: string; // Suno 风格标签 (tags)
+    audioTitle?: string; // Suno 歌曲标题
+    audioMode?: string; // 'inspiration' | 'custom' - Suno 模式
+    audioExtendFrom?: string; // 续写的任务 ID
+    voiceId?: string; // MiniMax TTS 声音 ID
+    speed?: number; // MiniMax TTS 语速
+    providerConfig?: ProviderConfig;
+}
+
+export interface AudioGenerationResult {
+    url: string; // The generated MP3/WAV/Audio URL
+    taskId?: string; // If async
+    status?: 'pending' | 'processing' | 'success' | 'failed';
+    progress?: number;
+    usage?: {
+        totalTokens?: number;
+        cost?: number;
+    };
+    model?: string;
+    provider?: string;
+    providerName?: string;
+    modelName?: string;
+    metadata?: any;
 }
 
 export interface LLMAdapter {
@@ -137,4 +202,14 @@ export interface LLMAdapter {
      * Check if this adapter supports the given model/feature
      */
     supports(modelId: string): boolean;
+
+    /**
+     * Video Generation (Optional, not all adapters support it)
+     */
+    generateVideo?(options: VideoGenerationOptions, keySlot: KeySlot): Promise<VideoGenerationResult>;
+
+    /**
+     * Audio Generation (Optional)
+     */
+    generateAudio?(options: AudioGenerationOptions, keySlot: KeySlot): Promise<AudioGenerationResult>;
 }

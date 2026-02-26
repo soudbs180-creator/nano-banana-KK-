@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ArrowUp, Bot, ChevronDown, Eraser, FileText, Film, Image as ImageIcon, Layout, MessageSquare, Mic, Paperclip, Plus, User, X, Zap, Sparkles } from 'lucide-react';
+import { ArrowUp, Bot, ChevronDown, ChevronRight, Eraser, FileText, Film, Image as ImageIcon, Layout, MessageSquare, Mic, Paperclip, Plus, Square, User, X, Zap, Sparkles, Search, Download, Upload, Archive, Edit2, Trash2 } from 'lucide-react';
 import { generateImage } from '../services/geminiService';
 import { llmService } from '../services/llm/LLMService';
 import { notify } from '../services/notificationService';
@@ -18,6 +18,7 @@ interface ChatSidebarProps {
     isMobile: boolean;
     onOpenSettings?: (view?: 'api-management') => void;
     onHoverChange?: (isHovered: boolean) => void; // 通知父组件hover状态变化
+    onWidthChange?: (width: number) => void;
 }
 
 // 附件类型
@@ -50,7 +51,264 @@ interface ChatModel {
     description?: string;
 }
 
-const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, isMobile, onOpenSettings, onHoverChange }) => {
+interface ChatSessionItem {
+    id: string;
+    title: string;
+    messages: Message[];
+    updatedAt: number;
+    customTitle?: boolean;
+    parentSessionId?: string;
+    branchFromMessageId?: string;
+    archived?: boolean;
+}
+
+interface SessionContextMenu {
+    x: number;
+    y: number;
+    sessionId: string;
+}
+
+type SessionImportMode = 'replace' | 'append' | 'smart';
+
+interface SessionImportPreview {
+    sessions: ChatSessionItem[];
+    activeSessionId?: string;
+    stats: {
+        imported: number;
+        conflictsById: number;
+        duplicatesByFingerprint: number;
+        newById: number;
+        conflictTitles: string[];
+        duplicateTitles: string[];
+        newTitles: string[];
+        conflictIds: string[];
+        duplicateIds: string[];
+        newIds: string[];
+        conflictPairs: Array<{ incoming: string; existing: string }>;
+        duplicatePairs: Array<{ incoming: string; existing: string }>;
+    };
+}
+
+const CHAT_SESSION_STORAGE_KEY = 'kk_chat_sidebar_sessions_v1';
+const CHAT_SESSION_TREE_EXPAND_KEY = 'kk_chat_sidebar_tree_expand_v1';
+
+const createWelcomeMessage = (): Message => ({
+    id: 'welcome',
+    role: 'assistant',
+    content: '你好！我是 KK Studio 数字助手。\n有什么我可以帮您？\n\n试试输入 "/image 一只猫" 来生成图片！',
+    timestamp: Date.now()
+});
+
+const getSessionTitle = (messages: Message[]): string => {
+    const firstUser = messages.find(m => m.role === 'user' && m.content && m.content !== '(附件)');
+    if (!firstUser) return '新对话';
+    return firstUser.content.slice(0, 18);
+};
+
+const formatSessionMeta = (session: ChatSessionItem): string => {
+    const count = Math.max(0, (session.messages || []).filter(m => m.id !== 'welcome').length);
+    const date = new Date(session.updatedAt || Date.now());
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${count}条 · ${hh}:${mm}`;
+};
+
+const makeSessionFingerprint = (session: ChatSessionItem): string => {
+    const lastMsg = (session.messages || [])[session.messages.length - 1];
+    const lastContent = (lastMsg?.content || '').slice(0, 64);
+    const messageCount = (session.messages || []).length;
+    return `${session.title || ''}::${messageCount}::${lastContent}`;
+};
+
+const getSessionLabel = (session: ChatSessionItem): string => {
+    const title = session.title || '未命名会话';
+    const count = Math.max(0, (session.messages || []).filter(m => m.id !== 'welcome').length);
+    return `${title} (${count})`;
+};
+
+const ensureUniqueIds = (existing: ChatSessionItem[], imported: ChatSessionItem[]): ChatSessionItem[] => {
+    const used = new Set(existing.map(s => s.id));
+    const idMap = new Map<string, string>();
+
+    const withIds = imported.map((s, idx) => {
+        let nextId = s.id || `session_import_${Date.now()}_${idx}`;
+        if (used.has(nextId)) {
+            nextId = `${nextId}_import_${Date.now()}_${idx}`;
+        }
+        used.add(nextId);
+        idMap.set(s.id, nextId);
+        return { ...s, id: nextId };
+    });
+
+    return withIds.map(session => ({
+        ...session,
+        parentSessionId: session.parentSessionId ? (idMap.get(session.parentSessionId) || session.parentSessionId) : undefined
+    }));
+};
+
+const buildImportPreview = (existing: ChatSessionItem[], imported: ChatSessionItem[]): SessionImportPreview['stats'] => {
+    const existingById = new Map(existing.map(s => [s.id, s]));
+    const existingByFp = new Map(existing.map(s => [makeSessionFingerprint(s), s]));
+
+    let conflictsById = 0;
+    let duplicatesByFingerprint = 0;
+    let newById = 0;
+    const conflictTitles: string[] = [];
+    const duplicateTitles: string[] = [];
+    const newTitles: string[] = [];
+    const conflictIds: string[] = [];
+    const duplicateIds: string[] = [];
+    const newIds: string[] = [];
+    const conflictPairs: Array<{ incoming: string; existing: string }> = [];
+    const duplicatePairs: Array<{ incoming: string; existing: string }> = [];
+
+    imported.forEach(session => {
+        const existingBySameId = existingById.get(session.id);
+        if (existingBySameId) {
+            conflictsById += 1;
+            conflictTitles.push(getSessionLabel(session));
+            conflictIds.push(session.id);
+            if (conflictPairs.length < 20) {
+                conflictPairs.push({ incoming: getSessionLabel(session), existing: getSessionLabel(existingBySameId) });
+            }
+        } else {
+            newById += 1;
+            newTitles.push(getSessionLabel(session));
+            newIds.push(session.id);
+        }
+
+        const fp = makeSessionFingerprint(session);
+        const existingBySameFp = existingByFp.get(fp);
+        if (existingBySameFp) {
+            duplicatesByFingerprint += 1;
+            duplicateTitles.push(getSessionLabel(session));
+            duplicateIds.push(session.id);
+            if (duplicatePairs.length < 20) {
+                duplicatePairs.push({ incoming: getSessionLabel(session), existing: getSessionLabel(existingBySameFp) });
+            }
+        }
+    });
+
+    return {
+        imported: imported.length,
+        conflictsById,
+        duplicatesByFingerprint,
+        newById,
+        conflictTitles,
+        duplicateTitles,
+        newTitles,
+        conflictIds,
+        duplicateIds,
+        newIds,
+        conflictPairs,
+        duplicatePairs
+    };
+};
+
+const buildMessageWithAttachments = (
+    userText: string,
+    atts: Attachment[]
+): { messageContent: string; inlineData: { mimeType: string; data: string }[] } => {
+    let messageContent = userText;
+    const inlineData: { mimeType: string; data: string }[] = [];
+
+    for (const att of atts) {
+        if (att.type === 'image' || att.type === 'video' || att.type === 'audio') {
+            const base64Match = att.data.match(/^data:([^;]+);base64,(.+)$/);
+            if (base64Match) {
+                inlineData.push({
+                    mimeType: base64Match[1],
+                    data: base64Match[2]
+                });
+            }
+        } else if (att.type === 'document') {
+            messageContent += `\n\n[文档: ${att.name}]`;
+        }
+    }
+
+    return { messageContent, inlineData };
+};
+
+type AgentIntent = 'qa' | 'image-generate' | 'image-edit';
+
+const buildAgentSystemPrompt = (customPrompt?: string): string => {
+    const base = customPrompt?.trim() || '你是一个专业、友好的AI助手。请用简洁明了的方式回答用户的问题。';
+    return `${base}\n\n你当前处于“全能Agent模式”，请遵循以下执行框架：\n1) 先识别意图：问答 / 生成图片 / 修改图片 / 文档任务。\n2) 若为问答：给出结论+关键依据+可执行步骤。\n3) 若为创作请求：先补全关键缺失信息（构图、主体、光线、风格），再给出最终可执行指令。\n4) 若为图片编辑：优先保留主体身份与风格一致性，明确“保留项/修改项/禁止项”。\n5) 输出风格：结构化、可执行、不过度啰嗦。\n6) 不确定时主动给出最合理假设，不要空泛追问。`;
+};
+
+interface AgentActionPlan {
+    intent: AgentIntent;
+    prompt: string;
+    confidence: number;
+    reason?: string;
+}
+
+const pickPlannerModelId = (models: ChatModel[], selected: ChatModel): string | null => {
+    if (selected.type === 'chat' || selected.type === 'image+chat') return selected.id;
+    const fallback = models.find(m => m.type === 'chat' || m.type === 'image+chat');
+    return fallback?.id || null;
+};
+
+const extractJson = (raw: string): any => {
+    const txt = (raw || '').trim();
+    try {
+        return JSON.parse(txt);
+    } catch {
+        const s = txt.indexOf('{');
+        const e = txt.lastIndexOf('}');
+        if (s >= 0 && e > s) {
+            return JSON.parse(txt.slice(s, e + 1));
+        }
+    }
+    throw new Error('Planner returned invalid JSON');
+};
+
+const planAgentAction = async (
+    plannerModelId: string,
+    userText: string,
+    atts: Attachment[]
+): Promise<AgentActionPlan> => {
+    const attachmentSummary = atts.map(a => `${a.type}:${a.name}`).join(', ') || 'none';
+    const plannerSystem = `You are an intent planner for an AI assistant.
+Decide action intent from user request and attachments.
+Allowed intents: qa, image-generate, image-edit.
+Rules:
+1) image-edit requires image attachment and an edit request.
+2) image-generate is for creating new image from text.
+3) otherwise qa.
+Return STRICT JSON only:
+{"intent":"qa|image-generate|image-edit","prompt":"string","confidence":0-1,"reason":"short"}`;
+
+    const plannerUser = `User text:\n${userText}\n\nAttachments:\n${attachmentSummary}`;
+    const plannedRaw = await llmService.chat({
+        modelId: plannerModelId,
+        messages: [
+            { role: 'system', content: plannerSystem },
+            { role: 'user', content: plannerUser }
+        ],
+        stream: false,
+        temperature: 0.1,
+        maxTokens: 300
+    });
+
+    const planned = extractJson(plannedRaw);
+    const intent = (planned?.intent || 'qa') as AgentIntent;
+    const prompt = String(planned?.prompt || userText).trim() || userText;
+    const confidence = Number(planned?.confidence || 0.5);
+
+    if (intent !== 'qa' && intent !== 'image-generate' && intent !== 'image-edit') {
+        return { intent: 'qa', prompt: userText, confidence: 0.3, reason: 'fallback-invalid-intent' };
+    }
+
+    return {
+        intent,
+        prompt,
+        confidence: Number.isFinite(confidence) ? confidence : 0.5,
+        reason: planned?.reason
+    };
+};
+
+const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, isMobile, onOpenSettings, onHoverChange, onWidthChange }) => {
     // 1. Model State Management
     // ✨ 支持多模态模型 (image+chat) + 🚀 去重
     const [availableModels, setAvailableModels] = useState<ChatModel[]>(() => {
@@ -81,7 +339,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     const [selectedModel, setSelectedModel] = useState<ChatModel>(() => availableModels[0] || { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'Google', isCustom: false });
     const [showModelMenu, setShowModelMenu] = useState(false);
     const [modelSearch, setModelSearch] = useState('');
+    const modelMenuButtonRef = useRef<HTMLButtonElement>(null);
+    const [modelMenuLayout, setModelMenuLayout] = useState<{ left: number; bottom: number; width: number } | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, modelId: string } | null>(null);
+    const [sessionContextMenu, setSessionContextMenu] = useState<SessionContextMenu | null>(null);
     const [pinnedUpdate, setPinnedUpdate] = useState(0); // Trigger re-render for sorting
 
     // [NEW] Model Customizations (read from localStorage)
@@ -116,10 +377,43 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
 
     useEffect(() => {
         // Close menu on click anywhere
-        const closeMenu = () => setContextMenu(null);
+        const closeMenu = () => {
+            setContextMenu(null);
+            setSessionContextMenu(null);
+        };
         window.addEventListener('click', closeMenu);
         return () => window.removeEventListener('click', closeMenu);
     }, []);
+
+    const updateModelMenuLayout = useCallback(() => {
+        const btn = modelMenuButtonRef.current;
+        if (!btn) return;
+
+        const rect = btn.getBoundingClientRect();
+        const viewportPadding = 8;
+        const menuWidth = Math.min(360, Math.max(280, window.innerWidth - viewportPadding * 2));
+        const alignedLeft = rect.right - menuWidth;
+        const maxLeft = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+        const left = Math.min(Math.max(viewportPadding, alignedLeft), maxLeft);
+        const bottom = Math.max(viewportPadding, window.innerHeight - rect.top + 8);
+
+        setModelMenuLayout({ left, bottom, width: menuWidth });
+    }, []);
+
+    useEffect(() => {
+        if (!showModelMenu) return;
+
+        updateModelMenuLayout();
+        const onReposition = () => updateModelMenuLayout();
+
+        window.addEventListener('resize', onReposition);
+        window.addEventListener('scroll', onReposition, true);
+
+        return () => {
+            window.removeEventListener('resize', onReposition);
+            window.removeEventListener('scroll', onReposition, true);
+        };
+    }, [showModelMenu, updateModelMenuLayout]);
 
     // Agent State Management
     const [agentMode, setAgentMode] = useState(false);
@@ -163,27 +457,78 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     }, [selectedModel.id]);
 
     // 2. Chat State
-    const [messages, setMessages] = useState<Message[]>([
-        {
-            id: 'welcome',
-            role: 'assistant',
-            content: '你好！我是 KK Studio 数字助手。\n有什么我可以帮您？\n\n试试输入 "/image 一只猫" 来生成图片！',
-            timestamp: Date.now()
+    const [sessions, setSessions] = useState<ChatSessionItem[]>(() => {
+        try {
+            const raw = localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return parsed;
+                }
+            }
+        } catch {
+            // ignore
         }
-    ]);
+
+        return [{
+            id: `session_${Date.now()}`,
+            title: '新对话',
+            messages: [createWelcomeMessage()],
+            updatedAt: Date.now()
+        }];
+    });
+    const [activeSessionId, setActiveSessionId] = useState<string>(() => sessions[0]?.id || `session_${Date.now()}`);
+    const [messages, setMessages] = useState<Message[]>(() => sessions[0]?.messages || [createWelcomeMessage()]);
+    const [sessionSearch, setSessionSearch] = useState('');
+    const [showArchived, setShowArchived] = useState(false);
+    const [importPreview, setImportPreview] = useState<SessionImportPreview | null>(null);
+    const [importPreviewSearch, setImportPreviewSearch] = useState('');
+    const [importPreviewShowAll, setImportPreviewShowAll] = useState(false);
+    const [importExcludedIds, setImportExcludedIds] = useState<string[]>([]);
+    const [importPreviewOnlyExcluded, setImportPreviewOnlyExcluded] = useState(false);
+    const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>(() => {
+        try {
+            const raw = localStorage.getItem(CHAT_SESSION_TREE_EXPAND_KEY);
+            return raw ? JSON.parse(raw) : {};
+        } catch {
+            return {};
+        }
+    });
     const [input, setInput] = useState('');
     const [isThinking, setIsThinking] = useState(false);
+    const abortControllerRef = useRef<AbortController | null>(null);
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const sessionImportRef = useRef<HTMLInputElement>(null);
 
     // 3. Layout State
     const [keyboardHeight, setKeyboardHeight] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+    const [sidebarWidth, setSidebarWidth] = useState(() => {
+        // [NEW] Added width sync
+        setTimeout(() => onWidthChange && onWidthChange(
+            Math.max(320, parseInt(localStorage.getItem('kk_chat_width') || '420', 10))
+        ), 0);
+
+        const saved = localStorage.getItem('kk_chat_width');
+        return saved ? Math.max(320, parseInt(saved, 10)) : 420;
+    });
+
+    // 🚀 Sync width to parent in real-time during live resize drag
+    useEffect(() => {
+        if (onWidthChange) {
+            onWidthChange(sidebarWidth);
+        }
+    }, [sidebarWidth, onWidthChange]);
+
 
     // 4. Drag State (must be declared before scheduleAutoClose uses it)
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef({ x: 0, y: 0 });
     const startPosRef = useRef({ x: 0, y: 0 });
+
+    // [NEW] History Panel State
+    const [showHistoryPanel, setShowHistoryPanel] = useState(false);
 
     // Track keyboard visibility using visualViewport API
     useEffect(() => {
@@ -283,6 +628,128 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     useEffect(() => {
         localStorage.setItem('kk_chat_pos', JSON.stringify(position));
     }, [position]);
+
+    const lastAssistantIndex = useMemo(() => {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'assistant') return i;
+        }
+        return -1;
+    }, [messages]);
+
+    const filteredSessions = useMemo(() => {
+        const sorted = sessions
+            .filter(session => showArchived || !session.archived)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+        if (!sessionSearch.trim()) return sorted;
+        const q = sessionSearch.trim().toLowerCase();
+        return sorted.filter(session => {
+            if ((session.title || '').toLowerCase().includes(q)) return true;
+            return session.messages.some(m => (m.content || '').toLowerCase().includes(q));
+        });
+    }, [sessionSearch, sessions, showArchived]);
+
+    const sessionMap = useMemo(() => {
+        const map = new Map<string, ChatSessionItem>();
+        sessions.forEach(session => map.set(session.id, session));
+        return map;
+    }, [sessions]);
+
+    const activeSession = useMemo(() => {
+        return sessions.find(s => s.id === activeSessionId) || null;
+    }, [sessions, activeSessionId]);
+
+    const activeBranchTrail = useMemo(() => {
+        if (!activeSession) return [] as ChatSessionItem[];
+        const trail: ChatSessionItem[] = [];
+        let cursor: ChatSessionItem | undefined | null = activeSession;
+        const guard = new Set<string>();
+
+        while (cursor && !guard.has(cursor.id)) {
+            trail.unshift(cursor);
+            guard.add(cursor.id);
+            cursor = cursor.parentSessionId ? (sessionMap.get(cursor.parentSessionId) || null) : null;
+        }
+        return trail;
+    }, [activeSession, sessionMap]);
+
+    const activeChildren = useMemo(() => {
+        return sessions
+            .filter(s => s.parentSessionId === activeSessionId)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+    }, [sessions, activeSessionId]);
+
+    const sessionTreeRows = useMemo(() => {
+        const visibleSessions = sessions.filter(session => showArchived || !session.archived);
+        const childMap = new Map<string, ChatSessionItem[]>();
+        visibleSessions.forEach(session => {
+            if (!session.parentSessionId) return;
+            if (!childMap.has(session.parentSessionId)) childMap.set(session.parentSessionId, []);
+            childMap.get(session.parentSessionId)!.push(session);
+        });
+
+        childMap.forEach(list => list.sort((a, b) => b.updatedAt - a.updatedAt));
+
+        const roots = visibleSessions
+            .filter(session => !session.parentSessionId || !sessionMap.has(session.parentSessionId))
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+
+        const rows: Array<{ session: ChatSessionItem; depth: number; hasChildren: boolean }> = [];
+        const activePath = new Set(activeBranchTrail.map(item => item.id));
+
+        const dfs = (session: ChatSessionItem, depth: number) => {
+            const children = childMap.get(session.id) || [];
+            const hasChildren = children.length > 0;
+            rows.push({ session, depth, hasChildren });
+
+            const expanded = expandedNodes[session.id] ?? (depth === 0 || activePath.has(session.id));
+            if (!expanded) return;
+
+            children.forEach(child => dfs(child, depth + 1));
+        };
+
+        roots.forEach(root => dfs(root, 0));
+        return rows;
+    }, [activeBranchTrail, expandedNodes, sessionMap, sessions, showArchived]);
+
+    useEffect(() => {
+        const active = sessions.find(s => s.id === activeSessionId);
+        if (active) {
+            setMessages(active.messages?.length ? active.messages : [createWelcomeMessage()]);
+            return;
+        }
+
+        if (sessions.length > 0) {
+            setActiveSessionId(sessions[0].id);
+        }
+    }, [activeSessionId, sessions]);
+
+    useEffect(() => {
+        setSessions(prev => prev.map(session => {
+            if (session.id !== activeSessionId) return session;
+            return {
+                ...session,
+                messages,
+                title: session.customTitle ? session.title : getSessionTitle(messages),
+                updatedAt: Date.now()
+            };
+        }));
+    }, [messages, activeSessionId]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(CHAT_SESSION_STORAGE_KEY, JSON.stringify(sessions.slice(0, 20)));
+        } catch {
+            // ignore
+        }
+    }, [sessions]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(CHAT_SESSION_TREE_EXPAND_KEY, JSON.stringify(expandedNodes));
+        } catch {
+            // ignore
+        }
+    }, [expandedNodes]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -389,8 +856,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         setAttachments(prev => prev.filter(a => a.id !== id));
     };
 
-    // ✨ 图片生成逻辑
-    const handleImageGeneration = async (prompt: string) => {
+    // ✨ 图片生成逻辑（支持参考图编辑）
+    const handleImageGeneration = async (prompt: string, refs: Attachment[] = [], editMode?: 'edit') => {
         setIsThinking(true);
         registerActivity();
 
@@ -413,23 +880,38 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                 throw new Error("未找到可用的绘图模型，请在设置中添加支持绘图的模型 (如 Imagen 3/4, Gemini Flash Image等)");
             }
 
+            const referenceImages = refs
+                .filter(a => a.type === 'image' && a.data.startsWith('data:'))
+                .map((a) => {
+                    const matched = a.data.match(/^data:([^;]+);base64,(.+)$/);
+                    if (!matched) return null;
+                    return {
+                        id: a.id,
+                        data: matched[2],
+                        mimeType: matched[1]
+                    };
+                })
+                .filter(Boolean) as Array<{ id: string; data: string; mimeType: string }>;
+
             // 2. 调用生成服务
             const result = await generateImage(
                 prompt,
                 AspectRatio.SQUARE, // 默认方形
                 ImageSize.SIZE_1K,  // 默认1K
-                [], // TODO: 支持参考图?
+                referenceImages as any,
                 imageModel.id as any,
                 '', // apiKey auto-resolved
                 undefined,
-                false
+                false,
+                editMode ? { editMode } : undefined
             );
 
             // 3. 构建结果消息
+            const actionLabel = editMode ? '修改图片' : '生成图片';
             const aiMsg: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: `✨ 已为您生成图片: "${prompt}" (使用模型: ${imageModel.name})`,
+                content: `✨ 已为您${actionLabel}: "${prompt}" (使用模型: ${imageModel.name})`,
                 timestamp: Date.now(),
                 isImageGeneration: true,
                 attachments: [{
@@ -462,8 +944,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         const userText = input.trim();
 
         // ✨ 检查是否为生成图片指令
-        // Regex: /image prompt OR 画 prompt OR 生成 prompt
-        const imageRegex = /^(\/image|画|生成|draw|gen)\s+(.+)/i;
+        // Regex: /image prompt OR 画 prompt OR 生成 prompt OR 画猫
+        const imageRegex = /^(\/image|画|生成|draw|gen)[\s]*(.+)/i;
         const match = userText.match(imageRegex);
 
         const currentAttachments = [...attachments]; // 保存当前附件
@@ -479,11 +961,33 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         setInput('');
         setAttachments([]); // 清空附件
 
-        // 如果匹配到绘图指令，且没有附件(暂不支持图生图)，则走绘图流程
-        if (match && currentAttachments.length === 0) {
+        // 如果匹配到绘图指令，且没有附件(普通模式)，则走绘图流程
+        if (!agentMode && match && currentAttachments.length === 0) {
             const prompt = match[2];
             handleImageGeneration(prompt);
             return;
+        }
+
+        // Agent模式: 先做“思考式规划”，再执行路由
+        if (agentMode) {
+            try {
+                const plannerModelId = pickPlannerModelId(availableModels, selectedModel);
+                if (plannerModelId) {
+                    const plan = await planAgentAction(plannerModelId, userText, currentAttachments);
+
+                    if (plan.intent === 'image-generate') {
+                        await handleImageGeneration(plan.prompt, currentAttachments);
+                        return;
+                    }
+
+                    if (plan.intent === 'image-edit') {
+                        await handleImageGeneration(plan.prompt, currentAttachments, 'edit');
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn('[Agent] Planning failed, fallback to normal chat:', e);
+            }
         }
 
         // 🚀 Guard: Pure Image Models cannot chat
@@ -500,6 +1004,18 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         setIsThinking(true);
         registerActivity();
 
+        const assistantMsgId = `assistant_${Date.now()}`;
+        setMessages(prev => [...prev, {
+            id: assistantMsgId,
+            role: 'assistant',
+            content: '',
+            timestamp: Date.now()
+        }]);
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        let streamedText = '';
+
         try {
             // 构建历史记录
             const history = messages
@@ -508,29 +1024,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
 
             // Agent模式:添加系统提示词
             if (agentMode && currentAgent) {
-                history.unshift({ role: 'user', content: currentAgent.systemPrompt });
+                history.unshift({ role: 'system' as any, content: buildAgentSystemPrompt(currentAgent.systemPrompt) });
             }
 
-            // 构建当前消息(包含附件)
-            let messageContent = userText;
-            const inlineData: { mimeType: string; data: string }[] = [];
-
-            // 处理附件 - 转换为Gemini API格式
-            for (const att of currentAttachments) {
-                if (att.type === 'image' || att.type === 'video' || att.type === 'audio') {
-                    // 提取base64数据 (去除data:xxx;base64,前缀)
-                    const base64Match = att.data.match(/^data:([^;]+);base64,(.+)$/);
-                    if (base64Match) {
-                        inlineData.push({
-                            mimeType: base64Match[1],
-                            data: base64Match[2]
-                        });
-                    }
-                } else if (att.type === 'document') {
-                    // 文档:添加到文本中作为上下文
-                    messageContent += `\n\n[文档: ${att.name}]`;
-                }
-            }
+            const { messageContent, inlineData } = buildMessageWithAttachments(userText, currentAttachments);
 
             history.push({ role: 'user', content: messageContent });
 
@@ -538,16 +1035,24 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             const responseText = await llmService.chat({
                 modelId: selectedModel.id,
                 messages: history,
-                inlineData: inlineData.length > 0 ? inlineData : undefined
+                inlineData: inlineData.length > 0 ? inlineData : undefined,
+                stream: true,
+                signal: controller.signal,
+                onStream: (chunk: string) => {
+                    if (!chunk) return;
+                    streamedText += chunk;
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== assistantMsgId) return m;
+                        return { ...m, content: `${m.content || ''}${chunk}` };
+                    }));
+                }
             });
 
-            const aiMsg: Message = {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: responseText,
-                timestamp: Date.now()
-            };
-            setMessages(prev => [...prev, aiMsg]);
+            const finalText = streamedText || responseText || '...';
+            setMessages(prev => prev.map(m => {
+                if (m.id !== assistantMsgId) return m;
+                return { ...m, content: finalText };
+            }));
 
             import('../services/costService').then(({ recordCost }) => {
                 const fullText = history.map(m => m.content).join('') + userText + responseText;
@@ -561,18 +1066,357 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
 
         } catch (error: any) {
             console.error('Chat Error:', error);
-            notify.error('AI 生成失败', error.message || '请检查网络或 API Key');
+            const isAborted = error?.name === 'AbortError';
+            if (!isAborted) {
+                notify.error('AI 生成失败', error.message || '请检查网络或 API Key');
+            }
 
-            setMessages(prev => [...prev, {
-                id: Date.now().toString(),
-                role: 'assistant',
-                content: `⚠️ 出错了: ${error.message} `,
-                timestamp: Date.now()
-            }]);
+            setMessages(prev => prev.map(m => {
+                if (m.id !== assistantMsgId) return m;
+                if (isAborted) {
+                    return { ...m, content: m.content || '⏹️ 已停止生成' };
+                }
+                return { ...m, content: `⚠️ 出错了: ${error.message || '未知错误'}` };
+            }));
         } finally {
+            abortControllerRef.current = null;
             setIsThinking(false);
         }
     };
+
+    const handleStopGeneration = useCallback(() => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+    }, []);
+
+    const handleEditResend = useCallback((msg: Message) => {
+        if (msg.role !== 'user') return;
+        setInput(msg.content === '(附件)' ? '' : msg.content);
+        setAttachments(msg.attachments || []);
+    }, []);
+
+    const handleBranchFrom = useCallback((index: number) => {
+        const forkBase = messages.slice(0, index + 1);
+        if (forkBase.length === 0) return;
+
+        const branchId = `session_${Date.now()}`;
+        const branchTitle = `分支 · ${getSessionTitle(forkBase)}`;
+        const branchSession: ChatSessionItem = {
+            id: branchId,
+            title: branchTitle,
+            customTitle: true,
+            messages: forkBase,
+            updatedAt: Date.now(),
+            parentSessionId: activeSessionId,
+            branchFromMessageId: messages[index]?.id
+        };
+
+        setSessions(prev => [branchSession, ...prev]);
+        setActiveSessionId(branchId);
+        setInput('');
+        setAttachments([]);
+        notify.success('已创建分支会话', '可以在新分支继续对话');
+    }, [activeSessionId, messages]);
+
+    const handleRegenerateAssistant = useCallback(async (assistantId: string) => {
+        if (isThinking) return;
+
+        const assistantIndex = messages.findIndex(m => m.id === assistantId);
+        if (assistantIndex < 0) return;
+
+        let userIndex = -1;
+        for (let i = assistantIndex - 1; i >= 0; i--) {
+            if (messages[i].role === 'user') {
+                userIndex = i;
+                break;
+            }
+        }
+        if (userIndex < 0) return;
+
+        const userMsg = messages[userIndex];
+        const sourceText = userMsg.content === '(附件)' ? '' : userMsg.content;
+        const sourceAttachments = userMsg.attachments || [];
+        const { messageContent, inlineData } = buildMessageWithAttachments(sourceText, sourceAttachments);
+
+        const history = messages
+            .slice(0, userIndex)
+            .filter(m => m.id !== 'welcome')
+            .map(m => ({ role: m.role, content: m.content }));
+
+        if (agentMode && currentAgent) {
+            history.unshift({ role: 'system' as any, content: buildAgentSystemPrompt(currentAgent.systemPrompt) });
+        }
+        history.push({ role: 'user', content: messageContent });
+
+        setIsThinking(true);
+        registerActivity();
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        let streamedText = '';
+        setMessages(prev => prev.map(m => (m.id === assistantId ? { ...m, content: '' } : m)));
+
+        try {
+            const responseText = await llmService.chat({
+                modelId: selectedModel.id,
+                messages: history,
+                inlineData: inlineData.length > 0 ? inlineData : undefined,
+                stream: true,
+                signal: controller.signal,
+                onStream: (chunk: string) => {
+                    if (!chunk) return;
+                    streamedText += chunk;
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== assistantId) return m;
+                        return { ...m, content: `${m.content || ''}${chunk}` };
+                    }));
+                }
+            });
+
+            const finalText = streamedText || responseText || '...';
+            setMessages(prev => prev.map(m => (m.id === assistantId ? { ...m, content: finalText } : m)));
+        } catch (error: any) {
+            const isAborted = error?.name === 'AbortError';
+            if (!isAborted) {
+                notify.error('重新生成失败', error.message || '请检查网络或 API Key');
+            }
+            setMessages(prev => prev.map(m => {
+                if (m.id !== assistantId) return m;
+                return { ...m, content: isAborted ? (m.content || '⏹️ 已停止生成') : `⚠️ 出错了: ${error.message || '未知错误'}` };
+            }));
+        } finally {
+            abortControllerRef.current = null;
+            setIsThinking(false);
+        }
+    }, [agentMode, currentAgent, isThinking, messages, registerActivity, selectedModel.id]);
+
+    const handleNewSession = useCallback(() => {
+        const id = `session_${Date.now()}`;
+        const item: ChatSessionItem = {
+            id,
+            title: '新对话',
+            messages: [createWelcomeMessage()],
+            updatedAt: Date.now()
+        };
+        setSessions(prev => [item, ...prev]);
+        setActiveSessionId(id);
+        setInput('');
+        setAttachments([]);
+    }, []);
+
+    const handleSwitchSession = useCallback((id: string) => {
+        if (id === activeSessionId) return;
+        setActiveSessionId(id);
+        setInput('');
+        setAttachments([]);
+    }, [activeSessionId]);
+
+    const handleDeleteSession = useCallback((id: string) => {
+        if (sessions.length <= 1) {
+            notify.warning('无法删除', '至少保留一个会话');
+            return;
+        }
+
+        const next = sessions.filter(s => s.id !== id);
+        setSessions(next);
+        if (activeSessionId === id) {
+            setActiveSessionId(next[0].id);
+        }
+    }, [activeSessionId, sessions]);
+
+    const handleRenameSession = useCallback((id: string) => {
+        const target = sessions.find(s => s.id === id);
+        if (!target) return;
+
+        const renamed = window.prompt('重命名会话', target.title || '新对话');
+        if (renamed === null) return;
+
+        const title = renamed.trim() || '新对话';
+        setSessions(prev => prev.map(session => {
+            if (session.id !== id) return session;
+            return {
+                ...session,
+                title,
+                customTitle: true,
+                updatedAt: Date.now()
+            };
+        }));
+    }, [sessions]);
+
+    const toggleSessionExpand = useCallback((id: string) => {
+        setExpandedNodes(prev => ({
+            ...prev,
+            [id]: !(prev[id] ?? true)
+        }));
+    }, []);
+
+    const getBranchSourcePreview = useCallback((session: ChatSessionItem): string | null => {
+        if (!session.parentSessionId || !session.branchFromMessageId) return null;
+        const parent = sessionMap.get(session.parentSessionId);
+        if (!parent) return null;
+        const source = parent.messages.find(m => m.id === session.branchFromMessageId);
+        if (!source || !source.content) return null;
+        return source.content.replace(/\s+/g, ' ').slice(0, 40);
+    }, [sessionMap]);
+
+    const handleToggleArchiveSession = useCallback((id: string) => {
+        setSessions(prev => prev.map(session => {
+            if (session.id !== id) return session;
+            return {
+                ...session,
+                archived: !session.archived,
+                updatedAt: Date.now()
+            };
+        }));
+    }, []);
+
+    const handleDuplicateSession = useCallback((id: string) => {
+        const target = sessions.find(s => s.id === id);
+        if (!target) return;
+
+        const cloned: ChatSessionItem = {
+            ...target,
+            id: `session_${Date.now()}`,
+            title: `${target.title || '新对话'} 副本`,
+            customTitle: true,
+            updatedAt: Date.now(),
+            archived: false
+        };
+        setSessions(prev => [cloned, ...prev]);
+        setActiveSessionId(cloned.id);
+        setSessionContextMenu(null);
+    }, [sessions]);
+
+    const handleExportSessions = useCallback(() => {
+        try {
+            const payload = {
+                version: 1,
+                exportedAt: Date.now(),
+                activeSessionId,
+                sessions
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kk-chat-sessions-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            notify.success('导出成功', '会话已导出为 JSON');
+        } catch (error: any) {
+            notify.error('导出失败', error?.message || '未知错误');
+        }
+    }, [activeSessionId, sessions]);
+
+    const applyImportMode = useCallback((mode: SessionImportMode) => {
+        if (!importPreview) return;
+
+        const excluded = new Set(importExcludedIds);
+        const importedSessions = importPreview.sessions.filter(s => !excluded.has(s.id));
+        if (importedSessions.length === 0) {
+            notify.warning('没有可导入会话', '请取消部分排除项后重试');
+            return;
+        }
+
+        if (mode === 'replace') {
+            const next = importedSessions.slice(0, 50);
+            setSessions(next);
+            setActiveSessionId(importPreview.activeSessionId || next[0].id);
+            setImportPreview(null);
+            setImportPreviewSearch('');
+            setImportPreviewShowAll(false);
+            setImportExcludedIds([]);
+            setImportPreviewOnlyExcluded(false);
+            notify.success('导入成功', `覆盖导入 ${next.length} 个会话`);
+            return;
+        }
+
+        if (mode === 'append') {
+            const appendList = ensureUniqueIds(sessions, importedSessions);
+            const merged = [...appendList, ...sessions].slice(0, 50);
+            setSessions(merged);
+            setActiveSessionId(importPreview.activeSessionId && appendList.some(s => s.id === importPreview.activeSessionId)
+                ? importPreview.activeSessionId
+                : appendList[0]?.id || activeSessionId);
+            setImportPreview(null);
+            setImportPreviewSearch('');
+            setImportPreviewShowAll(false);
+            setImportExcludedIds([]);
+            setImportPreviewOnlyExcluded(false);
+            notify.success('导入成功', `追加导入 ${appendList.length} 个会话`);
+            return;
+        }
+
+        const byId = new Map<string, ChatSessionItem>();
+        sessions.forEach(s => byId.set(s.id, s));
+        importedSessions.forEach(s => {
+            const prev = byId.get(s.id);
+            if (!prev || (s.updatedAt || 0) >= (prev.updatedAt || 0)) {
+                byId.set(s.id, s);
+            }
+        });
+
+        const byFingerprint = new Map<string, ChatSessionItem>();
+        Array.from(byId.values()).forEach(session => {
+            const fp = makeSessionFingerprint(session);
+            const prev = byFingerprint.get(fp);
+            if (!prev || (session.updatedAt || 0) > (prev.updatedAt || 0)) {
+                byFingerprint.set(fp, session);
+            }
+        });
+
+        const smartMerged = Array.from(byFingerprint.values())
+            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+            .slice(0, 50);
+        setSessions(smartMerged);
+
+        const preferredActive = importPreview.activeSessionId || activeSessionId;
+        const hasPreferred = smartMerged.some(s => s.id === preferredActive);
+        setActiveSessionId(hasPreferred ? preferredActive : smartMerged[0].id);
+        setImportPreview(null);
+        setImportPreviewSearch('');
+        setImportPreviewShowAll(false);
+        setImportExcludedIds([]);
+        setImportPreviewOnlyExcluded(false);
+        notify.success('导入成功', `智能合并后保留 ${smartMerged.length} 个会话`);
+    }, [activeSessionId, importExcludedIds, importPreview, sessions]);
+
+    const handleImportSessions = useCallback((file: File) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const parsed = JSON.parse(String(reader.result || '{}'));
+                if (!parsed || !Array.isArray(parsed.sessions)) {
+                    throw new Error('格式不正确');
+                }
+                const importedSessions: ChatSessionItem[] = parsed.sessions.map((s: any, idx: number) => ({
+                    id: s.id || `session_import_${Date.now()}_${idx}`,
+                    title: s.title || '导入会话',
+                    messages: Array.isArray(s.messages) && s.messages.length > 0 ? s.messages : [createWelcomeMessage()],
+                    updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : Date.now(),
+                    customTitle: !!s.customTitle,
+                    parentSessionId: s.parentSessionId,
+                    branchFromMessageId: s.branchFromMessageId,
+                    archived: !!s.archived
+                }));
+
+                if (importedSessions.length === 0) throw new Error('没有可导入会话');
+                setImportPreview({
+                    sessions: importedSessions,
+                    activeSessionId: parsed.activeSessionId,
+                    stats: buildImportPreview(sessions, importedSessions)
+                });
+                setImportPreviewSearch('');
+                setImportPreviewShowAll(false);
+                setImportExcludedIds([]);
+                setImportPreviewOnlyExcluded(false);
+            } catch (error: any) {
+                notify.error('导入失败', error?.message || 'JSON 解析失败');
+            }
+        };
+        reader.readAsText(file, 'utf-8');
+    }, [sessions]);
 
     const handleClear = () => {
         if (confirm('确定要清空对话历史吗?')) {
@@ -605,30 +1449,230 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     onWheel={registerActivity}
                     className={`fixed z-[100] flex flex-col bg-[var(--bg-secondary)] backdrop-blur-2xl border-l border-[var(--border-light)] shadow-[var(--shadow-lg)] overflow-hidden ${isMobile
                         ? 'inset-0 rounded-none pb-0'
-                        : 'top-0 right-0 bottom-0 w-[420px]'
+                        : 'top-0 right-0 bottom-0'
                         }`}
                     style={isMobile ? {
                         height: keyboardHeight > 0 ? `${viewportHeight}px` : '100dvh',
                         transition: 'height 0.2s ease-out'
                     } : {
                         // Full height sidebar on the right
+                        width: `${sidebarWidth}px`,
                         transform: 'translateX(0)',
                         transition: 'transform 0.3s ease-out'
                     }}
                 >
+                    {/* Resize Handle */}
+                    {!isMobile && (
+                        <div
+                            onMouseDown={(e: React.MouseEvent) => {
+                                e.preventDefault();
+                                const startX = e.clientX;
+                                const startWidth = sidebarWidth;
 
-                    {/* Floating Close Button */}
-                    <button
-                        onClick={onToggle}
-                        className="absolute top-4 right-4 z-10 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)] rounded-full transition-colors backdrop-blur-sm bg-[var(--bg-tertiary)]/80"
-                        title="关闭"
-                    >
-                        <X size={20} />
-                    </button>
+                                const onMouseMove = (moveEvent: MouseEvent) => {
+                                    const deltaX = startX - moveEvent.clientX;
+                                    const newWidth = Math.max(320, Math.min(800, startWidth + deltaX));
+                                    setSidebarWidth(newWidth);
+                                };
+
+                                const onMouseUp = (upEvent: MouseEvent) => {
+                                    const deltaX = startX - upEvent.clientX;
+                                    const newWidth = Math.max(320, Math.min(800, startWidth + deltaX));
+                                    localStorage.setItem('kk_chat_width', newWidth.toString());
+                                    document.removeEventListener('mousemove', onMouseMove);
+                                    document.removeEventListener('mouseup', onMouseUp);
+                                };
+
+                                document.addEventListener('mousemove', onMouseMove);
+                                document.addEventListener('mouseup', onMouseUp);
+                            }}
+                            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-[var(--primary)] transition-colors z-50"
+                        />
+                    )}
+
+                    {/* Session Header */}
+                    <div className="relative z-10 flex flex-col pt-4 bg-[var(--bg-secondary)] border-b border-[var(--border-light)] shrink-0">
+                        <div className="flex items-center justify-between px-4 pb-3">
+                            {/* Left: Active Session Title */}
+                            <div className="flex-1 min-w-0 flex items-center gap-2">
+                                <button
+                                    onClick={() => handleRenameSession(activeSessionId)}
+                                    className="flex items-center gap-2 max-w-full group hover:bg-[var(--toolbar-hover)] px-2 py-1 rounded-lg transition-colors cursor-text"
+                                    title="点击重命名"
+                                >
+                                    <MessageSquare size={16} className="text-[var(--primary)] shrink-0" />
+                                    <span className="font-medium text-sm text-[var(--text-primary)] truncate">
+                                        {activeSession?.title || '新对话'}
+                                    </span>
+                                </button>
+                            </div>
+
+                            {/* Right: Actions */}
+                            <div className="flex items-center gap-1 shrink-0 ml-4 mb-2">
+                                <button
+                                    onClick={handleNewSession}
+                                    className="p-1.5 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--primary)] hover:bg-[var(--primary-light)] rounded-md transition-colors"
+                                    title="新建对话"
+                                >
+                                    <Plus size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setShowHistoryPanel(!showHistoryPanel)}
+                                    className={`p-1.5 flex items-center justify-center rounded-md transition-colors ${showHistoryPanel ? 'text-[var(--primary)] bg-[var(--primary-light)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]'}`}
+                                    title="历史记录与分支"
+                                >
+                                    <Layout size={18} />
+                                </button>
+                                <div className="w-px h-4 bg-white/10 mx-1 border-[var(--border-light)]" />
+                                <button
+                                    onClick={onToggle}
+                                    className="p-1.5 flex items-center justify-center text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
+                                    title="关闭侧边栏"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Expandable History Panel */}
+                        {showHistoryPanel && (
+                            <div className="flex flex-col border-t border-[var(--border-light)] bg-[var(--bg-tertiary)]/30 max-h-[40vh] overflow-hidden">
+                                {/* Panel Controls */}
+                                <div className="flex items-center px-4 py-2 gap-2 border-b border-white/5">
+                                    <input
+                                        ref={sessionImportRef}
+                                        type="file"
+                                        accept="application/json"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) handleImportSessions(file);
+                                            e.currentTarget.value = '';
+                                        }}
+                                    />
+                                    <div className="relative flex-1 min-w-0">
+                                        <input
+                                            value={sessionSearch}
+                                            onChange={(e) => setSessionSearch(e.target.value)}
+                                            placeholder="搜索历史记录..."
+                                            className="w-full h-7 pl-8 pr-2 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-light)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--primary)] transition-colors"
+                                        />
+                                        <div className="absolute left-2.5 top-1.5 text-[var(--text-tertiary)] pointer-events-none">
+                                            <Search size={14} />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                            onClick={handleExportSessions}
+                                            className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                                            title="导出全部会话"
+                                        >
+                                            <Download size={14} />
+                                        </button>
+                                        <button
+                                            onClick={() => sessionImportRef.current?.click()}
+                                            className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                                            title="导入会话"
+                                        >
+                                            <Upload size={14} />
+                                        </button>
+                                        <button
+                                            onClick={() => setShowArchived(prev => !prev)}
+                                            className={`p-1.5 rounded-md transition-colors ${showArchived ? 'bg-amber-500/20 text-amber-300' : 'hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                                            title={showArchived ? "隐藏已归档" : "显示已归档"}
+                                        >
+                                            <Archive size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Tree List */}
+                                <div className="flex-1 overflow-y-auto scrollbar-thin p-2">
+                                    {sessionTreeRows.map(row => (
+                                        <div
+                                            key={row.session.id}
+                                            className="flex items-center group py-1"
+                                            style={{ paddingLeft: `${row.depth * 16}px` }}
+                                        >
+                                            {/* Parent toggle */}
+                                            <div className="w-5 flex justify-center shrink-0">
+                                                {row.hasChildren ? (
+                                                    <button
+                                                        onClick={() => toggleSessionExpand(row.session.id)}
+                                                        className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-0.5 rounded transition-colors"
+                                                    >
+                                                        {(expandedNodes[row.session.id] ?? (row.depth === 0 || activeBranchTrail.some(p => p.id === row.session.id))) ? (
+                                                            <ChevronDown size={14} />
+                                                        ) : (
+                                                            <ChevronRight size={14} />
+                                                        )}
+                                                    </button>
+                                                ) : (
+                                                    <span className="w-1 h-1 rounded-full bg-white/10 opacity-50" />
+                                                )}
+                                            </div>
+
+                                            {/* Item Content */}
+                                            <button
+                                                onClick={() => handleSwitchSession(row.session.id)}
+                                                onContextMenu={(e) => {
+                                                    e.preventDefault();
+                                                    setSessionContextMenu({ x: e.clientX, y: e.clientY, sessionId: row.session.id });
+                                                }}
+                                                className={`flex-1 flex flex-col text-left px-2 py-1.5 min-w-0 rounded-lg border border-transparent transition-colors ${row.session.id === activeSessionId
+                                                    ? 'bg-[var(--primary-light)] text-[var(--primary)] border-[var(--primary)]/30'
+                                                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
+                                                    }`}
+                                            >
+                                                <div className="truncate text-xs font-medium">
+                                                    {row.session.parentSessionId && <span className="text-emerald-500/80 mr-1 text-[10px]">🌿</span>}
+                                                    {row.session.title || '新对话'}
+                                                </div>
+                                                <div className="truncate text-[10px] opacity-60 flex items-center justify-between mt-0.5">
+                                                    <span>{formatSessionMeta(row.session)}</span>
+                                                    <span>{Math.max(0, row.session.messages.filter(m => m.id !== 'welcome').length)} 条</span>
+                                                </div>
+                                            </button>
+
+                                            {/* Quick Actions (Hover overlay) */}
+                                            <div className="hidden group-hover:flex items-center gap-0.5 px-1 shrink-0 ml-1">
+                                                <button
+                                                    onClick={() => handleRenameSession(row.session.id)}
+                                                    className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--primary)] hover:bg-[var(--primary-light)] transition-colors"
+                                                    title="重命名"
+                                                >
+                                                    <Edit2 size={12} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleToggleArchiveSession(row.session.id)}
+                                                    className="p-1 rounded text-[var(--text-tertiary)] hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                                                    title={row.session.archived ? '取消归档' : '归档'}
+                                                >
+                                                    <Archive size={12} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteSession(row.session.id)}
+                                                    className="p-1 rounded text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                                    title="删除"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {sessionTreeRows.length === 0 && (
+                                        <div className="py-8 text-center text-[var(--text-tertiary)] text-xs">
+                                            暂无历史记录
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     {/* Messages */}
-                    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 scrollbar-thin pt-16">
-                        {messages.map((msg) => (
+                    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 scrollbar-thin">
+                        {messages.map((msg, idx) => (
                             <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''} group`}>
                                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-md ${msg.role === 'user'
                                     ? 'bg-[var(--bg-tertiary)] border border-[var(--border-light)]'
@@ -668,6 +1712,34 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                                     )}
                                                 </div>
                                             ))}
+                                        </div>
+                                    )}
+
+                                    {msg.id !== 'welcome' && (
+                                        <div className={`flex items-center gap-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                            {msg.role === 'user' && (
+                                                <button
+                                                    onClick={() => handleEditResend(msg)}
+                                                    className="px-2 py-0.5 rounded border border-white/10 hover:bg-white/10"
+                                                >
+                                                    编辑重发
+                                                </button>
+                                            )}
+                                            {msg.role === 'assistant' && idx === lastAssistantIndex && (
+                                                <button
+                                                    onClick={() => handleRegenerateAssistant(msg.id)}
+                                                    className="px-2 py-0.5 rounded border border-white/10 hover:bg-white/10"
+                                                    disabled={isThinking}
+                                                >
+                                                    重新生成
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleBranchFrom(idx)}
+                                                className="px-2 py-0.5 rounded border border-white/10 hover:bg-white/10"
+                                            >
+                                                从此分支
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -775,23 +1847,29 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                         setCurrentAgent(agentService.getActive());
                                     }
                                 }}
-                                className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all active:scale-95 ${agentMode
-                                    ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
-                                    : 'hover:bg-[var(--toolbar-hover)] text-[var(--text-secondary)]'
+                                className={`px-2.5 min-h-[44px] flex items-center gap-1.5 justify-center rounded-lg border transition-all active:scale-95 ${agentMode
+                                    ? 'bg-violet-500/15 border-violet-400/30 text-violet-300 hover:bg-violet-500/25'
+                                    : 'border-transparent hover:bg-[var(--toolbar-hover)] text-[var(--text-secondary)]'
                                     }`}
-                                title={agentMode ? 'Agent: ON' : 'Agent: OFF'}
+                                title={agentMode ? 'Agent 已开启：可自动路由问答/生成图/改图/文档任务' : '开启 Agent 增强模式'}
                             >
-                                <Bot size={20} className={agentMode ? 'animate-pulse' : ''} />
+                                <Bot size={16} className={agentMode ? 'animate-pulse' : ''} />
+                                <span className="text-xs font-medium">Agent</span>
+                                <span className="text-[10px] opacity-80">{agentMode ? 'ON' : 'OFF'}</span>
                             </button>
 
                             {/* Model Selector */}
-                            <div className="relative flex-1">
+                            <div className="relative flex-1 min-w-0">
                                 <button
+                                    ref={modelMenuButtonRef}
                                     onClick={() => {
                                         registerActivity();
                                         if (availableModels.length === 0) {
                                             onOpenSettings?.('api-management');
                                         } else {
+                                            if (!showModelMenu) {
+                                                updateModelMenuLayout();
+                                            }
                                             setShowModelMenu(!showModelMenu);
                                         }
                                     }}
@@ -831,120 +1909,117 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                 {/* Model Dropdown */}
                                 {showModelMenu && (
                                     <>
-                                        <div className="fixed inset-0 z-10" onClick={() => setShowModelMenu(false)} />
+                                        {ReactDOM.createPortal(
+                                            <>
+                                                <div className="fixed inset-0 z-[10000]" onClick={() => setShowModelMenu(false)} />
 
-                                        {/* Container for positioning the dropdown */}
-                                        <div
-                                            className="absolute bottom-full mb-2 z-20 flex flex-col gap-2"
-                                            style={{
-                                                right: '-48px',
-                                                width: '388px',
-                                                maxWidth: 'calc(100vw - 2rem)'
-                                            }}
-                                        >
-                                            <div
-                                                className="contents"
-                                            >
-                                                <div className="flex flex-col gap-2">
-                                                    {/* 🔍 Search Module */}
-                                                    <div className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-xl p-2 relative z-30">
-                                                        <div className="relative flex items-center">
-                                                            <svg className="absolute left-2 w-3.5 h-3.5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                                            </svg>
-                                                            <input
-                                                                type="text"
-                                                                value={modelSearch}
-                                                                onChange={(e) => setModelSearch(e.target.value)}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                placeholder="搜索模型..."
-                                                                className="w-full bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-xs rounded-xl py-1.5 pl-7 pr-2 outline-none border border-transparent focus:border-indigo-500/50 placeholder-[var(--text-tertiary)]"
-                                                                autoFocus
-                                                            />
-                                                            {modelSearch && (
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); setModelSearch(''); }}
-                                                                    className="absolute right-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                                                                >
-                                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                                    </svg>
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Model List Module */}
+                                                {modelMenuLayout && (
                                                     <div
-                                                        className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-2xl p-1.5 max-h-[50vh] overflow-y-auto scrollbar-thin relative z-30"
+                                                        className="fixed z-[10001] flex flex-col gap-2"
+                                                        style={{
+                                                            left: `${modelMenuLayout.left}px`,
+                                                            bottom: `${modelMenuLayout.bottom}px`,
+                                                            width: `${modelMenuLayout.width}px`,
+                                                            maxWidth: 'calc(100vw - 1rem)'
+                                                        }}
                                                     >
-                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold border-b border-[var(--border-light)] mb-1 select-none flex justify-between items-center">
-                                                            <span>选择模型 (右键可顶置)</span>
-                                                        </div>
-
-                                                        {filterAndSortModels(availableModels, modelSearch, modelCustomizations)
-                                                            .map((model: any) => {
-                                                                const custom = modelCustomizations[model.id] || {};
-                                                                const displayName = custom.alias || model.name || model.id;
-                                                                const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
-                                                                const isPinned = getPinnedModels().includes(model.id);
-
-                                                                return (
-                                                                    <button
-                                                                        key={model.id}
-                                                                        onClick={() => { setSelectedModel(model); setShowModelMenu(false); setModelSearch(''); }}
-                                                                        onContextMenu={(e) => {
-                                                                            e.preventDefault();
-                                                                            setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
-                                                                        }}
-                                                                        className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-white/10 ring-1 ring-white/20' : 'text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)] border border-transparent'}`}
-                                                                    >
-                                                                        <span className="mt-0.5 text-base relative">
-                                                                            {model.icon || '🤖'}
-                                                                            {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
-                                                                        </span>
-                                                                        <div className="flex flex-col gap-0.5 w-full">
-                                                                            <div className="flex items-center justify-between">
-                                                                                <span className={`font-medium ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
-                                                                                    {displayName}
-                                                                                </span>
-                                                                                {/* 🚀 [NEW] 下拉菜单中的来源标签 - 改为横排，居中对齐，稍微大一点 */}
-                                                                                {getModelDisplayInfo(model).badgeText && (
-                                                                                    <span
-                                                                                        className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 ml-auto ${getModelDisplayInfo(model).badgeColor}`}
-                                                                                        style={{
-                                                                                            flexShrink: 0,
-                                                                                            whiteSpace: 'nowrap'
-                                                                                        }}
-                                                                                    >
-                                                                                        {getModelDisplayInfo(model).badgeText}
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
-                                                                            <span className="text-[10px] opacity-70 leading-tight truncate">{advantage}</span>
-                                                                        </div>
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        {sortModels(availableModels).filter(m => {
-                                                            if (!modelSearch) return true;
-                                                            const custom = modelCustomizations[m.id] || {};
-                                                            const searchLower = modelSearch.toLowerCase();
-                                                            return (
-                                                                m.id.toLowerCase().includes(searchLower) ||
-                                                                (m.name && m.name.toLowerCase().includes(searchLower)) ||
-                                                                (custom.alias && custom.alias.toLowerCase().includes(searchLower)) ||
-                                                                (m.provider && m.provider.toLowerCase().includes(searchLower))
-                                                            );
-                                                        }).length === 0 && (
-                                                                <div className="p-4 text-center text-xs text-[var(--text-tertiary)]">
-                                                                    未找到匹配的模型
+                                                        <div className="flex flex-col gap-2">
+                                                            {/* Search Module */}
+                                                            <div className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-xl p-2 relative z-30">
+                                                                <div className="relative flex items-center">
+                                                                    <svg className="absolute left-2 w-3.5 h-3.5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                                    </svg>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={modelSearch}
+                                                                        onChange={(e) => setModelSearch(e.target.value)}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        placeholder="搜索模型..."
+                                                                        className="w-full bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-xs rounded-xl py-1.5 pl-7 pr-2 outline-none border border-transparent focus:border-indigo-500/50 placeholder-[var(--text-tertiary)]"
+                                                                        autoFocus
+                                                                    />
+                                                                    {modelSearch && (
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); setModelSearch(''); }}
+                                                                            className="absolute right-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                                                                        >
+                                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                                            </svg>
+                                                                        </button>
+                                                                    )}
                                                                 </div>
-                                                            )}
+                                                            </div>
+
+                                                            {/* Model List Module */}
+                                                            <div className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-2xl shadow-2xl p-1.5 max-h-[50vh] overflow-y-auto overflow-x-hidden scrollbar-thin relative z-30">
+                                                                <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold border-b border-[var(--border-light)] mb-1 select-none flex justify-between items-center">
+                                                                    <span>选择模型 (右键可顶置)</span>
+                                                                </div>
+
+                                                                {filterAndSortModels(availableModels, modelSearch, modelCustomizations)
+                                                                    .map((model: any) => {
+                                                                        const custom = modelCustomizations[model.id] || {};
+                                                                        const displayName = custom.alias || model.name || model.id;
+                                                                        const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
+                                                                        const isPinned = getPinnedModels().includes(model.id);
+
+                                                                        return (
+                                                                            <button
+                                                                                key={model.id}
+                                                                                onClick={() => { setSelectedModel(model); setShowModelMenu(false); setModelSearch(''); }}
+                                                                                onContextMenu={(e) => {
+                                                                                    e.preventDefault();
+                                                                                    setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
+                                                                                }}
+                                                                                className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-all ${selectedModel.id === model.id ? 'bg-white/10 ring-1 ring-white/20' : 'text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)] border border-transparent'}`}
+                                                                            >
+                                                                                <span className="mt-0.5 text-base relative shrink-0">
+                                                                                    {model.icon || '🤖'}
+                                                                                    {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
+                                                                                </span>
+                                                                                <div className="flex flex-col gap-0.5 w-full min-w-0">
+                                                                                    <div className="flex items-center justify-between gap-2 min-w-0">
+                                                                                        <span className={`font-medium truncate min-w-0 ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
+                                                                                            {displayName}
+                                                                                        </span>
+                                                                                        {getModelDisplayInfo(model).badgeText && (
+                                                                                            <span
+                                                                                                className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 shrink-0 ${getModelDisplayInfo(model).badgeColor}`}
+                                                                                                style={{ whiteSpace: 'nowrap' }}
+                                                                                            >
+                                                                                                {getModelDisplayInfo(model).badgeText}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <span className="text-[10px] opacity-70 leading-tight truncate min-w-0">{advantage}</span>
+                                                                                </div>
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                {sortModels(availableModels).filter(m => {
+                                                                    if (!modelSearch) return true;
+                                                                    const custom = modelCustomizations[m.id] || {};
+                                                                    const searchLower = modelSearch.toLowerCase();
+                                                                    return (
+                                                                        m.id.toLowerCase().includes(searchLower) ||
+                                                                        (m.name && m.name.toLowerCase().includes(searchLower)) ||
+                                                                        (custom.alias && custom.alias.toLowerCase().includes(searchLower)) ||
+                                                                        (m.provider && m.provider.toLowerCase().includes(searchLower))
+                                                                    );
+                                                                }).length === 0 && (
+                                                                        <div className="p-4 text-center text-xs text-[var(--text-tertiary)]">
+                                                                            未找到匹配的模型
+                                                                        </div>
+                                                                    )}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </div>
-                                        </div>
+                                                )}
+                                            </>,
+                                            document.body
+                                        )}
 
                                         {/* Context Menu for Pinning */}
                                         {contextMenu && ReactDOM.createPortal(
@@ -973,20 +2048,256 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                             </div>
 
                             {/* Send Button */}
-                            <button
-                                onClick={() => {
-                                    if (input.trim()) {
-                                        handleSend();
-                                    }
-                                }}
-                                disabled={isThinking}
-                                className="min-w-[44px] min-h-[44px] rounded-full cursor-pointer flex items-center justify-center bg-[var(--text-tertiary)] text-white hover:bg-[var(--text-secondary)] transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <ArrowUp size={18} />
-                            </button>
+                            {isThinking ? (
+                                <button
+                                    onClick={handleStopGeneration}
+                                    className="min-w-[44px] min-h-[44px] rounded-full cursor-pointer flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-transform active:scale-95"
+                                    title="停止生成"
+                                >
+                                    <Square size={14} />
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => {
+                                        if (input.trim() || attachments.length > 0) {
+                                            handleSend();
+                                        }
+                                    }}
+                                    className="min-w-[44px] min-h-[44px] rounded-full cursor-pointer flex items-center justify-center bg-[var(--text-tertiary)] text-white hover:bg-[var(--text-secondary)] transition-transform active:scale-95"
+                                >
+                                    <ArrowUp size={18} />
+                                </button>
+                            )}
                         </div>
+
                     </div>
                 </div >
+            )}
+            {sessionContextMenu && ReactDOM.createPortal(
+                <div
+                    className="fixed z-[10020] bg-[#2a2a2e] border border-white/10 rounded-lg shadow-xl py-1 w-40 backdrop-blur-md"
+                    style={{ top: sessionContextMenu.y, left: sessionContextMenu.x }}
+                >
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleRenameSession(sessionContextMenu.sessionId);
+                            setSessionContextMenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10"
+                    >
+                        重命名
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDuplicateSession(sessionContextMenu.sessionId);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10"
+                    >
+                        复制分支
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleArchiveSession(sessionContextMenu.sessionId);
+                            setSessionContextMenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10"
+                    >
+                        归档/取消归档
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSession(sessionContextMenu.sessionId);
+                            setSessionContextMenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-red-300 hover:bg-red-500/20"
+                    >
+                        删除会话
+                    </button>
+                </div>,
+                document.body
+            )}
+            {importPreview && ReactDOM.createPortal(
+                <div className="fixed inset-0 z-[10030] bg-black/50 flex items-center justify-center p-4">
+                    <div className="w-full max-w-md rounded-xl border border-white/10 bg-[var(--bg-secondary)] shadow-2xl p-4">
+                        <div className="text-sm font-medium text-[var(--text-primary)] mb-2">导入预览</div>
+                        <div className="text-xs text-[var(--text-secondary)] space-y-1 mb-4">
+                            <div>导入会话: {importPreview.stats.imported}</div>
+                            <div>新会话(ID): {importPreview.stats.newById}</div>
+                            <div>ID 冲突: {importPreview.stats.conflictsById}</div>
+                            <div>内容重复(指纹): {importPreview.stats.duplicatesByFingerprint}</div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-2">
+                            <input
+                                value={importPreviewSearch}
+                                onChange={(e) => setImportPreviewSearch(e.target.value)}
+                                placeholder="搜索导入明细..."
+                                className="h-8 w-full sm:w-auto sm:flex-1 px-2 rounded-lg border border-white/10 bg-[var(--bg-tertiary)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none"
+                            />
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setImportPreviewShowAll(prev => !prev)}
+                                    className="flex-1 sm:flex-none h-8 px-2 rounded-lg border border-white/10 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)] whitespace-nowrap"
+                                >
+                                    {importPreviewShowAll ? '收起' : '查看全部'}
+                                </button>
+                                <button
+                                    onClick={() => setImportPreviewOnlyExcluded(prev => !prev)}
+                                    className={`flex-1 sm:flex-none h-8 px-2 rounded-lg border text-[11px] whitespace-nowrap transition-colors ${importPreviewOnlyExcluded
+                                        ? 'border-red-400/40 bg-red-500/15 text-red-200'
+                                        : 'border-white/10 text-[var(--text-secondary)] hover:bg-[var(--toolbar-hover)]'
+                                        }`}
+                                >
+                                    {importPreviewOnlyExcluded ? '显示全部' : '只看已勾选'}
+                                </button>
+                            </div>
+                        </div>
+                        {(() => {
+                            const q = importPreviewSearch.trim().toLowerCase();
+                            const conflictSet = new Set(importPreview.stats.conflictIds);
+                            const duplicateSet = new Set(importPreview.stats.duplicateIds);
+                            const newSet = new Set(importPreview.stats.newIds);
+                            const filtered = importPreview.sessions.filter(session => {
+                                if (!q) return true;
+                                return getSessionLabel(session).toLowerCase().includes(q);
+                            }).filter(session => importPreviewOnlyExcluded ? importExcludedIds.includes(session.id) : true);
+                            const visible = importPreviewShowAll ? filtered : filtered.slice(0, 10);
+
+                            return (
+                                <div className="mb-3 border border-white/10 rounded-lg p-2 max-h-44 overflow-y-auto scrollbar-thin">
+                                    <div className="text-[10px] text-[var(--text-tertiary)] mb-2">排除项（勾选后不导入）</div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <button
+                                            onClick={() => setImportExcludedIds(visible.map(s => s.id))}
+                                            className="text-[10px] px-2 py-1 rounded border border-white/10 hover:bg-[var(--toolbar-hover)]"
+                                        >全选可见</button>
+                                        <button
+                                            onClick={() => setImportExcludedIds([])}
+                                            className="text-[10px] px-2 py-1 rounded border border-white/10 hover:bg-[var(--toolbar-hover)]"
+                                        >清空排除</button>
+                                        <span className="text-[10px] text-[var(--text-tertiary)]">已排除 {importExcludedIds.length} 条</span>
+                                    </div>
+                                    <div className="space-y-1">
+                                        {visible.map(session => {
+                                            const checked = importExcludedIds.includes(session.id);
+                                            return (
+                                                <label key={`exclude-${session.id}`} className="flex items-center gap-2 text-[10px] cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={(e) => {
+                                                            setImportExcludedIds(prev => e.target.checked
+                                                                ? [...prev, session.id]
+                                                                : prev.filter(id => id !== session.id));
+                                                        }}
+                                                    />
+                                                    <span className="flex-1 truncate text-[var(--text-secondary)]">{getSessionLabel(session)}</span>
+                                                    {newSet.has(session.id) && <span className="px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-200">新增</span>}
+                                                    {conflictSet.has(session.id) && <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-200">冲突</span>}
+                                                    {duplicateSet.has(session.id) && <span className="px-1 py-0.5 rounded bg-blue-500/20 text-blue-200">重复</span>}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                        <div className="space-y-2 mb-4 max-h-40 overflow-y-auto scrollbar-thin">
+                            {importPreview.stats.newTitles.length > 0 && (() => {
+                                const list = importPreview.stats.newTitles.filter(name => name.toLowerCase().includes(importPreviewSearch.toLowerCase()));
+                                const visible = importPreviewShowAll ? list : list.slice(0, 8);
+                                return visible.length > 0 && (
+                                    <div>
+                                        <div className="text-[10px] text-emerald-300 mb-1">将新增</div>
+                                        <div className="text-[10px] text-[var(--text-secondary)] space-y-0.5">
+                                            {visible.map((name, idx) => <div key={`new-${idx}`}>{name}</div>)}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                            {importPreview.stats.conflictTitles.length > 0 && (() => {
+                                const list = importPreview.stats.conflictTitles.filter(name => name.toLowerCase().includes(importPreviewSearch.toLowerCase()));
+                                const visible = importPreviewShowAll ? list : list.slice(0, 8);
+                                return visible.length > 0 && (
+                                    <div>
+                                        <div className="text-[10px] text-amber-300 mb-1">ID冲突</div>
+                                        <div className="text-[10px] text-[var(--text-secondary)] space-y-0.5">
+                                            {visible.map((name, idx) => <div key={`conf-${idx}`}>{name}</div>)}
+                                        </div>
+                                        {importPreview.stats.conflictPairs.length > 0 && (
+                                            <div className="mt-1 text-[9px] text-[var(--text-tertiary)] space-y-0.5">
+                                                {importPreview.stats.conflictPairs
+                                                    .filter(pair => `${pair.incoming} ${pair.existing}`.toLowerCase().includes(importPreviewSearch.toLowerCase()))
+                                                    .slice(0, importPreviewShowAll ? 20 : 4)
+                                                    .map((pair, idx) => (
+                                                        <div key={`conf-pair-${idx}`} className="truncate">{pair.incoming} → {pair.existing}</div>
+                                                    ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                            {importPreview.stats.duplicateTitles.length > 0 && (() => {
+                                const list = importPreview.stats.duplicateTitles.filter(name => name.toLowerCase().includes(importPreviewSearch.toLowerCase()));
+                                const visible = importPreviewShowAll ? list : list.slice(0, 8);
+                                return visible.length > 0 && (
+                                    <div>
+                                        <div className="text-[10px] text-blue-300 mb-1">内容疑似重复</div>
+                                        <div className="text-[10px] text-[var(--text-secondary)] space-y-0.5">
+                                            {visible.map((name, idx) => <div key={`dup-${idx}`}>{name}</div>)}
+                                        </div>
+                                        {importPreview.stats.duplicatePairs.length > 0 && (
+                                            <div className="mt-1 text-[9px] text-[var(--text-tertiary)] space-y-0.5">
+                                                {importPreview.stats.duplicatePairs
+                                                    .filter(pair => `${pair.incoming} ${pair.existing}`.toLowerCase().includes(importPreviewSearch.toLowerCase()))
+                                                    .slice(0, importPreviewShowAll ? 20 : 4)
+                                                    .map((pair, idx) => (
+                                                        <div key={`dup-pair-${idx}`} className="truncate">{pair.incoming} → {pair.existing}</div>
+                                                    ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 mb-3">
+                            <button
+                                onClick={() => applyImportMode('smart')}
+                                className="w-full py-2 rounded-lg bg-blue-500/20 border border-blue-400/40 text-blue-200 text-sm hover:bg-blue-500/30"
+                            >
+                                智能合并（推荐）
+                            </button>
+                            <button
+                                onClick={() => applyImportMode('append')}
+                                className="w-full py-2 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-sm hover:bg-emerald-500/25"
+                            >
+                                追加保留当前
+                            </button>
+                            <button
+                                onClick={() => applyImportMode('replace')}
+                                className="w-full py-2 rounded-lg bg-amber-500/15 border border-amber-400/30 text-amber-200 text-sm hover:bg-amber-500/25"
+                            >
+                                覆盖当前
+                            </button>
+                        </div>
+                        <button
+                            onClick={() => {
+                                setImportPreview(null);
+                                setImportPreviewSearch('');
+                                setImportPreviewShowAll(false);
+                                setImportExcludedIds([]);
+                                setImportPreviewOnlyExcluded(false);
+                            }}
+                            className="w-full py-2 rounded-lg border border-white/10 text-[var(--text-secondary)] text-sm hover:bg-[var(--toolbar-hover)]"
+                        >
+                            取消
+                        </button>
+                    </div>
+                </div>,
+                document.body
             )}
         </>
     );

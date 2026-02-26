@@ -1,18 +1,23 @@
-import { LLMAdapter, ChatOptions, ImageGenerationOptions } from './LLMAdapter';
+import { LLMAdapter, ChatOptions, ImageGenerationOptions, VideoGenerationOptions, VideoGenerationResult, AudioGenerationOptions, AudioGenerationResult } from './LLMAdapter';
 import { GoogleAdapter } from './GoogleAdapter';
 import { OpenAICompatibleAdapter } from './OpenAICompatibleAdapter';
 import { AliyunAdapter } from './AliyunAdapter';
 import { TencentAdapter } from './TencentAdapter';
 import { VolcengineAdapter } from './VolcengineAdapter';
+import { VideoCompatibleAdapter } from './VideoCompatibleAdapter';
+import { AudioCompatibleAdapter } from './AudioCompatibleAdapter';
 import { KeyManager, KeySlot, Provider, getModelMetadata } from '../keyManager';
 import { keyManager } from '../keyManager';
 import * as costService from '../costService';
 import { ImageSize } from '../../types';
+import { getProviderCapability, modelSupportedByProvider, ProviderCapabilityProfile } from './providerCapabilities';
 
 export class LLMService {
     private static instance: LLMService;
     private adapters: Map<string, LLMAdapter> = new Map(); // Keyed by Provider string
     private defaultAdapter: LLMAdapter;
+    private videoAdapter: VideoCompatibleAdapter;
+    private audioAdapter: AudioCompatibleAdapter;
 
     private constructor() {
         // Initialize Adapters
@@ -25,6 +30,9 @@ export class LLMService {
         this.registerAdapter(new AliyunAdapter());
         this.registerAdapter(new TencentAdapter());
         this.registerAdapter(new VolcengineAdapter());
+
+        this.videoAdapter = new VideoCompatibleAdapter();
+        this.audioAdapter = new AudioCompatibleAdapter();
 
         // Alias Logic
         // We map specific provider strings to the OpenAI adapter instance
@@ -54,6 +62,21 @@ export class LLMService {
         return this.adapters.get(provider) || this.defaultAdapter;
     }
 
+    public getProviderProfile(provider: Provider): ProviderCapabilityProfile | null {
+        return getProviderCapability(provider);
+    }
+
+    public getProviderProfiles(): ProviderCapabilityProfile[] {
+        const providers: Provider[] = ['Google', 'OpenAI', 'Anthropic', 'Aliyun', 'Tencent', 'Volcengine', 'SiliconFlow', 'Custom'];
+        return providers
+            .map(item => getProviderCapability(item))
+            .filter((item): item is ProviderCapabilityProfile => !!item);
+    }
+
+    public canProviderHandleModel(provider: Provider, modelId: string): boolean {
+        return modelSupportedByProvider(provider, modelId);
+    }
+
     public async chat(options: ChatOptions): Promise<string> {
         let lastError: any;
         const maxAttempts = 3;
@@ -68,11 +91,31 @@ export class LLMService {
             try {
                 const adapter = this.getAdapter(keySlot.provider);
 
+                if (!this.canProviderHandleModel(keySlot.provider, options.modelId)) {
+                    throw new Error(`Provider ${keySlot.provider} does not match model ${options.modelId}`);
+                }
+
                 // ✨ Suffix Stripping for API Call
                 const baseModelId = options.modelId.split('@')[0];
                 const cleanOptions = { ...options, modelId: baseModelId };
 
-                const result = await adapter.chat(cleanOptions, keySlot);
+                const callerOnStream = options.onStream;
+                let streamedText = '';
+                const streamOptions = {
+                    ...cleanOptions,
+                    onStream: (chunk: string) => {
+                        streamedText += chunk;
+                        callerOnStream?.(chunk);
+                    }
+                };
+
+                let result: string;
+                if (options.stream && adapter.chatStream) {
+                    await adapter.chatStream(streamOptions, keySlot);
+                    result = streamedText;
+                } else {
+                    result = await adapter.chat(cleanOptions, keySlot);
+                }
                 keyManager.reportSuccess(keySlot.id);
 
                 // Track Usage (Estimate)
@@ -105,6 +148,10 @@ export class LLMService {
 
             try {
                 const adapter = this.getAdapter(keySlot.provider);
+
+                if (!this.canProviderHandleModel(keySlot.provider, options.modelId)) {
+                    throw new Error(`Provider ${keySlot.provider} does not match model ${options.modelId}`);
+                }
 
                 // ✨ Suffix Stripping for API Call
                 const baseModelId = options.modelId.split('@')[0];
@@ -176,6 +223,76 @@ export class LLMService {
         const keyData = keyManager.getNextKey(modelId);
         if (!keyData) return null;
         return keyData as KeySlot;
+    }
+
+    public async generateVideo(options: VideoGenerationOptions): Promise<VideoGenerationResult> {
+        let lastError: any;
+        const maxAttempts = 3;
+
+        for (let i = 0; i < maxAttempts; i++) {
+            const keySlot = this.resolveKey(options.modelId);
+            if (!keySlot) {
+                if (i === 0) throw new Error(`No available key for model: ${options.modelId}`);
+                break;
+            }
+
+            try {
+                const adapter = this.getAdapter(keySlot.provider);
+                const targetAdapter = adapter.generateVideo ? adapter : this.videoAdapter;
+
+                const result = await targetAdapter.generateVideo!(options, keySlot);
+                keyManager.reportSuccess(keySlot.id);
+
+                if (!result.provider) result.provider = keySlot.provider;
+                if (!result.providerName) result.providerName = keySlot.name || keySlot.provider;
+                if (!result.modelName) {
+                    const metadata = getModelMetadata(options.modelId);
+                    result.modelName = metadata?.name || options.modelId;
+                }
+
+                return result;
+            } catch (error: any) {
+                lastError = error;
+                console.warn(`[LLMService] Video attempt ${i + 1} failed:`, error);
+                keyManager.reportFailure(keySlot.id, error.message);
+            }
+        }
+        throw lastError || new Error("Video generation failed after retries");
+    }
+
+    public async generateAudio(options: AudioGenerationOptions): Promise<AudioGenerationResult> {
+        let lastError: any;
+        const maxAttempts = 3;
+
+        for (let i = 0; i < maxAttempts; i++) {
+            const keySlot = this.resolveKey(options.modelId);
+            if (!keySlot) {
+                if (i === 0) throw new Error(`No available key for model: ${options.modelId}`);
+                break;
+            }
+
+            try {
+                const adapter = this.getAdapter(keySlot.provider);
+                const targetAdapter = adapter.generateAudio ? adapter : this.audioAdapter;
+
+                const result = await targetAdapter.generateAudio!(options, keySlot);
+                keyManager.reportSuccess(keySlot.id);
+
+                if (!result.provider) result.provider = keySlot.provider;
+                if (!result.providerName) result.providerName = keySlot.name || keySlot.provider;
+                if (!result.modelName) {
+                    const metadata = getModelMetadata(options.modelId);
+                    result.modelName = metadata?.name || options.modelId;
+                }
+
+                return result;
+            } catch (error: any) {
+                lastError = error;
+                console.warn(`[LLMService] Audio attempt ${i + 1} failed:`, error);
+                keyManager.reportFailure(keySlot.id, error.message);
+            }
+        }
+        throw lastError || new Error("Audio generation failed after retries");
     }
 }
 

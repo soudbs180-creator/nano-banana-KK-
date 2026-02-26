@@ -658,6 +658,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const isLoadingRef = useRef(isLoading);
     // 🚀 [防刷新漏洞] 用于标记需要紧急出盘(绕过200ms防抖)的关键操作
     const urgentSaveRef = useRef(false);
+    // 🚀 [锁流写] 控制文件系统并发写入，解决 `DOMException: file is locked`
+    const fsWriteLockRef = useRef<Promise<void> | null>(null);
 
     useLayoutEffect(() => {
         stateRef.current = state;
@@ -682,19 +684,30 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 // [NEW] Auto-save to Local File System if connected
                 if (state.fileSystemHandle) {
-                    try {
-                        // @ts-ignore
-                        const projectFile = await state.fileSystemHandle.getFileHandle('project.json', { create: true });
-                        // @ts-ignore
-                        const writable = await projectFile.createWritable();
-                        // Save minimal state (canvases + activeCanvasId) to keep project.json clean compatible with other tools
-                        await writable.write(JSON.stringify({
-                            canvases: stateToSave.canvases,
-                            activeCanvasId: state.activeCanvasId  // 🚀 记住当前活动项目
-                        }, null, 2));
-                        await writable.close();
-                    } catch (e) {
-                        // Permission might be lost or handle invalid
+                    const executeWrite = async () => {
+                        try {
+                            // @ts-ignore
+                            const projectFile = await state.fileSystemHandle.getFileHandle('project.json', { create: true });
+                            // @ts-ignore
+                            const writable = await projectFile.createWritable();
+                            // Save minimal state (canvases + activeCanvasId) to keep project.json clean compatible with other tools
+                            await writable.write(JSON.stringify({
+                                canvases: stateToSave.canvases,
+                                activeCanvasId: state.activeCanvasId  // 🚀 记住当前活动项目
+                            }, null, 2));
+                            await writable.close();
+                        } catch (e) {
+                            console.error('[CanvasContext] File System Write Lock Error:', e);
+                        }
+                    };
+
+                    const nextTask = (fsWriteLockRef.current || Promise.resolve()).then(executeWrite);
+                    fsWriteLockRef.current = nextTask;
+
+                    await nextTask;
+
+                    if (fsWriteLockRef.current === nextTask) {
+                        fsWriteLockRef.current = null;
                     }
                 }
 
@@ -1083,7 +1096,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         }
                     }
 
-                    // B. IndexedDB (浏览器缓存) - 始终保存缩略图
+                    // B. IndexedDB (浏览器缓存) - 始终保存一份可快速恢复的数据
                     if (isVideo) {
                         // 视频：直接保存，不压缩
                         const { saveImage } = await import('../services/imageStorage');
@@ -1092,6 +1105,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     } else {
                         const { saveImage } = await import('../services/imageStorage');
                         const { getQualityStorageId, ImageQuality } = await import('../services/imageQuality');
+
+                        // 🚀 双保险：无论是否有本地/OPFS，都保存 ORIGINAL 到 IndexedDB
+                        // 这样首屏与重载都能通过 storageId 秒级命中，不必等待磁盘回读
+                        await saveImage(storageId, node.url);
+                        console.log(`[CanvasContext] ✅ Saved ORIGINAL for ${storageId} to IndexedDB cache`);
 
                         // 🚀 [优化] 使用Web Worker生成缩略图，不阻塞主线程
                         try {
@@ -1109,6 +1127,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             const microId = getQualityStorageId(storageId, ImageQuality.MICRO);
                             await saveImage(microId, microData);
                             console.log(`[CanvasContext] ✅ Saved MICRO thumbnail (Worker) for ${storageId}`);
+
+                            // 预览档兜底到原图，避免 PREVIEW 级读取时出现空洞
+                            const previewId = getQualityStorageId(storageId, ImageQuality.PREVIEW);
+                            await saveImage(previewId, node.url);
                         } catch (workerError) {
                             // Worker失败时回退到主线程
                             console.warn(`[CanvasContext] Worker failed, falling back to main thread:`, workerError);
@@ -1117,13 +1139,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             const microId = getQualityStorageId(storageId, ImageQuality.MICRO);
                             await saveImage(microId, microData);
                             console.log(`[CanvasContext] ✅ Saved MICRO thumbnail (main thread) for ${storageId}`);
-                        }
 
-                        // 🚀 [关键修复] 如果没有本地文件夹也没有OPFS，保存ORIGINAL到IndexedDB
-                        const { isOPFSAvailable: checkOPFS } = await import('../services/opfsService');
-                        if (!currentHandle && !checkOPFS()) {
-                            await saveImage(storageId, node.url);
-                            console.log(`[CanvasContext] ✅ Saved ORIGINAL for ${storageId} to IndexedDB (no local folder or OPFS)`);
+                            const previewId = getQualityStorageId(storageId, ImageQuality.PREVIEW);
+                            await saveImage(previewId, node.url);
                         }
                     }
                 } catch (e) {
@@ -2845,64 +2863,74 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const moveSelectedNodes = useCallback((delta: { x: number; y: number }) => {
-        updateCanvas(c => {
-            const selectedIds = state.selectedNodeIds || [];
-            if (selectedIds.length === 0) return c;
+        setState(prev => {
+            const selectedIds = prev.selectedNodeIds || [];
+            if (selectedIds.length === 0) return prev;
+
+            const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
+            if (!currentCanvas) return prev;
+
+            // 🚀 [NEW] Group dragging for pending generation cards
+            // Users want main and sub cards to lock together ONLY while isGenerating is true.
+            // When isGenerating is false, they should separate.
+
+            const effectiveSelectedPromptIds = new Set<string>();
+            const effectiveSelectedImageIds = new Set<string>();
+
+            // 1. Initial populations based on explicit selection
+            selectedIds.forEach(id => {
+                if (currentCanvas.promptNodes.some(p => p.id === id)) effectiveSelectedPromptIds.add(id);
+                if (currentCanvas.imageNodes.some(i => i.id === id)) effectiveSelectedImageIds.add(id);
+            });
+
+            // 2. Reverse link: If user drags a pending Image, find its generating Prompt and attach it.
+            currentCanvas.imageNodes.forEach(img => {
+                if (effectiveSelectedImageIds.has(img.id) && img.isGenerating && img.parentPromptId) {
+                    // Check if parent prompt is currently generating
+                    const parentPrompt = currentCanvas.promptNodes.find(p => p.id === img.parentPromptId);
+                    if (parentPrompt && parentPrompt.isGenerating) {
+                        effectiveSelectedPromptIds.add(parentPrompt.id);
+                    }
+                }
+            });
+
+            // 3. Forward link: If a Prompt is moving, bring its linked children.
+            //    - During generation: include pending children
+            //    - After generation: include non-orphan children so main/sub cards stay grouped by default
+            currentCanvas.promptNodes.forEach(p => {
+                if (effectiveSelectedPromptIds.has(p.id)) {
+                    currentCanvas.imageNodes.forEach(img => {
+                        const isLinkedChild = img.parentPromptId === p.id;
+                        const shouldFollow = img.isGenerating || !img.orphaned;
+                        if (isLinkedChild && shouldFollow) {
+                            effectiveSelectedImageIds.add(img.id);
+                        }
+                    });
+                }
+            });
 
             // Move prompt nodes
-            const newPromptNodes = c.promptNodes.map(n => {
-                if (selectedIds.includes(n.id)) {
+            const newPromptNodes = currentCanvas.promptNodes.map(n => {
+                if (effectiveSelectedPromptIds.has(n.id)) {
                     return { ...n, position: { x: n.position.x + delta.x, y: n.position.y + delta.y } };
                 }
                 return n;
             });
 
-            // Move image nodes
-            // Note: If a prompt node moves, its children effectively move? 
-            // `updatePromptNodePosition` moves children. But here we are moving raw positions.
-            // If we select a Prompt + its Child Image, and move both...
-            // If we blindly move both, they stay relative.
-            // If we Select Prompt ONLY, and move it... does child move?
-            // In `updatePromptNodePosition` (Line 467), we move children.
-            // Here we are updating ALL selected nodes.
-            // If I select Prompt, I expect children to move?
-            // Current `moveSelectedNodes` logic moves explicitly selected nodes.
-            // Behavior: if I select Prompt but NOT image, Image stays? 
-            // Ideally: Moving a prompt moves its children.
-            // Let's match `updatePromptNodePosition` behavior for selected Prompts.
-
-            // 1. Identify which Prompts are selected (and moving)
-            const selectedPrompts = c.promptNodes.filter(p => selectedIds.includes(p.id));
-
-            // 2. Identify strictly associated child images of these prompts
-            // 🚀 [Fix] Only move images that are explicitly listed in childImageIds
-            // This prevents "lonely" cards (which might stale-keep parentPromptId) from moving
-            const childImageIdsToMove = new Set<string>();
-            selectedPrompts.forEach(p => {
-                if (p.childImageIds) {
-                    p.childImageIds.forEach(id => childImageIdsToMove.add(id));
-                }
-            });
-
-            const newImageNodes = c.imageNodes.map(n => {
-                // If explicitly selected, move it.
-                if (selectedIds.includes(n.id)) {
-                    return { ...n, position: { x: n.position.x + delta.x, y: n.position.y + delta.y } };
-                }
-                // If implicit move via parent relation (Strict Check)
-                if (childImageIdsToMove.has(n.id)) {
+            const newImageNodes = currentCanvas.imageNodes.map(n => {
+                if (effectiveSelectedImageIds.has(n.id)) {
                     return { ...n, position: { x: n.position.x + delta.x, y: n.position.y + delta.y } };
                 }
                 return n;
             });
 
-            return {
-                ...c,
-                promptNodes: newPromptNodes,
-                imageNodes: newImageNodes
-            };
+            const newCanvases = prev.canvases.map(c =>
+                c.id === prev.activeCanvasId ? { ...c, promptNodes: newPromptNodes, imageNodes: newImageNodes } : c
+            );
+
+            return { ...prev, canvases: newCanvases };
         });
-    }, [updateCanvas, state.selectedNodeIds]);
+    }, []);
 
     const getNextCardPosition = useCallback((): { x: number; y: number } => {
         const CARD_WIDTH = 280;
@@ -3140,110 +3168,119 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setState(prev => ({ ...prev, viewportCenter: center }));
     }, []);
 
-    return (
-        <CanvasContext.Provider value={{
-            state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
-            addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions, updateImageNode,
-            deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
-            undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition,
-            // File System
-            connectLocalFolder, disconnectLocalFolder, changeLocalFolder, refreshLocalFolder,
-            isConnectedToLocal: !!state.fileSystemHandle,
-            currentFolderName: state.folderName,
-            // Selection
-            selectedNodeIds: state.selectedNodeIds || [],
-            selectNodes,
-            clearSelection,
-            moveSelectedNodes,
-            findSmartPosition,
-            findNextGroupPosition,
-            addGroup,
-            removeGroup,
-            updateGroup,
-            setNodeTags,
-            isReady: !isLoading,
-            // 🚀 视口中心动态加载（使用useCallback版本防止无限循环）
-            setViewportCenter,
-            // 🚀 迁移选中节点到其他项目
-            migrateNodes: (nodeIds: string[], targetCanvasId: string) => {
-                setState(prev => {
-                    const sourceCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
-                    const targetCanvas = prev.canvases.find(c => c.id === targetCanvasId);
-                    if (!sourceCanvas || !targetCanvas) return prev;
+    // 🚀 迁移选中节点到其他项目
+    const migrateNodes = useCallback((nodeIds: string[], targetCanvasId: string) => {
+        setState(prev => {
+            const sourceCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
+            const targetCanvas = prev.canvases.find(c => c.id === targetCanvasId);
+            if (!sourceCanvas || !targetCanvas) return prev;
 
-                    // 找出要迁移的节点
-                    const promptsToMigrate = sourceCanvas.promptNodes.filter(n => nodeIds.includes(n.id));
-                    const imagesToMigrate = sourceCanvas.imageNodes.filter(n => nodeIds.includes(n.id));
+            // 找出要迁移的节点
+            const promptsToMigrate = sourceCanvas.promptNodes.filter(n => nodeIds.includes(n.id));
+            const imagesToMigrate = sourceCanvas.imageNodes.filter(n => nodeIds.includes(n.id));
 
-                    // 如果迁移的是主卡,也迁移其子图片
-                    const childImageIds = promptsToMigrate.flatMap(p => p.childImageIds || []);
-                    const childImagesToMigrate = sourceCanvas.imageNodes.filter(n => childImageIds.includes(n.id) && !nodeIds.includes(n.id));
+            // 如果迁移的是主卡,也迁移其子图片
+            const childImageIds = promptsToMigrate.flatMap(p => p.childImageIds || []);
+            const childImagesToMigrate = sourceCanvas.imageNodes.filter(n => childImageIds.includes(n.id) && !nodeIds.includes(n.id));
 
-                    // 计算偏移量(放在目标画布右侧)
-                    const offsetX = targetCanvas.promptNodes.length > 0
-                        ? Math.max(...targetCanvas.promptNodes.map(n => n.position.x)) + 500
-                        : 0;
+            // 计算偏移量(放在目标画布右侧)
+            const offsetX = targetCanvas.promptNodes.length > 0
+                ? Math.max(...targetCanvas.promptNodes.map(n => n.position.x)) + 500
+                : 0;
 
-                    // 更新迁移节点的位置 - 🔧 保留图片URL确保能正确显示
-                    const migratedPrompts = promptsToMigrate.map(p => ({
-                        ...p,
-                        position: { x: p.position.x + offsetX, y: p.position.y }
-                    }));
-                    const migratedImages = [...imagesToMigrate, ...childImagesToMigrate].map(img => ({
-                        ...img,
-                        position: { x: img.position.x + offsetX, y: img.position.y },
-                        // 🔧 关键：确保URL完整保留以便存储层能正确保存
-                        url: img.url || '',
-                        originalUrl: img.originalUrl || ''
-                    }));
+            // 更新迁移节点的位置 - 🔧 保留图片URL确保能正确显示
+            const migratedPrompts = promptsToMigrate.map(p => ({
+                ...p,
+                position: { x: p.position.x + offsetX, y: p.position.y }
+            }));
+            const migratedImages = [...imagesToMigrate, ...childImagesToMigrate].map(img => ({
+                ...img,
+                position: { x: img.position.x + offsetX, y: img.position.y },
+                // 🔧 关键：确保URL完整保留以便存储层能正确保存
+                url: img.url || '',
+                originalUrl: img.originalUrl || ''
+            }));
 
-                    // 🔧 迁移后立即保存图片到IndexedDB（异步，不阻塞UI）
-                    (async () => {
-                        try {
-                            const { saveImage, getImage } = await import('../services/imageStorage');
-                            for (const img of migratedImages) {
-                                // 确保图片已存在于IndexedDB
-                                const existingUrl = await getImage(img.id);
-                                if (!existingUrl && (img.url || img.originalUrl)) {
-                                    const urlToSave = img.originalUrl || img.url;
-                                    if (urlToSave && !urlToSave.startsWith('blob:')) {
-                                        await saveImage(img.id, urlToSave);
-                                        console.log(`[MigrateNodes] Saved image ${img.id} to IndexedDB`);
-                                    }
-                                }
+            // 🔧 迁移后立即保存图片到IndexedDB（异步，不阻塞UI）
+            (async () => {
+                try {
+                    const { saveImage, getImage } = await import('../services/imageStorage');
+                    for (const img of migratedImages) {
+                        // 确保图片已存在于IndexedDB
+                        const existingUrl = await getImage(img.id);
+                        if (!existingUrl && (img.url || img.originalUrl)) {
+                            const urlToSave = img.originalUrl || img.url;
+                            if (urlToSave && !urlToSave.startsWith('blob:')) {
+                                await saveImage(img.id, urlToSave);
+                                console.log(`[MigrateNodes] Saved image ${img.id} to IndexedDB`);
                             }
-                        } catch (e) {
-                            console.warn('[MigrateNodes] Failed to save images to IndexedDB', e);
                         }
-                    })();
+                    }
+                } catch (e) {
+                    console.warn('[MigrateNodes] Failed to save images to IndexedDB', e);
+                }
+            })();
 
-                    // 从源画布删除,添加到目标画布
-                    const allMigratedImageIds = [...imagesToMigrate, ...childImagesToMigrate].map(i => i.id);
-                    const updatedCanvases = prev.canvases.map(c => {
-                        if (c.id === prev.activeCanvasId) {
-                            return {
-                                ...c,
-                                promptNodes: c.promptNodes.filter(n => !nodeIds.includes(n.id)),
-                                imageNodes: c.imageNodes.filter(n => !allMigratedImageIds.includes(n.id)),
-                                lastModified: Date.now()
-                            };
-                        }
-                        if (c.id === targetCanvasId) {
-                            return {
-                                ...c,
-                                promptNodes: [...c.promptNodes, ...migratedPrompts],
-                                imageNodes: [...c.imageNodes, ...migratedImages],
-                                lastModified: Date.now()
-                            };
-                        }
-                        return c;
-                    });
+            // 从源画布删除,添加到目标画布
+            const allMigratedImageIds = [...imagesToMigrate, ...childImagesToMigrate].map(i => i.id);
+            const updatedCanvases = prev.canvases.map(c => {
+                if (c.id === prev.activeCanvasId) {
+                    return {
+                        ...c,
+                        promptNodes: c.promptNodes.filter(n => !nodeIds.includes(n.id)),
+                        imageNodes: c.imageNodes.filter(n => !allMigratedImageIds.includes(n.id)),
+                        lastModified: Date.now()
+                    };
+                }
+                if (c.id === targetCanvasId) {
+                    return {
+                        ...c,
+                        promptNodes: [...c.promptNodes, ...migratedPrompts],
+                        imageNodes: [...c.imageNodes, ...migratedImages],
+                        lastModified: Date.now()
+                    };
+                }
+                return c;
+            });
 
-                    console.log(`[MigrateNodes] Migrated ${migratedPrompts.length} prompts, ${migratedImages.length} images to canvas ${targetCanvasId}`);
-                    return { ...prev, canvases: updatedCanvases, selectedNodeIds: [] };
-                });
-            }
-        }}>
+            console.log(`[MigrateNodes] Migrated ${migratedPrompts.length} prompts, ${migratedImages.length} images to canvas ${targetCanvasId}`);
+            return { ...prev, canvases: updatedCanvases, selectedNodeIds: [] };
+        });
+    }, []);
+
+    // 🚀 [性能优化] 缓存 Context Value，防止高频 state（如 viewportCenter）改变时所有消费组件全量重渲染
+    const contextValue = React.useMemo(() => ({
+        state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
+        addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions, updateImageNode,
+        deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
+        undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition,
+        connectLocalFolder, disconnectLocalFolder, changeLocalFolder, refreshLocalFolder,
+        isConnectedToLocal: !!state.fileSystemHandle,
+        currentFolderName: state.folderName,
+        selectedNodeIds: state.selectedNodeIds || [],
+        selectNodes,
+        clearSelection,
+        moveSelectedNodes,
+        findSmartPosition,
+        findNextGroupPosition,
+        addGroup,
+        removeGroup,
+        updateGroup,
+        setNodeTags,
+        isReady: !isLoading,
+        setViewportCenter,
+        migrateNodes
+    }), [
+        state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
+        addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions, updateImageNode,
+        deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
+        undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition,
+        connectLocalFolder, disconnectLocalFolder, changeLocalFolder, refreshLocalFolder,
+        isLoading, selectNodes, clearSelection, moveSelectedNodes, findSmartPosition, findNextGroupPosition, addGroup, removeGroup, updateGroup, setNodeTags, setViewportCenter, migrateNodes
+    ]);
+
+    return (
+        <CanvasContext.Provider value={contextValue}>
             {children}
         </CanvasContext.Provider>
     );

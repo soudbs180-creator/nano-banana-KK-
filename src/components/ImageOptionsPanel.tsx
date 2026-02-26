@@ -77,25 +77,21 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
 
     // 注：已改用内联背景色方案，不再需要ratioSlide计算
 
-    // 确保availableSizes按正确顺序排列
-    const sortedSizes = useMemo(() => {
-        const sizeOrder = [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
-        return sizeOrder.filter(s => availableSizes.includes(s));
-    }, [availableSizes]);
+    const ALL_SIZES = [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
 
     // 计算滑动背景位置（画质）
     const sizeSlide = useMemo(() => {
-        const index = sortedSizes.indexOf(imageSize);
+        const index = ALL_SIZES.indexOf(imageSize);
         if (index === -1) return { left: '2px', width: 'calc(33.33% - 4px)' };
 
-        const totalButtons = sortedSizes.length;
+        const totalButtons = ALL_SIZES.length;
         const buttonWidthPercent = 100 / totalButtons;
 
         return {
             left: `calc(${buttonWidthPercent * index}% + 2px)`,
             width: `calc(${buttonWidthPercent}% - 4px)`
         };
-    }, [imageSize, sortedSizes]);
+    }, [imageSize]);
 
     return (
         <div
@@ -108,42 +104,46 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
                 boxShadow: 'var(--shadow-xl)'
             }}
         >
-            {/* 画质 - Segmented Control (只有多个选项时才显示) */}
-            {sortedSizes.length > 1 && (
-                <div className="mb-4 last:mb-0">
-                    <div className="text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                        画质
-                    </div>
+            {/* 画质 - Segmented Control (总是显示以展示全景设置，不支持的置灰) */}
+            <div className="mb-4 last:mb-0">
+                <div className="text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+                    画质
+                </div>
+                <div
+                    className="relative flex rounded-lg p-0.5"
+                    style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                >
+                    {/* 滑动背景 */}
                     <div
-                        className="relative flex rounded-lg p-0.5"
-                        style={{ backgroundColor: 'var(--bg-tertiary)' }}
-                    >
-                        {/* 滑动背景 */}
-                        <div
-                            className="absolute top-0.5 bottom-0.5 rounded-md transition-all duration-200 ease-out"
-                            style={{
-                                backgroundColor: 'var(--bg-secondary)',
-                                left: sizeSlide.left,
-                                width: sizeSlide.width
-                            }}
-                        />
+                        className="absolute top-0.5 bottom-0.5 rounded-md transition-all duration-200 ease-out"
+                        style={{
+                            backgroundColor: 'var(--bg-secondary)',
+                            left: sizeSlide.left,
+                            width: sizeSlide.width
+                        }}
+                    />
 
-                        {/* 按钮 - 使用排序后的sizes */}
-                        {sortedSizes.map(size => (
+                    {/* 按钮 - 始终渲染所有的size，若不支持则置灰 */}
+                    {ALL_SIZES.map(size => {
+                        const isAvailable = availableSizes.includes(size);
+                        return (
                             <button
                                 key={size}
-                                onClick={() => onImageSizeChange(size)}
-                                className="relative z-10 flex-1 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)]"
+                                onClick={() => isAvailable && onImageSizeChange(size)}
+                                disabled={!isAvailable}
+                                className={`relative z-10 flex-1 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 ${isAvailable ? 'hover:text-[var(--text-secondary)] cursor-pointer' : 'opacity-30 cursor-not-allowed'
+                                    }`}
                                 style={{
                                     color: imageSize === size ? 'var(--text-primary)' : 'var(--text-tertiary)'
                                 }}
+                                title={!isAvailable ? '该模型此配置下不支持或强制默认其他画质' : undefined}
                             >
                                 {size}
                             </button>
-                        ))}
-                    </div>
+                        );
+                    })}
                 </div>
-            )}
+            </div>
 
             {/* 比例 - 左右布局 */}
             <div className="mb-4 last:mb-0">

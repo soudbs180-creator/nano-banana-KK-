@@ -115,33 +115,49 @@
   /* ===== 字体系统 - 统一字体族 ===== */
   --font-sans: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
-  
+
   /* ===== 字体大小系统 ===== */
   /* 标题层级 */
-  --text-h1: 28px;        /* 大标题：页面标题、Hero区 */
-  --text-h2: 22px;        /* 中标题：区块标题 */
-  --text-h3: 18px;        /* 小标题：卡片标题、列表头 */
-  
+  --text-h1: 28px;
+  /* 大标题：页面标题、Hero区 */
+  --text-h2: 22px;
+  /* 中标题：区块标题 */
+  --text-h3: 18px;
+  /* 小标题：卡片标题、列表头 */
+
   /* 正文层级 */
-  --text-body-lg: 16px;   /* 大正文：重要内容 */
-  --text-body-md: 14px;   /* 中正文：默认内容（最常用） */
-  --text-body-sm: 13px;   /* 小正文：紧凑内容 */
-  
+  --text-body-lg: 16px;
+  /* 大正文：重要内容 */
+  --text-body-md: 14px;
+  /* 中正文：默认内容（最常用） */
+  --text-body-sm: 13px;
+  /* 小正文：紧凑内容 */
+
   /* 标注层级 */
-  --text-xs: 12px;        /* 大标注：次要信息 */
-  --text-2xs: 11px;       /* 中标注：辅助文字 */
-  --text-3xs: 10px;       /* 小标注：最小文字 */
-  
+  --text-xs: 12px;
+  /* 大标注：次要信息 */
+  --text-2xs: 11px;
+  /* 中标注：辅助文字 */
+  --text-3xs: 10px;
+  /* 小标注：最小文字 */
+
   /* 字重 */
-  --font-normal: 400;     /* 正文 */
-  --font-medium: 500;     /* 强调正文、按钮 */
-  --font-semibold: 600;   /* 标题、重要文字 */
-  --font-bold: 700;       /* 特别强调 */
-  
+  --font-normal: 400;
+  /* 正文 */
+  --font-medium: 500;
+  /* 强调正文、按钮 */
+  --font-semibold: 600;
+  /* 标题、重要文字 */
+  --font-bold: 700;
+  /* 特别强调 */
+
   /* 行高 */
-  --leading-tight: 1.25;  /* 标题 */
-  --leading-normal: 1.5;  /* 正文 */
-  --leading-relaxed: 1.75; /* 长文阅读 */
+  --leading-tight: 1.25;
+  /* 标题 */
+  --leading-normal: 1.5;
+  /* 正文 */
+  --leading-relaxed: 1.75;
+  /* 长文阅读 */
 }
 
 /* ===== 主题切换平滑过渡 ===== */
@@ -170,10 +186,10 @@ body.dark-mode {
   /* 背景层级 - 纯黑 */
   --bg-base: #000000;
   --bg-elevated: #0a0a0a;
-  --bg-surface: #141414;
-  --bg-overlay: #1a1a1a;
-  --bg-input: #1f1f1f;
-  --bg-hover: #242424;
+  --bg-surface: #1a1a1a;
+  --bg-overlay: #1e1e1e;
+  --bg-input: #242424;
+  --bg-hover: #2a2a2a;
   --bg-canvas: #000000;
 
   /* 兼容旧变量 */
@@ -2594,8 +2610,11 @@ body.dark-mode .placeholder-breathe {
   /* transform: translateZ(0); */
   will-change: transform;
   /* Keep will-change for performance */
-  /* backface-visibility: hidden; */
-  /* Removed to allow proper rasterization */
+  /* Force-disable stale 3D context from earlier rule definition */
+  perspective: none;
+  -webkit-perspective: none;
+  backface-visibility: visible;
+  -webkit-backface-visibility: visible;
 }
 
 /**
@@ -2718,7 +2737,6 @@ body.dark-mode .placeholder-breathe {
 .animate-slideDown,
 .animate-slideUp,
 .animate-modalIn,
-.animate-cardPopIn,
 .animate-pulse,
 .animate-shimmer,
 .animate-float {
@@ -2820,4 +2838,38 @@ body.dark-mode .placeholder-breathe {
 
 .animate-shimmer-sweep {
   animation: shimmer-sweep 2s linear infinite;
+}
+
+/* ============================================== 
+   生成态连接线（脉冲线）
+   ============================================== */
+@keyframes connector-dot-pulse {
+
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.86);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+.generation-connector-line {
+  width: 1px;
+  background: linear-gradient(to bottom,
+      rgba(99, 102, 241, 0.15),
+      rgba(99, 102, 241, 0.55),
+      rgba(99, 102, 241, 0.15));
+}
+
+.generation-connector-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, rgba(196, 181, 253, 0.95), rgba(99, 102, 241, 0.9));
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.45);
+  animation: connector-dot-pulse 1.6s ease-in-out infinite;
 }

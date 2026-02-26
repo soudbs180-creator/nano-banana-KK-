@@ -17,6 +17,7 @@ import { keyManager, getModelMetadata } from './services/keyManager';
 import { llmService } from './services/llm/LLMService';
 import { getCardDimensions } from './utils/styleUtils';
 import { getViewportPreferredPosition, findSafePosition } from './utils/canvasUtils'; // 🚀 Smart Positioning
+import { getViewportOffsets, getLiveViewportCenter } from './utils/canvasCenter';
 
 // Lucide icons replaced with SVGs
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
@@ -34,6 +35,7 @@ import JSZip from 'jszip';
 // import { syncService } from './services/syncService'; // [FIX] Dynamic Import
 import { saveImage } from './services/imageStorage';
 import { calculateImageHash } from './utils/imageUtils';
+import { optimizePromptForImage } from './services/promptOptimizerService';
 import NotificationToast from './components/NotificationToast';
 // import { notify } from './services/notificationService'; // [FIX] Dynamic Import
 
@@ -446,10 +448,15 @@ const AppContent: React.FC = () => {
         // Merge with defaults to ensure all fields exist
         return {
           prompt: '', // Always reset prompt
+          enablePromptOptimization: parsed.enablePromptOptimization || false,
           aspectRatio: parsed.aspectRatio || AspectRatio.AUTO, // [Default: Auto]
           imageSize: parsed.imageSize || ImageSize.SIZE_1K,
           parallelCount: parsed.parallelCount || 1,
-          referenceImages: [], // [FIX] Do not restore old reference images
+          // 🚀 [Fix] 恢复参考图元数据（不含 base64），让 hydrate effect 从 IndexedDB 还原图片数据
+          referenceImages: (parsed.referenceImages || []).map((img: any) => ({
+            ...img,
+            data: undefined // data 需要从 IndexedDB hydrate，不从 localStorage 恢复
+          })),
           model: parsed.model || KnownModel.IMAGEN_3,
           enableGrounding: parsed.enableGrounding || false,
           mode: parsed.mode || GenerationMode.IMAGE
@@ -461,6 +468,7 @@ const AppContent: React.FC = () => {
     // Default Fallback
     return {
       prompt: '',
+      enablePromptOptimization: false,
       aspectRatio: AspectRatio.AUTO, // [Default: Auto]
       imageSize: ImageSize.SIZE_1K,
       parallelCount: 1,
@@ -549,6 +557,7 @@ const AppContent: React.FC = () => {
     // The "Write-First" strategy in PromptBar now handles this immediately upon upload.
 
     const toSave = {
+      enablePromptOptimization: config.enablePromptOptimization || false,
       aspectRatio: config.aspectRatio,
       imageSize: config.imageSize,
       parallelCount: config.parallelCount,
@@ -565,6 +574,7 @@ const AppContent: React.FC = () => {
     };
     localStorage.setItem('kk_generation_config', JSON.stringify(toSave));
   }, [
+    config.enablePromptOptimization,
     config.aspectRatio, config.imageSize, config.parallelCount,
     config.model, config.enableGrounding, config.mode,
     config.referenceImages // Add referenceImages to dep array
@@ -715,11 +725,10 @@ const AppContent: React.FC = () => {
       }
     }
     // Smart Center Placement - Manual Mode (Always Center)
-    // Smart Center Placement - Manual Mode (Always Center)
-    const scale = canvasTransform.scale || 1;
-
-    // 🚀 Use Helper for "Top 30%" Logic
-    return getViewportPreferredPosition(canvasTransform);
+    // 🚀 [Fix] 使用 InfiniteCanvas 的实际可见区域 + 实时 transform 计算精确中心
+    const currentTf = canvasRef.current?.getCurrentTransform() || canvasTransform;
+    const vpRect = canvasRef.current?.getCanvasRect() || null;
+    return getViewportPreferredPosition(currentTf, vpRect, 180);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSourceImage, activeCanvas, canvasTransform]);
 
@@ -912,8 +921,11 @@ const AppContent: React.FC = () => {
   // error state removed, using notify service
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatSidebarWidth, setChatSidebarWidth] = useState(420);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  // 使用新封装的 CanvasCenter API（引入自 src/utils/canvasCenter.ts）
 
   useEffect(() => {
     const handleResize = () => {
@@ -1284,9 +1296,67 @@ const AppContent: React.FC = () => {
     return Math.max(130, baseHeight + (lines * lineHeight));
   }, []);
 
+  const inferAspectRatioFromDimensions = useCallback((w: number, h: number): AspectRatio => {
+    if (!w || !h) return AspectRatio.SQUARE;
+    const ratio = w / h;
+    const targets: Array<{ ratio: AspectRatio; value: number }> = [
+      { ratio: AspectRatio.SQUARE, value: 1 / 1 },
+      { ratio: AspectRatio.PORTRAIT_3_4, value: 3 / 4 },
+      { ratio: AspectRatio.PORTRAIT_4_5, value: 4 / 5 },
+      { ratio: AspectRatio.PORTRAIT_9_16, value: 9 / 16 },
+      { ratio: AspectRatio.PORTRAIT_9_21, value: 9 / 21 },
+      { ratio: AspectRatio.PORTRAIT_2_3, value: 2 / 3 },
+      { ratio: AspectRatio.LANDSCAPE_4_3, value: 4 / 3 },
+      { ratio: AspectRatio.LANDSCAPE_5_4, value: 5 / 4 },
+      { ratio: AspectRatio.LANDSCAPE_16_9, value: 16 / 9 },
+      { ratio: AspectRatio.LANDSCAPE_21_9, value: 21 / 9 },
+      { ratio: AspectRatio.LANDSCAPE_3_2, value: 3 / 2 }
+    ];
+
+    let best = targets[0];
+    let minDiff = Infinity;
+    targets.forEach(t => {
+      const diff = Math.abs(t.value - ratio);
+      if (diff < minDiff) {
+        minDiff = diff;
+        best = t;
+      }
+    });
+    return best.ratio;
+  }, []);
+
+  const updateImageNodeDisplayMeta = useCallback((id: string, dimensions: string) => {
+    const match = dimensions.match(/(\d+)\s*[xX]\s*(\d+)/);
+    if (!match) {
+      updateImageNodeDimensions(id, dimensions);
+      return;
+    }
+
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    if (!width || !height) {
+      updateImageNodeDimensions(id, dimensions);
+      return;
+    }
+
+    const maxDim = Math.max(width, height);
+    const effectiveSize = maxDim > 3000 ? ImageSize.SIZE_4K : maxDim > 1500 ? ImageSize.SIZE_2K : ImageSize.SIZE_1K;
+    const inferredRatio = inferAspectRatioFromDimensions(width, height);
+
+    updateImageNode(id, {
+      dimensions,
+      imageSize: effectiveSize,
+      aspectRatio: inferredRatio,
+      exactDimensions: { width, height }
+    });
+  }, [inferAspectRatioFromDimensions, updateImageNode, updateImageNodeDimensions]);
+
   // Extracted Execution Logic
   const executeGeneration = useCallback(async (node: PromptNode) => {
     const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: initialModel, mode, referenceImages: files = [] } = node;
+    const generationPrompt = (node.promptOptimizationEnabled && node.optimizedPromptEn?.trim())
+      ? node.optimizedPromptEn.trim()
+      : promptToUse;
     let effectiveModel = initialModel;
     let successResults: GeneratedImage[] = [];
 
@@ -1303,8 +1373,8 @@ const AppContent: React.FC = () => {
       console.warn('[executeGeneration] Node not found in canvas, using original node as fallback:', promptNodeId);
     }
 
-    const taskNode = liveNode || node;
     const isVideo = mode === GenerationMode.VIDEO;
+    const isAudio = mode === GenerationMode.AUDIO;
 
     // 🚀 [Safe State Tracking] Track success to prevent error overwrite
 
@@ -1341,64 +1411,73 @@ const AppContent: React.FC = () => {
           let providerLabel: string | undefined = undefined; // 🚀 Provider display name
           let modelLabel: string | undefined = undefined; // 🚀 Model display name
 
-          if (isVideo) {
-            // ✅ 视频生成 - 使用独立的 videoService
-            const { generateVideo } = await import('./services/videoService');
+          if (isAudio) {
+            // 🚀 音频生成路由
+            const audioResult = await llmService.generateAudio({
+              modelId: node.model,
+              prompt: generationPrompt,
+              audioDuration: node.audioDuration,
+              audioLyrics: node.audioLyrics,
+              providerConfig: {}
+            });
 
-            // 🚀 [修复] 统一使用 resolveKey 获取 Key 和 Base URL (支持 12AI 等代理)
-            const keySlot = llmService.resolveKey(node.model);
-            if (!keySlot) {
-              throw new Error(`没有可用的 API Key 用于模型: ${node.model}`);
-            }
-            const apiKey = keySlot.key;
-            const baseUrl = keySlot.baseUrl;
-            provider = keySlot.provider;
-            providerLabel = keySlot.name;
-            modelLabel = getModelMetadata(node.model)?.name || node.model;
+            videoUrl = audioResult.url; // 复用 videoUrl 字段存储音频 URL
+            generatedBase64 = '';
+            tokenUsage = audioResult.usage?.totalTokens || 0;
+            costUsd = audioResult.usage?.cost || 0.05;
 
-            // 视频宽高比转换
-            const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
+            if (audioResult.provider) provider = audioResult.provider;
+            if (audioResult.providerName) providerLabel = audioResult.providerName;
+            if (audioResult.modelName) modelLabel = audioResult.modelName;
 
-            // 🚀 [修复] ImageSize → 视频分辨率映射
+          } else if (isVideo) {
             const videoResolution = (() => {
+              if (node.videoResolution) return node.videoResolution;
               const size = node.imageSize?.toLowerCase() || '';
               if (size.includes('4k') || size.includes('ultra')) return '4k';
               if (size.includes('1080') || size.includes('hd')) return '1080p';
               return '720p'; // 默认720p
             })();
-            console.log(`[App.视频生成] 使用通道: ${providerLabel}, URL: ${baseUrl || '官方'}, 分辨率: ${videoResolution}`);
 
-            const videoResult = await generateVideo(
-              {
-                prompt: promptToUse,
-                aspectRatio: videoAspect,
-                resolution: videoResolution, // 🚀 [修复] 传递分辨率参数
-                // 视频模式支持多图片: 0张=文生视频, 1张=首帧, 2张=首尾帧, 3张=参考图
-                referenceImages: files.length > 0
-                  ? files.slice(0, 3).map(f => f.data.replace(/^data:image\/[^;]+;base64,/, ''))
-                  : undefined
-              },
-              apiKey,
-              baseUrl,   // 🚀 [修复] 传递动态 Base URL (支持 12AI)
-              undefined, // onProgress 回调
-              undefined  // abort signal
-            );
+            const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
 
-            videoUrl = videoResult.videoUrl;
+            const videoResult = await llmService.generateVideo({
+              modelId: node.model,
+              prompt: generationPrompt,
+              aspectRatio: videoAspect,
+              imageUrl: files[0]?.data,
+              imageTailUrl: files[1]?.data,
+              videoDuration: node.videoDuration,
+              providerConfig: {
+                google: {
+                  imageConfig: { imageSize: videoResolution }
+                }
+              }
+            });
+
+            videoUrl = videoResult.url;
             generatedBase64 = ''; // 视频没有base64
-            tokenUsage = 0; // 视频不计算token
-            // 视频成本计算: fast版$0.15, 标准版$0.30
-            costUsd = effectiveModel.toLowerCase().includes('fast') ? 0.15 : 0.30;
+            tokenUsage = videoResult.usage?.totalTokens || 0;
+            costUsd = videoResult.usage?.cost || (effectiveModel.toLowerCase().includes('fast') ? 0.15 : 0.30);
+
+            if (videoResult.provider) provider = videoResult.provider;
+            if (videoResult.providerName) providerLabel = videoResult.providerName;
+            if (videoResult.modelName) modelLabel = videoResult.modelName;
+
           } else {
             const result = await generateImage(
-              promptToUse,
+              generationPrompt,
               node.aspectRatio,
               node.imageSize,
               files,
               effectiveModel,
               '',
               currentRequestId,
-              false // grounding config not preserved in node? assuming false for resume or need to add to PromptNode
+              false, // grounding config not preserved in node? assuming false for resume or need to add to PromptNode
+              {
+                maskUrl: node.maskUrl,
+                editMode: node.mode === GenerationMode.INPAINT ? 'inpaint' : (node.mode === GenerationMode.EDIT ? 'edit' : undefined)
+              }
             );
             generatedBase64 = result.url;
             tokenUsage = result.tokens || 0;
@@ -1422,31 +1501,13 @@ const AppContent: React.FC = () => {
 
           const generationTime = Date.now() - startTime;
 
-          // 🚀 FIX: Robust handling of generated URLs (HTTP to Blob)
+          // 🚀 Latency Optimization: avoid blocking UI on remote image re-download
           let originalUrl = generatedBase64;
           let displayUrl = generatedBase64;
+          const isRemoteGenerated = generatedBase64.startsWith('http');
 
-          // If result is an HTTP URL (typical for proxies/S3), we MUST download it to a Blob
-          // otherwise it might expire or not be cacheable by 'saveImage' effectively if logic is weak.
-          if (generatedBase64.startsWith('http')) {
-            try {
-              const fetchRes = await fetch(generatedBase64);
-              if (fetchRes.ok) {
-                const blob = await fetchRes.blob();
-                // Convert to Blob URL for local usage (efficient and persistent in session)
-                const blobUrl = URL.createObjectURL(blob);
-
-                // Use Blob URL as the primary "Original"
-                originalUrl = blobUrl;
-                displayUrl = blobUrl;
-                // Update base64 to be the Blob URL so downstream saving works with Blob Logic
-                generatedBase64 = blobUrl;
-              }
-            } catch (e) {
-              console.warn('Failed to download generated image from remote URL', e);
-              // Fallback: keep remote URL, but it might expire
-            }
-          } else {
+          // Keep remote URL directly for first paint; persistence fallback is handled asynchronously.
+          if (!isRemoteGenerated) {
             // Ensure data: URIs are also treated as original
             originalUrl = generatedBase64;
           }
@@ -1542,7 +1603,7 @@ const AppContent: React.FC = () => {
       // ✅ 生成完成后重新获取主卡最新位置 (支持生成过程中拖动)
       const finalCanvas = activeCanvasRef.current;
       const latestNode = finalCanvas?.promptNodes.find(n => n.id === promptNodeId);
-      const effectiveNodeForPos = latestNode || taskNode || node;
+      const effectiveNodeForPos = latestNode || node;
 
       // 🚀 [Critical Fix] 直接使用在 handleGenerate 确定的/被用户拖动后的真实位置。
       // 不再强制动态计算屏幕中心 (latestCenter)，防止用户在生成期间平移画布导致新卡片位置突变。
@@ -1631,7 +1692,7 @@ const AppContent: React.FC = () => {
             id: uniqueId,
             url,
             originalUrl,
-            prompt: promptToUse,
+            prompt: node.originalPrompt || promptToUse,
             aspectRatio: finalAspectRatio, // 🚀 Use resolved ratio
             imageSize: finalSize, // Add imageSize field
             timestamp: Date.now(),
@@ -1655,7 +1716,7 @@ const AppContent: React.FC = () => {
             provider: provider,
             providerLabel: itemProviderLabel || provider, // ✨ Use custom name if available, else provider ID
             mode: itemMode,
-            canvasId: activeCanvas?.id || 'default',
+            canvasId: activeCanvasRef.current?.id || 'default',
             parentPromptId: promptNodeId,
             position: { x, y },
             dimensions: isVideo
@@ -1694,7 +1755,7 @@ const AppContent: React.FC = () => {
           usedModel,
           usedSize,
           successResults.length,
-          promptToUse,
+          generationPrompt,
           files.length
         );
       });
@@ -1777,37 +1838,31 @@ const AppContent: React.FC = () => {
     if (!config.prompt.trim()) return;
     setIsGenerating(true);
 
-    // 4. Calculate Position (Center of Viewport if not specified)
-    // 🚀 [Smart Positioning] Use the new utility to find a "nice" spot
-    // 🚀 [Critical Fix] 强制获取物理真实的最新 Transform
+    // 4. Calculate Position
+    // 普通模式应使用当前视口中心；追问模式保留原有草稿定位逻辑
+    const isFollowUp = !!activeSourceImage;
     const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
     const viewportRect = canvasRef.current?.getCanvasRect() || null;
-    const leftOffset = isSidebarOpen && !isMobile ? 260 : (isMobile ? 0 : 60);
-    const rightOffset = isChatOpen && !isMobile ? 420 : 0;
-    const sidebarOffsets = { left: leftOffset, right: rightOffset };
-
-    const realViewCenter = getViewportPreferredPosition(currentTransform, viewportRect, 180, sidebarOffsets);
-    let viewCenter = { ...realViewCenter };
+    const viewportOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile);
+    const liveCenter = getLiveViewportCenter(currentTransform, viewportRect, viewportOffsets);
+    const realViewCenter = liveCenter;
+    let viewCenter = { ...liveCenter };
     let currentPos = { ...viewCenter };
 
-    // [Draft Logic] Use existing draft if available
+    // [Draft Logic] Use existing draft only for follow-up mode.
+    // Normal mode must always lock to the current viewport center.
+    const canvasNow = activeCanvasRef.current;
     let promptNodeId = draftNodeId;
     let isReusingDraft = false;
 
-    // Check if we are using an existing Draft Node?
-    const existingDraft = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
-
-    if (existingDraft) {
-      console.log('[handleGenerate] Found existing draft, reusing its position:', existingDraft.position);
-      currentPos = { ...existingDraft.position };
-      isReusingDraft = true;
-    } else {
-      console.log('[handleGenerate] No draft found. Using calculated ViewCenter:', viewCenter);
+    if (!isFollowUp) {
       promptNodeId = Date.now().toString();
-    }
-    if (promptNodeId) {
+      currentPos = { ...liveCenter };
+      isReusingDraft = false;
+      console.log('[handleGenerate] Normal mode - locked to current viewport center:', currentPos);
+    } else if (promptNodeId) {
       // We have a draft. Use it.
-      const draft = activeCanvas?.promptNodes.find(n => n.id === promptNodeId);
+      const draft = canvasNow?.promptNodes.find(n => n.id === promptNodeId);
       if (draft) {
         isReusingDraft = true;
         currentPos = draft.position;
@@ -1896,8 +1951,9 @@ const AppContent: React.FC = () => {
         console.log('[handleGenerate] Creating new node at view center (Stale ID):', currentPos);
       }
     } else {
+      // Follow-up mode but no draft id: create a new node at computed center/path
       promptNodeId = Date.now().toString();
-      console.log('[handleGenerate] Creating new node at view center:', currentPos);
+      console.log('[handleGenerate] Follow-up mode without draft, using computed center:', currentPos);
     }
 
     // setDraftNodeId(null); // Moved to end to prevent flicker
@@ -1959,7 +2015,7 @@ const AppContent: React.FC = () => {
     finalReferenceImages = finalReferenceImages.filter(img => img.data);
 
     if (activeSourceImage) {
-      const sourceImage = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
+      const sourceImage = activeCanvasRef.current?.imageNodes.find(img => img.id === activeSourceImage);
       // [FIX] Prefer originalUrl (High Res) over url (Thumbnail) to prevent blurry reference images
       const targetUrl = sourceImage?.originalUrl || sourceImage?.url;
 
@@ -2005,13 +2061,56 @@ const AppContent: React.FC = () => {
       }
     });
 
+    // 🚀 Final hard-guard: in normal mode, always lock to CURRENT viewport center at click-time
+    // This prevents any stale draft/canvas closure from pulling position back to initial canvas.
+    if (!isFollowUp) {
+      const latestTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
+      const latestViewportRect = canvasRef.current?.getCanvasRect() || null;
+      const latestOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
+      currentPos = getLiveViewportCenter(latestTransform, latestViewportRect, latestOffsets);
+      console.log('[handleGenerate] Final position hard-guard (normal mode):', currentPos);
+    }
+
+    const rawPrompt = config.prompt.trim();
+    let optimizedPromptEn: string | undefined;
+    let optimizedPromptZh: string | undefined;
+
+    if (config.mode === GenerationMode.IMAGE && config.enablePromptOptimization && rawPrompt) {
+      try {
+        const optimized = await optimizePromptForImage(rawPrompt, {
+          preferredModelId: config.model,
+          aspectRatio: config.aspectRatio,
+          imageSize: config.imageSize,
+          mode: config.mode,
+          referenceImagesCount: finalReferenceImages.length
+        });
+        optimizedPromptEn = optimized.optimizedEn;
+        optimizedPromptZh = optimized.optimizedZh;
+      } catch (e) {
+        console.warn('[handleGenerate] Prompt optimization failed, fallback to raw prompt:', e);
+      }
+    }
+
+    const baseModelIdForPreview = config.model.split('@')[0];
+    const modelSuffixForPreview = config.model.split('@')[1];
+    const previewModelLabel = getModelMetadata(baseModelIdForPreview)?.name || baseModelIdForPreview;
+    const previewProvider = modelSuffixForPreview ? 'Custom' : 'Google';
+    const previewProviderLabel = modelSuffixForPreview || 'Google';
+
     const generatingNode: PromptNode = {
       id: promptNodeId!,
-      prompt: config.prompt,
+      prompt: rawPrompt,
+      originalPrompt: rawPrompt,
+      optimizedPromptEn,
+      optimizedPromptZh,
+      promptOptimizationEnabled: !!(config.enablePromptOptimization && optimizedPromptEn),
       position: currentPos,
       aspectRatio: config.aspectRatio,
       imageSize: config.imageSize,
       model: config.model,
+      modelLabel: previewModelLabel,
+      provider: previewProvider,
+      providerLabel: previewProviderLabel,
       childImageIds: [],
       referenceImages: finalReferenceImages,
       timestamp: Date.now(),
@@ -2019,26 +2118,32 @@ const AppContent: React.FC = () => {
       parallelCount: config.parallelCount,
       sourceImageId: activeSourceImage || undefined,
       mode: config.mode,
-      isDraft: false // Ensure it is NOT a draft anymore
+      isDraft: false, // Ensure it is NOT a draft anymore
+      videoResolution: config.videoResolution,
+      videoDuration: config.videoDuration,
+      videoAudio: config.videoAudio
     };
 
     // 🚀 [Fix Duplicate Placeholders]
     // Always check if the ID we are about to add/update actually exists on canvas
     // If not, revert to add. If yes, update.
-    const existingNode = activeCanvas?.promptNodes.find(n => n.id === generatingNode.id);
+    const canvasForWrite = activeCanvasRef.current;
+    const existingNode = canvasForWrite?.promptNodes.find(n => n.id === generatingNode.id);
 
     if (existingNode) {
       console.log('[handleGenerate] Updating existing node:', generatingNode.id);
       await updatePromptNode(generatingNode);
     } else {
       // Safety: Check if ANY draft exists that we might have missed (stale closure)
-      const strayDraft = activeCanvas?.promptNodes.find(n => n.isDraft);
+      const strayDraft = canvasForWrite?.promptNodes.find(n => n.isDraft);
       if (strayDraft) {
         console.log('[handleGenerate] Found stray draft during generation, converting it:', strayDraft.id);
         // Replace the stray draft's ID with our generating ID? 
         // Or just update the stray draft with our config?
         // Better to update the stray draft to avoid orphans.
-        const fusedNode = { ...generatingNode, id: strayDraft.id, position: strayDraft.position };
+        // IMPORTANT: keep the freshly calculated generation position (current viewport center in normal mode)
+        // Do NOT reuse stray draft position, otherwise node may jump back to old/initial canvas location.
+        const fusedNode = { ...generatingNode, id: strayDraft.id, position: generatingNode.position };
         await updatePromptNode(fusedNode);
         // Update our local ID reference for executeGeneration
         generatingNode.id = strayDraft.id;
@@ -2051,7 +2156,7 @@ const AppContent: React.FC = () => {
 
     // 🚀 [Cleanup] Remove any OTHER drafts if they exist (duplicate prevention)
     // This is a safety measure - uncommented to fix orphan card issue
-    const leftovers = activeCanvas?.promptNodes.filter(n => n.isDraft && n.id !== generatingNode.id);
+    const leftovers = canvasForWrite?.promptNodes.filter(n => n.isDraft && n.id !== generatingNode.id);
     if (leftovers && leftovers.length > 0) {
       console.log('[handleGenerate] Cleaning up orphan drafts:', leftovers.map(n => n.id));
       leftovers.forEach(n => deletePromptNode(n.id));
@@ -2065,7 +2170,7 @@ const AppContent: React.FC = () => {
     // Execute immediately after save completed
     executeGeneration(generatingNode);
 
-  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight]);
+  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
@@ -2243,7 +2348,28 @@ const AppContent: React.FC = () => {
           const currentMode: GenerationMode = node.mode || GenerationMode.IMAGE;
 
           if (currentMode === GenerationMode.VIDEO) {
-            throw new Error('视频生成功能尚未实现');
+            const videoResolution = (() => {
+              if (node.videoResolution) return node.videoResolution;
+              const size = node.imageSize?.toLowerCase() || '';
+              if (size.includes('4k') || size.includes('ultra')) return '4k';
+              if (size.includes('1080') || size.includes('hd')) return '1080p';
+              return '720p'; // 默认720p
+            })();
+            const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
+            const videoResult = await llmService.generateVideo({
+              modelId: node.model,
+              prompt: node.prompt,
+              aspectRatio: videoAspect,
+              imageUrl: node.referenceImages?.[0]?.data,
+              imageTailUrl: node.referenceImages?.[1]?.data,
+              videoDuration: node.videoDuration,
+              providerConfig: {
+                google: {
+                  imageConfig: { imageSize: videoResolution }
+                }
+              }
+            });
+            b64 = videoResult.url;
           } else {
             const result = await generateImage(
               node.prompt,
@@ -2261,31 +2387,23 @@ const AppContent: React.FC = () => {
           isFinished = true;
           clearTimeout(timer);
 
-          // Upload
+          // Upload (non-blocking for latency)
           let url = b64;
           let originalUrl = '';
 
           if (currentMode === GenerationMode.IMAGE) {
-            try {
-              const res = await fetch(b64);
-              const blob = await res.blob();
-              // const id = `${Date.now()}_${index}`;
-              // import('./services/syncService').then(async ({ syncService }) => {
-              //   const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
-              //   url = thumbnail;
-              //   originalUrl = original;
-              // });
-              // [Optimization] For local mode speed, skip syncService upload during inline flow?
-              // Or keep it but wait? The logic below needs `url` immediately.
-              // If we make it async, we must await it.
-              // To handle this properly with lazy loading:
-              const id = `${Date.now()}_${index}`;
-              const { syncService } = await import('./services/syncService');
-              const { original, thumbnail } = await syncService.uploadImagePair(id, blob);
-              url = thumbnail;
-              originalUrl = original;
-            } catch (e) {
-              console.warn('Upload failed, using local base64');
+            originalUrl = b64;
+            if (b64.startsWith('data:')) {
+              import('./services/syncService').then(async ({ syncService }) => {
+                try {
+                  const res = await fetch(b64);
+                  const blob = await res.blob();
+                  const id = `${Date.now()}_${index}`;
+                  await syncService.uploadImagePair(id, blob);
+                } catch (e) {
+                  console.warn('Cloud upload failed (retry flow, non-blocking)', e);
+                }
+              }).catch(() => { });
             }
           } else {
             // For video, assume URL is remote or data URI
@@ -2389,11 +2507,15 @@ const AppContent: React.FC = () => {
         // 1. Calculate Image Height strictly based on dimensions/aspectRatio (Footer included +40)
         let exactImageHeight = cardHeight;
         if (img.dimensions) {
-          const [w, h] = img.dimensions.split('x').map(Number);
-          if (w && h) {
-            const ratio = w / h;
-            const displayWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
-            exactImageHeight = (displayWidth / ratio) + 40;
+          const match = img.dimensions.match(/(\d+)\s*[xX]\s*(\d+)/);
+          if (match && match[1] && match[2]) {
+            const w = parseInt(match[1], 10);
+            const h = parseInt(match[2], 10);
+            if (w > 0 && h > 0) {
+              const ratio = w / h;
+              const displayWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
+              exactImageHeight = (displayWidth / ratio) + 40;
+            }
           }
         } else {
           // Fallback
@@ -2415,15 +2537,12 @@ const AppContent: React.FC = () => {
           const mobileCardWidth = cardWidth; // Use full desktop width
 
           const mobileGap = 20;
-          // Center X
           const startX = -mobileCardWidth / 2;
-          const offsetX = startX + mobileCardWidth / 2; // Center anchor
+          const offsetX = startX + mobileCardWidth / 2;
 
-          const mobileImageHeight = exactImageHeight; // Use full desktop height
-          // Add promptCardHeight to properly position below prompt
-          const promptCardHeight = node.height || 200;
-
-          const offsetY = promptCardHeight + gapToImages + mobileImageHeight + row * (mobileImageHeight + mobileGap);
+          // 🚀 [Fix] Image Y should be exactly below Prompt Y, without adding promptCardHeight
+          // Because Prompt Y is already its bottom edge.
+          const offsetY = gapToImages + exactImageHeight + row * (exactImageHeight + mobileGap);
           x = node.position.x + offsetX;
           y = node.position.y + offsetY;
         } else {
@@ -2440,15 +2559,13 @@ const AppContent: React.FC = () => {
           // X: Center relative to Prompt X
           const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
 
-          // Y: Prompt Bottom + Prompt Height (visual) + Gap + Image Height
-          // node.position.y is bottom anchor, but we need to add the prompt's visual height
-          // to position the image BELOW the prompt card (not overlapping)
-          const promptCardHeight = node.height || 200; // Use dynamic height if available
+          // Y: Prompt Bottom + Gap + Image Height
+          // 🚀 [Fix] node.position.y is already bottom anchor. Do NOT add promptCardHeight!
           const rowHeight = exactImageHeight;
           const rowOffsetY = row * (rowHeight + gap);
 
-          // Final Y (Bottom Anchor) = PromptBottom + PromptHeight + Gap + ImageHeight + RowOffset
-          const offsetY = promptCardHeight + gapToImages + exactImageHeight + rowOffsetY;
+          // Final Y (Bottom Anchor) = PromptBottom + Gap + ImageHeight + RowOffset
+          const offsetY = gapToImages + exactImageHeight + rowOffsetY;
 
           x = node.position.x + offsetX;
           y = node.position.y + offsetY;
@@ -2520,7 +2637,7 @@ const AppContent: React.FC = () => {
   }, [activeCanvas, handleRetryNode]);
 
   // Optimization: Stable handlers for Node Clicks
-  const handlePromptClick = useCallback(async (clickedNode: PromptNode) => {
+  const handlePromptClick = useCallback(async (clickedNode: PromptNode, isOptimizedView?: boolean) => {
     setActiveSourceImage(null);
 
     let referenceImages = clickedNode.referenceImages || [];
@@ -2543,9 +2660,13 @@ const AppContent: React.FC = () => {
       }
     }
 
+    const textToCopy = (isOptimizedView && clickedNode.optimizedPromptEn?.trim())
+      ? clickedNode.optimizedPromptEn.trim()
+      : clickedNode.prompt;
+
     setConfig(prev => ({
       ...prev,
-      prompt: clickedNode.prompt,
+      prompt: textToCopy,
       aspectRatio: clickedNode.aspectRatio,
       imageSize: clickedNode.imageSize,
       model: clickedNode.model,
@@ -2742,6 +2863,18 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // Adaptive connector styles for zoomed canvas (keep dashed lines visible when zoomed out)
+  const zoomForConnectors = Math.max(0.1, canvasTransform.scale || 1);
+  const connectorStroke = Math.max(1, Math.min(3, 1 / zoomForConnectors));
+  const connectorDashA = Math.max(2, Math.min(10, 4 / zoomForConnectors));
+  const connectorDashB = Math.max(2, Math.min(10, 4 / zoomForConnectors));
+  const activeDragStroke = Math.max(2, Math.min(6, 3 / zoomForConnectors));
+  const activeDragDashA = Math.max(3, Math.min(12, 6 / zoomForConnectors));
+  const activeDragDashB = Math.max(2, Math.min(10, 4 / zoomForConnectors));
+  const connectorHitStroke = Math.max(16, Math.min(40, 20 / zoomForConnectors));
+  const connectorDotStart = Math.max(2, Math.min(4.5, 3 / zoomForConnectors));
+  const connectorDotEnd = Math.max(1.5, Math.min(3.5, 2 / zoomForConnectors));
+
 
   return (
     <div id="canvas-container" className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
@@ -2771,7 +2904,7 @@ const AppContent: React.FC = () => {
       {/* Top Right User Menu - Desktop Only */}
       {/* Top Right User Menu - Desktop Only */}
       {!isMobile && (
-        <div id="header-user-menu" className={`absolute top-4 z-[100] hidden md:flex items-center gap-3 transition-all duration-300 ${isChatOpen ? 'right-[448px]' : 'right-12'}`}>
+        <div id="header-user-menu" className="absolute top-4 z-[100] hidden md:flex items-center gap-3 transition-all duration-300" style={{ right: isChatOpen ? `calc(min(100vw - 60px, ${chatSidebarWidth + 28}px))` : '48px' }}>
           {/* User Avatar & Dropdown Trigger */}
           <div className="relative group">
             <button
@@ -3112,8 +3245,8 @@ const AppContent: React.FC = () => {
               d={`M${dragConnection.startPos.x},${dragConnection.startPos.y} L${dragConnection.currentPos.x},${dragConnection.currentPos.y}`}
               fill="none"
               stroke="#6366f1"
-              strokeWidth="3"
-              strokeDasharray="6 4"
+              strokeWidth={activeDragStroke}
+              strokeDasharray={`${activeDragDashA} ${activeDragDashB}`}
               className="opacity-80 animate-pulse"
             />
           )}
@@ -3133,15 +3266,21 @@ const AppContent: React.FC = () => {
               const startY = pn.position.y + 5000;
 
               // End: Image Top Center (Bottom - Height)
-              // Calculate rough height based on aspect ratio needed for Top anchor
               const { width: cardWidth, totalHeight: theoreticalHeight } = getCardDimensions(childNode.aspectRatio, true);
               let imageHeight = theoreticalHeight;
+
               if (childNode.dimensions && typeof childNode.dimensions === 'string') {
-                const parts = childNode.dimensions.toLowerCase().split('x').map(p => parseInt(p.trim(), 10));
-                if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]) && parts[1] > 0) {
-                  const aspect = parts[0] / parts[1];
-                  const realParams = getCardDimensions(childNode.aspectRatio, false);
-                  imageHeight = (realParams.width / aspect) + 40;
+                // 🚀 [Fix Bug] Extract purely the dimension part: "1:1 · 4096x4096" -> "4096x4096"
+                // Then split by 'x' to avoid parsing the "1:1" as "1"
+                const match = childNode.dimensions.match(/(\d+)\s*[xX]\s*(\d+)/);
+                if (match && match[1] && match[2]) {
+                  const w = parseInt(match[1], 10);
+                  const h = parseInt(match[2], 10);
+                  if (w > 0 && h > 0) {
+                    const aspect = w / h;
+                    const realParams = getCardDimensions(childNode.aspectRatio, false);
+                    imageHeight = (realParams.width / aspect) + 40; // 40px for footer
+                  }
                 }
               }
 
@@ -3161,13 +3300,13 @@ const AppContent: React.FC = () => {
 
               return (
                 <g key={`${pn.id}-${childId}`}>
-                  <circle cx={startX} cy={startY} r="2" fill="#52525b" />
+                  <circle cx={startX} cy={startY} r={connectorDotEnd} fill="#52525b" />
                   <path
                     d={d}
                     fill="none"
                     stroke="#3f3f46"
-                    strokeWidth="1"
-                    strokeDasharray="4 4"
+                    strokeWidth={connectorStroke}
+                    strokeDasharray={`${connectorDashA} ${connectorDashB}`}
                     strokeLinecap="round"
                   />
                 </g>
@@ -3178,6 +3317,7 @@ const AppContent: React.FC = () => {
           {/* 2. Image -> Prompt/Pending Connections (Follow-up Flow) */}
           {/* A. Existing Prompts */}
           {activeCanvas?.promptNodes.map(pn => {
+            if (pn.isDraft) return null; // Draft/pending connection is rendered by pending-connection block below
             if (!pn.sourceImageId) return null;
             const sourceNode = activeCanvas.imageNodes.find(img => img.id === pn.sourceImageId);
             if (!sourceNode) return null;
@@ -3216,11 +3356,11 @@ const AppContent: React.FC = () => {
                   d={d}
                   fill="none"
                   stroke="#6366f1"
-                  strokeWidth="1"
-                  strokeDasharray="4 4"
+                  strokeWidth={connectorStroke}
+                  strokeDasharray={`${connectorDashA} ${connectorDashB}`}
                   strokeLinecap="round"
                   opacity="0.5"
-                  className="transition-all duration-300 group-hover:stroke-red-400 group-hover:opacity-100 group-hover:stroke-[2px]"
+                  className="transition-all duration-300 group-hover:stroke-red-400 group-hover:opacity-100"
                 />
 
                 {/* Transparent Hit Area */}
@@ -3228,7 +3368,7 @@ const AppContent: React.FC = () => {
                   d={d}
                   fill="none"
                   stroke="transparent"
-                  strokeWidth="20"
+                  strokeWidth={connectorHitStroke}
                   className="pointer-events-auto cursor-pointer"
                 />
 
@@ -3265,6 +3405,8 @@ const AppContent: React.FC = () => {
 
           {/* B. Pending Node Connection */}
           {activeSourceImage && (() => {
+            const hasDraftFollowup = !!activeCanvas?.promptNodes.some(p => p.isDraft && p.sourceImageId === activeSourceImage);
+            if (hasDraftFollowup) return null;
             const sourceNode = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
             if (!sourceNode) return null;
 
@@ -3296,15 +3438,15 @@ const AppContent: React.FC = () => {
                   d={d}
                   fill="none"
                   stroke="#6366f1"
-                  strokeWidth="1"
-                  strokeDasharray="4 4"
+                  strokeWidth={connectorStroke}
+                  strokeDasharray={`${connectorDashA} ${connectorDashB}`}
                   strokeLinecap="round"
                   opacity="0.5"
-                  className="transition-all duration-300 group-hover:stroke-red-400 group-hover:opacity-100 group-hover:stroke-[2px]"
+                  className="transition-all duration-300 group-hover:stroke-red-400 group-hover:opacity-100"
                 />
-                <path d={d} stroke="transparent" strokeWidth="20" fill="none" className="pointer-events-auto cursor-pointer" />
-                <circle cx={startX} cy={startY} r="3" fill="#6366f1" opacity="0.6" />
-                <circle cx={endX} cy={endY} r="2" fill="#6366f1" opacity="0.5" />
+                <path d={d} stroke="transparent" strokeWidth={connectorHitStroke} fill="none" className="pointer-events-auto cursor-pointer" />
+                <circle cx={startX} cy={startY} r={connectorDotStart} fill="#6366f1" opacity="0.6" />
+                <circle cx={endX} cy={endY} r={connectorDotEnd} fill="#6366f1" opacity="0.5" />
 
                 <foreignObject
                   x={btnX - 12}
@@ -3426,7 +3568,7 @@ const AppContent: React.FC = () => {
             position={node.position}
             onPositionChange={updateImageNodePosition}
             highlighted={highlightedId === node.id}
-            onDimensionsUpdate={updateImageNodeDimensions}
+            onDimensionsUpdate={updateImageNodeDisplayMeta}
             onUpdate={updateImageNode} // 🚀
             onDelete={deleteImageNode}
             onConnectEnd={handleConnectEnd}
@@ -3506,6 +3648,7 @@ const AppContent: React.FC = () => {
             setShowSettingsPanel(true);
           }}
           onHoverChange={(isHovered) => setIsSidebarHovered(isHovered)}
+          onWidthChange={setChatSidebarWidth}
         />
       </div>
 
@@ -3586,15 +3729,16 @@ const AppContent: React.FC = () => {
 
         // 🚀 [Sidebar Responsive Layout]
         // Calculate center for the overlay (Accurate widths from components)
-        const leftOffset = isSidebarOpen && !isMobile ? 260 : (isMobile ? 0 : 48);
-        const rightOffset = isChatOpen && !isMobile ? 420 : 0;
+        const overlayOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
+        const overlayLeft = overlayOffsets.left;
+        const overlayRight = overlayOffsets.right;
 
         return (
           <div
             className="fixed inset-0 pointer-events-none z-[100] flex items-center justify-center transition-all duration-300"
             style={{
-              paddingLeft: leftOffset,
-              paddingRight: rightOffset,
+              paddingLeft: overlayLeft,
+              paddingRight: overlayRight,
               // Move layout center above prompt bar
               paddingBottom: 110
             }}
@@ -3625,6 +3769,52 @@ const AppContent: React.FC = () => {
           images={previewImages}
           initialIndex={previewInitialIndex}
           onClose={() => setPreviewImages(null)}
+          onInpaintGenerate={async (srcImageUrl, maskBase64, prompt) => {
+            // 在 InpaintModal 内直接调用 API 重绘
+            const refImages = [{
+              id: `inpaint-ref-${Date.now()}`,
+              data: srcImageUrl,
+              mimeType: 'image/png' as const
+            }];
+            const result = await generateImage(
+              prompt || '保持原始画面',
+              config.aspectRatio,
+              config.imageSize,
+              refImages,
+              config.model,
+              '',
+              undefined,
+              false,
+              {
+                maskUrl: maskBase64,
+                editMode: 'inpaint'
+              }
+            );
+            return result.url; // 返回生成的图片 base64/url
+          }}
+          onInpaint={(image, maskBase64, prompt) => {
+            // 用户在 InpaintModal 里点击「接受结果」后触发
+            setConfig(prev => ({
+              ...prev,
+              prompt: prompt || prev.prompt,
+              maskUrl: maskBase64,
+              editMode: 'inpaint',
+              mode: GenerationMode.INPAINT
+            }));
+            const imgSrc = image.originalUrl || image.url;
+            if (imgSrc) {
+              const refImage = {
+                id: `inpaint-${Date.now()}`,
+                data: imgSrc,
+                mimeType: 'image/png'
+              };
+              setConfig(prev => ({
+                ...prev,
+                referenceImages: [...(prev.referenceImages || []), refImage]
+              }));
+            }
+            setPreviewImages(null);
+          }}
         />
       )}
       <SearchPalette
@@ -3649,7 +3839,7 @@ const AppContent: React.FC = () => {
 
       {/* AI聊天按钮 - 右下角固定 */}
       {/* AI聊天按钮 - 右下角固定 */}
-      <div className={`absolute bottom-6 z-50 transition-all duration-300 ${isChatOpen ? 'right-[448px]' : 'right-12'} hidden md:block`}>
+      <div className="absolute bottom-6 z-50 transition-all duration-300 hidden md:block" style={{ right: isChatOpen ? `calc(min(100vw - 60px, ${chatSidebarWidth + 28}px))` : '48px' }}>
         <button
           id="chat-trigger-button"
           className="ai-chat-btn flex items-center justify-center cursor-pointer focus-visible:outline-none text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-blue-400/80 hover:shadow-[0_0_35px] bg-transparent overflow-hidden relative rounded-full aspect-square h-10 hover:scale-110 transition-all duration-300 p-2"

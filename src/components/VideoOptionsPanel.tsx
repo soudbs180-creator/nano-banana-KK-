@@ -12,6 +12,7 @@ interface VideoOptionsPanelProps {
     onDurationChange: (duration: string) => void;
     onAudioChange: (audio: boolean) => void;
     availableRatios?: AspectRatio[];
+    supportsAudio?: boolean; // 新增：是否支持音频开关
 }
 
 const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
@@ -30,7 +31,8 @@ const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
         AspectRatio.SQUARE,
         AspectRatio.PORTRAIT_3_4,
         AspectRatio.PORTRAIT_9_16,
-    ]
+    ],
+    supportsAudio = false
 }) => {
     const resolutions = ['720p', '1080p', '4k'];
 
@@ -133,46 +135,48 @@ const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
                 borderColor: 'var(--border-light)'
             }}
         >
-            {/* 1. 音频 - 左右两个按钮带图标 */}
-            <div className="mb-4 last:mb-0">
-                <div className="text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                    音频
-                </div>
-                <div
-                    className="relative flex rounded-lg p-0.5"
-                    style={{ backgroundColor: 'var(--bg-tertiary)' }}
-                >
+            {/* 1. 音频 - 左右两个按钮带图标 (仅当 supportsAudio 为 true 时显示) */}
+            {supportsAudio && (
+                <div className="mb-4 last:mb-0">
+                    <div className="text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+                        音频
+                    </div>
                     <div
-                        className="absolute top-0.5 bottom-0.5 rounded-md transition-all duration-200 ease-out"
-                        style={{
-                            backgroundColor: 'var(--bg-secondary)',
-                            left: audioSlide.left,
-                            width: audioSlide.width
-                        }}
-                    />
+                        className="relative flex rounded-lg p-0.5"
+                        style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                    >
+                        <div
+                            className="absolute top-0.5 bottom-0.5 rounded-md transition-all duration-200 ease-out"
+                            style={{
+                                backgroundColor: 'var(--bg-secondary)',
+                                left: audioSlide.left,
+                                width: audioSlide.width
+                            }}
+                        />
 
-                    <button
-                        onClick={() => onAudioChange(true)}
-                        className="relative z-10 flex-1 flex items-center justify-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)]"
-                        style={{
-                            color: audio ? 'var(--text-primary)' : 'var(--text-tertiary)'
-                        }}
-                    >
-                        <Volume2 size={16} />
-                        <span>开启</span>
-                    </button>
-                    <button
-                        onClick={() => onAudioChange(false)}
-                        className="relative z-10 flex-1 flex items-center justify-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)]"
-                        style={{
-                            color: !audio ? 'var(--text-primary)' : 'var(--text-tertiary)'
-                        }}
-                    >
-                        <VolumeOff size={16} />
-                        <span>关闭</span>
-                    </button>
+                        <button
+                            onClick={() => onAudioChange(true)}
+                            className="relative z-10 flex-1 flex items-center justify-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)]"
+                            style={{
+                                color: audio ? 'var(--text-primary)' : 'var(--text-tertiary)'
+                            }}
+                        >
+                            <Volume2 size={16} />
+                            <span>开启</span>
+                        </button>
+                        <button
+                            onClick={() => onAudioChange(false)}
+                            className="relative z-10 flex-1 flex items-center justify-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)]"
+                            style={{
+                                color: !audio ? 'var(--text-primary)' : 'var(--text-tertiary)'
+                            }}
+                        >
+                            <VolumeOff size={16} />
+                            <span>关闭</span>
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* 2. 比例 - 左右布局 */}
             <div className="mb-4 last:mb-0">

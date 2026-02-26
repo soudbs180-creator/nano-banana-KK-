@@ -49,8 +49,21 @@ const ApiManagementView = () => {
 
   const handleTest = async (id: string) => {
     setRefreshingId(id);
-    await keyManager.refreshKey(id);
-    setRefreshingId(null);
+    try {
+      await keyManager.refreshKey(id);
+    } finally {
+      setRefreshingId(null);
+    }
+  };
+
+  const renderBudgetInfo = (slot: KeySlot) => {
+    const used = Number(slot.totalCost || 0);
+    const limit = Number(slot.budgetLimit || -1);
+    if (limit > 0) {
+      const remain = Math.max(0, limit - used);
+      return `总$${limit.toFixed(2)} 已用$${used.toFixed(2)} 剩$${remain.toFixed(2)}`;
+    }
+    return `总: 不限 已用$${used.toFixed(2)} 剩: 不限`;
   };
 
   // Card Renderer
@@ -60,18 +73,22 @@ const ApiManagementView = () => {
         {/* Status Dot */}
         <div className={`w-2 h-2 rounded-full ${slot.disabled ? 'bg-zinc-600' :
           slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
-            'bg-red-500'
+            slot.status === 'invalid' ? 'bg-red-500' :
+              'bg-amber-500'
           }`} />
 
         <div>
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-semibold text-zinc-100">{slot.name}</h4>
             {slot.status === 'valid' && <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded">在线</span>}
+            {slot.status === 'unknown' && !slot.disabled && <span className="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded">待重试</span>}
+            {slot.status === 'rate_limited' && !slot.disabled && <span className="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded">限流中</span>}
+            {slot.status === 'invalid' && !slot.disabled && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded">认证失败</span>}
             {slot.disabled && <span className="text-[10px] bg-zinc-700/50 text-zinc-400 px-1.5 py-0.5 rounded">已禁用</span>}
           </div>
           <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-500 font-mono">
             <span>{slot.key.slice(0, 4)}...{slot.key.slice(-4)}</span>
-            {slot.budgetLimit > 0 && <span>${slot.totalCost.toFixed(2)} / ${slot.budgetLimit}</span>}
+            <span>{renderBudgetInfo(slot)}</span>
             {slot.provider && <span className="hidden sm:inline-block px-1.5 py-0.5 bg-white/5 rounded text-[10px]">{slot.provider}</span>}
           </div>
         </div>

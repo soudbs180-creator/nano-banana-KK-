@@ -36,15 +36,25 @@ interface Transform {
     scale: number;
 }
 
+const snapTransformForText = (t: Transform): Transform => {
+    // Keep translate on whole CSS pixels to avoid corner clipping artifacts
+    // on rounded cards when canvas is heavily zoomed/panned.
+    const snap = (v: number) => Math.round(v);
+    return {
+        x: snap(t.x),
+        y: snap(t.y),
+        scale: t.scale
+    };
+};
+
 const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onCanvasDoubleClick, onAutoArrange, onResetView, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, onImageDrop, id }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const viewportRef = useRef<HTMLDivElement>(null); // 🚀 [性能优化] 直接操作DOM
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
     const [isDragging, setIsDragging] = useState(false);
     const dragStart = useRef({ x: 0, y: 0 });
     const lastTransform = useRef({ x: 0, y: 0 });
 
-    // 🚀 性能优化：拖动时的临时transform，不触发重绘
-    const [tempTransform, setTempTransform] = useState<Transform | null>(null);
     const isDraggingRef = useRef(false);
 
     // 🚀 实时坐标追踪 Ref (解决 React 状态异步延迟，确保 getCurrentTransform 永远返回物理最新值)
@@ -126,7 +136,8 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const zoomIntensity = minIntensity + easedFactor * (maxIntensity - minIntensity);
 
         const delta = -e.deltaY * zoomIntensity;
-        const currentTransform = tempTransform || transform;
+        // 🚀 使用 syncTransformRef 获取最新的物理值，避免连续滚动时的状态滞后
+        const currentTransform = syncTransformRef.current;
         const newScale = Math.max(0.1, Math.min(3, currentTransform.scale * (1 + delta)));
 
         // Zoom towards mouse position
@@ -134,22 +145,23 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const newX = mouseX - (mouseX - currentTransform.x) * scaleRatio;
         const newY = mouseY - (mouseY - currentTransform.y) * scaleRatio;
 
-        const newTransform = { x: newX, y: newY, scale: newScale };
+        const newTransform = snapTransformForText({ x: newX, y: newY, scale: newScale });
 
-        // 🚀 立即更新 Ref 和 临时状态
+        // 🚀 立即更新 Ref 和 DOM
         syncTransformRef.current = newTransform;
-        setTempTransform(newTransform);
+        if (viewportRef.current) {
+            viewportRef.current.style.transform = `translate(${newTransform.x}px, ${newTransform.y}px) scale(${newTransform.scale})`;
+        }
 
-        // 🚀 防抖：50ms后再提交最终transform
+        // 🚀 防抖：50ms后再提交最终transform到React状态树
         if (zoomTimeoutRef.current) {
             clearTimeout(zoomTimeoutRef.current);
         }
         zoomTimeoutRef.current = setTimeout(() => {
             setTransform(newTransform);
             onTransformChange?.(newTransform);
-            setTempTransform(null);
         }, 50);
-    }, [transform, tempTransform, onTransformChange]);
+    }, [onTransformChange]);
 
     // 图片拖拽处理
     const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -246,27 +258,30 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
         // 实时同步到 Ref
         syncTransformRef.current = newTransform;
-        // 只更新临时transform，不调用onTransformChange（避免重绘）
-        setTempTransform(newTransform);
+
+        // 🚀 直接操作DOM，不触发React重绘!
+        if (viewportRef.current) {
+            viewportRef.current.style.transform = `translate(${newTransform.x}px, ${newTransform.y}px) scale(${newTransform.scale})`;
+        }
     }, [transform.scale]);
 
-    // Handle mouse up
-    // 🚀 优化：mouseUp时才提交最终transform，触发一次重绘
     const handleMouseUp = useCallback((e: MouseEvent) => {
         if (isDraggingRef.current) {
             const dist = Math.hypot(e.clientX - dragStart.current.x, e.clientY - dragStart.current.y);
 
             // 提交最终transform（触发重绘）
-            if (tempTransform) {
-                // 🚀 [Fix Text Jitter] Ensure final committed position is fully integer
-                const finalTransform = {
-                    x: Math.round(tempTransform.x),
-                    y: Math.round(tempTransform.y),
-                    scale: tempTransform.scale
+            const finalTransform = syncTransformRef.current;
+
+            // 如果发生了移动，则同步最终状态
+            if (finalTransform.x !== lastTransform.current.x || finalTransform.y !== lastTransform.current.y) {
+                const roundedFinal = {
+                    ...finalTransform,
+                    x: Math.round(finalTransform.x),
+                    y: Math.round(finalTransform.y)
                 };
-                setTransform(finalTransform);
-                onTransformChange?.(finalTransform);
-                setTempTransform(null);
+                syncTransformRef.current = roundedFinal;
+                setTransform(roundedFinal);
+                onTransformChange?.(roundedFinal);
             }
 
             // 检查是否是点击（移动距离<5px）
@@ -277,7 +292,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             isDraggingRef.current = false;
             setIsDragging(false);
         }
-    }, [tempTransform, onTransformChange, onCanvasClick]);
+    }, [onTransformChange, onCanvasClick]);
 
     // Zoom controls
     const zoomIn = useCallback(() => {
@@ -293,7 +308,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const newX = centerX - (centerX - transform.x) * scaleRatio;
         const newY = centerY - (centerY - transform.y) * scaleRatio;
 
-        const newTransform = { x: newX, y: newY, scale: newScale };
+        const newTransform = snapTransformForText({ x: newX, y: newY, scale: newScale });
         setTransform(newTransform);
         onTransformChange?.(newTransform);
     }, [transform, onTransformChange]);
@@ -311,7 +326,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const newX = centerX - (centerX - transform.x) * scaleRatio;
         const newY = centerY - (centerY - transform.y) * scaleRatio;
 
-        const newTransform = { x: newX, y: newY, scale: newScale };
+        const newTransform = snapTransformForText({ x: newX, y: newY, scale: newScale });
         setTransform(newTransform);
         onTransformChange?.(newTransform);
     }, [transform, onTransformChange]);
@@ -321,11 +336,11 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         if (!container) return;
 
         const rect = container.getBoundingClientRect();
-        const newTransform = {
+        const newTransform = snapTransformForText({
             x: rect.width / 2,
             y: rect.height / 2,
             scale: 1
-        };
+        });
         setTransform(newTransform);
         onTransformChange?.(newTransform);
     }, [onTransformChange]);
@@ -366,7 +381,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const newX = rect.width / 2 - centerX * newScale;
         const newY = rect.height / 2 - centerY * newScale;
 
-        const newTransform = { x: newX, y: newY, scale: newScale };
+        const newTransform = snapTransformForText({ x: newX, y: newY, scale: newScale });
         setTransform(newTransform);
         onTransformChange?.(newTransform);
     }, [cardPositions, onTransformChange, resetView]);
@@ -378,7 +393,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         resetView,
         fitToAll,
         setView: (x: number, y: number, scale: number) => {
-            const newTransform = { x, y, scale };
+            const newTransform = snapTransformForText({ x, y, scale });
             setTransform(newTransform);
             onTransformChange?.(newTransform);
         },
@@ -435,11 +450,11 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             const dx = touch.clientX - dragStart.current.x;
             const dy = touch.clientY - dragStart.current.y;
 
-            const newTransform = {
+            const newTransform = snapTransformForText({
                 x: lastTransform.current.x + dx,
                 y: lastTransform.current.y + dy,
                 scale: transform.scale
-            };
+            });
             setTransform(newTransform);
             onTransformChange?.(newTransform);
         }
@@ -512,12 +527,14 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
                 {/* Viewport with transform - GPU accelerated */}
                 <div
+                    ref={viewportRef}
                     className="canvas-viewport"
                     style={{
                         // 🚀 [Fix] 使用 2D translate 代替 translate3d，并移除 backfaceVisibility
                         // 这能防止浏览器将画布强制视为位图纹理，从而在缩放后重新渲染高清晰度的文字和矢量图标
-                        transform: `translate(${(tempTransform || transform).x}px, ${(tempTransform || transform).y}px) scale(${(tempTransform || transform).scale})`,
-                        willChange: isDragging ? 'transform' : 'auto',
+                        transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                        // Keep text rendering stable while panning; avoid aggressive layer hinting
+                        willChange: 'auto',
                         transformOrigin: '0 0', // Explicitly set origin
                     }}
                 >
@@ -547,7 +564,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                             const newX = centerX - (centerX - transform.x) * scaleRatio;
                             const newY = centerY - (centerY - transform.y) * scaleRatio;
 
-                            const newTransform = { x: newX, y: newY, scale: newScale };
+                            const newTransform = snapTransformForText({ x: newX, y: newY, scale: newScale });
                             setTransform(newTransform);
                             onTransformChange?.(newTransform);
                         }}
@@ -574,7 +591,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
                 {/* Version Badge */}
                 <div className="glass h-10 px-3 rounded-xl flex items-center">
-                    <span className="text-xs text-zinc-500 font-semibold">v1.3.1</span>
+                    <span className="text-xs text-zinc-500 font-semibold">v1.3.2</span>
                 </div>
 
                 {/* Update Notification */}

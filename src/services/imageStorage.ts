@@ -33,6 +33,11 @@ class ImageMemoryCache {
 
     // 设置缓存图片
     set(id: string, url: string): void {
+        // 🚀 Fix: Revoke old Blob URL if overwriting
+        const oldUrl = this.cache.get(id);
+        if (oldUrl && oldUrl !== url && oldUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(oldUrl);
+        }
         this.cache.set(id, url);
 
         // 简单的内存管理：如果超过限制，清理最旧的50%
@@ -43,6 +48,11 @@ class ImageMemoryCache {
 
     // 删除缓存图片
     delete(id: string): void {
+        // 🚀 Fix: Revoke Blob URL when deleting from cache
+        const url = this.cache.get(id);
+        if (url && url.startsWith('blob:')) {
+            URL.revokeObjectURL(url);
+        }
         this.cache.delete(id);
     }
 
@@ -53,6 +63,12 @@ class ImageMemoryCache {
 
     // 清空所有缓存
     clear(): void {
+        // 🚀 Fix: Revoke all active Blob URLs
+        this.cache.forEach(url => {
+            if (url.startsWith('blob:')) {
+                URL.revokeObjectURL(url);
+            }
+        });
         this.cache.clear();
     }
 
@@ -76,7 +92,13 @@ class ImageMemoryCache {
         const keys = Array.from(this.cache.keys());
 
         for (let i = 0; i < keysToRemove; i++) {
-            this.cache.delete(keys[i]);
+            const id = keys[i];
+            const url = this.cache.get(id);
+            // 🚀 Fix: Revoke Blob URL on cache eviction to prevent massive memory leaks
+            if (url && url.startsWith('blob:')) {
+                URL.revokeObjectURL(url);
+            }
+            this.cache.delete(id);
         }
 
         console.log(`[ImageCache] Cleaned up ${keysToRemove} oldest entries`);
@@ -88,6 +110,29 @@ const memoryCache = new ImageMemoryCache(100); // 100MB限制
 
 // ========== IndexedDB操作 ==========
 let dbPromise: Promise<IDBDatabase> | null = null;
+
+async function toBlobFromAnyUrl(dataURL: string): Promise<Blob | null> {
+    try {
+        if (!dataURL) return null;
+
+        if (dataURL.startsWith('data:')) {
+            const { base64ToBlob } = await import('../utils/blobUtils');
+            const blob = base64ToBlob(dataURL);
+            return blob.size > 0 ? blob : null;
+        }
+
+        if (dataURL.startsWith('blob:') || dataURL.startsWith('http://') || dataURL.startsWith('https://')) {
+            const res = await fetch(dataURL);
+            if (!res.ok) return null;
+            const blob = await res.blob();
+            return blob.size > 0 ? blob : null;
+        }
+
+        return null;
+    } catch {
+        return null;
+    }
+}
 
 function openDB(): Promise<IDBDatabase> {
     if (dbPromise) return dbPromise;
@@ -135,9 +180,8 @@ export function generateImageId(): string {
  */
 export async function saveImage(id: string, dataURL: string): Promise<void> {
     try {
-        // 🚀 转换为Blob（不占JS内存）
-        const { base64ToBlob } = await import('../utils/blobUtils');
-        const blob = await base64ToBlob(dataURL);
+        // 🚀 转换为Blob（兼容 data:/blob:/http）
+        const blob = await toBlobFromAnyUrl(dataURL);
 
         // 如果 blob 为 null（无效URL），直接返回
         if (!blob) {
@@ -201,6 +245,10 @@ export async function getImage(id: string): Promise<string | null> {
 
         // 🚀 关键：优先使用Blob，创建Blob URL
         if (result.blob) {
+            if (result.blob.size === 0) {
+                console.warn(`[ImageStorage] Invalid empty blob detected for ${id}, ignoring corrupted cache`);
+                return null;
+            }
             const blobURL = URL.createObjectURL(result.blob);
             memoryCache.set(id, blobURL);
             console.log(`[ImageStorage] Loaded ${id} as Blob URL`);
@@ -349,11 +397,16 @@ export async function getImagesPage(offset: number, limit: number): Promise<{
 
                 // 加载limit数量的记录
                 if (loaded < limit) {
-                    const { id, url } = cursor.value;
-                    images.set(id, url);
-                    // 同步到内存缓存
-                    memoryCache.set(id, url);
-                    loaded++;
+                    const { id, url, blob } = cursor.value;
+                    // 🚀 Fix: If blob exists, build a Blob URL to avoid downloading it again!
+                    const finalUrl = blob ? URL.createObjectURL(blob) : url;
+
+                    if (finalUrl) {
+                        images.set(id, finalUrl);
+                        // 同步到内存缓存
+                        memoryCache.set(id, finalUrl);
+                        loaded++;
+                    }
                     currentIndex++;
                     cursor.continue();
                 } else {
@@ -617,9 +670,8 @@ export async function saveOriginalImage(id: string, dataURL: string, isVideo: bo
 
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
-            // 转换为Blob
-            const { base64ToBlob } = await import('../utils/blobUtils');
-            const blob = await base64ToBlob(dataURL);
+            // 转换为Blob（兼容 data:/blob:/http）
+            const blob = await toBlobFromAnyUrl(dataURL);
 
             // 如果 blob 为 null（无效URL），跳过
             if (!blob) {
@@ -736,6 +788,10 @@ export async function getOriginalImage(id: string): Promise<string | null> {
 
         // 优先使用Blob
         if (result.blob) {
+            if (result.blob.size === 0) {
+                console.warn(`[ImageStorage] 🔒 Empty blob detected for original ${id}, treating as missing`);
+                return null;
+            }
             const blobURL = URL.createObjectURL(result.blob);
             memoryCache.set(id, blobURL);
             console.log(`[ImageStorage] 🔒 Original loaded from IndexedDB (Blob): ${id}`);

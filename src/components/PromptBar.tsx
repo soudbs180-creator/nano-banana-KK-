@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { GenerationConfig, AspectRatio, ImageSize, GenerationMode, ModelType } from '../types';
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
 import { keyManager, getModelMetadata } from '../services/keyManager'; // Added getter
-import { getModelCapabilities, modelSupportsGrounding, getModelDisplayInfo, getModelDescription } from '../services/modelCapabilities';
+import { getModelCapabilities, modelSupportsGrounding, getModelDisplayInfo, getModelDescription, autoDetectImageSize } from '../services/modelCapabilities';
 import { getModelBadgeInfo, getProviderBadgeColor } from '../utils/modelBadge';
 import { calculateImageHash } from '../utils/imageUtils';
 import { saveImage, getImage } from '../services/imageStorage'; // [NEW] Import getImage
@@ -13,7 +13,8 @@ import ImageOptionsPanel from './ImageOptionsPanel';
 import VideoOptionsPanel from './VideoOptionsPanel';
 import ImagePreview from './ImagePreview';
 import { sortModels, toggleModelPin, getPinnedModels, filterAndSortModels } from '../utils/modelSorting';
-import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, ChevronUp, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap, Mic, Camera, Brain, Video, Image as ImageIcon } from 'lucide-react'; // [NEW] Mobile Icons
+import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, ChevronUp, Activity, AlertTriangle, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap, Mic, Camera, Brain, Video, Image as ImageIcon, Pen } from 'lucide-react'; // [NEW] Mobile Icons
+import { InpaintModal } from './InpaintModal';
 
 // [FIX] Robust Image Component that self-heals from Storage if data is missing
 const ReferenceThumbnail: React.FC<{
@@ -220,12 +221,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     // [NEW] 参考图放大状态
     const [previewImage, setPreviewImage] = useState<{ url: string; originRect: DOMRect } | null>(null);
+    const [inpaintImage, setInpaintImage] = useState<{ id: string; url: string } | null>(null); // [NEW] 局部重绘所需图像
     const refContainerRef = useRef<HTMLDivElement>(null);
     const optionsPanelRef = useRef<HTMLDivElement>(null); // [NEW] Ref for options panel
 
     // 状态：选项面板显示
     const [showOptionsPanel, setShowOptionsPanel] = useState(false);
     const [isInputAreaHovered, setIsInputAreaHovered] = useState(false); // Phase 3: hover state
+    const [uploadingCount, setUploadingCount] = useState(0); // [NEW] Uploading indicator count
     const hoverTimerRef = useRef<NodeJS.Timeout | null>(null); // 3-second hover delay timer
     const touchStartY = useRef<number | null>(null);
 
@@ -358,7 +361,11 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     useEffect(() => {
         const currentModelValid = availableModels.find(m => m.id === config.model);
         if (!currentModelValid && availableModels.length > 0) {
-            setConfig(prev => ({ ...prev, model: availableModels[0].id }));
+            setConfig(prev => {
+                const newModel = availableModels[0].id;
+                const newImageSize = autoDetectImageSize(newModel, prev.imageSize);
+                return { ...prev, model: newModel, imageSize: newImageSize };
+            });
         }
     }, [config.mode, availableModels, config.model, setConfig]);
 
@@ -448,57 +455,63 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         const filesToProcess = fileArray.slice(0, remainingSlots);
         if (filesToProcess.length === 0) return;
 
-        // Process all files in parallel
-        const newImages = await Promise.all(filesToProcess.map(async (file) => {
-            return new Promise<{ id: string, storageId: string, mimeType: string, data: string } | null>((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = async () => {
-                    const result = reader.result as string;
-                    const matches = result.match(/^data:(.+);base64,(.+)$/);
-                    if (matches) {
-                        const mimeType = matches[1];
-                        const data = matches[2];
-                        const storageId = await calculateImageHash(data);
+        setUploadingCount((prev) => prev + filesToProcess.length);
 
-                        // 🚀 [FIX] 立即保存到 IndexedDB（使用正确格式）
-                        // 🚀 [关键修复] 必须await等待保存完成，否则刷新时可能丢失
-                        const fullDataUrl = `data:${mimeType};base64,${data}`;
-                        try {
-                            await saveImage(storageId, fullDataUrl);
-                            console.log('[PromptBar] ✅ 参考图已保存到 IndexedDB:', storageId);
-                        } catch (err) {
-                            console.error("[PromptBar] ❌ Failed to save image to IndexedDB:", err);
+        try {
+            // Process all files in parallel
+            const newImages = await Promise.all(filesToProcess.map(async (file) => {
+                return new Promise<{ id: string, storageId: string, mimeType: string, data: string } | null>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = async () => {
+                        const result = reader.result as string;
+                        const matches = result.match(/^data:(.+);base64,(.+)$/);
+                        if (matches) {
+                            const mimeType = matches[1];
+                            const data = matches[2];
+                            const storageId = await calculateImageHash(data);
+
+                            // 🚀 [FIX] 立即保存到 IndexedDB（使用正确格式）
+                            // 🚀 [关键修复] 必须await等待保存完成，否则刷新时可能丢失
+                            const fullDataUrl = `data:${mimeType};base64,${data}`;
+                            try {
+                                await saveImage(storageId, fullDataUrl);
+                                console.log('[PromptBar] ✅ 参考图已保存到 IndexedDB:', storageId);
+                            } catch (err) {
+                                console.error("[PromptBar] ❌ Failed to save image to IndexedDB:", err);
+                            }
+
+                            // 🚀 [NEW] 同时保存到本地文件系统（如果已连接项目文件夹）
+                            const handle = fileSystemService.getGlobalHandle();
+                            if (handle) {
+                                fileSystemService.saveReferenceImage(handle, storageId, data, mimeType).catch(err =>
+                                    console.error("[PromptBar] Failed to save reference to file system:", err)
+                                );
+                            }
+
+                            resolve({
+                                id: Date.now() + Math.random().toString(),
+                                storageId,
+                                mimeType,
+                                data
+                            });
+                        } else {
+                            resolve(null);
                         }
-
-                        // 🚀 [NEW] 同时保存到本地文件系统（如果已连接项目文件夹）
-                        const handle = fileSystemService.getGlobalHandle();
-                        if (handle) {
-                            fileSystemService.saveReferenceImage(handle, storageId, data, mimeType).catch(err =>
-                                console.error("[PromptBar] Failed to save reference to file system:", err)
-                            );
-                        }
-
-                        resolve({
-                            id: Date.now() + Math.random().toString(),
-                            storageId,
-                            mimeType,
-                            data
-                        });
-                    } else {
-                        resolve(null);
-                    }
-                };
-                reader.readAsDataURL(file);
-            });
-        }));
-
-        const validImages = newImages.filter((img): img is NonNullable<typeof img> => img !== null);
-
-        if (validImages.length > 0) {
-            setConfig(prev => ({
-                ...prev,
-                referenceImages: [...prev.referenceImages, ...validImages]
+                    };
+                    reader.readAsDataURL(file);
+                });
             }));
+
+            const validImages = newImages.filter((img): img is NonNullable<typeof img> => img !== null);
+
+            if (validImages.length > 0) {
+                setConfig(prev => ({
+                    ...prev,
+                    referenceImages: [...prev.referenceImages, ...validImages]
+                }));
+            }
+        } finally {
+            setUploadingCount((prev) => Math.max(0, prev - filesToProcess.length));
         }
     }, [config.referenceImages, setConfig]);
 
@@ -694,14 +707,32 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             }
                         }
 
+                        const newRef = {
+                            id: Date.now() + Math.random().toString(),
+                            storageId,
+                            mimeType: mimeType || 'image/png',
+                            data: finalData // Use pure data if available, else empty (triggers healing)
+                        };
+
+                        // [NEW] If no data but storageId exists, hydrate it!
+                        if (!finalData && storageId) {
+                            import('../services/imageStorage').then(({ getImage }) => {
+                                getImage(storageId).then((loadedData) => {
+                                    if (loadedData) {
+                                        setConfig(curr => ({
+                                            ...curr,
+                                            referenceImages: curr.referenceImages.map(img =>
+                                                img.id === newRef.id ? { ...img, data: loadedData } : img
+                                            )
+                                        }));
+                                    }
+                                });
+                            });
+                        }
+
                         return {
                             ...prev,
-                            referenceImages: [...prev.referenceImages, {
-                                id: Date.now() + Math.random().toString(),
-                                storageId,
-                                mimeType: mimeType || 'image/png',
-                                data: finalData // Use pure data if available, else empty (triggers healing)
-                            }]
+                            referenceImages: [...prev.referenceImages, newRef]
                         };
                     });
                     return;
@@ -761,10 +792,16 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const modelDisplayInfo = currentModel ? getModelDisplayInfo(currentModel) : null;
 
     const truncateModelLabel = useCallback((label: string) => {
-        const max = isMobile ? 12 : 16;
+        const max = 15;
         if (label.length <= max) return label;
         return label.slice(0, max - 1) + '…';
-    }, [isMobile]);
+    }, []);
+
+    const truncateProviderLabel = useCallback((label: string) => {
+        const max = 5;
+        if (label.length <= max) return label;
+        return label.slice(0, max - 1) + '…';
+    }, []);
 
     const displayModelLabel = truncateModelLabel(currentModelName);
 
@@ -902,35 +939,63 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     </div>
                 )}
 
-                {/* Mode Toggle - Displayed on both but scaled down via CSS if needed */}
-                <div className="flex justify-center mb-2">
+                {/* Top Controls Row: Mode toggle on left, prompt optimizer on right */}
+                <div className="flex items-center justify-between mb-2 gap-2">
                     <div className="relative inline-flex items-center p-1 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', width: 'auto' }}>
                         {/* Sliding highlight background */}
                         <div
                             className="absolute h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
                             style={{
-                                width: '80px',
-                                left: config.mode === GenerationMode.IMAGE ? '4px' : 'calc(50% + 2px)',
-                                backgroundColor: config.mode === GenerationMode.IMAGE ? 'rgba(99, 102, 241, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                                width: '64px',
+                                left: config.mode === GenerationMode.IMAGE ? '4px'
+                                    : config.mode === GenerationMode.VIDEO ? 'calc(33.33% + 2px)'
+                                        : 'calc(66.66% + 0px)',
+                                backgroundColor: config.mode === GenerationMode.IMAGE ? 'rgba(99, 102, 241, 0.2)'
+                                    : config.mode === GenerationMode.VIDEO ? 'rgba(168, 85, 247, 0.2)'
+                                        : 'rgba(236, 72, 153, 0.2)',
                                 boxShadow: config.mode === GenerationMode.IMAGE
                                     ? '0 0 8px rgba(99, 102, 241, 0.3)'
-                                    : '0 0 8px rgba(168, 85, 247, 0.3)'
+                                    : config.mode === GenerationMode.VIDEO
+                                        ? '0 0 8px rgba(168, 85, 247, 0.3)'
+                                        : '0 0 8px rgba(236, 72, 153, 0.3)'
                             }}
                         />
 
                         <button
-                            className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.IMAGE ? 'text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                            className={`relative z-10 w-16 px-2 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.IMAGE ? 'text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                             onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
                         >
                             图片
                         </button>
                         <button
-                            className={`relative z-10 w-20 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.VIDEO ? 'text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                            className={`relative z-10 w-16 px-2 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.VIDEO ? 'text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                             onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
                         >
                             视频
                         </button>
+                        <button
+                            className={`relative z-10 w-16 px-2 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.AUDIO ? 'text-pink-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.AUDIO }))}
+                        >
+                            音乐
+                        </button>
                     </div>
+
+                    <button
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0"
+                        style={{
+                            backgroundColor: config.enablePromptOptimization ? 'rgba(34,197,94,0.14)' : 'var(--bg-tertiary)',
+                            color: config.enablePromptOptimization ? '#34d399' : 'var(--text-secondary)',
+                            borderColor: config.enablePromptOptimization ? 'rgba(52,211,153,0.35)' : 'var(--border-light)',
+                            opacity: config.mode === GenerationMode.IMAGE ? 1 : 0.45,
+                            pointerEvents: config.mode === GenerationMode.IMAGE ? 'auto' : 'none'
+                        }}
+                        onClick={() => setConfig(prev => ({ ...prev, enablePromptOptimization: !prev.enablePromptOptimization }))}
+                        title={config.mode === GenerationMode.IMAGE ? '开启后先优化提示词，再发送生成' : '仅图片模式支持提示词优化'}
+                    >
+                        <span>优化提示词</span>
+                        <span className="text-[10px] opacity-80">{config.enablePromptOptimization ? 'ON' : 'OFF'}</span>
+                    </button>
                 </div>
 
                 {/* Input Area Wrapper with hover detection */}
@@ -1079,20 +1144,36 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                     setPreviewImage({ url: src, originRect: rect });
                                                 }}
                                             />
+                                            {/* Mask Indicator - 当前已设置遮罩时显示高亮边框 */}
+                                            {config.maskUrl && config.editMode === 'inpaint' && (
+                                                <div className="absolute inset-0 border-2 border-indigo-500 rounded-lg pointer-events-none" />
+                                            )}
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     removeReferenceImage(img.id);
+                                                    if (config.maskUrl) {
+                                                        setConfig(prev => ({ ...prev, maskUrl: undefined, editMode: undefined }));
+                                                    }
                                                 }}
                                                 onMouseDown={(e) => e.stopPropagation()}
-                                                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity transform hover:scale-110"
+                                                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity transform hover:scale-110 z-10"
                                             >
-                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                                             </button>
                                         </div>
                                     </React.Fragment>
                                 );
                             })}
+
+                            {/* [NEW] Uploading Skeletons */}
+                            {Array.from({ length: uploadingCount }).map((_, idx) => (
+                                <div key={`uploading-${idx}`} className="relative w-12 h-12 rounded-lg border-2 border-dashed border-zinc-500/30 flex items-center justify-center bg-zinc-800/50 overflow-hidden flex-shrink-0 animate-pulse">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin text-zinc-400">
+                                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                    </svg>
+                                </div>
+                            ))}
 
                             <div
                                 id="spacer"
@@ -1157,7 +1238,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         onBlur={() => {
                             onBlur?.(); // 通知侧边栏: 输入框失去焦点,可以自动隐藏
                         }}
-                        placeholder={config.mode === GenerationMode.VIDEO ? "描述你想要生成的视频..." : "描述你想要生成的图片..."}
+                        placeholder={config.mode === GenerationMode.VIDEO ? "描述你想要生成的视频..." : config.mode === GenerationMode.AUDIO ? "描述你想要生成的音乐风格、歌词或旋律..." : "描述你想要生成的图片..."}
                         className="input-bar-textarea w-full bg-transparent border-none outline-none text-[15px] resize-none mt-1 py-1"
                         style={{
                             color: 'var(--text-primary)', // 使用 CSS 变量适配主题
@@ -1176,11 +1257,11 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     <div className="relative inline-flex flex-shrink-0">
                         <button
                             id="models-dropdown-trigger"
-                            className={`input-bar-model flex items-center justify-center gap-2 px-1.5 md:px-3 py-1 md:py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
+                            className={`input-bar-model flex items-center flex-nowrap justify-center gap-2 px-1.5 md:px-3 py-1 md:py-1.5 rounded-lg border transition-all duration-500 ease-[cubic-bezier(0.23, 1, 0.32, 1)] ${isModelListEmpty
                                 ? 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-tertiary)] cursor-not-allowed'
                                 : 'bg-[var(--bg-tertiary)] border-[var(--border-light)] text-[var(--text-secondary)] hover:border-opacity-50'
                                 }`}
-                            style={{ minWidth: '80px', maxWidth: isMobile ? '120px' : '200px' }}
+                            style={{ minWidth: isMobile ? '140px' : '160px', maxWidth: isMobile ? '180px' : '230px' }}
                             onClick={() => {
                                 if (isModelListEmpty) {
                                     onOpenSettings?.('api-management');
@@ -1192,8 +1273,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             {(() => {
                                 const badgeInfo = getModelBadgeInfo({ id: currentModel?.id ?? '', label: currentModel?.label ?? '', provider: currentModel?.provider });
                                 return (
-                                    <span className={`text-xs font-medium ${badgeInfo.colorClass}`} title={badgeInfo.text}>
-                                        {badgeInfo.text}
+                                    <span className={`text-xs font-medium whitespace-nowrap truncate max-w-[15ch] ${badgeInfo.colorClass}`} title={badgeInfo.text}>
+                                        {displayModelLabel}
                                     </span>
                                 );
                             })()}
@@ -1203,8 +1284,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <span
                                     className={`text-[9px] px-1.5 py-0.5 rounded border flex-shrink-0 ${getProviderBadgeColor(currentModel.provider)}`}
                                     style={{ marginLeft: '6px' }}
+                                    title={currentModel.provider}
                                 >
-                                    {currentModel.provider}
+                                    <span className="whitespace-nowrap">{truncateProviderLabel(currentModel.provider)}</span>
                                 </span>
                             )}
                         </button>
@@ -1246,14 +1328,23 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                         .map((model: any) => {
                                             const custom = modelCustomizations[model.id] || {};
                                             const baseName = custom.alias || model.label || model.id;
-                                            const advantage = custom.description || model.description || '自定义模型';
+
+                                            const getFallbackDescription = (m: any) => {
+                                                if (m.provider) return `由 ${m.provider} 通道提供的可用模型`;
+                                                if (m.group) return `隶属于 ${m.group} 分组的引擎模型`;
+                                                return '外部集成的第三方语言模型';
+                                            };
+                                            const advantage = custom.description || model.description || getFallbackDescription(model);
                                             const isPinned = getPinnedModels().includes(model.id);
                                             return (
                                                 <button
                                                     key={model.id}
                                                     className={`w-full px-3 py-2.5 text-left flex flex-col gap-1 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/10 ring-1 ring-white/20' : ''}`}
                                                     onClick={() => {
-                                                        setConfig(prev => ({ ...prev, model: model.id }));
+                                                        setConfig(prev => {
+                                                            const newImageSize = autoDetectImageSize(model.id, prev.imageSize);
+                                                            return { ...prev, model: model.id, imageSize: newImageSize };
+                                                        });
                                                         setActiveMenu(null);
                                                         setModelSearch(''); // Clear search on selection
                                                     }}
@@ -1262,18 +1353,46 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                         setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
                                                     }}
                                                 >
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-2">
+                                                    <div className="flex items-center justify-between w-full">
+                                                        <div className="flex items-center gap-2 flex-1 min-w-0 mr-2">
                                                             {(() => {
                                                                 const badgeInfo = getModelBadgeInfo({ id: model.id, label: model.label, provider: model.provider });
-                                                                return <span className={`text-xs font-medium ${badgeInfo.colorClass}`} title={badgeInfo.text}>{badgeInfo.text}</span>;
+                                                                let displayName = badgeInfo.text;
+
+                                                                // 模型名字只显示20个(空格和符号不算), 隐藏中间字段用点...显示
+                                                                let totalValid = 0;
+                                                                for (let i = 0; i < displayName.length; i++) {
+                                                                    if (!/[\s\-_/\\|;:'",.<>?!@#$%^&*()[\]]/.test(displayName[i])) totalValid++;
+                                                                }
+
+                                                                if (totalValid > 20) {
+                                                                    let startIdx = 0, endIdx = displayName.length - 1;
+                                                                    let currentValid = 0;
+                                                                    for (let i = 0; i < displayName.length; i++) {
+                                                                        if (!/[\s\-_/\\|;:'",.<>?!@#$%^&*()[\]]/.test(displayName[i])) currentValid++;
+                                                                        if (currentValid === 10) { startIdx = i; break; }
+                                                                    }
+                                                                    currentValid = 0;
+                                                                    for (let i = displayName.length - 1; i >= 0; i--) {
+                                                                        if (!/[\s\-_/\\|;:'",.<>?!@#$%^&*()[\]]/.test(displayName[i])) currentValid++;
+                                                                        if (currentValid === 10) { endIdx = i; break; }
+                                                                    }
+                                                                    if (startIdx < endIdx - 1) {
+                                                                        displayName = displayName.substring(0, startIdx + 1) + '...' + displayName.substring(endIdx);
+                                                                    }
+                                                                }
+
+                                                                return <span className={`text-xs font-medium ${badgeInfo.colorClass} truncate`} title={badgeInfo.text}>{displayName}</span>;
                                                             })()}
-                                                            {isPinned && <span className="absolute -top-1 -right-1 text-[8px]">📌</span>}
                                                         </div>
-                                                        {/* 供应商标签 - 右对齐带框 */}
+                                                        {/* 供应商标签 - 右对齐带框（最多显示10个字符，单行） */}
                                                         {model.provider && (
-                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${getProviderBadgeColor(model.provider)}`}>
-                                                                {model.provider}
+                                                            <span
+                                                                className={`text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 whitespace-nowrap overflow-hidden ${getProviderBadgeColor(model.provider)}`}
+                                                                title={model.provider}
+                                                                style={{ maxWidth: '40%', textOverflow: 'ellipsis' }}
+                                                            >
+                                                                {model.provider.length > 10 ? model.provider.substring(0, 9) + '…' : model.provider}
                                                             </span>
                                                         )}
                                                     </div>
@@ -1284,13 +1403,16 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                         const description = modelDesc?.description || advantage;
 
                                                         return (
-                                                            <div className="flex flex-col gap-1 mt-1">
-                                                                <span className="text-[10px] text-[var(--text-tertiary)] leading-tight break-all opacity-60">ID: {model.id.split('@')[0]}</span>
-                                                                {description && (
-                                                                    <span className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                                                                        {description}
-                                                                    </span>
-                                                                )}
+                                                            <div className="flex justify-between items-start mt-1 gap-2">
+                                                                <div className="flex flex-col gap-1 flex-1 min-w-0">
+                                                                    <span className="text-[10px] text-[var(--text-tertiary)] leading-tight truncate opacity-60">ID: {model.id.split('@')[0]}</span>
+                                                                    {description && (
+                                                                        <span className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                                                                            {description}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {isPinned && <span className="text-[12px] opacity-80 flex-shrink-0 mr-1 mt-0.5">📌</span>}
                                                             </div>
                                                         );
                                                     })()}
@@ -1334,7 +1456,16 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             }}
                             title="图片/视频选项"
                         >
-                            {config.mode === GenerationMode.IMAGE ? (
+                            {config.mode === GenerationMode.AUDIO ? (
+                                <>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M9 18V5l12-2v13" />
+                                        <circle cx="6" cy="18" r="3" />
+                                        <circle cx="18" cy="16" r="3" />
+                                    </svg>
+                                    <span>{config.audioDuration || '自动'}</span>
+                                </>
+                            ) : config.mode === GenerationMode.IMAGE ? (
                                 <>
                                     {config.aspectRatio === AspectRatio.AUTO ? (
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1374,7 +1505,26 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         {showOptionsPanel && (
                             <div className="absolute bottom-full mb-2 z-30" style={{ left: '50%', transform: 'translateX(-50%)' }}>
                                 <div ref={optionsPanelRef}>
-                                    {config.mode === GenerationMode.IMAGE ? (
+                                    {config.mode === GenerationMode.AUDIO ? (
+                                        /* 音频选项面板 - 时长选择 */
+                                        <div className="w-56 p-3 rounded-xl border shadow-xl animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }}>
+                                            <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">音频时长</div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {['自动', '30s', '60s', '120s', '240s'].map(dur => (
+                                                    <button
+                                                        key={dur}
+                                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${(config.audioDuration || '自动') === dur
+                                                            ? 'bg-pink-500/20 text-pink-400 border-pink-500/30'
+                                                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-pink-500/30'
+                                                            }`}
+                                                        onClick={() => setConfig(prev => ({ ...prev, audioDuration: dur === '自动' ? undefined : dur }))}
+                                                    >
+                                                        {dur}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : config.mode === GenerationMode.IMAGE ? (
                                         <ImageOptionsPanel
                                             aspectRatio={config.aspectRatio}
                                             imageSize={config.imageSize}
@@ -1394,6 +1544,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             onDurationChange={(dur) => setConfig(prev => ({ ...prev, videoDuration: dur }))}
                                             onAudioChange={(audio) => setConfig(prev => ({ ...prev, videoAudio: audio }))}
                                             availableRatios={availableRatios}
+                                            supportsAudio={!!getModelCapabilities(config.model)?.supportsVideoAudio}
                                         />
                                     )}
                                 </div>
@@ -1412,9 +1563,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             style={{
                                 backgroundColor: 'var(--bg-tertiary)',
                                 borderColor: 'var(--border-light)',
-                                opacity: config.mode === GenerationMode.VIDEO ? 0 : 1,
-                                visibility: config.mode === GenerationMode.VIDEO ? 'hidden' : 'visible',
-                                pointerEvents: config.mode === GenerationMode.VIDEO ? 'none' : 'auto'
+                                opacity: (config.mode === GenerationMode.VIDEO || config.mode === GenerationMode.AUDIO) ? 0 : 1,
+                                visibility: (config.mode === GenerationMode.VIDEO || config.mode === GenerationMode.AUDIO) ? 'hidden' : 'visible',
+                                pointerEvents: (config.mode === GenerationMode.VIDEO || config.mode === GenerationMode.AUDIO) ? 'none' : 'auto'
                             }}
                         >
                             {/* Grounding Tool - Now with capability check */}
@@ -1627,6 +1778,24 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         imageUrl={previewImage.url}
                         originRect={previewImage.originRect}
                         onClose={() => setPreviewImage(null)}
+                    />
+                )
+            }
+
+            {/* [NEW] Inpaint Modal */}
+            {
+                inpaintImage && (
+                    <InpaintModal
+                        imageUrl={inpaintImage.url}
+                        onCancel={() => setInpaintImage(null)}
+                        onSave={(maskBase64) => {
+                            setConfig(prev => ({
+                                ...prev,
+                                maskUrl: maskBase64,
+                                editMode: 'inpaint'
+                            }));
+                            setInpaintImage(null);
+                        }}
                     />
                 )
             }

@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom';
 import { X, Server, Globe, Key, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import keyManager, { KeySlot, fetchOpenAICompatModels, fetchGoogleModels } from '../services/keyManager';
 import { notify } from '../services/notificationService';
-import { comprehensiveConnectionTest } from "../services/connectionTest";
 
 interface ApiKeyModalProps {
     isOpen: boolean;
@@ -38,6 +37,12 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
     const [isTesting, setIsTesting] = useState(false);
     const [isFetchingModels, setIsFetchingModels] = useState(false);
     const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [lastTestFingerprint, setLastTestFingerprint] = useState<string>('');
+
+    const buildFingerprint = () => {
+        const firstModel = formData.models.split(',')[0]?.trim() || '';
+        return [formData.key.trim(), formData.baseUrl.trim(), formData.provider.trim(), firstModel].join('::');
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -71,6 +76,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
                 if (initialType === 'third-party') handlePresetChange('zhipu');
             }
             setTestResult(null);
+            setLastTestFingerprint('');
             setShowAdvanced(false);
         }
     }, [isOpen, editingSlot, initialType]);
@@ -96,18 +102,20 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
 
         setIsTesting(true);
         try {
-            const results = await comprehensiveConnectionTest({
-                apiKey: formData.key,
-                baseUrl: formData.baseUrl,
-                provider: formData.provider,
-                model: formData.models.split(',')[0]?.trim() || ''
-            });
+            const test = await keyManager.testChannel(
+                formData.baseUrl,
+                formData.key,
+                formData.provider as any
+            );
 
-            const success = results.some(r => r.success);
+            const success = !!test.success;
             setTestResult({
                 success,
-                message: success ? '连接测试成功' : (results[0]?.message || '连接失败')
+                message: success ? '连接测试成功' : (test.message || '连接失败')
             });
+            if (success) {
+                setLastTestFingerprint(buildFingerprint());
+            }
         } catch (e: any) {
             setTestResult({ success: false, message: e.message });
         } finally {
@@ -125,14 +133,14 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
             */
         }
 
-        // 🚀 Auto-fetch models if field is empty OR if it's a Google Key (to force update whitelist)
+        // 🚀 Auto-fetch models only when necessary (avoid blocking save on edits)
         let autoFetchedModels: string[] = [];
         const userModels = formData.models.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+        const currentFingerprint = buildFingerprint();
 
-        // Logic: 
-        // 1. If Google -> ALWAYS fetch specific updated list (Strict Whitelist enforcement)
-        // 2. If Third Party -> Only fetch if empty (User might have custom models)
-        const shouldAutoFetch = (formData.provider === 'Google' || formData.baseUrl.includes('googleapis.com')) || userModels.length === 0;
+        const shouldAutoFetch = !!formData.baseUrl &&
+            userModels.length === 0 &&
+            (!editingSlot || (editingSlot.supportedModels?.length || 0) === 0);
 
         if (shouldAutoFetch && formData.baseUrl) {
             try {
@@ -167,24 +175,25 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
             if (!payload.name) payload.name = formData.serverName;
         }
 
-        // 🚀 [Enhanced] Auto-Connection Check
-        // If user hasn't manually tested successfully, or key changed since test
-        if (!testResult?.success) {
+        // 🚀 [Enhanced] Auto-Connection Check (lightweight + skip unchanged successful test)
+        const needRetest = !(testResult?.success && lastTestFingerprint === currentFingerprint);
+        if (needRetest) {
             try {
-                const checkResults = await comprehensiveConnectionTest({
-                    apiKey: formData.key,
-                    baseUrl: formData.baseUrl,
-                    provider: formData.provider,
-                    model: userModels.length > 0 ? userModels[0] : (autoFetchedModels[0] || '')
-                });
+                const test = await keyManager.testChannel(
+                    formData.baseUrl,
+                    formData.key,
+                    formData.provider as any
+                );
 
-                const isSuccess = checkResults.some(r => r.success);
+                const isSuccess = !!test.success;
                 if (!isSuccess) {
-                    const failMsg = checkResults[0]?.message || '无法连接到 API 服务器';
+                    const failMsg = test.message || '无法连接到 API 服务器';
                     if (!confirm(`⚠️ 连接测试未通过:\n${failMsg}\n\n可能原因: API Key无效、BaseURL错误或网络问题。\n\n是否仍要强制保存?`)) {
                         setIsTesting(false);
                         return;
                     }
+                } else {
+                    setLastTestFingerprint(currentFingerprint);
                 }
             } catch (err: any) {
                 if (!confirm(`⚠️ 连接测试出错: ${err.message}\n\n是否仍要强制保存?`)) {

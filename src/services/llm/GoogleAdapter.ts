@@ -151,7 +151,8 @@ export class GoogleAdapter implements LLMAdapter {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: payloadStr
+            body: payloadStr,
+            signal: options.signal
         });
 
         if (!response.ok) {
@@ -223,38 +224,66 @@ export class GoogleAdapter implements LLMAdapter {
             imageConfig.aspectRatio = options.aspectRatio; // "16:9", "1:1" (Google supports these strings directly now)
         }
 
-        // Image Size (1K, 2K, 4K) - NOT pixels
-        // Map common "4K" or "2048x2048" to "2K" (Gemini 3 supports it) or check if "4K" is supported
-        // Documentation says "1K", "2K", "4K" (case sensitive 'K')
-        if (options.providerConfig?.google?.imageConfig?.imageSize) {
-            imageConfig.imageSize = options.providerConfig.google.imageConfig.imageSize;
-        } else if (options.imageSize) {
-            // Heuristic map
-            const size = options.imageSize.toUpperCase(); // Ensure upper case
-            if (size.includes('4K') || size.includes('HD')) imageConfig.imageSize = '4K'; // Gemini 3 Pro supports 4K? Docs said "2K" for Imagen, but "4K" for Gemini 3
-            else if (size.includes('2K')) imageConfig.imageSize = '2K';
-            else imageConfig.imageSize = '1K';
-        }
+        // Image Size (1K/2K/4K)
+        // 兼容策略：先按请求携带 imageSize；若上游不支持再自动回退
+        const requestedSize = (() => {
+            const raw = (options.imageSize || '').toUpperCase();
+            if (raw.includes('4K') || raw.includes('HD')) return '4K';
+            if (raw.includes('2K')) return '2K';
+            return '1K';
+        })();
 
-        generationConfig.imageConfig = imageConfig;
+        const requestGemini = async (withImageSize: boolean) => {
+            const effectiveImageConfig: any = { ...imageConfig };
+            if (withImageSize) {
+                effectiveImageConfig.imageSize = requestedSize;
+            }
 
-        const payload = {
-            contents: [{ parts }],
-            generationConfig
+            const payload = {
+                contents: [{ parts }],
+                generationConfig: {
+                    ...generationConfig,
+                    imageConfig: effectiveImageConfig
+                }
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                const msg = err?.error?.message || `Gemini Image Error: ${response.status}`;
+                throw new Error(msg);
+            }
+
+            const data = await response.json();
+            return { data, effectiveImageConfig };
         };
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        let data: any;
+        let effectiveImageConfig: any = imageConfig;
+        const wantsLargeSize = !!options.imageSize && requestedSize !== '1K';
 
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.error?.message || `Gemini Image Error: ${response.status}`);
+        try {
+            const first = await requestGemini(wantsLargeSize || !!options.imageSize);
+            data = first.data;
+            effectiveImageConfig = first.effectiveImageConfig;
+        } catch (e: any) {
+            const msg = String(e?.message || '').toLowerCase();
+            const likelySizeNotSupported = msg.includes('invalid_argument') || msg.includes('imagesize') || msg.includes('image_size');
+
+            if (wantsLargeSize && likelySizeNotSupported) {
+                console.warn('[GoogleAdapter] imageSize not supported by current endpoint, retrying without imageSize');
+                const fallback = await requestGemini(false);
+                data = fallback.data;
+                effectiveImageConfig = fallback.effectiveImageConfig;
+            } else {
+                throw e;
+            }
         }
-
-        const data = await response.json();
 
         // 🚀 Robust Multimodal Response Parsing
         // Google API can return multiple candidates. Usually we want the first.
@@ -290,9 +319,9 @@ export class GoogleAdapter implements LLMAdapter {
                 urls: [`data:${bestImage.inlineData.mimeType};base64,${bestImage.inlineData.data}`],
                 provider: 'Google',
                 model: options.modelId,
-                imageSize: imageConfig.imageSize || '1K',
+                imageSize: effectiveImageConfig.imageSize || '1K',
                 metadata: {
-                    aspectRatio: imageConfig.aspectRatio
+                    aspectRatio: effectiveImageConfig.aspectRatio
                 }
             };
         }
@@ -391,6 +420,35 @@ export class GoogleAdapter implements LLMAdapter {
         return {
             urls: [result.url],
             provider: 'Google',
+            model: options.modelId
+        };
+    }
+
+    async generateVideo(options: import('./LLMAdapter').VideoGenerationOptions, keySlot: KeySlot): Promise<import('./LLMAdapter').VideoGenerationResult> {
+        const { generateVideo } = await import('../videoService');
+        const cleanBase = (keySlot.baseUrl || GOOGLE_API_BASE).replace(/\/+$/, '');
+
+        // Convert to reference config expected by old service
+        const images = [];
+        if (options.imageUrl) images.push(options.imageUrl);
+        if (options.imageTailUrl) images.push(options.imageTailUrl);
+
+        const videoResult = await generateVideo(
+            {
+                prompt: options.prompt,
+                model: options.modelId,
+                aspectRatio: options.aspectRatio as any,
+                resolution: (options.providerConfig?.google?.imageConfig?.imageSize || '720p') as any,
+                referenceImages: images.length > 0 ? images.map(i => i.replace(/^data:image\/[^;]+;base64,/, '')) : undefined
+            },
+            keySlot.key,
+            cleanBase
+        );
+
+        return {
+            url: videoResult.videoUrl, // Comes back as dataUrl or blob url from videoService
+            status: 'success',
+            provider: this.provider,
             model: options.modelId
         };
     }
