@@ -117,6 +117,15 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
   // Gemini 文本模型 (Token计费)
   // https://ai.google.dev/gemini-api/docs/pricing
   // ============================================
+  // Gemini 3 系列 (Token计费)
+  // https://ai.google.dev/gemini-api/docs/pricing
+  // ============================================
+  // Gemini 3.1 Pro 预览版
+  'gemini-3.1-pro-preview': {
+    inputPerMillionTokens: 2.00,
+    outputPerMillionTokens: 12.00,
+    currency: 'USD'
+  },
   // Gemini 3 Pro 预览版
   'gemini-3-pro-preview': {
     inputPerMillionTokens: 2.00,   // <= 20万tokens
@@ -151,7 +160,16 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
   // ============================================
   // Gemini 图像模型 (Token计费)
   // ============================================
-  // Gemini 2.5 Flash Image
+  // Gemini 3.1 Flash Image Preview (Nano Banana 2)
+  // 输出: $0.067/张 = 2233 tokens 按照 $30/1M tokens 计算 (或者如果 3.1 flash 输出依然是 $3 则不同)
+  // 官网说是 0.067美刀一张
+  'gemini-3.1-flash-image-preview': {
+    inputPerMillionTokens: 0.25, // Updated from 0.50 based on latest pricing
+    pricePerImage: 0.067, // Using explicit price instead of complex token math
+    refImageTokens: DEFAULT_REF_IMAGE_TOKENS,
+    currency: 'USD'
+  },
+  // Gemini 2.5 Flash Image (Nano Banana)
   // 输出: $30/1M tokens, 1024x1024 = 1290 tokens = $0.039/张
   'gemini-2.5-flash-image': {
     inputPerMillionTokens: 0.30,
@@ -160,13 +178,11 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
     refImageTokens: DEFAULT_REF_IMAGE_TOKENS,
     currency: 'USD'
   },
-  // Gemini 3 Pro Image Preview
-  // 输出: $120/1M tokens
-  // 1K-2K: 1120 tokens = $0.134/张, 4K: 2000 tokens = $0.24/张
+  // Gemini 3 Pro Image Preview (Nano Banana Pro)
+  // 官网说是 $0.134/张
   'gemini-3-pro-image-preview': {
     inputPerMillionTokens: 2.00,
-    outputPerMillionTokens: 120,
-    tokensPerImage: { standard: 1120, hd: 2000 },
+    pricePerImage: 0.134, // Using exact explicit price matching screenshot instead of tokens math
     refImageTokens: DEFAULT_REF_IMAGE_TOKENS,
     currency: 'USD'
   },

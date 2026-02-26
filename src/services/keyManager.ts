@@ -236,7 +236,7 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
         name: 'T8Star',
         baseUrl: 'https://ai.t8star.cn',
         // Conservative defaults; users can auto-detect or customize in UI
-        models: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
+        models: ['gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
         format: 'openai',
         icon: '⭐'
     },
@@ -271,21 +271,21 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
     '12ai': {
         name: '12AI',
         baseUrl: 'https://cdn.12ai.org',
-        models: ['gpt-5.1', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'claude-4-sonnet', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
+        models: ['gpt-5.1', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'claude-4-sonnet', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
         format: 'gemini', // 12AI 对 Gemini 协议支持最好，支持原生 4K 和参考图
         icon: '🚀'
     },
     'antigravity': {
         name: 'Antigravity (本地)',
         baseUrl: 'http://127.0.0.1:8045',
-        models: ['gemini-3-pro-image-preview', 'gemini-3-flash', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'vidu', 'minimax-video', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
+        models: ['gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview', 'gemini-3-flash', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'vidu', 'minimax-video', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
         format: 'openai',
         icon: '🌀'
     },
     '12ai-nanobanana': {
         name: '12AI NanoBanana',
         baseUrl: 'https://new.12ai.org',
-        models: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview'],
+        models: ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview'],
         format: 'gemini',
         icon: '🍌'
     },
@@ -520,6 +520,7 @@ export function normalizeModelList(models: string[]): string[] {
 export const GOOGLE_IMAGE_WHITELIST = [
     'gemini-2.5-flash-image',
     'gemini-3-pro-image-preview',
+    'gemini-3.1-flash-image-preview',
     'imagen-4.0-generate-001',
     'imagen-4.0-ultra-generate-001',
     'imagen-4.0-fast-generate-001'
@@ -556,6 +557,8 @@ const isGoogleOfficialModelId = (modelId: string): boolean => {
 
 // 默认 Google 模型列表（仅核心Gemini模型）
 export const DEFAULT_GOOGLE_MODELS = [
+    // Gemini 3.1 系列（最新预览版）
+    'gemini-3.1-pro-preview',
     // Gemini 3 系列（预览版）/ 聊天
     'gemini-3-pro-preview',
     'gemini-3-flash-preview',
@@ -595,10 +598,12 @@ const GOOGLE_CHAT_MODELS = [
     { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', icon: '🧠', description: '最强推理模型，擅长代码、数学、STEM 复杂任务' },
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', icon: '⚡', description: '性价比最佳，适合大规模处理与代理任务' },
     { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', icon: '🚀', description: '最快速、最经济，适合高并发场景' },
-    // Gemini 3 系列 - 最强智能
+    // Gemini 3 & 3.1 系列 - 最强智能
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro 预览', icon: '💎', description: '最新 SOTA 推理模型，前所未有的深度、细微差别的代码能力' },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro 预览', icon: '🌟', description: '世界最强多模态模型，顶级推理能力' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash 预览', icon: '✨', description: 'Gemini 3 快速版，新能力尝鲜' },
     // 多模态模型 - 既能图像生成，又能聊天
+    { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image', icon: '🌠', description: '专业级视觉智能，闪电般的生成速度' },
     { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image (Preview)', icon: '🎨', description: '顶级图像生成模型,超高质量输出' },
     { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', icon: '🖼️', description: '快速图像生成,性价比最佳' },
 ];
@@ -619,6 +624,7 @@ MODEL_PRESETS.forEach(preset => MODEL_TYPE_MAP.set(preset.id, preset.type));
 
 // ✨ 修正 Gemini 多模态图片模型的类型
 MODEL_TYPE_MAP.set('gemini-2.5-flash-image', 'image+chat');
+MODEL_TYPE_MAP.set('gemini-3.1-flash-image-preview', 'image+chat');
 MODEL_TYPE_MAP.set('gemini-3-pro-image-preview', 'image+chat');
 
 // ✨ 设置 Imagen 4.0 系列的类型
@@ -647,6 +653,7 @@ GOOGLE_MODEL_METADATA.set('veo-3.1-fast-generate-preview', { name: 'Veo 3.1 Fast
 
 // ✨ Custom Name Overrides for Whitelisted Models
 GOOGLE_MODEL_METADATA.set('gemini-2.5-flash-image', { name: 'Nano Banana', icon: '🍌', description: 'Gemini 2.5 Flash Image (Custom)' });
+GOOGLE_MODEL_METADATA.set('gemini-3.1-flash-image-preview', { name: 'Nano Banana 2', icon: '🍌', description: 'Gemini 3.1 Flash Image Preview (Custom)' });
 GOOGLE_MODEL_METADATA.set('gemini-3-pro-image-preview', { name: 'Nano Banana Pro', icon: '🍌', description: 'Gemini 3 Pro Image (Custom)' });
 
 
