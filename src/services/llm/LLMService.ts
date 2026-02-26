@@ -154,9 +154,11 @@ export class LLMService {
                 }
 
                 // ✨ Suffix Stripping for API Call
-                const baseModelId = options.modelId.split('@')[0];
+                const fullBaseId = options.modelId.split('@')[0];
+                const cleanModelId = fullBaseId.split('|')[0]; // Strip Provider/Name metadata
+
                 // Note: We might want to pass mapped options here if needed, but Adapter handles it now
-                const cleanOptions = { ...options, modelId: baseModelId };
+                const cleanOptions = { ...options, modelId: cleanModelId };
 
                 const result = await adapter.generateImage(cleanOptions, keySlot);
                 keyManager.reportSuccess(keySlot.id);
@@ -205,8 +207,8 @@ export class LLMService {
                     result.providerName = keySlot.name || keySlot.provider;
                 }
                 if (!result.modelName) {
-                    const metadata = getModelMetadata(baseModelId);
-                    result.modelName = metadata?.name || baseModelId;
+                    const metadata = getModelMetadata(cleanModelId);
+                    result.modelName = metadata?.name || cleanModelId;
                 }
 
                 return result;
@@ -240,7 +242,12 @@ export class LLMService {
                 const adapter = this.getAdapter(keySlot.provider);
                 const targetAdapter = adapter.generateVideo ? adapter : this.videoAdapter;
 
-                const result = await targetAdapter.generateVideo!(options, keySlot);
+                // ✨ Suffix Stripping for API Call
+                const fullBaseId = options.modelId.split('@')[0];
+                const cleanModelId = fullBaseId.split('|')[0]; // Strip Provider/Name metadata
+                const cleanOptions = { ...options, modelId: cleanModelId };
+
+                const result = await targetAdapter.generateVideo!(cleanOptions, keySlot);
                 keyManager.reportSuccess(keySlot.id);
 
                 if (!result.provider) result.provider = keySlot.provider;

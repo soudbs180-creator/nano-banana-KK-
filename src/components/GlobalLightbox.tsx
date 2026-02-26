@@ -9,8 +9,6 @@ interface GlobalLightboxProps {
     initialIndex: number;
     onClose: () => void;
     onInpaint?: (image: GeneratedImage, maskBase64: string, prompt?: string) => void;
-    /** 在 InpaintModal 内部调用 API 获取重绘结果（不关闭弹窗） */
-    onInpaintGenerate?: (imageUrl: string, maskBase64: string, prompt: string) => Promise<string>;
 }
 
 /**
@@ -20,7 +18,7 @@ interface GlobalLightboxProps {
  * @param initialIndex 初始显示的图片索引
  * @param onClose 关闭事件回调
  */
-export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialIndex, onClose, onInpaint, onInpaintGenerate }) => {
+export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialIndex, onClose, onInpaint }) => {
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -346,6 +344,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     <img
                         src={displaySrc!}
                         alt={image.prompt}
+                        referrerPolicy="no-referrer"
                         className={`max-w-full max-h-full object-contain transition-transform duration-100 ${!displaySrc || hasError ? 'opacity-0' : ''}`}
                         draggable={false}
                         onLoad={handleImageLoad} // 🚀 [Fix] Capture real dimensions
@@ -444,7 +443,6 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 <InpaintModal
                     imageUrl={displaySrc}
                     onCancel={() => setShowInpaint(false)}
-                    onGenerate={onInpaintGenerate}
                     onSave={(maskBase64, prompt) => {
                         setShowInpaint(false);
                         if (onInpaint) {

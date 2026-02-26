@@ -135,10 +135,39 @@ const AppContent: React.FC = () => {
       list = canvas.imageNodes.filter(n => group.nodeIds.includes(n.id))
         .sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
     } else {
-      // 2. 提示词同级逻辑 (生成批次/多张变体)
-      const prompt = canvas.promptNodes.find(p => p.childImageIds?.includes(imageId));
-      if (prompt) {
-        list = canvas.imageNodes.filter(n => prompt.childImageIds.includes(n.id))
+      // 2. 提示词家族(Lineage)逻辑栈 (包含父图、变体、扩图、重绘的整条衍生链)
+      const graphImages = new Set<string>();
+      const queue = [imageId];
+
+      while (queue.length > 0) {
+        const currId = queue.shift()!;
+        if (!graphImages.has(currId)) {
+          graphImages.add(currId);
+          const img = canvas.imageNodes.find(n => n.id === currId);
+          if (img) {
+            // 向上找：同级的兄弟图片，以及孕育这个Prompt的父图片
+            const prompt = canvas.promptNodes.find(p => p.id === img.parentPromptId);
+            if (prompt) {
+              prompt.childImageIds?.forEach(id => {
+                if (!graphImages.has(id) && !queue.includes(id)) queue.push(id);
+              });
+              if (prompt.sourceImageId && !graphImages.has(prompt.sourceImageId) && !queue.includes(prompt.sourceImageId)) {
+                queue.push(prompt.sourceImageId);
+              }
+            }
+            // 向下找：以当前图片作为父图衍生出的子卡组图片
+            const childPrompts = canvas.promptNodes.filter(p => p.sourceImageId === currId);
+            childPrompts.forEach(cp => {
+              cp.childImageIds?.forEach(id => {
+                if (!graphImages.has(id) && !queue.includes(id)) queue.push(id);
+              });
+            });
+          }
+        }
+      }
+
+      if (graphImages.size > 0) {
+        list = canvas.imageNodes.filter(n => graphImages.has(n.id))
           .sort((a, b) => a.timestamp - b.timestamp || (a.position.x - b.position.x));
       } else {
         // 3. 兜底逻辑 (单张图片)
@@ -918,6 +947,7 @@ const AppContent: React.FC = () => {
     currentPos: { x: number; y: number };
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const generateLockRef = useRef(false);
   // error state removed, using notify service
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -1744,6 +1774,10 @@ const AppContent: React.FC = () => {
       };
 
       // 🚀 [Critical Fix] Execute updates in sequence/batch to prevent state overwrite race conditions
+      // 先清理旧子卡，避免并发/重入导致同一主卡出现重复副卡
+      const oldChildIds = (effectiveNode.childImageIds || []).filter(id => !successResults.some(r => r.id === id));
+      oldChildIds.forEach(id => deleteImageNode(id));
+
       updatePromptNode(updatedNode);
       addImageNodes(successResults);
 
@@ -1835,341 +1869,368 @@ const AppContent: React.FC = () => {
 
 
   const handleGenerate = useCallback(async () => {
+    if (generateLockRef.current) {
+      console.warn('[handleGenerate] blocked duplicate trigger');
+      return;
+    }
     if (!config.prompt.trim()) return;
+    generateLockRef.current = true;
     setIsGenerating(true);
+    try {
 
-    // 4. Calculate Position
-    // 普通模式应使用当前视口中心；追问模式保留原有草稿定位逻辑
-    const isFollowUp = !!activeSourceImage;
-    const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
-    const viewportRect = canvasRef.current?.getCanvasRect() || null;
-    const viewportOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile);
-    const liveCenter = getLiveViewportCenter(currentTransform, viewportRect, viewportOffsets);
-    const realViewCenter = liveCenter;
-    let viewCenter = { ...liveCenter };
-    let currentPos = { ...viewCenter };
+      // 4. Calculate Position
+      // 普通模式应使用当前视口中心；追问模式保留原有草稿定位逻辑
+      const isFollowUp = !!activeSourceImage;
+      const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
+      const viewportRect = canvasRef.current?.getCanvasRect() || null;
+      const viewportOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile);
+      const liveCenter = getLiveViewportCenter(currentTransform, viewportRect, viewportOffsets);
+      const realViewCenter = liveCenter;
+      let viewCenter = { ...liveCenter };
+      let currentPos = { ...viewCenter };
 
-    // [Draft Logic] Use existing draft only for follow-up mode.
-    // Normal mode must always lock to the current viewport center.
-    const canvasNow = activeCanvasRef.current;
-    let promptNodeId = draftNodeId;
-    let isReusingDraft = false;
+      // [Draft Logic] Use existing draft only for follow-up mode.
+      // Normal mode must always lock to the current viewport center.
+      const canvasNow = activeCanvasRef.current;
+      let promptNodeId = draftNodeId;
+      let isReusingDraft = false;
 
-    if (!isFollowUp) {
-      promptNodeId = Date.now().toString();
-      currentPos = { ...liveCenter };
-      isReusingDraft = false;
-      console.log('[handleGenerate] Normal mode - locked to current viewport center:', currentPos);
-    } else if (promptNodeId) {
-      // We have a draft. Use it.
-      const draft = canvasNow?.promptNodes.find(n => n.id === promptNodeId);
-      if (draft) {
-        isReusingDraft = true;
-        currentPos = draft.position;
+      if (!isFollowUp) {
+        promptNodeId = Date.now().toString();
+        currentPos = { ...liveCenter };
+        isReusingDraft = false;
+        console.log('[handleGenerate] Normal mode - locked to current viewport center:', currentPos);
+      } else if (promptNodeId) {
+        // We have a draft. Use it.
+        const draft = canvasNow?.promptNodes.find(n => n.id === promptNodeId);
+        if (draft) {
+          isReusingDraft = true;
+          currentPos = draft.position;
 
-        // 🚀 [Smart Re-centering Fix]
-        // If the draft is an auto-center draft (not moved by user), FORCE it to stay at the REAL center
-        // during the final generation calculation, even if the canvas was panned just now.
-        const shouldAutoCenter = !draft.userMoved && !draft.sourceImageId && !draft.isGenerating;
+          // 🚀 [Smart Re-centering Fix]
+          // If the draft is an auto-center draft (not moved by user), FORCE it to stay at the REAL center
+          // during the final generation calculation, even if the canvas was panned just now.
+          const shouldAutoCenter = !draft.userMoved && !draft.sourceImageId && !draft.isGenerating;
 
-        if (shouldAutoCenter) {
-          console.log('[handleGenerate] Auto-centering draft to latest viewCenter for precise placement');
-          currentPos = { ...viewCenter };
-        } else {
-          // 🚀 [Auto-Center Fallback] If draft is off-screen, snap it to current view center
-          // This fixes the issue where users pan away from a draft and then generate, causing the result to be "lost"
-          // 🚀 使用实时 transform（包括拖动中的位置）
-          const currentTransformForVisibility = canvasRef.current?.getCurrentTransform() || canvasTransform;
-          const vLeft = -currentTransformForVisibility.x / currentTransformForVisibility.scale;
-          const vTop = -currentTransformForVisibility.y / currentTransformForVisibility.scale;
-          const vWidth = window.innerWidth / currentTransformForVisibility.scale;
-          const vHeight = window.innerHeight / currentTransformForVisibility.scale;
-
-          // Margin of error (e.g. 100px)
-          const margin = 100;
-          const isVisible =
-            currentPos.x >= vLeft - margin &&
-            currentPos.x <= vLeft + vWidth + margin &&
-            currentPos.y >= vTop - margin &&
-            currentPos.y <= vTop + vHeight + margin;
-
-          if (!isVisible) {
-            console.warn('[handleGenerate] Draft is off-screen, moving to center:', {
-              currentPos,
-              viewCenter,
-              viewport: { vLeft, vRight: vLeft + vWidth, vTop, vBottom: vTop + vHeight }
-            });
+          if (shouldAutoCenter) {
+            console.log('[handleGenerate] Auto-centering draft to latest viewCenter for precise placement');
             currentPos = { ...viewCenter };
           } else {
-            console.log('[handleGenerate] Reusing draft at position (Visible):', currentPos);
+            // 🚀 [Auto-Center Fallback] If draft is off-screen, snap it to current view center
+            // This fixes the issue where users pan away from a draft and then generate, causing the result to be "lost"
+            // 🚀 使用实时 transform（包括拖动中的位置）
+            const currentTransformForVisibility = canvasRef.current?.getCurrentTransform() || canvasTransform;
+            const vLeft = -currentTransformForVisibility.x / currentTransformForVisibility.scale;
+            const vTop = -currentTransformForVisibility.y / currentTransformForVisibility.scale;
+            const vWidth = window.innerWidth / currentTransformForVisibility.scale;
+            const vHeight = window.innerHeight / currentTransformForVisibility.scale;
+
+            // Margin of error (e.g. 100px)
+            const margin = 100;
+            const isVisible =
+              currentPos.x >= vLeft - margin &&
+              currentPos.x <= vLeft + vWidth + margin &&
+              currentPos.y >= vTop - margin &&
+              currentPos.y <= vTop + vHeight + margin;
+
+            if (!isVisible) {
+              console.warn('[handleGenerate] Draft is off-screen, moving to center:', {
+                currentPos,
+                viewCenter,
+                viewport: { vLeft, vRight: vLeft + vWidth, vTop, vBottom: vTop + vHeight }
+              });
+              currentPos = { ...viewCenter };
+            } else {
+              console.log('[handleGenerate] Reusing draft at position (Visible):', currentPos);
+            }
           }
-        }
 
-        // 🚀 [Collision Check] Ensure draft doesn't overlap others
-        const freshCanvas = activeCanvasRef.current; // Use Ref for fresh state
-        const now = Date.now();
+          // 🚀 [Collision Check] Ensure draft doesn't overlap others
+          const freshCanvas = activeCanvasRef.current; // Use Ref for fresh state
+          const now = Date.now();
 
-        // [Rapid-Fire] Prune old reserved regions (>3s)
-        reservedRegionsRef.current = reservedRegionsRef.current.filter(r => now - r.timestamp < 3000);
+          // [Rapid-Fire] Prune old reserved regions (>3s)
+          reservedRegionsRef.current = reservedRegionsRef.current.filter(r => now - r.timestamp < 3000);
 
-        const otherNodes = [
-          ...(freshCanvas?.promptNodes || [])
-            .filter(n => n.id !== draft.id)
-            .map(n => ({ x: n.position.x, y: n.position.y, width: n.width || 380, height: n.height || 200 })),
-          ...(freshCanvas?.imageNodes || []).map(n => {
-            const { width, totalHeight } = getCardDimensions(n.aspectRatio, true);
-            return { x: n.position.x, y: n.position.y, width, height: totalHeight };
-          }),
-          ...(reservedRegionsRef.current || []).map(r => ({ x: r.bounds.x, y: r.bounds.y, width: r.bounds.width, height: r.bounds.height }))
-        ];
+          const otherNodes = [
+            ...(freshCanvas?.promptNodes || [])
+              .filter(n => n.id !== draft.id)
+              .map(n => ({ x: n.position.x, y: n.position.y, width: n.width || 380, height: n.height || 200 })),
+            ...(freshCanvas?.imageNodes || []).map(n => {
+              const { width, totalHeight } = getCardDimensions(n.aspectRatio, true);
+              return { x: n.position.x, y: n.position.y, width, height: totalHeight };
+            }),
+            ...(reservedRegionsRef.current || []).map(r => ({ x: r.bounds.x, y: r.bounds.y, width: r.bounds.width, height: r.bounds.height }))
+          ];
 
-        // 🚀 [Fix] If reusing a draft (user placed), Respect its position! 
-        // Only use safe-find for completely new/automatic generations.
-        let safePos = currentPos;
-        if (!isReusingDraft) {
-          safePos = findSafePosition(currentPos, otherNodes);
+          // 🚀 [Fix] If reusing a draft (user placed), Respect its position! 
+          // Only use safe-find for completely new/automatic generations.
+          let safePos = currentPos;
+          if (!isReusingDraft) {
+            safePos = findSafePosition(currentPos, otherNodes);
+          } else {
+            // Ensure we are snapping to integer coordinates for sharpness
+            safePos = { x: Math.round(currentPos.x), y: Math.round(currentPos.y) };
+          }
+
+          // 🚀 Always reserve the FINAL position (whether shifted or not)
+          reservedRegionsRef.current.push({
+            timestamp: now,
+            bounds: { x: safePos.x, y: safePos.y, width: 380, height: 200 }
+          });
+
+          if (safePos.x !== currentPos.x || safePos.y !== currentPos.y) {
+            console.log('[handleGenerate] Draft collision detected, shifting to:', safePos);
+            // 💡 Persist the shift to canvas state so it doesn't "jump back" or collide with next card
+            updatePromptNode({ ...draft, position: safePos });
+            currentPos = safePos;
+          }
         } else {
-          // Ensure we are snapping to integer coordinates for sharpness
-          safePos = { x: Math.round(currentPos.x), y: Math.round(currentPos.y) };
-        }
-
-        // 🚀 Always reserve the FINAL position (whether shifted or not)
-        reservedRegionsRef.current.push({
-          timestamp: now,
-          bounds: { x: safePos.x, y: safePos.y, width: 380, height: 200 }
-        });
-
-        if (safePos.x !== currentPos.x || safePos.y !== currentPos.y) {
-          console.log('[handleGenerate] Draft collision detected, shifting to:', safePos);
-          // 💡 Persist the shift to canvas state so it doesn't "jump back" or collide with next card
-          updatePromptNode({ ...draft, position: safePos });
-          currentPos = safePos;
+          // Draft ID stale?
+          promptNodeId = Date.now().toString();
+          console.log('[handleGenerate] Creating new node at view center (Stale ID):', currentPos);
         }
       } else {
-        // Draft ID stale?
+        // Follow-up mode but no draft id: create a new node at computed center/path
         promptNodeId = Date.now().toString();
-        console.log('[handleGenerate] Creating new node at view center (Stale ID):', currentPos);
+        console.log('[handleGenerate] Follow-up mode without draft, using computed center:', currentPos);
       }
-    } else {
-      // Follow-up mode but no draft id: create a new node at computed center/path
-      promptNodeId = Date.now().toString();
-      console.log('[handleGenerate] Follow-up mode without draft, using computed center:', currentPos);
-    }
 
-    // setDraftNodeId(null); // Moved to end to prevent flicker
+      // setDraftNodeId(null); // Moved to end to prevent flicker
 
-    // Legacy calculation reference, but we used currentPos above.
-    const promptHeight = getPromptHeight(config.prompt);
+      // Legacy calculation reference, but we used currentPos above.
+      const promptHeight = getPromptHeight(config.prompt);
 
-    // [CRITICAL FIX] Hydrate reference images before sending
-    // When dragging from ImageCard, data might be empty (only storageId is passed)
-    const { getImage } = await import('./services/imageStorage');
-    const { fileSystemService } = await import('./services/fileSystemService');
-    const globalHandle = fileSystemService.getGlobalHandle();
+      // [CRITICAL FIX] Hydrate reference images before sending
+      // When dragging from ImageCard, data might be empty (only storageId is passed)
+      const { getImage } = await import('./services/imageStorage');
+      const { fileSystemService } = await import('./services/fileSystemService');
+      const globalHandle = fileSystemService.getGlobalHandle();
 
-    let finalReferenceImages = await Promise.all(
-      config.referenceImages.map(async (img) => {
-        // If data is missing but storageId exists, try to load from IDB first
-        if (!img.data && img.storageId) {
-          try {
-            const dataUrl = await getImage(img.storageId);
-            if (dataUrl) {
-              // Extract base64 from data URL
-              const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
-              if (matches && matches[2]) {
-                return {
-                  ...img,
-                  data: matches[2],
-                  mimeType: matches[1] || img.mimeType || 'image/png'
-                };
-              }
-              // If not standard data URL format, use as-is
-              return { ...img, data: dataUrl };
-            }
-          } catch (e) {
-            console.warn('[handleGenerate] Failed to load from IDB:', img.id, e);
-          }
-
-          // If IDB failed, try to load from local file system (refs/ directory)
-          if (globalHandle) {
+      let finalReferenceImages = await Promise.all(
+        config.referenceImages.map(async (img) => {
+          // If data is missing but storageId exists, try to load from IDB first
+          if (!img.data && img.storageId) {
             try {
-              const base64Data = await fileSystemService.loadReferenceImage(globalHandle, img.storageId);
-              if (base64Data) {
-                console.log('[handleGenerate] Loaded ref image from local file system:', img.storageId);
-                return {
-                  ...img,
-                  data: base64Data,
-                  mimeType: 'image/jpeg' // refs/ 目录中的图片都是 JPEG
-                };
+              const dataUrl = await getImage(img.storageId);
+              if (dataUrl) {
+                // Extract base64 from data URL
+                const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
+                if (matches && matches[2]) {
+                  return {
+                    ...img,
+                    data: matches[2],
+                    mimeType: matches[1] || img.mimeType || 'image/png'
+                  };
+                }
+                // If not standard data URL format, use as-is
+                return { ...img, data: dataUrl };
               }
             } catch (e) {
-              console.warn('[handleGenerate] Failed to load from local file system:', img.storageId, e);
+              console.warn('[handleGenerate] Failed to load from IDB:', img.id, e);
+            }
+
+            // If IDB failed, try to load from local file system (refs/ directory)
+            if (globalHandle) {
+              try {
+                const base64Data = await fileSystemService.loadReferenceImage(globalHandle, img.storageId);
+                if (base64Data) {
+                  console.log('[handleGenerate] Loaded ref image from local file system:', img.storageId);
+                  return {
+                    ...img,
+                    data: base64Data,
+                    mimeType: 'image/jpeg' // refs/ 目录中的图片都是 JPEG
+                  };
+                }
+              } catch (e) {
+                console.warn('[handleGenerate] Failed to load from local file system:', img.storageId, e);
+              }
             }
           }
+          return img;
+        })
+      );
+
+      // Filter out images that still don't have data
+      finalReferenceImages = finalReferenceImages.filter(img => img.data);
+
+      if (activeSourceImage) {
+        const sourceImage = activeCanvasRef.current?.imageNodes.find(img => img.id === activeSourceImage);
+        // [FIX] Prefer originalUrl (High Res) over url (Thumbnail) to prevent blurry reference images
+        const targetUrl = sourceImage?.originalUrl || sourceImage?.url;
+
+        if (sourceImage && targetUrl) {
+          try {
+            const response = await fetch(targetUrl);
+            const blob = await response.blob();
+            const base64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const result = reader.result as string;
+                const matches = result.match(/^data:(.+);base64,(.+)$/);
+                resolve(matches ? matches[2] : '');
+              };
+              reader.readAsDataURL(blob);
+            });
+            if (base64) {
+              const alreadyAdded = finalReferenceImages.some(ref => ref.id === sourceImage.id);
+              if (!alreadyAdded) {
+                finalReferenceImages.push({
+                  id: sourceImage.id,
+                  data: base64, // @ts-ignore
+                  mimeType: blob.type || 'image/png'
+                });
+              }
+            }
+          } catch (filesErr) {
+            console.warn('Ref load error', filesErr);
+          }
         }
-        return img;
-      })
-    );
+      }
 
-    // Filter out images that still don't have data
-    finalReferenceImages = finalReferenceImages.filter(img => img.data);
-
-    if (activeSourceImage) {
-      const sourceImage = activeCanvasRef.current?.imageNodes.find(img => img.id === activeSourceImage);
-      // [FIX] Prefer originalUrl (High Res) over url (Thumbnail) to prevent blurry reference images
-      const targetUrl = sourceImage?.originalUrl || sourceImage?.url;
-
-      if (sourceImage && targetUrl) {
-        try {
-          const response = await fetch(targetUrl);
-          const blob = await response.blob();
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const result = reader.result as string;
-              const matches = result.match(/^data:(.+);base64,(.+)$/);
-              resolve(matches ? matches[2] : '');
-            };
-            reader.readAsDataURL(blob);
+      // Ensure all reference images are saved to IDB for persistence
+      // (Large images might be stripped from localStorage)
+      finalReferenceImages.forEach(ref => {
+        if (ref.data) {
+          import('./services/imageStorage').then(({ saveImage }) => {
+            // IMPORTANT: store as full DataURL so CanvasContext can rehydrate mimeType/base64 reliably
+            const mime = (ref as any).mimeType || 'image/png';
+            const fullUrl = ref.data!.startsWith('data:') ? ref.data! : `data:${mime};base64,${ref.data!}`;
+            saveImage(ref.id, fullUrl).catch(e => console.warn('Ref save failed', e));
           });
-          if (base64) {
-            const alreadyAdded = finalReferenceImages.some(ref => ref.id === sourceImage.id);
-            if (!alreadyAdded) {
-              finalReferenceImages.push({
-                id: sourceImage.id,
-                data: base64, // @ts-ignore
-                mimeType: blob.type || 'image/png'
-              });
-            }
-          }
-        } catch (filesErr) {
-          console.warn('Ref load error', filesErr);
+        }
+      });
+
+      // 🚀 Final hard-guard: in normal mode, always lock to CURRENT viewport center at click-time
+      // This prevents any stale draft/canvas closure from pulling position back to initial canvas.
+      if (!isFollowUp) {
+        const latestTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
+        const latestViewportRect = canvasRef.current?.getCanvasRect() || null;
+        const latestOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
+        currentPos = getLiveViewportCenter(latestTransform, latestViewportRect, latestOffsets);
+        console.log('[handleGenerate] Final position hard-guard (normal mode):', currentPos);
+      }
+
+      const rawPrompt = config.prompt.trim();
+      let optimizedPromptEn: string | undefined;
+      let optimizedPromptZh: string | undefined;
+
+      if (config.mode === GenerationMode.IMAGE && config.enablePromptOptimization && rawPrompt) {
+        try {
+          const optimized = await optimizePromptForImage(rawPrompt, {
+            preferredModelId: config.model,
+            aspectRatio: config.aspectRatio,
+            mode: config.mode,
+            referenceImages: finalReferenceImages
+              .filter(ref => ref.data)
+              .map(ref => {
+                const mime = (ref as any).mimeType || 'image/png';
+                let base64Data = ref.data!;
+                if (base64Data.startsWith('data:')) {
+                  const match = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+                  if (match) {
+                    base64Data = match[2];
+                  }
+                }
+                return { mimeType: mime, data: base64Data };
+              })
+          });
+          optimizedPromptEn = optimized.optimizedEn;
+          optimizedPromptZh = optimized.optimizedZh;
+        } catch (e: any) {
+          console.warn('[handleGenerate] Prompt optimization failed, fallback to raw prompt:', e);
+          import('./services/notificationService').then(({ notify }) => {
+            notify.error('提示词优化失败', '无法调用对话模型，已自动降级为原始提示词: ' + (e.message || ''));
+          });
         }
       }
-    }
 
-    // Ensure all reference images are saved to IDB for persistence
-    // (Large images might be stripped from localStorage)
-    finalReferenceImages.forEach(ref => {
-      if (ref.data) {
-        import('./services/imageStorage').then(({ saveImage }) => {
-          // IMPORTANT: store as full DataURL so CanvasContext can rehydrate mimeType/base64 reliably
-          const mime = (ref as any).mimeType || 'image/png';
-          const fullUrl = ref.data!.startsWith('data:') ? ref.data! : `data:${mime};base64,${ref.data!}`;
-          saveImage(ref.id, fullUrl).catch(e => console.warn('Ref save failed', e));
-        });
-      }
-    });
+      const baseModelIdForPreview = config.model.split('@')[0];
+      const modelSuffixForPreview = config.model.split('@')[1];
+      const previewModelLabel = getModelMetadata(baseModelIdForPreview)?.name || baseModelIdForPreview;
+      const previewProvider = modelSuffixForPreview ? 'Custom' : 'Google';
+      const previewProviderLabel = modelSuffixForPreview || 'Google';
 
-    // 🚀 Final hard-guard: in normal mode, always lock to CURRENT viewport center at click-time
-    // This prevents any stale draft/canvas closure from pulling position back to initial canvas.
-    if (!isFollowUp) {
-      const latestTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
-      const latestViewportRect = canvasRef.current?.getCanvasRect() || null;
-      const latestOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
-      currentPos = getLiveViewportCenter(latestTransform, latestViewportRect, latestOffsets);
-      console.log('[handleGenerate] Final position hard-guard (normal mode):', currentPos);
-    }
+      const generatingNode: PromptNode = {
+        id: promptNodeId!,
+        prompt: rawPrompt,
+        originalPrompt: rawPrompt,
+        optimizedPromptEn,
+        optimizedPromptZh,
+        promptOptimizationEnabled: !!(config.enablePromptOptimization && optimizedPromptEn),
+        position: currentPos,
+        aspectRatio: config.aspectRatio,
+        imageSize: config.imageSize,
+        model: config.model,
+        modelLabel: previewModelLabel,
+        provider: previewProvider,
+        providerLabel: previewProviderLabel,
+        childImageIds: [],
+        referenceImages: finalReferenceImages,
+        timestamp: Date.now(),
+        isGenerating: true,
+        parallelCount: config.parallelCount,
+        sourceImageId: activeSourceImage || undefined,
+        mode: config.mode,
+        isDraft: false, // Ensure it is NOT a draft anymore
+        videoResolution: config.videoResolution,
+        videoDuration: config.videoDuration,
+        videoAudio: config.videoAudio
+      };
 
-    const rawPrompt = config.prompt.trim();
-    let optimizedPromptEn: string | undefined;
-    let optimizedPromptZh: string | undefined;
+      // 🚀 [Fix Duplicate Placeholders]
+      // Always check if the ID we are about to add/update actually exists on canvas
+      // If not, revert to add. If yes, update.
+      const canvasForWrite = activeCanvasRef.current;
+      const existingNode = canvasForWrite?.promptNodes.find(n => n.id === generatingNode.id);
 
-    if (config.mode === GenerationMode.IMAGE && config.enablePromptOptimization && rawPrompt) {
-      try {
-        const optimized = await optimizePromptForImage(rawPrompt, {
-          preferredModelId: config.model,
-          aspectRatio: config.aspectRatio,
-          imageSize: config.imageSize,
-          mode: config.mode,
-          referenceImagesCount: finalReferenceImages.length
-        });
-        optimizedPromptEn = optimized.optimizedEn;
-        optimizedPromptZh = optimized.optimizedZh;
-      } catch (e) {
-        console.warn('[handleGenerate] Prompt optimization failed, fallback to raw prompt:', e);
-      }
-    }
-
-    const baseModelIdForPreview = config.model.split('@')[0];
-    const modelSuffixForPreview = config.model.split('@')[1];
-    const previewModelLabel = getModelMetadata(baseModelIdForPreview)?.name || baseModelIdForPreview;
-    const previewProvider = modelSuffixForPreview ? 'Custom' : 'Google';
-    const previewProviderLabel = modelSuffixForPreview || 'Google';
-
-    const generatingNode: PromptNode = {
-      id: promptNodeId!,
-      prompt: rawPrompt,
-      originalPrompt: rawPrompt,
-      optimizedPromptEn,
-      optimizedPromptZh,
-      promptOptimizationEnabled: !!(config.enablePromptOptimization && optimizedPromptEn),
-      position: currentPos,
-      aspectRatio: config.aspectRatio,
-      imageSize: config.imageSize,
-      model: config.model,
-      modelLabel: previewModelLabel,
-      provider: previewProvider,
-      providerLabel: previewProviderLabel,
-      childImageIds: [],
-      referenceImages: finalReferenceImages,
-      timestamp: Date.now(),
-      isGenerating: true,
-      parallelCount: config.parallelCount,
-      sourceImageId: activeSourceImage || undefined,
-      mode: config.mode,
-      isDraft: false, // Ensure it is NOT a draft anymore
-      videoResolution: config.videoResolution,
-      videoDuration: config.videoDuration,
-      videoAudio: config.videoAudio
-    };
-
-    // 🚀 [Fix Duplicate Placeholders]
-    // Always check if the ID we are about to add/update actually exists on canvas
-    // If not, revert to add. If yes, update.
-    const canvasForWrite = activeCanvasRef.current;
-    const existingNode = canvasForWrite?.promptNodes.find(n => n.id === generatingNode.id);
-
-    if (existingNode) {
-      console.log('[handleGenerate] Updating existing node:', generatingNode.id);
-      await updatePromptNode(generatingNode);
-    } else {
-      // Safety: Check if ANY draft exists that we might have missed (stale closure)
-      const strayDraft = canvasForWrite?.promptNodes.find(n => n.isDraft);
-      if (strayDraft) {
-        console.log('[handleGenerate] Found stray draft during generation, converting it:', strayDraft.id);
-        // Replace the stray draft's ID with our generating ID? 
-        // Or just update the stray draft with our config?
-        // Better to update the stray draft to avoid orphans.
-        // IMPORTANT: keep the freshly calculated generation position (current viewport center in normal mode)
-        // Do NOT reuse stray draft position, otherwise node may jump back to old/initial canvas location.
-        const fusedNode = { ...generatingNode, id: strayDraft.id, position: generatingNode.position };
-        await updatePromptNode(fusedNode);
-        // Update our local ID reference for executeGeneration
-        generatingNode.id = strayDraft.id;
+      if (existingNode) {
+        console.log('[handleGenerate] Updating existing node:', generatingNode.id);
+        await updatePromptNode(generatingNode);
       } else {
-        console.log('[handleGenerate] Creating NEW node:', generatingNode.id);
-        await addPromptNode(generatingNode);
-        console.log('[handleGenerate] ✅ addPromptNode completed for:', generatingNode.id, 'isDraft:', generatingNode.isDraft);
+        // Safety: Check if ANY draft exists that we might have missed (stale closure)
+        const strayDraft = canvasForWrite?.promptNodes.find(n => n.isDraft);
+        if (strayDraft) {
+          console.log('[handleGenerate] Found stray draft during generation, converting it:', strayDraft.id);
+          // Replace the stray draft's ID with our generating ID? 
+          // Or just update the stray draft with our config?
+          // Better to update the stray draft to avoid orphans.
+          // IMPORTANT: keep the freshly calculated generation position (current viewport center in normal mode)
+          // Do NOT reuse stray draft position, otherwise node may jump back to old/initial canvas location.
+          const fusedNode = { ...generatingNode, id: strayDraft.id, position: generatingNode.position };
+          await updatePromptNode(fusedNode);
+          // Update our local ID reference for executeGeneration
+          generatingNode.id = strayDraft.id;
+        } else {
+          console.log('[handleGenerate] Creating NEW node:', generatingNode.id);
+          await addPromptNode(generatingNode);
+          console.log('[handleGenerate] ✅ addPromptNode completed for:', generatingNode.id, 'isDraft:', generatingNode.isDraft);
+        }
       }
+
+      // 🚀 [Cleanup] Remove any OTHER drafts if they exist (duplicate prevention)
+      // This is a safety measure - uncommented to fix orphan card issue
+      const leftovers = canvasForWrite?.promptNodes.filter(n => n.isDraft && n.id !== generatingNode.id);
+      if (leftovers && leftovers.length > 0) {
+        console.log('[handleGenerate] Cleaning up orphan drafts:', leftovers.map(n => n.id));
+        leftovers.forEach(n => deletePromptNode(n.id));
+      }
+
+      setDraftNodeId(null); // Detach status NOW that the node is updated in canvas
+      setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
+      setActiveSourceImage(null);
+
+      // Execute immediately after save completed
+      executeGeneration(generatingNode);
+    } catch (e: any) {
+      console.error('[handleGenerate] failed:', e);
+      import('./services/notificationService').then(({ notify }) => {
+        notify.error('发送失败', e?.message || '请重试');
+      });
+    } finally {
+      generateLockRef.current = false;
+      setIsGenerating(false);
     }
-
-    // 🚀 [Cleanup] Remove any OTHER drafts if they exist (duplicate prevention)
-    // This is a safety measure - uncommented to fix orphan card issue
-    const leftovers = canvasForWrite?.promptNodes.filter(n => n.isDraft && n.id !== generatingNode.id);
-    if (leftovers && leftovers.length > 0) {
-      console.log('[handleGenerate] Cleaning up orphan drafts:', leftovers.map(n => n.id));
-      leftovers.forEach(n => deletePromptNode(n.id));
-    }
-
-    setDraftNodeId(null); // Detach status NOW that the node is updated in canvas
-    setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
-    setActiveSourceImage(null);
-    setIsGenerating(false); // Global spinner off, local spinner on
-
-    // Execute immediately after save completed
-    executeGeneration(generatingNode);
-
   }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth]);
 
   // Handle reference images
@@ -3283,6 +3344,7 @@ const AppContent: React.FC = () => {
                   }
                 }
               }
+              /* 🚀 主卡和副卡之间的连线保持白灰色 */
 
               if (isNaN(imageHeight) || imageHeight <= 0) {
                 imageHeight = theoreticalHeight;
@@ -3300,15 +3362,18 @@ const AppContent: React.FC = () => {
 
               return (
                 <g key={`${pn.id}-${childId}`}>
-                  <circle cx={startX} cy={startY} r={connectorDotEnd} fill="#52525b" />
+                  <circle cx={startX} cy={startY} r={connectorDotEnd} fill="#a1a1aa" opacity="0.6" />
                   <path
                     d={d}
                     fill="none"
-                    stroke="#3f3f46"
+                    stroke="#ffffff"
                     strokeWidth={connectorStroke}
                     strokeDasharray={`${connectorDashA} ${connectorDashB}`}
                     strokeLinecap="round"
+                    opacity="0.3"
+                    className="group-hover:opacity-60"
                   />
+                  <path d={d} stroke="transparent" strokeWidth={connectorHitStroke} fill="none" className="pointer-events-auto cursor-pointer" />
                 </g>
               );
             });
@@ -3349,18 +3414,22 @@ const AppContent: React.FC = () => {
             const btnX = mt * mt2 * startX + 3 * mt2 * t * startX + 3 * mt * t2 * endX + t * t2 * endX;
             const btnY = mt * mt2 * startY + 3 * mt2 * t * controlY1 + 3 * mt * t2 * controlY2 + t * t2 * endY;
 
+            /* 🚀 新颜色逻辑：重绘为绿色，追问为金色 */
+            const baseColor = pn.mode === GenerationMode.INPAINT ? '#22c55e' : '#eab308';
+            const hoverClass = pn.mode === GenerationMode.INPAINT ? 'group-hover:stroke-green-400' : 'group-hover:stroke-yellow-400';
+
             return (
               <g key={`followup-${pn.id}`} className="group">
                 {/* Curve - Bottom Layer */}
                 <path
                   d={d}
                   fill="none"
-                  stroke="#6366f1"
+                  stroke={baseColor}
                   strokeWidth={connectorStroke}
                   strokeDasharray={`${connectorDashA} ${connectorDashB}`}
                   strokeLinecap="round"
                   opacity="0.5"
-                  className="transition-all duration-300 group-hover:stroke-red-400 group-hover:opacity-100"
+                  className={`transition-opacity duration-200 ${hoverClass} group-hover:opacity-100`}
                 />
 
                 {/* Transparent Hit Area */}
@@ -3432,21 +3501,25 @@ const AppContent: React.FC = () => {
             const btnX = mt * mt2 * startX + 3 * mt2 * t * startX + 3 * mt * t2 * endX + t * t2 * endX;
             const btnY = mt * mt2 * startY + 3 * mt2 * t * controlY1 + 3 * mt * t2 * controlY2 + t * t2 * endY;
 
+            /* 🚀 新颜色逻辑对于待生成连接：利用配置中的模式判断 */
+            const baseColor = config.mode === GenerationMode.INPAINT ? '#22c55e' : '#eab308';
+            const hoverClass = config.mode === GenerationMode.INPAINT ? 'group-hover:stroke-green-400' : 'group-hover:stroke-yellow-400';
+
             return (
               <g key="pending-connection" className="group">
                 <path
                   d={d}
                   fill="none"
-                  stroke="#6366f1"
+                  stroke={baseColor}
                   strokeWidth={connectorStroke}
                   strokeDasharray={`${connectorDashA} ${connectorDashB}`}
                   strokeLinecap="round"
                   opacity="0.5"
-                  className="transition-all duration-300 group-hover:stroke-red-400 group-hover:opacity-100"
+                  className={`transition-opacity duration-200 ${hoverClass} group-hover:opacity-100`}
                 />
                 <path d={d} stroke="transparent" strokeWidth={connectorHitStroke} fill="none" className="pointer-events-auto cursor-pointer" />
-                <circle cx={startX} cy={startY} r={connectorDotStart} fill="#6366f1" opacity="0.6" />
-                <circle cx={endX} cy={endY} r={connectorDotEnd} fill="#6366f1" opacity="0.5" />
+                <circle cx={startX} cy={startY} r={connectorDotStart} fill={baseColor} opacity="0.6" />
+                <circle cx={endX} cy={endY} r={connectorDotEnd} fill={baseColor} opacity="0.5" />
 
                 <foreignObject
                   x={btnX - 12}
@@ -3508,7 +3581,7 @@ const AppContent: React.FC = () => {
 
               selectNodes(nodeIds, 'toggle');
             }}
-            onGroupDrag={(delta) => moveSelectedNodes(delta)}
+            onGroupDrag={(delta, sourceNodeIds) => moveSelectedNodes(delta, sourceNodeIds)}
             onUpdateGroup={updateGroup}
             computedBounds={getComputedGroupBounds(group)}
           />
@@ -3555,7 +3628,13 @@ const AppContent: React.FC = () => {
                 updatePromptNode({ ...node, tags: newTags });
               }
             }}
-            onDragDelta={moveSelectedNodes} // 🚀 Enable Safe Relative Drag
+            onDragDelta={(delta, sourceNodeId) => {
+              if (sourceNodeId && selectedNodeIds.includes(sourceNodeId)) {
+                moveSelectedNodes(delta, selectedNodeIds);
+              } else {
+                moveSelectedNodes(delta, sourceNodeId);
+              }
+            }} // 🚀 Enable Safe Relative Drag
             canvasTransform={canvasTransform} // 🚀 Pass Transform for Animation Calculation
           />
         ))}
@@ -3586,7 +3665,13 @@ const AppContent: React.FC = () => {
             zoomScale={canvasTransform.scale}
             isMobile={isMobile}
             onPreview={handleOpenPreview}
-            onDragDelta={moveSelectedNodes} // 🚀 Enable Safe Relative Drag
+            onDragDelta={(delta, sourceNodeId) => {
+              if (sourceNodeId && selectedNodeIds.includes(sourceNodeId)) {
+                moveSelectedNodes(delta, selectedNodeIds);
+              } else {
+                moveSelectedNodes(delta, sourceNodeId);
+              }
+            }} // 🚀 Enable Safe Relative Drag
           />
         ))}
 
@@ -3769,50 +3854,53 @@ const AppContent: React.FC = () => {
           images={previewImages}
           initialIndex={previewInitialIndex}
           onClose={() => setPreviewImages(null)}
-          onInpaintGenerate={async (srcImageUrl, maskBase64, prompt) => {
-            // 在 InpaintModal 内直接调用 API 重绘
-            const refImages = [{
-              id: `inpaint-ref-${Date.now()}`,
-              data: srcImageUrl,
-              mimeType: 'image/png' as const
-            }];
-            const result = await generateImage(
-              prompt || '保持原始画面',
-              config.aspectRatio,
-              config.imageSize,
-              refImages,
-              config.model,
-              '',
-              undefined,
-              false,
-              {
-                maskUrl: maskBase64,
-                editMode: 'inpaint'
-              }
-            );
-            return result.url; // 返回生成的图片 base64/url
-          }}
           onInpaint={(image, maskBase64, prompt) => {
-            // 用户在 InpaintModal 里点击「接受结果」后触发
-            setConfig(prev => ({
-              ...prev,
-              prompt: prompt || prev.prompt,
-              maskUrl: maskBase64,
-              editMode: 'inpaint',
-              mode: GenerationMode.INPAINT
-            }));
-            const imgSrc = image.originalUrl || image.url;
-            if (imgSrc) {
-              const refImage = {
-                id: `inpaint-${Date.now()}`,
-                data: imgSrc,
-                mimeType: 'image/png'
-              };
-              setConfig(prev => ({
-                ...prev,
-                referenceImages: [...(prev.referenceImages || []), refImage]
-              }));
+            const userPrompt = (prompt || '局部重绘').trim();
+            // 按照用户要求，如果没有选区（没涂抹），则附带整体重绘指令；如果涂抹了，则强制限定只修改选区。
+            const finalPrompt = maskBase64
+              ? `${userPrompt} (请只修改图片中选区的部分，其他未框选或未涂抹的部分绝对禁止修改，保持原样)`
+              : `${userPrompt} (请参考提供的图片进行重绘和修改)`;
+
+            const sourceImage = activeCanvas?.imageNodes.find(img => img.id === image.id) || image;
+            const parentPromptId = sourceImage.parentPromptId;
+            const parentPrompt = activeCanvas?.promptNodes.find(p => p.id === parentPromptId);
+
+            let nodePos = { x: sourceImage.position.x, y: sourceImage.position.y + 80 };
+            if (parentPrompt && activeCanvas) {
+              const siblingImages = activeCanvas.imageNodes.filter(img => img.parentPromptId === parentPromptId);
+              const maxY = siblingImages.reduce((acc, img) => Math.max(acc, img.position.y), parentPrompt.position.y);
+              nodePos = { x: parentPrompt.position.x, y: maxY + 80 };
             }
+
+            const promptNodeId = `${Date.now()}_inpaint_prompt`;
+
+            const inpaintNode: PromptNode = {
+              id: promptNodeId,
+              prompt: finalPrompt,
+              originalPrompt: finalPrompt,
+              position: nodePos,
+              aspectRatio: sourceImage.aspectRatio || config.aspectRatio,
+              imageSize: sourceImage.imageSize || config.imageSize,
+              model: sourceImage.model || config.model,
+              modelLabel: sourceImage.modelLabel || undefined,
+              provider: sourceImage.provider || undefined,
+              providerLabel: sourceImage.providerLabel || undefined,
+              childImageIds: [],
+              referenceImages: [{
+                id: sourceImage.id,
+                data: sourceImage.originalUrl || sourceImage.url,
+                mimeType: 'image/png'
+              }],
+              timestamp: Date.now(),
+              sourceImageId: sourceImage.id,
+              isGenerating: true,
+              maskUrl: maskBase64,
+              mode: GenerationMode.INPAINT,
+              tags: []
+            };
+
+            addPromptNode(inpaintNode);
+            executeGeneration(inpaintNode);
             setPreviewImages(null);
           }}
         />

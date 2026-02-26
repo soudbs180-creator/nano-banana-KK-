@@ -111,6 +111,7 @@ const memoryCache = new ImageMemoryCache(100); // 100MB限制
 // ========== IndexedDB操作 ==========
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+// 修改 toBlobFromAnyUrl: 对于 fetch 失败的远程 URL 抛出特定错误，以便外层决策
 async function toBlobFromAnyUrl(dataURL: string): Promise<Blob | null> {
     try {
         if (!dataURL) return null;
@@ -129,7 +130,11 @@ async function toBlobFromAnyUrl(dataURL: string): Promise<Blob | null> {
         }
 
         return null;
-    } catch {
+    } catch (err) {
+        // 如果是跨域错误等 fetch 异常，向上抛出，让调用方知道这是一个可能有效的 URL 只是当前无法下载
+        if (dataURL.startsWith('http')) {
+            throw new Error('FETCH_FAILED');
+        }
         return null;
     }
 }
@@ -180,34 +185,49 @@ export function generateImageId(): string {
  */
 export async function saveImage(id: string, dataURL: string): Promise<void> {
     try {
-        // 🚀 转换为Blob（兼容 data:/blob:/http）
-        const blob = await toBlobFromAnyUrl(dataURL);
+        let saveObject: any = { id };
 
-        // 如果 blob 为 null（无效URL），直接返回
-        if (!blob) {
-            console.warn(`[ImageStorage] Cannot save ${id}: invalid or expired URL`);
-            // Fallback: 尝试保存原始 dataURL 到内存
-            memoryCache.set(id, dataURL);
-            return;
+        try {
+            // 🚀 尝试转换为Blob（兼容 data:/blob:/http）
+            const blob = await toBlobFromAnyUrl(dataURL);
+
+            if (blob) {
+                saveObject.blob = blob;
+            } else {
+                console.debug(`[ImageStorage] Cannot save ${id}: invalid or expired URL`);
+                memoryCache.set(id, dataURL);
+                return;
+            }
+        } catch (err: any) {
+            if (err.message === 'FETCH_FAILED') {
+                // 跨域导致 fetch 失败的外部 URL，直接保存字符串
+                console.log(`[ImageStorage] 🌐 Cannot convert ${id} to Blob due to CORS, saving raw URL instead`);
+                saveObject.url = dataURL;
+            } else {
+                throw err;
+            }
         }
 
-        // 1. 内存缓存：存储Blob URL（轻量）
-        const blobURL = URL.createObjectURL(blob);
-        memoryCache.set(id, blobURL);
+        // 1. 内存缓存：存储Blob URL或原始URL（轻量）
+        if (saveObject.blob) {
+            const blobURL = URL.createObjectURL(saveObject.blob);
+            memoryCache.set(id, blobURL);
+        } else if (saveObject.url) {
+            memoryCache.set(id, saveObject.url);
+        }
 
-        // 2. IndexedDB：存储Blob对象（不占JS内存）
+        // 2. IndexedDB：存储数据
         const db = await openDB();
         const transaction = db.transaction(IMAGES_STORE, 'readwrite');
         const store = transaction.objectStore(IMAGES_STORE);
 
         await new Promise<void>((resolve, reject) => {
-            // 🚀 关键：保存Blob而非Base64字符串
-            const request = store.put({ id, blob });
+            const request = store.put(saveObject);
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
 
-        console.log(`[ImageStorage] Saved ${id} as Blob (memory-efficient)`);
+        console.debug(`[ImageStorage] Saved ${id} to IndexedDB`);
     } catch (error) {
         console.error('[ImageStorage] Failed to save image:', error);
         // Fallback: 至少保存到内存缓存
@@ -251,7 +271,7 @@ export async function getImage(id: string): Promise<string | null> {
             }
             const blobURL = URL.createObjectURL(result.blob);
             memoryCache.set(id, blobURL);
-            console.log(`[ImageStorage] Loaded ${id} as Blob URL`);
+            console.debug(`[ImageStorage] Loaded ${id} as Blob URL`);
             return blobURL;
         }
 
@@ -638,7 +658,7 @@ export async function getImageByQuality(
 
     // 如果指定质量不存在，fallback到原图
     if (!image && quality !== ImageQuality.ORIGINAL) {
-        console.warn(`[ImageQuality] Quality ${quality} not found for ${id}, using original`);
+        console.debug(`[ImageQuality] Quality ${quality} not found for ${id}, using original`);
         return getImage(id);
     }
 
@@ -670,46 +690,63 @@ export async function saveOriginalImage(id: string, dataURL: string, isVideo: bo
 
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
-            // 转换为Blob（兼容 data:/blob:/http）
-            const blob = await toBlobFromAnyUrl(dataURL);
+            let saveObject: any = {
+                id,
+                quality: 'original',
+                timestamp: Date.now(),
+                protected: true // 🔒 受保护标记
+            };
 
-            // 如果 blob 为 null（无效URL），跳过
-            if (!blob) {
-                console.warn(`[ImageStorage] Cannot save original ${id}: invalid or expired URL`);
-                return;
-            }
+            try {
+                // 转换为Blob（兼容 data:/blob:/http）
+                const blob = await toBlobFromAnyUrl(dataURL);
 
-            // 1. 🚀【第一优先级】自动备份到本地文件系统 (如果已连接)
-            // 用户要求：本地文件优先保存
-            const globalHandle = fileSystemService.getGlobalHandle();
-            if (globalHandle) {
-                try {
-                    await fileSystemService.saveImageToHandle(globalHandle, id, blob, isVideo);
-                    console.log(`[ImageStorage] 🔒 Local-First: Saved to disk: ${id}`);
-                } catch (e) {
-                    console.error(`[ImageStorage] ⚠️ Failed to save to local disk ${id}`, e);
-                    // 如果本地保存失败，且没有IndexedDB兜底，则继续尝试存入DB
+                if (blob) {
+                    saveObject.blob = blob;
+                } else {
+                    console.warn(`[ImageStorage] Cannot save original ${id}: invalid or expired URL`);
+                    return;
+                }
+            } catch (err: any) {
+                if (err.message === 'FETCH_FAILED') {
+                    console.log(`[ImageStorage] 🌐 Cannot convert original ${id} to Blob due to CORS, saving raw URL instead`);
+                    saveObject.url = dataURL;
+                } else {
+                    throw err;
                 }
             }
 
-            // 2. 内存缓存：存储Blob URL
-            const blobURL = URL.createObjectURL(blob);
-            memoryCache.set(id, blobURL);
+            // 1. 🚀【第一优先级】自动备份到本地文件系统 (如果已连接)
+            // 仅当是 Blob 时才能保存到文件系统
+            if (saveObject.blob) {
+                const globalHandle = fileSystemService.getGlobalHandle();
+                if (globalHandle) {
+                    try {
+                        await fileSystemService.saveImageToHandle(globalHandle, id, saveObject.blob, isVideo);
+                        console.log(`[ImageStorage] 🔒 Local-First: Saved to disk: ${id}`);
+                    } catch (e) {
+                        console.error(`[ImageStorage] ⚠️ Failed to save to local disk ${id}`, e);
+                        // 如果本地保存失败，且没有IndexedDB兜底，则继续尝试存入DB
+                    }
+                }
+            }
 
-            // 3. IndexedDB：存储Blob对象（带保护标记）
+            // 2. 内存缓存：存储Blob URL或原始URL
+            if (saveObject.blob) {
+                const blobURL = URL.createObjectURL(saveObject.blob);
+                memoryCache.set(id, blobURL);
+            } else if (saveObject.url) {
+                memoryCache.set(id, saveObject.url);
+            }
+
+            // 3. IndexedDB：存储数据（带保护标记）
             const db = await openDB();
             const transaction = db.transaction(IMAGES_STORE, 'readwrite');
             const store = transaction.objectStore(IMAGES_STORE);
 
             await new Promise<void>((resolve, reject) => {
                 // 🔒 关键：标记为原图，永不删除
-                const request = store.put({
-                    id,
-                    blob,
-                    quality: 'original',
-                    timestamp: Date.now(),
-                    protected: true // 🔒 受保护标记
-                });
+                const request = store.put(saveObject);
                 request.onsuccess = () => resolve();
                 request.onerror = () => reject(request.error);
             });
@@ -756,7 +793,7 @@ export async function getOriginalImage(id: string): Promise<string | null> {
         });
 
         if (!result) {
-            console.warn(`[ImageStorage] 🔒 Original not found in IndexedDB: ${id}. Attempting disk recovery...`);
+            console.debug(`[ImageStorage] Original not found in IndexedDB: ${id}. Attempting disk recovery...`);
 
             // 🚀 Fallback: 尝试从本地文件加载 (最后的防线)
             const globalHandle = fileSystemService.getGlobalHandle();

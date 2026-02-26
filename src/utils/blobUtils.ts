@@ -28,7 +28,7 @@ export const base64ToBlob = (dataURI: string): Blob => {
 
         return new Blob([ab], { type: mimeString });
     } catch (error: any) {
-        console.error('[blobUtils] base64ToBlob failed:', error.message);
+        console.debug('[blobUtils] base64ToBlob failed:', error.message);
         // 🚀 [关键修复] 返回空Blob而不是崩溃
         return new Blob([], { type: 'image/png' });
     }

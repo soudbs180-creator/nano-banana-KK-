@@ -775,23 +775,39 @@ input[type=number] {
   justify-content: center;
 }
 
-/* 🚀 iOS风格缩放动效 */
+/* 🚀 iOS风格缩放动效 (带有弹簧阻尼的回弹感) */
 .active-scale {
-  transition: transform 150ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: transform 400ms var(--ease-spring);
 }
 
 .active-scale:active {
   transform: scale(0.95);
+  transition-duration: 100ms;
 }
 
-/* 🚀 触觉反馈模拟 (视觉) */
-.haptic-press {
-  transition: all 75ms ease-out;
+/* 全局按钮统一增加弹簧动效 */
+button {
+  transition-property: all;
+  transition-timing-function: var(--ease-spring);
+  transition-duration: 400ms;
 }
 
-.haptic-press:active {
+button:active {
   transform: scale(0.95);
-  opacity: 0.8;
+  transition-duration: 100ms;
+}
+
+/* 覆盖 Tailwind 默认的 transition-all 使其也带弹簧感 */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: var(--ease-spring);
+  transition-duration: 400ms;
+}
+
+.transition-transform {
+  transition-property: transform;
+  transition-timing-function: var(--ease-spring);
+  transition-duration: 400ms;
 }
 
 /* 🚀 iOS标准过渡曲线 */
@@ -1051,7 +1067,6 @@ input[type=number] {
   top: 0;
   left: 0;
   transform-origin: 0 0;
-  will-change: transform;
 }
 
 .canvas-grid {

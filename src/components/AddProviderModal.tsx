@@ -56,7 +56,6 @@ export const AddProviderModal: React.FC<AddProviderModalProps> = ({
         setTestError('');
     };
 
-    // 选择预设
     const handleSelectPreset = (presetKey: string) => {
         setSelectedPreset(presetKey);
         const preset = PROVIDER_PRESETS[presetKey];
@@ -64,6 +63,9 @@ export const AddProviderModal: React.FC<AddProviderModalProps> = ({
             setName(preset.name);
             setBaseUrl(preset.baseUrl);
             setModels(preset.models.join(', '));
+            if (preset.defaultApiKey) {
+                setApiKey(preset.defaultApiKey);
+            }
         }
         setStep('configure');
     };

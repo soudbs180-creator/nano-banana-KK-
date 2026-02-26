@@ -366,8 +366,35 @@ export class GoogleAdapter implements LLMAdapter {
             parameters.personGeneration = options.providerConfig.imagen.personGeneration;
         }
 
+        const instances: any[] = [];
+
+        if (options.editMode === 'inpaint' && options.maskUrl && options.referenceImages?.length) {
+            // Google Imagen explicitly expects pure base64 strings
+            const originalBase64 = await convertImageToBase64(options.referenceImages[0]);
+            const maskBase64 = await convertImageToBase64(options.maskUrl);
+
+            if (originalBase64 && maskBase64) {
+                instances.push({
+                    prompt: options.prompt,
+                    image: { bytesBase64Encoded: originalBase64 }
+                });
+
+                parameters.editConfig = {
+                    editMode: "INPAINT_INSERTION",
+                    mask: {
+                        image: { bytesBase64Encoded: maskBase64 }
+                    }
+                };
+            } else {
+                // Fallback to text + img if conversion failed silently (shouldn't happen)
+                instances.push({ prompt: options.prompt });
+            }
+        } else {
+            instances.push({ prompt: options.prompt });
+        }
+
         const payload = {
-            instances: [{ prompt: options.prompt }],
+            instances,
             parameters
         };
 

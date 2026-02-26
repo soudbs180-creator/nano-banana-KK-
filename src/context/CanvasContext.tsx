@@ -5,6 +5,7 @@ import { syncService } from '../services/syncService';
 import { fileSystemService } from '../services/fileSystemService';
 import { base64ToBlob, safeRevokeBlobUrl } from '../utils/blobUtils';
 import { calculateImageHash } from '../utils/imageUtils';
+import { getCardDimensions } from '../utils/styleUtils';
 import { supabase } from '../lib/supabase'; // Import supabase for auth check
 import { notify } from '../services/notificationService';
 
@@ -75,7 +76,7 @@ interface CanvasContextType {
     selectedNodeIds: string[];
     selectNodes: (ids: string[], mode?: 'replace' | 'add' | 'remove' | 'toggle') => void;
     clearSelection: () => void;
-    moveSelectedNodes: (delta: { x: number; y: number }) => void;
+    moveSelectedNodes: (delta: { x: number; y: number }, sourceNodeIdOrIds?: string | string[]) => void;
     findSmartPosition: (x: number, y: number, width: number, height: number, buffer?: number) => { x: number; y: number };
     findNextGroupPosition: () => { x: number; y: number }; // Grid-based Card Group placement
     addGroup: (group: CanvasGroup) => void;
@@ -420,7 +421,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 console.log(`[CanvasContext] Successfully loaded ${imageMap.size}/${requiredImageIds.size} required images`);
 
                 if (imageMap.size < requiredImageIds.size) {
-                    console.warn(`[CanvasContext] ${requiredImageIds.size - imageMap.size} images not found in IndexedDB`);
+                    console.debug(`[CanvasContext] ${requiredImageIds.size - imageMap.size} images not found in IndexedDB`);
                 }
 
                 // Migrate old images: if localStorage has URLs but IndexedDB doesn't, save them
@@ -1509,23 +1510,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // --- Helper: Get dimensions ---
         const getImageDims = (aspectRatio?: string, dimensions?: string) => {
-            if (dimensions) {
-                const [w, h] = dimensions.split('x').map(Number);
-                if (w && h) {
-                    const ratio = w / h;
-                    const cardWidth = ratio > 1 ? 320 : (ratio < 1 ? 200 : 280);
-                    // 🚀 [FIX] Increased buffer from +40 to +100 to account for Header + Footer
-                    const imageHeight = (cardWidth / ratio) + 100;
-                    return { w: cardWidth, h: imageHeight };
-                }
-            }
-            // 🚀 [FIX] Updated hardcoded defaults with +60px height (original +40 -> +100 total buffer)
-            switch (aspectRatio) {
-                case '16:9': return { w: 320, h: 280 }; // Was 220
-                case '9:16': return { w: 200, h: 455 }; // Was 395
-                case '1:1':
-                default: return { w: 280, h: 380 }; // Was 320
-            }
+            // Using EXACT components dimensions to ensure perfect top alignment CSS logic
+            const { width, totalHeight } = getCardDimensions(aspectRatio as AspectRatio, true);
+            return { w: width, h: totalHeight };
         };
 
         const currentCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
@@ -1964,9 +1951,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         const groupCenterX = rowX + group.width / 2;
 
                         if (group.prompt) {
+                            const promptHeight = group.prompt.height || 200;
                             newPositions[group.prompt.id] = {
                                 x: groupCenterX,
-                                y: startY + rowMaxPromptHeight
+                                y: startY + promptHeight // ✅ 确保所有主卡的顶部正好平齐对齐在 startY
                             };
                             movedPrompts.add(group.prompt.id);
 
@@ -2184,11 +2172,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const groupCenterX = rowX + group.width / 2;
 
                 if (group.type === 'normal' && group.prompt) {
-                    // ✅ 主卡位置: 底部与该行最高主卡底部对齐
+                    // ✅ 主卡位置: 所有主卡顶部对齐到该行最高主卡顶部
                     const promptHeight = group.prompt.height || 200;
                     positions[group.prompt.id] = {
                         x: groupCenterX,
-                        y: currentY + rowMaxPromptHeight  // 所有主卡底部对齐到该行最高主卡底部
+                        y: currentY + promptHeight  // 重点: 改变由于 CSS 定位是以底部为基准导致的高低不一
                     };
 
                     // ✅ 子卡位置: 所有副卡顶部对齐到 subCardsStartY
@@ -2215,10 +2203,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         });
                     }
                 } else if (group.type === 'orphan-prompt' && group.prompt) {
-                    // 孤立主卡: 底部与该行最高主卡底部对齐
+                    // 孤立主卡: 顶部对齐
+                    const promptHeight = group.prompt.height || 200;
                     positions[group.prompt.id] = {
                         x: groupCenterX,
-                        y: currentY + rowMaxPromptHeight
+                        y: currentY + promptHeight
                     };
                 } else if (group.type === 'orphan-image' && group.images[0]) {
                     // ✅ 孤立副卡: 顶部与该行其他副卡对齐
@@ -2627,6 +2616,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
     }, [state.fileSystemHandle, state.folderName]);
 
+    // 🚀 已失败的图片 ID 缓存，避免每 5 秒重复报错刷屏
+    const failedReloadIdsRef = useRef<Set<string>>(new Set());
+
     const refreshLocalFolder = useCallback(async () => {
         if (!state.fileSystemHandle) return;
         try {
@@ -2637,6 +2629,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             for (const [id, data] of images.entries()) {
                 const blobUrl = data.url;
                 if (blobUrl) {
+                    // 🚀 跳过已知失败的 ID，不再重复尝试和报错
+                    if (failedReloadIdsRef.current.has(id)) continue;
+
                     try {
                         // 检查是否是有效的 blob URL
                         if (blobUrl.startsWith('blob:')) {
@@ -2653,7 +2648,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         }
                     } catch (e) {
                         // blob URL 已过期，尝试从本地文件系统重新加载
-                        console.warn(`[CanvasContext] Blob URL expired for ${id}, trying to reload from local file system`);
+                        console.debug(`[CanvasContext] Blob URL expired for ${id}, trying to reload from local file system`);
                         try {
                             const imgHandle = await handle.getFileHandle(id);
                             const file = await imgHandle.getFile();
@@ -2667,7 +2662,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             };
                             reader.readAsDataURL(file);
                         } catch (fsErr) {
-                            console.error(`[CanvasContext] Failed to reload ${id} from local file system:`, fsErr);
+                            // 🚀 记录失败的 ID，后续不再重试
+                            failedReloadIdsRef.current.add(id);
+                            console.debug(`[CanvasContext] Failed to reload ${id} from local file system (will skip future retries)`);
                         }
                     }
                 }
@@ -2862,9 +2859,17 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setState(prev => ({ ...prev, selectedNodeIds: [] }));
     }, []);
 
-    const moveSelectedNodes = useCallback((delta: { x: number; y: number }) => {
+    const moveSelectedNodes = useCallback((delta: { x: number; y: number }, sourceNodeIdOrIds?: string | string[]) => {
         setState(prev => {
-            const selectedIds = prev.selectedNodeIds || [];
+            let selectedIds = prev.selectedNodeIds || [];
+
+            if (Array.isArray(sourceNodeIdOrIds) && sourceNodeIdOrIds.length > 0) {
+                // Group drag: trust explicit node ids to avoid async selection lag
+                selectedIds = sourceNodeIdOrIds;
+            } else if (typeof sourceNodeIdOrIds === 'string' && sourceNodeIdOrIds) {
+                // Single drag: if source node isn't in selection, move source node itself
+                selectedIds = selectedIds.includes(sourceNodeIdOrIds) ? selectedIds : [sourceNodeIdOrIds];
+            }
             if (selectedIds.length === 0) return prev;
 
             const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);

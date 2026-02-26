@@ -31,7 +31,7 @@ interface PromptNodeProps {
     highlighted?: boolean;
     onPin?: (id: string, mode: 'button' | 'drag') => void; // 🚀 [New Prop] Pin Draft
     onRemoveTag?: (id: string, tag: string) => void; // 🚀 [New Prop] Remove Tag
-    onDragDelta?: (delta: { x: number; y: number }) => void; // 🚀 [New Prop] Relative Drag
+    onDragDelta?: (delta: { x: number; y: number }, sourceNodeId?: string) => void; // 🚀 [New Prop] Relative Drag
 }
 
 // [FIX] Self-healing thumbnail component that recovers data from IDB if missing
@@ -243,6 +243,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
     const hasMoved = useRef(false);
     const [showOptimizedPrompt, setShowOptimizedPrompt] = useState(false);
+    const timerStartRef = useRef<number>(node.timestamp || Date.now());
 
     const containerRef = useRef<HTMLDivElement>(null);
     const cardRef = useRef<HTMLDivElement>(null);
@@ -264,6 +265,10 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     useEffect(() => {
         setShowOptimizedPrompt(false);
     }, [node.id]);
+
+    useEffect(() => {
+        timerStartRef.current = node.timestamp || Date.now();
+    }, [node.id, node.timestamp]);
 
     // 🚀 [New] Transition Animation from Center (Draft Overlay) to Canvas Position
     useEffect(() => {
@@ -432,7 +437,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 pendingDelta.current.x += stepDeltaX;
                 pendingDelta.current.y += stepDeltaY;
 
-                onDragDelta(pendingDelta.current);
+                onDragDelta(pendingDelta.current, node.id);
                 pendingDelta.current = { x: 0, y: 0 };
 
             } else {
@@ -483,7 +488,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     return (
         <div
             ref={containerRef}
-            className={`absolute z-20 flex flex-col items-center group animate-cardPopIn antialiased ${isSelected ? 'z-30' : ''}`}
+            className={`absolute z-20 flex flex-col items-center group animate-cardPopIn antialiased select-none ${isSelected ? 'z-30' : ''}`}
             style={{
                 left: Math.round(node.position.x - cardWidth / 2),
                 top: Math.round(node.position.y - cardHeight),
@@ -500,32 +505,61 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             {/* Main Content Card */}
             <div
                 ref={cardRef}
-                className={`relative flex flex-col w-[320px] rounded-2xl border ${isSelected ? 'border-blue-500/60' : 'border-[var(--border-light)]'} transition-all`}
+                className={`relative flex flex-col w-[320px] rounded-2xl border transition-all`}
                 style={{
                     backgroundColor: 'var(--bg-overlay)',
-                    boxShadow: isSelected
-                        ? '0 0 20px rgba(59, 130, 246, 0.4), 0 0 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.5)'
-                        : '0 4px 20px -2px rgba(0,0,0,0.15), 0 0 0 1px var(--border-light)',
+                    borderColor: node.error
+                        ? 'rgba(239, 68, 68, 0.5)'
+                        : isSelected ? 'rgba(59, 130, 246, 0.6)' : 'var(--border-light)',
+                    boxShadow: node.error
+                        ? '0 0 15px rgba(239, 68, 68, 0.15), 0 0 0 1px rgba(239, 68, 68, 0.5)'
+                        : isSelected
+                            ? '0 0 20px rgba(59, 130, 246, 0.4), 0 0 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.5)'
+                            : '0 4px 20px -2px rgba(0,0,0,0.15), 0 0 0 1px var(--border-light)',
                 }}
             >
                 {/* Header (Status & Actions) */}
                 <div className="flex items-center justify-between px-4 py-3 w-full" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                     {/* Left: Status Icon and Text */}
                     <div className="flex flex-1 items-center gap-2 min-w-0">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${node.isGenerating ? 'bg-amber-500/15' : 'bg-amber-500/10'}`}>
-                            <Sparkles size={12} className={`text-amber-400 ${node.isGenerating ? 'animate-pulse' : ''}`} />
-                        </div>
-                        <span className="text-[13px] font-medium tracking-wide truncate">
-                            {node.isGenerating ? (
-                                <span className="text-blue-400">正在生成 {node.parallelCount || 1} 张</span>
-                            ) : node.childImageIds?.length > 0 ? (
-                                <span className="text-[var(--text-secondary)]">已生成 {node.childImageIds.length} 张</span>
-                            ) : (
-                                <span className="text-[var(--text-tertiary)]">
-                                    {node.isDraft && !node.originalPrompt && !node.prompt ? '输入提示词...' : (node as any).title || node.id.slice(0, 8) + '...'}
+                        {node.error ? (
+                            <>
+                                <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 bg-red-500/15">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                    </svg>
+                                </div>
+                                <span className="text-[13px] font-medium tracking-wide truncate text-red-500" title={node.error}>
+                                    生成失败: {node.error.replace(/^Error:\s*/i, '').split(/[:：]/)[0].trim()}
                                 </span>
-                            )}
-                        </span>
+                            </>
+                        ) : node.isGenerating ? (
+                            <>
+                                <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 bg-blue-500/15">
+                                    <Sparkles size={12} className="text-blue-400 animate-pulse" />
+                                </div>
+                                <span className="text-[13px] font-medium tracking-wide truncate text-blue-400">
+                                    正在生成 {node.parallelCount || 1} 张
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 bg-amber-500/10`}>
+                                    <Sparkles size={12} className="text-amber-400" />
+                                </div>
+                                <span className="text-[13px] font-medium tracking-wide truncate">
+                                    {node.childImageIds?.length > 0 ? (
+                                        <span className="text-[var(--text-secondary)]">已生成 {node.childImageIds.length} 张</span>
+                                    ) : (
+                                        <span className="text-[var(--text-tertiary)]">
+                                            {node.isDraft && !node.originalPrompt && !node.prompt ? '输入提示词...' : (node as any).title || node.id.slice(0, 8) + '...'}
+                                        </span>
+                                    )}
+                                </span>
+                            </>
+                        )}
                     </div>
 
                     {/* Right: Actions */}
@@ -593,13 +627,38 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                         </div>
                     )}
 
-                    {/* Prompt Text Area */}
+                    {/* Prompt Text Area - 文字可选，但选择范围被约束在本卡片内 */}
                     <div
                         className="text-[var(--text-primary)] text-[15px] leading-7 font-normal flex-1 tracking-wide overflow-y-auto max-h-[132px] custom-scrollbar pr-1 min-h-[28px] select-text cursor-text"
                         onWheel={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => {
+                            e.stopPropagation();
+                            // 🚀 动态注入全局 CSS 规则：强制禁选所有其他 .select-text 元素
+                            //    唯独当前元素通过 data 属性排除，确保选择不会跨卡片
+                            const el = e.currentTarget;
+                            el.setAttribute('data-text-selecting', 'true');
+                            const style = document.createElement('style');
+                            style.id = 'kk-text-select-lock';
+                            style.textContent = `
+                                .select-text:not([data-text-selecting]) {
+                                    -webkit-user-select: none !important;
+                                    user-select: none !important;
+                                }
+                            `;
+                            document.head.appendChild(style);
+                            const cleanup = () => {
+                                el.removeAttribute('data-text-selecting');
+                                const s = document.getElementById('kk-text-select-lock');
+                                if (s) s.remove();
+                                document.removeEventListener('mouseup', cleanup);
+                            };
+                            document.addEventListener('mouseup', cleanup);
+                        }}
                         onClick={(e) => {
                             e.stopPropagation();
+                            // 只在非选择操作时触发编辑（选中了文字就不打开编辑器）
+                            const sel = document.getSelection();
+                            if (sel && sel.toString().length > 0) return;
                             if (onClickPrompt) onClickPrompt(node, showOptimizedPrompt);
                         }}
                     >
@@ -612,7 +671,6 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                             node.originalPrompt || node.prompt || (node.isDraft ? <span className="text-[var(--text-tertiary)] italic">输入提示词...</span> : '')
                         )}
                     </div>
-
 
                     {/* 🚀 Main Card Tags: Centered Layout with Hover Blur + X Delete */}
                     {node.tags && node.tags.length > 0 && (
@@ -827,7 +885,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                             >
                                                 <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
                                                     <GenerationTimer
-                                                        start={node.timestamp || Date.now()}
+                                                        start={timerStartRef.current}
                                                         onTimeout={() => onCancel && onCancel(node.id)}
                                                     />
                                                 </div>

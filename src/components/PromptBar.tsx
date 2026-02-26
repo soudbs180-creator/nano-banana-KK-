@@ -1020,14 +1020,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         setIsInputAreaHovered(false);
                     }}
                 >
-                    {/* Reference Images - Only show when images exist */}
-                    {config.referenceImages.length > 0 && (
+                    {/* Reference Images List */}
+                    {(config.referenceImages && config.referenceImages.length > 0 || uploadingCount > 0) && (
                         <div
                             ref={refContainerRef}
-                            className="flex gap-2 flex-wrap duration-300 mb-2"
+                            className="flex flex-wrap gap-2 transition-all p-2 mx-1 mt-1 rounded-lg"
                             onDragOver={(e) => {
                                 e.preventDefault();
-                                e.stopPropagation();
+                                e.dataTransfer.dropEffect = 'move';
 
                                 // Calculate insertion index based on mouse cursor X
                                 if (refContainerRef.current) {
@@ -1721,7 +1721,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         onClick={isGenerating ? onCancel : onGenerate}
                         disabled={!isGenerating && !config.prompt}
                         className={`
-                            group relative px-6 h-8 rounded-full flex items-center justify-center gap-2 transition-all duration-300 border
+                            group relative px-6 h-8 rounded-full flex flex-row items-center justify-center gap-2 whitespace-nowrap shrink-0 transition-all duration-300 border
                             ${isGenerating
                                 ? 'shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:shadow-[0_6px_16px_rgba(239,68,68,0.5)]'
                                 : `${!isGenerating && !config.prompt

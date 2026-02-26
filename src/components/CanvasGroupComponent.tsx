@@ -8,7 +8,7 @@ export interface CanvasGroupProps {
     zoom: number;
     onUngroup: (id: string) => void;
     onDragStart: (id: string, e: React.MouseEvent) => void;
-    onGroupDrag?: (delta: { x: number; y: number }) => void;
+    onGroupDrag?: (delta: { x: number; y: number }, sourceNodeIds?: string[]) => void;
     onUpdateGroup?: (group: CanvasGroup) => void;
     highlighted?: boolean;
     computedBounds?: { x: number; y: number; width: number; height: number };
@@ -149,7 +149,7 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
 
                     // 2. Move Cards (flush accumulated delta)
                     if (onGroupDrag) {
-                        onGroupDrag(pendingDelta.current);
+                        onGroupDrag(pendingDelta.current, group.nodeIds);
                     }
 
                     // Reset

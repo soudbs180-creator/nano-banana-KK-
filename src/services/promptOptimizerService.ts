@@ -19,6 +19,7 @@ Rules:
    - optimized_zh: faithful structured Chinese translation of optimized_en, keeping the exact same structure (e.g. [主体]: ..., [环境]: ..., [光影]: ...).
 5) If user asks for text rendering in image, keep quoted text explicit and prominent.
 6) Avoid unsafe or disallowed content. If unsafe, provide a safe alternative while keeping intent as much as possible.
+7) If reference images are provided, visually analyze them to accurately describe the subject, style, composition, and details in your optimized prompt.
 
 You must return STRICT JSON only, no markdown, no extra words:
 {
@@ -40,18 +41,21 @@ You must return STRICT JSON only, no markdown, no extra words:
 
 const pickOptimizerModel = (preferredModelId?: string): string | null => {
     const models = keyManager.getGlobalModelList();
-    const candidates = models.filter(m => m.type === 'chat' || m.type === 'image+chat');
+    // 强制只选择纯粹的 chat 模型用于提示词优化，避免选择了 image 变体导致接口不兼容 (如 gemini-2.5-flash-image 无法用于直接生成文本)
+    const candidates = models.filter(m => m.type === 'chat');
     if (candidates.length === 0) return null;
 
     if (preferredModelId) {
         const exact = candidates.find(m => m.id === preferredModelId);
         if (exact) return exact.id;
 
-        const preferredBase = preferredModelId.split('@')[0];
-        const sameBase = candidates.find(m => m.id.split('@')[0] === preferredBase);
+        // 如果用户选了图像模型(如 gemini-2.5-flash-image)，尝试提取其基础聊天模型(gemini-2.5-flash)
+        const preferredBase = preferredModelId.split('@')[0].replace('-image', '').replace('-preview', '');
+        const sameBase = candidates.find(m => m.id.split('@')[0].includes(preferredBase));
         if (sameBase) return sameBase.id;
     }
 
+    // 默认选取列表中第一个可用的聊天模型
     const chatFirst = candidates.find(m => m.type === 'chat');
     if (chatFirst) return chatFirst.id;
     return candidates[0].id;
@@ -82,7 +86,7 @@ export const optimizePromptForImage = async (
         aspectRatio?: string;
         imageSize?: string;
         mode?: string;
-        referenceImagesCount?: number;
+        referenceImages?: { mimeType: string; data: string }[];
     }
 ): Promise<PromptOptimizationResult> => {
     const input = rawPrompt.trim();
@@ -100,19 +104,57 @@ export const optimizePromptForImage = async (
         `- aspect_ratio: ${options?.aspectRatio || 'unknown'}`,
         `- image_size: ${options?.imageSize || 'unknown'}`,
         `- mode: ${options?.mode || 'image'}`,
-        `- reference_images_count: ${options?.referenceImagesCount ?? 0}`
+        `- reference_images: ${options?.referenceImages?.length ? 'Provided via attachments' : 'None'}`
     ].join('\n');
 
-    const rawResponse = await llmService.chat({
-        modelId,
-        messages: [
-            { role: 'system', content: OPTIMIZER_SYSTEM_PROMPT },
-            { role: 'user', content: userMessage }
-        ],
-        stream: false,
-        maxTokens: 1200,
-        temperature: 0.2
-    });
+    let rawResponse: string;
+
+    try {
+        // Attempt multimodal execution first if reference images exist
+        rawResponse = await llmService.chat({
+            modelId,
+            messages: [
+                { role: 'system', content: OPTIMIZER_SYSTEM_PROMPT },
+                { role: 'user', content: userMessage }
+            ],
+            inlineData: options?.referenceImages,
+            stream: false,
+            maxTokens: 1200,
+            temperature: 0.2
+        });
+    } catch (err: any) {
+        // Fallback: If the model/adapter rejects the multimodal request,
+        // retry strictly with text only.
+        if (options?.referenceImages?.length) {
+            console.warn(`[promptOptimizerService] Multimodal optimization failed with model ${modelId}. Retrying with text-only...`, err);
+
+            // Rewrite user message to omit reference image claim
+            const fallbackUserMessage = [
+                `User raw prompt:\n${input}`,
+                '',
+                'Optional context:',
+                `- aspect_ratio: ${options?.aspectRatio || 'unknown'}`,
+                `- image_size: ${options?.imageSize || 'unknown'}`,
+                `- mode: ${options?.mode || 'image'}`,
+                `- reference_images: None (Fallback mode)`
+            ].join('\n');
+
+            rawResponse = await llmService.chat({
+                modelId,
+                messages: [
+                    { role: 'system', content: OPTIMIZER_SYSTEM_PROMPT },
+                    { role: 'user', content: fallbackUserMessage }
+                ],
+                // Explicitly omit inlineData
+                stream: false,
+                maxTokens: 1200,
+                temperature: 0.2
+            });
+        } else {
+            // If it failed and we didn't even send images, re-throw immediately
+            throw err;
+        }
+    }
 
     const parsed = extractJsonObject(rawResponse);
     const optimizedEn = String(parsed?.optimized_en || '').trim();

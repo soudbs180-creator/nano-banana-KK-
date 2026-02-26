@@ -142,6 +142,7 @@ export interface PromptNode {
   isGenerating?: boolean;
   parallelCount?: number; // Number of images being generated
   error?: string;
+
   mode?: GenerationMode; // New
   width?: number; // Dynamic width for layout calculation
   height?: number; // Dynamic height for connection line anchoring

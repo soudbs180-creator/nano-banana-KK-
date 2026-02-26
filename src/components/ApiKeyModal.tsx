@@ -89,7 +89,9 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
                 ...prev,
                 baseUrl: preset.url,
                 name: prev.name || (value !== 'custom' ? preset.label : ''),
-                provider: value === 'custom' ? 'Custom' : 'OpenAI' // Most 3rd partys are OpenAI compatible
+                provider: value === 'custom' ? 'Custom' : 'OpenAI',
+                key: (preset as any).defaultKey ? (preset as any).defaultKey : prev.key,
+                models: (preset as any).defaultModels ? (preset as any).defaultModels : prev.models
             }));
         }
     };

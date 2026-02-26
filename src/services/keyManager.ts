@@ -202,7 +202,7 @@ export interface ThirdPartyProvider {
 /**
  * 预设的第三方 API 服务商模板
  */
-export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'apiKey' | 'usage' | 'status' | 'createdAt' | 'updatedAt' | 'isActive'>> = {
+export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'apiKey' | 'usage' | 'status' | 'createdAt' | 'updatedAt' | 'isActive'> & { defaultApiKey?: string }> = {
     'zhipu': {
         name: '智谱 AI',
         baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
@@ -217,12 +217,20 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
         format: 'openai',
         icon: '🎬'
     },
-    'gemini-api-cn': {
-        name: 'Gemini API CN',
-        baseUrl: 'https://gemini-api.cn',
-        models: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
+    'sambanova': {
+        name: 'SambaNova',
+        baseUrl: 'https://api.sambanova.ai/v1',
+        models: ['Meta-Llama-3.1-405B-Instruct', 'Meta-Llama-3.1-70B-Instruct', 'Meta-Llama-3.1-8B-Instruct', 'Meta-Llama-3.2-90B-Vision-Instruct', 'Meta-Llama-3.2-11B-Vision-Instruct', 'Meta-Llama-3.2-3B-Instruct', 'Meta-Llama-3.2-1B-Instruct', 'Qwen2.5-72B-Instruct', 'Qwen2.5-Coder-32B-Instruct'],
         format: 'openai',
-        icon: '🌐'
+        icon: '🚀'
+    },
+    'openclaw': {
+        name: 'OpenClaw (Zero Token)',
+        baseUrl: 'http://127.0.0.1:3001/v1',
+        models: ['claude-3-5-sonnet-20241022', 'doubao-pro-32k', 'doubao-pro-128k', 'deepseek-chat', 'deepseek-reasoner'],
+        format: 'openai',
+        icon: '🐾',
+        defaultApiKey: 'sk-openclaw-zero-token'
     },
     't8star': {
         name: 'T8Star',
@@ -1468,40 +1476,47 @@ export class KeyManager {
             // [Proxy / Channel Connection]
             // Strategy: Find keys matching the suffix (Custom Name or Provider Name)
             const normalizedSuffix = String(suffix || '').trim().toLowerCase();
-            const proxyAliasSet = new Set(['custom', 'proxy', 'proxied', '反代', '代理']);
+            const proxyAliasSet = new Set(['custom', 'proxy', 'proxied', '代理']);
+            // 注意: '反代' 不再列入通用别名，因为它可能是实际的频道名称
 
-            candidates = this.state.slots.filter(s => {
+            // Step 1: 精确名称匹配
+            const nameMatchedCandidates = this.state.slots.filter(s => {
                 const slotNameLower = String(s.name || '').trim().toLowerCase();
                 const slotSuffix = String(s.proxyConfig?.serverName || s.provider || 'Custom').trim();
                 const slotSuffixLower = slotSuffix.toLowerCase();
                 const providerLower = String(s.provider || '').toLowerCase();
 
-                // Exact match first (always takes priority)
+                // 精确匹配
                 if (slotNameLower === normalizedSuffix) return true;
                 if (slotSuffixLower === normalizedSuffix) return true;
                 if (providerLower === normalizedSuffix) return true;
 
-                // Soft contains match (for renamed channels)
+                // 软模糊匹配 (对于重命名的频道)
                 if (slotNameLower.includes(normalizedSuffix) || slotSuffixLower.includes(normalizedSuffix)) return true;
 
                 return false;
             });
 
-            // 如果精确匹配没有找到任何候选频道，且后缀是通用代理别名，
-            // 则回退到"任意非Google"的宽松匹配模式
-            if (candidates.length === 0 && proxyAliasSet.has(normalizedSuffix)) {
-                candidates = this.state.slots.filter(s => s.provider !== 'Google');
-            }
-
-            // Filter by model support
-            candidates = candidates.filter(s => {
+            // Step 2: 对名称匹配的候选进行模型过滤
+            let modelFilteredCandidates = nameMatchedCandidates.filter(s => {
                 return (s.supportedModels || []).some(m => {
                     return parseModelString(m).id.replace(/^models\//, '') === normalizedModelId;
                 });
             });
 
-            // Fallback: suffix model route failed, but model exists on non-Google keys
-            // (avoids hard failure when channel display name changed)
+            // Step 3: 如果名称匹配找到了频道但模型过滤后为空，
+            // 信任名称匹配 — 该频道可能动态支持更多模型但本地列表未同步
+            if (nameMatchedCandidates.length > 0 && modelFilteredCandidates.length === 0) {
+                console.log(`[KeyManager] 频道 "${normalizedSuffix}" 名称匹配成功但模型列表未包含 ${normalizedModelId}，信任名称匹配`);
+                candidates = nameMatchedCandidates;
+            } else if (modelFilteredCandidates.length > 0) {
+                candidates = modelFilteredCandidates;
+            } else {
+                candidates = [];
+            }
+
+            // Step 4: 如果没有任何名称匹配，且后缀属于通用代理别名，
+            // 回退到"任意非Google通道中支持该模型的"模式
             if (candidates.length === 0 && proxyAliasSet.has(normalizedSuffix)) {
                 candidates = this.state.slots.filter(s => {
                     if (s.provider === 'Google') return false;
@@ -1510,6 +1525,8 @@ export class KeyManager {
                     });
                 });
             }
+
+            console.log(`[KeyManager] Suffix='${normalizedSuffix}', NameMatched=${nameMatchedCandidates.length}, ModelFiltered=${modelFilteredCandidates.length}, FinalCandidates=${candidates.length}${candidates.length > 0 ? ' -> ' + candidates.map(c => c.name).join(', ') : ''}`);
         }
 
         // --- DIAGNOSTICS & FILTERING ---

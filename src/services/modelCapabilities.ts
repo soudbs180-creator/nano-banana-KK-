@@ -474,10 +474,16 @@ export function getModelCapabilities(
             supportedSizes: lowerModelId.includes('4.0') || lowerModelId.includes('4') ? [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K] : [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
             supportsGrounding: false
         };
-    } else if (lowerModelId.includes('qwen-image') || lowerModelId.includes('gemini') || lowerModelId.includes('sdxl') || lowerModelId.includes('stable-diffusion') || lowerModelId.includes('gpt-4o') || lowerModelId.includes('gpt-image') || lowerModelId.includes('nano-banana')) {
+    } else if (lowerModelId.includes('qwen-image') || lowerModelId.includes('gemini') || lowerModelId.includes('sdxl') || lowerModelId.includes('stable-diffusion') || lowerModelId.includes('gpt-4o') || lowerModelId.includes('gpt-image')) {
         fallbackCapabilities = {
             supportedRatios: ALL_IMAGE_RATIOS,
-            supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
+            supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
+            supportsGrounding: false
+        };
+    } else if (lowerModelId.includes('nano-banana')) {
+        fallbackCapabilities = {
+            supportedRatios: ALL_IMAGE_RATIOS,
+            supportedSizes: lowerModelId.includes('pro') ? [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K] : [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
             supportsGrounding: false
         };
     }

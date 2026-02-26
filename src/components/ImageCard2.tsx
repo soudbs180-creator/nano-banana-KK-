@@ -34,7 +34,7 @@ interface ImageNodeProps {
     onPreview?: (imageId: string) => void;
     isVisible?: boolean; // 🚀 视口可见性控制（从父组件传入）
     onUpdate?: (id: string, updates: Partial<GeneratedImage>) => void; // 🚀 [New] 更新回调
-    onDragDelta?: (delta: { x: number; y: number }) => void; // 🚀 [New] Relative Drag
+    onDragDelta?: (delta: { x: number; y: number }, sourceNodeId?: string) => void; // 🚀 [New] Relative Drag
 }
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
@@ -105,11 +105,22 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
     // 🚀 Robust Image Loading State - 优先使用image自带URL作为初始显示（防止刚生成的图片加载失败）
     const initialUrl = (image.url && image.url.length > 0) ? image.url : (image.originalUrl || '');
-    const [displaySrc, setDisplaySrc] = useState<string | undefined>(
-        initialUrl && (initialUrl.startsWith('data:') || initialUrl.startsWith('blob:') || initialUrl.startsWith('http'))
-            ? initialUrl
-            : undefined
-    );
+    const formatInitialUrl = (url: string) => {
+        if (!url) return undefined;
+        if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http')) {
+            return url;
+        }
+        return `data:${image.mimeType || 'image/png'};base64,${url.replace(/[\r\n\s]+/g, '')}`;
+    };
+
+    const [displaySrc, setDisplaySrc] = useState<string | undefined>(formatInitialUrl(initialUrl));
+
+    // Reset image error state if displaySrc changes (e.g., loaded from IDB)
+    useEffect(() => {
+        if (displaySrc) {
+            setImgError(false);
+        }
+    }, [displaySrc]);
     const [currentQuality, setCurrentQuality] = useState<string>('original');
     const qualityLoadingRef = useRef(false); // 防止重复加载
     const lastZoomRef = useRef(zoomScale || 1.0); // 防抖：只在显著变化时切换
@@ -117,6 +128,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const [isLoading, setIsLoading] = useState(true); // 🚀 明确的加载状态
     const qualityDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 🚀 质量切换防抖
     const [retryTick, setRetryTick] = useState(0); // 主动重试触发器
+    const autoRetryRef = useRef(0); // 🚀 自动重试计数器（刷新后IndexedDB竞态）
+    const loadGenRef = useRef(0); // 🚀 加载代次计数器（替代 isCancelled 闭包变量）
 
     // 使用稳定存储键：优先 storageId，其次 image.id
     const imageStorageKey = image.storageId || image.id;
@@ -154,20 +167,30 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             clearTimeout(qualityDebounceRef.current);
         }
 
-        let isCancelled = false;
+        // 🚀 [Fix] 使用 ref 替代闭包变量，避免 cleanup 误取消有效加载结果
+        const loadId = ++loadGenRef.current;
 
         const loadQualityImage = async () => {
             if (qualityLoadingRef.current) return;
+            // 🚀 如果已被新一轮加载取代，跳过
+            if (loadId !== loadGenRef.current) return;
             qualityLoadingRef.current = true;
 
             const sanitizeUrl = (url: string | null | undefined): string | undefined => {
-                if (url && url.startsWith('data:')) {
+                if (!url) return undefined;
+                if (url.startsWith('data:')) {
                     const parts = url.split(',');
                     if (parts.length === 2) {
                         return `${parts[0]},${parts[1].replace(/[\r\n\s]+/g, '')}`;
                     }
+                    return url;
                 }
-                return url ? url : undefined;
+                if (url.startsWith('http') || url.startsWith('blob:')) {
+                    return url;
+                }
+                // Assume it's raw base64 if it has no recognizable prefix
+                const mimeType = image.mimeType || 'image/png';
+                return `data:${mimeType};base64,${url.replace(/[\r\n\s]+/g, '')}`;
             };
 
             try {
@@ -181,57 +204,75 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 const priority = Math.round(100 - Math.abs(scale - 1) * 50);
                 const url = await loadImage(imageStorageKey, quality, priority);
 
+                // 🚀 检查是否已被取代
+                if (loadId !== loadGenRef.current) return;
+
                 // 🚀 关键：只有成功获取新图后才替换，防止闪烁
-                if (!isCancelled && url) {
+                if (url) {
                     setDisplaySrc(sanitizeUrl(url));
                     setCurrentQuality(quality);
                     loadedRef.current = true;
                     setIsLoading(false); // 🚀 加载成功
-                } else if (!isCancelled && !url) {
+                    autoRetryRef.current = 0; // 重置重试计数
+                } else {
                     // 🚀 队列返回null - IndexedDB中没有，尝试多种fallback策略
-                    console.warn(`[ImageCard] Queue returned null for ${image.id}, trying fallback recovery...`);
+                    console.debug(`[ImageCard] Queue returned null for ${image.id}, trying fallback recovery...`);
 
                     // 策略1: 尝试使用storageId直接加载
                     if (image.storageId && image.storageId !== image.id) {
                         try {
                             const recoveredFromStorage = await getImage(image.storageId);
-                            if (recoveredFromStorage) {
-                                console.log(`[ImageCard] ✅ Recovered from storageId: ${image.storageId}`);
+                            if (recoveredFromStorage && loadId === loadGenRef.current) {
+                                console.debug(`[ImageCard] ✅ Recovered from storageId: ${image.storageId}`);
                                 setDisplaySrc(sanitizeUrl(recoveredFromStorage));
                                 loadedRef.current = true;
                                 setIsLoading(false);
                                 return; // 恢复成功，退出
                             }
                         } catch (err) {
-                            console.warn(`[ImageCard] Failed to recover from storageId:`, err);
+                            console.debug(`[ImageCard] Failed to recover from storageId:`, err);
                         }
                     }
 
                     // 策略1.5: 通过原图读取通道恢复（支持本地磁盘/OPFS回填到缓存）
                     try {
                         const recoveredOriginal = await getOriginalImage(imageStorageKey);
-                        if (recoveredOriginal) {
-                            console.log(`[ImageCard] ✅ Recovered from original channel: ${imageStorageKey}`);
+                        if (recoveredOriginal && loadId === loadGenRef.current) {
+                            console.debug(`[ImageCard] ✅ Recovered from original channel: ${imageStorageKey}`);
                             setDisplaySrc(sanitizeUrl(recoveredOriginal));
                             loadedRef.current = true;
                             setIsLoading(false);
                             return;
                         }
                     } catch (err) {
-                        console.warn(`[ImageCard] Failed to recover from original channel:`, err);
+                        console.debug(`[ImageCard] Failed to recover from original channel:`, err);
                     }
 
                     // 策略2: 使用image自带的URL作为fallback
                     const fallbackUrl = image.originalUrl || image.url;
                     if (fallbackUrl && (fallbackUrl.startsWith('data:') || fallbackUrl.startsWith('http') || fallbackUrl.startsWith('blob:'))) {
-                        console.log(`[ImageCard] Using fallback URL for ${image.id}`);
+                        console.debug(`[ImageCard] Using fallback URL for ${image.id}`);
                         setDisplaySrc(sanitizeUrl(fallbackUrl));
                         loadedRef.current = true;
                         setIsLoading(false);
                     } else {
-                        // 🚀 没有可用fallback，显示错误占位符
-                        console.error(`[ImageCard] ❌ All recovery strategies failed for ${image.id}`);
-                        setIsLoading(false);
+                        // 🚀 自动重试机制 — IndexedDB 可能尚未就绪（刷新后竞态条件）
+                        if (autoRetryRef.current < 3) {
+                            const retryDelay = [500, 1500, 3000][autoRetryRef.current] || 3000;
+                            autoRetryRef.current++;
+                            console.debug(`[ImageCard] ⏳ Auto-retry #${autoRetryRef.current} for ${image.id} in ${retryDelay}ms...`);
+                            qualityLoadingRef.current = false;
+                            setTimeout(() => {
+                                if (loadId === loadGenRef.current) {
+                                    loadedRef.current = false;
+                                    setRetryTick(prev => prev + 1);
+                                }
+                            }, retryDelay);
+                        } else {
+                            // 最终放弃
+                            console.debug(`[ImageCard] All recovery strategies failed for ${image.id} after ${autoRetryRef.current} retries`);
+                            setIsLoading(false);
+                        }
                     }
                 }
             } catch (error) {
@@ -246,11 +287,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }, displaySrc ? 500 : 100); // 🚀 已有图片时延迟500ms，首次加载时100ms
 
         return () => {
-            isCancelled = true;
+            // 🚀 [Fix] 只清除防抖定时器，不取消队列中的加载
+            // 取消只在 isVisible=false 时发生（在 effect 开头处理）
             if (qualityDebounceRef.current) {
                 clearTimeout(qualityDebounceRef.current);
             }
-            cancelImageLoad(imageStorageKey);
         };
     }, [zoomScale, image.id, image.storageId, isVisible, retryTick]); // 移除displaySrc依赖
 
@@ -450,7 +491,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 if (onDragDelta && lastMousePos.current) {
                     const stepX = newPos.x - prevPos.x;
                     const stepY = newPos.y - prevPos.y;
-                    onDragDelta({ x: stepX, y: stepY });
+                    onDragDelta({ x: stepX, y: stepY }, image.id);
                 } else if (onPositionChange) {
                     // Fallback 只移动当前卡片
                     onPositionChange(image.id, newPos);
@@ -570,20 +611,24 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     `}
                     style={{
                         backgroundColor: 'var(--bg-surface)',
-                        borderColor: isSelected ?
-                            'var(--selected-border)' :
-                            isActive ?
-                                'var(--accent-gold)' :
-                                highlighted ?
+                        borderColor: image.error && !image.isGenerating ?
+                            'rgb(239, 68, 68)' :
+                            isSelected ?
+                                'var(--selected-border)' :
+                                isActive ?
                                     'var(--accent-gold)' :
-                                    'var(--border-default)',
+                                    highlighted ?
+                                        'var(--accent-gold)' :
+                                        'var(--border-default)',
                         borderRadius: 'var(--radius-lg)', // 12px
                         borderWidth: adaptiveBorderWidth,
-                        boxShadow: isSelected ?
-                            'var(--glow-blue)' :
-                            highlighted ?
-                                'var(--glow-gold)' :
-                                'var(--shadow-xl)',
+                        boxShadow: image.error && !image.isGenerating ?
+                            '0 0 12px rgba(239, 68, 68, 0.3), 0 0 4px rgba(239, 68, 68, 0.2)' :
+                            isSelected ?
+                                'var(--glow-blue)' :
+                                highlighted ?
+                                    'var(--glow-gold)' :
+                                    'var(--shadow-xl)',
                         transitionDuration: isDragging ? '0ms' : 'var(--duration-normal)',
                         transitionProperty: 'box-shadow, border-color'
                     }}
@@ -597,185 +642,219 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     {/* 图片视图，支持懒加载/虚拟化 - 单击打开灯箱 */}
                     <div
                         className="relative w-full cursor-pointer bg-[var(--bg-tertiary)]"
-                        style={{ aspectRatio: image.aspectRatio.replace(':', '/') }} // [FIX] 强制锁定宽高比，防止恢复时高度跳动
                         onClick={handleImageClick}
                         onDoubleClick={handleImageClick}
                     >
-
-                        {!imgError && displaySrc ? (
-                            (image.mode === GenerationMode.AUDIO || displaySrc.endsWith('.mp3') || displaySrc.endsWith('.wav')) ? (
-                                <div className="relative w-full h-full group/audio bg-gradient-to-br from-indigo-900/90 to-purple-900/90 flex flex-col items-center justify-center overflow-hidden">
-                                    <Music size={48} className="text-indigo-300/30 mb-4 z-10 pointer-events-none" />
-                                    <audio
-                                        src={displaySrc}
-                                        controls
-                                        controlsList="nodownload"
-                                        className="relative z-10 w-11/12 h-10 opacity-80 hover:opacity-100 transition-opacity"
-                                        onError={() => {
-                                            console.warn('[ImageCard] Audio load error for', image.id);
-                                            setImgError(true);
-                                        }}
-                                        onPlay={(e) => { e.stopPropagation(); setIsPlaying(true); }}
-                                        onPause={(e) => { e.stopPropagation(); setIsPlaying(false); }}
-                                        onClick={(e) => e.stopPropagation()}
-                                        onDoubleClick={(e) => e.stopPropagation()}
-                                        onMouseDown={(e) => e.stopPropagation()}
-                                    />
-                                </div>
-                            ) : (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
-                                <div className="relative w-full h-full group/video">
-                                    <video
-                                        ref={videoRef}
-                                        src={displaySrc}
-                                        className="w-full h-full object-cover block select-none"
-                                        muted loop playsInline
-                                        onPlay={() => setIsPlaying(true)}
-                                        onPause={() => setIsPlaying(false)}
-                                        onError={() => {
-                                            console.warn('[ImageCard] Video load error for', image.id);
-                                            setImgError(true);
-                                        }}
-                                    />
-                                    {/* Play/Pause Overlay with smooth transitions */}
-                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/video:opacity-100 transition-opacity duration-300 bg-black/0 hover:bg-black/20">
-                                        <button
-                                            className="w-12 h-12 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-sm text-white transition-all duration-300 transform hover:scale-110 active:scale-95 shadow-lg border border-white/20"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (videoRef.current) {
-                                                    if (videoRef.current.paused) videoRef.current.play();
-                                                    else videoRef.current.pause();
-                                                }
+                        {/* 🚀 [FIX] 图片独立容器：aspectRatio + overflow-hidden 锁定图片尺寸
+                            图片使用 absolute 定位填满容器，不参与容器高度计算
+                            防止拖拽时图片拉伸导致信息栏被挤压 */}
+                        <div
+                            className="relative w-full overflow-hidden"
+                            style={{ aspectRatio: image.aspectRatio.replace(':', '/') }}
+                        >
+                            {!imgError && displaySrc ? (
+                                (image.mode === GenerationMode.AUDIO || displaySrc.endsWith('.mp3') || displaySrc.endsWith('.wav')) ? (
+                                    <div className="relative w-full h-full group/audio bg-gradient-to-br from-indigo-900/90 to-purple-900/90 flex flex-col items-center justify-center overflow-hidden">
+                                        <Music size={48} className="text-indigo-300/30 mb-4 z-10 pointer-events-none" />
+                                        <audio
+                                            src={displaySrc}
+                                            controls
+                                            controlsList="nodownload"
+                                            className="relative z-10 w-11/12 h-10 opacity-80 hover:opacity-100 transition-opacity"
+                                            onError={() => {
+                                                console.warn('[ImageCard] Audio load error for', image.id);
+                                                setImgError(true);
                                             }}
-                                        >
-                                            {isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" className="ml-0.5" />}
-                                        </button>
+                                            onPlay={(e) => { e.stopPropagation(); setIsPlaying(true); }}
+                                            onPause={(e) => { e.stopPropagation(); setIsPlaying(false); }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onDoubleClick={(e) => e.stopPropagation()}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                        />
                                     </div>
-                                </div>
-                            ) : (
-                                <img
-                                    src={displaySrc} // React handles updates. Native lazy is often enough.
-                                    // Make it aggressive: decoding async
-                                    decoding="async"
-                                    loading="lazy"
-                                    alt={image.prompt}
-                                    style={{
-                                        color: 'transparent',
-                                        width: '100%',
-                                        height: '100%',
-                                        objectFit: 'cover',
-                                        // 关键优化: 确保缩放时快速响应清晰度
-                                        imageRendering: 'auto', // 高质量缩放
-                                        // GPU 加速
-                                        transform: 'translateZ(0)',
-                                        willChange: 'auto'
-                                    }}
-
-                                    onError={(e) => {
-                                        setImgError(true);
-                                    }}
-                                    onLoad={(e) => {
-                                        setImgError(false);
-                                        const img = e.target as HTMLImageElement;
-                                        const dims = `${img.naturalWidth}x${img.naturalHeight}`;
-                                        if (onDimensionsUpdate && image.dimensions !== dims) {
-                                            onDimensionsUpdate(image.id, dims);
-                                        }
-                                    }}
-                                    className="w-full h-auto block select-none"
-                                    draggable={true}
-                                    onDragStart={(e) => {
-                                        // HTML5 Drag for Data Transfer (to PromptBar)
-                                        e.stopPropagation();
-                                        const url = displaySrc || image.url;
-                                        if (url) {
-                                            e.dataTransfer.setData('text/plain', url);
-                                            // [NEW] Pass structured data for efficient reuse (consistent with PromptNode)
-                                            // 🚀 [FIX] Stop Canvas Drag when HTML5 Drag starts
-                                            if (dragCleanupRef.current) dragCleanupRef.current();
-
-                                            e.dataTransfer.setData('application/x-kk-image-ref', JSON.stringify({
-                                                storageId: image.storageId || image.id,
-                                                mimeType: 'image/png', // Default, hard to know without fetch or magic
-                                                source: 'image-card',
-                                                data: url.startsWith('data:') ? url : undefined
-                                            }));
-                                            e.dataTransfer.effectAllowed = 'copy';
-
-                                            // 🚀 [NEW] 如果 URL 是 data URL，同时保存到本地文件系统
-                                            if (url.startsWith('data:')) {
-                                                const storageId = image.storageId || image.id;
-                                                import('../services/fileSystemService').then(({ fileSystemService }) => {
-                                                    const handle = fileSystemService.getGlobalHandle();
-                                                    if (handle) {
-                                                        const matches = url.match(/^data:[^,]+,(.+)$/);
-                                                        if (matches && matches[1]) {
-                                                            fileSystemService.saveReferenceImage(
-                                                                handle,
-                                                                storageId,
-                                                                matches[1],
-                                                                image.mimeType || 'image/png'
-                                                            ).catch(err => {
-                                                                console.warn('[ImageCard2] Failed to save reference to file system:', err);
-                                                            });
-                                                        }
+                                ) : (image.mode === GenerationMode.VIDEO || displaySrc.startsWith('data:video') || displaySrc.endsWith('.mp4')) ? (
+                                    <div className="relative w-full h-full group/video">
+                                        <video
+                                            ref={videoRef}
+                                            src={displaySrc}
+                                            className="w-full h-full object-cover block select-none"
+                                            muted loop playsInline
+                                            onPlay={() => setIsPlaying(true)}
+                                            onPause={() => setIsPlaying(false)}
+                                            onError={() => {
+                                                console.warn('[ImageCard] Video load error for', image.id);
+                                                setImgError(true);
+                                            }}
+                                        />
+                                        {/* Play/Pause Overlay with smooth transitions */}
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/video:opacity-100 transition-opacity duration-300 bg-black/0 hover:bg-black/20">
+                                            <button
+                                                className="w-12 h-12 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-sm text-white transition-all duration-300 transform hover:scale-110 active:scale-95 shadow-lg border border-white/20"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (videoRef.current) {
+                                                        if (videoRef.current.paused) videoRef.current.play();
+                                                        else videoRef.current.pause();
                                                     }
-                                                });
-                                            }
-                                        }
-                                    }}
-                                />
-                            )
-                        ) : (
-
-                            <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-[var(--text-secondary)] p-4 text-center">
-
-                                {/* 🚀 加载/恢复状态 - 居中显示 */}
-                                {(isLoading || (!imgError && !displaySrc)) ? (
-                                    // 加载状态由全局遮罩处理，这里显示空白占位
-                                    <div className="absolute inset-0 bg-transparent" />
+                                                }}
+                                            >
+                                                {isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" className="ml-0.5" />}
+                                            </button>
+                                        </div>
+                                    </div>
                                 ) : (
-                                    <>
-                                        <ImageOff size={24} className="mb-2 opacity-50 text-rose-400" />
-                                        <span className="text-xs text-rose-300">
-                                            {/* 统一视频判断：mode/data:video/.mp4/image.url */}
-                                            {(image.mode === GenerationMode.VIDEO ||
-                                                image.url?.includes('.mp4') ||
-                                                image.url?.startsWith('data:video') ||
-                                                displaySrc?.includes('.mp4') ||
-                                                displaySrc?.startsWith('data:video'))
-                                                ? '视频加载失败'
-                                                : '图片加载失败'}
-                                        </span>
-                                        <span className="text-[9px] opacity-60">
-                                            {(image.mode === GenerationMode.AUDIO || displaySrc?.includes('.mp3'))
-                                                ? '(Audio Load Error)'
-                                                : (image.mode === GenerationMode.VIDEO ||
+                                    <img
+                                        src={displaySrc}
+                                        decoding="async"
+                                        loading="lazy"
+                                        referrerPolicy="no-referrer"
+                                        alt={image.prompt}
+                                        style={{
+                                            color: 'transparent',
+                                            width: '100%',
+                                            height: '100%',
+                                            objectFit: 'cover',
+                                            display: 'block',
+                                            imageRendering: 'auto',
+                                        }}
+
+                                        onError={(e) => {
+                                            setImgError(true);
+                                        }}
+                                        onLoad={(e) => {
+                                            setImgError(false);
+                                            const img = e.target as HTMLImageElement;
+                                            const dims = `${img.naturalWidth}x${img.naturalHeight}`;
+                                            if (onDimensionsUpdate && image.dimensions !== dims) {
+                                                onDimensionsUpdate(image.id, dims);
+                                            }
+                                        }}
+                                        className="w-full h-full block select-none"
+                                        draggable={true}
+                                        onDragStart={(e) => {
+                                            // HTML5 Drag for Data Transfer (to PromptBar)
+                                            e.stopPropagation();
+                                            const url = displaySrc || image.url;
+                                            if (url) {
+                                                e.dataTransfer.setData('text/plain', url);
+                                                // [NEW] Pass structured data for efficient reuse (consistent with PromptNode)
+                                                // 🚀 [FIX] Stop Canvas Drag when HTML5 Drag starts
+                                                if (dragCleanupRef.current) dragCleanupRef.current();
+
+                                                e.dataTransfer.setData('application/x-kk-image-ref', JSON.stringify({
+                                                    storageId: image.storageId || image.id,
+                                                    mimeType: 'image/png', // Default, hard to know without fetch or magic
+                                                    source: 'image-card',
+                                                    data: url.startsWith('data:') ? url : undefined
+                                                }));
+                                                e.dataTransfer.effectAllowed = 'copy';
+
+                                                // 🚀 [NEW] 如果 URL 是 data URL，同时保存到本地文件系统
+                                                if (url.startsWith('data:')) {
+                                                    const storageId = image.storageId || image.id;
+                                                    import('../services/fileSystemService').then(({ fileSystemService }) => {
+                                                        const handle = fileSystemService.getGlobalHandle();
+                                                        if (handle) {
+                                                            const matches = url.match(/^data:[^,]+,(.+)$/);
+                                                            if (matches && matches[1]) {
+                                                                fileSystemService.saveReferenceImage(
+                                                                    handle,
+                                                                    storageId,
+                                                                    matches[1],
+                                                                    image.mimeType || 'image/png'
+                                                                ).catch(err => {
+                                                                    console.warn('[ImageCard2] Failed to save reference to file system:', err);
+                                                                });
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                            }
+                                        }}
+                                    />
+                                )
+                            ) : (
+
+                                <div className="w-full h-full min-h-[150px] flex flex-col items-center justify-center text-[var(--text-secondary)] p-4 text-center">
+
+                                    {/* 🚀 加载/恢复状态 - 居中显示 */}
+                                    {(isLoading || (!imgError && !displaySrc)) ? (
+                                        // 加载状态由全局遮罩处理，这里显示空白占位
+                                        <div className="absolute inset-0 bg-transparent" />
+                                    ) : (
+                                        <>
+                                            <ImageOff size={24} className="mb-2 opacity-50 text-rose-400" />
+                                            <span className="text-xs text-rose-300">
+                                                {/* 统一视频判断：mode/data:video/.mp4/image.url */}
+                                                {(image.mode === GenerationMode.VIDEO ||
                                                     image.url?.includes('.mp4') ||
                                                     image.url?.startsWith('data:video') ||
                                                     displaySrc?.includes('.mp4') ||
                                                     displaySrc?.startsWith('data:video'))
-                                                    ? '(Video Load Error)'
-                                                    : '(Image Load Error)'}
-                                        </span>
-                                        {/* Retry Button */}
-                                        <button
-                                            onClick={handleRetryLoad}
-                                            className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 underline"
-                                        >
-                                            点击重试
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        )}
-
+                                                    ? '视频加载失败'
+                                                    : '图片加载失败'}
+                                            </span>
+                                            <span className="text-[9px] opacity-60">
+                                                {(image.mode === GenerationMode.AUDIO || displaySrc?.includes('.mp3'))
+                                                    ? '(Audio Load Error)'
+                                                    : (image.mode === GenerationMode.VIDEO ||
+                                                        image.url?.includes('.mp4') ||
+                                                        image.url?.startsWith('data:video') ||
+                                                        displaySrc?.includes('.mp4') ||
+                                                        displaySrc?.startsWith('data:video'))
+                                                        ? '(Video Load Error)'
+                                                        : '(Image Load Error)'}
+                                            </span>
+                                            {/* Retry Button */}
+                                            <button
+                                                onClick={handleRetryLoad}
+                                                className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 underline"
+                                            >
+                                                点击重试
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>{/* 关闭图片独立容器 */}
 
 
                         {/* Tags Layer - REMOVED: Tags are now only in footer row, not floating on image */}
 
+                        {/* 🚀 错误状态遮罩 — 红色标志显示生成错误/超时 */}
+                        {image.error && !image.isGenerating && (
+                            <div
+                                className="absolute inset-0 z-40 rounded-lg flex flex-col items-center justify-center p-4 text-center"
+                                style={{
+                                    background: 'linear-gradient(135deg, rgba(220,38,38,0.15) 0%, rgba(153,27,27,0.25) 100%)',
+                                    backdropFilter: 'blur(2px)'
+                                }}
+                            >
+                                {/* 红色警告图标 */}
+                                <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center mb-2">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgb(239,68,68)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                        <line x1="12" y1="9" x2="12" y2="13" />
+                                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                                    </svg>
+                                </div>
+                                {/* 错误分类 */}
+                                <span className="text-xs font-semibold text-red-400 mb-1">
+                                    {image.error.toLowerCase().includes('timeout') || image.error.toLowerCase().includes('timed out') || image.error.toLowerCase().includes('超时')
+                                        ? '⏱ 生成超时'
+                                        : image.error.toLowerCase().includes('cancel') || image.error.toLowerCase().includes('取消')
+                                            ? '🚫 已取消'
+                                            : '❌ 生成错误'}
+                                </span>
+                                {/* 截断后的错误信息 */}
+                                <span className="text-[10px] text-red-300/70 leading-tight max-w-full overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any }}>
+                                    {image.error.length > 120 ? image.error.slice(0, 120) + '...' : image.error}
+                                </span>
+                            </div>
+                        )}
+
                         {/* 🚀 全局加载遮罩 - 覆盖整个卡片包括信息栏 */}
-                        {(isLoading || (!imgError && !displaySrc)) && (
+                        {(isLoading || (!imgError && !displaySrc)) && !image.error && (
                             <div
                                 className="absolute inset-0 z-50 rounded-lg flex flex-col items-center justify-center bg-black/60"
                                 style={{

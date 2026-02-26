@@ -226,20 +226,61 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
     async generateImage(options: ImageGenerationOptions, keySlot: KeySlot): Promise<ImageGenerationResult> {
         const modelLower = options.modelId.toLowerCase();
+        const baseUrl = (keySlot.baseUrl || '').toLowerCase();
 
-        // 1. Video Support (via OpenAI-compatible video extensions like Kling/Suno if supported via proxy)
-        // ... (as before)
+        // 🚀 [Protocol Routing] 三级判断逻辑：
+        // 1. KeySlot 显式配置 (compatibilityMode)
+        // 2. BaseURL 特征检测 (Antigravity/反代 等已知 Gemini/GPT-Best 协议代理)
+        // 3. 模型名称启发式推断 (包含 gemini + image 的模型)
 
-        // 2. 🚀 Chat-based Image Generation (Custom Providers like User's Gemini Proxy)
-        // Detects "gemini" and "image" in the name, OR specific config
-        if ((modelLower.includes('gemini') && modelLower.includes('image')) || options.providerConfig?.openai?.useChatEndpoint) {
+        // 级别1: 显式配置 — 用户或系统已明确设置API格式
+        if (keySlot.compatibilityMode === 'chat') {
+            console.log(`[OpenAICompatibleAdapter] 使用 Chat API (显式 compatibilityMode='chat') -> ${keySlot.name}`);
             return this.generateImageViaChat(options, keySlot);
         }
 
-        // 3. Antigravity Special Handling (Local Proxy)
-        const isAntigravity = (keySlot.baseUrl || '').includes('127.0.0.1:8045') || (keySlot.baseUrl || '').includes('antigravity');
+        // 级别2: BaseURL特征检测
+        const isAntigravity = baseUrl.includes('127.0.0.1:8045') || baseUrl.includes('antigravity');
+        const isOfficialOpenAI = baseUrl.includes('api.openai.com');
+        const isSiliconFlow = baseUrl.includes('siliconflow');
+        // 🚀 [NEW] 检测 gpt-best 代理商
+        const isGptBest = baseUrl.includes('gpt-best') || baseUrl.includes('gptbest');
 
-        return this.generateImageStandard(options, keySlot, isAntigravity);
+        if (isAntigravity) {
+            // Antigravity 支持 OpenAI Images API（推荐方式一）和 Chat API
+            if (modelLower.includes('gemini') && modelLower.includes('image')) {
+                console.log(`[OpenAICompatibleAdapter] 使用 Chat API (Antigravity + Gemini模型) -> ${keySlot.name}`);
+                return this.generateImageViaChat(options, keySlot);
+            }
+            console.log(`[OpenAICompatibleAdapter] 使用 GPT_Best_Extended API (Antigravity) -> ${keySlot.name}`);
+            return this.generateImageStandard_GPT_Best_Extended(options, keySlot);
+        }
+
+        if (isOfficialOpenAI) {
+            console.log(`[OpenAICompatibleAdapter] 使用 OpenAI_Strict API -> ${keySlot.name}`);
+            return this.generateImageStandard_OpenAI_Strict(options, keySlot);
+        }
+
+        if (isSiliconFlow) {
+            console.log(`[OpenAICompatibleAdapter] 使用 SiliconFlow API -> ${keySlot.name}`);
+            return this.generateImageStandard_SiliconFlow(options, keySlot);
+        }
+
+        // 🚀 [NEW] gpt-best 代理商专用路径
+        if (isGptBest) {
+            console.log(`[OpenAICompatibleAdapter] 使用 GPT_Best_Native API -> ${keySlot.name}`);
+            return this.generateImageStandard_GPT_Best_Native(options, keySlot);
+        }
+
+        // 级别3: 模型名称启发式推断
+        if ((modelLower.includes('gemini') && modelLower.includes('image')) || options.providerConfig?.openai?.useChatEndpoint) {
+            console.log(`[OpenAICompatibleAdapter] 使用 Chat API (模型名称推断) -> ${keySlot.name}`);
+            return this.generateImageViaChat(options, keySlot);
+        }
+
+        // 默认: 使用兼容度最高的被动模式 (Extended)
+        console.log(`[OpenAICompatibleAdapter] 使用 GPT_Best_Extended API (默认后备) -> ${keySlot.name}`);
+        return this.generateImageStandard_GPT_Best_Extended(options, keySlot);
     }
 
     private async generateImageViaChat(
@@ -276,7 +317,9 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         if (options.referenceImages?.length) {
             options.referenceImages.forEach(imageData => {
-                const dataUrl = imageData.startsWith('data:') ? imageData : `data:image/png;base64,${imageData}`;
+                // Ensure proper Data URI format
+                const hasPrefix = imageData.startsWith('data:');
+                const dataUrl = hasPrefix ? imageData : `data:image/jpeg;base64,${imageData}`;
                 contentParts.push({
                     type: 'image_url',
                     image_url: { url: dataUrl }
@@ -297,14 +340,18 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 role: 'user',
                 content: contentParts
             }],
-            // 🚀 Default OpenAI spec natively supported by Antigravity-Manager
-            size: sizeString,
-            quality: nativeQuality,
+            // 🚀 [Universal] 全参数传递 — 兼容所有 Gemini 协议代理
+            size: sizeString,             // "4096x4096" — 像素尺寸
+            quality: nativeQuality,        // "hd" / "medium" / "standard"
+            imageSize: is4K ? '4K' : (is2K ? '2K' : '1K'),  // 🚀 Antigravity 最高优先级参数
+            aspect_ratio: options.aspectRatio || '1:1',       // 宽高比
             max_tokens: 65535,
             maxtokens: 65535,
             maxOutputTokens: 65535,
             stream: false
         };
+
+        console.log(`[OpenAICompatibleAdapter] Chat Image Request -> ${keySlot.name}: size=${sizeString}, quality=${nativeQuality}, imageSize=${body.imageSize}, aspectRatio=${options.aspectRatio || '1:1'}`);
 
         // 🚀 [12AI 对齐] 为 Gemini 协议代理设置安全钳位
         if (body.maxOutputTokens > 65535) body.maxOutputTokens = 65535;
@@ -380,138 +427,302 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         throw new Error('Failed to extract image from chat response. Content starts with: ' + content.substring(0, 50));
     }
 
-    private async generateImageStandard(
+    // ============================================================================
+    // 严格模式 (Official OpenAI) - 不带任何额外多余参数，避免 400 Bad Request
+    // ============================================================================
+    private async generateImageStandard_OpenAI_Strict(
         options: ImageGenerationOptions,
-        keySlot: KeySlot,
-        isAntigravity: boolean
+        keySlot: KeySlot
     ): Promise<ImageGenerationResult> {
-
         const baseUrl = (keySlot.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
         const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
         const url = `${cleanBase}/images/generations`;
 
-        // Logic for Size Calculation
+        // 质量与尺寸推断
         const is4K = options.imageSize === '4K' || options.imageSize === 'SIZE_4K';
         const is2K = options.imageSize === '2K' || options.imageSize === 'SIZE_2K';
 
-        // Default Params
-        let size = '1024x1024';
-        let quality: 'standard' | 'hd' = 'standard';
-        let style: 'vivid' | 'natural' | undefined;
+        let sizeString = '1024x1024';
+        if (options.aspectRatio === '16:9') sizeString = '1792x1024';
+        else if (options.aspectRatio === '9:16') sizeString = '1024x1792';
 
-        if (is4K || is2K) quality = 'hd';
-
-        // 1. Check Provider Config First
+        // Configuration Overrides
+        let quality = is4K || is2K ? 'hd' : 'standard';
+        let style: string | undefined;
         if (options.providerConfig?.openai) {
-            if (options.providerConfig.openai.size) size = options.providerConfig.openai.size;
+            if (options.providerConfig.openai.size) sizeString = options.providerConfig.openai.size;
             if (options.providerConfig.openai.quality) quality = options.providerConfig.openai.quality;
             if (options.providerConfig.openai.style) style = options.providerConfig.openai.style;
-        }
-
-        const isOfficialOpenAI = cleanBase.includes('api.openai.com');
-        const isT8Star = (keySlot.baseUrl || '').includes('t8star.cn');
-        const isGptBest = (keySlot.baseUrl || '').includes('gpt-best');
-        const isExtendedProxy = isT8Star || isGptBest || !isOfficialOpenAI;
-
-        // 2. Fallback to High Level Options Logic if not in Provider Config
-        if (!options.providerConfig?.openai) {
-            if (isAntigravity || isExtendedProxy) {
-                // Antigravity & Proxy Pixel-Perfect Logic (calculates realistic response size for UI)
-                const parts = (options.aspectRatio || '1:1').split(':');
-                const ratio = parseFloat(parts[0]) / parseFloat(parts[1]);
-
-                if (is4K) {
-                    if (ratio > 1) size = `${3840}x${Math.round(3840 / ratio)}`;
-                    else if (ratio < 1) size = `${Math.round(3840 * ratio)}x${3840}`;
-                    else size = '4096x4096';
-                } else if (is2K) {
-                    if (ratio > 1) size = `${2560}x${Math.round(2560 / ratio)}`;
-                    else if (ratio < 1) size = `${Math.round(2560 * ratio)}x${2560}`;
-                    else size = '2048x2048';
-                } else {
-                    if (ratio > 1) size = `${1024}x${Math.round(1024 / ratio)}`;
-                    else if (ratio < 1) size = `${Math.round(1024 * ratio)}x${1024}`;
-                    else size = '1024x1024';
-                }
-            } else {
-                // Standard DALL-E 3 Logic (Restricted sizes)
-                if (options.aspectRatio === '16:9') size = '1792x1024';
-                else if (options.aspectRatio === '9:16') size = '1024x1792';
-                else size = '1024x1024';
-            }
         }
 
         const body: any = {
             model: options.modelId,
             prompt: options.prompt,
             n: options.imageCount || 1,
-            size,
-            quality,
-            imageSize: (is4K ? '4K' : is2K ? '2K' : '1K') // 🚀 Native/Proxy Param
+            size: sizeString,
+            quality: quality,
+            response_format: 'b64_json'
         };
 
-        // OpenAI official prefers explicit response_format; proxies often return URL by default.
-        if (isOfficialOpenAI) {
-            body.response_format = 'b64_json';
-        }
+        if (style) body.style = style;
 
-        if (style) body.style = style; // DALL-E 3 specific
-
-        // 🚀 Extended Proxy Compatibility (T8Star / GPT-Best / similar OpenAI-compatible gateways)
-        if (isExtendedProxy) {
-            // Calculate explicit width/height from the resolved 'size' string
-            let parsedWidth = 1024;
-            let parsedHeight = 1024;
-            const sizeMatch = size.match(/^(\d+)x(\d+)$/);
-            if (sizeMatch) {
-                parsedWidth = parseInt(sizeMatch[1], 10);
-                parsedHeight = parseInt(sizeMatch[2], 10);
-            }
-
-            if (options.aspectRatio) {
-                // Pass standard ratio formats like '16:9', '1:1'
-                body.aspect_ratio = options.aspectRatio;
-                body.aspectRatio = options.aspectRatio;
-            }
-            // Some proxies strictly require integer width/height rather than strings
-            body.width = parsedWidth;
-            body.height = parsedHeight;
-            // Also keep standard resolution string just in case, but remove the custom 1K/2K/4K mapping that causes type errors
-            body.image_size = size;
-            // Delete the invalid Antigravity extension param to prevent strict proxy parsing errors
-            delete body.imageSize;
-
-            body.output_quality = quality;
-
-            // 🚀 Edit Mode Integration
-            if (options.editMode) {
-                body.editMode = options.editMode; // Some proxies accept this directly
-                if (options.editMode === 'inpaint' && options.maskUrl) {
-                    body.mask = options.maskUrl.startsWith('http') ? options.maskUrl : `data:image/png;base64,${options.maskUrl}`;
-                }
-            }
-
-            if (options.referenceImages && options.referenceImages.length > 0) {
-                // Map reference images appropriately for Flux, Doubao, or general i2i
-                const isFluxKontext = options.modelId.toLowerCase().includes('flux-kontext');
-                const isDoubao = options.modelId.toLowerCase().includes('doubao');
-
-                if (isFluxKontext) {
-                    // Specific flux models need image URLs appended to prompt (sometimes proxy handles this, sometimes we do)
-                    const imgLinks = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`).join(' ');
-                    body.prompt = `${body.prompt} ${imgLinks}`;
-                    // Also pass them standardly just in case
-                    body.image = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`);
-                } else if (isDoubao && options.editMode === 'inpaint') {
-                    // Doubao Inpaint expects single image in some strict format, but arrays usually work. 
-                    body.image = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
-                } else {
-                    // Standard i2i array
-                    body.image = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`);
-                }
+        // 官方 DALL-E 编辑功能支持（需专用 endpoint / edits 或特殊方式，先按通用传入 mask 与 image）
+        if (options.editMode && options.referenceImages?.length) {
+            console.warn(`[OpenAICompatibleAdapter] 官方 OpenAI 编辑端点待完整对接支持。当前先尝试基础注入。`);
+            body.image = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
+            if (options.editMode === 'inpaint' && options.maskUrl) {
+                body.mask = options.maskUrl.startsWith('http') ? options.maskUrl : `data:image/png;base64,${options.maskUrl}`;
             }
         }
 
+        console.log(`[OpenAICompatibleAdapter] OpenAI_Strict -> size=${body.size}, quality=${body.quality}`);
+
+        return this.executeImageRequest(url, body, keySlot, options);
+    }
+
+    // ============================================================================
+    // 特殊模式 (SiliconFlow) - 需要专用的 image_size 字段
+    // ============================================================================
+    private async generateImageStandard_SiliconFlow(
+        options: ImageGenerationOptions,
+        keySlot: KeySlot
+    ): Promise<ImageGenerationResult> {
+        const baseUrl = (keySlot.baseUrl || '').replace(/\/+$/, '');
+        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+        const url = `${cleanBase}/images/generations`;
+
+        // 计算物理像素
+        let baseDim = 1024;
+        const is4K = options.imageSize === '4K' || options.imageSize === 'SIZE_4K';
+        const is2K = options.imageSize === '2K' || options.imageSize === 'SIZE_2K';
+        if (is4K) baseDim = 4096; else if (is2K) baseDim = 2048;
+
+        const parts = (options.aspectRatio || '1:1').split(':');
+        const ratio = parseFloat(parts[0]) / parseFloat(parts[1]);
+
+        let sizeStr = `${baseDim}x${baseDim}`;
+        if (ratio > 1) sizeStr = `${baseDim}x${Math.round(baseDim / ratio)}`;
+        else if (ratio < 1) sizeStr = `${Math.round(baseDim * ratio)}x${baseDim}`;
+
+        const body: any = {
+            model: options.modelId,
+            prompt: options.prompt,
+            n: options.imageCount || 1,
+            image_size: sizeStr, // SiliconFlow 特有字段
+            response_format: 'b64_json'
+        };
+
+        if (options.referenceImages && options.referenceImages.length > 0) {
+            body.image = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`);
+        }
+
+        console.log(`[OpenAICompatibleAdapter] SiliconFlow -> image_size=${body.image_size}`);
+        return this.executeImageRequest(url, body, keySlot, options);
+    }
+
+    // ============================================================================
+    // 兼容扩展模式 (GPT-Best / Antigravity / Flux / MJ) 
+    // 支持多类别的辅助加强参数，比如 imageSize 4K 等。
+    // ============================================================================
+    private async generateImageStandard_GPT_Best_Extended(
+        options: ImageGenerationOptions,
+        keySlot: KeySlot
+    ): Promise<ImageGenerationResult> {
+        const baseUrl = (keySlot.baseUrl || '').replace(/\/+$/, '');
+        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+        const url = `${cleanBase}/images/generations`;
+
+        const is4K = options.imageSize === '4K' || options.imageSize === 'SIZE_4K';
+        const is2K = options.imageSize === '2K' || options.imageSize === 'SIZE_2K';
+
+        // 🚀 [关键修复] 模型 ID 分辨率后缀自动映射
+        // 部分代理商 (如 gpt-best) 将不同分辨率拆成独立的模型 ID：
+        //   nano-banana-2 (1K) → nano-banana-2-2k (2K) → nano-banana-2-4k (4K)
+        //   gemini-3-pro-image-preview -> gemini-3-pro-image-preview-4k
+        // 适应此代理商广泛使用的分辨率命名规则
+        let effectiveModelId = options.modelId;
+        if (is4K || is2K) {
+            const modelLower = effectiveModelId.toLowerCase();
+
+            // 如果模型自带高分辨率标记，说明用户手动选了高分模型，不加后缀
+            const hasExistingResSuffix = /(?:-4k|-2k|-1k|-hd)$/i.test(modelLower);
+
+            // 某些特殊的模型可能不支持加后缀，可以在此排除
+            const excludedModels = ['dall-e-3', 'dall-e-2', 'flux-1', 'midjourney'];
+            const shouldExclude = excludedModels.some(exclude => modelLower.includes(exclude));
+
+            if (!hasExistingResSuffix && !shouldExclude) {
+                const suffix = is4K ? '-4k' : '-2k';
+                effectiveModelId = effectiveModelId + suffix;
+                console.log(`[OpenAICompatibleAdapter] 高分模型映射: ${options.modelId} → ${effectiveModelId}`);
+            }
+        }
+
+        let baseDim = 1024;
+        if (is4K) baseDim = 4096; else if (is2K) baseDim = 2048;
+
+        const parts = (options.aspectRatio || '1:1').split(':');
+        const ratio = parseFloat(parts[0]) / parseFloat(parts[1]);
+
+        let sizeStr = `${baseDim}x${baseDim}`;
+        if (ratio > 1) sizeStr = `${baseDim}x${Math.round(baseDim / ratio)}`;
+        else if (ratio < 1) sizeStr = `${Math.round(baseDim * ratio)}x${baseDim}`;
+
+        let parsedWidth = baseDim;
+        let parsedHeight = baseDim;
+        const sizeMatch = sizeStr.match(/^(\d+)x(\d+)$/);
+        if (sizeMatch) {
+            parsedWidth = parseInt(sizeMatch[1], 10);
+            parsedHeight = parseInt(sizeMatch[2], 10);
+        }
+
+        // 🚀 关键修复: 在提示词中嵌入尺寸提示
+        // 部分第三方代理忽略 size/imageSize/aspect_ratio 等参数
+        // 嵌入提示词可以让模型本身理解目标分辨率
+        const aspectRatioStr = options.aspectRatio || '1:1';
+        let enhancedPrompt = options.prompt;
+        if (is4K || is2K || aspectRatioStr !== '1:1') {
+            enhancedPrompt = `[${sizeStr}, ${aspectRatioStr}] ${options.prompt}`;
+        }
+
+        const body: any = {
+            model: effectiveModelId,
+            prompt: enhancedPrompt,
+            n: options.imageCount || 1,
+            size: sizeStr,
+            quality: is4K ? 'hd' : (is2K ? 'medium' : 'standard'),
+            imageSize: is4K ? '4K' : (is2K ? '2K' : '1K'), // Antigravity 最高级别指令
+            aspect_ratio: aspectRatioStr,
+            width: parsedWidth,
+            height: parsedHeight,
+            response_format: 'b64_json'
+        };
+
+        // 处理编辑和参考图
+        if (options.editMode) {
+            body.editMode = options.editMode;
+            if (options.editMode === 'inpaint' && options.maskUrl) {
+                body.mask = options.maskUrl.startsWith('http') ? options.maskUrl : `data:image/png;base64,${options.maskUrl}`;
+            }
+        }
+
+        if (options.referenceImages && options.referenceImages.length > 0) {
+            const isFluxKontext = options.modelId.toLowerCase().includes('flux-kontext');
+            const isDoubao = options.modelId.toLowerCase().includes('doubao');
+
+            if (isFluxKontext) {
+                const imgLinks = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`).join(' ');
+                body.prompt = `${body.prompt} ${imgLinks}`;
+                body.image = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`);
+            } else if (isDoubao && options.editMode === 'inpaint') {
+                body.image = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
+            } else {
+                // OpenAI Images API format typically uses 'image' or 'images' array for reference
+                // Antigravity translates this automatically.
+                body.image = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`);
+
+                // Fallback for some proxies that expect reference images inside the prompt or messages array even for standard Image endpoints
+                // if they strictly use Chat completions under the hood. (Antigravity supports 'image' array).
+            }
+        }
+
+        console.log(`[OpenAICompatibleAdapter] GPT_Best_Extended -> size=${body.size}, imageSize=${body.imageSize}, quality=${body.quality}`);
+        return this.executeImageRequest(url, body, keySlot, options);
+    }
+
+    // ============================================================================
+    // 🚀 [NEW] gpt-best 代理商专用模式 — 标准 DALL-E 参数 + 提示词内嵌尺寸
+    // 该代理只识别标准参数 (model, prompt, n, size, response_format)
+    // 额外参数 (imageSize, aspect_ratio, width, height) 会被静默忽略
+    // 所以在提示词开头嵌入尺寸和宽高比提示，让模型本身理解目标分辨率
+    // ============================================================================
+    private async generateImageStandard_GPT_Best_Native(
+        options: ImageGenerationOptions,
+        keySlot: KeySlot
+    ): Promise<ImageGenerationResult> {
+        const baseUrl = (keySlot.baseUrl || '').replace(/\/+$/, '');
+        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+        const url = `${cleanBase}/images/generations`;
+
+        const is4K = options.imageSize === '4K' || options.imageSize === 'SIZE_4K';
+        const is2K = options.imageSize === '2K' || options.imageSize === 'SIZE_2K';
+
+        // 🚀 [关键修复] 模型 ID 分辨率后缀自动映射
+        let effectiveModelId = options.modelId;
+        if (is4K || is2K) {
+            const modelLower = effectiveModelId.toLowerCase();
+            const hasExistingResSuffix = /(?:-4k|-2k|-1k|-hd)$/i.test(modelLower);
+            const excludedModels = ['dall-e-3', 'dall-e-2', 'flux-1', 'midjourney'];
+            const shouldExclude = excludedModels.some(exclude => modelLower.includes(exclude));
+
+            if (!hasExistingResSuffix && !shouldExclude) {
+                const suffix = is4K ? '-4k' : '-2k';
+                effectiveModelId = effectiveModelId + suffix;
+                console.log(`[OpenAICompatibleAdapter] 高分模型映射(Native): ${options.modelId} → ${effectiveModelId}`);
+            }
+        }
+
+        // 计算基准尺寸
+        let baseDim = 1024;
+        if (is4K) baseDim = 4096;
+        else if (is2K) baseDim = 2048;
+
+        // 根据宽高比计算实际像素尺寸
+        const parts = (options.aspectRatio || '1:1').split(':');
+        const ratio = parseFloat(parts[0]) / parseFloat(parts[1]);
+
+        let w = baseDim;
+        let h = baseDim;
+        if (ratio > 1) {
+            w = baseDim;
+            h = Math.round(baseDim / ratio);
+        } else if (ratio < 1) {
+            w = Math.round(baseDim * ratio);
+            h = baseDim;
+        }
+
+        const sizeStr = `${w}x${h}`;
+
+        // 🚀 关键修复: 在提示词开头嵌入尺寸提示
+        // 部分代理/模型不识别 size 参数，但会解析提示词中的尺寸指令
+        const aspectRatioStr = options.aspectRatio || '1:1';
+        let promptPrefix = '';
+        // 只在非默认设置时添加前缀，避免干扰提示词
+        if (is4K || is2K || aspectRatioStr !== '1:1') {
+            promptPrefix = `[${sizeStr}, ${aspectRatioStr}] `;
+        }
+
+        const body: any = {
+            model: effectiveModelId,
+            prompt: promptPrefix + options.prompt,
+            n: options.imageCount || 1,
+            size: sizeStr,
+            response_format: 'b64_json'
+        };
+
+        // 处理参考图（部分 gpt-best 模型支持 image 参数）
+        if (options.referenceImages && options.referenceImages.length > 0) {
+            body.image = options.referenceImages.map(img =>
+                img.startsWith('http') ? img : `data:image/png;base64,${img}`
+            );
+        }
+
+        // 🚀 处理局部重绘 (Inpaint) - 将蒙版作为 mask 字段发送
+        if (options.editMode) {
+            body.editMode = options.editMode;
+            if (options.editMode === 'inpaint' && options.maskUrl) {
+                body.mask = options.maskUrl.startsWith('http') ? options.maskUrl : `data:image/png;base64,${options.maskUrl}`;
+            }
+        }
+
+        console.log(`[OpenAICompatibleAdapter] GPT_Best_Native -> size=${body.size}, prompt_prefix="${promptPrefix.trim()}", model=${options.modelId}`);
+        return this.executeImageRequest(url, body, keySlot, options);
+    }
+
+    // ============================================================================
+    // 通用 Request 执行包装
+    // ============================================================================
+    private async executeImageRequest(url: string, body: any, keySlot: KeySlot, options: ImageGenerationOptions): Promise<ImageGenerationResult> {
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${keySlot.key}`
@@ -520,7 +731,6 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             headers[keySlot.headerName] = keySlot.key;
         }
 
-        // 🚀 [12AI 对齐] 负载体积检查
         const payloadStr = JSON.stringify(body);
         if (payloadStr.length > 48 * 1024 * 1024) {
             console.error(`[OpenAICompatibleAdapter] Image 请求体积 (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) 接近 50MB 上限!`);
@@ -545,13 +755,43 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
 
         const data = await response.json();
-        const urls = data.data.map((d: any) => d.b64_json ? `data:image/png;base64,${d.b64_json}` : d.url);
+
+        // 🚀 [诊断] 打印代理返回的原始数据结构
+        if (data.data && data.data.length > 0) {
+            const firstItem = data.data[0];
+            const responseKeys = Object.keys(firstItem);
+            const hasB64 = !!firstItem.b64_json;
+            const hasUrl = !!firstItem.url;
+            console.log(`[OpenAICompatibleAdapter] 响应数据字段: [${responseKeys.join(', ')}], b64=${hasB64}, url=${hasUrl}${hasUrl ? `, url_preview=${firstItem.url?.substring(0, 80)}...` : ''}`);
+
+            // 🚀 [DEBUG DUMP] Save raw response to localStorage so the browser subagent can easily read it
+            try {
+                window.localStorage.setItem('DEBUG_LAST_PROXY_RESPONSE', JSON.stringify(data));
+                fetch('http://localhost:3001', { method: 'POST', body: JSON.stringify(data) }).catch(e => console.error(e));
+            } catch (e) { }
+        }
+
+        const urls = data.data.map((d: any) => {
+            // 优先使用 b64_json（完整原图数据）
+            if (d.b64_json) {
+                return `data:image/png;base64,${d.b64_json}`;
+            }
+            // 部分代理会同时返回缩略图 url 和原图 url（字段名可能不同）
+            // 按优先级尝试多种字段
+            const fullUrl = d.hd_url || d.original_url || d.full_url || d.url;
+            if (fullUrl) {
+                console.log(`[OpenAICompatibleAdapter] 使用远程图片URL (非base64): ${fullUrl.substring(0, 100)}`);
+                return fullUrl;
+            }
+            return d.url || '';
+        });
 
         return {
             urls,
             provider: 'OpenAI',
+            providerName: keySlot.name,
             model: options.modelId,
-            imageSize: size // Return actual used size
+            imageSize: body.size || body.image_size || 'Unknown'
         };
     }
 }

@@ -78,6 +78,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 const parsed = JSON.parse(savedView);
                 if (parsed.x !== undefined && parsed.y !== undefined && parsed.scale !== undefined) {
                     setTransform(parsed);
+                    syncTransformRef.current = parsed;
                     onTransformChange?.(parsed);
                     return;
                 }
@@ -309,6 +310,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const newY = centerY - (centerY - transform.y) * scaleRatio;
 
         const newTransform = snapTransformForText({ x: newX, y: newY, scale: newScale });
+        syncTransformRef.current = newTransform;
         setTransform(newTransform);
         onTransformChange?.(newTransform);
     }, [transform, onTransformChange]);
@@ -327,6 +329,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const newY = centerY - (centerY - transform.y) * scaleRatio;
 
         const newTransform = snapTransformForText({ x: newX, y: newY, scale: newScale });
+        syncTransformRef.current = newTransform;
         setTransform(newTransform);
         onTransformChange?.(newTransform);
     }, [transform, onTransformChange]);
@@ -341,6 +344,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             y: rect.height / 2,
             scale: 1
         });
+        syncTransformRef.current = newTransform;
         setTransform(newTransform);
         onTransformChange?.(newTransform);
     }, [onTransformChange]);
@@ -382,6 +386,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         const newY = rect.height / 2 - centerY * newScale;
 
         const newTransform = snapTransformForText({ x: newX, y: newY, scale: newScale });
+        syncTransformRef.current = newTransform;
         setTransform(newTransform);
         onTransformChange?.(newTransform);
     }, [cardPositions, onTransformChange, resetView]);
@@ -394,6 +399,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         fitToAll,
         setView: (x: number, y: number, scale: number) => {
             const newTransform = snapTransformForText({ x, y, scale });
+            syncTransformRef.current = newTransform;
             setTransform(newTransform);
             onTransformChange?.(newTransform);
         },
@@ -455,6 +461,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 y: lastTransform.current.y + dy,
                 scale: transform.scale
             });
+            syncTransformRef.current = newTransform;
             setTransform(newTransform);
             onTransformChange?.(newTransform);
         }
@@ -533,8 +540,6 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                         // 🚀 [Fix] 使用 2D translate 代替 translate3d，并移除 backfaceVisibility
                         // 这能防止浏览器将画布强制视为位图纹理，从而在缩放后重新渲染高清晰度的文字和矢量图标
                         transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-                        // Keep text rendering stable while panning; avoid aggressive layer hinting
-                        willChange: 'auto',
                         transformOrigin: '0 0', // Explicitly set origin
                     }}
                 >
@@ -565,6 +570,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                             const newY = centerY - (centerY - transform.y) * scaleRatio;
 
                             const newTransform = snapTransformForText({ x: newX, y: newY, scale: newScale });
+                            syncTransformRef.current = newTransform;
                             setTransform(newTransform);
                             onTransformChange?.(newTransform);
                         }}
@@ -591,7 +597,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
                 {/* Version Badge */}
                 <div className="glass h-10 px-3 rounded-xl flex items-center">
-                    <span className="text-xs text-zinc-500 font-semibold">v1.3.2</span>
+                    <span className="text-xs text-zinc-500 font-semibold">v1.3.3</span>
                 </div>
 
                 {/* Update Notification */}
