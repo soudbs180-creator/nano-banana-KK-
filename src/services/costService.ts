@@ -23,6 +23,15 @@ export interface CostEntry {
     timestamp: number;
     details?: string;
     tokens?: number;
+    requestPath?: string;
+    requestBodyPreview?: string;
+    pythonSnippet?: string;
+}
+
+export interface CostDebugMeta {
+    requestPath?: string;
+    requestBodyPreview?: string;
+    pythonSnippet?: string;
 }
 
 export interface CostBreakdownItem {
@@ -163,7 +172,8 @@ export function recordCost(
     count: number,
     prompt: string = '',
     refImageCount: number = 0,
-    usage?: UsageStats
+    usage?: UsageStats,
+    debugMeta?: CostDebugMeta
 ): void {
     if (count <= 0) return;
 
@@ -205,7 +215,10 @@ export function recordCost(
         costUsd: cost,
         timestamp: Date.now(),
         details,
-        tokens
+        tokens,
+        requestPath: debugMeta?.requestPath,
+        requestBodyPreview: debugMeta?.requestBodyPreview,
+        pythonSnippet: debugMeta?.pythonSnippet
     };
 
     // 3. Update Recent List (Max 50)

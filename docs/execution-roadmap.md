@@ -54,6 +54,34 @@ Build KK Studio into a multi-provider AI workspace that can:
 - Add chunking optimization and lazy split for large bundles
 - Add error taxonomy and actionable user hints
 
+## Kelivo Parity Track (New)
+
+Reference baseline: `Chevey339/kelivo` feature set.
+
+### Mobile-first UX
+
+- Compact mobile assistant layout (single-column action rail + sticky input)
+- Mobile-safe model/provider selector with vertical-only scroll
+- Background-safe task state restore after app resume
+
+### Desktop assistant upgrades
+
+- Stronger assistant mode: intent planning -> route to chat/image/edit/document
+- Built-in web search provider abstraction (Exa/Tavily/Brave/Bing/SearXNG)
+- Message-level tool actions (retry/edit/branch/regenerate)
+
+### Multi-provider depth
+
+- Per-provider custom request headers/body templates
+- Endpoint strategy fallback chain (`chat/completions` -> `images/generations`)
+- Quota/429/503 precise user messages (avoid misleading normalized errors)
+- Provider-level health + cooldown policy with auto failover
+
+### Configuration portability
+
+- QR import/export for provider configs
+- One-click backup/restore for keys + assistant presets + sessions
+
 ## Current Bugfix Priorities
 
 ## P0 (Now)

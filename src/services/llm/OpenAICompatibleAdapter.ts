@@ -1,6 +1,8 @@
 import { LLMAdapter, ChatOptions, ImageGenerationOptions, ImageGenerationResult, AudioGenerationOptions, AudioGenerationResult } from './LLMAdapter';
 import { KeySlot } from '../keyManager';
 import { ImageSize, AspectRatio } from '../../types';
+import { logError, logWarning, addLog, LogLevel } from '../systemLogService';
+import { GoogleAdapter } from './GoogleAdapter';
 
 export class OpenAICompatibleAdapter implements LLMAdapter {
     id = 'openai-compatible-adapter';
@@ -28,6 +30,94 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             return response;
         } finally {
             clearTimeout(timeoutId);
+        }
+    }
+
+    private applyCustomHeaders(headers: Record<string, string>, keySlot: KeySlot): Record<string, string> {
+        const merged: Record<string, string> = { ...headers };
+        const custom = keySlot.customHeaders;
+        if (!custom || typeof custom !== 'object') return merged;
+        Object.entries(custom).forEach(([k, v]) => {
+            if (!k) return;
+            merged[String(k)] = String(v ?? '');
+        });
+        return merged;
+    }
+
+    private applyCustomBody(base: any, keySlot: KeySlot): any {
+        const custom = keySlot.customBody;
+        if (!custom || typeof custom !== 'object' || Array.isArray(custom)) return base;
+        return { ...base, ...custom };
+    }
+
+    private is12AIGateway(baseUrl: string): boolean {
+        try {
+            const host = new URL(baseUrl).hostname;
+            return /(^|\.)12ai\.org$/i.test(host);
+        } catch {
+            return false;
+        }
+    }
+
+    private normalize12AIBaseUrl(baseUrl: string): string {
+        let clean = (baseUrl || '').trim().replace(/\/+$/, '');
+        if (!clean) return clean;
+
+        const suffixes = [
+            '/v1/chat/completions',
+            '/chat/completions',
+            '/v1/images/generations',
+            '/images/generations',
+            '/v1beta',
+            '/v1',
+            '/api'
+        ];
+
+        let stripped = true;
+        while (stripped) {
+            stripped = false;
+            const lower = clean.toLowerCase();
+            for (const suffix of suffixes) {
+                if (lower.endsWith(suffix)) {
+                    clean = clean.slice(0, -suffix.length).replace(/\/+$/, '');
+                    stripped = true;
+                    break;
+                }
+            }
+        }
+
+        return clean;
+    }
+
+    private buildSafeRequestBodyPreview(body: any): string {
+        const redact = (node: any): any => {
+            if (Array.isArray(node)) return node.map(redact);
+            if (node && typeof node === 'object') {
+                const out: Record<string, any> = {};
+                Object.entries(node).forEach(([k, v]) => {
+                    const lower = k.toLowerCase();
+                    if (['authorization', 'api_key', 'apikey', 'token', 'secret', 'key'].includes(lower)) {
+                        out[k] = '<omitted:sensitive>';
+                        return;
+                    }
+                    out[k] = redact(v);
+                });
+                return out;
+            }
+            if (typeof node === 'string') {
+                if (node.startsWith('data:')) return '<omitted:data-uri>';
+                if (/^https?:\/\//i.test(node) && node.length > 120) return '<omitted:url>';
+                if (/^[A-Za-z0-9+/=]+$/.test(node) && node.length > 200) return '<omitted:base64>';
+                if (node.length > 400) return `${node.slice(0, 200)}...<truncated>`;
+                return node;
+            }
+            return node;
+        };
+
+        try {
+            return JSON.stringify(redact(body), null, 2);
+        } catch {
+            return '{\n  "error": "preview_unavailable"\n}';
         }
     }
 
@@ -62,7 +152,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             messages.unshift({ role: 'system', content: options.systemPrompt });
         }
 
-        const headers: Record<string, string> = {
+        let headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${keySlot.key}`
         };
@@ -72,7 +162,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             headers[keySlot.headerName] = keySlot.key;
         }
 
-        const body: any = {
+        let body: any = {
             model: options.modelId,
             messages,
             temperature: options.temperature,
@@ -96,6 +186,9 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             Object.assign(body, options.extraBody);
         }
 
+        headers = this.applyCustomHeaders(headers, keySlot);
+        body = this.applyCustomBody(body, keySlot);
+
         // 🚀 [12AI 对齐] 负载体积检查
         const payloadStr = JSON.stringify(body);
         if (payloadStr.length > 48 * 1024 * 1024) {
@@ -118,6 +211,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             } catch (e) {
                 errMsg = text.substring(0, 200);
             }
+            logError('OpenAIAdapter', new Error(errMsg), `URL: ${url}\nStatus: ${response.status}\nRaw Response: ${text.substring(0, 500)}`);
             throw new Error(errMsg);
         }
 
@@ -154,7 +248,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             messages.unshift({ role: 'system', content: options.systemPrompt });
         }
 
-        const headers: Record<string, string> = {
+        let headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${keySlot.key}`
         };
@@ -163,7 +257,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             headers[keySlot.headerName] = keySlot.key;
         }
 
-        const body: any = {
+        let body: any = {
             model: options.modelId,
             messages,
             temperature: options.temperature,
@@ -179,6 +273,9 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         if (options.extraBody) {
             Object.assign(body, options.extraBody);
         }
+
+        headers = this.applyCustomHeaders(headers, keySlot);
+        body = this.applyCustomBody(body, keySlot);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -226,7 +323,42 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
     async generateImage(options: ImageGenerationOptions, keySlot: KeySlot): Promise<ImageGenerationResult> {
         const modelLower = options.modelId.toLowerCase();
-        const baseUrl = (keySlot.baseUrl || '').toLowerCase();
+        const rawBaseUrl = keySlot.baseUrl || '';
+        const baseUrl = rawBaseUrl.toLowerCase();
+
+        // 12AI + Gemini Image: 强制走 Gemini 原生 generateContent，避免 /chat/completions
+        // 在部分网关中忽略 imageSize/aspectRatio 导致 2K/1:1 被降级为默认值。
+        const isGeminiImage = modelLower.includes('gemini') && modelLower.includes('image');
+        if (isGeminiImage && rawBaseUrl && this.is12AIGateway(rawBaseUrl)) {
+            const googleAdapter = new GoogleAdapter();
+            const normalizedBase = this.normalize12AIBaseUrl(rawBaseUrl);
+            const delegatedKeySlot: KeySlot = {
+                ...keySlot,
+                baseUrl: normalizedBase || rawBaseUrl
+            };
+
+            console.log(`[OpenAICompatibleAdapter] 12AI + Gemini Image detected, delegating to GoogleAdapter(generateContent) -> ${keySlot.name}`);
+            return googleAdapter.generateImage(options, delegatedKeySlot);
+        }
+
+        const isQuotaLikeError = (err: any): boolean => {
+            const msg = String(err?.message || '').toLowerCase();
+            return msg.includes('quota') || msg.includes('no accounts available with quota') || msg.includes('insufficient_quota');
+        };
+
+        const isChatEndpointCompatibilityError = (err: any): boolean => {
+            const msg = String(err?.message || '').toLowerCase();
+            if (isQuotaLikeError(err)) return false;
+            return (
+                msg.includes('chat-to-image error (400)') ||
+                msg.includes('chat-to-image error (404)') ||
+                msg.includes('chat-to-image error (405)') ||
+                msg.includes('chat-to-image error (422)') ||
+                msg.includes('unsupported') ||
+                msg.includes('invalid request') ||
+                msg.includes('endpoint')
+            );
+        };
 
         // 🚀 [Protocol Routing] 三级判断逻辑：
         // 1. KeySlot 显式配置 (compatibilityMode)
@@ -273,8 +405,27 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
 
         // 级别3: 模型名称启发式推断
-        if ((modelLower.includes('gemini') && modelLower.includes('image')) || options.providerConfig?.openai?.useChatEndpoint) {
-            console.log(`[OpenAICompatibleAdapter] 使用 Chat API (模型名称推断) -> ${keySlot.name}`);
+        // Gemini 图像模型在部分代理上 /chat/completions 会忽略 size/aspect。
+        // 改为优先尝试 /images/generations（Extended），失败再回退 Chat。
+        if (isGeminiImage) {
+            console.log(`[OpenAICompatibleAdapter] Gemini模型优先尝试 Images API (参数遵循更稳定) -> ${keySlot.name}`);
+            try {
+                return await this.generateImageStandard_GPT_Best_Extended(options, keySlot);
+            } catch (e: any) {
+                console.warn(`[OpenAICompatibleAdapter] Images API 不可用，回退 Chat API -> ${keySlot.name}`);
+                try {
+                    return await this.generateImageViaChat(options, keySlot);
+                } catch (chatErr: any) {
+                    if (isChatEndpointCompatibilityError(chatErr)) {
+                        throw new Error(`Both Images API and Chat API failed. imagesErr=${String(e?.message || e)}; chatErr=${String(chatErr?.message || chatErr)}`);
+                    }
+                    throw chatErr;
+                }
+            }
+        }
+
+        if (options.providerConfig?.openai?.useChatEndpoint) {
+            console.log(`[OpenAICompatibleAdapter] 使用 Chat API (显式 openai.useChatEndpoint=true) -> ${keySlot.name}`);
             return this.generateImageViaChat(options, keySlot);
         }
 
@@ -295,16 +446,18 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         // Detect target resolution based on imageSize modifier
         const is4K = options.imageSize?.toUpperCase().includes('4K');
         const is2K = options.imageSize?.toUpperCase().includes('2K');
+        const is05K = options.imageSize?.includes('0.5K') || options.imageSize?.includes('512');
 
         // Base dimensions (1K)
         let dim = 1024;
         if (is4K) dim = 4096;
         else if (is2K) dim = 2048;
+        else if (is05K) dim = 512;
 
         const parts = (options.aspectRatio || '1:1').split(':');
         const ratio = parseFloat(parts[0]) / parseFloat(parts[1]);
 
-        let sizeString = '1024x1024';
+        let sizeString = `${dim}x${dim}`;
         if (ratio > 1) sizeString = `${dim}x${Math.round(dim / ratio)}`;
         else if (ratio < 1) sizeString = `${Math.round(dim * ratio)}x${dim}`;
         else sizeString = `${dim}x${dim}`;
@@ -344,12 +497,16 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             size: sizeString,             // "4096x4096" — 像素尺寸
             quality: nativeQuality,        // "hd" / "medium" / "standard"
             imageSize: is4K ? '4K' : (is2K ? '2K' : '1K'),  // 🚀 Antigravity 最高优先级参数
-            aspect_ratio: options.aspectRatio || '1:1',       // 宽高比
+            aspect_ratio: options.aspectRatio || '1:1',       // 宽高比 (蛇形)
+            aspectRatio: options.aspectRatio || '1:1',        // 宽高比 (驼峰 - 增强兼容性)
             max_tokens: 65535,
             maxtokens: 65535,
             maxOutputTokens: 65535,
             stream: false
         };
+
+        const requestPath = '/v1/chat/completions';
+        const pythonSnippet = `import requests\n\nurl = "${url}"\nheaders = {"Authorization": "Bearer <API_KEY>", "Content-Type": "application/json"}\npayload = ${JSON.stringify(body, null, 2)}\nresp = requests.post(url, headers=headers, json=payload, timeout=150)\nprint(resp.status_code)\nprint(resp.text[:1000])`;
 
         console.log(`[OpenAICompatibleAdapter] Chat Image Request -> ${keySlot.name}: size=${sizeString}, quality=${nativeQuality}, imageSize=${body.imageSize}, aspectRatio=${options.aspectRatio || '1:1'}`);
 
@@ -357,7 +514,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         if (body.maxOutputTokens > 65535) body.maxOutputTokens = 65535;
         if (body.maxtokens > 65535) body.maxtokens = 65535;
 
-        const headers: Record<string, string> = {
+        let headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${keySlot.key}`
         };
@@ -365,8 +522,10 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             headers[keySlot.headerName] = keySlot.key;
         }
 
+        headers = this.applyCustomHeaders(headers, keySlot);
+
         // 🚀 [12AI 对齐] 负载体积检查
-        const payloadStr = JSON.stringify(body);
+        const payloadStr = JSON.stringify(this.applyCustomBody(body, keySlot));
         if (payloadStr.length > 48 * 1024 * 1024) {
             console.error(`[OpenAICompatibleAdapter] Chat-Image 请求体积 (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) 接近 50MB 上限!`);
         }
@@ -383,7 +542,57 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
 
         const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || '';
+
+        // 兼容更多代理返回格式（优先筛选尺寸最大的图像，避免截获预览/草图）
+        const messageObj = data?.choices?.[0]?.message || {};
+        const allImages = [
+            ...(messageObj?.images || []),
+            ...(data?.images || []),
+            ...(data?.data || [])
+        ];
+
+        let bestImage = null;
+        if (allImages.length > 0) {
+            // 根据数据长度筛选（Base64 越长，细节越丰富，尺寸越大）
+            let maxLen = 0;
+            for (const img of allImages) {
+                const len = (img?.b64_json?.length || 0) + (img?.url?.length || 0);
+                if (len > maxLen) {
+                    maxLen = len;
+                    bestImage = img;
+                }
+            }
+            console.log(`[OpenAICompatibleAdapter] Evaluated ${allImages.length} images, selected candidate with weight: ${maxLen}`);
+        }
+
+        if (bestImage?.b64_json) {
+            return {
+                urls: [`data:image/png;base64,${String(bestImage.b64_json).replace(/\s+/g, '')}`],
+                provider: 'OpenAI-Chat',
+                model: options.modelId,
+                imageSize: sizeString,
+                metadata: {
+                    requestPath,
+                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    pythonSnippet
+                }
+            };
+        }
+        if (bestImage?.url) {
+            return {
+                urls: [bestImage.url],
+                provider: 'OpenAI-Chat',
+                model: options.modelId,
+                imageSize: sizeString,
+                metadata: {
+                    requestPath,
+                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    pythonSnippet
+                }
+            };
+        }
+
+        const content = messageObj?.content || '';
 
         // 🚀 Improved Regex with Mime Capture (and newline cleanup)
         const detailedMatch = content.match(/!\[.*?\]\(data:(image\/[^;]+);base64,([^)]+)\)/);
@@ -394,7 +603,12 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 urls: [`data:${detailedMatch[1]};base64,${cleanBase64}`],
                 provider: 'OpenAI-Chat',
                 model: options.modelId,
-                imageSize: sizeString
+                imageSize: sizeString,
+                metadata: {
+                    requestPath,
+                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    pythonSnippet
+                }
             };
         }
 
@@ -406,7 +620,12 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 urls: [urlMatch[1]],
                 provider: 'OpenAI-Chat',
                 model: options.modelId,
-                imageSize: sizeString
+                imageSize: sizeString,
+                metadata: {
+                    requestPath,
+                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    pythonSnippet
+                }
             };
         }
 
@@ -418,7 +637,12 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 urls: [rawUrlMatch[1]],
                 provider: 'OpenAI-Chat',
                 model: options.modelId,
-                imageSize: sizeString
+                imageSize: sizeString,
+                metadata: {
+                    requestPath,
+                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    pythonSnippet
+                }
             };
         }
 
@@ -539,6 +763,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         // 部分代理商 (如 gpt-best) 将不同分辨率拆成独立的模型 ID：
         //   nano-banana-2 (1K) → nano-banana-2-2k (2K) → nano-banana-2-4k (4K)
         //   gemini-3-pro-image-preview -> gemini-3-pro-image-preview-4k
+        //   gemini-3.1-flash-image-preview -> gemini-3.1-flash-image-preview-4k
         // 适应此代理商广泛使用的分辨率命名规则
         let effectiveModelId = options.modelId;
         if (is4K || is2K) {
@@ -618,11 +843,11 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 body.image = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
             } else {
                 // OpenAI Images API format typically uses 'image' or 'images' array for reference
-                // Antigravity translates this automatically.
+                // GPT-Best 扩展协议接收字符串数组或单张图片。为了最大兼容性，传数组。
                 body.image = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`);
 
-                // Fallback for some proxies that expect reference images inside the prompt or messages array even for standard Image endpoints
-                // if they strictly use Chat completions under the hood. (Antigravity supports 'image' array).
+                // 🚀 [关键修复] 很多代理只认单张图片的 `image` 字段 (字符串)，同时提供 fallback
+                body.image_url = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
             }
         }
 
@@ -700,11 +925,10 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             response_format: 'b64_json'
         };
 
-        // 处理参考图（部分 gpt-best 模型支持 image 参数）
+        // 处理参考图（通用代理大多只接受单张图片作为 `image` 字段）
+        // 如果有超过1张，优先取第一张
         if (options.referenceImages && options.referenceImages.length > 0) {
-            body.image = options.referenceImages.map(img =>
-                img.startsWith('http') ? img : `data:image/png;base64,${img}`
-            );
+            body.image = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
         }
 
         // 🚀 处理局部重绘 (Inpaint) - 将蒙版作为 mask 字段发送
@@ -723,13 +947,17 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
     // 通用 Request 执行包装
     // ============================================================================
     private async executeImageRequest(url: string, body: any, keySlot: KeySlot, options: ImageGenerationOptions): Promise<ImageGenerationResult> {
-        const headers: Record<string, string> = {
+        let headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${keySlot.key}`
         };
         if (keySlot.headerName && keySlot.headerName !== 'Authorization') {
             headers[keySlot.headerName] = keySlot.key;
         }
+
+        headers = this.applyCustomHeaders(headers, keySlot);
+
+        body = this.applyCustomBody(body, keySlot);
 
         const payloadStr = JSON.stringify(body);
         if (payloadStr.length > 48 * 1024 * 1024) {
@@ -751,6 +979,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             } catch {
                 if (raw) detail = raw.slice(0, 500);
             }
+            logError('OpenAIAdapter', new Error(detail), `URL: ${url}\nStatus: ${response.status}\nRaw Response: ${raw.slice(0, 500)}`);
             throw new Error(`[${response.status}] ${detail}`);
         }
 
@@ -791,7 +1020,19 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             provider: 'OpenAI',
             providerName: keySlot.name,
             model: options.modelId,
-            imageSize: body.size || body.image_size || 'Unknown'
+            imageSize: body.size || body.image_size || 'Unknown',
+            metadata: {
+                requestPath: (() => {
+                    try {
+                        const parsed = new URL(url);
+                        return parsed.pathname;
+                    } catch {
+                        return url;
+                    }
+                })(),
+                requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                pythonSnippet: `import requests\n\nurl = "${url}"\nheaders = {"Authorization": "Bearer <API_KEY>", "Content-Type": "application/json"}\npayload = ${JSON.stringify(body, null, 2)}\nresp = requests.post(url, headers=headers, json=payload, timeout=150)\nprint(resp.status_code)\nprint(resp.text[:1000])`
+            }
         };
     }
 }

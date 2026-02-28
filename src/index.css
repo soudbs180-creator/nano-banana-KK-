@@ -715,6 +715,25 @@ input[type=number] {
   display: none;
 }
 
+/* 4. Utility: Custom thin scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  height: 4px;
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 99px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
 /* Settings panel button feedback */
 .settings-panel button {
   transition: transform 120ms ease, box-shadow 200ms ease, background-color 200ms ease, color 200ms ease;

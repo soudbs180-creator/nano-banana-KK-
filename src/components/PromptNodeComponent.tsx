@@ -26,6 +26,15 @@ interface PromptNodeProps {
     onCancel?: (id: string) => void;
     onDelete?: (id: string) => void;
     onRetry?: (node: PromptNode) => void;
+    onExportPpt?: (node: PromptNode) => void;
+    onExportPptx?: (node: PromptNode) => void;
+    onRetryPptPage?: (node: PromptNode, pageIndex: number) => void;
+    onExportPptPage?: (node: PromptNode, pageIndex: number) => void;
+    ioTrace?: {
+        inputStorageIds: string[];
+        outputStorageIds: string[];
+    };
+    onOpenStorageSettings?: () => void;
     onDisconnect?: (id: string) => void;
     onHeightChange?: (id: string, height: number) => void;
     highlighted?: boolean;
@@ -218,6 +227,12 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     onCancel,
     onDelete,
     onRetry,
+    onExportPpt,
+    onExportPptx,
+    onRetryPptPage,
+    onExportPptPage,
+    ioTrace,
+    onOpenStorageSettings,
     onDisconnect,
     onHeightChange,
     highlighted,
@@ -243,6 +258,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
     const hasMoved = useRef(false);
     const [showOptimizedPrompt, setShowOptimizedPrompt] = useState(false);
+    const [showErrorDetails, setShowErrorDetails] = useState(false);
+    const [showTraceDetails, setShowTraceDetails] = useState(false);
     const timerStartRef = useRef<number>(node.timestamp || Date.now());
 
     const containerRef = useRef<HTMLDivElement>(null);
@@ -264,6 +281,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
     useEffect(() => {
         setShowOptimizedPrompt(false);
+        setShowErrorDetails(false);
+        setShowTraceDetails(false);
     }, [node.id]);
 
     useEffect(() => {
@@ -534,6 +553,17 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                 <span className="text-[13px] font-medium tracking-wide truncate text-red-500" title={node.error}>
                                     生成失败: {node.error.replace(/^Error:\s*/i, '').split(/[:：]/)[0].trim()}
                                 </span>
+                                {node.errorDetails && (
+                                    <button
+                                        className="ml-1 px-1.5 py-0.5 rounded border border-red-500/30 text-[10px] text-red-300 hover:bg-red-500/10"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowErrorDetails(prev => !prev);
+                                        }}
+                                    >
+                                        {showErrorDetails ? '收起详情' : '错误详情'}
+                                    </button>
+                                )}
                             </>
                         ) : node.isGenerating ? (
                             <>
@@ -670,7 +700,82 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                         ) : (
                             node.originalPrompt || node.prompt || (node.isDraft ? <span className="text-[var(--text-tertiary)] italic">输入提示词...</span> : '')
                         )}
+
+                        {onExportPpt && node.mode === GenerationMode.PPT && (node.childImageIds?.length || 0) > 0 && !node.isGenerating && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onExportPpt(node);
+                                }}
+                                className="px-2 py-1 rounded-md border text-[11px] leading-none bg-sky-500/10 text-sky-300 border-sky-500/30 hover:bg-sky-500/20"
+                                title="导出该PPT主卡的页面包"
+                            >
+                                导出包
+                            </button>
+                        )}
+
+                        {onExportPptx && node.mode === GenerationMode.PPT && (node.childImageIds?.length || 0) > 0 && !node.isGenerating && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onExportPptx(node);
+                                }}
+                                className="px-2 py-1 rounded-md border text-[11px] leading-none bg-indigo-500/10 text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/20"
+                                title="导出PPTX文件"
+                            >
+                                导出PPTX
+                            </button>
+                        )}
                     </div>
+
+                    {node.error && node.errorDetails && showErrorDetails && (
+                        <div className="mt-2 p-2 rounded-lg border text-[10px] font-mono leading-4 whitespace-pre-wrap max-h-40 overflow-y-auto"
+                            style={{
+                                borderColor: 'rgba(239,68,68,0.35)',
+                                backgroundColor: 'rgba(127,29,29,0.18)',
+                                color: 'rgba(254,226,226,0.95)'
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                        >
+                            {`code: ${node.errorDetails.code || '-'}\nstatus: ${node.errorDetails.status ?? '-'}\nprovider: ${node.errorDetails.provider || '-'}\nmodel: ${node.errorDetails.model || '-'}\nrequest:\n${node.errorDetails.requestBody || '-'}\nresponse:\n${node.errorDetails.responseBody || '-'}`}
+                        </div>
+                    )}
+
+
+
+                    {node.mode === GenerationMode.PPT && !node.isGenerating && (node.childImageIds?.length || 0) > 0 && onRetryPptPage && (
+                        <div className="mt-2 p-2 rounded-lg border" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
+                            <div className="text-[10px] mb-1 text-[var(--text-tertiary)]">单页重生</div>
+                            <div className="flex flex-wrap gap-1">
+                                {Array.from({ length: Math.min(20, node.childImageIds.length) }).map((_, idx) => (
+                                    <div key={`retry-ppt-${idx}`} className="flex items-center gap-0.5">
+                                        <button
+                                            className="px-1.5 py-0.5 rounded border text-[10px] border-[var(--border-light)] text-[var(--text-secondary)] hover:bg-white/5"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onRetryPptPage(node, idx);
+                                            }}
+                                            title={`重生图${idx + 1}`}
+                                        >
+                                            图{idx + 1}
+                                        </button>
+                                        {onExportPptPage && (
+                                            <button
+                                                className="px-1 py-0.5 rounded border text-[10px] border-sky-500/30 text-sky-300 hover:bg-sky-500/10"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onExportPptPage(node, idx);
+                                                }}
+                                                title={`导出图${idx + 1}`}
+                                            >
+                                                导
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* 🚀 Main Card Tags: Centered Layout with Hover Blur + X Delete */}
                     {node.tags && node.tags.length > 0 && (
@@ -722,8 +827,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                     {node.isGenerating && (() => {
                         // 🚀 [Fix] Force count to at least 1 if undefined, ensuring placeholders appear
                         const count = node.parallelCount || 1;
-                        const COLS = 2; // 固定2列
-                        const GAP = 20; // 🚀 [Fix] Sync with App.tsx (was 16)
+                        const COLS = node.mode === GenerationMode.PPT ? 1 : 2; // PPT副卡较长，默认单列
+                        const GAP = node.mode === GenerationMode.PPT ? 28 : 20;
                         const gapToPlaceholders = 80;
 
                         // 🚀 [Fix] Auto Aspect Ratio Resolution
@@ -927,6 +1032,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                                     <span className="text-[7px] leading-none font-medium text-[var(--text-secondary)] whitespace-nowrap">
                                                                         {node.aspectRatio || '1:1'} · {node.mode === GenerationMode.VIDEO ? '720p' :
                                                                             node.mode === GenerationMode.AUDIO ? '音频' :
+                                                                                node.mode === GenerationMode.PPT ? 'PPT' :
                                                                                 (node.imageSize as string) === '1024x1024' || (node.imageSize as string) === '1K' ? '1K' :
                                                                                     (node.imageSize as string) === '2048x2048' || (node.imageSize as string) === '2K' ? '2K' :
                                                                                         (node.imageSize as string) === '4096x4096' || (node.imageSize as string) === '4K' ? '4K' :

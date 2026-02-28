@@ -9,6 +9,7 @@ import { AudioCompatibleAdapter } from './AudioCompatibleAdapter';
 import { KeyManager, KeySlot, Provider, getModelMetadata } from '../keyManager';
 import { keyManager } from '../keyManager';
 import * as costService from '../costService';
+import { logWarning } from '../systemLogService';
 import { ImageSize } from '../../types';
 import { getProviderCapability, modelSupportedByProvider, ProviderCapabilityProfile } from './providerCapabilities';
 
@@ -82,7 +83,7 @@ export class LLMService {
         const maxAttempts = 3;
 
         for (let i = 0; i < maxAttempts; i++) {
-            const keySlot = this.resolveKey(options.modelId);
+            const keySlot = this.resolveKey(options.modelId, options.preferredKeyId);
             if (!keySlot) {
                 if (i === 0) throw new Error(`No available key for model: ${options.modelId}`);
                 break;
@@ -129,6 +130,11 @@ export class LLMService {
             } catch (error: any) {
                 lastError = error;
                 console.warn(`[LLMService] Chat attempt ${i + 1} failed:`, error);
+
+                // 🚀 [日志增强] 记录单次尝试失败
+                logWarning('LLMService', `Chat attempt ${i + 1} failed (${keySlot.name})`,
+                    `Model: ${options.modelId}\nProvider: ${keySlot.provider}\nError: ${error.message}`);
+
                 keyManager.reportFailure(keySlot.id, error.message);
             }
         }
@@ -140,7 +146,7 @@ export class LLMService {
         const maxAttempts = 3;
 
         for (let i = 0; i < maxAttempts; i++) {
-            const keySlot = this.resolveKey(options.modelId);
+            const keySlot = this.resolveKey(options.modelId, options.preferredKeyId);
             if (!keySlot) {
                 if (i === 0) throw new Error(`No available key for model: ${options.modelId}`);
                 break;
@@ -201,6 +207,9 @@ export class LLMService {
                 if (!result.provider) {
                     result.provider = keySlot.provider;
                 }
+                if (!result.keySlotId) {
+                    result.keySlotId = keySlot.id;
+                }
 
                 // ✨ Populate Names for Display
                 if (!result.providerName) {
@@ -215,14 +224,19 @@ export class LLMService {
             } catch (error: any) {
                 lastError = error;
                 console.warn(`[LLMService] Image attempt ${i + 1} failed:`, error);
+
+                // 🚀 [日志增强] 记录单次尝试失败
+                logWarning('LLMService', `Image generation attempt ${i + 1} failed (${keySlot.name})`,
+                    `Model: ${options.modelId}\nProvider: ${keySlot.provider}\nError: ${error.message}`);
+
                 keyManager.reportFailure(keySlot.id, error.message);
             }
         }
         throw lastError || new Error("Image generation failed after retries");
     }
 
-    public resolveKey(modelId: string): KeySlot | null {
-        const keyData = keyManager.getNextKey(modelId);
+    public resolveKey(modelId: string, preferredKeyId?: string): KeySlot | null {
+        const keyData = keyManager.getNextKey(modelId, preferredKeyId);
         if (!keyData) return null;
         return keyData as KeySlot;
     }
@@ -232,7 +246,7 @@ export class LLMService {
         const maxAttempts = 3;
 
         for (let i = 0; i < maxAttempts; i++) {
-            const keySlot = this.resolveKey(options.modelId);
+            const keySlot = this.resolveKey(options.modelId, options.preferredKeyId);
             if (!keySlot) {
                 if (i === 0) throw new Error(`No available key for model: ${options.modelId}`);
                 break;
@@ -256,11 +270,19 @@ export class LLMService {
                     const metadata = getModelMetadata(options.modelId);
                     result.modelName = metadata?.name || options.modelId;
                 }
+                if (!result.keySlotId) {
+                    result.keySlotId = keySlot.id;
+                }
 
                 return result;
             } catch (error: any) {
                 lastError = error;
                 console.warn(`[LLMService] Video attempt ${i + 1} failed:`, error);
+
+                // 🚀 [日志增强] 记录单次尝试失败
+                logWarning('LLMService', `Video generation attempt ${i + 1} failed (${keySlot.name})`,
+                    `Model: ${options.modelId}\nProvider: ${keySlot.provider}\nError: ${error.message}`);
+
                 keyManager.reportFailure(keySlot.id, error.message);
             }
         }
@@ -272,7 +294,7 @@ export class LLMService {
         const maxAttempts = 3;
 
         for (let i = 0; i < maxAttempts; i++) {
-            const keySlot = this.resolveKey(options.modelId);
+            const keySlot = this.resolveKey(options.modelId, options.preferredKeyId);
             if (!keySlot) {
                 if (i === 0) throw new Error(`No available key for model: ${options.modelId}`);
                 break;
@@ -291,11 +313,19 @@ export class LLMService {
                     const metadata = getModelMetadata(options.modelId);
                     result.modelName = metadata?.name || options.modelId;
                 }
+                if (!result.keySlotId) {
+                    result.keySlotId = keySlot.id;
+                }
 
                 return result;
             } catch (error: any) {
                 lastError = error;
                 console.warn(`[LLMService] Audio attempt ${i + 1} failed:`, error);
+
+                // 🚀 [日志增强] 记录单次尝试失败
+                logWarning('LLMService', `Audio generation attempt ${i + 1} failed (${keySlot.name})`,
+                    `Model: ${options.modelId}\nProvider: ${keySlot.provider}\nError: ${error.message}`);
+
                 keyManager.reportFailure(keySlot.id, error.message);
             }
         }

@@ -66,9 +66,29 @@ const ApiManagementView = () => {
     return `总: 不限 已用$${used.toFixed(2)} 剩: 不限`;
   };
 
+  const getHealthScore = (slot: KeySlot) => {
+    const success = Number(slot.successCount || 0);
+    const fail = Number(slot.failCount || 0);
+    const total = success + fail;
+    if (total <= 0) return 100;
+    const score = Math.round((success / total) * 100);
+    return Math.max(0, Math.min(100, score));
+  };
+
+  const renderCooldown = (slot: KeySlot) => {
+    if (!slot.cooldownUntil) return null;
+    const leftMs = slot.cooldownUntil - Date.now();
+    if (leftMs <= 0) return null;
+    return `${Math.ceil(leftMs / 1000)}s`;
+  };
+
   // Card Renderer
   const renderCard = (slot: KeySlot) => (
     <div key={slot.id} className="bg-[#1e1e20] border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:border-indigo-500/20 transition-all">
+      {(() => {
+        const health = getHealthScore(slot);
+        const cooldown = renderCooldown(slot);
+        return (
       <div className="flex items-center gap-4">
         {/* Status Dot */}
         <div className={`w-2 h-2 rounded-full ${slot.disabled ? 'bg-zinc-600' :
@@ -84,15 +104,19 @@ const ApiManagementView = () => {
             {slot.status === 'unknown' && !slot.disabled && <span className="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded">待重试</span>}
             {slot.status === 'rate_limited' && !slot.disabled && <span className="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded">限流中</span>}
             {slot.status === 'invalid' && !slot.disabled && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded">认证失败</span>}
+            {cooldown && <span className="text-[10px] bg-amber-500/10 text-amber-300 px-1.5 py-0.5 rounded">冷却 {cooldown}</span>}
             {slot.disabled && <span className="text-[10px] bg-zinc-700/50 text-zinc-400 px-1.5 py-0.5 rounded">已禁用</span>}
           </div>
           <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-500 font-mono">
             <span>{slot.key.slice(0, 4)}...{slot.key.slice(-4)}</span>
             <span>{renderBudgetInfo(slot)}</span>
             {slot.provider && <span className="hidden sm:inline-block px-1.5 py-0.5 bg-white/5 rounded text-[10px]">{slot.provider}</span>}
+            <span className={`hidden md:inline-block px-1.5 py-0.5 rounded text-[10px] ${health >= 85 ? 'bg-emerald-500/10 text-emerald-300' : health >= 60 ? 'bg-amber-500/10 text-amber-300' : 'bg-red-500/10 text-red-300'}`}>健康度 {health}%</span>
           </div>
         </div>
       </div>
+      );
+      })()}
 
       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
         <button

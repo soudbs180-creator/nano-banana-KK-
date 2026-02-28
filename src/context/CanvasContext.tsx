@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
-import { Canvas, PromptNode, GeneratedImage, AspectRatio, CanvasGroup, CanvasDrawing } from '../types';
+import { Canvas, PromptNode, GeneratedImage, AspectRatio, CanvasGroup, CanvasDrawing, GenerationMode } from '../types';
 import { saveImage, getImage, deleteImage, getAllImages, clearAllImages, getImagesPage, getImageCount } from '../services/imageStorage';
 import { syncService } from '../services/syncService';
 import { fileSystemService } from '../services/fileSystemService';
@@ -992,7 +992,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     // 🛡️ [Defensive Merge]
                     // We must ensure we don't accidentally overwrite existing valid data with empty data
                     // especially during rapid status updates (generating -> success)
-                    return {
+                    const merged: PromptNode = {
                         ...n,
                         ...node,
                         // 🚀 If the incoming node has empty prompt/refs, but the existing one has them, KEEP existing ones!
@@ -1001,6 +1001,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         prompt: (node.prompt && node.prompt.length > 0) ? node.prompt : n.prompt,
                         referenceImages: (node.referenceImages && node.referenceImages.length > 0) ? node.referenceImages : n.referenceImages
                     };
+
+                    // 🚀 [Bugfix] 防止陈旧回调把已完成节点错误地改回“正在生成”
+                    // 典型场景：ResizeObserver(onHeightChange)携带旧node快照，覆盖最新状态
+                    if (n.isGenerating === false && node.isGenerating === true && (n.childImageIds?.length || 0) > 0) {
+                        merged.isGenerating = false;
+                    }
+
+                    return merged;
                 }
                 return n;
             })
@@ -1552,7 +1560,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     const childImages = currentCanvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
 
                     if (childImages.length > 0) {
-                        const currentMode = state.subCardLayoutMode;
+                        const currentMode = prompt.mode === GenerationMode.PPT ? 'column' : state.subCardLayoutMode;
                         const SUB_GAP = 16;
                         const PROMPT_TO_SUB_GAP = 60;
 
@@ -1604,7 +1612,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         }
 
                         // 轮换到下一个模式
-                        const nextMode: SubCardLayout = currentMode === 'row' ? 'grid' : currentMode === 'grid' ? 'column' : 'row';
+                        const nextMode: SubCardLayout = prompt.mode === GenerationMode.PPT
+                            ? 'column'
+                            : (currentMode === 'row' ? 'grid' : currentMode === 'grid' ? 'column' : 'row');
 
                         // 应用位置变更
                         const newCanvases = state.canvases.map(c => {

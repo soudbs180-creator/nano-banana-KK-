@@ -28,39 +28,53 @@ export const getCardDimensions = (aspectRatio?: AspectRatio, includeFooter: bool
     switch (aspectRatio) {
         case AspectRatio.LANDSCAPE_16_9:
         case AspectRatio.LANDSCAPE_21_9:
+        case AspectRatio.LANDSCAPE_4_1:
+        case AspectRatio.LANDSCAPE_8_1:
             width = CARD_WIDTHS.LANDSCAPE;
-            // Height = Width / Ratio
-            // 16:9 => 320 / (16/9) = 180
-            // 21:9 => 320 / (21/9) = 137
-            imageHeight = aspectRatio === AspectRatio.LANDSCAPE_21_9 ? 137 : 180;
+            if (aspectRatio === AspectRatio.LANDSCAPE_21_9) imageHeight = 137;
+            else if (aspectRatio === AspectRatio.LANDSCAPE_4_1) imageHeight = 80;
+            else if (aspectRatio === AspectRatio.LANDSCAPE_8_1) imageHeight = 40;
+            else imageHeight = 180; // 16:9
             break;
 
         case AspectRatio.LANDSCAPE_4_3:
+        case AspectRatio.LANDSCAPE_5_4:
             width = CARD_WIDTHS.LANDSCAPE;
-            imageHeight = 240; // 320 / (4/3)
+            imageHeight = aspectRatio === AspectRatio.LANDSCAPE_5_4 ? 256 : 240;
             break;
 
         case AspectRatio.STANDARD_3_2:
+        case AspectRatio.LANDSCAPE_3_2:
             width = CARD_WIDTHS.LANDSCAPE;
-            imageHeight = 213; // 320 / 1.5
+            imageHeight = 213;
             break;
 
         case AspectRatio.PORTRAIT_9_16:
+        case AspectRatio.PORTRAIT_9_21:
             width = CARD_WIDTHS.PORTRAIT;
-            imageHeight = 426; // 240 / (9/16)
+            imageHeight = aspectRatio === AspectRatio.PORTRAIT_9_21 ? 560 : 426;
             break;
 
         case AspectRatio.PORTRAIT_3_4:
+        case AspectRatio.PORTRAIT_4_5:
             width = CARD_WIDTHS.PORTRAIT;
-            imageHeight = 320; // 240 / (3/4)
+            imageHeight = aspectRatio === AspectRatio.PORTRAIT_4_5 ? 300 : 320;
             break;
 
         case AspectRatio.STANDARD_2_3:
+        case AspectRatio.PORTRAIT_2_3:
             width = CARD_WIDTHS.PORTRAIT;
-            imageHeight = 360; // 240 / (2/3)
+            imageHeight = 360;
+            break;
+
+        case AspectRatio.PORTRAIT_1_4:
+        case AspectRatio.PORTRAIT_1_8:
+            width = CARD_WIDTHS.PORTRAIT;
+            imageHeight = aspectRatio === AspectRatio.PORTRAIT_1_8 ? 1920 : 960; // Extreme tall cards
             break;
 
         case AspectRatio.SQUARE:
+        case AspectRatio.AUTO:
         default:
             width = CARD_WIDTHS.SQUARE;
             imageHeight = 280;

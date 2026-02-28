@@ -1,6 +1,7 @@
 import { LLMAdapter, ChatOptions, ImageGenerationOptions, ImageGenerationResult, ProviderConfig } from './LLMAdapter';
 import { KeySlot } from '../keyManager';
 import { GOOGLE_API_BASE } from '../apiConfig';
+import { logError, logWarning } from '../systemLogService';
 
 /**
  * Helper: Convert image data (blob URL, data URL, or base64) to base64 string
@@ -66,6 +67,118 @@ function blobToBase64(blob: Blob): Promise<string> {
     });
 }
 
+function is12AIGateway(baseUrl: string): boolean {
+    try {
+        const host = new URL(baseUrl).hostname;
+        return /(^|\.)12ai\.org$/i.test(host);
+    } catch {
+        return false;
+    }
+}
+
+function normalizeGeminiImageSize(raw: string | undefined): '512px' | '1K' | '2K' | '4K' {
+    const v = (raw || '').trim().toUpperCase();
+    if (v.includes('512') || v.includes('0.5K')) return '512px';
+    if (v.includes('4K') || v.includes('HD')) return '4K';
+    if (v.includes('2K')) return '2K';
+    return '1K';
+}
+
+function buildInlineImagePart(base64Data: string, mimeType: string, useSnakeCase: boolean): any {
+    if (useSnakeCase) {
+        return {
+            inline_data: {
+                mime_type: mimeType,
+                data: base64Data
+            }
+        };
+    }
+    return {
+        inlineData: {
+            mimeType,
+            data: base64Data
+        }
+    };
+}
+
+function normalizeToolsForGateway(tools: any[] | undefined, useSnakeCase: boolean): any[] | undefined {
+    if (!tools || tools.length === 0) return tools;
+    if (!useSnakeCase) return tools;
+    return tools.map(tool => {
+        if (tool?.googleSearch) {
+            return { google_search: tool.googleSearch };
+        }
+        return tool;
+    });
+}
+
+function buildSafeRequestBodyPreview(payload: any): string {
+    const redact = (node: any): any => {
+        if (Array.isArray(node)) return node.map(redact);
+        if (node && typeof node === 'object') {
+            const out: Record<string, any> = {};
+            Object.entries(node).forEach(([k, v]) => {
+                const lower = k.toLowerCase();
+                if (['authorization', 'api_key', 'apikey', 'token', 'secret', 'key'].includes(lower)) {
+                    out[k] = '<omitted:sensitive>';
+                    return;
+                }
+                out[k] = redact(v);
+            });
+            return out;
+        }
+        if (typeof node === 'string') {
+            if (node.startsWith('data:')) return '<omitted:data-uri>';
+            if (/^https?:\/\//i.test(node) && node.length > 120) return '<omitted:url>';
+            if (/^[A-Za-z0-9+/=]+$/.test(node) && node.length > 200) return '<omitted:base64>';
+            if (node.length > 400) return `${node.slice(0, 200)}...<truncated>`;
+            return node;
+        }
+        return node;
+    };
+
+    try {
+        return JSON.stringify(redact(payload), null, 2);
+    } catch {
+        return '{\n  "error": "preview_unavailable"\n}';
+    }
+}
+
+function extractGroundingInfo(data: any, candidate: any): {
+    searchEntryPoint?: string;
+    sources?: Array<{ uri: string; title?: string; imageUri?: string }>;
+} {
+    const rootMeta = data?.groundingMetadata || data?.grounding_metadata;
+    const candidateMeta = candidate?.groundingMetadata || candidate?.grounding_metadata;
+    const meta = candidateMeta || rootMeta;
+    if (!meta) return {};
+
+    const searchEntryPoint =
+        meta?.searchEntryPoint?.renderedContent ||
+        meta?.search_entry_point?.rendered_content ||
+        '';
+
+    const chunks = meta?.groundingChunks || meta?.grounding_chunks || [];
+    const seen = new Set<string>();
+    const sources: Array<{ uri: string; title?: string; imageUri?: string }> = [];
+    for (const chunk of chunks) {
+        const web = chunk?.web || chunk?.webChunk || chunk?.web_chunk;
+        const uri = web?.uri || web?.url || '';
+        if (!uri || seen.has(uri)) continue;
+        seen.add(uri);
+        sources.push({
+            uri,
+            title: web?.title,
+            imageUri: web?.imageUri || web?.image_uri
+        });
+    }
+
+    return {
+        searchEntryPoint: searchEntryPoint || undefined,
+        sources: sources.length > 0 ? sources : undefined
+    };
+}
+
 /**
  * Google Adapter - Official Google API Protocol Only
  * 
@@ -88,6 +201,8 @@ export class GoogleAdapter implements LLMAdapter {
     async chat(options: ChatOptions, keySlot: KeySlot): Promise<string> {
         const baseUrl = keySlot.baseUrl || GOOGLE_API_BASE;
         const cleanBase = baseUrl.replace(/\/+$/, '');
+        // 12AI 文档要求使用 Google 官方字段命名（camelCase）
+        const useSnakeCase = false;
         const url = `${cleanBase}/v1beta/models/${options.modelId}:generateContent?key=${keySlot.key}`;
 
         const contents = options.messages.map((msg, idx) => {
@@ -97,12 +212,7 @@ export class GoogleAdapter implements LLMAdapter {
             const isLastUserMessage = msg.role === 'user' && idx === options.messages.length - 1;
             if (isLastUserMessage && options.inlineData && options.inlineData.length > 0) {
                 options.inlineData.forEach(media => {
-                    parts.push({
-                        inlineData: {
-                            mimeType: media.mimeType,
-                            data: media.data
-                        }
-                    });
+                    parts.push(buildInlineImagePart(media.data, media.mimeType, useSnakeCase));
                 });
             }
 
@@ -147,6 +257,9 @@ export class GoogleAdapter implements LLMAdapter {
         if (options.providerConfig?.google?.safetySettings) {
             payload.safetySettings = options.providerConfig.google.safetySettings;
         }
+        if (options.providerConfig?.google?.tools) {
+            payload.tools = normalizeToolsForGateway(options.providerConfig.google.tools, useSnakeCase);
+        }
 
         const response = await fetch(url, {
             method: 'POST',
@@ -157,7 +270,9 @@ export class GoogleAdapter implements LLMAdapter {
 
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
-            throw new Error(err.error?.message || `Google API Error: ${response.statusText}`);
+            const errMsg = err.error?.message || `Google API Error: ${response.statusText}`;
+            logError('GoogleAdapter', new Error(errMsg), `URL: ${url.replace(/key=[^&]+/, 'key=***')}\nStatus: ${response.status}\nResponse: ${JSON.stringify(err)}`);
+            throw new Error(errMsg);
         }
 
         const data = await response.json();
@@ -191,6 +306,9 @@ export class GoogleAdapter implements LLMAdapter {
      */
     private async generateGeminiImage(options: ImageGenerationOptions, keySlot: KeySlot): Promise<ImageGenerationResult> {
         const cleanBase = (keySlot.baseUrl || GOOGLE_API_BASE).replace(/\/+$/, '');
+        const is12AI = is12AIGateway(cleanBase);
+        // 严格对齐 12AI 文档：使用 Google 官方 camelCase 字段
+        const useSnakeCase = false;
         const url = `${cleanBase}/v1beta/models/${options.modelId}:generateContent?key=${keySlot.key}`;
 
         const parts: any[] = [{ text: options.prompt }];
@@ -206,32 +324,33 @@ export class GoogleAdapter implements LLMAdapter {
 
             convertedImages.forEach(inlineData => {
                 if (inlineData) {
-                    parts.push({ inlineData });
+                    parts.push(buildInlineImagePart(inlineData.data, inlineData.mimeType || 'image/png', useSnakeCase));
                 }
             });
         }
 
         const generationConfig: any = {
-            responseModalities: ["IMAGE"],
-            temperature: 0.9 // Gemini Image defaults
+            responseModalities: ["IMAGE"]
         };
+        if (!is12AI) {
+            generationConfig.temperature = 0.9; // Gemini Image defaults
+        }
 
         // Map Options -> ImageConfig
         const imageConfig: any = {};
 
         // Aspect Ratio
         if (options.aspectRatio) {
-            imageConfig.aspectRatio = options.aspectRatio; // "16:9", "1:1" (Google supports these strings directly now)
+            imageConfig.aspectRatio = options.aspectRatio;
         }
 
         // Image Size (1K/2K/4K)
         // 兼容策略：先按请求携带 imageSize；若上游不支持再自动回退
-        const requestedSize = (() => {
-            const raw = (options.imageSize || '').toUpperCase();
-            if (raw.includes('4K') || raw.includes('HD')) return '4K';
-            if (raw.includes('2K')) return '2K';
-            return '1K';
-        })();
+        const requestedSize = normalizeGeminiImageSize(
+            options.providerConfig?.google?.imageConfig?.imageSize || options.imageSize
+        );
+        let lastRequestPayload = '';
+        let lastRequestPayloadObj: any = {};
 
         const requestGemini = async (withImageSize: boolean) => {
             const effectiveImageConfig: any = { ...imageConfig };
@@ -239,13 +358,20 @@ export class GoogleAdapter implements LLMAdapter {
                 effectiveImageConfig.imageSize = requestedSize;
             }
 
-            const payload = {
+            const payload: any = {
                 contents: [{ parts }],
                 generationConfig: {
                     ...generationConfig,
                     imageConfig: effectiveImageConfig
                 }
             };
+            lastRequestPayload = JSON.stringify(payload);
+            lastRequestPayloadObj = payload;
+
+            // 🚀 Inject Tools if present (like Google Search Grounding for Gemini 3)
+            if (options.providerConfig?.google?.tools) {
+                payload.tools = normalizeToolsForGateway(options.providerConfig.google.tools, useSnakeCase);
+            }
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -256,6 +382,7 @@ export class GoogleAdapter implements LLMAdapter {
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
                 const msg = err?.error?.message || `Gemini Image Error: ${response.status}`;
+                logError('GoogleAdapter', new Error(msg), `URL: ${url.replace(/key=[^&]+/, 'key=***')}\nStatus: ${response.status}\nResponse: ${JSON.stringify(err)}`);
                 throw new Error(msg);
             }
 
@@ -294,7 +421,11 @@ export class GoogleAdapter implements LLMAdapter {
 
         // Parts can be many: Text description + Image data
         const candidateParts = candidate.content?.parts || [];
-        const imageParts = candidateParts.filter((p: any) => p.inlineData && p.inlineData.mimeType.startsWith('image/'));
+        const imageParts = candidateParts.filter((p: any) => {
+            const inlineData = p?.inlineData || p?.inline_data;
+            const mimeType = inlineData?.mimeType || inlineData?.mime_type || '';
+            return typeof mimeType === 'string' && mimeType.startsWith('image/');
+        });
 
         if (imageParts.length > 0) {
             // 🚀 [CRITICAL FIX] 4K Support: API returns multiple images (preview + final)
@@ -306,7 +437,8 @@ export class GoogleAdapter implements LLMAdapter {
             if (imageParts.length > 1) {
                 console.log(`[GoogleAdapter] Detected ${imageParts.length} images in response, selecting largest...`);
                 for (const part of imageParts) {
-                    const dataLength = part.inlineData.data?.length || 0;
+                    const inlineData = part?.inlineData || part?.inline_data;
+                    const dataLength = inlineData?.data?.length || 0;
                     if (dataLength > maxDataLength) {
                         maxDataLength = dataLength;
                         bestImage = part;
@@ -315,13 +447,37 @@ export class GoogleAdapter implements LLMAdapter {
                 console.log(`[GoogleAdapter] Selected image with data length: ${maxDataLength} (${(maxDataLength * 0.75 / 1024 / 1024).toFixed(2)}MB estimated)`);
             }
 
+            const bestInlineData = bestImage?.inlineData || bestImage?.inline_data;
+            const bestMime = bestInlineData?.mimeType || bestInlineData?.mime_type || 'image/png';
+            const grounding = extractGroundingInfo(data, candidate);
+
             return {
-                urls: [`data:${bestImage.inlineData.mimeType};base64,${bestImage.inlineData.data}`],
+                urls: [`data:${bestMime};base64,${bestInlineData.data}`],
                 provider: 'Google',
                 model: options.modelId,
                 imageSize: effectiveImageConfig.imageSize || '1K',
                 metadata: {
-                    aspectRatio: effectiveImageConfig.aspectRatio
+                    aspectRatio: effectiveImageConfig.aspectRatio || effectiveImageConfig.aspect_ratio,
+                    grounding,
+                    requestPath: (() => {
+                        try {
+                            return new URL(url).pathname;
+                        } catch {
+                            return url;
+                        }
+                    })(),
+                    requestBodyPreview: buildSafeRequestBodyPreview(lastRequestPayloadObj),
+                    pythonSnippet: (() => {
+                        const safeUrl = (() => {
+                            try {
+                                const u = new URL(url);
+                                return `${u.origin}${u.pathname}?key=<API_KEY>`;
+                            } catch {
+                                return url;
+                            }
+                        })();
+                        return `import requests\n\nurl = "${safeUrl}"\npayload = ${lastRequestPayload || '{}'}\nresp = requests.post(url, json=payload, timeout=150)\nprint(resp.status_code)\nprint(resp.text[:1000])`;
+                    })()
                 }
             };
         }
@@ -418,14 +574,36 @@ export class GoogleAdapter implements LLMAdapter {
         }
 
         const data = await response.json();
-        const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+        const predictions = data.predictions || [];
+        let bestPrediction = predictions[0];
+        if (predictions.length > 1) {
+            let maxLen = 0;
+            for (const p of predictions) {
+                const len = p?.bytesBase64Encoded?.length || 0;
+                if (len > maxLen) {
+                    maxLen = len;
+                    bestPrediction = p;
+                }
+            }
+            console.log(`[GoogleAdapter] Selected best Imagen prediction from ${predictions.length} options (Length: ${maxLen})`);
+        }
+
+        const b64 = bestPrediction?.bytesBase64Encoded;
 
         if (b64) {
-            return {
+            const result: ImageGenerationResult = {
                 urls: [`data:image/png;base64,${b64}`],
                 provider: 'Google',
-                model: options.modelId
+                model: options.modelId,
+                metadata: {
+                    requestPath: (() => {
+                        try { return new URL(url).pathname; } catch { return url; }
+                    })(),
+                    requestBodyPreview: buildSafeRequestBodyPreview(payload),
+                    pythonSnippet: `import requests\n\nurl = "${url.replace(/key=[^&]+/, 'key=<API_KEY>')}"\npayload = ${JSON.stringify(payload)}\nresp = requests.post(url, json=payload, timeout=150)\nprint(resp.status_code)\nprint(resp.text[:1000])`
+                }
             };
+            return result;
         }
 
         throw new Error("No image data in Imagen response");

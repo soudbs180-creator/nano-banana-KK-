@@ -16,10 +16,24 @@ export function parseModelString(input: string): { id: string; name?: string; de
     // Detect custom delimiter format: "id|name|provider"
     if (input.includes('|')) {
         const parts = input.split('|');
+        let id = parts[0]?.trim() || '';
+        let name = parts[1]?.trim() || undefined;
+        const provider = parts[2]?.trim() || undefined;
+
+        // 兼容历史脏数据: 可能被错误存成 "name|id|provider"
+        const idLikeRegex = /^[a-z0-9-.:/]+$/;
+        const firstLooksLikeName = /\s/.test(id) || !idLikeRegex.test(id);
+        const secondLooksLikeId = !!name && idLikeRegex.test(name);
+        if (secondLooksLikeId && firstLooksLikeName) {
+            const tmp = id;
+            id = name!;
+            name = tmp;
+        }
+
         return {
-            id: parts[0].trim(),
-            name: parts[1]?.trim() || undefined,
-            provider: parts[2]?.trim() || undefined
+            id,
+            name,
+            provider
         };
     }
 
@@ -110,6 +124,8 @@ export interface KeySlot {
     // Auth Configuration
     authMethod?: AuthMethod; // 'query' | 'header'
     headerName?: string;     // Custom header name (default: x-goog-api-key)
+    customHeaders?: Record<string, string>; // Provider-specific custom request headers
+    customBody?: Record<string, any>; // Provider-specific custom request body template
 
     // Advanced Configuration (NEW)
     weight?: number;         // 权重 (1-100), 用于负载均衡,默认50
@@ -156,6 +172,7 @@ export interface KeySlot {
         resetTime: number;
         updatedAt: number;
     };
+    cooldownUntil?: number; // temporary cooldown for auto-failover
 }
 
 
@@ -270,8 +287,18 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
     },
     '12ai': {
         name: '12AI',
-        baseUrl: 'https://cdn.12ai.org',
-        models: ['gpt-5.1', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'claude-4-sonnet', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
+        baseUrl: 'https://hk.12ai.org',
+        models: [
+            'gpt-5.1',
+            'gemini-2.5-pro', 'gemini-2.5-pro-c',
+            'gemini-2.5-flash', 'gemini-2.5-flash-c',
+            'gemini-3.1-pro-preview', 'gemini-3.1-pro-preview-c',
+            'gemini-3.1-flash-image-preview', 'gemini-3.1-flash-image-preview-c',
+            'gemini-2.5-flash-image', 'gemini-2.5-flash-image-c',
+            'gemini-3-pro-image-preview', 'gemini-3-pro-image-preview-c',
+            'claude-4-sonnet', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d',
+            'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'
+        ],
         format: 'gemini', // 12AI 对 Gemini 协议支持最好，支持原生 4K 和参考图
         icon: '🚀'
     },
@@ -284,8 +311,12 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
     },
     '12ai-nanobanana': {
         name: '12AI NanoBanana',
-        baseUrl: 'https://new.12ai.org',
-        models: ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview'],
+        baseUrl: 'https://hk.12ai.org',
+        models: [
+            'gemini-3.1-flash-image-preview', 'gemini-3.1-flash-image-preview-c',
+            'gemini-2.5-flash-image', 'gemini-2.5-flash-image-c',
+            'gemini-3-pro-image-preview', 'gemini-3-pro-image-preview-c'
+        ],
         format: 'gemini',
         icon: '🍌'
     },
@@ -324,7 +355,11 @@ export const MODEL_MIGRATION_MAP: Record<string, string> = {
 
     // Nano Banana Alias → Gemini 2.5 Flash Image (Official)
     'nano-banana': 'gemini-2.5-flash-image',
+    'nano banana': 'gemini-2.5-flash-image',
     'nano-banana-pro': 'gemini-3-pro-image-preview',
+    'nano banana pro': 'gemini-3-pro-image-preview',
+    'nano-banana-2': 'gemini-3.1-flash-image-preview',
+    'nano banana 2': 'gemini-3.1-flash-image-preview',
 
     // -latest 别名 → 具体版本
     'gemini-flash-lite-latest': 'gemini-2.5-flash-lite',
@@ -356,12 +391,28 @@ export const DEPRECATED_MODELS = Object.keys(MODEL_MIGRATION_MAP);
  * @returns 校正后的模型 ID（如果需要校正）或原始 ID
  */
 export function normalizeModelId(modelId: string): string {
-    const normalized = MODEL_MIGRATION_MAP[modelId];
+    const raw = (modelId || '').trim();
+    const normalized = MODEL_MIGRATION_MAP[raw];
     if (normalized) {
         console.log(`[ModelMigration] Auto-correcting "${modelId}" → "${normalized}"`);
         return normalized;
     }
-    return modelId;
+
+    const lowerRaw = raw.toLowerCase();
+    const lowerMapped = MODEL_MIGRATION_MAP[lowerRaw];
+    if (lowerMapped) {
+        console.log(`[ModelMigration] Auto-correcting "${modelId}" → "${lowerMapped}"`);
+        return lowerMapped;
+    }
+
+    const dashed = lowerRaw.replace(/\s+/g, '-');
+    const dashedMapped = MODEL_MIGRATION_MAP[dashed];
+    if (dashedMapped) {
+        console.log(`[ModelMigration] Auto-correcting "${modelId}" → "${dashedMapped}"`);
+        return dashedMapped;
+    }
+
+    return raw;
 }
 
 export interface ModelVariantMeta {
@@ -599,13 +650,13 @@ const GOOGLE_CHAT_MODELS = [
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', icon: '⚡', description: '性价比最佳，适合大规模处理与代理任务' },
     { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', icon: '🚀', description: '最快速、最经济，适合高并发场景' },
     // Gemini 3 & 3.1 系列 - 最强智能
-    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro 预览', icon: '💎', description: '最新 SOTA 推理模型，前所未有的深度、细微差别的代码能力' },
-    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro 预览', icon: '🌟', description: '世界最强多模态模型，顶级推理能力' },
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash 预览', icon: '✨', description: 'Gemini 3 快速版，新能力尝鲜' },
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro 预览', icon: '💎', description: '最适合需要广泛的世界知识和跨模态高级推理的复杂任务' },
+    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro 预览', icon: '🌟', description: '全球领先的多模态理解、智能体功能和氛围编程模型' },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash 预览', icon: '✨', description: '具有专业级智能，但速度和价格与 Flash 相当' },
     // 多模态模型 - 既能图像生成，又能聊天
-    { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image', icon: '🌠', description: '专业级视觉智能，闪电般的生成速度' },
-    { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image (Preview)', icon: '🎨', description: '顶级图像生成模型,超高质量输出' },
-    { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', icon: '🖼️', description: '快速图像生成,性价比最佳' },
+    { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image', icon: '🌠', description: '针对速度和高用量优化，高效率、价格更低' },
+    { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image (Preview)', icon: '🎨', description: '最高品质生图，利用高级推理遵循复杂的指令并呈现高保真文本' },
+    { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', icon: '🖼️', description: '专为速度和效率设计，可处理高数据量、低延迟任务' },
 ];
 
 const GOOGLE_MODEL_METADATA = new Map<string, {
@@ -645,9 +696,9 @@ MODEL_PRESETS.filter(preset => preset.provider === 'Google').forEach(preset => {
 });
 
 // 添加 Imagen 4.0 和 Veo 3.1 系列模型元数据
-GOOGLE_MODEL_METADATA.set('imagen-4.0-generate-001', { name: 'Imagen 4.0', icon: '🎨', description: 'Google 最新专业图像生成模型' });
-GOOGLE_MODEL_METADATA.set('imagen-4.0-ultra-generate-001', { name: 'Imagen 4.0 Ultra', icon: '💎', description: 'Imagen 4.0 超高质量版本' });
-GOOGLE_MODEL_METADATA.set('imagen-4.0-fast-generate-001', { name: 'Imagen 4.0 Fast', icon: '⚡', description: 'Imagen 4.0 快速生成版本' });
+GOOGLE_MODEL_METADATA.set('imagen-4.0-generate-001', { name: 'Imagen 4.0 标准版', icon: '🎨', description: 'Google 的高保真图片生成模型 (标准)' });
+GOOGLE_MODEL_METADATA.set('imagen-4.0-ultra-generate-001', { name: 'Imagen 4.0 Ultra', icon: '💎', description: 'Google 的高保真图片生成模型 (Ultra)' });
+GOOGLE_MODEL_METADATA.set('imagen-4.0-fast-generate-001', { name: 'Imagen 4.0 快速版', icon: '⚡', description: 'Google 的高保真图片生成模型 (快速)' });
 GOOGLE_MODEL_METADATA.set('veo-3.1-generate-preview', { name: 'Veo 3.1', icon: '🎬', description: '最新视频生成模型（预览版）' });
 GOOGLE_MODEL_METADATA.set('veo-3.1-fast-generate-preview', { name: 'Veo 3.1 Fast', icon: '🎞️', description: 'Veo 3.1 快速版' });
 
@@ -1430,7 +1481,7 @@ export class KeyManager {
      * 2. Filter healthy channels (Active, Valid, Budget OK)
      * 3. Apply Rotation Strategy (Round Robin vs Sequential)
      */
-    getNextKey(modelId: string): {
+    getNextKey(modelId: string, preferredKeyId?: string): {
         id: string;
         key: string;
         name: string;
@@ -1446,6 +1497,13 @@ export class KeyManager {
 
         // Normalize the requested model ID and apply migration mapping
         let normalizedModelId = baseIdPart.replace(/^models\//, '');
+        // 兼容 UI/历史数据里可能出现的展示名作为 modelId
+        const lowerRequested = normalizedModelId.toLowerCase();
+        if (lowerRequested === 'nano banana pro' || lowerRequested === 'nano-banana-pro') {
+            normalizedModelId = 'gemini-3-pro-image-preview';
+        } else if (lowerRequested === 'nano banana' || lowerRequested === 'nano-banana') {
+            normalizedModelId = 'gemini-2.5-flash-image';
+        }
         if (MODEL_MIGRATION_MAP[normalizedModelId]) {
             normalizedModelId = MODEL_MIGRATION_MAP[normalizedModelId];
         }
@@ -1453,6 +1511,26 @@ export class KeyManager {
         // --- STRICT SEPARATION STRATEGY ---
         // 1. If NO Suffix -> Must use Official Provider (Google)
         // 2. If Suffix -> Must use Channel/Proxy that matches Suffix
+
+        const modelSupportedBySlot = (slot: KeySlot) => {
+            return (slot.supportedModels || []).some(m => {
+                return parseModelString(m).id.replace(/^models\//, '') === normalizedModelId;
+            });
+        };
+
+        const isSlotHealthy = (slot: KeySlot) => {
+            if (slot.disabled) return false;
+            if (slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit) return false;
+            return true;
+        };
+
+        if (preferredKeyId) {
+            const preferred = this.state.slots.find(s => s.id === preferredKeyId);
+            if (preferred && isSlotHealthy(preferred) && modelSupportedBySlot(preferred)) {
+                return this.prepareKeyResult(preferred);
+            }
+            console.warn(`[KeyManager] Preferred key unavailable for model=${normalizedModelId}, fallback to normal routing. preferredKeyId=${preferredKeyId}`);
+        }
 
         let candidates: KeySlot[] = [];
 
@@ -1464,11 +1542,7 @@ export class KeyManager {
             // Further filter by supported models (unless JIT healing fixes it later)
             // We do a loose check here: if strict model check fails, JIT might rescue it.
             // But standard candidates should support it.
-            const strictCandidates = candidates.filter(s => {
-                return (s.supportedModels || []).some(m => {
-                    return parseModelString(m).id.replace(/^models\//, '') === normalizedModelId;
-                });
-            });
+            const strictCandidates = candidates.filter(s => modelSupportedBySlot(s));
 
             // If we have strict candidates, prefer them
             if (strictCandidates.length > 0) {
@@ -1483,8 +1557,7 @@ export class KeyManager {
             // [Proxy / Channel Connection]
             // Strategy: Find keys matching the suffix (Custom Name or Provider Name)
             const normalizedSuffix = String(suffix || '').trim().toLowerCase();
-            const proxyAliasSet = new Set(['custom', 'proxy', 'proxied', '代理']);
-            // 注意: '反代' 不再列入通用别名，因为它可能是实际的频道名称
+            const proxyAliasSet = new Set(['custom', 'proxy', 'proxied', '代理', '反代']);
 
             // Step 1: 精确名称匹配
             const nameMatchedCandidates = this.state.slots.filter(s => {
@@ -1505,11 +1578,7 @@ export class KeyManager {
             });
 
             // Step 2: 对名称匹配的候选进行模型过滤
-            let modelFilteredCandidates = nameMatchedCandidates.filter(s => {
-                return (s.supportedModels || []).some(m => {
-                    return parseModelString(m).id.replace(/^models\//, '') === normalizedModelId;
-                });
-            });
+            let modelFilteredCandidates = nameMatchedCandidates.filter(s => modelSupportedBySlot(s));
 
             // Step 3: 如果名称匹配找到了频道但模型过滤后为空，
             // 信任名称匹配 — 该频道可能动态支持更多模型但本地列表未同步
@@ -1527,9 +1596,7 @@ export class KeyManager {
             if (candidates.length === 0 && proxyAliasSet.has(normalizedSuffix)) {
                 candidates = this.state.slots.filter(s => {
                     if (s.provider === 'Google') return false;
-                    return (s.supportedModels || []).some(m => {
-                        return parseModelString(m).id.replace(/^models\//, '') === normalizedModelId;
-                    });
+                    return modelSupportedBySlot(s);
                 });
             }
 
@@ -1608,6 +1675,7 @@ export class KeyManager {
         // Common Sort: Valid > Unknown > Rate Limited
         const now = Date.now();
         const cooldownFiltered = validCandidates.filter(s => {
+            if (s.cooldownUntil && now < s.cooldownUntil) return false;
             if (s.status !== 'rate_limited') return true;
             if (!s.lastUsed) return false;
             return now - s.lastUsed >= RATE_LIMIT_COOLDOWN_MS;
@@ -1618,9 +1686,16 @@ export class KeyManager {
 
         // If all matching keys are still in cooldown, fallback to original candidate list (degraded mode)
         if (usable.length === 0) {
-            const blocked = validCandidates.filter(s => s.status === 'rate_limited' && s.lastUsed && (now - s.lastUsed < RATE_LIMIT_COOLDOWN_MS));
+            const blocked = validCandidates.filter(s =>
+                (s.status === 'rate_limited' && s.lastUsed && (now - s.lastUsed < RATE_LIMIT_COOLDOWN_MS)) ||
+                (!!s.cooldownUntil && now < s.cooldownUntil)
+            );
             if (blocked.length > 0) {
-                const shortestWaitMs = Math.min(...blocked.map(s => RATE_LIMIT_COOLDOWN_MS - (now - (s.lastUsed || 0))));
+                const shortestWaitMs = Math.min(...blocked.map(s => {
+                    const rateLimitWait = s.lastUsed ? Math.max(0, RATE_LIMIT_COOLDOWN_MS - (now - s.lastUsed)) : RATE_LIMIT_COOLDOWN_MS;
+                    const explicitWait = s.cooldownUntil ? Math.max(0, s.cooldownUntil - now) : 0;
+                    return Math.max(rateLimitWait, explicitWait);
+                }));
                 console.warn(`[KeyManager] All matching keys are in rate-limit cooldown. Fallback enabled. Earliest retry in ~${Math.ceil(shortestWaitMs / 1000)}s`);
             }
             usable = validCandidates;
@@ -1702,7 +1777,11 @@ export class KeyManager {
             headerName: slot.headerName || 'x-goog-api-key',
             compatibilityMode: slot.compatibilityMode || 'standard',
             group: slot.group,
-            provider: slot.provider || 'Google'
+            provider: slot.provider || 'Google',
+            timeout: slot.timeout,
+            customHeaders: slot.customHeaders,
+            customBody: slot.customBody,
+            cooldownUntil: slot.cooldownUntil
         };
     }
 
@@ -1716,6 +1795,7 @@ export class KeyManager {
             slot.successCount++;
             slot.failCount = 0; // Reset fail count on success
             slot.lastError = null;
+            slot.cooldownUntil = undefined;
             this.saveState();
             this.notifyListeners();
         }
@@ -1751,11 +1831,15 @@ export class KeyManager {
 
             if (isRateLimit) {
                 slot.status = 'rate_limited';
+                slot.cooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
             } else if (isAuthError) {
                 slot.status = 'invalid';
+                slot.cooldownUntil = undefined;
             } else {
                 // 生成失败/网络抖动/上游异常不应永久标红为 invalid，回到 unknown 允许后续自动恢复
                 slot.status = 'unknown';
+                const transientBackoff = Math.min(15000, 2000 * Math.max(1, slot.failCount));
+                slot.cooldownUntil = Date.now() + transientBackoff;
             }
 
             this.saveState();
@@ -1776,6 +1860,7 @@ export class KeyManager {
                 slot.status = 'valid';
                 slot.failCount = 0;
                 slot.lastError = null;
+                slot.cooldownUntil = undefined;
             }
             this.saveState();
             this.notifyListeners();
@@ -1895,6 +1980,8 @@ export class KeyManager {
         tokenLimit?: number;
         type?: 'official' | 'proxy' | 'third-party';
         proxyConfig?: { serverName?: string };
+        customHeaders?: Record<string, string>;
+        customBody?: Record<string, any>;
     }): Promise<{ success: boolean; error?: string; id?: string }> {
         // ✨ Sanitize input key: trim and remove non-ASCII chars
         const trimmedKey = key.replace(/[^\x00-\x7F]/g, "").trim();
@@ -1951,6 +2038,8 @@ export class KeyManager {
             budgetLimit: options?.budgetLimit ?? -1,
             tokenLimit: options?.tokenLimit ?? -1,
             proxyConfig: options?.proxyConfig,
+            customHeaders: options?.customHeaders,
+            customBody: options?.customBody,
             updatedAt: Date.now() // Initial timestamp
         };
 

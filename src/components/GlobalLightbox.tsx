@@ -78,7 +78,14 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 // 🔒 强制加载原图（新的保护机制）
                 const { getOriginalImage } = await import('../services/imageStorage');
                 // const metadata = await getImageMetadata(image.id); // Check protection status
-                const original = await getOriginalImage(image.id);
+                let original = await getOriginalImage(image.id);
+
+                // 生成完成后 saveImage/saveOriginalImage 是异步落盘，灯箱可能先打开导致首轮 miss
+                // 做一次短延迟重试，尽量拿到本地原图而不是临时远程 URL
+                if (!original) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    original = await getOriginalImage(image.id);
+                }
 
                 if (!active) return;
 
@@ -191,14 +198,38 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     // 5. 下载逻辑
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        // 简化版下载逻辑 (如有需要可移植完整的 imageStorage 下载逻辑)
-        if (!displaySrc) return;
-        const a = document.createElement('a');
-        a.href = displaySrc;
-        a.download = `image-${image.id}.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        try {
+            const { getOriginalImage } = await import('../services/imageStorage');
+            const { triggerDownload } = await import('../utils/downloadUtils');
+
+            // 优先下载本地原图通道（IDB/本地磁盘恢复）
+            let target = await getOriginalImage(image.id);
+            if (!target && image.storageId && image.storageId !== image.id) {
+                target = await getOriginalImage(image.storageId);
+            }
+            target = target || displaySrc || image.originalUrl || image.url;
+            if (!target) return;
+
+            // data/blob 直接下载；http(s) 先拉取 blob，避免跨域/临时 URL 导致浏览器下载失败
+            if (target.startsWith('data:') || target.startsWith('blob:')) {
+                triggerDownload(target, `image-${image.id}.png`);
+                return;
+            }
+
+            const response = await fetch(target);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            try {
+                triggerDownload(objectUrl, `image-${image.id}.png`);
+            } finally {
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+            }
+        } catch (err) {
+            // 最后兜底：新标签页打开
+            const fallback = displaySrc || image.originalUrl || image.url;
+            if (fallback) window.open(fallback, '_blank', 'noopener,noreferrer');
+        }
     };
 
     // 6. 防止双击过快导致的误触关闭 (600ms安全期 - 支持慢速双击)

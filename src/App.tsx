@@ -33,7 +33,7 @@ import { Loader2 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 // import { syncService } from './services/syncService'; // [FIX] Dynamic Import
-import { saveImage } from './services/imageStorage';
+import { saveImage, saveOriginalImage } from './services/imageStorage';
 import { calculateImageHash } from './utils/imageUtils';
 import { optimizePromptForImage } from './services/promptOptimizerService';
 import NotificationToast from './components/NotificationToast';
@@ -112,6 +112,11 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     activeCanvasRef.current = activeCanvas;
   }, [activeCanvas]);
+
+  const selectedNodeIdsRef = useRef<string[]>(selectedNodeIds);
+  useEffect(() => {
+    selectedNodeIdsRef.current = selectedNodeIds;
+  }, [selectedNodeIds]);
 
   // Track reserved regions for rapid-fire generation to prevent overlaps (before React update reflects)
   const reservedRegionsRef = useRef<{ bounds: { x: number; y: number; width: number; height: number }; timestamp: number; }[]>([]);
@@ -488,7 +493,9 @@ const AppContent: React.FC = () => {
           })),
           model: parsed.model || KnownModel.IMAGEN_3,
           enableGrounding: parsed.enableGrounding || false,
-          mode: parsed.mode || GenerationMode.IMAGE
+          mode: parsed.mode || GenerationMode.IMAGE,
+          pptSlides: Array.isArray(parsed.pptSlides) ? parsed.pptSlides : [],
+          pptStyleLocked: parsed.pptStyleLocked !== false
         };
       }
     } catch (e) {
@@ -504,9 +511,37 @@ const AppContent: React.FC = () => {
       referenceImages: [],
       model: KnownModel.IMAGEN_3,
       enableGrounding: false,
-      mode: GenerationMode.IMAGE
+      mode: GenerationMode.IMAGE,
+      pptSlides: [],
+      pptStyleLocked: true
     };
   });
+
+  const [modePreferredKeyMap, setModePreferredKeyMap] = useState<Partial<Record<GenerationMode, string>>>(() => {
+    try {
+      const raw = localStorage.getItem('kk_mode_preferred_key_map');
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return typeof parsed === 'object' && parsed ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const getPreferredKeyForMode = useCallback((mode?: GenerationMode) => {
+    const m = mode || GenerationMode.IMAGE;
+    return modePreferredKeyMap[m];
+  }, [modePreferredKeyMap]);
+
+  const rememberPreferredKeyForMode = useCallback((mode: GenerationMode | undefined, keySlotId?: string) => {
+    if (!mode || !keySlotId) return;
+    setModePreferredKeyMap(prev => {
+      if (prev[mode] === keySlotId) return prev;
+      const next = { ...prev, [mode]: keySlotId };
+      localStorage.setItem('kk_mode_preferred_key_map', JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   // [New] Hydrate Reference Images from IndexedDB
   useEffect(() => {
@@ -593,6 +628,8 @@ const AppContent: React.FC = () => {
       model: config.model,
       enableGrounding: config.enableGrounding,
       mode: config.mode,
+      pptSlides: config.pptSlides || [],
+      pptStyleLocked: config.pptStyleLocked !== false,
       // Save metadata only (strip heavy data) appropriately? 
       // Actually PromptBar renders using `img.data`.
       // We must save the array structure, but we want `data` to be undefined or null in localStorage to save space.
@@ -605,7 +642,7 @@ const AppContent: React.FC = () => {
   }, [
     config.enablePromptOptimization,
     config.aspectRatio, config.imageSize, config.parallelCount,
-    config.model, config.enableGrounding, config.mode,
+    config.model, config.enableGrounding, config.mode, config.pptSlides, config.pptStyleLocked,
     config.referenceImages // Add referenceImages to dep array
   ]);
 
@@ -1243,8 +1280,28 @@ const AppContent: React.FC = () => {
   // Handle keys logic (kept as is)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      const target = e.target as HTMLElement | null;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable) {
         return;
+      }
+
+      // Delete selected nodes via keyboard (after box-select or multi-select)
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const ids = selectedNodeIdsRef.current;
+        if (ids.length > 0) {
+          e.preventDefault();
+          const canvas = activeCanvasRef.current;
+          if (canvas) {
+            const idSet = new Set(ids);
+            const prompts = canvas.promptNodes.filter(n => idSet.has(n.id));
+            const images = canvas.imageNodes.filter(n => idSet.has(n.id));
+            prompts.forEach(n => deletePromptNode(n.id));
+            images.forEach(n => deleteImageNode(n.id));
+            clearSelection();
+            setSelectionMenuPosition(null);
+          }
+          return;
+        }
       }
 
       // Ctrl + K or Cmd + K to open Search
@@ -1269,7 +1326,7 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, canUndo, canRedo]);
+  }, [undo, redo, canUndo, canRedo, deletePromptNode, deleteImageNode, clearSelection]);
 
   // const [showApiModal, setShowApiModal] = useState(false); // Removed
   // Duplicate showProfileModal removed
@@ -1287,7 +1344,13 @@ const AppContent: React.FC = () => {
           updatePromptNode({
             ...node,
             isGenerating: false,
-            error: "Cancelled by user"
+            error: "Cancelled by user",
+            errorDetails: {
+              code: 'CANCELLED',
+              responseBody: 'Generation cancelled by user',
+              model: node.model,
+              timestamp: Date.now()
+            }
           });
         }
       }
@@ -1305,7 +1368,13 @@ const AppContent: React.FC = () => {
           updatePromptNode({
             ...node,
             isGenerating: false,
-            error: "Cancelled by user"
+            error: "Cancelled by user",
+            errorDetails: {
+              code: 'CANCELLED',
+              responseBody: 'Generation cancelled by user',
+              model: node.model,
+              timestamp: Date.now()
+            }
           });
         });
       }
@@ -1381,6 +1450,108 @@ const AppContent: React.FC = () => {
     });
   }, [inferAspectRatioFromDimensions, updateImageNode, updateImageNodeDimensions]);
 
+  const extractErrorDetails = useCallback((error: any, fallbackModel?: string) => {
+    const details = {
+      code: error?.code ? String(error.code) : undefined,
+      status: typeof error?.status === 'number' ? error.status : (typeof error?.response?.status === 'number' ? error.response.status : undefined),
+      requestBody: undefined as string | undefined,
+      responseBody: undefined as string | undefined,
+      provider: error?.provider ? String(error.provider) : undefined,
+      model: fallbackModel,
+      timestamp: Date.now()
+    };
+
+    if (error?.requestBody) {
+      details.requestBody = typeof error.requestBody === 'string' ? error.requestBody : JSON.stringify(error.requestBody, null, 2);
+    } else if (error?.request?.body) {
+      details.requestBody = typeof error.request.body === 'string' ? error.request.body : JSON.stringify(error.request.body, null, 2);
+    }
+
+    if (error?.responseBody) {
+      details.responseBody = typeof error.responseBody === 'string' ? error.responseBody : JSON.stringify(error.responseBody, null, 2);
+    } else if (error?.response?.data) {
+      details.responseBody = typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data, null, 2);
+    }
+
+    if (error?.message && !details.responseBody) {
+      details.responseBody = String(error.message);
+    }
+
+    if (!details.code && !details.status && !details.requestBody && !details.responseBody && !details.provider) {
+      return undefined;
+    }
+    return details;
+  }, []);
+
+  const parsePptOutlineLine = useCallback((raw?: string) => {
+    const text = String(raw || '').trim();
+    if (!text) return { title: '', subtitle: '' };
+
+    const splitBy = (token: string) => {
+      const idx = text.indexOf(token);
+      if (idx <= 0) return null;
+      const title = text.slice(0, idx).trim();
+      const subtitle = text.slice(idx + token.length).trim();
+      return { title, subtitle };
+    };
+
+    const byColon = splitBy('：') || splitBy(':');
+    if (byColon) return byColon;
+
+    const byDash = splitBy(' - ') || splitBy(' — ') || splitBy(' – ');
+    if (byDash) return byDash;
+
+    return { title: text, subtitle: '' };
+  }, []);
+
+  const getNodeIoTrace = useCallback((nodeId: string) => {
+    const node = activeCanvas?.promptNodes.find(n => n.id === nodeId);
+    const inputStorageIds = (node?.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean) as string[];
+    const outputStorageIds = (activeCanvas?.imageNodes || [])
+      .filter(img => img.parentPromptId === nodeId)
+      .map(img => img.storageId || img.id)
+      .filter(Boolean) as string[];
+    return { inputStorageIds, outputStorageIds };
+  }, [activeCanvas]);
+
+  const buildAutoPptSlides = useCallback((topicRaw: string, totalRaw: number) => {
+    const topic = String(topicRaw || '').trim() || '主题演示';
+    const total = Math.min(20, Math.max(1, Number(totalRaw) || 1));
+
+    const basePool = [
+      `背景与问题定义：${topic}`,
+      `行业趋势与机会：${topic}`,
+      `目标用户与核心场景：${topic}`,
+      `解决方案概览：${topic}`,
+      `核心能力与差异化：${topic}`,
+      `关键数据与证据：${topic}`,
+      `典型案例与应用示例：${topic}`,
+      `落地路径与实施步骤：${topic}`,
+      `风险评估与应对策略：${topic}`,
+      `里程碑与路线图：${topic}`,
+      `资源需求与协同机制：${topic}`,
+      `预期收益与评估指标：${topic}`
+    ];
+
+    const pages: string[] = [];
+    pages.push(`封面：${topic}`);
+
+    if (total >= 3) {
+      pages.push(`目录：${topic} 的核心章节`);
+    }
+
+    const remainForMiddle = Math.max(0, total - 1 - pages.length);
+    for (let i = 0; i < remainForMiddle; i++) {
+      pages.push(basePool[i % basePool.length]);
+    }
+
+    if (pages.length < total) {
+      pages.push(`总结与行动建议：${topic}`);
+    }
+
+    return pages.slice(0, total);
+  }, []);
+
   // Extracted Execution Logic
   const executeGeneration = useCallback(async (node: PromptNode) => {
     const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: initialModel, mode, referenceImages: files = [] } = node;
@@ -1405,6 +1576,46 @@ const AppContent: React.FC = () => {
 
     const isVideo = mode === GenerationMode.VIDEO;
     const isAudio = mode === GenerationMode.AUDIO;
+    const isPpt = mode === GenerationMode.PPT;
+    const effectiveSlideLines = isPpt
+      ? ((node.pptSlides || []).map(line => String(line || '').trim()).filter(Boolean))
+      : [];
+
+    const buildPptPagePrompt = (basePrompt: string, index: number, total: number) => {
+      const pageNo = index + 1;
+      const getLayoutDirective = (text: string) => {
+        const t = (text || '').toLowerCase();
+        if (/封面|cover|title/.test(t)) return '采用封面版式：大标题+副标题+视觉主图，信息精简。';
+        if (/目录|agenda|contents?/.test(t)) return '采用目录版式：清晰列出3-6个章节条目，层级分明。';
+        if (/总结|结论|行动|summary|conclusion/.test(t)) return '采用总结版式：结论要点+行动建议，重点高亮。';
+        if (/章节|section|transition/.test(t)) return '采用章节过渡页版式：章节标题突出，辅以关键关键词。';
+        return '采用内容页版式：标题+3-5个信息块，层次清晰。';
+      };
+      const lockStyle = node.pptStyleLocked !== false;
+      const styleDirective = lockStyle
+        ? '与整套PPT保持完全统一的视觉语言（配色、字体、版式、插画风格一致）'
+        : '保持基础统一但允许该页视觉变化';
+      const slideLines = effectiveSlideLines.length > 0
+        ? effectiveSlideLines
+        : buildAutoPptSlides(basePrompt, total);
+      if (slideLines.length > 0) {
+        const picked = slideLines[Math.min(index, slideLines.length - 1)];
+        return `PPT第${pageNo}页：${picked}。16:9 演示文稿风格，中文排版清晰，信息层次分明。${styleDirective}。${getLayoutDirective(picked)}`;
+      }
+      const lines = basePrompt
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => line.replace(/^[-*\d.)、\s]+/, '').trim())
+        .filter(Boolean);
+
+      if (lines.length >= total) {
+        const picked = lines[Math.min(index, lines.length - 1)];
+        return `PPT第${pageNo}页：${picked}。16:9 演示文稿风格，中文排版清晰，信息层次分明。${styleDirective}。${getLayoutDirective(picked)}`;
+      }
+
+      return `你正在设计同一套PPT。当前生成第${pageNo}/${total}页。主题：${basePrompt}。请输出与其他页面风格统一但内容不重复的一页，16:9，包含明确标题与结构化信息区块。${styleDirective}。采用内容页版式：标题+3-5个信息块，层次清晰。`;
+    };
 
     // 🚀 [Safe State Tracking] Track success to prevent error overwrite
 
@@ -1421,7 +1632,13 @@ const AppContent: React.FC = () => {
             updatePromptNode({
               ...node,
               isGenerating: false,
-              error: '生成超时，请重新发送任务'
+              error: '生成超时，请重新发送任务',
+              errorDetails: {
+                code: 'TIMEOUT',
+                responseBody: 'Request exceeded 240000ms timeout in executeGeneration',
+                model: node.model,
+                timestamp: Date.now()
+              }
             });
             import('./services/notificationService').then(({ notify }) => {
               notify.warning('生成超时', '已超过4分钟，任务已自动停止。请检查网络后重试。');
@@ -1432,6 +1649,7 @@ const AppContent: React.FC = () => {
         try {
           let generatedBase64 = '';
           let videoUrl = '';
+          const taskPrompt = isPpt ? buildPptPagePrompt(generationPrompt, index, actualCount) : generationPrompt;
           let tokenUsage = 0;
           let costUsd = 0;
           let currentAspectRatio = node.aspectRatio;
@@ -1440,14 +1658,19 @@ const AppContent: React.FC = () => {
           let provider: string | undefined = undefined; // 🚀 Provider info
           let providerLabel: string | undefined = undefined; // 🚀 Provider display name
           let modelLabel: string | undefined = undefined; // 🚀 Model display name
+          let keySlotId: string | undefined = node.keySlotId;
+          let requestPath: string | undefined = undefined;
+          let requestBodyPreview: string | undefined = undefined;
+          let pythonSnippet: string | undefined = undefined;
 
           if (isAudio) {
             // 🚀 音频生成路由
             const audioResult = await llmService.generateAudio({
               modelId: node.model,
-              prompt: generationPrompt,
+              prompt: taskPrompt,
               audioDuration: node.audioDuration,
               audioLyrics: node.audioLyrics,
+              preferredKeyId: node.keySlotId,
               providerConfig: {}
             });
 
@@ -1459,6 +1682,7 @@ const AppContent: React.FC = () => {
             if (audioResult.provider) provider = audioResult.provider;
             if (audioResult.providerName) providerLabel = audioResult.providerName;
             if (audioResult.modelName) modelLabel = audioResult.modelName;
+            if (audioResult.keySlotId) keySlotId = audioResult.keySlotId;
 
           } else if (isVideo) {
             const videoResolution = (() => {
@@ -1473,11 +1697,12 @@ const AppContent: React.FC = () => {
 
             const videoResult = await llmService.generateVideo({
               modelId: node.model,
-              prompt: generationPrompt,
+              prompt: taskPrompt,
               aspectRatio: videoAspect,
               imageUrl: files[0]?.data,
               imageTailUrl: files[1]?.data,
               videoDuration: node.videoDuration,
+              preferredKeyId: node.keySlotId,
               providerConfig: {
                 google: {
                   imageConfig: { imageSize: videoResolution }
@@ -1493,10 +1718,11 @@ const AppContent: React.FC = () => {
             if (videoResult.provider) provider = videoResult.provider;
             if (videoResult.providerName) providerLabel = videoResult.providerName;
             if (videoResult.modelName) modelLabel = videoResult.modelName;
+            if (videoResult.keySlotId) keySlotId = videoResult.keySlotId;
 
           } else {
             const result = await generateImage(
-              generationPrompt,
+              taskPrompt,
               node.aspectRatio,
               node.imageSize,
               files,
@@ -1506,7 +1732,8 @@ const AppContent: React.FC = () => {
               false, // grounding config not preserved in node? assuming false for resume or need to add to PromptNode
               {
                 maskUrl: node.maskUrl,
-                editMode: node.mode === GenerationMode.INPAINT ? 'inpaint' : (node.mode === GenerationMode.EDIT ? 'edit' : undefined)
+                editMode: node.mode === GenerationMode.INPAINT ? 'inpaint' : (node.mode === GenerationMode.EDIT ? 'edit' : undefined),
+                preferredKeyId: node.keySlotId
               }
             );
             generatedBase64 = result.url;
@@ -1524,6 +1751,10 @@ const AppContent: React.FC = () => {
             if (result.provider) provider = result.provider; // 🚀 Capture provider
             if (result.providerName) providerLabel = result.providerName;
             if (result.modelName) modelLabel = result.modelName;
+            if (result.keySlotId) keySlotId = result.keySlotId;
+            requestPath = result.requestPath;
+            requestBodyPreview = result.requestBodyPreview;
+            pythonSnippet = result.pythonSnippet;
           }
 
           isFinished = true;
@@ -1578,17 +1809,27 @@ const AppContent: React.FC = () => {
             exactDimensions, // 🚀 Pass exact dimensions
             provider, // 🚀 Pass provider
             providerLabel: providerLabel, // 🚀 Pass Display Provider Name
-            modelName: modelLabel // 🚀 Pass Display Model Name
+            modelName: modelLabel, // 🚀 Pass Display Model Name
+            keySlotId,
+            taskPrompt,
+            requestPath,
+            requestBodyPreview,
+            pythonSnippet
           };
         } catch (error: any) {
           isFinished = true;
           clearTimeout(timeoutId);
           console.error(`Generation ${index} failed:`, error);
-          return { error: error.message || 'Unknown error' };
+          return {
+            error: error.message || 'Unknown error',
+            errorDetails: extractErrorDetails(error, node.model)
+          };
         }
       };
 
-      const tasks = Array.from({ length: count }).map((_, index) => buildTask(index));
+      const requestedCount = Math.max(1, Number(count) || 1);
+      const actualCount = isPpt ? Math.min(20, requestedCount) : requestedCount;
+      const tasks = Array.from({ length: actualCount }).map((_, index) => buildTask(index));
 
       const runWithConcurrency = async <T,>(taskList: Array<() => Promise<T>>, limit: number): Promise<T[]> => {
         const results: T[] = new Array(taskList.length);
@@ -1604,7 +1845,7 @@ const AppContent: React.FC = () => {
         return results;
       };
 
-      const imageData = await runWithConcurrency(tasks, count);
+      const imageData = await runWithConcurrency(tasks, actualCount);
 
       // 过滤成功的结果
       const validImageData = imageData.filter(d => !!d && !('error' in d) && !!d.url && typeof d.index === 'number') as Array<{
@@ -1623,11 +1864,19 @@ const AppContent: React.FC = () => {
         provider?: string; // 🚀 Pass through
         providerLabel?: string; // 🚀 Pass through
         modelName?: string; // 🚀 Pass through
+        keySlotId?: string;
+        taskPrompt?: string;
+        requestPath?: string;
+        requestBodyPreview?: string;
+        pythonSnippet?: string;
       }>;
 
       if (validImageData.length === 0) {
         const firstError = imageData.find(d => d && 'error' in d);
-        throw new Error(firstError && 'error' in firstError ? firstError.error : '所有图片生成失败');
+        const message = firstError && 'error' in firstError ? firstError.error : '所有图片生成失败';
+        const enrichedError = new Error(message);
+        (enrichedError as any).details = firstError && 'errorDetails' in firstError ? firstError.errorDetails : undefined;
+        throw enrichedError;
       }
 
       // ✅ 生成完成后重新获取主卡最新位置 (支持生成过程中拖动)
@@ -1673,7 +1922,8 @@ const AppContent: React.FC = () => {
           const {
             url, originalUrl, generationTime, base64, mode: itemMode, tokens, cost,
             effectiveModel: resModel, effectiveSize: resSize, effectiveAspectRatio: resRatio,
-            exactDimensions, provider, providerLabel: itemProviderLabel, modelName
+            exactDimensions, provider, providerLabel: itemProviderLabel, modelName, taskPrompt: itemTaskPrompt
+            , keySlotId, requestPath, requestBodyPreview, pythonSnippet
           } = item;
 
           // 🚀 Use result model/size if available, otherwise fallback
@@ -1692,7 +1942,12 @@ const AppContent: React.FC = () => {
           const totalCards = validImageData.length;
           const cardsInCurrentRow = Math.min(columns, totalCards - row * columns);
 
-          if (isMobile) {
+          if (isPpt) {
+            const pptGap = 28;
+            const offsetY = gapToImages + cardHeight + idx * (cardHeight + pptGap);
+            x = finalPos.x;
+            y = finalPos.y + offsetY;
+          } else if (isMobile) {
             const mobileCardWidth = 170;
             const mobileCardHeight = 260;
             const mobileGap = 10;
@@ -1715,14 +1970,18 @@ const AppContent: React.FC = () => {
 
           const uniqueId = Date.now().toString() + idx + Math.random();
           if (base64) {
-            saveImage(uniqueId, base64).catch(err => console.error("Failed to cache original locally", err));
+            saveOriginalImage(uniqueId, base64, itemMode === GenerationMode.VIDEO)
+              .catch(err => {
+                console.error("Failed to persist original locally", err);
+                saveImage(uniqueId, base64).catch(e2 => console.error("Fallback cache also failed", e2));
+              });
           }
 
           return {
             id: uniqueId,
             url,
             originalUrl,
-            prompt: node.originalPrompt || promptToUse,
+            prompt: itemTaskPrompt || node.originalPrompt || promptToUse,
             aspectRatio: finalAspectRatio, // 🚀 Use resolved ratio
             imageSize: finalSize, // Add imageSize field
             timestamp: Date.now(),
@@ -1745,6 +2004,12 @@ const AppContent: React.FC = () => {
             })(),
             provider: provider,
             providerLabel: itemProviderLabel || provider, // ✨ Use custom name if available, else provider ID
+            keySlotId,
+            sourceReferenceStorageIds: (files || []).map(ref => ref.storageId || ref.id).filter(Boolean),
+            requestPath,
+            requestBodyPreview,
+            pythonSnippet,
+            alias: isPpt ? `图${idx + 1}` : undefined,
             mode: itemMode,
             canvasId: activeCanvasRef.current?.id || 'default',
             parentPromptId: promptNodeId,
@@ -1770,8 +2035,11 @@ const AppContent: React.FC = () => {
         position: finalPos,
         isGenerating: false,
         childImageIds: successResults.map(r => r.id), // Use successResults
+        keySlotId: successResults[0]?.keySlotId || effectiveNode.keySlotId,
         isDraft: false,
       };
+
+      rememberPreferredKeyForMode(updatedNode.mode, updatedNode.keySlotId);
 
       // 🚀 [Critical Fix] Execute updates in sequence/batch to prevent state overwrite race conditions
       // 先清理旧子卡，避免并发/重入导致同一主卡出现重复副卡
@@ -1784,13 +2052,20 @@ const AppContent: React.FC = () => {
       import('./services/costService').then(({ recordCost }) => {
         const usedModel = successResults[0]?.model || effectiveModel;
         const usedSize = successResults[0]?.imageSize || effectiveNode.imageSize;
+        const firstDebug = validImageData[0];
 
         recordCost(
           usedModel,
           usedSize,
           successResults.length,
           generationPrompt,
-          files.length
+          files.length,
+          undefined,
+          {
+            requestPath: firstDebug?.requestPath,
+            requestBodyPreview: firstDebug?.requestBodyPreview,
+            pythonSnippet: firstDebug?.pythonSnippet
+          }
         );
       });
 
@@ -1825,7 +2100,8 @@ const AppContent: React.FC = () => {
         ...currentNode,
         position: finalPos, // 🚀 Use latest center even on error!
         isGenerating: false,
-        error: err.message || 'Failed'
+        error: err.message || 'Failed',
+        errorDetails: (err as any)?.details || extractErrorDetails(err, currentNode.model)
       };
       const existsInCanvas = currentCanvasForError?.promptNodes.some((n: any) => n.id === node.id);
 
@@ -1845,7 +2121,7 @@ const AppContent: React.FC = () => {
         setSettingsInitialView('api-management');
       }
     }
-  }, [isMobile, updatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions]);
+  }, [isMobile, updatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions, extractErrorDetails, buildAutoPptSlides, rememberPreferredKeyForMode]);
 
   // Auto-Resume Effect
   const hasResumedRef = useRef(false);
@@ -2115,7 +2391,7 @@ const AppContent: React.FC = () => {
       let optimizedPromptEn: string | undefined;
       let optimizedPromptZh: string | undefined;
 
-      if (config.mode === GenerationMode.IMAGE && config.enablePromptOptimization && rawPrompt) {
+      if ((config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) && config.enablePromptOptimization && rawPrompt) {
         try {
           const optimized = await optimizePromptForImage(rawPrompt, {
             preferredModelId: config.model,
@@ -2148,8 +2424,16 @@ const AppContent: React.FC = () => {
       const baseModelIdForPreview = config.model.split('@')[0];
       const modelSuffixForPreview = config.model.split('@')[1];
       const previewModelLabel = getModelMetadata(baseModelIdForPreview)?.name || baseModelIdForPreview;
-      const previewProvider = modelSuffixForPreview ? 'Custom' : 'Google';
-      const previewProviderLabel = modelSuffixForPreview || 'Google';
+      const selectedKey = keyManager.getNextKey(config.model, getPreferredKeyForMode(config.mode));
+      const previewProvider = selectedKey?.provider || (modelSuffixForPreview ? 'Custom' : 'Google');
+      const previewProviderLabel = selectedKey?.name || modelSuffixForPreview || 'Google';
+      const pptCount = config.mode === GenerationMode.PPT
+        ? Math.min(20, Math.max(1, config.parallelCount || 1))
+        : Math.min(4, Math.max(1, config.parallelCount || 1));
+      const normalizedSlides = (config.pptSlides || []).map(s => String(s || '').trim()).filter(Boolean);
+      const effectivePptSlides = config.mode === GenerationMode.PPT
+        ? (normalizedSlides.length > 0 ? normalizedSlides.slice(0, pptCount) : buildAutoPptSlides(rawPrompt, pptCount))
+        : [];
 
       const generatingNode: PromptNode = {
         id: promptNodeId!,
@@ -2165,17 +2449,20 @@ const AppContent: React.FC = () => {
         modelLabel: previewModelLabel,
         provider: previewProvider,
         providerLabel: previewProviderLabel,
+        keySlotId: selectedKey?.id,
         childImageIds: [],
         referenceImages: finalReferenceImages,
         timestamp: Date.now(),
         isGenerating: true,
-        parallelCount: config.parallelCount,
+        parallelCount: pptCount,
         sourceImageId: activeSourceImage || undefined,
         mode: config.mode,
         isDraft: false, // Ensure it is NOT a draft anymore
         videoResolution: config.videoResolution,
         videoDuration: config.videoDuration,
-        videoAudio: config.videoAudio
+        videoAudio: config.videoAudio,
+        pptSlides: effectivePptSlides,
+        pptStyleLocked: config.pptStyleLocked !== false
       };
 
       // 🚀 [Fix Duplicate Placeholders]
@@ -2231,7 +2518,7 @@ const AppContent: React.FC = () => {
       generateLockRef.current = false;
       setIsGenerating(false);
     }
-  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth]);
+  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth, buildAutoPptSlides, getPreferredKeyForMode]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
@@ -2375,16 +2662,18 @@ const AppContent: React.FC = () => {
   // Retry Logic (In-Place Regeneration)
   const handleRetryNode = useCallback(async (node: PromptNode) => {
     // 1. Reset state to generating
-    updatePromptNode({
-      ...node,
-      isGenerating: true,
-      error: undefined,
-      isDraft: false, // 🚀 [Fix] Ensure visibility
-      timestamp: Date.now() // Reset timer
-    });
+      updatePromptNode({
+        ...node,
+        isGenerating: true,
+        error: undefined,
+        errorDetails: undefined,
+        isDraft: false, // 🚀 [Fix] Ensure visibility
+        timestamp: Date.now() // Reset timer
+      });
 
     const currentNodeId = node.id;
-    const count = node.parallelCount || config.parallelCount || 1;
+    const requestedCount = node.parallelCount || config.parallelCount || 1;
+    const count = node.mode === GenerationMode.PPT ? Math.min(20, Math.max(1, requestedCount)) : requestedCount;
     const startTime = Date.now();
 
     try {
@@ -2399,14 +2688,35 @@ const AppContent: React.FC = () => {
               ...node,
               isGenerating: false,
               isDraft: false, // 🚀 [Fix] Prevent disappearance on timeout
-              error: '生成超时'
+              error: '生成超时',
+              errorDetails: {
+                code: 'TIMEOUT',
+                responseBody: 'Retry request exceeded 360000ms timeout',
+                model: node.model,
+                timestamp: Date.now()
+              }
             });
           }
         }, 360000);
 
         try {
           let b64 = '';
+          let requestPath: string | undefined = undefined;
+          let requestBodyPreview: string | undefined = undefined;
+          let pythonSnippet: string | undefined = undefined;
           const currentMode: GenerationMode = node.mode || GenerationMode.IMAGE;
+          const taskPrompt = currentMode === GenerationMode.PPT
+            ? (() => {
+              const slideLines = (node.pptSlides || []).map(line => String(line || '').trim()).filter(Boolean);
+              const styleDirective = node.pptStyleLocked !== false
+                ? '与整套PPT保持完全统一的视觉语言'
+                : '保持基础统一但允许该页视觉变化';
+              const picked = slideLines.length > 0
+                ? slideLines[Math.min(index, slideLines.length - 1)]
+                : `主题：${node.prompt}。保持同一套视觉风格，页面内容独立不重复`;
+              return `PPT第${index + 1}/${count}页。${picked}。16:9。${styleDirective}。`;
+            })()
+            : node.prompt;
 
           if (currentMode === GenerationMode.VIDEO) {
             const videoResolution = (() => {
@@ -2419,11 +2729,12 @@ const AppContent: React.FC = () => {
             const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
             const videoResult = await llmService.generateVideo({
               modelId: node.model,
-              prompt: node.prompt,
+              prompt: taskPrompt,
               aspectRatio: videoAspect,
               imageUrl: node.referenceImages?.[0]?.data,
               imageTailUrl: node.referenceImages?.[1]?.data,
               videoDuration: node.videoDuration,
+              preferredKeyId: node.keySlotId,
               providerConfig: {
                 google: {
                   imageConfig: { imageSize: videoResolution }
@@ -2433,7 +2744,7 @@ const AppContent: React.FC = () => {
             b64 = videoResult.url;
           } else {
             const result = await generateImage(
-              node.prompt,
+              taskPrompt,
               node.aspectRatio,
               node.imageSize,
               node.referenceImages || [],
@@ -2441,8 +2752,14 @@ const AppContent: React.FC = () => {
               '', // managed key
               requestId,
               false // grounding
+              , {
+                preferredKeyId: node.keySlotId
+              }
             );
             b64 = result.url;
+            requestPath = result.requestPath;
+            requestBodyPreview = result.requestBodyPreview;
+            pythonSnippet = result.pythonSnippet;
           }
 
           isFinished = true;
@@ -2452,7 +2769,7 @@ const AppContent: React.FC = () => {
           let url = b64;
           let originalUrl = '';
 
-          if (currentMode === GenerationMode.IMAGE) {
+          if (currentMode === GenerationMode.IMAGE || currentMode === GenerationMode.PPT) {
             originalUrl = b64;
             if (b64.startsWith('data:')) {
               import('./services/syncService').then(async ({ syncService }) => {
@@ -2535,18 +2852,24 @@ const AppContent: React.FC = () => {
             index,
             url,
             originalUrl,
-            prompt: node.prompt,
+            prompt: taskPrompt,
             width: actualWidth,
             height: actualHeight,
             aspectRatio: node.aspectRatio,
             imageSize: computedImageSize, // 🚀 Use Computed Cost Tier
             model: node.model,
+            keySlotId: node.keySlotId,
+            sourceReferenceStorageIds: (node.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean),
+            alias: currentMode === GenerationMode.PPT ? `图${index + 1}` : undefined,
             seed: -1,
             id: `${Date.now()}_${index}_${Math.random().toString(36).substr(2, 5)}`,
             storageId, // Content-Based ID
             mimeType: 'image/png', // TODO: video support
             timestamp: Date.now(),
-            mode: currentMode
+            mode: currentMode,
+            requestPath,
+            requestBodyPreview,
+            pythonSnippet
           };
         } catch (e: any) {
           isFinished = true;
@@ -2590,7 +2913,14 @@ const AppContent: React.FC = () => {
         // Note: node.position.y is Prompt Bottom.
         // So Image Y = node.position.y + gapToImages + exactImageHeight.
 
-        if (isMobile) {
+        const isPptMode = (node.mode || GenerationMode.IMAGE) === GenerationMode.PPT;
+
+        if (isPptMode) {
+          const pptGap = 28;
+          const offsetY = gapToImages + exactImageHeight + i * (exactImageHeight + pptGap);
+          x = node.position.x;
+          y = node.position.y + offsetY;
+        } else if (isMobile) {
           // Mobile: Maintain Desktop Size but Single Column
           const cols = 1; // Force single column to fit screen
           const col = 0; // Always col 0
@@ -2646,7 +2976,8 @@ const AppContent: React.FC = () => {
         isGenerating: false,
         isDraft: false, // 🚀 [Fix] Ensure persistence
         childImageIds: newImageNodes.map(n => n.id),
-        error: undefined
+        error: undefined,
+        errorDetails: undefined
       });
 
       // Record cost
@@ -2654,12 +2985,19 @@ const AppContent: React.FC = () => {
       const effectiveSize = newImageNodes[0]?.imageSize || node.imageSize; // fallback
 
       import('./services/costService').then(({ recordCost }) => {
+        const firstDebug = (results as any[])[0] || {};
         recordCost(
           node.model,
           effectiveSize as any, // Cast to ImageSize
           newImageNodes.length,
           node.prompt,
-          node.referenceImages?.length || 0
+          node.referenceImages?.length || 0,
+          undefined,
+          {
+            requestPath: firstDebug.requestPath,
+            requestBodyPreview: firstDebug.requestBodyPreview,
+            pythonSnippet: firstDebug.pythonSnippet
+          }
         );
       });
       import('./services/notificationService').then(({ notify }) => {
@@ -2671,13 +3009,528 @@ const AppContent: React.FC = () => {
         ...node,
         isGenerating: false,
         isDraft: false, // 🚀 [Fix] Prevent disappearance on error
-        error: error.message || 'Retry failed'
+        error: error.message || 'Retry failed',
+        errorDetails: extractErrorDetails(error, node.model)
       });
       import('./services/notificationService').then(({ notify }) => {
         notify.error('重试失败', error.message);
       });
     }
-  }, [config.parallelCount, isMobile, updatePromptNode, addImageNodes, config.enableGrounding]);
+  }, [config.parallelCount, isMobile, updatePromptNode, addImageNodes, config.enableGrounding, extractErrorDetails]);
+
+  const handleExportPptPackage = useCallback(async (node: PromptNode) => {
+    if (!activeCanvas) return;
+    const childImages = activeCanvas.imageNodes
+      .filter(img => img.parentPromptId === node.id)
+      .sort((a, b) => {
+        const getNum = (x: string | undefined) => {
+          if (!x) return Number.POSITIVE_INFINITY;
+          const m = x.match(/图\s*(\d+)/);
+          return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
+        };
+        const diff = getNum(a.alias) - getNum(b.alias);
+        if (Number.isFinite(diff) && diff !== 0) return diff;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      });
+
+    if (childImages.length === 0) {
+      import('./services/notificationService').then(({ notify }) => {
+        notify.warning('无可导出页面', '当前主卡还没有生成副卡页面');
+      });
+      return;
+    }
+
+    const zip = new JSZip();
+    const pagesMeta: Array<any> = [];
+
+    for (let i = 0; i < childImages.length; i++) {
+      const img = childImages[i];
+      const pageNo = i + 1;
+      const pageName = img.alias || `图${pageNo}`;
+      const outlineRaw = node.pptSlides?.[i] || img.alias || '';
+      const { title: outlineTitle, subtitle: outlineSubtitle } = parsePptOutlineLine(outlineRaw);
+      const fileName = `pages/${String(pageNo).padStart(2, '0')}-${pageName.replace(/[\\/:*?"<>|]/g, '_')}.png`;
+      const src = img.originalUrl || img.url;
+
+      try {
+        const res = await fetch(src);
+        const blob = await res.blob();
+        zip.file(fileName, blob);
+      } catch {
+        // Skip broken pages but keep metadata
+      }
+
+      pagesMeta.push({
+        page: pageNo,
+        title: pageName,
+        outlineTitle,
+        outlineSubtitle,
+        prompt: img.prompt,
+        model: img.model,
+        provider: img.providerLabel || img.provider,
+        keySlotId: img.keySlotId,
+        dimensions: img.dimensions,
+        imageSize: img.imageSize,
+        timestamp: img.timestamp,
+        file: fileName
+      });
+    }
+
+    const outlinePages = (node.pptSlides || []).map((text, idx) => ({
+      page: idx + 1,
+      text
+    }));
+
+    zip.file('meta/manifest.json', JSON.stringify({
+      exportedAt: new Date().toISOString(),
+      nodeId: node.id,
+      nodePrompt: node.prompt,
+      pageCount: childImages.length,
+      pages: pagesMeta
+    }, null, 2));
+
+    zip.file('outline/ppt-outline.json', JSON.stringify({
+      topic: node.prompt,
+      pageCount: Math.max(childImages.length, outlinePages.length),
+      styleLocked: node.pptStyleLocked !== false,
+      pages: outlinePages
+    }, null, 2));
+
+    zip.file('meta/node-meta.json', JSON.stringify({
+      nodeId: node.id,
+      model: node.model,
+      modelLabel: node.modelLabel,
+      provider: node.provider,
+      providerLabel: node.providerLabel,
+      keySlotId: node.keySlotId,
+      aspectRatio: node.aspectRatio,
+      imageSize: node.imageSize,
+      parallelCount: node.parallelCount,
+      styleLocked: node.pptStyleLocked !== false,
+      referenceStorageIds: (node.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean)
+    }, null, 2));
+
+    const slidesHtml = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PPT Export Preview</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0b1020; color: #e5e7eb; margin: 0; padding: 20px; }
+    h1 { font-size: 18px; margin: 0 0 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+    .card { background: #121a2f; border: 1px solid #23304f; border-radius: 10px; overflow: hidden; }
+    .meta { padding: 10px 12px; font-size: 12px; line-height: 1.4; }
+    .title { color: #7dd3fc; font-weight: 600; margin-bottom: 6px; }
+    img { width: 100%; display: block; background: #0f172a; }
+  </style>
+</head>
+<body>
+  <h1>${(node.prompt || 'PPT 导出').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h1>
+  <div class="grid">
+    ${pagesMeta.map(p => `
+      <div class="card">
+        <img src="../${p.file}" alt="${String(p.title).replace(/"/g, '&quot;')}" />
+        <div class="meta">
+          <div class="title">第${p.page}页 · ${String(p.title).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+          <div>${String(p.prompt || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        </div>
+      </div>`).join('')}
+  </div>
+</body>
+</html>`;
+    zip.file('outline/slides-preview.html', slidesHtml);
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ppt-pages-${Date.now()}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    import('./services/notificationService').then(({ notify }) => {
+      notify.success('导出完成', `已导出 ${childImages.length} 页与 pages/outline/meta 目录`);
+    });
+  }, [activeCanvas, parsePptOutlineLine]);
+
+  const handleRetryPptSinglePage = useCallback(async (node: PromptNode, pageIndex: number) => {
+    if (!activeCanvas) return;
+    if (node.mode !== GenerationMode.PPT) return;
+
+    const ordered = activeCanvas.imageNodes
+      .filter(img => img.parentPromptId === node.id)
+      .sort((a, b) => {
+        const num = (val?: string) => {
+          if (!val) return Number.POSITIVE_INFINITY;
+          const m = val.match(/图\s*(\d+)/);
+          return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
+        };
+        const d = num(a.alias) - num(b.alias);
+        if (Number.isFinite(d) && d !== 0) return d;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      });
+
+    const target = ordered[pageIndex];
+    if (!target) {
+      import('./services/notificationService').then(({ notify }) => {
+        notify.warning('页面不存在', `未找到图${pageIndex + 1}`);
+      });
+      return;
+    }
+
+    const slides = (node.pptSlides || []).map(s => String(s || '').trim()).filter(Boolean);
+    const slideText = slides[pageIndex]
+      || slides[slides.length - 1]
+      || `主题：${node.prompt}。保持同一套视觉风格，页面内容独立不重复`;
+    const layoutDirective = (() => {
+      const t = slideText.toLowerCase();
+      if (/封面|cover|title/.test(t)) return '采用封面版式：大标题+副标题+视觉主图，信息精简。';
+      if (/目录|agenda|contents?/.test(t)) return '采用目录版式：清晰列出3-6个章节条目，层级分明。';
+      if (/总结|结论|行动|summary|conclusion/.test(t)) return '采用总结版式：结论要点+行动建议，重点高亮。';
+      if (/章节|section|transition/.test(t)) return '采用章节过渡页版式：章节标题突出，辅以关键关键词。';
+      return '采用内容页版式：标题+3-5个信息块，层次清晰。';
+    })();
+    const styleDirective = node.pptStyleLocked !== false
+      ? '与整套PPT保持完全统一的视觉语言'
+      : '保持基础统一但允许该页视觉变化';
+    const previousVisualHint = (() => {
+      const raw = (target.prompt || '').replace(/PPT第\d+\/?\d*页。?/g, '').trim();
+      if (!raw) return '';
+      const compact = raw.length > 120 ? `${raw.slice(0, 120)}...` : raw;
+      return `参考上一版视觉关键词：${compact}。`;
+    })();
+    const taskPrompt = `PPT第${pageIndex + 1}/${Math.max(1, node.childImageIds.length)}页。${slideText}。16:9。${styleDirective}。${layoutDirective}${previousVisualHint}`;
+
+    updateImageNode(target.id, {
+      isGenerating: true,
+      error: undefined
+    });
+
+    const startTime = Date.now();
+    try {
+      const result = await generateImage(
+        taskPrompt,
+        node.aspectRatio,
+        node.imageSize,
+        node.referenceImages || [],
+        node.model,
+        '',
+        `${node.id}-ppt-single-${pageIndex}`,
+        false,
+        {
+          preferredKeyId: node.keySlotId
+        }
+      );
+
+      let storageId = target.storageId;
+      if (result.url.startsWith('data:')) {
+        try {
+          const hash = await calculateImageHash(result.url);
+          storageId = hash;
+          await saveOriginalImage(hash, result.url);
+        } catch {
+          // ignore storage failures, keep in-memory preview
+        }
+      }
+
+      updateImageNode(target.id, {
+        url: result.url,
+        originalUrl: result.url,
+        prompt: taskPrompt,
+        timestamp: Date.now(),
+        generationTime: Date.now() - startTime,
+        model: result.model || node.model,
+        modelLabel: result.modelName || target.modelLabel,
+        provider: result.provider || target.provider,
+        providerLabel: result.providerName || target.providerLabel,
+        keySlotId: result.keySlotId || node.keySlotId,
+        imageSize: result.imageSize || node.imageSize,
+        aspectRatio: result.aspectRatio || node.aspectRatio,
+        dimensions: result.dimensions ? `${result.dimensions.width}x${result.dimensions.height}` : target.dimensions,
+        exactDimensions: result.dimensions || target.exactDimensions,
+        sourceReferenceStorageIds: (node.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean),
+        alias: `图${pageIndex + 1}`,
+        storageId,
+        isGenerating: false,
+        error: undefined
+      });
+
+      rememberPreferredKeyForMode(node.mode, result.keySlotId || node.keySlotId);
+
+      import('./services/notificationService').then(({ notify }) => {
+        notify.success('单页重生完成', `已更新图${pageIndex + 1}`);
+      });
+    } catch (error: any) {
+      updateImageNode(target.id, {
+        isGenerating: false,
+        error: error?.message || '单页重生失败'
+      });
+      import('./services/notificationService').then(({ notify }) => {
+        notify.error('单页重生失败', error?.message || '请稍后重试');
+      });
+    }
+  }, [activeCanvas, updateImageNode, rememberPreferredKeyForMode]);
+
+  const handleExportPptSinglePage = useCallback(async (node: PromptNode, pageIndex: number) => {
+    if (!activeCanvas) return;
+    if (node.mode !== GenerationMode.PPT) return;
+
+    const ordered = activeCanvas.imageNodes
+      .filter(img => img.parentPromptId === node.id)
+      .sort((a, b) => {
+        const num = (val?: string) => {
+          if (!val) return Number.POSITIVE_INFINITY;
+          const m = val.match(/图\s*(\d+)/);
+          return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
+        };
+        const d = num(a.alias) - num(b.alias);
+        if (Number.isFinite(d) && d !== 0) return d;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      });
+
+    const target = ordered[pageIndex];
+    if (!target) return;
+
+    try {
+      const res = await fetch(target.originalUrl || target.url);
+      const blob = await res.blob();
+      const name = `ppt-page-${String(pageIndex + 1).padStart(2, '0')}.png`;
+      saveAs(blob, name);
+      import('./services/notificationService').then(({ notify }) => {
+        notify.success('导出完成', `已导出图${pageIndex + 1}`);
+      });
+    } catch (e: any) {
+      import('./services/notificationService').then(({ notify }) => {
+        notify.error('导出失败', e?.message || '无法导出该页面');
+      });
+    }
+  }, [activeCanvas]);
+
+  const handleExportPptx = useCallback(async (node: PromptNode) => {
+    if (!activeCanvas) return;
+    if (node.mode !== GenerationMode.PPT) return;
+
+    const ordered = activeCanvas.imageNodes
+      .filter(img => img.parentPromptId === node.id)
+      .sort((a, b) => {
+        const num = (val?: string) => {
+          if (!val) return Number.POSITIVE_INFINITY;
+          const m = val.match(/图\s*(\d+)/);
+          return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
+        };
+        const d = num(a.alias) - num(b.alias);
+        if (Number.isFinite(d) && d !== 0) return d;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      })
+      .slice(0, 20);
+
+    if (ordered.length === 0) {
+      import('./services/notificationService').then(({ notify }) => {
+        notify.warning('无可导出页面', '当前主卡还没有生成副卡页面');
+      });
+      return;
+    }
+
+    const escapeXml = (s: string) => String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+
+    const zip = new JSZip();
+
+    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Default Extension="jpg" ContentType="image/jpeg"/>
+  <Default Extension="jpeg" ContentType="image/jpeg"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  ${ordered.map((_, i) => `  <Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join('\n')}
+</Types>`);
+
+    zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`);
+
+    zip.file('docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${escapeXml(node.prompt || 'KK Studio PPT Export')}</dc:title>
+  <dc:creator>KK Studio</dc:creator>
+  <cp:lastModifiedBy>KK Studio</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>
+</cp:coreProperties>`);
+
+    zip.file('docProps/app.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>KK Studio</Application>
+  <Slides>${ordered.length}</Slides>
+</Properties>`);
+
+    zip.file('ppt/presentation.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
+  <p:sldIdLst>
+    ${ordered.map((_, i) => `<p:sldId id="${256 + i}" r:id="rId${i + 2}"/>`).join('')}
+  </p:sldIdLst>
+  <p:sldSz cx="12192000" cy="6858000" type="screen16x9"/>
+  <p:notesSz cx="6858000" cy="9144000"/>
+</p:presentation>`);
+
+    zip.file('ppt/_rels/presentation.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+  ${ordered.map((_, i) => `<Relationship Id="rId${i + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i + 1}.xml"/>`).join('\n')}
+</Relationships>`);
+
+    zip.file('ppt/slideMasters/slideMaster1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld name="Master"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>
+  <p:clrMap accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" bg1="lt1" bg2="lt2" folHlink="folHlink" hlink="hlink" tx1="dk1" tx2="dk2"/>
+  <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
+</p:sldMaster>`);
+
+    zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>
+</Relationships>`);
+
+    zip.file('ppt/slideLayouts/slideLayout1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">
+  <p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sldLayout>`);
+
+    zip.file('ppt/slideLayouts/_rels/slideLayout1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>`);
+
+    zip.file('ppt/theme/theme1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme"><a:themeElements><a:clrScheme name="Default"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F497D"/></a:dk2><a:lt2><a:srgbClr val="EEECE1"/></a:lt2><a:accent1><a:srgbClr val="4F81BD"/></a:accent1><a:accent2><a:srgbClr val="C0504D"/></a:accent2><a:accent3><a:srgbClr val="9BBB59"/></a:accent3><a:accent4><a:srgbClr val="8064A2"/></a:accent4><a:accent5><a:srgbClr val="4BACC6"/></a:accent5><a:accent6><a:srgbClr val="F79646"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Default"><a:majorFont><a:latin typeface="Calibri"/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/></a:minorFont></a:fontScheme><a:fmtScheme name="Default"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`);
+
+    for (let i = 0; i < ordered.length; i++) {
+      const img = ordered[i];
+      const outlineRaw = node.pptSlides?.[i] || img.alias || `第${i + 1}页`;
+      const { title: outlineTitle, subtitle: outlineSubtitle } = parsePptOutlineLine(outlineRaw);
+      const titleText = outlineTitle || `第${i + 1}页`;
+      const subtitleText = outlineSubtitle || '';
+      const src = img.originalUrl || img.url;
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const mime = blob.type || 'image/png';
+      const ext = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : 'png';
+      const mediaPath = `ppt/media/image${i + 1}.${ext}`;
+      zip.file(mediaPath, blob);
+
+      zip.file(`ppt/slides/slide${i + 1}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm>
+          <a:off x="0" y="0"/>
+          <a:ext cx="0" cy="0"/>
+          <a:chOff x="0" y="0"/>
+          <a:chExt cx="0" cy="0"/>
+        </a:xfrm>
+      </p:grpSpPr>
+      <p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="2" name="${escapeXml(img.alias || `Slide ${i + 1}`)}"/>
+          <p:cNvPicPr/>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip r:embed="rId1"/>
+          <a:stretch><a:fillRect/></a:stretch>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm><a:off x="0" y="0"/><a:ext cx="12192000" cy="6858000"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        </p:spPr>
+      </p:pic>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="3" name="Title Box"/>
+          <p:cNvSpPr txBox="1"/>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="457200" y="228600"/><a:ext cx="11277600" cy="731520"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          <a:solidFill><a:srgbClr val="111827"><a:alpha val="42000"/></a:srgbClr></a:solidFill>
+          <a:ln><a:noFill/></a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr lIns="114300" tIns="57150" rIns="114300" bIns="57150"/>
+          <a:lstStyle/>
+          <a:p>
+            <a:r>
+              <a:rPr lang="zh-CN" b="1" sz="3200"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr>
+              <a:t>${escapeXml(titleText)}</a:t>
+            </a:r>
+            <a:endParaRPr lang="zh-CN" sz="3200"/>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      ${subtitleText ? `<p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="4" name="Subtitle Box"/>
+          <p:cNvSpPr txBox="1"/>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="457200" y="1005840"/><a:ext cx="11277600" cy="548640"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          <a:solidFill><a:srgbClr val="0F172A"><a:alpha val="28000"/></a:srgbClr></a:solidFill>
+          <a:ln><a:noFill/></a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr lIns="114300" tIns="38100" rIns="114300" bIns="38100"/>
+          <a:lstStyle/>
+          <a:p>
+            <a:r>
+              <a:rPr lang="zh-CN" sz="1800"><a:solidFill><a:srgbClr val="E5E7EB"/></a:solidFill></a:rPr>
+              <a:t>${escapeXml(subtitleText)}</a:t>
+            </a:r>
+            <a:endParaRPr lang="zh-CN" sz="1800"/>
+          </a:p>
+        </p:txBody>
+      </p:sp>` : ''}
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>`);
+
+      zip.file(`ppt/slides/_rels/slide${i + 1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${i + 1}.${ext}"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`);
+    }
+
+    const pptxBlob = await zip.generateAsync({ type: 'blob' });
+    saveAs(pptxBlob, `ppt-slides-${Date.now()}.pptx`);
+    import('./services/notificationService').then(({ notify }) => {
+      notify.success('PPTX导出完成', `已导出 ${ordered.length} 页的 .pptx 文件`);
+    });
+  }, [activeCanvas, parsePptOutlineLine]);
 
   // Auto-Recover Interrupted Tasks
   useEffect(() => {
@@ -3613,11 +4466,22 @@ const AppContent: React.FC = () => {
             }
             onCancel={handleCancelGeneration}
             onRetry={handleRetryNode}
+            onExportPpt={handleExportPptPackage}
+            onExportPptx={handleExportPptx}
+            onRetryPptPage={handleRetryPptSinglePage}
+            onExportPptPage={handleExportPptSinglePage}
+            ioTrace={getNodeIoTrace(node.id)}
+            onOpenStorageSettings={() => {
+              setShowSettingsPanel(true);
+              setSettingsInitialView('storage-settings');
+            }}
             onDelete={deletePromptNode}
             onDisconnect={handleDisconnectPrompt}
             onHeightChange={(id, height) => {
-              if (node.height !== height) {
-                updatePromptNode({ ...node, height });
+              const latestNode = activeCanvas?.promptNodes.find(n => n.id === id);
+              const targetNode = latestNode || node;
+              if (targetNode.height !== height) {
+                updatePromptNode({ ...targetNode, height });
               }
             }}
             onPin={handlePinDraft}

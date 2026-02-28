@@ -7,6 +7,7 @@ import { logError } from './systemLogService';
 import { getImage } from './imageStorage';
 import { llmService } from './llm/LLMService';
 import { ImageGenerationOptions, ProviderConfig } from './llm/LLMAdapter';
+import { getMaxRefImages } from './modelCapabilities';
 
 
 // Fallback control: allow config/env-driven auto-backoff when quota is exhausted
@@ -81,6 +82,9 @@ function calculateImageTokens(model: ModelType): number {
 }
 
 function normalizeError(error: any): Error {
+  // 🚀 [日志增强] 在归一化之前记录原始错误详情
+  logError('GeminiService', error, `Raw Message: ${error?.message || 'N/A'}\nStack: ${error?.stack || 'N/A'}`);
+
   const rawMessage = error?.message || error?.toString?.() || '未知错误';
   const msg = rawMessage.toLowerCase();
   if (msg.includes('cancelled')) return new Error("任务已取消");
@@ -92,7 +96,12 @@ function normalizeError(error: any): Error {
   if (msg.includes('503') && msg.includes('no available channel')) return new Error(`服务暂不可用 (503: 无可用渠道): ${rawMessage.slice(0, 180)}`);
   if (msg.includes('maxoutputtokens')) return new Error("Token 设置超出限制：请确保最大输出 Token 小于 65536");
 
-  if (msg.includes('429') || msg.includes('rate limit') || msg.includes('quota')) return new Error("请求太过频繁 (429)，正在尝试切换线路，请稍后...");
+  if (msg.includes('no accounts available with quota') || msg.includes('insufficient_quota')) {
+    return new Error("渠道额度不足：当前线路无可用配额，请切换到有余额的提供商或渠道");
+  }
+  if (msg.includes('429') || msg.includes('rate limit') || (msg.includes('quota') && !msg.includes('503'))) {
+    return new Error("请求太过频繁 (429)，正在尝试切换线路，请稍后...");
+  }
   if (msg.includes("503") || msg.includes("service unavailable") || msg.includes("too busy") || msg.includes("deadlock")) return new Error(`服务器繁忙 (503): ${rawMessage.slice(0, 180)}`);
   if (msg.includes("403") || msg.includes("permission") || msg.includes("api_key_invalid")) return new Error("API Key 无效或余额不足 (403)，请检查设置或在 12AI 官网充值");
   if (msg.includes("MISSING_API_KEY")) return new Error("请先在设置中配置有效的 API Key");
@@ -120,6 +129,17 @@ export interface GenerateImageResult {
   provider?: string; // API Provider Internal
   providerName?: string; // User-defined Provider Name
   modelName?: string; // User-friendly Model Name
+  keySlotId?: string;
+  requestPath?: string;
+  requestBodyPreview?: string;
+  pythonSnippet?: string;
+  referenceImagesUsed?: number;
+  referenceImagesDropped?: number;
+  groundingSources?: Array<{
+    uri: string;
+    title?: string;
+    imageUri?: string;
+  }>;
 }
 
 /**
@@ -185,6 +205,7 @@ export const generateImage = async (
     quality?: 'standard' | 'hd' | 'medium';
     maskUrl?: string; // 🚀 Advanced Editing
     editMode?: 'inpaint' | 'outpaint' | 'vectorize' | 'reframe' | 'upscale' | 'replace-background' | 'edit';
+    preferredKeyId?: string;
   }
 ): Promise<GenerateImageResult> => {
   // 🚀 Parse Model Suffix (Consistency)
@@ -265,8 +286,18 @@ export const generateImage = async (
 
   console.log(`[GeminiService] Generating with Model: ${model}, Ratio: ${aspectRatio}, Size: ${imageSize}`);
 
+  const maxAllowedRefs = Math.max(0, getMaxRefImages(model));
+  const inputRefCount = referenceImages.length;
+  const clippedReferenceImages = maxAllowedRefs > 0
+    ? referenceImages.slice(0, maxAllowedRefs)
+    : referenceImages.slice(0, 1);
+  const droppedRefCount = Math.max(0, inputRefCount - clippedReferenceImages.length);
+  if (droppedRefCount > 0) {
+    console.warn(`[GeminiService] Reference images clipped: input=${inputRefCount}, used=${clippedReferenceImages.length}, max=${maxAllowedRefs}`);
+  }
+
   // Process Use Reference Images
-  const processedReferences = (await Promise.all((referenceImages || []).map(async (img) => {
+  const processedReferences = (await Promise.all((clippedReferenceImages || []).map(async (img) => {
     let currentData = img.data;
 
     // 1. If data missing, try IDB recovery
@@ -332,14 +363,40 @@ export const generateImage = async (
   // --- Prepare Universal Provider Config ---
   const is4K = imageSize === ImageSize.SIZE_4K || imageSize.includes('4K');
   const is2K = imageSize === ImageSize.SIZE_2K || imageSize.includes('2K');
+  const upperSize = (imageSize || '').toUpperCase();
+  const is05K = imageSize === ImageSize.SIZE_05K || upperSize.includes('0.5K') || upperSize.includes('512');
+
+  // 🚀 Grounding Setup (Gemini 3 models only)
+  let googleTools: any[] | undefined = undefined;
+  if (grounding) {
+    // Both 3.1 and 3 Pro support grounding differently
+    // Actually official docs recommend just {} for 3.1 Flash imageSearch too
+    // but we can be specific based on model capabilities
+    if (model.includes('3.1-flash')) {
+      googleTools = [{
+        googleSearch: {
+          // Documented way for Flash 3.1 to search images specifically
+          searchTypes: {
+            imageSearch: {},
+            webSearch: {}
+          }
+        }
+      }];
+    } else {
+      googleTools = [{
+        googleSearch: {}
+      }];
+    }
+  }
 
   const providerConfig: ProviderConfig = {
     // 1. Google Gemini Config
     google: {
       responseModalities: ["IMAGE"],
+      tools: googleTools, // 🚀 Inject Grounding Tools
       imageConfig: {
         aspectRatio: aspectRatio,
-        imageSize: is4K ? '4K' : (is2K ? '2K' : '1K')
+        imageSize: is4K ? '4K' : (is2K ? '2K' : (is05K ? '512px' : '1K'))
       }
     },
     // 2. Imagen Config
@@ -368,7 +425,8 @@ export const generateImage = async (
     referenceImages: processedReferences.map(r => r.data).filter((d): d is string => !!d && !d.startsWith('http') && !d.startsWith('blob:') && !d.startsWith('file:')),
     providerConfig: providerConfig, // 🚀 Pass the Universal Config
     maskUrl: options?.maskUrl, // 🚀 Pass Edit Options
-    editMode: options?.editMode
+    editMode: options?.editMode,
+    preferredKeyId: options?.preferredKeyId
   };
 
   try {
@@ -406,7 +464,14 @@ export const generateImage = async (
       dimensions: result.metadata?.dimensions || autoRatioDimensions,
       provider: result.provider,
       providerName: result.providerName,
-      modelName: result.modelName
+      modelName: result.modelName,
+      keySlotId: result.keySlotId,
+      requestPath: result.metadata?.requestPath,
+      requestBodyPreview: result.metadata?.requestBodyPreview,
+      pythonSnippet: result.metadata?.pythonSnippet,
+      referenceImagesUsed: clippedReferenceImages.length,
+      referenceImagesDropped: droppedRefCount,
+      groundingSources: result.metadata?.grounding?.sources
     };
 
   } catch (error: any) {

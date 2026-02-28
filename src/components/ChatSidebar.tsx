@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ArrowUp, Bot, ChevronDown, ChevronRight, Eraser, FileText, Film, Image as ImageIcon, Layout, MessageSquare, Mic, Paperclip, Plus, Square, User, X, Zap, Sparkles, Search, Download, Upload, Archive, Edit2, Trash2 } from 'lucide-react';
+import { ArrowUp, Bot, Check, ChevronDown, ChevronRight, Copy, Eraser, FileText, Film, GitBranch, Image as ImageIcon, Layout, MessageSquare, Mic, Paperclip, Pencil, Plus, RotateCcw, Square, User, X, Zap, Sparkles, Search, Download, Upload, Archive, Edit2, Trash2 } from 'lucide-react';
 import { generateImage } from '../services/geminiService';
 import { llmService } from '../services/llm/LLMService';
 import { notify } from '../services/notificationService';
@@ -500,6 +500,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const sessionImportRef = useRef<HTMLInputElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+    const [isDropActive, setIsDropActive] = useState(false);
 
     // 3. Layout State
     const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -810,16 +813,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         startPosRef.current = { ...position };
     };
 
-    // 处理文件选择
-    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
+    const appendFilesAsAttachments = useCallback(async (files: File[]) => {
         if (!files || files.length === 0) return;
 
         const newAttachments: Attachment[] = [];
-
-        for (const file of Array.from(files)) {
+        for (const file of files) {
             const reader = new FileReader();
-
             const attachment = await new Promise<Attachment>((resolve) => {
                 reader.onloadend = () => {
                     let type: Attachment['type'] = 'document';
@@ -828,7 +827,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     else if (file.type.startsWith('audio/')) type = 'audio';
 
                     resolve({
-                        id: Date.now().toString() + Math.random(),
+                        id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
                         type,
                         name: file.name,
                         data: reader.result as string,
@@ -838,18 +837,65 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                 };
                 reader.readAsDataURL(file);
             });
-
             newAttachments.push(attachment);
         }
 
-        setAttachments(prev => [...prev, ...newAttachments]);
-        registerActivity();
+        if (newAttachments.length > 0) {
+            setAttachments(prev => [...prev, ...newAttachments]);
+            registerActivity();
+        }
+    }, [registerActivity]);
 
-        // 重置文件输入
+    // 处理文件选择
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files ? Array.from(e.target.files) : [];
+        await appendFilesAsAttachments(files);
+
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
     };
+
+    const handleInputPaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const clipboard = e.clipboardData;
+        if (!clipboard) return;
+
+        const dedupeFiles = (files: File[]): File[] => {
+            const map = new Map<string, File>();
+            files.forEach(file => {
+                const key = `${file.name}::${file.type}::${file.size}::${file.lastModified}`;
+                if (!map.has(key)) {
+                    map.set(key, file);
+                }
+            });
+            return Array.from(map.values());
+        };
+
+        const fromFiles = Array.from(clipboard.files || []);
+        const fromItems = Array.from(clipboard.items || [])
+            .filter(item => item.kind === 'file')
+            .map(item => item.getAsFile())
+            .filter((f): f is File => !!f);
+
+        const merged = dedupeFiles([...fromFiles, ...fromItems]);
+        if (merged.length === 0) return;
+
+        e.preventDefault();
+        await appendFilesAsAttachments(merged);
+        notify.success('已添加参考附件', `粘贴导入 ${merged.length} 个文件`);
+    }, [appendFilesAsAttachments]);
+
+    const handleDropToAttach = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDropActive(false);
+
+        const files = Array.from(e.dataTransfer?.files || []);
+        if (files.length === 0) return;
+
+        await appendFilesAsAttachments(files);
+        notify.success('已添加参考附件', `拖拽导入 ${files.length} 个文件`);
+    }, [appendFilesAsAttachments]);
 
     // 删除附件
     const removeAttachment = (id: string) => {
@@ -893,11 +939,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                 })
                 .filter(Boolean) as Array<{ id: string; data: string; mimeType: string }>;
 
+            const lowerModelId = (imageModel.id || '').toLowerCase();
+            let targetSize = ImageSize.SIZE_1K;
+            if (lowerModelId.includes('4k') || lowerModelId.includes('gemini-3-pro-image-preview') || lowerModelId.includes('nano-banana-pro')) {
+                targetSize = ImageSize.SIZE_4K;
+            } else if (lowerModelId.includes('2k')) {
+                targetSize = ImageSize.SIZE_2K;
+            }
+
             // 2. 调用生成服务
             const result = await generateImage(
                 prompt,
                 AspectRatio.SQUARE, // 默认方形
-                ImageSize.SIZE_1K,  // 默认1K
+                targetSize,
                 referenceImages as any,
                 imageModel.id as any,
                 '', // apiKey auto-resolved
@@ -906,12 +960,27 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                 editMode ? { editMode } : undefined
             );
 
+            if (result.referenceImagesDropped && result.referenceImagesDropped > 0) {
+                notify.warning(
+                    '参考图已自动裁剪',
+                    `模型最多使用 ${result.referenceImagesUsed || 0} 张，已忽略 ${result.referenceImagesDropped} 张`
+                );
+            }
+
+            const sourceLines = (result.groundingSources || []).slice(0, 5).map((src, idx) => {
+                const title = src.title || src.uri;
+                return `${idx + 1}. ${title}\n${src.uri}`;
+            });
+            const sourceText = sourceLines.length > 0
+                ? `\n\n🔎 来源参考:\n${sourceLines.join('\n')}`
+                : '';
+
             // 3. 构建结果消息
             const actionLabel = editMode ? '修改图片' : '生成图片';
             const aiMsg: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: `✨ 已为您${actionLabel}: "${prompt}" (使用模型: ${imageModel.name})`,
+                content: `✨ 已为您${actionLabel}: "${prompt}" (使用模型: ${imageModel.name})${sourceText}`,
                 timestamp: Date.now(),
                 isImageGeneration: true,
                 attachments: [{
@@ -1014,7 +1083,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
 
         const controller = new AbortController();
         abortControllerRef.current = controller;
-        let streamedText = '';
 
         try {
             // 构建历史记录
@@ -1036,19 +1104,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                 modelId: selectedModel.id,
                 messages: history,
                 inlineData: inlineData.length > 0 ? inlineData : undefined,
-                stream: true,
-                signal: controller.signal,
-                onStream: (chunk: string) => {
-                    if (!chunk) return;
-                    streamedText += chunk;
-                    setMessages(prev => prev.map(m => {
-                        if (m.id !== assistantMsgId) return m;
-                        return { ...m, content: `${m.content || ''}${chunk}` };
-                    }));
-                }
+                stream: false,
+                signal: controller.signal
             });
 
-            const finalText = streamedText || responseText || '...';
+            const finalText = responseText || '...';
             setMessages(prev => prev.map(m => {
                 if (m.id !== assistantMsgId) return m;
                 return { ...m, content: finalText };
@@ -1094,7 +1154,38 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         if (msg.role !== 'user') return;
         setInput(msg.content === '(附件)' ? '' : msg.content);
         setAttachments(msg.attachments || []);
+        setTimeout(() => {
+            inputRef.current?.focus();
+            const v = inputRef.current?.value || '';
+            inputRef.current?.setSelectionRange(v.length, v.length);
+        }, 0);
     }, []);
+
+    const handleCopyMessage = useCallback(async (msg: Message) => {
+        const text = (msg.content || '').trim();
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedMessageId(msg.id);
+            setTimeout(() => {
+                setCopiedMessageId(prev => (prev === msg.id ? null : prev));
+            }, 1200);
+        } catch {
+            notify.warning('复制失败', '当前环境不支持剪贴板写入');
+        }
+    }, []);
+
+    const handleEditFromAssistant = useCallback((assistantMessageId: string) => {
+        const assistantIndex = messages.findIndex(m => m.id === assistantMessageId);
+        if (assistantIndex < 0) return;
+        for (let i = assistantIndex - 1; i >= 0; i--) {
+            if (messages[i].role === 'user') {
+                handleEditResend(messages[i]);
+                return;
+            }
+        }
+        notify.warning('未找到可编辑的上一条提问', '请直接输入新的内容');
+    }, [handleEditResend, messages]);
 
     const handleBranchFrom = useCallback((index: number) => {
         const forkBase = messages.slice(0, index + 1);
@@ -1154,7 +1245,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        let streamedText = '';
         setMessages(prev => prev.map(m => (m.id === assistantId ? { ...m, content: '' } : m)));
 
         try {
@@ -1162,19 +1252,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                 modelId: selectedModel.id,
                 messages: history,
                 inlineData: inlineData.length > 0 ? inlineData : undefined,
-                stream: true,
-                signal: controller.signal,
-                onStream: (chunk: string) => {
-                    if (!chunk) return;
-                    streamedText += chunk;
-                    setMessages(prev => prev.map(m => {
-                        if (m.id !== assistantId) return m;
-                        return { ...m, content: `${m.content || ''}${chunk}` };
-                    }));
-                }
+                stream: false,
+                signal: controller.signal
             });
 
-            const finalText = streamedText || responseText || '...';
+            const finalText = responseText || '...';
             setMessages(prev => prev.map(m => (m.id === assistantId ? { ...m, content: finalText } : m)));
         } catch (error: any) {
             const isAborted = error?.name === 'AbortError';
@@ -1671,7 +1753,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     </div>
 
                     {/* Messages */}
-                    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 scrollbar-thin">
+                    <div className={`flex-1 overflow-y-auto space-y-4 scrollbar-thin ${isMobile ? 'px-3 py-3' : 'px-6 py-4'}`}>
                         {messages.map((msg, idx) => (
                             <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''} group`}>
                                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-md ${msg.role === 'user'
@@ -1680,7 +1762,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                     }`}>
                                     {msg.role === 'user' ? <User size={14} className="text-[var(--text-tertiary)]" /> : <Bot size={16} className="animate-icon-breathe" />}
                                 </div>
-                                <div className={`max-w-[82%] flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                <div className={`${isMobile ? 'max-w-[90%]' : 'max-w-[82%]'} flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                                     {/* 消息文本 */}
                                     <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
                                         ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-tr-md border border-[var(--border-light)]'
@@ -1716,29 +1798,56 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                     )}
 
                                     {msg.id !== 'welcome' && (
-                                        <div className={`flex items-center gap-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`flex items-center gap-1 text-[10px] transition-opacity ${isMobile
+                                            ? 'opacity-85'
+                                            : 'opacity-0 group-hover:opacity-100'
+                                            } ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                             {msg.role === 'user' && (
                                                 <button
                                                     onClick={() => handleEditResend(msg)}
-                                                    className="px-2 py-0.5 rounded border border-white/10 hover:bg-white/10"
+                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-white/10 hover:bg-white/10"
+                                                    title="编辑后重发"
                                                 >
-                                                    编辑重发
+                                                    <Pencil size={12} />
+                                                    {!isMobile && <span>编辑</span>}
                                                 </button>
                                             )}
                                             {msg.role === 'assistant' && idx === lastAssistantIndex && (
                                                 <button
                                                     onClick={() => handleRegenerateAssistant(msg.id)}
-                                                    className="px-2 py-0.5 rounded border border-white/10 hover:bg-white/10"
+                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-white/10 hover:bg-white/10 disabled:opacity-50"
                                                     disabled={isThinking}
+                                                    title="重试这一轮回答"
                                                 >
-                                                    重新生成
+                                                    <RotateCcw size={12} />
+                                                    {!isMobile && <span>重试</span>}
+                                                </button>
+                                            )}
+                                            {msg.role === 'assistant' && (
+                                                <button
+                                                    onClick={() => handleEditFromAssistant(msg.id)}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-white/10 hover:bg-white/10"
+                                                    title="编辑上一条提问"
+                                                >
+                                                    <Pencil size={12} />
+                                                    {!isMobile && <span>编辑提问</span>}
                                                 </button>
                                             )}
                                             <button
                                                 onClick={() => handleBranchFrom(idx)}
-                                                className="px-2 py-0.5 rounded border border-white/10 hover:bg-white/10"
+                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-white/10 hover:bg-white/10"
+                                                title="从当前消息创建分支"
                                             >
-                                                从此分支
+                                                <GitBranch size={12} />
+                                                {!isMobile && <span>分支</span>}
+                                            </button>
+                                            <button
+                                                onClick={() => handleCopyMessage(msg)}
+                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-white/10 hover:bg-white/10"
+                                                title="复制消息文本"
+                                            >
+                                                {copiedMessageId === msg.id ? <Check size={12} /> : <Copy size={12} />}
+                                                {!isMobile && <span>{copiedMessageId === msg.id ? '已复制' : '复制'}</span>}
                                             </button>
                                         </div>
                                     )}
@@ -1762,10 +1871,37 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     </div>
 
                     {/* Bottom Area */}
-                    <div className="px-4 pb-4 pt-3 shrink-0">
+                    <div
+                        className="px-4 pb-4 pt-3 shrink-0"
+                        style={isMobile ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' } : undefined}
+                    >
                         {/* Input Area - Always visible */}
-                        <div className="mb-3 px-2">
+                        <div
+                            className={`mb-3 px-2 rounded-xl border transition-colors ${isDropActive
+                                ? 'border-blue-400/60 bg-blue-500/10'
+                                : 'border-transparent'
+                                }`}
+                            onDragEnter={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setIsDropActive(true);
+                            }}
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!isDropActive) setIsDropActive(true);
+                            }}
+                            onDragLeave={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (e.currentTarget === e.target) {
+                                    setIsDropActive(false);
+                                }
+                            }}
+                            onDrop={handleDropToAttach}
+                        >
                             <textarea
+                                ref={inputRef}
                                 className="w-full border-none shadow-none text-base p-0 bg-transparent resize-none scrollbar-thin focus:outline-none text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)]"
                                 placeholder="开启你的灵感之旅"
                                 rows={1}
@@ -1782,15 +1918,21 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                         handleSend();
                                     }
                                 }}
+                                onPaste={handleInputPaste}
                                 autoFocus
                             />
+                            {isDropActive && (
+                                <div className="mt-2 text-[11px] text-blue-300">
+                                    松开鼠标即可添加图片/视频/文档作为参考
+                                </div>
+                            )}
                         </div>
 
                         {/* Attachments Preview */}
                         {attachments.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-3 px-2">
+                            <div className="flex flex-nowrap gap-2 mb-3 px-2 overflow-x-auto scrollbar-thin pb-1">
                                 {attachments.map(att => (
-                                    <div key={att.id} className="relative group">
+                                    <div key={att.id} className="relative group shrink-0">
                                         {att.type === 'image' ? (
                                             <img
                                                 src={att.data}
@@ -1807,7 +1949,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                         )}
                                         <button
                                             onClick={() => removeAttachment(att.id)}
-                                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                            className={`absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center transition-opacity ${isMobile ? 'opacity-95' : 'opacity-0 group-hover:opacity-100'}`}
                                         >
                                             <X size={10} />
                                         </button>
@@ -1817,7 +1959,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                         )}
 
                         {/* Bottom Toolbar */}
-                        <div className="flex items-center gap-2">
+                        <div className={isMobile ? 'grid grid-cols-[1fr_auto] gap-2' : 'flex items-center gap-2'}>
                             {/* Hidden File Input */}
                             <input
                                 ref={fileInputRef}
@@ -1831,7 +1973,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                             {/* Add Attachment Button */}
                             <button
                                 onClick={() => fileInputRef.current?.click()}
-                                className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-[var(--toolbar-hover)] transition-colors active:scale-95"
+                                className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-[var(--toolbar-hover)] transition-colors active:scale-95 ${isMobile ? 'col-start-1 row-start-2 justify-self-start' : ''}`}
                                 title="添加附件 (图片/视频/文档)"
                             >
                                 <Plus size={20} className="text-[var(--text-secondary)]" />
@@ -1847,7 +1989,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                         setCurrentAgent(agentService.getActive());
                                     }
                                 }}
-                                className={`px-2.5 min-h-[44px] flex items-center gap-1.5 justify-center rounded-lg border transition-all active:scale-95 ${agentMode
+                                className={`px-2.5 min-h-[44px] flex items-center gap-1.5 justify-center rounded-lg border transition-all active:scale-95 ${isMobile ? 'col-start-2 row-start-2 justify-self-end' : ''} ${agentMode
                                     ? 'bg-violet-500/15 border-violet-400/30 text-violet-300 hover:bg-violet-500/25'
                                     : 'border-transparent hover:bg-[var(--toolbar-hover)] text-[var(--text-secondary)]'
                                     }`}
@@ -1859,7 +2001,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                             </button>
 
                             {/* Model Selector */}
-                            <div className="relative flex-1 min-w-0">
+                            <div className={`relative min-w-0 ${isMobile ? 'col-start-1 row-start-1' : 'flex-1'}`}>
                                 <button
                                     ref={modelMenuButtonRef}
                                     onClick={() => {
@@ -1982,7 +2124,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                                                                 <div className="flex flex-col gap-0.5 w-full min-w-0">
                                                                                     <div className="flex items-center justify-between gap-2 min-w-0">
                                                                                         <span className={`font-medium truncate min-w-0 ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
-                                                                                            {displayName}
+                                                                                            {getModelDisplayInfo(model).displayName}
                                                                                         </span>
                                                                                         {getModelDisplayInfo(model).badgeText && (
                                                                                             <span
@@ -2051,7 +2193,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                             {isThinking ? (
                                 <button
                                     onClick={handleStopGeneration}
-                                    className="min-w-[44px] min-h-[44px] rounded-full cursor-pointer flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-transform active:scale-95"
+                                    className={`min-w-[44px] min-h-[44px] rounded-full cursor-pointer flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-transform active:scale-95 ${isMobile ? 'col-start-2 row-start-1' : ''}`}
                                     title="停止生成"
                                 >
                                     <Square size={14} />
@@ -2063,7 +2205,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                             handleSend();
                                         }
                                     }}
-                                    className="min-w-[44px] min-h-[44px] rounded-full cursor-pointer flex items-center justify-center bg-[var(--text-tertiary)] text-white hover:bg-[var(--text-secondary)] transition-transform active:scale-95"
+                                    className={`min-w-[44px] min-h-[44px] rounded-full cursor-pointer flex items-center justify-center bg-[var(--text-tertiary)] text-white hover:bg-[var(--text-secondary)] transition-transform active:scale-95 ${isMobile ? 'col-start-2 row-start-1' : ''}`}
                                 >
                                     <ArrowUp size={18} />
                                 </button>

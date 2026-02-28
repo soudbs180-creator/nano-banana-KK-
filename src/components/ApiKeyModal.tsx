@@ -41,7 +41,12 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
 
     const buildFingerprint = () => {
         const firstModel = formData.models.split(',')[0]?.trim() || '';
-        return [formData.key.trim(), formData.baseUrl.trim(), formData.provider.trim(), firstModel].join('::');
+        return [
+            formData.key.trim(),
+            formData.baseUrl.trim(),
+            formData.provider.trim(),
+            firstModel
+        ].join('::');
     };
 
     useEffect(() => {
@@ -170,6 +175,10 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
             // For others, we prefer manual input if it exists
             supportedModels: (formData.provider === 'Google' && autoFetchedModels.length > 0) ? autoFetchedModels : (userModels.length > 0 ? userModels : autoFetchedModels),
         };
+
+        // 保留已有自定义请求配置（如历史配置），但不再在 UI 暴露编辑入口
+        if (editingSlot?.customHeaders) payload.customHeaders = editingSlot.customHeaders;
+        if (editingSlot?.customBody) payload.customBody = editingSlot.customBody;
 
         if (initialType === 'proxy') {
             payload.proxyConfig = { serverName: formData.serverName };
@@ -431,6 +440,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, initi
                                             <>🔍 自动获取模型列表</>
                                         )}
                                     </button>
+
+                                    {/* 自定义请求头/请求体已隐藏，避免普通用户误操作 */}
                                 </div>
                             )}
                         </div>

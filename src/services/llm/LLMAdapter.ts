@@ -57,6 +57,7 @@ export interface ChatOptions {
 
     // 🚀 Standardized Provider Config
     providerConfig?: ProviderConfig;
+    preferredKeyId?: string;
 
     /** @deprecated use providerConfig instead */
     extraBody?: Record<string, any>;
@@ -88,6 +89,7 @@ export interface ImageGenerationOptions {
     // 🚀 Advanced Editing Options
     maskUrl?: string; // Base64 mask for inpainting
     editMode?: 'inpaint' | 'outpaint' | 'vectorize' | 'reframe' | 'upscale' | 'replace-background' | 'edit';
+    preferredKeyId?: string;
 }
 
 export interface ImageGenerationResult {
@@ -103,12 +105,30 @@ export interface ImageGenerationResult {
     provider?: string; // 🚀 API Provider (Internal ID e.g. 'Google')
     providerName?: string; // 🚀 User-defined Channel Name (e.g. 'Google Official')
     modelName?: string; // 🚀 User-friendly Model Name (e.g. 'Nano Banana Pro')
+    keySlotId?: string;
 
     // Metadata for debugging/display
     metadata?: {
         aspectRatio?: string;
         dimensions?: { width: number; height: number };
         requestId?: string;
+        requestPath?: string;
+        requestBodyPreview?: string;
+        pythonSnippet?: string;
+        grounding?: {
+            searchEntryPoint?: string;
+            sources?: Array<{
+                uri: string;
+                title?: string;
+                imageUri?: string;
+            }>;
+        };
+        referenceImages?: {
+            input: number;
+            used: number;
+            dropped: number;
+            maxAllowed: number;
+        };
     };
 }
 
@@ -125,6 +145,7 @@ export interface VideoGenerationOptions {
     size?: string; // 像素尺寸 '1024x576'
     watermark?: boolean; // 是否添加水印
     providerConfig?: ProviderConfig;
+    preferredKeyId?: string;
 }
 
 export interface VideoGenerationResult {
@@ -140,6 +161,7 @@ export interface VideoGenerationResult {
     provider?: string;
     providerName?: string;
     modelName?: string;
+    keySlotId?: string;
 }
 
 export interface AudioGenerationOptions {
@@ -154,6 +176,7 @@ export interface AudioGenerationOptions {
     voiceId?: string; // MiniMax TTS 声音 ID
     speed?: number; // MiniMax TTS 语速
     providerConfig?: ProviderConfig;
+    preferredKeyId?: string;
 }
 
 export interface AudioGenerationResult {
@@ -169,6 +192,7 @@ export interface AudioGenerationResult {
     provider?: string;
     providerName?: string;
     modelName?: string;
+    keySlotId?: string;
     metadata?: any;
 }
 

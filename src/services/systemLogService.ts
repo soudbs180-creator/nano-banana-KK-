@@ -27,7 +27,7 @@ interface DailyLogs {
 }
 
 const STORAGE_KEY = 'kk_studio_system_logs';
-const MAX_ENTRIES = 20; // Limit to 20 as requested
+const MAX_ENTRIES = 100; // 🚀 [Enhanced] Elevated from 20 to 100 for better debugging
 
 let listeners: ((logs: SystemLogEntry[]) => void)[] = [];
 

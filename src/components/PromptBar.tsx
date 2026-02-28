@@ -13,8 +13,9 @@ import ImageOptionsPanel from './ImageOptionsPanel';
 import VideoOptionsPanel from './VideoOptionsPanel';
 import ImagePreview from './ImagePreview';
 import { sortModels, toggleModelPin, getPinnedModels, filterAndSortModels } from '../utils/modelSorting';
-import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, ChevronUp, Activity, AlertTriangle, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap, Mic, Camera, Brain, Video, Image as ImageIcon, Pen } from 'lucide-react'; // [NEW] Mobile Icons
+import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, ChevronUp, Activity, AlertTriangle, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap, Mic, Camera, Brain, Video } from 'lucide-react'; // [NEW] Mobile Icons
 import { InpaintModal } from './InpaintModal';
+import { BUILTIN_PROMPT_LIBRARY, PromptLibraryItem } from '../config/promptLibrary';
 
 // [FIX] Robust Image Component that self-heals from Storage if data is missing
 const ReferenceThumbnail: React.FC<{
@@ -227,8 +228,36 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     // 状态：选项面板显示
     const [showOptionsPanel, setShowOptionsPanel] = useState(false);
+    const [showPromptLibrary, setShowPromptLibrary] = useState(false);
+    const [showPptOutlinePanel, setShowPptOutlinePanel] = useState(false);
+    const [pptOutlineDraft, setPptOutlineDraft] = useState('');
+    const [pptDragIndex, setPptDragIndex] = useState<number | null>(null);
+    const [pptDropIndex, setPptDropIndex] = useState<number | null>(null);
+    const [promptLibrarySearch, setPromptLibrarySearch] = useState('');
+    const [promptLibraryCategory, setPromptLibraryCategory] = useState<'all' | PromptLibraryItem['category']>('all');
+    const [favoritePromptIds, setFavoritePromptIds] = useState<string[]>(() => {
+        try {
+            const raw = localStorage.getItem('kk_prompt_library_favorites');
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    });
     const [isInputAreaHovered, setIsInputAreaHovered] = useState(false); // Phase 3: hover state
     const [uploadingCount, setUploadingCount] = useState(0); // [NEW] Uploading indicator count
+
+    // 🚀 [NEW] 模型手动锁定标识 - 解决更换 API 或模式后自动跳第一个的需求
+    const [isModelManuallyLocked, setIsModelManuallyLocked] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem('kk_model_manually_locked') === 'true';
+        } catch { return false; }
+    });
+
+    const setModelManualLock = (locked: boolean) => {
+        setIsModelManuallyLocked(locked);
+        localStorage.setItem('kk_model_manually_locked', locked ? 'true' : 'false');
+    };
     const hoverTimerRef = useRef<NodeJS.Timeout | null>(null); // 3-second hover delay timer
     const touchStartY = useRef<number | null>(null);
 
@@ -266,6 +295,25 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         window.addEventListener('click', closeMenu);
         return () => window.removeEventListener('click', closeMenu);
     }, []);
+
+    useEffect(() => {
+        if (config.mode !== GenerationMode.PPT) {
+            setShowPptOutlinePanel(false);
+            return;
+        }
+        const slides = (config.pptSlides || []).map(s => String(s || '').trim()).filter(Boolean);
+        if (slides.length > 0) {
+            setPptOutlineDraft(slides.join('\n'));
+            return;
+        }
+        const fromPrompt = (config.prompt || '')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean)
+            .map(line => line.replace(/^[-*\d.)、\s]+/, '').trim())
+            .filter(Boolean);
+        setPptOutlineDraft(fromPrompt.join('\n'));
+    }, [config.mode, config.pptSlides, config.prompt]);
 
     // Cleanup hover timer on unmount
     useEffect(() => {
@@ -347,9 +395,11 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
         const result = step2.filter(m => {
             const type = m.type || 'image';
+            const isImageLikeMode = config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT;
             // ✨ 支持多模态模型：image+chat 在 image 模式下也可用
-            if (config.mode === 'image' && type === 'image+chat') return true;
-            if (config.mode === 'video' && type === 'image+chat') return false;
+            if (isImageLikeMode && type === 'image+chat') return true;
+            if (config.mode === GenerationMode.VIDEO && type === 'image+chat') return false;
+            if (config.mode === GenerationMode.PPT) return type === 'image';
             return type === config.mode;
         });
 
@@ -357,17 +407,35 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         return result;
     }, [globalModels, config.mode]);
 
-    // Auto-select valid model when switching modes
+    const sortedAvailableModels = useMemo(() => {
+        return filterAndSortModels(availableModels, '', modelCustomizations);
+    }, [availableModels, modelCustomizations]);
+
+    // 🚀 [增强版模型自动选择逻辑]
+    // 逻辑：1. 如果当前选中的模型已失效，则必须重新选一个。
+    //       2. 如果当前模式、列表发生了变化，且用户并未“手动锁定”模型，则默认跳到第一个（满足“优先顶置”需求）。
     useEffect(() => {
-        const currentModelValid = availableModels.find(m => m.id === config.model);
-        if (!currentModelValid && availableModels.length > 0) {
+        if (sortedAvailableModels.length === 0) return;
+
+        const currentModelValid = sortedAvailableModels.find(m => m.id === config.model);
+
+        // 获取当前列表的首位模型 ID
+        const firstModelId = sortedAvailableModels[0].id;
+
+        // 执行自动切换的条件：
+        // 1. 当前模型不再列表中（必须跳）。
+        // 2. 或者：列表不为空，但用户并未手动锁定选择（API 或模式切换时自动回滚到第一个）。
+        const shouldResetToFirst = !currentModelValid || (!isModelManuallyLocked && config.model !== firstModelId);
+
+        if (shouldResetToFirst) {
+            console.log('[PromptBar.autoSelect] 自动切换模型到列表首位:', firstModelId, { 原因: !currentModelValid ? '当前模型无效' : '列表更新且未锁定' });
             setConfig(prev => {
-                const newModel = availableModels[0].id;
+                const newModel = firstModelId;
                 const newImageSize = autoDetectImageSize(newModel, prev.imageSize);
                 return { ...prev, model: newModel, imageSize: newImageSize };
             });
         }
-    }, [config.mode, availableModels, config.model, setConfig]);
+    }, [config.mode, sortedAvailableModels, isModelManuallyLocked, config.model, setConfig]);
 
     // Get available ratios and sizes based on model capabilities
     const modelCaps = useMemo(() => {
@@ -530,13 +598,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (isGenerating && onCancel) {
-                onCancel();
-            } else {
-                onGenerate();
-            }
+            // 始终允许发送新请求，即使正在生成中
+            onGenerate();
         }
-    }, [onGenerate, isGenerating, onCancel]);
+    }, [onGenerate]);
 
     const handlePaste = useCallback((e: React.ClipboardEvent) => {
         const items = e.clipboardData?.items;
@@ -609,6 +674,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             const target = event.target as Element;
             if (!target.closest('.input-bar-inner')) {
                 setActiveMenu(null);
+                setShowPromptLibrary(false);
+                setShowPptOutlinePanel(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -617,6 +684,207 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
         };
     }, []);
+
+    const saveFavoritePromptIds = useCallback((ids: string[]) => {
+        setFavoritePromptIds(ids);
+        localStorage.setItem('kk_prompt_library_favorites', JSON.stringify(ids));
+    }, []);
+
+    const togglePromptFavorite = useCallback((id: string) => {
+        if (favoritePromptIds.includes(id)) {
+            saveFavoritePromptIds(favoritePromptIds.filter(item => item !== id));
+            return;
+        }
+        saveFavoritePromptIds([id, ...favoritePromptIds]);
+    }, [favoritePromptIds, saveFavoritePromptIds]);
+
+    const applyPromptTemplate = useCallback((templatePrompt: string) => {
+        const current = (config.prompt || '').trim();
+        const nextPrompt = current
+            ? `${config.prompt.replace(/\s+$/, '')}\n${templatePrompt}`
+            : templatePrompt;
+        setConfig(prev => ({ ...prev, prompt: nextPrompt }));
+        setShowPromptLibrary(false);
+        notify.success('提示词已插入', '已追加到输入框，可继续编辑后发送');
+    }, [config.prompt, setConfig]);
+
+    const parsePptSlides = useCallback((text: string) => {
+        return text
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean)
+            .slice(0, 20);
+    }, []);
+
+    const generatePptOutlineByTopic = useCallback(() => {
+        const topic = (config.prompt || '').trim() || '主题演示';
+        const total = Math.min(20, Math.max(1, Number(config.parallelCount) || 1));
+        const pages = Array.from({ length: total }).map((_, idx) => {
+            const pageNo = idx + 1;
+            if (pageNo === 1) return `封面：${topic}`;
+            if (pageNo === total) return `总结与行动建议：${topic}`;
+            return `${topic} - 第${pageNo}页核心内容`;
+        });
+        setPptOutlineDraft(pages.join('\n'));
+    }, [config.parallelCount, config.prompt]);
+
+    const applyPptOutlineDraft = useCallback(() => {
+        const slides = parsePptSlides(pptOutlineDraft);
+        const nextCount = Math.max(1, Math.min(20, slides.length || Number(config.parallelCount) || 1));
+        setConfig(prev => ({
+            ...prev,
+            pptSlides: slides,
+            parallelCount: nextCount
+        }));
+        notify.success('PPT页纲已应用', `已设置 ${nextCount} 页，生成时将按图1~图${nextCount}输出`);
+    }, [config.parallelCount, parsePptSlides, pptOutlineDraft, setConfig]);
+
+    const exportPptOutlineJson = useCallback(() => {
+        const slides = parsePptSlides(pptOutlineDraft);
+        const payload = {
+            topic: (config.prompt || '').trim(),
+            pageCount: slides.length,
+            pages: slides.map((text, idx) => ({ page: idx + 1, text })),
+            exportedAt: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ppt-outline-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [config.prompt, parsePptSlides, pptOutlineDraft]);
+
+    const movePptSlide = useCallback((index: number, direction: -1 | 1) => {
+        const slides = parsePptSlides(pptOutlineDraft);
+        const target = index + direction;
+        if (target < 0 || target >= slides.length) return;
+        const next = [...slides];
+        const tmp = next[index];
+        next[index] = next[target];
+        next[target] = tmp;
+        setPptOutlineDraft(next.join('\n'));
+    }, [parsePptSlides, pptOutlineDraft]);
+
+    const removePptSlide = useCallback((index: number) => {
+        const slides = parsePptSlides(pptOutlineDraft);
+        const next = slides.filter((_, i) => i !== index);
+        setPptOutlineDraft(next.join('\n'));
+    }, [parsePptSlides, pptOutlineDraft]);
+
+    const insertPptSlideAfter = useCallback((index: number) => {
+        const slides = parsePptSlides(pptOutlineDraft);
+        if (slides.length >= 20) return;
+        const next = [...slides];
+        next.splice(index + 1, 0, `新页面 ${Math.min(20, index + 2)}`);
+        setPptOutlineDraft(next.slice(0, 20).join('\n'));
+    }, [parsePptSlides, pptOutlineDraft]);
+
+    const appendPptTemplateSlide = useCallback((template: 'cover' | 'agenda' | 'section' | 'summary') => {
+        const slides = parsePptSlides(pptOutlineDraft);
+        if (slides.length >= 20) return;
+        const topic = (config.prompt || '').trim() || '主题演示';
+        const text = template === 'cover'
+            ? `封面：${topic}`
+            : template === 'agenda'
+                ? `目录页：${topic} 核心议题与章节安排`
+                : template === 'section'
+                    ? `章节过渡页：${topic} - 阶段重点`
+                    : `总结页：${topic} 结论与下一步行动`;
+        setPptOutlineDraft([...slides, text].join('\n'));
+    }, [config.prompt, parsePptSlides, pptOutlineDraft]);
+
+    const dropPptSlide = useCallback(() => {
+        if (pptDragIndex === null || pptDropIndex === null) return;
+        const slides = parsePptSlides(pptOutlineDraft);
+        if (pptDragIndex < 0 || pptDragIndex >= slides.length) return;
+        const target = Math.max(0, Math.min(slides.length - 1, pptDropIndex));
+        if (target === pptDragIndex) return;
+        const next = [...slides];
+        const [moved] = next.splice(pptDragIndex, 1);
+        next.splice(target, 0, moved);
+        setPptOutlineDraft(next.join('\n'));
+        setPptDragIndex(null);
+        setPptDropIndex(null);
+    }, [parsePptSlides, pptDragIndex, pptDropIndex, pptOutlineDraft]);
+
+    useEffect(() => {
+        if (config.mode !== GenerationMode.PPT) return;
+        const slides = parsePptSlides(pptOutlineDraft);
+        const current = (config.pptSlides || []).map(s => String(s || '').trim()).filter(Boolean);
+        const draftKey = slides.join('\n');
+        const currentKey = current.join('\n');
+        if (draftKey === currentKey) return;
+
+        setConfig(prev => ({
+            ...prev,
+            pptSlides: slides,
+            parallelCount: Math.max(1, Math.min(20, slides.length || prev.parallelCount || 1))
+        }));
+    }, [config.mode, config.pptSlides, parsePptSlides, pptOutlineDraft, setConfig]);
+
+    const filteredPromptLibrary = useMemo(() => {
+        const keyword = promptLibrarySearch.trim().toLowerCase();
+        const isFavoriteOnly = promptLibraryCategory === 'all' && keyword === 'fav';
+
+        const base = BUILTIN_PROMPT_LIBRARY.filter(item => {
+            if (promptLibraryCategory !== 'all' && item.category !== promptLibraryCategory) return false;
+            if (isFavoriteOnly && !favoritePromptIds.includes(item.id)) return false;
+            if (!keyword || keyword === 'fav') return true;
+            return (
+                item.title.toLowerCase().includes(keyword)
+                || item.prompt.toLowerCase().includes(keyword)
+                || (item.source || '').toLowerCase().includes(keyword)
+            );
+        });
+
+        return base.sort((a, b) => {
+            const aFav = favoritePromptIds.includes(a.id) ? 1 : 0;
+            const bFav = favoritePromptIds.includes(b.id) ? 1 : 0;
+            return bFav - aFav;
+        });
+    }, [favoritePromptIds, promptLibraryCategory, promptLibrarySearch]);
+
+    const modeOptions = useMemo(() => ([
+        {
+            mode: GenerationMode.IMAGE,
+            label: '图片',
+            icon: Camera,
+            color: '#818cf8',
+            activeBg: 'rgba(99,102,241,0.16)',
+            onSelect: () => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE, parallelCount: Math.min(4, Math.max(1, prev.parallelCount || 1)) }))
+        },
+        {
+            mode: GenerationMode.VIDEO,
+            label: '视频',
+            icon: Video,
+            color: '#c084fc',
+            activeBg: 'rgba(168,85,247,0.16)',
+            onSelect: () => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO, parallelCount: Math.min(4, Math.max(1, prev.parallelCount || 1)) }))
+        },
+        {
+            mode: GenerationMode.AUDIO,
+            label: '音乐',
+            icon: Mic,
+            color: '#f472b6',
+            activeBg: 'rgba(236,72,153,0.16)',
+            onSelect: () => setConfig(prev => ({ ...prev, mode: GenerationMode.AUDIO, parallelCount: Math.min(4, Math.max(1, prev.parallelCount || 1)) }))
+        },
+        {
+            mode: GenerationMode.PPT,
+            label: 'PPT',
+            icon: LayoutDashboard,
+            color: '#38bdf8',
+            activeBg: 'rgba(14,165,233,0.16)',
+            onSelect: () => setConfig(prev => ({ ...prev, mode: GenerationMode.PPT, parallelCount: Math.min(20, Math.max(1, prev.parallelCount || 6)), pptStyleLocked: prev.pptStyleLocked !== false }))
+        }
+    ]), [setConfig]);
+
+    const activeModeIndex = useMemo(() => {
+        const idx = modeOptions.findIndex(item => item.mode === config.mode);
+        return idx >= 0 ? idx : 0;
+    }, [config.mode, modeOptions]);
 
     // Drag & Drop handlers...
     const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -664,6 +932,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         dragCounter.current = 0;
         setIsDragging(false);
         if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
+
+        // Prompt template drag-and-drop
+        const promptTemplate = e.dataTransfer.getData('application/x-kk-prompt-template');
+        if (promptTemplate) {
+            applyPromptTemplate(promptTemplate);
+            return;
+        }
 
         // 1. 处理文件 (Prioritize files)
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -778,7 +1053,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     });
             }
         }
-    }, [processFiles]);
+    }, [applyPromptTemplate, processFiles]);
 
     const isModelListEmpty = availableModels.length === 0;
 
@@ -930,72 +1205,323 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             <div className="text-xs font-semibold text-amber-600 dark:text-amber-500">从此图继续创作</div>
                             <div className="text-xs text-[var(--text-tertiary)] truncate">{activeSourceImage.prompt}</div>
                         </div>
-                        <button
-                            onClick={onClearSource}
-                            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-500/10 text-[var(--text-secondary)] hover:text-red-500 transition-colors"
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                        </button>
                     </div>
                 )}
 
                 {/* Top Controls Row: Mode toggle on left, prompt optimizer on right */}
                 <div className="flex items-center justify-between mb-2 gap-2">
-                    <div className="relative inline-flex items-center p-1 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', width: 'auto' }}>
-                        {/* Sliding highlight background */}
-                        <div
-                            className="absolute h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
-                            style={{
-                                width: '64px',
-                                left: config.mode === GenerationMode.IMAGE ? '4px'
-                                    : config.mode === GenerationMode.VIDEO ? 'calc(33.33% + 2px)'
-                                        : 'calc(66.66% + 0px)',
-                                backgroundColor: config.mode === GenerationMode.IMAGE ? 'rgba(99, 102, 241, 0.2)'
-                                    : config.mode === GenerationMode.VIDEO ? 'rgba(168, 85, 247, 0.2)'
-                                        : 'rgba(236, 72, 153, 0.2)',
-                                boxShadow: config.mode === GenerationMode.IMAGE
-                                    ? '0 0 8px rgba(99, 102, 241, 0.3)'
-                                    : config.mode === GenerationMode.VIDEO
-                                        ? '0 0 8px rgba(168, 85, 247, 0.3)'
-                                        : '0 0 8px rgba(236, 72, 153, 0.3)'
-                            }}
-                        />
+                    <div className="flex items-center gap-2">
+                        {(() => {
+                            const MODE_SLOT_WIDTH = 82;
+                            const sliderWidth = 74;
+                            const sliderLeft = 4 + activeModeIndex * MODE_SLOT_WIDTH + (MODE_SLOT_WIDTH - sliderWidth) / 2;
+                            return (
+                                <div className="relative inline-flex items-center p-1 rounded-xl border"
+                                    style={{
+                                        backgroundColor: 'var(--bg-tertiary)',
+                                        borderColor: 'var(--border-light)'
+                                    }}
+                                >
+                                    <div
+                                        className="absolute top-1 h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
+                                        style={{
+                                            width: `${sliderWidth}px`,
+                                            left: `${sliderLeft}px`,
+                                            backgroundColor: modeOptions[activeModeIndex]?.activeBg || 'rgba(99,102,241,0.16)',
+                                            boxShadow: '0 0 10px rgba(0,0,0,0.18) inset'
+                                        }}
+                                    />
 
-                        <button
-                            className={`relative z-10 w-16 px-2 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.IMAGE ? 'text-indigo-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE }))}
-                        >
-                            图片
-                        </button>
-                        <button
-                            className={`relative z-10 w-16 px-2 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.VIDEO ? 'text-purple-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO }))}
-                        >
-                            视频
-                        </button>
-                        <button
-                            className={`relative z-10 w-16 px-2 py-1 rounded-md text-xs font-medium transition-all duration-300 ${config.mode === GenerationMode.AUDIO ? 'text-pink-500' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                            onClick={() => setConfig(prev => ({ ...prev, mode: GenerationMode.AUDIO }))}
-                        >
-                            音乐
-                        </button>
+                                    {[1, 2, 3].map((splitIndex) => (
+                                        <span
+                                            key={`split-${splitIndex}`}
+                                            className="absolute inset-y-0 my-auto w-px h-[50%] pointer-events-none"
+                                            style={{
+                                                left: `${4 + splitIndex * MODE_SLOT_WIDTH}px`,
+                                                backgroundColor: 'rgba(255,255,255,0.08)'
+                                            }}
+                                        />
+                                    ))}
+
+                                    {modeOptions.map((item) => {
+                                        const isActive = config.mode === item.mode;
+                                        const Icon = item.icon;
+                                        return (
+                                            <div key={item.mode} className="relative z-10">
+                                                <button
+                                                    className="w-[82px] px-2 py-1 rounded-md text-sm font-medium transition-all duration-200"
+                                                    style={{
+                                                        color: isActive ? item.color : 'var(--text-secondary)'
+                                                    }}
+                                                    onClick={item.onSelect}
+                                                >
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <Icon size={12} />
+                                                        <span>{item.label}</span>
+                                                    </span>
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()}
                     </div>
 
-                    <button
-                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0"
-                        style={{
-                            backgroundColor: config.enablePromptOptimization ? 'rgba(34,197,94,0.14)' : 'var(--bg-tertiary)',
-                            color: config.enablePromptOptimization ? '#34d399' : 'var(--text-secondary)',
-                            borderColor: config.enablePromptOptimization ? 'rgba(52,211,153,0.35)' : 'var(--border-light)',
-                            opacity: config.mode === GenerationMode.IMAGE ? 1 : 0.45,
-                            pointerEvents: config.mode === GenerationMode.IMAGE ? 'auto' : 'none'
-                        }}
-                        onClick={() => setConfig(prev => ({ ...prev, enablePromptOptimization: !prev.enablePromptOptimization }))}
-                        title={config.mode === GenerationMode.IMAGE ? '开启后先优化提示词，再发送生成' : '仅图片模式支持提示词优化'}
-                    >
-                        <span>优化提示词</span>
-                        <span className="text-[10px] opacity-80">{config.enablePromptOptimization ? 'ON' : 'OFF'}</span>
-                    </button>
+                    <div className="relative flex items-center gap-1">
+                        <button
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0"
+                            style={{
+                                backgroundColor: showPromptLibrary ? 'rgba(59,130,246,0.14)' : 'var(--bg-tertiary)',
+                                color: showPromptLibrary ? '#60a5fa' : 'var(--text-secondary)',
+                                borderColor: showPromptLibrary ? 'rgba(96,165,250,0.35)' : 'var(--border-light)'
+                            }}
+                            onClick={() => {
+                                setShowPromptLibrary(prev => !prev);
+                                setShowPptOutlinePanel(false);
+                                setActiveMenu(null);
+                            }}
+                            title="打开提示词库"
+                        >
+                            <span>提示词库</span>
+                        </button>
+
+                        {config.mode === GenerationMode.PPT && (
+                            <button
+                                className="flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0"
+                                style={{
+                                    backgroundColor: showPptOutlinePanel ? 'rgba(14,165,233,0.14)' : 'var(--bg-tertiary)',
+                                    color: showPptOutlinePanel ? '#38bdf8' : 'var(--text-secondary)',
+                                    borderColor: showPptOutlinePanel ? 'rgba(56,189,248,0.35)' : 'var(--border-light)'
+                                }}
+                                onClick={() => {
+                                    setShowPptOutlinePanel(prev => !prev);
+                                    setShowPromptLibrary(false);
+                                    setActiveMenu(null);
+                                }}
+                                title="编辑PPT页纲"
+                            >
+                                <span>页纲</span>
+                            </button>
+                        )}
+
+                        <button
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0"
+                            style={{
+                                backgroundColor: config.enablePromptOptimization ? 'rgba(34,197,94,0.14)' : 'var(--bg-tertiary)',
+                                color: config.enablePromptOptimization ? '#34d399' : 'var(--text-secondary)',
+                                borderColor: config.enablePromptOptimization ? 'rgba(52,211,153,0.35)' : 'var(--border-light)',
+                                opacity: (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? 1 : 0.45,
+                                pointerEvents: (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? 'auto' : 'none'
+                            }}
+                            onClick={() => setConfig(prev => ({ ...prev, enablePromptOptimization: !prev.enablePromptOptimization }))}
+                            title={(config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? '开启后先优化提示词，再发送生成' : '仅图片/PPT模式支持提示词优化'}
+                        >
+                            <span>优化提示词</span>
+                            <span className="text-[10px] opacity-80">{config.enablePromptOptimization ? 'ON' : 'OFF'}</span>
+                        </button>
+
+                        {showPromptLibrary && (
+                            <div className="absolute bottom-full right-0 mb-2 z-40 w-[min(34rem,90vw)] rounded-2xl border shadow-xl p-2" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }}>
+                                <div className="flex items-center gap-1 mb-2">
+                                    <button
+                                        className={`px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === 'all' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]'}`}
+                                        onClick={() => setPromptLibraryCategory('all')}
+                                    >全部</button>
+                                    <button
+                                        className={`px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === 'banana-pro' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]'}`}
+                                        onClick={() => setPromptLibraryCategory('banana-pro')}
+                                    >Banana Pro</button>
+                                    <button
+                                        className={`px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === 'banana' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]'}`}
+                                        onClick={() => setPromptLibraryCategory('banana')}
+                                    >Banana</button>
+                                    <button
+                                        className={`px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === 'general' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]'}`}
+                                        onClick={() => setPromptLibraryCategory('general')}
+                                    >通用</button>
+                                    <input
+                                        value={promptLibrarySearch}
+                                        onChange={(e) => setPromptLibrarySearch(e.target.value)}
+                                        placeholder="搜索标题/内容"
+                                        className="ml-auto w-40 bg-[var(--bg-tertiary)] text-[11px] rounded-md px-2 py-1 border border-[var(--border-light)] outline-none"
+                                    />
+                                </div>
+
+                                <div className="max-h-64 overflow-y-auto space-y-1 pr-1">
+                                    {filteredPromptLibrary.map(item => {
+                                        const isFavorite = favoritePromptIds.includes(item.id);
+                                        return (
+                                            <div
+                                                key={item.id}
+                                                className="rounded-lg border p-2"
+                                                style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}
+                                                draggable
+                                                onDragStart={(e) => {
+                                                    e.dataTransfer.setData('application/x-kk-prompt-template', item.prompt);
+                                                    e.dataTransfer.setData('text/plain', item.prompt);
+                                                    e.dataTransfer.effectAllowed = 'copy';
+                                                }}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-xs font-medium text-[var(--text-primary)] truncate">{item.title}</div>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            className="text-[10px] px-2 py-1 rounded-md border border-[var(--border-light)] hover:bg-white/5"
+                                                            style={{ color: 'var(--text-secondary)' }}
+                                                            onClick={() => applyPromptTemplate(item.prompt)}
+                                                        >插入</button>
+                                                        <button
+                                                            className="text-[11px] px-2 py-1 rounded-md border border-[var(--border-light)] hover:bg-white/5"
+                                                            style={{ color: isFavorite ? '#fbbf24' : 'var(--text-secondary)' }}
+                                                            onClick={() => togglePromptFavorite(item.id)}
+                                                            title={isFavorite ? '取消收藏' : '收藏'}
+                                                        >★</button>
+                                                    </div>
+                                                </div>
+                                                {item.source && <div className="text-[10px] mt-1 text-[var(--text-tertiary)]">来源: {item.source}</div>}
+                                                <div className="text-[11px] mt-1 text-[var(--text-secondary)] max-h-8 overflow-hidden">{item.prompt}</div>
+                                            </div>
+                                        );
+                                    })}
+                                    {filteredPromptLibrary.length === 0 && (
+                                        <div className="text-xs text-[var(--text-tertiary)] text-center py-4">没有匹配项</div>
+                                    )}
+                                </div>
+                                <div className="text-[10px] mt-2 text-[var(--text-tertiary)]">支持拖拽到输入区直接插入；收藏会保存在本地。</div>
+                            </div>
+                        )}
+
+                        {showPptOutlinePanel && config.mode === GenerationMode.PPT && (
+                            <div className="absolute bottom-full right-0 mb-2 z-40 w-[min(38rem,92vw)] rounded-2xl border shadow-xl p-2" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }}>
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                    <div className="text-xs font-semibold text-[var(--text-primary)]">PPT页纲（每行一页）</div>
+                                    <div className="text-[10px] text-[var(--text-tertiary)]">{Math.min(20, parsePptSlides(pptOutlineDraft).length)} / 20 页，生成结果按图1~图N命名</div>
+                                </div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <button
+                                        className={`px-2 py-1 rounded-md text-[11px] border ${config.pptStyleLocked !== false ? 'border-sky-500/40 bg-sky-500/10 text-sky-300' : 'border-[var(--border-light)] text-[var(--text-secondary)]'}`}
+                                        onClick={() => setConfig(prev => ({ ...prev, pptStyleLocked: !(prev.pptStyleLocked !== false) }))}
+                                        title="锁定整套PPT视觉风格一致性"
+                                    >
+                                        风格锁定 {config.pptStyleLocked !== false ? 'ON' : 'OFF'}
+                                    </button>
+                                    <div className="text-[10px] text-[var(--text-tertiary)]">ON 更偏向整套视觉一致，OFF 允许单页变化</div>
+                                </div>
+                                <div className="flex items-center gap-1 mb-2">
+                                    <button className="px-2 py-1 rounded-md text-[10px] border border-[var(--border-light)] text-[var(--text-secondary)] hover:bg-white/5" onClick={() => appendPptTemplateSlide('cover')}>+封面</button>
+                                    <button className="px-2 py-1 rounded-md text-[10px] border border-[var(--border-light)] text-[var(--text-secondary)] hover:bg-white/5" onClick={() => appendPptTemplateSlide('agenda')}>+目录</button>
+                                    <button className="px-2 py-1 rounded-md text-[10px] border border-[var(--border-light)] text-[var(--text-secondary)] hover:bg-white/5" onClick={() => appendPptTemplateSlide('section')}>+章节</button>
+                                    <button className="px-2 py-1 rounded-md text-[10px] border border-[var(--border-light)] text-[var(--text-secondary)] hover:bg-white/5" onClick={() => appendPptTemplateSlide('summary')}>+总结</button>
+                                </div>
+                                <textarea
+                                    value={pptOutlineDraft}
+                                    onChange={(e) => setPptOutlineDraft(e.target.value)}
+                                    className="w-full h-44 rounded-lg border p-2 text-xs outline-none resize-none"
+                                    style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}
+                                    placeholder="示例：\n封面：AI产品季度汇报\n市场洞察\n产品路线图\n关键案例\n总结与下一步"
+                                />
+                                {parsePptSlides(pptOutlineDraft).length > 0 && (
+                                    <div className="mt-2 max-h-36 overflow-y-auto space-y-1 pr-1">
+                                        {parsePptSlides(pptOutlineDraft).map((line, idx) => (
+                                            <div
+                                                key={`${idx}-${line}`}
+                                                className="relative flex items-center gap-1 rounded-md border px-2 py-1"
+                                                style={{
+                                                    borderColor: (pptDropIndex === idx && pptDragIndex !== null && pptDragIndex !== idx)
+                                                        ? 'rgba(56,189,248,0.45)'
+                                                        : 'var(--border-light)',
+                                                    backgroundColor: (pptDropIndex === idx && pptDragIndex !== null && pptDragIndex !== idx)
+                                                        ? 'rgba(14,165,233,0.12)'
+                                                        : 'var(--bg-tertiary)',
+                                                    opacity: pptDragIndex === idx ? 0.65 : 1
+                                                }}
+                                                draggable
+                                                onDragStart={() => {
+                                                    setPptDragIndex(idx);
+                                                    setPptDropIndex(idx);
+                                                }}
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    setPptDropIndex(idx);
+                                                }}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    setPptDropIndex(idx);
+                                                    setTimeout(() => dropPptSlide(), 0);
+                                                }}
+                                                onDragEnd={() => {
+                                                    setPptDragIndex(null);
+                                                    setPptDropIndex(null);
+                                                }}
+                                            >
+                                                {(pptDropIndex === idx && pptDragIndex !== null && pptDragIndex !== idx) && (
+                                                    <div className="absolute left-1 right-1 -top-[1px] h-[2px] rounded-full bg-sky-400/80 pointer-events-none" />
+                                                )}
+                                                <span className="text-[10px] w-4 shrink-0 text-[var(--text-tertiary)] cursor-grab">⋮</span>
+                                                <span className="text-[10px] text-sky-400 w-8 shrink-0">图{idx + 1}</span>
+                                                <span className="text-[11px] text-[var(--text-secondary)] truncate flex-1" title={line}>{line}</span>
+                                                <button
+                                                    className="text-[10px] px-1 py-0.5 rounded border border-[var(--border-light)]"
+                                                    style={{ color: 'var(--text-secondary)' }}
+                                                    onClick={() => movePptSlide(idx, -1)}
+                                                    title="上移"
+                                                >↑</button>
+                                                <button
+                                                    className="text-[10px] px-1 py-0.5 rounded border border-[var(--border-light)]"
+                                                    style={{ color: 'var(--text-secondary)' }}
+                                                    onClick={() => movePptSlide(idx, 1)}
+                                                    title="下移"
+                                                >↓</button>
+                                                <button
+                                                    className="text-[10px] px-1 py-0.5 rounded border border-red-500/30"
+                                                    style={{ color: '#fca5a5' }}
+                                                    onClick={() => removePptSlide(idx)}
+                                                    title="删除此页"
+                                                >删</button>
+                                                <button
+                                                    className="text-[10px] px-1 py-0.5 rounded border border-sky-500/30"
+                                                    style={{ color: '#7dd3fc' }}
+                                                    onClick={() => insertPptSlideAfter(idx)}
+                                                    title="在后方插入新页"
+                                                >+</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-1 mt-2">
+                                    <button
+                                        className="px-2 py-1 rounded-md text-[11px] border border-[var(--border-light)] hover:bg-white/5"
+                                        style={{ color: 'var(--text-secondary)' }}
+                                        onClick={generatePptOutlineByTopic}
+                                    >
+                                        按主题拆页
+                                    </button>
+                                    <button
+                                        className="px-2 py-1 rounded-md text-[11px] border border-[var(--border-light)] hover:bg-white/5"
+                                        style={{ color: 'var(--text-secondary)' }}
+                                        onClick={exportPptOutlineJson}
+                                    >
+                                        导出JSON
+                                    </button>
+                                    <button
+                                        className="px-2 py-1 rounded-md text-[11px] border border-[var(--border-light)] hover:bg-white/5"
+                                        style={{ color: 'var(--text-secondary)' }}
+                                        onClick={() => setPptOutlineDraft('')}
+                                    >
+                                        清空
+                                    </button>
+                                    <button
+                                        className="ml-auto px-2 py-1 rounded-md text-[11px] border border-sky-400/40 bg-sky-500/10"
+                                        style={{ color: '#38bdf8' }}
+                                        onClick={applyPptOutlineDraft}
+                                    >
+                                        应用页纲
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Input Area Wrapper with hover detection */}
@@ -1005,10 +1531,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         if (hoverTimerRef.current) {
                             clearTimeout(hoverTimerRef.current);
                         }
-                        // Set 3-second delay before showing upload button
+                        // Set 500ms delay before showing upload button
                         hoverTimerRef.current = setTimeout(() => {
                             setIsInputAreaHovered(true);
-                        }, 3000);
+                        }, 500);
                     }}
                     onMouseLeave={() => {
                         // Clear timer on leave
@@ -1024,7 +1550,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     {(config.referenceImages && config.referenceImages.length > 0 || uploadingCount > 0) && (
                         <div
                             ref={refContainerRef}
-                            className="flex flex-wrap gap-2 transition-all p-2 mx-1 mt-1 rounded-lg"
+                            className="flex flex-nowrap items-center gap-2 transition-all p-2 mx-1 mt-1 rounded-lg overflow-x-auto overflow-y-hidden scrollbar-thin"
                             onDragOver={(e) => {
                                 e.preventDefault();
                                 e.dataTransfer.dropEffect = 'move';
@@ -1094,7 +1620,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 // Since we stopped prop, we must call it manually or refactor.
                                 // Simplest: Call onFilesDrop if provided? 
                                 // But existing architecture uses the parent <div> onDrop={handleDrop}.
-                                // If we stopPropagation here, the parent won't see it.
+                                // If we stopPropagation here, the parent sees it.
                                 // If we DON'T stopPropagation, the parent sees it.
                                 // But we want to handle Internal Reorder here exclusively.
 
@@ -1182,15 +1708,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <div className="w-12 h-12 rounded-lg border-2 border-dashed border-indigo-500/30 bg-indigo-500/5"></div>
                             </div>
 
-                            {/* Upload Button - At the end of reference images row - show on hover */}
+                            {/* Upload Button - At the end of reference images row - 始终显示 */}
                             <button
-                                className={`w-12 h-12 rounded-md transition-all duration-200 border hover:bg-white/5 flex items-center justify-center flex-shrink-0 ${isInputAreaHovered ? 'opacity-100' : 'opacity-0'
-                                    }`}
+                                className="w-12 h-12 rounded-md transition-all duration-200 border hover:bg-white/5 flex items-center justify-center flex-shrink-0 opacity-60 hover:opacity-100"
                                 style={{
                                     backgroundColor: 'var(--bg-tertiary)',
                                     color: 'var(--text-secondary)',
-                                    borderColor: 'var(--border-light)',
-                                    pointerEvents: isInputAreaHovered ? 'auto' : 'none'
+                                    borderColor: 'var(--border-light)'
                                 }}
                                 onClick={() => fileInputRef.current?.click()}
                                 title="上传参考图"
@@ -1204,24 +1728,25 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         </div>
                     )}
 
-                    {/* Upload button when no reference images - show on hover */}
-                    {config.referenceImages.length === 0 && isInputAreaHovered && (
-                        <button
-                            className="w-12 h-12 rounded-md transition-all border hover:bg-white/5 flex items-center justify-center flex-shrink-0 mb-2"
-                            style={{
-                                backgroundColor: 'var(--bg-tertiary)',
-                                color: 'var(--text-secondary)',
-                                borderColor: 'var(--border-light)'
-                            }}
-                            onClick={() => fileInputRef.current?.click()}
-                            title="上传参考图"
-                        >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <polyline points="17 8 12 3 7 8" />
-                                <line x1="12" y1="3" x2="12" y2="15" />
-                            </svg>
-                        </button>
+                    {/* Upload button when no reference images - 始终显示，与参考图同行对齐 */}
+                    {config.referenceImages.length === 0 && uploadingCount === 0 && (
+                        <div className="flex items-center p-2 mx-1 mt-1">
+                            <button
+                                className="w-12 h-12 rounded-lg transition-all border-2 border-dashed hover:bg-white/5 flex items-center justify-center flex-shrink-0 opacity-40 hover:opacity-80"
+                                style={{
+                                    color: 'var(--text-secondary)',
+                                    borderColor: 'var(--border-light)'
+                                }}
+                                onClick={() => fileInputRef.current?.click()}
+                                title="上传参考图"
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="17 8 12 3 7 8" />
+                                    <line x1="12" y1="3" x2="12" y2="15" />
+                                </svg>
+                            </button>
+                        </div>
                     )}
 
                     {/* Text Input Area */}
@@ -1238,7 +1763,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         onBlur={() => {
                             onBlur?.(); // 通知侧边栏: 输入框失去焦点,可以自动隐藏
                         }}
-                        placeholder={config.mode === GenerationMode.VIDEO ? "描述你想要生成的视频..." : config.mode === GenerationMode.AUDIO ? "描述你想要生成的音乐风格、歌词或旋律..." : "描述你想要生成的图片..."}
+                        placeholder={config.mode === GenerationMode.VIDEO ? "描述你想要生成的视频..." : config.mode === GenerationMode.AUDIO ? "描述你想要生成的音乐风格、歌词或旋律..." : config.mode === GenerationMode.PPT ? "输入PPT主题，将批量生成图1~图N页面..." : "描述你想要生成的图片..."}
                         className="input-bar-textarea w-full bg-transparent border-none outline-none text-[15px] resize-none mt-1 py-1"
                         style={{
                             color: 'var(--text-primary)', // 使用 CSS 变量适配主题
@@ -1341,6 +1866,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                     key={model.id}
                                                     className={`w-full px-3 py-2.5 text-left flex flex-col gap-1 hover:bg-white/5 transition-colors rounded-md ${config.model === model.id ? 'bg-white/10 ring-1 ring-white/20' : ''}`}
                                                     onClick={() => {
+                                                        setModelManualLock(true); // 🚀 用户手动点击，开启锁定
                                                         setConfig(prev => {
                                                             const newImageSize = autoDetectImageSize(model.id, prev.imageSize);
                                                             return { ...prev, model: model.id, imageSize: newImageSize };
@@ -1356,8 +1882,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                     <div className="flex items-center justify-between w-full">
                                                         <div className="flex items-center gap-2 flex-1 min-w-0 mr-2">
                                                             {(() => {
+                                                                const displayInfo = getModelDisplayInfo(model);
                                                                 const badgeInfo = getModelBadgeInfo({ id: model.id, label: model.label, provider: model.provider });
-                                                                let displayName = badgeInfo.text;
+                                                                let displayName = displayInfo.displayName;
 
                                                                 // 模型名字只显示20个(空格和符号不算), 隐藏中间字段用点...显示
                                                                 let totalValid = 0;
@@ -1382,7 +1909,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                                     }
                                                                 }
 
-                                                                return <span className={`text-xs font-medium ${badgeInfo.colorClass} truncate`} title={badgeInfo.text}>{displayName}</span>;
+                                                                return <span className={`text-xs font-medium ${badgeInfo.colorClass} truncate`} title={displayInfo.displayName}>{displayName}</span>;
                                                             })()}
                                                         </div>
                                                         {/* 供应商标签 - 右对齐带框（最多显示10个字符，单行） */}
@@ -1465,7 +1992,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     </svg>
                                     <span>{config.audioDuration || '自动'}</span>
                                 </>
-                            ) : config.mode === GenerationMode.IMAGE ? (
+                            ) : (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? (
                                 <>
                                     {config.aspectRatio === AspectRatio.AUTO ? (
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1524,7 +2051,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 ))}
                                             </div>
                                         </div>
-                                    ) : config.mode === GenerationMode.IMAGE ? (
+                                    ) : (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? (
                                         <ImageOptionsPanel
                                             aspectRatio={config.aspectRatio}
                                             imageSize={config.imageSize}
@@ -1578,7 +2105,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     }`}
                                 onClick={() => groundingSupported && setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }))}
                                 disabled={!groundingSupported}
-                                title={groundingSupported ? "Grounding with Google Search" : "当前模型不支持联网模式"}
+                                title={groundingSupported ? "联网模式 (Google Search)" : "当前模型不支持联网模式"}
                             >
                                 <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M2 8.8a15 15 0 0 1 20 0" />
@@ -1586,7 +2113,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     <path d="M8.5 16.3a5 5 0 0 1 7 0" />
                                     <line x1="12" y1="20" x2="12.01" y2="20" />
                                 </svg>
-                                <span className="hidden md:inline">联网</span>
+                                <span className="hidden md:inline">Google 搜索</span>
                             </button >
 
                         </div >
@@ -1613,7 +2140,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     activeMenu === 'count' && (
                                         <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
                                             <div className="dropdown static w-24 animate-scaleIn origin-bottom p-1 flex flex-col gap-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
-                                                {[1, 2, 3, 4].map(count => (
+                                                {(config.mode === GenerationMode.PPT
+                                                    ? Array.from({ length: 20 }, (_, i) => i + 1)
+                                                    : [1, 2, 3, 4]
+                                                ).map(count => (
                                                     <button key={count} className={`dropdown-item justify-between rounded-md ${config.parallelCount === count ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, parallelCount: count })); setActiveMenu(null); }}>
                                                         <span>{count} 张</span>
                                                     </button>
@@ -1717,30 +2247,27 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         </div >
                     )}
 
+
+
+                    {/* 发送按钮 - 始终可用，支持连续发送 */}
                     <button
-                        onClick={isGenerating ? onCancel : onGenerate}
-                        disabled={!isGenerating && !config.prompt}
+                        onClick={onGenerate}
+                        disabled={!config.prompt}
                         className={`
                             group relative px-6 h-8 rounded-full flex flex-row items-center justify-center gap-2 whitespace-nowrap shrink-0 transition-all duration-300 border
-                            ${isGenerating
-                                ? 'shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:shadow-[0_6px_16px_rgba(239,68,68,0.5)]'
-                                : `${!isGenerating && !config.prompt
-                                    ? 'border-zinc-200 dark:border-zinc-800 cursor-not-allowed' // Disabled
-                                    : 'border-zinc-200 dark:border-zinc-700/50 hover:border-blue-500 dark:hover:border-blue-500 dark:hover:bg-white/5' // Enabled
-                                }`
+                            ${!config.prompt
+                                ? 'border-zinc-200 dark:border-zinc-800 cursor-not-allowed'
+                                : 'border-zinc-200 dark:border-zinc-700/50 hover:border-blue-500 dark:hover:border-blue-500 dark:hover:bg-white/5'
                             }
                         `}
-                        style={!isGenerating ? {
-                            backgroundColor: 'var(--bg-surface)', // 适配主题
-                            color: !config.prompt ? 'var(--text-tertiary)' : 'var(--text-primary)', // 适配主题
+                        style={{
+                            backgroundColor: 'var(--bg-surface)',
+                            color: !config.prompt ? 'var(--text-tertiary)' : 'var(--text-primary)',
                             boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
-                        } : {
-                            background: 'linear-gradient(to bottom right, rgb(239, 68, 68), rgb(220, 38, 38))',
-                            color: 'rgb(255, 255, 255)'
                         }}
                     >
-                        {/* Hover Glow Effect for Non-Generating State (Enabled) */}
-                        {!isGenerating && !(!isGenerating && !config.prompt) && (
+                        {/* Hover Glow Effect */}
+                        {config.prompt && (
                             <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
                                 style={{
                                     background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(59,130,246,0.1) 100%)',
@@ -1748,23 +2275,11 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 }}
                             />
                         )}
-
-                        {isGenerating ? (
-                            <>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-                                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                </svg>
-                                <span className="text-[13px] font-semibold">停止</span>
-                            </>
-                        ) : (
-                            <>
-                                <span className="relative z-10 text-[13px] font-semibold">发送</span>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="relative z-10 transition-transform group-hover:translate-x-1">
-                                    <path d="M5 12h14" />
-                                    <path d="M12 5l7 7-7 7" />
-                                </svg>
-                            </>
-                        )}
+                        <span className="relative z-10 text-[13px] font-semibold">发送</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="relative z-10 transition-transform group-hover:translate-x-1">
+                            <path d="M5 12h14" />
+                            <path d="M12 5l7 7-7 7" />
+                        </svg>
                     </button>
                 </div >
             </div >

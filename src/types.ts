@@ -1,6 +1,8 @@
 export enum AspectRatio {
   AUTO = 'auto', // 自动匹配
   SQUARE = '1:1',
+  PORTRAIT_1_8 = '1:8', // 🚀 New: Nano Banana 2 & Pro
+  PORTRAIT_1_4 = '1:4', // 🚀 New: Nano Banana 2 & Pro
   PORTRAIT_3_4 = '3:4',
   PORTRAIT_4_5 = '4:5', // Gemini 3 Pro支持
   PORTRAIT_9_16 = '9:16',
@@ -10,6 +12,8 @@ export enum AspectRatio {
   LANDSCAPE_5_4 = '5:4', // Gemini 3 Pro支持
   LANDSCAPE_16_9 = '16:9',
   LANDSCAPE_21_9 = '21:9',
+  LANDSCAPE_4_1 = '4:1', // 🚀 New: Nano Banana 2 & Pro
+  LANDSCAPE_8_1 = '8:1', // 🚀 New: Nano Banana 2 & Pro
   LANDSCAPE_3_2 = '3:2',
   STANDARD_2_3 = '2:3', // Alias/Legacy
   STANDARD_3_2 = '3:2', // Alias/Legacy
@@ -18,6 +22,7 @@ export enum AspectRatio {
 
 
 export enum ImageSize {
+  SIZE_05K = '0.5K', // 512px - Gemini 3.1 Flash Image 支持
   SIZE_1K = '1K',
   SIZE_2K = '2K',
   SIZE_4K = '4K',
@@ -62,6 +67,7 @@ export enum GenerationMode {
   IMAGE = 'image',
   VIDEO = 'video',
   AUDIO = 'audio',  // 🚀 Audio Generation Mode
+  PPT = 'ppt',      // 🚀 PPT Batch Image Mode
   EDIT = 'edit',    // 🚀 General Edit Mode (Recraft style transfer, Ideogram text editing)
   INPAINT = 'inpaint' // 🚀 Specific Mask-based Inpaint Mode
 }
@@ -119,6 +125,11 @@ export interface GeneratedImage {
   exactDimensions?: { width: number; height: number }; // 🚀 [New] Exact dimensions for AUTO mode
   provider?: string; // 🚀 [New] API Provider Name (e.g., Google, OpenAI)
   providerLabel?: string; // 🚀 [New] User-defined Channel Name (e.g. 'Google Official')
+  keySlotId?: string;
+  sourceReferenceStorageIds?: string[];
+  requestPath?: string;
+  requestBodyPreview?: string;
+  pythonSnippet?: string;
 }
 
 export interface PromptNode {
@@ -135,6 +146,7 @@ export interface PromptNode {
   modelLabel?: string; // 🚀 模型显示名称（用户选择时看到的名字）
   provider?: string; // 🚀 生成通道 provider（内部标识）
   providerLabel?: string; // 🚀 生成通道显示名称（例如“反代”）
+  keySlotId?: string;
   childImageIds: string[];
   referenceImages?: ReferenceImage[];
   timestamp: number;
@@ -142,6 +154,15 @@ export interface PromptNode {
   isGenerating?: boolean;
   parallelCount?: number; // Number of images being generated
   error?: string;
+  errorDetails?: {
+    code?: string;
+    status?: number;
+    requestBody?: string;
+    responseBody?: string;
+    provider?: string;
+    model?: string;
+    timestamp?: number;
+  };
 
   mode?: GenerationMode; // New
   width?: number; // Dynamic width for layout calculation
@@ -161,6 +182,8 @@ export interface PromptNode {
   // Audio specific
   audioDuration?: string; // e.g. '120s' or 'auto'
   audioLyrics?: string;     // custom lyrics for music generation
+  pptSlides?: string[];
+  pptStyleLocked?: boolean;
 
   // 🚀 Image Editing specific properties
   maskUrl?: string;
@@ -226,4 +249,6 @@ export interface GenerationConfig {
   // 音频扩展
   audioDuration?: string;
   audioLyrics?: string;
+  pptSlides?: string[];
+  pptStyleLocked?: boolean;
 }

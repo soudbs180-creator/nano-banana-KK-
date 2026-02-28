@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, LayoutDashboard, Key, DollarSign, HardDrive, ScrollText, ChevronRight, Activity, AlertTriangle, Sparkles, Plus, Trash2, FolderOpen, Globe, Loader2, RefreshCw, Copy, Check, Pause, Play, Zap } from 'lucide-react';
 import { modelRegistry, ActiveModel } from '../services/modelRegistry';
@@ -11,6 +11,7 @@ import { syncService } from '../services/syncService';
 import { getStorageUsage, cleanupOriginals } from '../services/imageStorage';
 import { fileSystemService } from '../services/fileSystemService';
 import ApiManagementView from './ApiManagementView';
+import { getProviderBadgeColor } from '../utils/modelBadge';
 
 
 export type SettingsView = 'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs';
@@ -402,7 +403,7 @@ const DashboardView = ({ keyStats, totalConsumed, totalTokens }: { keyStats: any
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     <div className="flex-1">
                         <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>版本</div>
-                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.3.3</div>
+                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>v1.3.4</div>
                     </div>
                 </div>
             </div>
@@ -416,6 +417,9 @@ const CostEstimationView = () => {
     const [isSyncing, setIsSyncing] = useState(false);
     const [activeTab, setActiveTab] = useState<'summary' | 'detailed'>('summary');
     const [entries, setEntries] = useState<any[]>([]);
+    const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
+    const [sortKey, setSortKey] = useState<'model' | 'size' | 'count' | 'tokens' | 'cost'>('model');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
     useEffect(() => {
         // Load Initial Data
@@ -439,8 +443,7 @@ const CostEstimationView = () => {
         }
     };
 
-    // Helper: Parse Model Name & Badge
-    const renderModelCell = (fullModelId: string) => {
+    const parseModelAndSource = (fullModelId: string) => {
         let modelName = fullModelId;
         let sourceName = 'Official';
 
@@ -450,11 +453,224 @@ const CostEstimationView = () => {
             sourceName = parts[1];
         }
 
+        const modelLower = modelName.toLowerCase();
+        if (sourceName.toLowerCase() === 'official') {
+            if (modelLower.includes('gemini') || modelLower.includes('imagen')) {
+                return { modelName, sourceName: 'Gemini官方', sourceKey: 'Google Official' };
+            }
+            return { modelName, sourceName: '官方', sourceKey: 'Official' };
+        }
+
+        return { modelName, sourceName, sourceKey: sourceName };
+    };
+
+    const parseSizeValue = (raw?: string) => {
+        const size = String(raw || '').toUpperCase();
+        const dimMatch = size.match(/(\d+)\s*[X×]\s*(\d+)/);
+        if (dimMatch) {
+            const w = Number(dimMatch[1]) || 0;
+            const h = Number(dimMatch[2]) || 0;
+            return Math.max(w, h);
+        }
+        if (size.includes('4K')) return 4096;
+        if (size.includes('2K')) return 2048;
+        if (size.includes('1K')) return 1024;
+        if (size.includes('0.5K') || size.includes('512')) return 512;
+        return 0;
+    };
+
+    const sortedBreakdown = useMemo(() => {
+        const rows = [...breakdown];
+        rows.sort((a, b) => {
+            let cmp = 0;
+            if (sortKey === 'model') {
+                const pa = parseModelAndSource(a.model);
+                const pb = parseModelAndSource(b.model);
+                cmp = pa.modelName.localeCompare(pb.modelName, 'en', { sensitivity: 'base' });
+                if (cmp === 0) {
+                    cmp = pa.sourceName.localeCompare(pb.sourceName, 'zh', { sensitivity: 'base' });
+                }
+            } else if (sortKey === 'size') {
+                cmp = parseSizeValue(a.imageSize) - parseSizeValue(b.imageSize);
+            } else if (sortKey === 'count') {
+                cmp = (a.count || 0) - (b.count || 0);
+            } else if (sortKey === 'tokens') {
+                cmp = (a.tokens || 0) - (b.tokens || 0);
+            } else if (sortKey === 'cost') {
+                cmp = (a.cost || 0) - (b.cost || 0);
+            }
+
+            if (cmp === 0) cmp = (a.model || '').localeCompare(b.model || '', 'en', { sensitivity: 'base' });
+            return sortDir === 'asc' ? cmp : -cmp;
+        });
+        return rows;
+    }, [breakdown, sortDir, sortKey]);
+
+    const toggleSort = (key: 'model' | 'size' | 'count' | 'tokens' | 'cost') => {
+        if (sortKey === key) {
+            setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+            return;
+        }
+        setSortKey(key);
+        // 默认首次点击按“大到小 / Z-A”
+        setSortDir('desc');
+    };
+
+    const renderSortLabel = (label: string, key: 'model' | 'size' | 'count' | 'tokens' | 'cost', align: 'left' | 'right' = 'left') => {
+        const isActive = sortKey === key;
+        const arrow = isActive ? (sortDir === 'asc' ? '↑' : '↓') : '↕';
+        return (
+            <button
+                onClick={() => toggleSort(key)}
+                className={`inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors ${align === 'right' ? 'ml-auto' : ''}`}
+                title={`按${label}排序`}
+            >
+                <span>{label}</span>
+                <span className={isActive ? 'text-indigo-400' : 'opacity-60'}>{arrow}</span>
+            </button>
+        );
+    };
+
+    const buildFallbackRequestPath = (entry: any) => {
+        const { modelName, sourceName } = parseModelAndSource(entry.model || '');
+        const sourceLower = sourceName.toLowerCase();
+        if (sourceLower.includes('12ai')) return '/v1/chat/completions';
+        if (sourceLower.includes('official') || sourceLower.includes('官方')) {
+            if (String(modelName).toLowerCase().includes('gemini')) {
+                return '/v1beta/models/{model}:generateContent';
+            }
+            if (String(modelName).toLowerCase().includes('imagen')) {
+                return '/v1beta/models/{model}:predict';
+            }
+        }
+        return '/v1/images/generations';
+    };
+
+    const formatRequestPath = (rawPath: string, entry: any) => {
+        let path = (rawPath || '').trim() || buildFallbackRequestPath(entry);
+
+        try {
+            if (/^https?:\/\//i.test(path)) {
+                path = new URL(path).pathname;
+            }
+        } catch {
+            // noop
+        }
+
+        path = path.replace(/\?.*$/, '');
+        path = path.replace(/\/v1beta\/models\/[^/:]+:generatecontent/i, '/v1beta/models/{model}:generateContent');
+        path = path.replace(/\/v1beta\/models\/[^/:]+:predict/i, '/v1beta/models/{model}:predict');
+        path = path.replace(/\/v1\/models\/[^/:]+:generatecontent/i, '/v1/models/{model}:generateContent');
+        path = path.replace(/\/v1\/models\/[^/:]+:predict/i, '/v1/models/{model}:predict');
+
+        if (!path.startsWith('/')) {
+            path = `/${path}`;
+        }
+
+        return `POST ${path}`;
+    };
+
+    const inferProtocolLabel = (formattedPath: string) => {
+        const path = String(formattedPath || '').toLowerCase();
+        if (path.includes(':generatecontent')) return 'Gemini Native (generateContent)';
+        if (path.includes(':predict')) return 'Imagen Native (predict)';
+        if (path.includes('/v1/images/generations')) return 'OpenAI Compatible (Images API)';
+        if (path.includes('/v1/chat/completions')) return 'OpenAI Compatible (Chat API)';
+        return 'Unknown';
+    };
+
+    const sanitizeRequestPreview = (raw: string) => {
+        const maskString = (value: string): string => {
+            const s = String(value || '');
+            if (s.startsWith('data:')) return '<omitted:data-uri>';
+            if (/^https?:\/\//i.test(s) && s.length > 96) return '<omitted:url>';
+            if (/^[A-Za-z0-9+/=]+$/.test(s) && s.length > 160) return '<omitted:base64>';
+            if (s.length > 240) return `${s.slice(0, 120)}...<truncated>`;
+            return s;
+        };
+
+        const walk = (node: any): any => {
+            if (Array.isArray(node)) return node.map(walk);
+            if (node && typeof node === 'object') {
+                const out: Record<string, any> = {};
+                Object.entries(node).forEach(([k, v]) => {
+                    const lower = k.toLowerCase();
+                    if (['authorization', 'api_key', 'apikey', 'token', 'secret', 'key'].includes(lower)) {
+                        out[k] = '<omitted:sensitive>';
+                        return;
+                    }
+                    out[k] = walk(v);
+                });
+                return out;
+            }
+            if (typeof node === 'string') return maskString(node);
+            return node;
+        };
+
+        try {
+            const parsed = JSON.parse(raw);
+            return JSON.stringify(walk(parsed), null, 2);
+        } catch {
+            return maskString(raw);
+        }
+    };
+
+    const buildResponseExample = (protocolLabel: string) => {
+        if (protocolLabel.includes('Gemini Native')) {
+            return JSON.stringify({
+                candidates: [
+                    {
+                        content: {
+                            parts: [
+                                {
+                                    inlineData: {
+                                        mimeType: 'image/png',
+                                        data: '<BASE64_IMAGE_DATA>'
+                                    }
+                                }
+                            ],
+                            role: 'model'
+                        },
+                        finishReason: 'STOP'
+                    }
+                ],
+                usageMetadata: {
+                    promptTokenCount: 10,
+                    candidatesTokenCount: 1290,
+                    totalTokenCount: 1300
+                }
+            }, null, 2);
+        }
+
+        if (protocolLabel.includes('OpenAI Compatible')) {
+            return JSON.stringify({
+                created: 1730000000,
+                data: [
+                    {
+                        b64_json: '<BASE64_IMAGE_DATA>'
+                    }
+                ]
+            }, null, 2);
+        }
+
+        return JSON.stringify({
+            data: [
+                {
+                    image: '<BASE64_OR_URL>'
+                }
+            ]
+        }, null, 2);
+    };
+
+    // Helper: Parse Model Name & Badge
+    const renderModelCell = (fullModelId: string) => {
+        const { modelName, sourceName, sourceKey } = parseModelAndSource(fullModelId);
+
         return (
             <div className="flex flex-col">
                 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{modelName}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-md w-fit mt-0.5 bg-zinc-800 text-zinc-400 border border-zinc-700/50">
-                    {sourceName.toUpperCase()}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-md w-fit mt-0.5 border ${getProviderBadgeColor(sourceKey)}`}>
+                    {sourceName}
                 </span>
             </div>
         );
@@ -501,18 +717,18 @@ const CostEstimationView = () => {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-[var(--bg-tertiary)] border-b border-[var(--border-light)]">
                             <tr>
-                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>模型</th>
-                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>规格</th>
-                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>数量</th>
-                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>Tokens</th>
-                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>成本</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{renderSortLabel('模型', 'model')}</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{renderSortLabel('规格', 'size')}</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>{renderSortLabel('数量', 'count', 'right')}</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>{renderSortLabel('Tokens', 'tokens', 'right')}</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>{renderSortLabel('成本', 'cost', 'right')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800/50">
-                            {breakdown.length === 0 ? (
+                            {sortedBreakdown.length === 0 ? (
                                 <tr><td colSpan={5} className="p-12 text-center" style={{ color: 'var(--text-tertiary)' }}>暂无数据</td></tr>
                             ) : (
-                                breakdown.map((item, idx) => (
+                                sortedBreakdown.map((item, idx) => (
                                     <tr key={idx} className="hover:bg-[var(--toolbar-hover)] transition-colors group">
                                         <td className="px-5 py-3">
                                             {renderModelCell(item.model)}
@@ -544,11 +760,12 @@ const CostEstimationView = () => {
                                 <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>规格</th>
                                 <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>Tokens</th>
                                 <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>成本</th>
+                                <th className="px-5 py-4 font-medium text-xs uppercase tracking-wider text-right" style={{ color: 'var(--text-tertiary)' }}>查看详细</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800/50">
                             {entries.length === 0 ? (
-                                <tr><td colSpan={5} className="p-12 text-center text-zinc-500">暂无详细记录</td></tr>
+                                <tr><td colSpan={6} className="p-12 text-center text-zinc-500">暂无详细记录</td></tr>
                             ) : (
                                 entries.map((entry, idx) => (
                                     <tr key={idx} className="hover:bg-white/5 transition-colors">
@@ -565,6 +782,14 @@ const CostEstimationView = () => {
                                         <td className="px-5 py-3 text-right font-mono text-emerald-400 text-sm">
                                             ${entry.costUsd.toFixed(4)}
                                         </td>
+                                        <td className="px-5 py-3 text-right">
+                                            <button
+                                                onClick={() => setSelectedEntry(entry)}
+                                                className="px-2 py-1 text-[11px] rounded-md border border-[var(--border-light)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5"
+                                            >
+                                                查看
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))
                             )}
@@ -578,12 +803,12 @@ const CostEstimationView = () => {
 
             {/* Mobile Vertical Card View */}
             <div className="md:hidden space-y-3">
-                {breakdown.length === 0 ? (
+                {sortedBreakdown.length === 0 ? (
                     <div className="p-8 text-center text-zinc-500 bg-[var(--bg-secondary)] rounded-[32px] border border-[var(--border-light)]">
                         暂无数据
                     </div>
                 ) : (
-                    breakdown.map((item, idx) => (
+                    sortedBreakdown.map((item, idx) => (
                         <div key={idx} className="bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-[32px] p-5 shadow-sm space-y-3">
                             {/* Header: Model Name */}
                             <div className="flex justify-between items-start">
@@ -793,6 +1018,64 @@ const CostEstimationView = () => {
                     </div>
                 </div>
             </div>
+
+            {selectedEntry && (() => {
+                const requestPath = formatRequestPath(selectedEntry.requestPath || buildFallbackRequestPath(selectedEntry), selectedEntry);
+                const protocolLabel = inferProtocolLabel(requestPath);
+                const requestBodyPreviewRaw = selectedEntry.requestBodyPreview || '{\n  "model": "...",\n  "prompt": "..."\n}';
+                const requestBodyPreview = sanitizeRequestPreview(requestBodyPreviewRaw);
+                const responseExample = buildResponseExample(protocolLabel);
+                return createPortal(
+                    <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setSelectedEntry(null)}>
+                        <div className="w-full max-w-4xl max-h-[86vh] overflow-y-auto rounded-2xl border p-4" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }} onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>请求详情</h4>
+                                <button className="px-2 py-1 text-xs rounded border border-[var(--border-light)] text-[var(--text-secondary)]" onClick={() => setSelectedEntry(null)}>关闭</button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
+                                    <div className="text-[11px] mb-1" style={{ color: 'var(--text-tertiary)' }}>模型</div>
+                                    <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{parseModelAndSource(selectedEntry.model || '').modelName}</div>
+                                </div>
+                                <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
+                                    <div className="text-[11px] mb-1" style={{ color: 'var(--text-tertiary)' }}>请求格式</div>
+                                    <div className="text-sm font-mono break-all" style={{ color: 'var(--text-primary)' }}>{requestPath}</div>
+                                </div>
+                                <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
+                                    <div className="text-[11px] mb-1" style={{ color: 'var(--text-tertiary)' }}>实际发送协议</div>
+                                    <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{protocolLabel}</div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <div className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>请求示例</div>
+                                        <button
+                                            className="px-2 py-0.5 text-[10px] rounded border border-[var(--border-light)] text-[var(--text-secondary)]"
+                                            onClick={() => navigator.clipboard?.writeText(requestBodyPreview)}
+                                        >复制</button>
+                                    </div>
+                                    <pre className="text-[11px] leading-5 overflow-auto max-h-[50vh]" style={{ color: 'var(--text-secondary)' }}>{requestBodyPreview}</pre>
+                                </div>
+
+                                <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <div className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>响应示例</div>
+                                        <button
+                                            className="px-2 py-0.5 text-[10px] rounded border border-[var(--border-light)] text-[var(--text-secondary)]"
+                                            onClick={() => navigator.clipboard?.writeText(responseExample)}
+                                        >复制</button>
+                                    </div>
+                                    <pre className="text-[11px] leading-5 overflow-auto max-h-[50vh]" style={{ color: 'var(--text-secondary)' }}>{responseExample}</pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                );
+            })()}
         </div>
     );
 };

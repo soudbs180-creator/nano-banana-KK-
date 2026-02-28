@@ -7,6 +7,53 @@ export interface PromptOptimizationResult {
     usedModelId: string;
 }
 
+type OptimizerCacheEntry = {
+    optimizedEn: string;
+    optimizedZh: string;
+    usedModelId: string;
+    createdAt: number;
+};
+
+const OPTIMIZER_CACHE_KEY = 'kk_prompt_optimizer_cache_v1';
+const OPTIMIZER_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+
+const readOptimizerCache = (): Record<string, OptimizerCacheEntry> => {
+    try {
+        const raw = localStorage.getItem(OPTIMIZER_CACHE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+};
+
+const writeOptimizerCache = (cache: Record<string, OptimizerCacheEntry>) => {
+    try {
+        localStorage.setItem(OPTIMIZER_CACHE_KEY, JSON.stringify(cache));
+    } catch {
+        // ignore storage quota errors
+    }
+};
+
+const buildOptimizerCacheKey = (
+    input: string,
+    options?: {
+        preferredModelId?: string;
+        aspectRatio?: string;
+        imageSize?: string;
+        mode?: string;
+        referenceImages?: { mimeType: string; data: string }[];
+    }
+) => {
+    const model = (options?.preferredModelId || '').toLowerCase();
+    const ratio = (options?.aspectRatio || '').toLowerCase();
+    const size = (options?.imageSize || '').toLowerCase();
+    const mode = (options?.mode || '').toLowerCase();
+    const refSign = (options?.referenceImages || [])
+        .map(ref => `${(ref.mimeType || '').toLowerCase()}:${(ref.data || '').slice(0, 32)}`)
+        .join('|');
+    return `${model}::${ratio}::${size}::${mode}::${input.trim()}::${refSign}`;
+};
+
 const OPTIMIZER_SYSTEM_PROMPT = `You are a professional prompt optimization engine for image generation models.
 Your task is to convert a user's raw idea into a complete, highly-structured, production-grade prompt.
 
@@ -92,6 +139,17 @@ export const optimizePromptForImage = async (
     const input = rawPrompt.trim();
     if (!input) throw new Error('Prompt is empty');
 
+    const cacheKey = buildOptimizerCacheKey(input, options);
+    const cache = readOptimizerCache();
+    const cached = cache[cacheKey];
+    if (cached && (Date.now() - cached.createdAt) < OPTIMIZER_CACHE_TTL_MS) {
+        return {
+            optimizedEn: cached.optimizedEn,
+            optimizedZh: cached.optimizedZh,
+            usedModelId: cached.usedModelId
+        };
+    }
+
     const modelId = pickOptimizerModel(options?.preferredModelId);
     if (!modelId) {
         throw new Error('No chat-capable model available for prompt optimization');
@@ -164,9 +222,23 @@ export const optimizePromptForImage = async (
         throw new Error('Optimizer returned empty optimized_en');
     }
 
-    return {
+    const result = {
         optimizedEn,
         optimizedZh: optimizedZh || input,
         usedModelId: modelId
     };
+
+    cache[cacheKey] = {
+        ...result,
+        createdAt: Date.now()
+    };
+    // Opportunistic cleanup
+    Object.keys(cache).forEach(key => {
+        if ((Date.now() - cache[key].createdAt) > OPTIMIZER_CACHE_TTL_MS) {
+            delete cache[key];
+        }
+    });
+    writeOptimizerCache(cache);
+
+    return result;
 };

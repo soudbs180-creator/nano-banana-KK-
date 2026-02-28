@@ -32,6 +32,7 @@ interface ImageNodeProps {
     onSelect?: () => void;
     highlighted?: boolean;
     onPreview?: (imageId: string) => void;
+    onCancel?: (id: string) => void;
     isVisible?: boolean; // 🚀 视口可见性控制（从父组件传入）
     onUpdate?: (id: string, updates: Partial<GeneratedImage>) => void; // 🚀 [New] 更新回调
     onDragDelta?: (delta: { x: number; y: number }, sourceNodeId?: string) => void; // 🚀 [New] Relative Drag
@@ -52,6 +53,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     onSelect,
     highlighted,
     onPreview,
+    onCancel,
     isVisible = true, // 🚀 默认可见（向后兼容）
     onUpdate,
     onDragDelta
@@ -64,8 +66,25 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const [isDragging, setIsDragging] = useState(false);
 
     const getDims = () => {
-        const { width, totalHeight } = getCardDimensions(image.aspectRatio, true);
-        return { w: width, h: totalHeight };
+        const { width: theoreticalWidth, totalHeight: theoreticalHeight } = getCardDimensions(image.aspectRatio, true);
+        let finalWidth = theoreticalWidth;
+        let finalHeight = theoreticalHeight;
+
+        if (image.dimensions && typeof image.dimensions === 'string') {
+            // Extract purely the dimension part: "1:1 · 4096x4096" -> "4096x4096"
+            const match = image.dimensions.match(/(\d+)\s*[xX]\s*(\d+)/);
+            if (match && match[1] && match[2]) {
+                const w = parseInt(match[1], 10);
+                const h = parseInt(match[2], 10);
+                if (w > 0 && h > 0) {
+                    const aspect = w / h;
+                    const { width: realWidth } = getCardDimensions(image.aspectRatio, false);
+                    finalWidth = realWidth;
+                    finalHeight = (realWidth / aspect) + 40; // 40px for footer
+                }
+            }
+        }
+        return { w: finalWidth, h: finalHeight };
     };
     const { w: nodeWidth, h: nodeHeight } = getDims();
 
@@ -931,7 +950,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                             {/* 状态2: 生成过程中 - 只有一层，居中显示 */}
                             {!image.orphaned && image.isGenerating && (
-                                <div className="flex items-center justify-center h-5 gap-2 flex-nowrap">
+                                <div className="flex items-center justify-center h-5 gap-2 flex-nowrap group relative">
                                     <div className="flex items-center gap-1 px-2 h-5 rounded-lg border bg-[var(--bg-tertiary)] border-[var(--border-light)] min-w-0 max-w-[170px]">
                                         <span className={`text-2xs leading-none font-medium whitespace-nowrap truncate ${(() => {
                                             const modelId = image.model || '';
@@ -954,6 +973,23 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                             {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || (image.imageSize as any) === 'Video') ? '720p' : (image.imageSize || '1K')}
                                         </span>
                                     </div>
+
+                                    {/* 🚀 [NEW] Hover Stop Button - Shows when mouse is over FOOOTER during generation */}
+                                    {onCancel && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onCancel(image.id);
+                                            }}
+                                            className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--bg-elevated)] opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                                            title="点击结束生成"
+                                        >
+                                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/15 border border-red-500/30 text-red-500 hover:bg-red-500 hover:text-white transition-all active:scale-95 shadow-sm transform translate-y-[1px]">
+                                                <svg className="w-3 h-3 animate-spin border-r-transparent border-red-500 rounded-full border-2" viewBox="0 0 24 24" />
+                                                <span className="text-[10px] font-bold">结束生成</span>
+                                            </div>
+                                        </button>
+                                    )}
                                 </div>
                             )}
 

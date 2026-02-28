@@ -62,45 +62,74 @@ export interface ModelCapability {
  */
 export const BUILTIN_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
     // ============================================
+    // Gemini 3.1 Flash Image Preview (Nano Banana 2)
+    // 11 Ratios, up to 4K
+    // ============================================
+    'gemini-3.1-flash-image-preview': {
+        supportedRatios: [
+            AspectRatio.AUTO,
+            AspectRatio.SQUARE,
+            AspectRatio.PORTRAIT_1_4,
+            AspectRatio.PORTRAIT_1_8,
+            AspectRatio.PORTRAIT_2_3,
+            AspectRatio.LANDSCAPE_3_2,
+            AspectRatio.PORTRAIT_3_4,
+            AspectRatio.LANDSCAPE_4_1,
+            AspectRatio.LANDSCAPE_4_3,
+            AspectRatio.PORTRAIT_4_5,
+            AspectRatio.LANDSCAPE_5_4,
+            AspectRatio.LANDSCAPE_8_1,
+            AspectRatio.PORTRAIT_9_16,
+            AspectRatio.LANDSCAPE_16_9,
+            AspectRatio.LANDSCAPE_21_9
+        ],
+        supportedSizes: [ImageSize.SIZE_05K, ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
+        supportsGrounding: true,
+        maxRefImages: 14 // 🚀 Update: Gemini 3.1 Flash specifies up to 14 reference images
+    },
+
+    // ============================================
     // Gemini 3 Pro Image / Nano Banana Pro
-    // Supports more ratios and up to 4K resolution
+    // 11 Ratios, up to 4K
     // ============================================
     'gemini-3-pro-image-preview': {
         supportedRatios: [
             AspectRatio.AUTO,
             AspectRatio.SQUARE,
-            AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9,
+            AspectRatio.PORTRAIT_2_3,
+            AspectRatio.LANDSCAPE_3_2,
             AspectRatio.PORTRAIT_3_4,
             AspectRatio.LANDSCAPE_4_3,
-            AspectRatio.LANDSCAPE_3_2,
-            AspectRatio.STANDARD_2_3,
-            AspectRatio.LANDSCAPE_5_4,
             AspectRatio.PORTRAIT_4_5,
+            AspectRatio.LANDSCAPE_5_4,
+            AspectRatio.PORTRAIT_9_16,
+            AspectRatio.LANDSCAPE_16_9,
             AspectRatio.LANDSCAPE_21_9
         ],
         supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
         supportsGrounding: true,
-        maxRefImages: 10  // Gemini 3 Pro 支持最多10张参考图
+        maxRefImages: 14  // 🚀 Update: Gemini 3 Pro specifies up to 14 reference images
     },
-
 
     // ============================================
     // Gemini 2.5 Flash Image / Nano Banana
-    // Limited ratios, supports up to 4K resolution, NO grounding support
+    // 10 Ratios (no 1:4, 1:8, 4:1, 8:1), up to 4K, NO grounding support
     // ============================================
     'gemini-2.5-flash-image': {
         supportedRatios: [
             AspectRatio.AUTO,
             AspectRatio.SQUARE,
-            AspectRatio.STANDARD_2_3,
-            AspectRatio.STANDARD_3_2,
+            AspectRatio.PORTRAIT_2_3,
+            AspectRatio.LANDSCAPE_3_2,
             AspectRatio.PORTRAIT_3_4,
             AspectRatio.LANDSCAPE_4_3,
+            AspectRatio.PORTRAIT_4_5,
+            AspectRatio.LANDSCAPE_5_4,
             AspectRatio.PORTRAIT_9_16,
-            AspectRatio.LANDSCAPE_16_9
+            AspectRatio.LANDSCAPE_16_9,
+            AspectRatio.LANDSCAPE_21_9
         ],
-        supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K],
+        supportedSizes: [ImageSize.SIZE_1K], // 文档：仅支持 1024 像素
         supportsGrounding: false, // Tools not supported, causes timeout
         maxRefImages: 10  // Gemini 2.5 Flash 支持最多10张参考图
     },
@@ -347,6 +376,9 @@ export function getModelCapabilities(
     if (lowerModelId.includes('gemini-3-pro') || lowerModelId.includes('nano-banana-pro')) {
         return BUILTIN_MODEL_CAPABILITIES['gemini-3-pro-image-preview'];
     }
+    if (lowerModelId.includes('gemini-3.1-flash') || lowerModelId.includes('nano-banana-2')) {
+        return BUILTIN_MODEL_CAPABILITIES['gemini-3.1-flash-image-preview'];
+    }
     if (lowerModelId.includes('gemini-2.5-flash-image') || lowerModelId.includes('nano-banana')) {
         return BUILTIN_MODEL_CAPABILITIES['gemini-2.5-flash-image'];
     }
@@ -481,11 +513,19 @@ export function getModelCapabilities(
             supportsGrounding: false
         };
     } else if (lowerModelId.includes('nano-banana')) {
-        fallbackCapabilities = {
-            supportedRatios: ALL_IMAGE_RATIOS,
-            supportedSizes: lowerModelId.includes('pro') ? [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K] : [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
-            supportsGrounding: false
-        };
+        // Nano Banana = Gemini 2.5 Flash Image
+        // Nano Banana 2 = Gemini 3.1 Flash Image Preview
+        // Nano Banana Pro = Gemini 3 Pro Image Preview
+        if (lowerModelId.includes('2')) {
+            // Nano Banana 2 (Gemini 3.1 Flash Image)
+            fallbackCapabilities = Object.assign({}, BUILTIN_MODEL_CAPABILITIES['gemini-3.1-flash-image-preview']);
+        } else if (lowerModelId.includes('pro')) {
+            // Nano Banana Pro (Gemini 3 Pro Image)
+            fallbackCapabilities = Object.assign({}, BUILTIN_MODEL_CAPABILITIES['gemini-3-pro-image-preview']);
+        } else {
+            // Nano Banana (Gemini 2.5 Flash Image)
+            fallbackCapabilities = Object.assign({}, BUILTIN_MODEL_CAPABILITIES['gemini-2.5-flash-image']);
+        }
     }
 
     // 5. If no keyword matched, try KeyManager Proxy Models (Generic Defaults)
@@ -624,14 +664,17 @@ export function getModelDisplayName(modelId: string, customLabel?: string): stri
     // Gemini 3 系列
     // Gemini 3 系列
     if (lowerModelId.includes('gemini-3-pro') || lowerModelId.includes('gemini-3-pro-image') || lowerModelId.includes('nano-banana-pro')) {
-        return 'Nano Banana Pro';  // ✨ Custom Name Request
+        return 'Nano Banana Pro';
+    }
+    if (lowerModelId.includes('gemini-3.1-flash') || lowerModelId.includes('nano-banana-2')) {
+        return 'Nano Banana 2';
     }
     if (lowerModelId.includes('gemini-3-flash')) {
         return 'Gemini 3 Flash';
     }
     // Gemini 2.5 系列
     if (lowerModelId.includes('gemini-2.5-flash-image') || lowerModelId.includes('nano-banana')) {
-        return 'Nano Banana';  // ✨ Custom Name Request
+        return 'Nano Banana';
     }
     if (lowerModelId.includes('gemini-2.5-flash')) {
         return 'Gemini 2.5 Flash';
@@ -832,13 +875,18 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
     },
     'gemini-3-pro': {
         category: 'LLM',
-        description: '谷歌最强，拥有超长上下文窗口，多模态理解力顶尖',
+        description: '全球领先的多模态理解、智能体功能和氛围编程模型',
         rank: 'Gemini 3 Pro'
     },
     'gemini-3-pro-preview': {
         category: 'LLM',
-        description: '谷歌最强，拥有超长上下文窗口，多模态理解力顶尖',
+        description: '全球领先的多模态理解、智能体功能和氛围编程模型',
         rank: 'Gemini 3 Pro'
+    },
+    'gemini-3.1-pro-preview': {
+        category: 'LLM',
+        description: '最适合需要广泛的世界知识和跨模态高级推理的复杂任务',
+        rank: 'Gemini 3.1 Pro'
     },
     'kimi-k2.5': {
         category: 'LLM',
@@ -907,12 +955,12 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
     },
     'gemini-3-flash': {
         category: 'LLM',
-        description: '百万长上下文，多模态综合强',
+        description: '具有专业级智能，但速度和价格与 Flash 相当',
         rank: 'Gemini 3 Flash'
     },
     'gemini-3-flash-preview': {
         category: 'LLM',
-        description: '百万长上下文，多模态综合强',
+        description: '具有专业级智能，但速度和价格与 Flash 相当',
         rank: 'Gemini 3 Flash'
     },
     'qwen-3': {
@@ -934,13 +982,18 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
     },
     'gemini-3-pro-image-preview': {
         category: '图像生成',
-        description: '擅长文字嵌入与多图融合',
+        description: '最高品质生图，利用高级推理遵循复杂的指令并呈现高保真文本',
         rank: 'Nano Banana Pro'
     },
     'nano-banana-pro': {
         category: '图像生成',
-        description: '擅长文字嵌入与多图融合',
+        description: '最高品质生图，利用高级推理遵循复杂的指令并呈现高保真文本',
         rank: 'Nano Banana Pro'
+    },
+    'gemini-3.1-flash-image-preview': {
+        category: '图像生成',
+        description: '针对速度和高用量优化，高效率、价格更低',
+        rank: 'Nano Banana 2'
     },
     'hunyuan-image-3': {
         category: '图像生成',
@@ -969,12 +1022,12 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
     },
     'gemini-2.5-flash-image': {
         category: '图像生成',
-        description: '性价比高，极速出图',
+        description: '专为速度和效率设计，可处理高数据量、低延迟任务',
         rank: 'Nano Banana'
     },
     'nano-banana': {
         category: '图像生成',
-        description: '性价比高，极速出图',
+        description: '专为速度和效率设计，可处理高数据量、低延迟任务',
         rank: 'Nano Banana'
     },
     'reve-v1': {
@@ -997,10 +1050,20 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
         description: '具备视频级的动态捕捉感',
         rank: 'Vidu Q2'
     },
-    'imagen-4-ultra': {
+    'imagen-4.0-ultra-generate-001': {
         category: '图像生成',
-        description: '官方固定计费，写实感强',
+        description: 'Google 的高保真图片生成模型 (Ultra)',
         rank: 'Imagen 4 Ultra'
+    },
+    'imagen-4.0-generate-001': {
+        category: '图像生成',
+        description: 'Google 的高保真图片生成模型 (标准)',
+        rank: 'Imagen 4 Standard'
+    },
+    'imagen-4.0-fast-generate-001': {
+        category: '图像生成',
+        description: 'Google 的高保真图片生成模型 (快速)',
+        rank: 'Imagen 4 Fast'
     },
     'imagineart-1.5': {
         category: '图像生成',
