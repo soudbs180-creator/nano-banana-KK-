@@ -1128,12 +1128,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     };
 
     // Desktop floating style handling is used for both now
-    // CSS classes like `w-[calc(100vw-32px)] sm:w-[560px]` will handle responsive scaling
+    // 宽度策略：避免部署环境字体/缩放差异导致底部按钮被挤出容器
 
     return (
         <div
             id="prompt-bar-container"
-            className={`input-bar transition-all duration-300 w-[calc(100vw-32px)] sm:w-[560px] md:max-w-2xl ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
+            className={`input-bar transition-all duration-300 w-[calc(100vw-32px)] sm:w-[min(94vw,860px)] md:w-[min(90vw,980px)] lg:w-[min(86vw,1100px)] ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -1776,7 +1776,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 </div> {/* End of input area hover wrapper */}
 
                 {/* Footer - Modified to be a standard flex row, flowing or wrapping lightly on mobile */}
-                <div className={`input-bar-footer flex items-center justify-between pt-3 mt-1 border-t border-[var(--border-light)] gap-2`}>
+                <div className={`input-bar-footer flex flex-wrap items-center pt-3 mt-1 border-t border-[var(--border-light)] gap-2`}>
                     {/* Left: Model & Settings */}
                     {/* Model Button */}
                     <div className="relative inline-flex flex-shrink-0">
@@ -2254,7 +2254,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         onClick={onGenerate}
                         disabled={!config.prompt}
                         className={`
-                            group relative px-6 h-8 rounded-full flex flex-row items-center justify-center gap-2 whitespace-nowrap shrink-0 transition-all duration-300 border
+                            group relative px-6 h-8 rounded-full flex flex-row items-center justify-center gap-2 whitespace-nowrap shrink-0 ml-auto transition-all duration-300 border
                             ${!config.prompt
                                 ? 'border-zinc-200 dark:border-zinc-800 cursor-not-allowed'
                                 : 'border-zinc-200 dark:border-zinc-700/50 hover:border-blue-500 dark:hover:border-blue-500 dark:hover:bg-white/5'
