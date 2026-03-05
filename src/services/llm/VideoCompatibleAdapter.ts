@@ -1,10 +1,10 @@
-import { KeySlot } from '../keyManager';
+import { KeySlot } from '../auth/keyManager';
 import { LLMAdapter, VideoGenerationOptions, VideoGenerationResult } from './LLMAdapter';
-import { notify } from '../notificationService';
+import { notify } from '../system/notificationService';
 
 /**
  * 视频生成适配器
- * 支持 gpt-best v2 统一格式 (/v2/videos/generations) 和通用 OpenAI 兼容格式
+ * 严格使用 OpenAI 兼容格式 (/v1/videos/generations)
  * 
  * v2 统一格式状态码：NOT_START / SUBMITTED / QUEUED / IN_PROGRESS / SUCCESS / FAILURE
  */
@@ -42,20 +42,9 @@ export class VideoCompatibleAdapter implements LLMAdapter {
 
     async generateVideo(options: VideoGenerationOptions, keySlot: KeySlot): Promise<VideoGenerationResult> {
         const baseUrl = (keySlot.baseUrl || 'https://api.openai.com').replace(/\/+$/, '');
-        const isGptBest = baseUrl.includes('gpt-best');
-
-        // gpt-best 使用 v2 统一格式端点，其他使用 v1
-        let submitUrl: string;
-        let pollBaseUrl: string;
-        if (isGptBest) {
-            const cleanBase = baseUrl.replace(/\/v[12]$/, '');
-            submitUrl = `${cleanBase}/v2/videos/generations`;
-            pollBaseUrl = submitUrl;
-        } else {
-            const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
-            submitUrl = `${cleanBase}/videos/generations`;
-            pollBaseUrl = submitUrl;
-        }
+        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+        const submitUrl = `${cleanBase}/videos/generations`;
+        const pollBaseUrl = submitUrl;
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -134,7 +123,7 @@ export class VideoCompatibleAdapter implements LLMAdapter {
                     taskId,
                     status: 'success',
                     provider: this.provider,
-                    providerName: isGptBest ? 'GPT-Best' : this.provider,
+                    providerName: keySlot.name || this.provider,
                     model: options.modelId
                 };
             }
@@ -204,7 +193,7 @@ export class VideoCompatibleAdapter implements LLMAdapter {
                 taskId,
                 status: 'success',
                 provider: this.provider,
-                providerName: isGptBest ? 'GPT-Best' : this.provider,
+                providerName: keySlot.name || this.provider,
                 model: options.modelId
             };
 

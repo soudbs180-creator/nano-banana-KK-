@@ -1,8 +1,9 @@
-import { LLMAdapter, ChatOptions, ImageGenerationOptions, ImageGenerationResult, AudioGenerationOptions, AudioGenerationResult } from './LLMAdapter';
-import { KeySlot } from '../keyManager';
+import { LLMAdapter, ChatOptions, ImageGenerationOptions, ImageGenerationResult, AudioGenerationOptions, AudioGenerationResult, extractRefImageData } from './LLMAdapter';
+import { KeySlot, keyManager } from '../auth/keyManager';
 import { ImageSize, AspectRatio } from '../../types';
-import { logError, logWarning, addLog, LogLevel } from '../systemLogService';
-import { GoogleAdapter } from './GoogleAdapter';
+import { logError, logWarning, addLog, LogLevel } from '../system/systemLogService';
+import { GoogleAdapter, convertImageToBase64, buildInlineImagePart } from './GoogleAdapter';
+import { RegionService } from '../system/RegionService';
 
 export class OpenAICompatibleAdapter implements LLMAdapter {
     id = 'openai-compatible-adapter';
@@ -20,17 +21,58 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
     }
 
     private async fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-            const response = await fetch(url, {
-                ...init,
-                signal: controller.signal
-            });
-            return response;
-        } finally {
-            clearTimeout(timeoutId);
+        let lastError: Error | null = null;
+        let lastResponse: Response | null = null;
+        const maxRetries = 3;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+            try {
+                const response = await fetch(url, {
+                    ...init,
+                    signal: controller.signal
+                });
+
+                // If successful or it's a non-retryable error (like 400, 401, 403, 404), return immediately
+                if (response.ok || ![429, 500, 502, 503, 504].includes(response.status)) {
+                    return response;
+                }
+
+                lastResponse = response;
+                // It's a retryable HTTP error (e.g. 503 "no available channels"). Throw so the catch block handles delay.
+                throw new Error(`HTTP ${response.status} - Transient error`);
+
+            } catch (err: any) {
+                lastError = err;
+
+                // If this is the last attempt, don't wait, just break and throw
+                if (attempt === maxRetries) {
+                    break;
+                }
+
+                // If the user aborted manually (not network/timeout/server error), don't retry
+                if (err.name === 'AbortError' && init.signal?.aborted) {
+                    break;
+                }
+
+                // Exponential backoff: 1500ms, 3000ms...
+                const delayMs = 1500 * Math.pow(2, attempt - 1);
+                console.warn(`[OpenAICompatibleAdapter] fetchWithTimeout: Attempt ${attempt} failed for ${url}. Error: ${err.message}. Retrying in ${delayMs}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            } finally {
+                clearTimeout(timeoutId);
+            }
         }
+
+        // If we exhausted retries and have a valid (but failing) Response object, return it so the caller can handle/log it natively
+        if (lastResponse) {
+            return lastResponse;
+        }
+
+        // Otherwise it was a pure network/timeout failure
+        throw lastError || new Error('Fetch failed completely after retries');
     }
 
     private applyCustomHeaders(headers: Record<string, string>, keySlot: KeySlot): Record<string, string> {
@@ -50,13 +92,34 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         return { ...base, ...custom };
     }
 
-    private is12AIGateway(baseUrl: string): boolean {
+    private is12AIGateway(baseUrl: string, keySlot?: KeySlot, modelId?: string): boolean {
+        // 1. Check KeySlot explicit metadata
+        if (keySlot) {
+            const provider = (keySlot.provider || '').toUpperCase();
+            const slotName = (keySlot.name || '').toLowerCase();
+            if (provider === '12AI' || provider === 'SYSTEMPROXY' || slotName.includes('12ai')) return true;
+        }
+
+        // 2. 🚀 [Critical Fix] 移除了仅根据模型名称的启发式判断
+        // 之前的逻辑：如果模型包含 'gemini-3.1-flash-image' 且 provider 是 Custom/OpenAI，就认为是 12AI
+        // 这是错误的！因为 suxi、newapi 等第三方供应商也可能提供同名模型，但它们使用 OpenAI 格式 Bearer 认证
+        // 只有 baseUrl 包含 12ai 域名或 keySlot 明确标记为 12AI 时才走 Gemini Native
+
+        // 3. Check Hostname — 这是唯一可靠的方式
         try {
             const host = new URL(baseUrl).hostname;
-            return /(^|\.)12ai\.org$/i.test(host);
+            return /(^|\.)12ai\.org$/i.test(host) || /(^|\.)12ai\.(xyz|io|net)$/i.test(host);
         } catch {
             return false;
         }
+    }
+
+    private normalizeGeminiImageSize(raw: string | undefined): '512px' | '1K' | '2K' | '4K' {
+        const v = (raw || '').trim().toUpperCase();
+        if (v.includes('512') || v.includes('0.5K')) return '512px';
+        if (v.includes('4K') || v.includes('HD')) return '4K';
+        if (v.includes('2K')) return '2K';
+        return '1K';
     }
 
     private normalize12AIBaseUrl(baseUrl: string): string {
@@ -68,6 +131,9 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             '/chat/completions',
             '/v1/images/generations',
             '/images/generations',
+            '/v1beta/models',
+            '/api/v1/generate',
+            '/api/pay',
             '/v1beta',
             '/v1',
             '/api'
@@ -85,6 +151,47 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 }
             }
         }
+
+        // 🚀 [Critical Fix] Ensure protocol is present to avoid "Failed to fetch"
+        // If the URL doesn't start with http, it's considered relative/invalid by fetch()
+        if (clean && !clean.startsWith('http')) {
+            clean = `https://${clean}`;
+        }
+
+        return clean;
+    }
+
+    /**
+     * 🚀 [防错增强] 确保返回的是带协议头的完整基础 URL
+     * 注意：对于后端转发，应返回基础域名，由 Adapter 拼接具体路径
+     */
+    private static normalizeUrl(url: string | undefined | null): string {
+        const CN_GATEWAY = 'https://cdn.12ai.org';
+        const GLOBAL_GATEWAY = 'https://new.12ai.org';
+
+        if (!url || typeof url !== 'string') {
+            // RegionService.isChina() is not available here, so we'll use a default or assume global
+            // For a static method, it's better to avoid instance-specific logic like RegionService.isChina()
+            // unless it's passed as an argument or accessed via a static property.
+            // For now, let's default to GLOBAL_GATEWAY if RegionService isn't directly accessible here.
+            return GLOBAL_GATEWAY; // Or CN_GATEWAY if this context is known to be in China
+        }
+
+        let clean = url.trim().replace(/\/+$/, '');
+
+        // 如果没有协议头，强制加上 https
+        if (!clean.startsWith('http')) {
+            clean = 'https://' + clean;
+        }
+
+        // 🚀 [Critical Fix] 移除所有硬编码的路径后缀，只保留基础 Base URL
+        // 具体的 /api/v1/generate 或 /v1beta 等由具体的 Adapter 决定
+        const noisySuffixes = ['/api/pay', '/api/v1/generate', '/v1', '/v1beta'];
+        noisySuffixes.forEach(suffix => {
+            if (clean.toLowerCase().endsWith(suffix)) {
+                clean = clean.substring(0, clean.length - suffix.length).replace(/\/+$/, '');
+            }
+        });
 
         return clean;
     }
@@ -108,7 +215,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 if (node.startsWith('data:')) return '<omitted:data-uri>';
                 if (/^https?:\/\//i.test(node) && node.length > 120) return '<omitted:url>';
                 if (/^[A-Za-z0-9+/=]+$/.test(node) && node.length > 200) return '<omitted:base64>';
-                if (node.length > 400) return `${node.slice(0, 200)}...<truncated>`;
+                if (node.length > 400) return node.slice(0, 200) + '...<truncated>';
                 return node;
             }
             return node;
@@ -123,8 +230,8 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
     async chat(options: ChatOptions, keySlot: KeySlot): Promise<string> {
         const baseUrl = (keySlot.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
-        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
-        const url = `${cleanBase}/chat/completions`;
+        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : baseUrl + '/v1';
+        const url = cleanBase + '/chat/completions';
 
         const messages: any[] = options.messages.map(m => ({
             role: m.role,
@@ -211,11 +318,13 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             } catch (e) {
                 errMsg = text.substring(0, 200);
             }
+            keyManager.reportCallResult(keySlot.id, false, errMsg);
             logError('OpenAIAdapter', new Error(errMsg), `URL: ${url}\nStatus: ${response.status}\nRaw Response: ${text.substring(0, 500)}`);
             throw new Error(errMsg);
         }
 
         const data = await response.json();
+        keyManager.reportCallResult(keySlot.id, true);
         return data.choices?.[0]?.message?.content || '';
     }
 
@@ -286,9 +395,12 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         if (!response.ok || !response.body) {
             const text = await response.text().catch(() => '');
-            throw new Error(text || `HTTP ${response.status}`);
+            const errMsg = text || `HTTP ${response.status}`;
+            keyManager.reportCallResult(keySlot.id, false, errMsg);
+            throw new Error(errMsg);
         }
 
+        keyManager.reportCallResult(keySlot.id, true);
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let buffer = '';
@@ -322,24 +434,15 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
     }
 
     async generateImage(options: ImageGenerationOptions, keySlot: KeySlot): Promise<ImageGenerationResult> {
+        // [Note] 内置加速服务 (SystemProxy) 逻辑已移除
+
         const modelLower = options.modelId.toLowerCase();
         const rawBaseUrl = keySlot.baseUrl || '';
         const baseUrl = rawBaseUrl.toLowerCase();
 
-        // 12AI + Gemini Image: 强制走 Gemini 原生 generateContent，避免 /chat/completions
-        // 在部分网关中忽略 imageSize/aspectRatio 导致 2K/1:1 被降级为默认值。
-        const isGeminiImage = modelLower.includes('gemini') && modelLower.includes('image');
-        if (isGeminiImage && rawBaseUrl && this.is12AIGateway(rawBaseUrl)) {
-            const googleAdapter = new GoogleAdapter();
-            const normalizedBase = this.normalize12AIBaseUrl(rawBaseUrl);
-            const delegatedKeySlot: KeySlot = {
-                ...keySlot,
-                baseUrl: normalizedBase || rawBaseUrl
-            };
-
-            console.log(`[OpenAICompatibleAdapter] 12AI + Gemini Image detected, delegating to GoogleAdapter(generateContent) -> ${keySlot.name}`);
-            return googleAdapter.generateImage(options, delegatedKeySlot);
-        }
+        const isGeminiImage = modelLower.includes('gemini') && modelLower.includes('image') ||
+            modelLower.includes('nano-banana') ||
+            modelLower.includes('banana');
 
         const isQuotaLikeError = (err: any): boolean => {
             const msg = String(err?.message || '').toLowerCase();
@@ -349,37 +452,36 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const isChatEndpointCompatibilityError = (err: any): boolean => {
             const msg = String(err?.message || '').toLowerCase();
             if (isQuotaLikeError(err)) return false;
+            const isNotSupported = msg.includes('not supported') || msg.includes('unsupported');
             return (
                 msg.includes('chat-to-image error (400)') ||
                 msg.includes('chat-to-image error (404)') ||
                 msg.includes('chat-to-image error (405)') ||
                 msg.includes('chat-to-image error (422)') ||
-                msg.includes('unsupported') ||
+                (msg.includes('500') && isNotSupported) ||
+                isNotSupported ||
                 msg.includes('invalid request') ||
                 msg.includes('endpoint')
             );
         };
 
-        // 🚀 [Protocol Routing] 三级判断逻辑：
-        // 1. KeySlot 显式配置 (compatibilityMode)
-        // 2. BaseURL 特征检测 (Antigravity/反代 等已知 Gemini/GPT-Best 协议代理)
-        // 3. 模型名称启发式推断 (包含 gemini + image 的模型)
-
-        // 级别1: 显式配置 — 用户或系统已明确设置API格式
-        if (keySlot.compatibilityMode === 'chat') {
+        // 🚀 [Protocol Routing]
+        // 12AI + Gemini 图片模型：强制走 Gemini Native（严格对齐 12AI 文档），
+        // 忽略 compatibilityMode='chat'，避免命中 Chat-to-Image 通道导致 503。
+        const forceGeminiNativeOn12AI = this.is12AIGateway(baseUrl, keySlot, options.modelId) && isGeminiImage;
+        if (keySlot.compatibilityMode === 'chat' && !forceGeminiNativeOn12AI) {
             console.log(`[OpenAICompatibleAdapter] 使用 Chat API (显式 compatibilityMode='chat') -> ${keySlot.name}`);
             return this.generateImageViaChat(options, keySlot);
         }
 
-        // 级别2: BaseURL特征检测
         const isAntigravity = baseUrl.includes('127.0.0.1:8045') || baseUrl.includes('antigravity');
         const isOfficialOpenAI = baseUrl.includes('api.openai.com');
         const isSiliconFlow = baseUrl.includes('siliconflow');
-        // 🚀 [NEW] 检测 gpt-best 代理商
         const isGptBest = baseUrl.includes('gpt-best') || baseUrl.includes('gptbest');
+        const is12AI = this.is12AIGateway(baseUrl, keySlot, options.modelId);
+        const isComfly = baseUrl.includes('comfly') || baseUrl.includes('vodeshop') || baseUrl.includes('future-api');
 
         if (isAntigravity) {
-            // Antigravity 支持 OpenAI Images API（推荐方式一）和 Chat API
             if (modelLower.includes('gemini') && modelLower.includes('image')) {
                 console.log(`[OpenAICompatibleAdapter] 使用 Chat API (Antigravity + Gemini模型) -> ${keySlot.name}`);
                 return this.generateImageViaChat(options, keySlot);
@@ -398,21 +500,27 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             return this.generateImageStandard_SiliconFlow(options, keySlot);
         }
 
-        // 🚀 [NEW] gpt-best 代理商专用路径
         if (isGptBest) {
-            console.log(`[OpenAICompatibleAdapter] 使用 GPT_Best_Native API -> ${keySlot.name}`);
-            return this.generateImageStandard_GPT_Best_Native(options, keySlot);
+            console.log(`[OpenAICompatibleAdapter] 使用 OpenAI_Strict API (GPT-Best) -> ${keySlot.name}`);
+            return this.generateImageStandard_OpenAI_Strict(options, keySlot);
         }
 
-        // 级别3: 模型名称启发式推断
-        // Gemini 图像模型在部分代理上 /chat/completions 会忽略 size/aspect。
-        // 改为优先尝试 /images/generations（Extended），失败再回退 Chat。
+        if (is12AI && isGeminiImage) {
+            console.log(`[OpenAICompatibleAdapter] 使用 12AI 原生 Gemini 协议 (Native) -> ${keySlot.name}`);
+            return this.generateImageGeminiNative(options, keySlot);
+        }
+
+        if (is12AI) {
+            console.log(`[OpenAICompatibleAdapter] 使用 OpenAI_Strict API (12AI) -> ${keySlot.name}`);
+            return this.generateImageStandard_OpenAI_Strict(options, keySlot);
+        }
+
         if (isGeminiImage) {
-            console.log(`[OpenAICompatibleAdapter] Gemini模型优先尝试 Images API (参数遵循更稳定) -> ${keySlot.name}`);
+            console.log(`[OpenAICompatibleAdapter] Gemini模型优先尝试 Images API -> ${keySlot.name}`);
             try {
                 return await this.generateImageStandard_GPT_Best_Extended(options, keySlot);
             } catch (e: any) {
-                console.warn(`[OpenAICompatibleAdapter] Images API 不可用，回退 Chat API -> ${keySlot.name}`);
+                console.warn(`[OpenAICompatibleAdapter] Images API 不可用，尝试回退 Chat API -> ${keySlot.name}`);
                 try {
                     return await this.generateImageViaChat(options, keySlot);
                 } catch (chatErr: any) {
@@ -425,13 +533,14 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
 
         if (options.providerConfig?.openai?.useChatEndpoint) {
-            console.log(`[OpenAICompatibleAdapter] 使用 Chat API (显式 openai.useChatEndpoint=true) -> ${keySlot.name}`);
             return this.generateImageViaChat(options, keySlot);
         }
 
-        // 默认: 使用兼容度最高的被动模式 (Extended)
-        console.log(`[OpenAICompatibleAdapter] 使用 GPT_Best_Extended API (默认后备) -> ${keySlot.name}`);
-        return this.generateImageStandard_GPT_Best_Extended(options, keySlot);
+        if (isComfly) {
+            return this.generateImageStandard_OpenAI_Strict(options, keySlot);
+        }
+
+        return this.generateImageStandard_OpenAI_Strict(options, keySlot);
     }
 
     private async generateImageViaChat(
@@ -469,10 +578,11 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const contentParts: any[] = [{ type: 'text', text: options.prompt }];
 
         if (options.referenceImages?.length) {
-            options.referenceImages.forEach(imageData => {
-                // Ensure proper Data URI format
-                const hasPrefix = imageData.startsWith('data:');
-                const dataUrl = hasPrefix ? imageData : `data:image/jpeg;base64,${imageData}`;
+            options.referenceImages.forEach(refImg => {
+                const { data: imgData, mimeType } = extractRefImageData(refImg);
+                // 使用真实 MIME 类型构建 Data URI
+                const hasPrefix = imgData.startsWith('data:');
+                const dataUrl = hasPrefix ? imgData : `data:${mimeType};base64,${imgData}`;
                 contentParts.push({
                     type: 'image_url',
                     image_url: { url: dataUrl }
@@ -504,6 +614,20 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             maxOutputTokens: 65535,
             stream: false
         };
+
+        // 🚀 [12AI 对齐] 转发高级功能参数
+        if (options.providerConfig?.google?.thinkingConfig?.thinkingLevel) {
+            body.thinking_mode = options.providerConfig.google.thinkingConfig.thinkingLevel;
+        }
+        if (options.providerConfig?.google?.tools) {
+            const googleSearchTool = options.providerConfig.google.tools.find(t => t.googleSearch);
+            if (googleSearchTool) {
+                body.google_search = true;
+                if (googleSearchTool.googleSearch.searchTypes?.imageSearch) {
+                    body.image_search = true;
+                }
+            }
+        }
 
         const requestPath = '/v1/chat/completions';
         const pythonSnippet = `import requests\n\nurl = "${url}"\nheaders = {"Authorization": "Bearer <API_KEY>", "Content-Type": "application/json"}\npayload = ${JSON.stringify(body, null, 2)}\nresp = requests.post(url, headers=headers, json=payload, timeout=150)\nprint(resp.status_code)\nprint(resp.text[:1000])`;
@@ -669,6 +793,15 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         let sizeString = '1024x1024';
         if (options.aspectRatio === '16:9') sizeString = '1792x1024';
         else if (options.aspectRatio === '9:16') sizeString = '1024x1792';
+        else if (options.aspectRatio === '21:9') sizeString = '2048x870';
+        else if (options.aspectRatio === '4:1') sizeString = '2048x512';
+        else if (options.aspectRatio === '3:2') sizeString = '1536x1024';
+        else if (options.aspectRatio === '2:3') sizeString = '1024x1536';
+        else if (options.aspectRatio === '4:3') sizeString = '1024x768';
+        else if (options.aspectRatio === '3:4') sizeString = '768x1024';
+        else if (options.aspectRatio === '1:4') sizeString = '512x2048';
+        else if (options.aspectRatio === '1:8') sizeString = '512x4096';
+        else if (options.aspectRatio === '8:1') sizeString = '4096x512';
 
         // Configuration Overrides
         let quality = is4K || is2K ? 'hd' : 'standard';
@@ -693,9 +826,20 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         // 官方 DALL-E 编辑功能支持（需专用 endpoint / edits 或特殊方式，先按通用传入 mask 与 image）
         if (options.editMode && options.referenceImages?.length) {
             console.warn(`[OpenAICompatibleAdapter] 官方 OpenAI 编辑端点待完整对接支持。当前先尝试基础注入。`);
-            body.image = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
+            const { data: refData, mimeType: refMime } = extractRefImageData(options.referenceImages[0]);
+            body.image = refData.startsWith('http') ? refData : `data:${refMime};base64,${refData}`;
             if (options.editMode === 'inpaint' && options.maskUrl) {
                 body.mask = options.maskUrl.startsWith('http') ? options.maskUrl : `data:image/png;base64,${options.maskUrl}`;
+            }
+        } else if (options.referenceImages?.length) {
+            // 🚀 [Fix] Support Reference Image for standard OpenAI-compatible generation (Image-to-Image)
+            const { data: refData, mimeType: refMime } = extractRefImageData(options.referenceImages[0]);
+            // Some providers (like 12AI / Midjourney-proxy) expect 'image' or 'image_url' at top level
+            const dataUrl = refData.startsWith('http') ? refData : `data:${refMime};base64,${refData}`;
+            body.image = dataUrl;
+            // Also inject into prompt if it's a known proxy pattern (optional but improves compatibility)
+            if (options.modelId.toLowerCase().includes('midjourney') || options.modelId.toLowerCase().includes('mj-')) {
+                body.prompt = `${dataUrl} ${body.prompt}`;
             }
         }
 
@@ -737,7 +881,10 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         };
 
         if (options.referenceImages && options.referenceImages.length > 0) {
-            body.image = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`);
+            body.image = options.referenceImages.map(ref => {
+                const { data: d, mimeType: m } = extractRefImageData(ref);
+                return d.startsWith('http') ? d : `data:${m};base64,${d}`;
+            });
         }
 
         console.log(`[OpenAICompatibleAdapter] SiliconFlow -> image_size=${body.image_size}`);
@@ -835,19 +982,21 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             const isFluxKontext = options.modelId.toLowerCase().includes('flux-kontext');
             const isDoubao = options.modelId.toLowerCase().includes('doubao');
 
-            if (isFluxKontext) {
-                const imgLinks = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`).join(' ');
-                body.prompt = `${body.prompt} ${imgLinks}`;
-                body.image = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`);
-            } else if (isDoubao && options.editMode === 'inpaint') {
-                body.image = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
-            } else {
-                // OpenAI Images API format typically uses 'image' or 'images' array for reference
-                // GPT-Best 扩展协议接收字符串数组或单张图片。为了最大兼容性，传数组。
-                body.image = options.referenceImages.map(img => img.startsWith('http') ? img : `data:image/png;base64,${img}`);
+            // 🚀 [Fix] 使用 extractRefImageData 提取真实 MIME 类型
+            const toDataUrl = (ref: string | { data: string; mimeType: string }) => {
+                const { data: d, mimeType: m } = extractRefImageData(ref);
+                return d.startsWith('http') ? d : `data:${m};base64,${d}`;
+            };
 
-                // 🚀 [关键修复] 很多代理只认单张图片的 `image` 字段 (字符串)，同时提供 fallback
-                body.image_url = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
+            if (isFluxKontext) {
+                const imgLinks = options.referenceImages.map(toDataUrl).join(' ');
+                body.prompt = `${body.prompt} ${imgLinks}`;
+                body.image = options.referenceImages.map(toDataUrl);
+            } else if (isDoubao && options.editMode === 'inpaint') {
+                body.image = toDataUrl(options.referenceImages[0]);
+            } else {
+                body.image = options.referenceImages.map(toDataUrl);
+                body.image_url = toDataUrl(options.referenceImages[0]);
             }
         }
 
@@ -928,7 +1077,8 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         // 处理参考图（通用代理大多只接受单张图片作为 `image` 字段）
         // 如果有超过1张，优先取第一张
         if (options.referenceImages && options.referenceImages.length > 0) {
-            body.image = options.referenceImages[0].startsWith('http') ? options.referenceImages[0] : `data:image/png;base64,${options.referenceImages[0]}`;
+            const { data: refData, mimeType: refMime } = extractRefImageData(options.referenceImages[0]);
+            body.image = refData.startsWith('http') ? refData : `data:${refMime};base64,${refData}`;
         }
 
         // 🚀 处理局部重绘 (Inpaint) - 将蒙版作为 mask 字段发送
@@ -946,6 +1096,125 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
     // ============================================================================
     // 通用 Request 执行包装
     // ============================================================================
+    // ============================================================================
+    // 🚀 [12AI 对齐] 原生 Gemini 协议 (NanoBanana / generateContent)
+    // 严格遵循 https://doc.12ai.org/api/#gemini 文档要求
+    // ============================================================================
+    private async generateImageGeminiNative(
+        options: ImageGenerationOptions,
+        keySlot: KeySlot
+    ): Promise<ImageGenerationResult> {
+        // 🚀 [修复] 如果未配置 Base URL，自动根据地区选择 12AI 官方网关 (cdn.12ai.org / new.12ai.org)
+        const rawBase = keySlot.baseUrl || RegionService.get12AIBaseUrl();
+        const cleanBase = this.normalize12AIBaseUrl(rawBase).replace(/\/+$/, '');
+
+        // 严格模式：模型 ID 不做任何自动回退/映射，完全按用户选择发送。
+        const effectiveModelId = options.modelId;
+        const requestedImageSize = this.normalizeGeminiImageSize(options.imageSize);
+
+        // 🚀 [鉴权修复] 12AI 原生接口必须使用 URL 参数中的 key 字段进行鉴权，Header 鉴权可能无效
+        const url = `${cleanBase}/v1beta/models/${effectiveModelId}:generateContent?key=${keySlot.key}`;
+
+        const parts: any[] = [{ text: options.prompt }];
+
+        // 参考图支持
+        if (options.referenceImages?.length) {
+            for (const refImg of options.referenceImages) {
+                const { data: imgData, mimeType } = extractRefImageData(refImg);
+                // 确保是纯 base64 (无前缀)
+                const base64 = imgData.replace(/^data:[^;]+;base64,/, '');
+                parts.push({
+                    inlineData: {
+                        mimeType: mimeType || 'image/png',
+                        data: base64
+                    }
+                });
+            }
+        }
+
+        // 🚀 [Critical] 12AI 对齐：构造干净的负载，确保字段名与官方文档严格一致
+        const payload: any = {
+            contents: [{ parts }],
+            generationConfig: {
+                // 12AI 对齐：responseModalities 必须是数组包含 "IMAGE"
+                responseModalities: ["IMAGE"],
+                imageConfig: {
+                    aspectRatio: options.aspectRatio || '1:1',
+                    imageSize: requestedImageSize // normalizeGeminiImageSize 已经确保了大写 1K/2K/4K
+                }
+            }
+        };
+
+        const payloadStr = JSON.stringify(payload);
+        // 🚀 [修复] 12AI 原生接口在浏览器端极其敏感，移除特殊的 x-goog-api-key 标头
+        // 官方文档要求认证仅通过 URL 参数 key=... 进行，添加额外标头常导致 CORS Preflight 失败
+        let headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+
+        // 应用用户可能的自定义标头，但排除可能产生冲突的 Google 原生认证标头
+        headers = this.applyCustomHeaders(headers, keySlot);
+        delete headers['x-goog-api-key'];
+        delete headers['Authorization'];
+        delete headers['authorization'];
+
+        const startTime = Date.now();
+        const safeUrl = url.replace(/key=[^&]+/, 'key=***'); // 用于日志的安全 URL
+        console.log(`[OpenAICompatibleAdapter] 12AI Native Request -> ${safeUrl}`);
+
+        const response = await this.fetchWithTimeout(url, {
+            method: 'POST',
+            headers,
+            body: payloadStr
+        }, this.getTimeoutMs(keySlot, 120000));
+
+        const duration = Date.now() - startTime;
+
+        if (!response.ok) {
+            const raw = await response.text().catch(() => '');
+            let detail = `12AI Native Error: ${response.status}`;
+            try {
+                const err = JSON.parse(raw || '{}');
+                detail = err.error?.message || err.message || detail;
+            } catch {
+                if (raw) detail = raw.slice(0, 500);
+            }
+            keyManager.reportCallResult(keySlot.id, false, detail);
+            throw new Error(`[${response.status}] ${detail}`);
+        }
+
+        const data = await response.json();
+        keyManager.reportCallResult(keySlot.id, true);
+        const candidate = data.candidates?.[0];
+        if (!candidate) throw new Error('12AI API 返回空结果 Candidate');
+
+        const candidateParts = candidate.content?.parts || [];
+        const imagePart = candidateParts.find((p: any) => p.inlineData || p.inline_data);
+
+        if (!imagePart) {
+            const textPart = candidateParts.find((p: any) => p.text);
+            if (textPart?.text) throw new Error(`生成失败: ${textPart.text}`);
+            throw new Error('响应中未找到图片数据');
+        }
+
+        const inlineData = imagePart.inlineData || imagePart.inline_data;
+        const mime = inlineData.mimeType || inlineData.mime_type || 'image/png';
+        const b64 = String(inlineData.data || '').replace(/\s+/g, '');
+
+        return {
+            urls: [`data:${mime};base64,${b64}`],
+            provider: '12AI-Native',
+            model: options.modelId,
+            imageSize: requestedImageSize,
+            metadata: {
+                requestPath: `/v1beta/models/${options.modelId}:generateContent`,
+                apiDurationMs: duration,
+                requestBodyPreview: this.buildSafeRequestBodyPreview(payload)
+            }
+        };
+    }
+
     private async executeImageRequest(url: string, body: any, keySlot: KeySlot, options: ImageGenerationOptions): Promise<ImageGenerationResult> {
         let headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -975,15 +1244,18 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             let detail = `OpenAI Image Error: ${response.status}`;
             try {
                 const err = JSON.parse(raw || '{}');
-                detail = err.error?.message || err.message || detail;
+                const errorObj = err.error || err;
+                detail = errorObj.message || (typeof errorObj === 'string' ? errorObj : JSON.stringify(errorObj));
             } catch {
                 if (raw) detail = raw.slice(0, 500);
             }
+            keyManager.reportCallResult(keySlot.id, false, detail);
             logError('OpenAIAdapter', new Error(detail), `URL: ${url}\nStatus: ${response.status}\nRaw Response: ${raw.slice(0, 500)}`);
             throw new Error(`[${response.status}] ${detail}`);
         }
 
         const data = await response.json();
+        keyManager.reportCallResult(keySlot.id, true);
 
         // 🚀 [诊断] 打印代理返回的原始数据结构
         if (data.data && data.data.length > 0) {

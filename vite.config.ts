@@ -12,9 +12,6 @@ export default defineConfig(({ mode }) => {
             open: true, // Auto-open browser on start
         },
         plugins: [react()],
-        define: {
-            'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_API_KEY)
-        },
         resolve: {
             alias: {
                 '@': path.resolve(__dirname, 'src'),

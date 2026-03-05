@@ -1,13 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo } from 'react';
 import { Canvas, PromptNode, GeneratedImage, AspectRatio, CanvasGroup, CanvasDrawing, GenerationMode } from '../types';
-import { saveImage, getImage, deleteImage, getAllImages, clearAllImages, getImagesPage, getImageCount } from '../services/imageStorage';
-import { syncService } from '../services/syncService';
-import { fileSystemService } from '../services/fileSystemService';
-import { base64ToBlob, safeRevokeBlobUrl } from '../utils/blobUtils';
+import { saveImage, getImage, deleteImage, getAllImages, clearAllImages, getImagesPage, getImageCount } from '../services/storage/imageStorage';
+import { syncService } from '../services/system/syncService';
+import { fileSystemService } from '../services/storage/fileSystemService';
+import { dataURLToBlob as base64ToBlob, safeRevokeBlobUrl } from '../utils/blobUtils';
 import { calculateImageHash } from '../utils/imageUtils';
 import { getCardDimensions } from '../utils/styleUtils';
 import { supabase } from '../lib/supabase'; // Import supabase for auth check
-import { notify } from '../services/notificationService';
+import { notify } from '../services/system/notificationService';
 
 const MAX_CANVASES = 10;
 
@@ -88,6 +88,8 @@ interface CanvasContextType {
     setViewportCenter: (center: { x: number; y: number }) => void;
     // 🚀 迁移选中节点到其他项目
     migrateNodes: (nodeIds: string[], targetCanvasId: string) => void;
+    // 🚀 [Persistence] Urgent state saving for generation tasks
+    urgentUpdatePromptNode: (node: PromptNode) => void;
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -168,15 +170,20 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         model: img.model || 'imagen-3.0-generate-001' // 回退到默认模型
                     })),
                     // 修复 Prompt Nodes
-                    promptNodes: (canvas.promptNodes || []).map(node => ({
-                        ...node,
-                        referenceImages: node.referenceImages || [],
-                        parallelCount: node.parallelCount || 1,
-                        // 保留 generating 状态以支持 App.tsx 的自动恢复
-                        isGenerating: node.isGenerating || false,
-                        error: node.error,
-                        tags: node.tags || []
-                    })),
+                    promptNodes: (canvas.promptNodes || []).map(node => {
+                        const hasChildren = node.childImageIds && node.childImageIds.length > 0;
+                        return {
+                            ...node,
+                            referenceImages: node.referenceImages || [],
+                            parallelCount: node.parallelCount || 1,
+                            // 保留 generating 状态以支持 App.tsx 的自动恢复
+                            // 🚀 [Critical Fix] 如果节点已经有了关联的子图片，它肯定已经生成完毕了，此时即使 isGenerating 为 true 也就是因为防抖数据未落盘，强制修回到 false，防止被 App.tsx 误认为断连并重试导致报错
+                            isGenerating: node.isGenerating && !hasChildren,
+                            // 如果它有子图且曾标记错误，也应被视为实际上成功或至少不是“完全失败”，这里可以选择不清除历史 error ，或者直接清掉防冲突
+                            error: hasChildren ? undefined : node.error,
+                            tags: node.tags || []
+                        };
+                    }),
                     groups: canvas.groups || [],
                     drawings: canvas.drawings || []
                 }));
@@ -224,8 +231,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const init = async () => {
             try {
                 // 1. Restore Local Folder Handle (Fix for 0B issue)
-                import('../services/storagePreference').then(async ({ getLocalFolderHandle }) => {
-                    import('../services/systemLogService').then(async ({ logInfo, logError }) => {
+                import('../services/storage/storagePreference').then(async ({ getLocalFolderHandle }) => {
+                    import('../services/system/systemLogService').then(async ({ logInfo, logError }) => {
                         try {
                             const handle = await getLocalFolderHandle();
                             if (handle) {
@@ -238,7 +245,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                     // [NEW] Load actual project data from disk to ensure sync
                                     // This overrides localStorage state with the true file state
                                     try {
-                                        const { fileSystemService } = await import('../services/fileSystemService');
+                                        const { fileSystemService } = await import('../services/storage/fileSystemService');
                                         const { canvases, images, activeCanvasId: savedActiveCanvasId } = await fileSystemService.loadProjectWithThumbs(handle);
 
                                         // Hydrate IDB images (Background)
@@ -278,8 +285,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                                             ...c,
                                                             imageNodes: c.imageNodes.map(img => ({
                                                                 ...img,
-                                                                url: images.get(img.id)?.url || img.url || '',
-                                                                originalUrl: images.get(img.id)?.originalUrl || img.originalUrl
+                                                                url: (images.get(img.storageId || img.id)?.url || images.get(img.id)?.url) || img.url || '',
+                                                                originalUrl: (images.get(img.storageId || img.id)?.originalUrl || images.get(img.id)?.originalUrl) || img.originalUrl
                                                             })),
                                                             promptNodes: c.promptNodes.map(pn => ({
                                                                 ...pn,
@@ -403,8 +410,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 for (let i = 0; i < imageIdsArray.length; i += BATCH_SIZE) {
                     const batch = imageIdsArray.slice(i, i + BATCH_SIZE);
                     // 🚀 [OOM修复] 加载MICRO质量（最小缩略图<50KB）而不是THUMBNAIL
-                    const { getImageByQuality } = await import('../services/imageStorage');
-                    const { ImageQuality } = await import('../services/imageQuality');
+                    const { getImageByQuality } = await import('../services/storage/imageStorage');
+                    const { ImageQuality } = await import('../services/image/imageQuality');
                     const batchPromises = batch.map(id => getImageByQuality(id, ImageQuality.MICRO));
                     const batchResults = await Promise.all(batchPromises);
 
@@ -598,7 +605,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const hydrateMergedImages = async (canvases: Canvas[]) => {
             // Try to find images in IDB for nodes that are missing URLs
-            const { getImage } = await import('../services/imageStorage');
+            const { getImage } = await import('../services/storage/imageStorage');
             let hasUpdates = false;
 
             // Map IDs to URLs
@@ -687,16 +694,37 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (state.fileSystemHandle) {
                     const executeWrite = async () => {
                         try {
-                            // @ts-ignore
-                            const projectFile = await state.fileSystemHandle.getFileHandle('project.json', { create: true });
-                            // @ts-ignore
-                            const writable = await projectFile.createWritable();
-                            // Save minimal state (canvases + activeCanvasId) to keep project.json clean compatible with other tools
-                            await writable.write(JSON.stringify({
-                                canvases: stateToSave.canvases,
-                                activeCanvasId: state.activeCanvasId  // 🚀 记住当前活动项目
-                            }, null, 2));
-                            await writable.close();
+                            // 🚀 [修复] 使用 fileSystemService.saveProject 正确保存到项目子文件夹
+                            // 收集需要保存的图片（新生成的、不在 IndexedDB 中的）
+                            const imagesToSave = new Map<string, Blob>();
+                            const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
+
+                            if (activeCanvas) {
+                                for (const img of activeCanvas.imageNodes) {
+                                    const id = img.storageId || img.id;
+                                    // 只保存有 URL 的图片
+                                    if (img.url && !img.url.startsWith('blob:')) {
+                                        try {
+                                            // 尝试从 IndexedDB 获取
+                                            const existing = await getImage(id);
+                                            if (existing && existing.startsWith('data:')) {
+                                                const blob = await (await fetch(existing)).blob();
+                                                imagesToSave.set(id, blob);
+                                            }
+                                        } catch (e) {
+                                            // 忽略获取失败的
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (state.fileSystemHandle) {
+                                await fileSystemService.saveProject(
+                                    state.fileSystemHandle,
+                                    { canvases: stateToSave.canvases, activeCanvasId: state.activeCanvasId },
+                                    imagesToSave
+                                );
+                            }
                         } catch (e) {
                             console.error('[CanvasContext] File System Write Lock Error:', e);
                         }
@@ -834,9 +862,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             .filter(n => n > 0);
         const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
 
+        const canvasName = `项目${nextNumber}`;
         const newCanvas: Canvas = {
             id: generateId(),
-            name: `项目${nextNumber}`,
+            name: canvasName,
+            folderName: canvasName, // 【重要】首次创建时冻结物理文件夹名，此后改名只改 name 不改这个
             promptNodes: [],
             imageNodes: [],
             groups: [] as CanvasGroup[],
@@ -857,14 +887,76 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setState(prev => ({ ...prev, activeCanvasId: id }));
     }, []);
 
-    const renameCanvas = useCallback((id: string, newName: string) => {
+    const renameCanvas = useCallback(async (id: string, newName: string) => {
+        const targetCanvas = state.canvases.find(c => c.id === id);
+        if (!targetCanvas) return;
+        const oldName = targetCanvas.name;
+        const finalNewName = newName.trim() || oldName;
+
+        if (oldName === finalNewName) return;
+
+        // 【轻量级快捷方式重命名】物理文件夹名字永远不变，只修改 project.json 内的显示名
+        // 并在文件夹里写入一个说明性文本文件充当"快捷方式"标记
+        import('../services/storage/storagePreference').then(async ({ getLocalFolderHandle }) => {
+            const handle = await getLocalFolderHandle();
+            if (handle) {
+                try {
+                    // 物理文件夹名使用首次创建时固定的 folderName，如果没有则用旧名
+                    const physicalFolderName = (targetCanvas.folderName || oldName).trim().replace(/[\\/:*?"<>|]/g, '_');
+                    // @ts-ignore
+                    const projectDir = await handle.getDirectoryHandle(physicalFolderName);
+
+                    // 1. 更新 project.json 的 canvas.name
+                    try {
+                        // @ts-ignore
+                        const pFile = await projectDir.getFileHandle('project.json');
+                        // @ts-ignore
+                        const pText = await (await pFile.getFile()).text();
+                        const pData = JSON.parse(pText);
+                        if (pData.canvas) {
+                            pData.canvas.name = finalNewName;
+                        }
+                        // @ts-ignore
+                        const writable = await pFile.createWritable();
+                        await writable.write(JSON.stringify(pData, null, 2));
+                        await writable.close();
+                    } catch (e) { /* project.json 不存在时忽略，下次保存会创建 */ }
+
+                    // 2. 清除旧的快捷方式提示文件
+                    try {
+                        // @ts-ignore
+                        for await (const entry of projectDir.values()) {
+                            if (entry.kind === 'file' && entry.name.startsWith('👉此项目已重命名为_')) {
+                                // @ts-ignore
+                                await projectDir.removeEntry(entry.name);
+                            }
+                        }
+                    } catch (e) { /* 忽略 */ }
+
+                    // 3. 写入新的快捷方式提示文件
+                    const hintFileName = `👉此项目已重命名为_${finalNewName.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
+                    // @ts-ignore
+                    const hintFile = await projectDir.getFileHandle(hintFileName, { create: true });
+                    // @ts-ignore
+                    const hintWritable = await hintFile.createWritable();
+                    await hintWritable.write(`此文件夹对应的 KK Studio 项目已被重命名为: ${finalNewName}\n原始文件夹名: ${physicalFolderName}\n更新时间: ${new Date().toLocaleString()}`);
+                    await hintWritable.close();
+
+                    console.log(`[CanvasContext] 项目重命名成功 (轻量级): ${oldName} -> ${finalNewName}, 物理目录保持: ${physicalFolderName}`);
+                } catch (e) {
+                    console.warn('[CanvasContext] 本地快捷方式更新失败（不影响使用）', e);
+                }
+            }
+        });
+
+        // 立即更新 UI 状态（folderName 保持不变）
         setState(prev => ({
             ...prev,
             canvases: prev.canvases.map(c =>
-                c.id === id ? { ...c, name: newName.trim() || c.name } : c
+                c.id === id ? { ...c, name: finalNewName, folderName: c.folderName || oldName } : c
             )
         }));
-    }, []);
+    }, [state.canvases]);
 
     const deleteCanvas = useCallback((id: string) => {
         setState(prev => {
@@ -902,7 +994,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 🚀 [防御性修复] 先添加节点到状态，保证UI立即显示
             updateCanvas(c => ({
                 ...c,
-                promptNodes: [...c.promptNodes, node]
+                promptNodes: c.promptNodes.some(n => n.id === node.id) ? (console.warn(`[CanvasContext] Skip duplicate promptNodeID: ${node.id}`), c.promptNodes) : [...c.promptNodes, node]
             }));
             console.log('[CanvasContext.addPromptNode] ✅ 卡片已添加到画布');
 
@@ -922,7 +1014,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         } catch (e: any) {
                             console.error(`[CanvasContext.addPromptNode] ❌ 参考图 ${index + 1} 保存失败:`, ref.id, e?.message || e);
                             // 🔔 通知用户（但不阻止流程）
-                            import('../services/notificationService').then(({ notificationService }) => {
+                            import('../services/system/notificationService').then(({ notificationService }) => {
                                 notificationService.warning('参考图保存失败', `参考图 ${index + 1} 保存失败，刷新后可能丢失`);
                             });
                         }
@@ -934,7 +1026,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch (error: any) {
             // 🚨 致命错误：添加卡片失败
             console.error('[CanvasContext.addPromptNode] 🔥 致命错误：添加卡片失败!', error);
-            import('../services/notificationService').then(({ notificationService }) => {
+            import('../services/system/notificationService').then(({ notificationService }) => {
                 notificationService.error('添加卡片失败', `无法创建卡片：${error?.message || '未知错误'}`);
             });
             // ⚠️ 不throw，避免中断后续流程（图片生成）
@@ -1002,10 +1094,18 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         referenceImages: (node.referenceImages && node.referenceImages.length > 0) ? node.referenceImages : n.referenceImages
                     };
 
-                    // 🚀 [Bugfix] 防止陈旧回调把已完成节点错误地改回“正在生成”
-                    // 典型场景：ResizeObserver(onHeightChange)携带旧node快照，覆盖最新状态
-                    if (n.isGenerating === false && node.isGenerating === true && (n.childImageIds?.length || 0) > 0) {
+                    // 🚀 [Bugfix] 防止陈旧回调把已完成/已失败节点错误地改回“正在生成”
+                    // 典型场景：ResizeObserver(onHeightChange)叠加闭包竞争，携带旧node快照覆盖最新状态
+                    const hasFinished = (n.childImageIds?.length || 0) > 0;
+                    const hasFailed = !!n.error;
+
+                    if ((hasFinished || hasFailed) && node.isGenerating === true && n.isGenerating === false) {
                         merged.isGenerating = false;
+                        // 同时也保护 error 不被旧快照的 undefined 覆盖
+                        if (hasFailed && !merged.error) {
+                            merged.error = n.error;
+                            merged.errorDetails = n.errorDetails;
+                        }
                     }
 
                     return merged;
@@ -1013,6 +1113,42 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 return n;
             })
         }));
+    }, [updateCanvas]);
+
+    const urgentUpdatePromptNode = useCallback((node: PromptNode) => {
+        // 🚀 [Persistence] We bypass the debounced save and force an immediate state save
+        // 1. Update React State (UI will reflect change)
+        updateCanvas(c => ({
+            ...c,
+            promptNodes: c.promptNodes.map(n => n.id === node.id ? { ...n, ...node } : n)
+        }));
+
+        // 2. Immediate LocalStorage Save (Prevention for Refresh/Close)
+        // We use stateRef to get the most recent state since setState is async
+        const recentState = stateRef.current;
+        const activeCanvas = recentState.canvases.find(c => c.id === recentState.activeCanvasId);
+
+        if (activeCanvas) {
+            const updatedCanvases = recentState.canvases.map(c => {
+                if (c.id === recentState.activeCanvasId) {
+                    return {
+                        ...c,
+                        promptNodes: c.promptNodes.map(n => n.id === node.id ? { ...n, ...node } : n)
+                    };
+                }
+                return c;
+            });
+
+            const stateToSave = { ...recentState, canvases: updatedCanvases };
+            const stripped = { ...stateToSave, canvases: stripImageUrls(stateToSave.canvases) };
+
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(stripped));
+                console.log(`[CanvasContext] 🚀 URGENT SAVE for Node ${node.id} to localStorage`);
+            } catch (e) {
+                console.error('[CanvasContext] ❌ Urgent save failed', e);
+            }
+        }
     }, [updateCanvas]);
 
     const addImageNodes = useCallback(async (nodes: GeneratedImage[]) => {
@@ -1053,10 +1189,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     // 🚀 [关键修复] 先保存原图到本地文件系统（最安全的存储）
                     // A. File System First (持久化到本地磁盘 - 优先级最高)
                     // 🚀 [闭包修复] 使用getLocalFolderHandle动态获取最新handle，不依赖陈旧的state
-                    const { getLocalFolderHandle } = await import('../services/storagePreference');
-                    const currentHandle = await getLocalFolderHandle();
+                    const { getLocalFolderHandle, getStorageMode } = await import('../services/storage/storagePreference');
+                    const selectedStorageMode = await getStorageMode();
+                    const currentHandle = selectedStorageMode === 'local' ? await getLocalFolderHandle() : null;
 
-                    if (currentHandle) {
+                    // 获取当前画板名称，作为子目录名透传
+                    const activeCanvas = stateRef.current.canvases.find(c => c.id === stateRef.current.activeCanvasId);
+                    const canvasDirName = activeCanvas ? activeCanvas.name.replace(/[\\/:*?"<>|]/g, '_') : '未命名项目';
+
+                    if (selectedStorageMode === 'local' && currentHandle) {
                         try {
                             const res = await fetch(node.url); // works with data: or blob:
                             const blob = await res.blob();
@@ -1064,7 +1205,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             if (isVideo) {
                                 // 视频：保存为.mp4
                                 // @ts-ignore
-                                const videosDir = await currentHandle.getDirectoryHandle('videos', { create: true });
+                                const projectDir = await currentHandle.getDirectoryHandle(canvasDirName, { create: true });
+                                // @ts-ignore
+                                const videosDir = await projectDir.getDirectoryHandle('video', { create: true });
                                 // @ts-ignore
                                 const fileHandle = await videosDir.getFileHandle(`${storageId}.mp4`, { create: true });
                                 // @ts-ignore
@@ -1073,16 +1216,16 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 await writable.close();
                                 console.log(`[CanvasContext] ✅ Saved ORIGINAL video ${storageId} to LOCAL DISK`);
                             } else {
-                                // 图片：保存原图到本地
-                                await fileSystemService.saveImageToHandle(currentHandle, storageId, blob);
-                                console.log(`[CanvasContext] ✅ Saved ORIGINAL image ${storageId} to LOCAL DISK`);
+                                // 图片：保存原图到本地子文件夹
+                                await fileSystemService.saveImageToHandle(currentHandle, storageId, blob, false, canvasDirName);
+                                console.log(`[CanvasContext] ✅ Saved ORIGINAL image ${storageId} to LOCAL DISK [${canvasDirName}]`);
                             }
                         } catch (e) {
                             console.error(`[CanvasContext] ❌ Failed to save ${isVideo ? 'video' : 'image'} ${node.id} to LOCAL DISK`, e);
                         }
-                    } else {
+                    } else if (selectedStorageMode === 'opfs') {
                         // 🚀 [新增] 没有本地文件夹时，检测是否支持OPFS（手机端）
-                        const { isOPFSAvailable, saveToOPFS } = await import('../services/opfsService');
+                        const { isOPFSAvailable, saveToOPFS } = await import('../services/storage/opfsService');
 
                         if (isOPFSAvailable()) {
                             // 手机端：使用OPFS保存原图
@@ -1103,17 +1246,19 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         } else {
                             console.log(`[CanvasContext] No local folder or OPFS available, using IndexedDB for ${storageId}`);
                         }
+                    } else {
+                        console.log(`[CanvasContext] Browser storage mode selected, skipping local/OPFS for ${storageId}`);
                     }
 
                     // B. IndexedDB (浏览器缓存) - 始终保存一份可快速恢复的数据
                     if (isVideo) {
                         // 视频：直接保存，不压缩
-                        const { saveImage } = await import('../services/imageStorage');
+                        const { saveImage } = await import('../services/storage/imageStorage');
                         await saveImage(storageId, node.url);
                         console.log(`[CanvasContext] Saved video ${storageId} to IndexedDB cache`);
                     } else {
-                        const { saveImage } = await import('../services/imageStorage');
-                        const { getQualityStorageId, ImageQuality } = await import('../services/imageQuality');
+                        const { saveImage } = await import('../services/storage/imageStorage');
+                        const { getQualityStorageId, ImageQuality } = await import('../services/image/imageQuality');
 
                         // 🚀 双保险：无论是否有本地/OPFS，都保存 ORIGINAL 到 IndexedDB
                         // 这样首屏与重载都能通过 storageId 秒级命中，不必等待磁盘回读
@@ -1143,7 +1288,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         } catch (workerError) {
                             // Worker失败时回退到主线程
                             console.warn(`[CanvasContext] Worker failed, falling back to main thread:`, workerError);
-                            const { compressImageToQuality, QUALITY_CONFIGS } = await import('../services/imageQuality');
+                            const { compressImageToQuality, QUALITY_CONFIGS } = await import('../services/image/imageQuality');
                             const microData = await compressImageToQuality(node.url, QUALITY_CONFIGS[ImageQuality.MICRO]);
                             const microId = getQualityStorageId(storageId, ImageQuality.MICRO);
                             await saveImage(microId, microData);
@@ -1164,13 +1309,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         try {
             updateCanvas(c => ({
                 ...c,
-                imageNodes: [...c.imageNodes, ...stateNodes]
+                imageNodes: [...c.imageNodes, ...stateNodes.filter(n => !c.imageNodes.some(existing => existing.id === n.id))]
             }));
             console.log('[CanvasContext.addImageNodes] ✅ UI更新成功，卡片已显示');
         } catch (uiError: any) {
             // 🚨 致命错误：UI更新失败
             console.error('[CanvasContext.addImageNodes] 🔥 UI更新失败!', uiError);
-            import('../services/notificationService').then(({ notificationService }) => {
+            import('../services/system/notificationService').then(({ notificationService }) => {
                 notificationService.error('显示图片失败', `无法显示图片：${uiError?.message || '未知错误'}`);
             });
             throw uiError;
@@ -1186,7 +1331,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (failed > 0) {
                 console.warn('[CanvasContext.addImageNodes] ⚠️ 部分图片保存失败，刷新后可能丢失');
-                import('../services/notificationService').then(({ notificationService }) => {
+                import('../services/system/notificationService').then(({ notificationService }) => {
                     notificationService.warning('图片保存失败', `${failed}张图片保存失败，建议重新保存或重试`);
                 });
             }
@@ -1329,7 +1474,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteImage(id);
 
         // 🚀 [关键修复] 让 storageAdapter 去尝试删除全局磁盘文件/OPFS
-        import('../services/storageAdapter').then(({ deleteImage: deleteImageFromDisk }) => {
+        import('../services/storage/storageAdapter').then(({ deleteImage: deleteImageFromDisk }) => {
             deleteImageFromDisk({
                 id: id,
                 type: 'native', // Trigger native local disk check
@@ -2358,7 +2503,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // 1. Try Optimized Restore (Permission Prompt instead of Picker)
             try {
-                const { restoreLocalFolderConnection } = await import('../services/storagePreference');
+                const { restoreLocalFolderConnection } = await import('../services/storage/storagePreference');
                 handle = await restoreLocalFolderConnection();
             } catch (err) {
                 // 恢复本地文件夹连接失败，将继续使用文件选择器
@@ -2402,7 +2547,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         if (img.id && img.url) {
                             // 检查是否是视频
                             const isVideo = img.url.startsWith('data:video/') || img.model?.includes('veo') || false;
-                            promises.push(saveToDisk(img.id, img.url, isVideo));
+                            const lookupId = img.storageId || img.id;
+                            promises.push(saveToDisk(lookupId, img.url, isVideo));
                         }
                     });
                     c.promptNodes.forEach(pn => {
@@ -2435,7 +2581,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 if (promises.length > 0) {
                     // eslint-disable-next-line @typescript-eslint/no-var-requires
-                    const { notify } = await import('../services/notificationService');
+                    const { notify } = await import('../services/system/notificationService');
                     notify.success('数据迁移', `已将 ${promises.length} 张临时图片保存到本地文件夹`);
                 }
             }
@@ -2464,48 +2610,81 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
             }
 
-            // If found existing project in the folder, check if we need to warn user about overwriting current work
+            // If found existing project in the folder, MERGE instead of overwrite
             if (canvases.length > 0) {
-                // Check if current state has meaningful data
-                const hasUnsavedWork = state.canvases.length > 1 ||
-                    state.canvases.some(c => c.imageNodes.length > 0 || c.promptNodes.length > 0);
+                // 🚀 [Fix] 合并策略：以文件夹数据为底，将内存中的独有节点追加保留
+                setState(prev => {
+                    const mergedCanvases = canvases.map(diskCanvas => {
+                        // 在内存中查找对应的画布
+                        const memCanvas = prev.canvases.find(c => c.id === diskCanvas.id);
 
-                if (hasUnsavedWork) {
-                    const confirmed = window.confirm(
-                        `当前工作区包含未保存的数据。\n\n` +
-                        `所选文件夹 "${handle.name}" 包含现有的项目。\n` +
-                        `打开它将 替换 您当前的工作区。\n\n` +
-                        `您确定要继续并覆盖当前工作区吗？`
-                    );
-                    if (!confirmed) return; // Abort connection
-                }
-
-                setState(prev => ({
-                    ...prev,
-                    canvases: canvases.map(c => ({
-                        ...c,
-                        // Ensure images have URLs pointed to Blob/IDB
-                        imageNodes: c.imageNodes.map(img => {
-                            const localData = images.get(img.id);
+                        // 为磁盘数据注入图片 URL
+                        const hydratedImageNodes = diskCanvas.imageNodes.map(img => {
+                            const lookupId = img.storageId || img.id;
+                            const localData = images.get(lookupId) || images.get(img.id);
                             return {
                                 ...img,
                                 url: localData?.url || img.url || '',
                                 originalUrl: localData?.originalUrl || img.originalUrl,
-                                filename: localData?.filename // 🚀 Inject filename for tag shortcuts
+                                filename: localData?.filename
                             };
-                        }),
-                        promptNodes: c.promptNodes.map(pn => ({
-                            ...pn,
-                            referenceImages: pn.referenceImages?.map(ref => ({
-                                ...ref,
-                            })) || []
-                        }))
-                    })),
-                    activeCanvasId: canvases[0].id,
-                    fileSystemHandle: handle,
-                    folderName: handle.name,
-                    history: {} // Clear history on new load
-                }));
+                        });
+
+                        if (!memCanvas) {
+                            // 文件夹中有、内存中没有 → 直接使用文件夹版本
+                            return {
+                                ...diskCanvas,
+                                imageNodes: hydratedImageNodes,
+                                promptNodes: diskCanvas.promptNodes.map(pn => ({
+                                    ...pn,
+                                    referenceImages: pn.referenceImages?.map(ref => ({ ...ref })) || []
+                                }))
+                            };
+                        }
+
+                        // 🚀 合并节点：磁盘数据为底，内存中独有的节点追加
+                        const diskImageIds = new Set(hydratedImageNodes.map(img => img.id));
+                        const diskPromptIds = new Set(diskCanvas.promptNodes.map(pn => pn.id));
+
+                        // 内存中有但磁盘没有的节点 → 追加保留
+                        const extraImages = memCanvas.imageNodes.filter(img => !diskImageIds.has(img.id));
+                        const extraPrompts = memCanvas.promptNodes.filter(pn => !diskPromptIds.has(pn.id));
+
+                        return {
+                            ...diskCanvas,
+                            imageNodes: [...hydratedImageNodes, ...extraImages],
+                            promptNodes: [
+                                ...diskCanvas.promptNodes.map(pn => ({
+                                    ...pn,
+                                    referenceImages: pn.referenceImages?.map(ref => ({ ...ref })) || []
+                                })),
+                                ...extraPrompts
+                            ],
+                            lastModified: Math.max(diskCanvas.lastModified || 0, memCanvas.lastModified || 0)
+                        };
+                    });
+
+                    // 🚀 内存中有但文件夹中没有的画布 → 保留
+                    const diskCanvasIds = new Set(canvases.map(c => c.id));
+                    const extraCanvases = prev.canvases.filter(c => !diskCanvasIds.has(c.id));
+                    // 排除空画布（没有任何节点的默认画布）
+                    const meaningfulExtras = extraCanvases.filter(
+                        c => c.imageNodes.length > 0 || c.promptNodes.length > 0
+                    );
+
+                    const finalCanvases = [...mergedCanvases, ...meaningfulExtras];
+
+                    console.log(`[CanvasContext] 🚀 Merged: ${canvases.length} disk + ${meaningfulExtras.length} memory-only canvases`);
+
+                    return {
+                        ...prev,
+                        canvases: finalCanvases,
+                        activeCanvasId: canvases[0].id,
+                        fileSystemHandle: handle,
+                        folderName: handle.name,
+                        history: {}
+                    };
+                });
             } else {
                 // New folder (empty), just attach handle to current state (Save to Local)
                 setState(prev => ({
@@ -2516,7 +2695,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
 
             // 🚀 [Fix] Persist handle to IndexedDB so it can be restored on reload
-            import('../services/storagePreference').then(({ setLocalFolderHandle }) => {
+            import('../services/storage/storagePreference').then(({ setLocalFolderHandle }) => {
                 if (handle) setLocalFolderHandle(handle);
             });
 
@@ -2571,7 +2750,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
 
         // 3. Notify
-        const { notify } = await import('../services/notificationService');
+        const { notify } = await import('../services/system/notificationService');
         notify.success('已切换到临时模式', '项目数据已保留');
 
     }, [state.canvases, state.activeCanvasId]);
@@ -2608,7 +2787,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }));
 
                 // 🚀 [Fix] Persist new handle
-                import('../services/storagePreference').then(({ setLocalFolderHandle }) => {
+                import('../services/storage/storagePreference').then(({ setLocalFolderHandle }) => {
                     setLocalFolderHandle(newHandle);
                 });
 
@@ -2626,11 +2805,18 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
     }, [state.fileSystemHandle, state.folderName]);
 
-    // 🚀 已失败的图片 ID 缓存，避免每 5 秒重复报错刷屏
+    // 🚀 已失败的图片 ID 缓存，避免每 15 秒重复报错刷屏
     const failedReloadIdsRef = useRef<Set<string>>(new Set());
+    // 🚀 [Fix] 写入锁，防止 refresh 与 save 竞态条件
+    const isSavingRef = useRef(false);
 
     const refreshLocalFolder = useCallback(async () => {
         if (!state.fileSystemHandle) return;
+        // 🚀 [Fix] 若正在保存，跳过本轮刷新，避免读到半写入的 project.json
+        if (isSavingRef.current) {
+            console.debug('[CanvasContext] Skipping refresh: save in progress');
+            return;
+        }
         try {
             const handle = state.fileSystemHandle;
             const { canvases, images } = await fileSystemService.loadProjectWithThumbs(handle);
@@ -2660,8 +2846,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         // blob URL 已过期，尝试从本地文件系统重新加载
                         console.debug(`[CanvasContext] Blob URL expired for ${id}, trying to reload from local file system`);
                         try {
-                            const imgHandle = await handle.getFileHandle(id);
-                            const file = await imgHandle.getFile();
+                            const file = await fileSystemService.loadOriginalFromDisk(handle, id);
+                            if (!file) throw new Error('file not found');
                             const reader = new FileReader();
                             reader.onloadend = async () => {
                                 const base64data = reader.result as string;
@@ -2716,19 +2902,59 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         }
                     }
 
+                    // 🚀 [修复] 合并磁盘状态和内存状态，避免完全覆盖导致 URL 丢失
                     return {
                         ...prev,
-                        canvases: canvases.map(c => ({
-                            ...c,
-                            imageNodes: c.imageNodes.map(img => {
-                                const localData = images.get(img.id);
-                                return {
-                                    ...img,
-                                    url: localData?.url || img.url || '',
-                                    originalUrl: localData?.originalUrl || img.originalUrl
-                                };
-                            })
-                        }))
+                        canvases: prev.canvases.map(prevCanvas => {
+                            // 查找磁盘中对应的画布
+                            const diskCanvas = canvases.find(c => c.id === prevCanvas.id);
+                            if (!diskCanvas) {
+                                // 磁盘中没有这个画布，保留内存中的
+                                return prevCanvas;
+                            }
+
+                            // 获取磁盘中的节点映射（用于检查是否被删除）
+                            const diskImageIds = new Set(diskCanvas.imageNodes.map(img => img.id));
+                            const diskPromptIds = new Set(diskCanvas.promptNodes.map(p => p.id));
+
+                            return {
+                                ...prevCanvas,
+                                // 保留本地修改的名称和其他属性，但合并节点
+                                name: diskCanvas.name || prevCanvas.name,
+                                // 合并图片节点：保留内存中的，添加磁盘中新的，更新 URL
+                                imageNodes: [
+                                    // 1. 保留内存中仍然存在的节点（更新 URL）
+                                    ...prevCanvas.imageNodes
+                                        .filter(img => diskImageIds.has(img.id))
+                                        .map(img => {
+                                            const lookupId = img.storageId || img.id;
+                                            const localData = images.get(lookupId) || images.get(img.id);
+                                            return {
+                                                ...img,
+                                                url: localData?.url || img.url || '',
+                                                originalUrl: localData?.originalUrl || img.originalUrl
+                                            };
+                                        }),
+                                    // 2. 添加磁盘中新增的节点
+                                    ...diskCanvas.imageNodes
+                                        .filter(img => !prevCanvas.imageNodes.some(pimg => pimg.id === img.id))
+                                        .map(img => {
+                                            const lookupId = img.storageId || img.id;
+                                            const localData = images.get(lookupId) || images.get(img.id);
+                                            return {
+                                                ...img,
+                                                url: localData?.url || img.url || '',
+                                                originalUrl: localData?.originalUrl || img.originalUrl
+                                            };
+                                        })
+                                ],
+                                // 合并提示节点：保留内存中的，添加磁盘中新的
+                                promptNodes: [
+                                    ...prevCanvas.promptNodes.filter(p => diskPromptIds.has(p.id)),
+                                    ...diskCanvas.promptNodes.filter(p => !prevCanvas.promptNodes.some(pp => pp.id === p.id))
+                                ]
+                            };
+                        })
                     };
                 });
             }
@@ -2739,10 +2965,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
     }, [state.fileSystemHandle]);
 
-    // Auto-Sync: Poll local folder every 5 seconds if connected
+    // Auto-Sync: Poll local folder every 15 seconds if connected (降低频率以减少竞态冲突)
     useEffect(() => {
         if (!state.fileSystemHandle) return;
-        const interval = setInterval(refreshLocalFolder, 5000);
+        const interval = setInterval(refreshLocalFolder, 15000);
         return () => clearInterval(interval);
     }, [state.fileSystemHandle, refreshLocalFolder]);
 
@@ -2751,73 +2977,82 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (isLoading) return;
 
         const saveState = async () => {
-            // 1. Save to LocalStorage (Only if NOT using File System)
-            if (!state.fileSystemHandle) {
-                try {
-                    const stateToSave = {
-                        ...state,
-                        canvases: stripImageUrls(state.canvases),
-                        history: {},
-                        fileSystemHandle: undefined,
-                        folderName: undefined
-                    };
-                    const jsonStr = JSON.stringify(stateToSave);
-                    if (jsonStr.length > 4500000) console.warn('Canvas state approaching localStorage quota limit.');
-                    localStorage.setItem(STORAGE_KEY, jsonStr);
-                } catch (e: any) {
-                    if (e.name === 'QuotaExceededError') console.error('localStorage quota exceeded.');
-                    else console.error('Failed to save state:', e);
+            // 🚀 [Fix] 设置写入锁，防止 refresh 读到半写入状态
+            isSavingRef.current = true;
+            try {
+                // 1. Save to LocalStorage (Only if NOT using File System)
+                if (!state.fileSystemHandle) {
+                    try {
+                        const stateToSave = {
+                            ...state,
+                            canvases: stripImageUrls(state.canvases),
+                            history: {},
+                            fileSystemHandle: undefined,
+                            folderName: undefined
+                        };
+                        const jsonStr = JSON.stringify(stateToSave);
+                        if (jsonStr.length > 4500000) console.warn('Canvas state approaching localStorage quota limit.');
+                        localStorage.setItem(STORAGE_KEY, jsonStr);
+                    } catch (e: any) {
+                        if (e.name === 'QuotaExceededError') console.error('localStorage quota exceeded.');
+                        else console.error('Failed to save state:', e);
+                    }
                 }
-            }
 
-            // 2. Save to File System if connected
-            if (state.fileSystemHandle) {
-                try {
-                    // Gather all dirty/needed images
-                    const imagesToSave = new Map<string, Blob>();
+                // 2. Save to File System if connected
+                if (state.fileSystemHandle) {
+                    try {
+                        // Gather all dirty/needed images
+                        const imagesToSave = new Map<string, Blob>();
 
-                    const allImages = new Map<string, string>();
-                    state.canvases.forEach(c => {
-                        c.imageNodes.forEach(img => {
-                            // PRIORITIZE ORIGINAL URL! otherwise we overwrite high-res with thumbnail blob
-                            if (img.originalUrl) {
-                                allImages.set(img.id, img.originalUrl);
-                            } else if (img.url) {
-                                allImages.set(img.id, img.url);
-                            }
+                        const allImages = new Map<string, string>();
+                        state.canvases.forEach(c => {
+                            c.imageNodes.forEach(img => {
+                                // PRIORITIZE ORIGINAL URL! otherwise we overwrite high-res with thumbnail blob
+                                if (img.originalUrl) {
+                                    allImages.set(img.id, img.originalUrl);
+                                } else if (img.url) {
+                                    allImages.set(img.id, img.url);
+                                }
+                            });
                         });
-                    });
 
-                    for (const [id, url] of allImages.entries()) {
-                        // Only fetch if it's a blob url (local)
-                        if (url.startsWith('blob:') || url.startsWith('data:')) {
-                            try {
-                                const res = await fetch(url);
-                                if (!res.ok) throw new Error(`Fetch status: ${res.status}`);
-                                const blob = await res.blob();
-                                imagesToSave.set(id, blob);
-                            } catch (err: any) {
-                                // 🚀 [Fix] Ignore known blob errors to prevent console spam
-                                if (err.message && err.message.includes('ERR_UPLOAD_FILE_CHANGED')) {
-                                    console.warn(`[CanvasContext] Blob reference lost for ${id} (file changed/moved), skipping save.`);
-                                } else {
-                                    console.warn(`[CanvasContext] Skip saving image ${id} (fetch failed):`, err);
+                        for (const [id, url] of allImages.entries()) {
+                            // Only fetch if it's a blob url (local)
+                            if (url.startsWith('blob:') || url.startsWith('data:')) {
+                                try {
+                                    const res = await fetch(url);
+                                    if (!res.ok) throw new Error(`Fetch status: ${res.status}`);
+                                    const blob = await res.blob();
+                                    imagesToSave.set(id, blob);
+                                } catch (err: any) {
+                                    // 🚀 [Fix] Ignore known blob errors to prevent console spam
+                                    if (err.message && err.message.includes('ERR_UPLOAD_FILE_CHANGED')) {
+                                        console.warn(`[CanvasContext] Blob reference lost for ${id} (file changed/moved), skipping save.`);
+                                    } else if (err instanceof TypeError && String(err.message || '').includes('Failed to fetch')) {
+                                        // blob/data URL 在生命周期末期可能已失效，这类错误可安全忽略
+                                    } else {
+                                        console.warn(`[CanvasContext] Skip saving image ${id} (fetch failed):`, err);
+                                    }
                                 }
                             }
                         }
+
+                        // Prepare Clean State for JSON
+                        const fsState = {
+                            canvases: stripImageUrls(state.canvases),
+                            version: 1
+                        };
+
+                        await fileSystemService.saveProject(state.fileSystemHandle, fsState as any, imagesToSave);
+
+                    } catch (error) {
+                        console.error('File System Save Failed:', error);
                     }
-
-                    // Prepare Clean State for JSON
-                    const fsState = {
-                        canvases: stripImageUrls(state.canvases),
-                        version: 1
-                    };
-
-                    await fileSystemService.saveProject(state.fileSystemHandle, fsState as any, imagesToSave);
-
-                } catch (error) {
-                    console.error('File System Save Failed:', error);
                 }
+            } finally {
+                // 🚀 [Fix] 释放写入锁
+                isSavingRef.current = false;
             }
         };
 
@@ -2869,15 +3104,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setState(prev => ({ ...prev, selectedNodeIds: [] }));
     }, []);
 
+    // 🚀 [Drag Optimization] Real-time state update for smooth drag and connection lines
     const moveSelectedNodes = useCallback((delta: { x: number; y: number }, sourceNodeIdOrIds?: string | string[]) => {
+        // Immediately update state for real-time connection line updates
         setState(prev => {
             let selectedIds = prev.selectedNodeIds || [];
 
             if (Array.isArray(sourceNodeIdOrIds) && sourceNodeIdOrIds.length > 0) {
-                // Group drag: trust explicit node ids to avoid async selection lag
                 selectedIds = sourceNodeIdOrIds;
             } else if (typeof sourceNodeIdOrIds === 'string' && sourceNodeIdOrIds) {
-                // Single drag: if source node isn't in selection, move source node itself
                 selectedIds = selectedIds.includes(sourceNodeIdOrIds) ? selectedIds : [sourceNodeIdOrIds];
             }
             if (selectedIds.length === 0) return prev;
@@ -2885,55 +3120,19 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
             if (!currentCanvas) return prev;
 
-            // 🚀 [NEW] Group dragging for pending generation cards
-            // Users want main and sub cards to lock together ONLY while isGenerating is true.
-            // When isGenerating is false, they should separate.
+            // Simple set-based selection
+            const selectedSet = new Set(selectedIds);
 
-            const effectiveSelectedPromptIds = new Set<string>();
-            const effectiveSelectedImageIds = new Set<string>();
-
-            // 1. Initial populations based on explicit selection
-            selectedIds.forEach(id => {
-                if (currentCanvas.promptNodes.some(p => p.id === id)) effectiveSelectedPromptIds.add(id);
-                if (currentCanvas.imageNodes.some(i => i.id === id)) effectiveSelectedImageIds.add(id);
-            });
-
-            // 2. Reverse link: If user drags a pending Image, find its generating Prompt and attach it.
-            currentCanvas.imageNodes.forEach(img => {
-                if (effectiveSelectedImageIds.has(img.id) && img.isGenerating && img.parentPromptId) {
-                    // Check if parent prompt is currently generating
-                    const parentPrompt = currentCanvas.promptNodes.find(p => p.id === img.parentPromptId);
-                    if (parentPrompt && parentPrompt.isGenerating) {
-                        effectiveSelectedPromptIds.add(parentPrompt.id);
-                    }
-                }
-            });
-
-            // 3. Forward link: If a Prompt is moving, bring its linked children.
-            //    - During generation: include pending children
-            //    - After generation: include non-orphan children so main/sub cards stay grouped by default
-            currentCanvas.promptNodes.forEach(p => {
-                if (effectiveSelectedPromptIds.has(p.id)) {
-                    currentCanvas.imageNodes.forEach(img => {
-                        const isLinkedChild = img.parentPromptId === p.id;
-                        const shouldFollow = img.isGenerating || !img.orphaned;
-                        if (isLinkedChild && shouldFollow) {
-                            effectiveSelectedImageIds.add(img.id);
-                        }
-                    });
-                }
-            });
-
-            // Move prompt nodes
+            // Move only selected nodes
             const newPromptNodes = currentCanvas.promptNodes.map(n => {
-                if (effectiveSelectedPromptIds.has(n.id)) {
-                    return { ...n, position: { x: n.position.x + delta.x, y: n.position.y + delta.y } };
+                if (selectedSet.has(n.id)) {
+                    return { ...n, position: { x: n.position.x + delta.x, y: n.position.y + delta.y }, userMoved: true };
                 }
                 return n;
             });
 
             const newImageNodes = currentCanvas.imageNodes.map(n => {
-                if (effectiveSelectedImageIds.has(n.id)) {
+                if (selectedSet.has(n.id)) {
                     return { ...n, position: { x: n.position.x + delta.x, y: n.position.y + delta.y } };
                 }
                 return n;
@@ -3219,7 +3418,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 🔧 迁移后立即保存图片到IndexedDB（异步，不阻塞UI）
             (async () => {
                 try {
-                    const { saveImage, getImage } = await import('../services/imageStorage');
+                    const { saveImage, getImage } = await import('../services/storage/imageStorage');
                     for (const img of migratedImages) {
                         // 确保图片已存在于IndexedDB
                         const existingUrl = await getImage(img.id);
@@ -3284,14 +3483,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setNodeTags,
         isReady: !isLoading,
         setViewportCenter,
-        migrateNodes
+        migrateNodes,
+        urgentUpdatePromptNode
     }), [
         state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
         addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions, updateImageNode,
         deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
         undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition,
         connectLocalFolder, disconnectLocalFolder, changeLocalFolder, refreshLocalFolder,
-        isLoading, selectNodes, clearSelection, moveSelectedNodes, findSmartPosition, findNextGroupPosition, addGroup, removeGroup, updateGroup, setNodeTags, setViewportCenter, migrateNodes
+        isLoading, selectNodes, clearSelection, moveSelectedNodes, findSmartPosition, findNextGroupPosition, addGroup, removeGroup, updateGroup, setNodeTags, setViewportCenter, migrateNodes, urgentUpdatePromptNode
     ]);
 
     return (

@@ -34,7 +34,7 @@ export function useLazyImage(
                         setIsLoading(true);
 
                         // Use Priority Loader
-                        import('../services/imagePriorityLoader').then(({ priorityLoader }) => {
+                        import('../services/image/imagePriorityLoader').then(({ priorityLoader }) => {
                             if (element) {
                                 priorityLoader.addTask(imageId, element, () => loadImageFn(imageId))
                                     .then((url) => {

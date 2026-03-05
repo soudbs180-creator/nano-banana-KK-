@@ -130,6 +130,49 @@ export interface GeneratedImage {
   requestPath?: string;
   requestBodyPreview?: string;
   pythonSnippet?: string;
+  optimizedPromptEn?: string; // 🚀 [New] 存储优化后的英文提示词
+  optimizedPromptZh?: string; // 🚀 [New] 存储优化后的中文解释
+  // 🚀 [New] 完整的提示词编译器结果对象
+  promptOptimizerResult?: PromptOptimizerResult;
+}
+
+export type Provider =
+  | 'Google'
+  | 'OpenAI'
+  | 'Anthropic'
+  | 'Volcengine' // 火山引擎
+  | 'Aliyun'     // 阿里云
+  | 'Tencent'    // 腾讯云
+  | 'SiliconFlow'// 硅基流动
+  | '12AI'        // 12AI 专属
+  | 'Custom'      // 自定义
+  | 'SystemProxy'; // 系统代理（积分模型）
+
+export interface PromptOptimizerResult {
+  raw_prompt_original: string;
+  optimized_prompt_en: string;
+  optimized_prompt_zh_display: string;
+  negative_constraints?: string[];
+  assumptions?: string[];
+  params: {
+    task_type: 'icon_set' | 'ecommerce_hero' | 'lifestyle_photo' | 'infographic' | 'logo' | 'ui' | 'other';
+    subject: string;
+    style?: string;
+    composition?: string;
+    lighting?: string;
+    background?: string;
+    materials?: string[];
+    color_palette?: string[];
+    aspect_ratio?: string;
+  };
+  ui_payload: {
+    tabs: { id: string; label_zh: string; label_en: string }[];
+    default_tab: string;
+  };
+  meta: {
+    version: string;
+    timestamp: string;
+  };
 }
 
 export interface PromptNode {
@@ -138,7 +181,11 @@ export interface PromptNode {
   originalPrompt?: string;
   optimizedPromptEn?: string;
   optimizedPromptZh?: string;
+  promptOptimizerResult?: PromptOptimizerResult; // 🚀 [New] 完整编译器结果
   promptOptimizationEnabled?: boolean;
+  thinkingMode?: 'minimal' | 'high';
+  enableGrounding?: boolean;
+  enableImageSearch?: boolean;
   position: { x: number; y: number };
   aspectRatio: AspectRatio;
   imageSize: ImageSize;
@@ -163,6 +210,8 @@ export interface PromptNode {
     model?: string;
     timestamp?: number;
   };
+  // 🚀 [新增] 积分退回状态，用于显示"生成失败，积分已退回"
+  refundStatus?: 'pending' | 'success' | 'failed';
 
   mode?: GenerationMode; // New
   width?: number; // Dynamic width for layout calculation
@@ -187,6 +236,15 @@ export interface PromptNode {
 
   // 🚀 Image Editing specific properties
   maskUrl?: string;
+
+  // Analytics
+  cost?: number; // Estimated or actual cost
+  isPaymentProcessed?: boolean; // 🚀 [New] 是否已成功执行扣费，用于失败退回判定
+
+  // 🚀 [Persistence Management]
+  jobId?: string; // 任务 ID (用于异步轮询和刷新恢复)
+  isNew?: boolean; // 🚀 [New] 是否为新生成的节点（用于触发飞出动画）
+  generationMetadata?: any; // 生成上下文元数据
 }
 
 export interface CanvasGroup {
@@ -209,6 +267,7 @@ export interface CanvasDrawing {
 export interface Canvas {
   id: string;
   name: string;
+  folderName?: string;
   promptNodes: PromptNode[];
   imageNodes: GeneratedImage[];
   groups: CanvasGroup[];
@@ -238,6 +297,8 @@ export interface GenerationConfig {
   parallelCount: number;
   model: ModelType;
   enableGrounding: boolean;
+  enableImageSearch?: boolean;
+  thinkingMode?: 'minimal' | 'high';
   mode: GenerationMode;
   // 视频配置字段
   videoResolution?: string; // '720p' | '1080p' | '4k'

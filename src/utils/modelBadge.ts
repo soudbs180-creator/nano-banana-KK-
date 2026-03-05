@@ -114,9 +114,18 @@ function extractTextColor(badgeClass: string): string {
 }
 
 // 模型颜色：随机分配文字颜色，保持不同模型之间的文字颜色区分度
-export function getModelBadgeInfo(model: { id: string; label?: string; provider?: string; }): ModelBadge {
+export function getModelBadgeInfo(model: { id: string; label?: string; provider?: string; colorStart?: string; colorEnd?: string; }): ModelBadge {
   const id = model.id ?? '';
   const baseName = model.label ?? id;
+
+  // 🚀 [Fix] 如果管理员配置了颜色，优先使用配置的颜色
+  if (model.colorStart && model.colorEnd) {
+    // 将管理员配置的颜色转换为 Tailwind 类名（简化处理，使用渐变色）
+    return { 
+      colorClass: 'text-white', // 积分模型统一白色文字
+      text: baseName 
+    };
+  }
 
   // Same model ID should keep same color across refreshes
   const modelKey = normalizeModelKey(id, baseName) || id || baseName;

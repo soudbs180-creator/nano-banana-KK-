@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  billing_points_db:
+    image: postgres:15
+    container_name: billing_points_db
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=billing_points
+    ports:
+      - "5433:5432"
+  billing_token_db:
+    image: postgres:15
+    container_name: billing_token_db
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=billing_token
+    ports:
+      - "5434:5432"
+  billing_api:
+    build: .
+    container_name: billing_api
+    depends_on:
+      - billing_points_db
+      - billing_token_db
+    environment:
+      - POINTS_DB_CONN_STRING=postgres://postgres:postgres@billing_points_db:5432/billing_points
+      - TOKEN_DB_CONN_STRING=postgres://postgres:postgres@billing_token_db:5432/billing_token

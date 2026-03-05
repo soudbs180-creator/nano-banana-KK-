@@ -204,6 +204,32 @@
 
 ## 📏 第四阶段：响应式适配
 
+### 4.0 手机端设计变量总览（Design Tokens）
+
+- **文字尺寸（iOS 风格紧凑布局）**
+  - 标题：`16–18px`（Tailwind `text-base`~`text-lg`，加粗）
+  - 主操作/标签：`12–14px`（`text-xs`~`text-sm`）
+  - 说明文字：`11–12px`（`text-[11px]`~`text-xs`，`text-zinc-400/500`）
+- **图标尺寸（lucide-react）**
+  - 顶部导航：`size={22}`, `strokeWidth={2}`
+  - 底部 Tab：`size={22}`, `strokeWidth={2}`
+  - 网格菜单：`size={24}`, `strokeWidth={2}`
+- **圆角体系**
+  - 小按钮：`8px`（`rounded-lg`）
+  - 卡片：`12–16px`（`rounded-xl` / `rounded-2xl`）
+  - 弹出层顶部：`24px+`（`rounded-t-3xl`）
+  - 底部药丸导航：`32px`（`rounded-[32px]`）
+- **间距与点击区域**
+  - 所有按钮/图标点击容器：`min-width: 44px; min-height: 44px;`
+  - 列表行垂直内边距：`10–12px`
+  - 卡片之间：`gap-2`~`gap-3`
+- **颜色与毛玻璃**
+  - 深色背景：`#1c1c1e`、`#18181b`
+  - 文字主色：`#ffffff` 或 `var(--text-primary)`
+  - 次级文字：`#a1a1aa`/`#71717a`
+  - 强毛玻璃：`glass-strong` / `liquid-glass` + `backdrop-blur-2xl`
+  - 强调色：Indigo / Purple 渐变，与桌面端保持一致
+
 ### 4.1 触摸目标优化
 
 #### 最小点击区域
@@ -315,6 +341,33 @@ input, textarea, select {
 - ✅ 触摸目标最小 44x44px
 - ✅ 键盘导航支持
 - ✅ 屏幕阅读器兼容
+
+### 6.4 手机端 UI 改造后手动回归检查清单
+
+每次提交前在以下设备/模拟器上执行：
+
+**设备覆盖**
+- iPhone 12/13（375×812）
+- iPhone 14 Pro（393×852）
+- iPhone 15 Pro Max（430×932）
+
+**通用检查**
+- [ ] 顶部状态栏/刘海不遮挡内容（MobileHeader、ChatSidebar、SettingsPanel）
+- [ ] 底部导航与更多菜单不被 Home Indicator 遮挡（MobileTabBar、MobileMoreMenu、PromptBar）
+- [ ] 所有可点击按钮/图标最小触达区域 ≥ 44×44px
+
+**功能流检查**
+- [ ] 主画布生成图片 1 次，确认卡片位置与点击行为正常
+- [ ] 主画布生成视频/音频 1 次，确认流程无异常
+- [ ] 打开聊天 → 发送消息 → 关闭聊天 → 返回画布，状态正常
+- [ ] 打开设置面板，修改非关键配置（如主题），确认生效并返回画布无异常
+- [ ] 打开项目管理器，切换项目或关闭侧栏，画布状态无异常跳动
+- [ ] 打开个人中心（UserProfileModal），编辑资料/修改密码/退出，流程正常
+- [ ] 底栏切换图像/视频/音频模式，PromptBar 与生成逻辑正确响应
+
+**桌面端回归（确保未破坏）**
+- [ ] 桌面端布局、侧边栏、PromptBar 位置与样式与改造前一致
+- [ ] 桌面端无新增 `md:hidden` 组件的残留样式
 
 ---
 

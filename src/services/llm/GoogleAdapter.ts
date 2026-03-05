@@ -1,13 +1,14 @@
-import { LLMAdapter, ChatOptions, ImageGenerationOptions, ImageGenerationResult, ProviderConfig } from './LLMAdapter';
-import { KeySlot } from '../keyManager';
-import { GOOGLE_API_BASE } from '../apiConfig';
-import { logError, logWarning } from '../systemLogService';
+import { LLMAdapter, ChatOptions, ImageGenerationOptions, ImageGenerationResult, ProviderConfig, extractRefImageData, AudioGenerationOptions, AudioGenerationResult, VideoGenerationOptions, VideoGenerationResult } from './LLMAdapter';
+import { GenerationMode } from '../../types';
+import { KeySlot } from '../auth/keyManager';
+import { GOOGLE_API_BASE } from '../api/apiConfig';
+import { logError, logWarning } from '../system/systemLogService';
 
 /**
  * Helper: Convert image data (blob URL, data URL, or base64) to base64 string
  * Gemini API requires base64 encoded image data
  */
-async function convertImageToBase64(imageData: string): Promise<string | null> {
+export async function convertImageToBase64(imageData: string): Promise<string | null> {
     // If it's already a pure base64 string (no prefix), return as-is
     if (!imageData.includes(':') && !imageData.includes('/')) {
         return imageData;
@@ -84,7 +85,7 @@ function normalizeGeminiImageSize(raw: string | undefined): '512px' | '1K' | '2K
     return '1K';
 }
 
-function buildInlineImagePart(base64Data: string, mimeType: string, useSnakeCase: boolean): any {
+export function buildInlineImagePart(base64Data: string, mimeType: string, useSnakeCase: boolean = false): any {
     if (useSnakeCase) {
         return {
             inline_data: {
@@ -195,7 +196,7 @@ export class GoogleAdapter implements LLMAdapter {
 
     supports(modelId: string): boolean {
         const id = modelId.toLowerCase();
-        return id.startsWith('gemini-') || id.startsWith('imagen-') || id.startsWith('veo-');
+        return id.startsWith('gemini-') || id.startsWith('imagen-') || id.startsWith('veo-') || id.startsWith('lyria-');
     }
 
     async chat(options: ChatOptions, keySlot: KeySlot): Promise<string> {
@@ -309,31 +310,52 @@ export class GoogleAdapter implements LLMAdapter {
         const is12AI = is12AIGateway(cleanBase);
         // 严格对齐 12AI 文档：使用 Google 官方 camelCase 字段
         const useSnakeCase = false;
-        const url = `${cleanBase}/v1beta/models/${options.modelId}:generateContent?key=${keySlot.key}`;
 
-        const parts: any[] = [{ text: options.prompt }];
+        // 🚀 [Suffix Strip] 剔除 ID 后缀（如 @system 或 @CustomName）以获取真实模型 ID
+        const realModelId = (options.modelId || '').split('@')[0];
+        const url = `${cleanBase}/v1beta/models/${realModelId}:generateContent?key=${keySlot.key}`;
 
-        // Multimodal Reference Images - convert blob URLs to base64
+        const parts: any[] = [];
+
+        // 🚀 [Ref Image Order] 12AI/Gemini documentation shows images preceding text in the content parts array
         if (options.referenceImages?.length) {
             const convertedImages = await Promise.all(
-                options.referenceImages.map(async (imageData) => {
-                    const base64 = await convertImageToBase64(imageData);
-                    return base64 ? { mimeType: 'image/png', data: base64 } : null;
+                options.referenceImages.map(async (refImg) => {
+                    const { data: imgData, mimeType } = extractRefImageData(refImg);
+                    const base64 = await convertImageToBase64(imgData);
+                    return base64 ? { mimeType, data: base64 } : null;
                 })
             );
 
             convertedImages.forEach(inlineData => {
                 if (inlineData) {
-                    parts.push(buildInlineImagePart(inlineData.data, inlineData.mimeType || 'image/png', useSnakeCase));
+                    parts.push(buildInlineImagePart(inlineData.data, inlineData.mimeType, useSnakeCase));
                 }
             });
         }
 
+        // Add prompt text last (preferred by some strict parsers for image-to-image)
+        parts.push({ text: options.prompt });
+
         const generationConfig: any = {
-            responseModalities: ["IMAGE"]
+            // 🚀 [Fix] 使用 providerConfig 中的 responseModalities（含 TEXT + IMAGE）
+            responseModalities: options.providerConfig?.google?.responseModalities || ["TEXT", "IMAGE"]
         };
+        const thinkingLevel = options.providerConfig?.google?.thinkingConfig?.thinkingLevel;
+        if (thinkingLevel === 'minimal' || thinkingLevel === 'high') {
+            generationConfig.thinkingConfig = { thinkingLevel };
+        }
         if (!is12AI) {
             generationConfig.temperature = 0.9; // Gemini Image defaults
+        }
+
+        // 🚀 [Inpainting Support] If in inpaint mode, we must include the mask
+        if (options.editMode === 'inpaint' && options.maskUrl) {
+            const maskBase64 = await convertImageToBase64(options.maskUrl);
+            if (maskBase64) {
+                console.log('[GoogleAdapter] Adding mask to Gemini inpaint request');
+                parts.push(buildInlineImagePart(maskBase64, 'image/png', useSnakeCase));
+            }
         }
 
         // Map Options -> ImageConfig
@@ -350,6 +372,7 @@ export class GoogleAdapter implements LLMAdapter {
             options.providerConfig?.google?.imageConfig?.imageSize || options.imageSize
         );
         let lastRequestPayload = '';
+        let lastApiDurationMs = 0;
         let lastRequestPayloadObj: any = {};
 
         const requestGemini = async (withImageSize: boolean) => {
@@ -373,11 +396,13 @@ export class GoogleAdapter implements LLMAdapter {
                 payload.tools = normalizeToolsForGateway(options.providerConfig.google.tools, useSnakeCase);
             }
 
+            const startAt = Date.now();
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            lastApiDurationMs = Date.now() - startAt;
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
@@ -449,15 +474,20 @@ export class GoogleAdapter implements LLMAdapter {
 
             const bestInlineData = bestImage?.inlineData || bestImage?.inline_data;
             const bestMime = bestInlineData?.mimeType || bestInlineData?.mime_type || 'image/png';
+            const bestData = String(bestInlineData?.data || '').replace(/\s+/g, '');
+            if (!bestData) {
+                throw new Error('Gemini returned image part but base64 data is empty');
+            }
             const grounding = extractGroundingInfo(data, candidate);
 
             return {
-                urls: [`data:${bestMime};base64,${bestInlineData.data}`],
+                urls: [`data:${bestMime};base64,${bestData}`],
                 provider: 'Google',
                 model: options.modelId,
                 imageSize: effectiveImageConfig.imageSize || '1K',
                 metadata: {
                     aspectRatio: effectiveImageConfig.aspectRatio || effectiveImageConfig.aspect_ratio,
+                    apiDurationMs: lastApiDurationMs,
                     grounding,
                     requestPath: (() => {
                         try {
@@ -478,6 +508,63 @@ export class GoogleAdapter implements LLMAdapter {
                         })();
                         return `import requests\n\nurl = "${safeUrl}"\npayload = ${lastRequestPayload || '{}'}\nresp = requests.post(url, json=payload, timeout=150)\nprint(resp.status_code)\nprint(resp.text[:1000])`;
                     })()
+                }
+            };
+        }
+
+        // Fallback A: Some gateways return file URI in fileData instead of inlineData
+        const fileUri = candidateParts
+            .map((p: any) => p?.fileData?.fileUri || p?.file_data?.file_uri || p?.fileData?.uri || p?.file_data?.uri)
+            .find((u: any) => typeof u === 'string' && /^https?:\/\//i.test(u));
+        if (fileUri) {
+            return {
+                urls: [fileUri],
+                provider: 'Google',
+                model: options.modelId,
+                imageSize: effectiveImageConfig.imageSize || '1K',
+                metadata: {
+                    aspectRatio: effectiveImageConfig.aspectRatio || effectiveImageConfig.aspect_ratio,
+                    apiDurationMs: lastApiDurationMs,
+                    requestPath: (() => {
+                        try { return new URL(url).pathname; } catch { return url; }
+                    })(),
+                    requestBodyPreview: buildSafeRequestBodyPreview(lastRequestPayloadObj)
+                }
+            };
+        }
+
+        // Fallback B: Proxy may transform to OpenAI-like data[]
+        const proxyData = data?.data?.[0];
+        if (proxyData?.b64_json) {
+            const b64 = String(proxyData.b64_json).replace(/\s+/g, '');
+            return {
+                urls: [`data:image/png;base64,${b64}`],
+                provider: 'Google',
+                model: options.modelId,
+                imageSize: effectiveImageConfig.imageSize || '1K',
+                metadata: {
+                    aspectRatio: effectiveImageConfig.aspectRatio || effectiveImageConfig.aspect_ratio,
+                    apiDurationMs: lastApiDurationMs,
+                    requestPath: (() => {
+                        try { return new URL(url).pathname; } catch { return url; }
+                    })(),
+                    requestBodyPreview: buildSafeRequestBodyPreview(lastRequestPayloadObj)
+                }
+            };
+        }
+        if (typeof proxyData?.url === 'string' && /^https?:\/\//i.test(proxyData.url)) {
+            return {
+                urls: [proxyData.url],
+                provider: 'Google',
+                model: options.modelId,
+                imageSize: effectiveImageConfig.imageSize || '1K',
+                metadata: {
+                    aspectRatio: effectiveImageConfig.aspectRatio || effectiveImageConfig.aspect_ratio,
+                    apiDurationMs: lastApiDurationMs,
+                    requestPath: (() => {
+                        try { return new URL(url).pathname; } catch { return url; }
+                    })(),
+                    requestBodyPreview: buildSafeRequestBodyPreview(lastRequestPayloadObj)
                 }
             };
         }
@@ -526,7 +613,8 @@ export class GoogleAdapter implements LLMAdapter {
 
         if (options.editMode === 'inpaint' && options.maskUrl && options.referenceImages?.length) {
             // Google Imagen explicitly expects pure base64 strings
-            const originalBase64 = await convertImageToBase64(options.referenceImages[0]);
+            const { data: refData } = extractRefImageData(options.referenceImages[0]);
+            const originalBase64 = await convertImageToBase64(refData);
             const maskBase64 = await convertImageToBase64(options.maskUrl);
 
             if (originalBase64 && maskBase64) {
@@ -610,7 +698,7 @@ export class GoogleAdapter implements LLMAdapter {
     }
 
     private async generateVeoVideo(options: ImageGenerationOptions, keySlot: KeySlot): Promise<ImageGenerationResult> {
-        const { startVeoVideoGeneration, pollVeoVideoOperation } = await import('../VeoVideoService');
+        const { startVeoVideoGeneration, pollVeoVideoOperation } = await import('../video/VeoVideoService');
         const cleanBase = (keySlot.baseUrl || GOOGLE_API_BASE).replace(/\/+$/, '');
 
         // Map options to Veo Config
@@ -619,6 +707,11 @@ export class GoogleAdapter implements LLMAdapter {
             aspectRatio: options.aspectRatio as any, // Cast or map strictly
             model: options.modelId
         }, keySlot.key, cleanBase);
+
+        // 🚀 [Persistence] Report Task ID early
+        if (options.onTaskId) {
+            options.onTaskId(operationId);
+        }
 
         const result = await pollVeoVideoOperation(operationId, keySlot.key, cleanBase);
 
@@ -630,7 +723,7 @@ export class GoogleAdapter implements LLMAdapter {
     }
 
     async generateVideo(options: import('./LLMAdapter').VideoGenerationOptions, keySlot: KeySlot): Promise<import('./LLMAdapter').VideoGenerationResult> {
-        const { generateVideo } = await import('../videoService');
+        const { generateVideo } = await import('../video/videoService');
         const cleanBase = (keySlot.baseUrl || GOOGLE_API_BASE).replace(/\/+$/, '');
 
         // Convert to reference config expected by old service
@@ -656,5 +749,109 @@ export class GoogleAdapter implements LLMAdapter {
             provider: this.provider,
             model: options.modelId
         };
+    }
+
+    async checkTaskStatus(taskId: string, mode: GenerationMode, keySlot: KeySlot): Promise<any> {
+        if (mode === GenerationMode.VIDEO) {
+            const { pollVeoVideoOperation } = await import('../video/VeoVideoService');
+            const cleanBase = (keySlot.baseUrl || GOOGLE_API_BASE).replace(/\/+$/, '');
+            const result = await pollVeoVideoOperation(taskId, keySlot.key, cleanBase);
+            return {
+                url: result.url,
+                status: 'success',
+                provider: 'Google',
+                model: 'veo-3.1'
+            };
+        }
+        throw new Error(`Polling not supported for mode ${mode} on Google provider`);
+    }
+
+    /**
+     * Google Audio/Music Generation
+     * Handles:
+     * - Lyria (:predict)
+     * - Gemini 2.0+ (:generateContent with responseModalities)
+     */
+    async generateAudio(options: AudioGenerationOptions, keySlot: KeySlot): Promise<AudioGenerationResult> {
+        const cleanBase = (keySlot.baseUrl || GOOGLE_API_BASE).replace(/\/+$/, '');
+
+        // Strategy A: Lyria Music Generation (:predict)
+        if (options.modelId.includes('lyria')) {
+            const url = `${cleanBase}/v1beta/models/${options.modelId}:predict?key=${keySlot.key}`;
+            const payload = {
+                instances: [{ prompt: options.prompt }],
+                parameters: {
+                    audioConfig: { audioFormat: "audio/wav" }
+                }
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error?.message || `Lyria Error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+            if (b64) {
+                return {
+                    url: `data:audio/wav;base64,${b64}`,
+                    status: 'success',
+                    provider: 'Google',
+                    model: options.modelId,
+                    metadata: {
+                        requestPath: '/v1beta/models/:predict',
+                        requestBodyPreview: buildSafeRequestBodyPreview(payload)
+                    }
+                };
+            }
+        }
+
+        // Strategy B: Gemini Multimodal (:generateContent)
+        const url = `${cleanBase}/v1beta/models/${options.modelId}:generateContent?key=${keySlot.key}`;
+        const payload = {
+            contents: [{ role: "user", parts: [{ text: options.prompt }] }],
+            generationConfig: {
+                responseModalities: ["AUDIO"],
+                audioConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } }
+            }
+        };
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error?.message || `Gemini Audio Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const audioPart = data.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData || p.inline_data);
+        const b64Raw = audioPart?.inlineData?.data || audioPart?.inline_data?.data;
+
+        if (b64Raw) {
+            const mimeType = audioPart?.inlineData?.mimeType || audioPart?.inline_data?.mime_type || 'audio/wav';
+            const b64 = String(b64Raw).replace(/[\s\r\n]+/g, '');
+            return {
+                url: `data:${mimeType};base64,${b64}`,
+                status: 'success',
+                provider: 'Google',
+                model: options.modelId,
+                metadata: {
+                    requestPath: '/v1beta/models/:generateContent',
+                    requestBodyPreview: buildSafeRequestBodyPreview(payload)
+                }
+            };
+        }
+
+        throw new Error("No audio data in Google response");
     }
 }

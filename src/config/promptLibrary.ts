@@ -185,5 +185,26 @@ export const BUILTIN_PROMPT_LIBRARY: PromptLibraryItem[] = [
         title: '游戏/影视道具概念设计',
         category: 'general',
         prompt: '单件道具模型设计，展示 [武器/古董/高科技装置]。包含主视角及其侧面透视。强调材质表现（如：磨损的皮革、氧化的金属、发光的能源核心）。背景为深灰色极简设计室风格。包含比例参考线，细节极致。'
+    },
+    {
+        id: 'nb_official_ceramicist',
+        title: '官方：工匠肖像 (摄影)',
+        category: 'banana',
+        source: 'Google-Official-Doc',
+        prompt: 'A photorealistic close-up portrait of an elderly Japanese ceramicist with deep, sun-etched wrinkles and a warm, knowing smile. He is carefully inspecting a freshly glazed tea bowl. The setting is his rustic, sun-drenched workshop. The scene is illuminated by soft, golden hour light streaming through a window, highlighting the fine texture of the clay. Captured with an 85mm portrait lens, resulting in a soft, blurred background (bokeh). The overall mood is serene and masterful. Vertical portrait orientation.'
+    },
+    {
+        id: 'nb_official_sticker',
+        title: '官方：红熊猫贴纸 (矢量)',
+        category: 'banana',
+        source: 'Google-Official-Doc',
+        prompt: 'A kawaii-style sticker of a happy red panda wearing a tiny bamboo hat. It\'s munching on a green bamboo leaf. The design features bold, clean outlines, simple cel-shading, and a vibrant color palette. The background must be white.'
+    },
+    {
+        id: 'nb_official_butterfly',
+        title: '官方：蝴蝶解剖图 (科学)',
+        category: 'banana',
+        source: 'Google-Official-Doc',
+        prompt: 'Da Vinci style anatomical sketch of a dissected Monarch butterfly. Detailed drawings of the head, wings, and legs on textured parchment with notes in English.'
     }
 ];

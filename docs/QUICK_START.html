@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KK Studio Supabase 配置指南</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 { font-size: 28px; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        .content { padding: 30px; }
+        .step {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+        }
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 12px;
+        }
+        .step h3 { display: inline-flex; align-items: center; font-size: 18px; color: #333; }
+        .step-content { margin-top: 15px; margin-left: 44px; }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn:hover { background: #5a6fd6; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 10px 0;
+            position: relative;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 4px 12px;
+            background: #4a5568;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .copy-btn:hover { background: #718096; }
+        .tip {
+            background: #fffbeb;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin: 15px 0;
+            color: #92400e;
+        }
+        .tip::before { content: "💡 "; }
+        .success { color: #10b981; font-weight: bold; }
+        .checklist { list-style: none; }
+        .checklist li { padding: 8px 0; padding-left: 28px; position: relative; }
+        .checklist li::before {
+            content: "⭕";
+            position: absolute;
+            left: 0;
+        }
+        .checklist li.done::before { content: "✅"; }
+        iframe { width: 100%; height: 400px; border: 1px solid #e2e8f0; border-radius: 8px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 KK Studio Supabase 配置</h1>
+            <p>3 分钟完成数据库设置</p>
+        </div>
+        
+        <div class="content">
+            <!-- Step 1 -->
+            <div class="step">
+                <h3><span class="step-number">1</span> 打开 SQL Editor</h3>
+                <div class="step-content">
+                    <p>点击下方按钮打开 Supabase SQL Editor：</p>
+                    <br>
+                    <a href="https://app.supabase.com/project/ovdjhdofjysanamgkfng/sql-editor" target="_blank" class="btn">
+                        打开 SQL Editor
+                    </a>
+                    <br><br>
+                    <div class="tip">
+                        如果提示登录，请使用您的 Supabase 账号登录
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="step">
+                <h3><span class="step-number">2</span> 创建新查询</h3>
+                <div class="step-content">
+                    <p>在 SQL Editor 页面中：</p>
+                    <ul class="checklist">
+                        <li>点击左侧 "<b>+ New Query</b>" 按钮</li>
+                        <li>或者点击右上角的 "<b>New Query</b>"</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="step">
+                <h3><span class="step-number">3</span> 复制并执行 SQL</h3>
+                <div class="step-content">
+                    <p>点击下方按钮复制完整 SQL：</p>
+                    <button class="btn" onclick="copySQL()">📋 复制 SQL</button>
+                    <br><br>
+                    <p>然后粘贴到 SQL Editor 中，点击 "<b>Run</b>"</p>
+                    
+                    <div class="code-block" id="sql-code">
+                        <button class="copy-btn" onclick="copySQL()">复制</button>
+-- ============================================
+-- KK Studio Complete Supabase Setup
+-- ============================================
+
+-- 1. Profiles Table (用户资料 + 积分)
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT,
+    credits DECIMAL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read own profile"
+ON public.profiles FOR SELECT TO authenticated USING (id = auth.uid());
+
+CREATE POLICY "Users can update own profile"
+ON public.profiles FOR UPDATE TO authenticated USING (id = auth.uid());
+
+-- 自动创建用户资料
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    INSERT INTO public.profiles (id, email, credits) VALUES (NEW.id, NEW.email, 0);
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users 
+FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 2. Credit Transactions (积分交易记录)
+CREATE TABLE IF NOT EXISTS public.credit_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id),
+    amount DECIMAL NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('admin_recharge', 'purchase', 'consumption', 'refund')),
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.credit_transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users read own transactions"
+ON public.credit_transactions FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+-- 3. Admin Providers (管理员配置的服务商)
+CREATE TABLE IF NOT EXISTS public.admin_providers (
+    id TEXT PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    api_keys JSONB DEFAULT '[]'::JSONB,
+    models JSONB DEFAULT '[]'::JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.admin_providers ENABLE ROW LEVEL SECURITY;
+
+-- 4. Pricing Cache (价格缓存)
+CREATE TABLE IF NOT EXISTS public.provider_pricing_cache (
+    provider_id TEXT PRIMARY KEY,
+    pricing JSONB NOT NULL DEFAULT '[]'::JSONB,
+    cached_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.provider_pricing_cache ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow read pricing cache" ON public.provider_pricing_cache FOR SELECT TO authenticated USING (true);
+
+-- 5. 管理员充值函数
+CREATE OR REPLACE FUNCTION public.admin_recharge_credits(target_user_id UUID, amount DECIMAL, description TEXT DEFAULT '管理员充值')
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    UPDATE public.profiles SET credits = COALESCE(credits, 0) + amount WHERE id = target_user_id;
+    INSERT INTO public.credit_transactions (user_id, amount, type, description) 
+    VALUES (target_user_id, amount, 'admin_recharge', description);
+END;
+$$;
+
+-- 6. 消费积分函数
+CREATE OR REPLACE FUNCTION public.consume_credits(amount DECIMAL, description TEXT DEFAULT '消费')
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE current_credits DECIMAL;
+BEGIN
+    SELECT credits INTO current_credits FROM public.profiles WHERE id = auth.uid();
+    IF current_credits < amount THEN RETURN FALSE; END IF;
+    UPDATE public.profiles SET credits = credits - amount WHERE id = auth.uid();
+    INSERT INTO public.credit_transactions (user_id, amount, type, description) 
+    VALUES (auth.uid(), -amount, 'consumption', description);
+    RETURN TRUE;
+END;
+$$;
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="step">
+                <h3><span class="step-number">4</span> 验证配置</h3>
+                <div class="step-content">
+                    <p>执行成功后，检查以下内容：</p>
+                    <ul class="checklist" id="checklist">
+                        <li>点击左侧 <b>Table Editor</b></li>
+                        <li>确认看到 <code>profiles</code> 表</li>
+                        <li>确认看到 <code>credit_transactions</code> 表</li>
+                        <li>确认看到 <code>admin_providers</code> 表</li>
+                        <li>确认看到 <code>provider_pricing_cache</code> 表</li>
+                    </ul>
+                    <div class="tip">
+                        如果表不存在，请刷新页面重试
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="step">
+                <h3><span class="step-number">5</span> 设置管理员账户</h3>
+                <div class="step-content">
+                    <p>有两种方式设置管理员：</p>
+                    
+                    <h4 style="margin: 15px 0 10px; color: #667eea;">方式 A：通过邮箱标识（简单）</h4>
+                    <ol style="margin-left: 20px; line-height: 2;">
+                        <li>在 KK Studio 中注册一个用户</li>
+                        <li>回到 Supabase Dashboard</li>
+                        <li>点击 <b>Table Editor</b> → <b>profiles</b></li>
+                        <li>找到你的用户记录</li>
+                        <li>将 <code>email</code> 修改为包含 <code>@admin</code> 的格式<br>
+                            例如：<code>yourname@admin.com</code></li>
+                    </ol>
+
+                    <h4 style="margin: 20px 0 10px; color: #667eea;">方式 B：指定具体邮箱（精确）</h4>
+                    <p>在 SQL Editor 中执行：</p>
+                    <div class="code-block">
+-- 修改为你自己的邮箱
+UPDATE public.profiles 
+SET email = 'your-email@example.com' 
+WHERE id = 'your-user-id';
+                    </div>
+                </div>
+            </div>
+
+            <!-- Done -->
+            <div class="step" style="background: #d1fae5; border-left-color: #10b981;">
+                <h3><span class="step-number" style="background: #10b981;">✓</span> 完成！</h3>
+                <div class="step-content">
+                    <p class="success">🎉 Supabase 配置完成！</p>
+                    <br>
+                    <p>现在您可以：</p>
+                    <ul style="margin-left: 20px; line-height: 2; margin-top: 10px;">
+                        <li>在 KK Studio 中使用管理员系统</li>
+                        <li>添加第三方服务商</li>
+                        <li>为用户充值积分</li>
+                        <li>查看积分交易记录</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const sqlCode = document.getElementById('sql-code').innerText.replace('复制', '').trim();
+        
+        function copySQL() {
+            navigator.clipboard.writeText(sqlCode).then(() => {
+                alert('✅ SQL 已复制到剪贴板！');
+            }).catch(() => {
+                // Fallback
+                const textarea = document.createElement('textarea');
+                textarea.value = sqlCode;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('✅ SQL 已复制到剪贴板！');
+            });
+        }
+
+        // Check if running in VS Code webview
+        if (typeof acquireVsCodeApi === 'function') {
+            const vscode = acquireVsCodeApi();
+        }
+    </script>
+</body>
+</html>

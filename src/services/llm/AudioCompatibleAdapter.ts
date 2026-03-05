@@ -1,9 +1,9 @@
-import { KeySlot } from '../keyManager';
+import { KeySlot } from '../auth/keyManager';
 import { LLMAdapter, AudioGenerationOptions, AudioGenerationResult } from './LLMAdapter';
 
 /**
  * 音频生成适配器
- * 支持 gpt-best v2 统一格式 (/v2/audio/generations) 和通用 OpenAI 兼容格式
+ * 严格使用 OpenAI 兼容格式 (/v1/audio/generations)
  * 
  * 支持：Suno 全场景 (文生歌/翻版/续写)、MiniMax 语音合成、通用 TTS
  * v2 统一格式状态码：NOT_START / SUBMITTED / QUEUED / IN_PROGRESS / SUCCESS / FAILURE
@@ -32,20 +32,9 @@ export class AudioCompatibleAdapter implements LLMAdapter {
 
     async generateAudio(options: AudioGenerationOptions, keySlot: KeySlot): Promise<AudioGenerationResult> {
         const baseUrl = (keySlot.baseUrl || 'https://api.openai.com').replace(/\/+$/, '');
-        const isGptBest = baseUrl.includes('gpt-best');
-
-        // gpt-best 使用 v2 统一格式端点
-        let submitUrl: string;
-        let pollBaseUrl: string;
-        if (isGptBest) {
-            const cleanBase = baseUrl.replace(/\/v[12]$/, '');
-            submitUrl = `${cleanBase}/v2/audio/generations`;
-            pollBaseUrl = submitUrl;
-        } else {
-            const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
-            submitUrl = `${cleanBase}/audio/generations`;
-            pollBaseUrl = submitUrl;
-        }
+        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+        const submitUrl = `${cleanBase}/audio/generations`;
+        const pollBaseUrl = submitUrl;
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -123,7 +112,7 @@ export class AudioCompatibleAdapter implements LLMAdapter {
                 return {
                     url: audioUrl, taskId, status: 'success',
                     provider: this.provider,
-                    providerName: isGptBest ? 'GPT-Best' : this.provider,
+                    providerName: keySlot.name || this.provider,
                     model: options.modelId, metadata
                 };
             }
@@ -189,7 +178,7 @@ export class AudioCompatibleAdapter implements LLMAdapter {
             return {
                 url: audioUrl, taskId, status: 'success',
                 provider: this.provider,
-                providerName: isGptBest ? 'GPT-Best' : this.provider,
+                providerName: keySlot.name || this.provider,
                 model: options.modelId, metadata
             };
 

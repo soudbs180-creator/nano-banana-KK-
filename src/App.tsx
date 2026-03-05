@@ -1,19 +1,22 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import InfiniteCanvas, { InfiniteCanvasHandle } from './components/InfiniteCanvas';
+import InfiniteCanvas, { InfiniteCanvasHandle } from './components/canvas/InfiniteCanvas';
 
-import PromptBar from './components/PromptBar';
-import ImageNode from './components/ImageCard2';
-import PromptNodeComponent from './components/PromptNodeComponent';
-import PendingNode from './components/PendingNode';
+import PromptBar from './components/layout/PromptBar';
+import ImageNode from './components/image/ImageCard2';
+import PromptNodeComponent from './components/canvas/PromptNodeComponent';
+import PendingNode from './components/canvas/PendingNode';
 // KeyManagerModal removed - integrated into UserProfileModal
-import ChatSidebar from './components/ChatSidebar';
+import ChatSidebar from './components/layout/ChatSidebar';
 import { AspectRatio, ImageSize, GenerationConfig, PromptNode, GeneratedImage, GenerationMode, KnownModel, CanvasGroup } from './types';
-import { User, LayoutDashboard, LogOut, Settings } from 'lucide-react'; // Added icons for User Menu
-import { SelectionMenu } from './components/SelectionMenu';
-import { MigrateModal } from './components/MigrateModal';
-import { CanvasGroupComponent } from './components/CanvasGroupComponent';
-import { generateImage, cancelGeneration } from './services/geminiService';
-import { keyManager, getModelMetadata } from './services/keyManager';
+import { Image as ImageIcon, Plus, Trash2, Shield, FileText, CheckCircle2, History, CreditCard, ChevronDown, Wand2, RefreshCw, Star, Coins, User, LayoutDashboard, LogOut, Settings, Zap, Sparkles } from 'lucide-react';
+import { SelectionMenu } from './components/canvas/SelectionMenu';
+import { MigrateModal } from './components/modals/MigrateModal';
+import { CanvasGroupComponent } from './components/canvas/CanvasGroupComponent';
+import { generateImage, cancelGeneration } from './services/llm/geminiService';
+import { modelCaller } from './services/model/modelCaller';
+import { getModelPricing, isCreditBasedModel, getModelCredits } from './services/model/modelPricing';
+import { keyManager, getModelMetadata } from './services/auth/keyManager';
+import { unifiedModelService } from './services/model/unifiedModelService';
 import { llmService } from './services/llm/LLMService';
 import { getCardDimensions } from './utils/styleUtils';
 import { getViewportPreferredPosition, findSafePosition } from './utils/canvasUtils'; // 🚀 Smart Positioning
@@ -22,37 +25,51 @@ import { getViewportOffsets, getLiveViewportCenter } from './utils/canvasCenter'
 // Lucide icons replaced with SVGs
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import { ThemeProvider } from './context/ThemeContext';
-import ConnectionDot from './components/ConnectionDot';
-import LoginScreen from './components/LoginScreen';
-import UserProfileModal, { UserProfileView } from './components/UserProfileModal';
-import StorageSelectionModal from './components/StorageSelectionModal';
-import SettingsPanel from './components/SettingsPanel';
+import ConnectionDot from './components/canvas/ConnectionDot';
+import LoginScreen from './components/auth/LoginScreen';
+import UserProfileModal, { UserProfileView } from './components/modals/UserProfileModal';
+import StorageSelectionModal from './components/modals/StorageSelectionModal';
+import SettingsPanel from './components/settings/SettingsPanel';
 import { useAuth } from './context/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { BillingProvider, useBilling } from './context/BillingContext';
+
 
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
-// import { syncService } from './services/syncService'; // [FIX] Dynamic Import
-import { saveImage, saveOriginalImage } from './services/imageStorage';
+// import { syncService } from './services/system/syncService'; // [FIX] Dynamic Import
+import { saveImage, saveOriginalImage } from './services/storage/imageStorage';
 import { calculateImageHash } from './utils/imageUtils';
-import { optimizePromptForImage } from './services/promptOptimizerService';
-import NotificationToast from './components/NotificationToast';
-// import { notify } from './services/notificationService'; // [FIX] Dynamic Import
+import { optimizePromptForImage } from './services/llm/promptOptimizerService';
+import NotificationToast from './components/common/NotificationToast';
+// import { notify } from './services/system/notificationService'; // [FIX] Dynamic Import
 
-// import { initUpdateCheck } from './services/updateCheck'; // [FIX] Dynamic Import
+// import { initUpdateCheck } from './services/system/updateCheck'; // [FIX] Dynamic Import
 
 // ProjectManager imported from components
-import ProjectManager from './components/ProjectManager';
-import SearchPalette from './components/SearchPalette';
+import ProjectManager from './components/settings/ProjectManager';
+import SearchPalette from './components/layout/SearchPalette';
 import { Search } from 'lucide-react'; // Import Search icon
-import MobileTabBar from './components/MobileTabBar';
-import MobileHeader from './components/MobileHeader'; // [NEW] Mobile Header
-import TagInputModal from './components/TagInputModal';
-import TutorialOverlay from './components/TutorialOverlay';
-import { GlobalLightbox } from './components/GlobalLightbox';
-import GpuBackground from './components/GpuBackground';
+import MobileTabBar from './components/mobile/MobileTabBar';
+import MobileHeader from './components/mobile/MobileHeader'; // [NEW] Mobile Header
+import TagInputModal from './components/modals/TagInputModal';
+import TutorialOverlay from './components/common/TutorialOverlay';
+import { GlobalLightbox } from './components/image/GlobalLightbox';
+import GpuBackground from './components/layout/GpuBackground';
+import RechargeModal from './components/modals/RechargeModal';
+import { ApiKeyManager } from './components/api/ApiKeyManager';
+import { ApiKeyModal } from './components/api/ApiKeyModal';
+import { CostEstimation } from './pages/CostEstimation';
+import type { Supplier } from './services/billing/supplierService';
+import { apiKeyModalService } from './services/api/apiKeyModalService';
 
-const AppContent: React.FC = () => {
+interface AppContentProps {
+  onOpenSupplierManager?: () => void;
+  onOpenCostEstimation?: () => void;
+  onOpenGlobalApiKeyModal?: (supplier?: Supplier) => void;
+}
+
+const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCostEstimation, onOpenGlobalApiKeyModal }) => {
   const {
     user,
     loading: authLoading,
@@ -73,6 +90,7 @@ const AppContent: React.FC = () => {
     updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions, updateImageNode, // 🚀
     deletePromptNode,
     deleteImageNode,
+    urgentUpdatePromptNode, // 🚀 [New] 紧急状态同步
     linkNodes,
     unlinkNodes,
     undo,
@@ -97,6 +115,11 @@ const AppContent: React.FC = () => {
     createCanvas, // 🚀 创建新项目
     switchCanvas  // 🚀 切换项目
   } = useCanvas();
+
+  const { balance, loading: balanceLoading, setShowRechargeModal, consumeCredits, refundCredits } = useBilling();
+
+  // 🚀 [Fix] Force re-render tick for real-time connection line updates during drag
+  const [dragUpdateTick, setDragUpdateTick] = useState(0);
 
   // Canvas Ref for Zoom/Pan Controls
   const canvasRef = useRef<InfiniteCanvasHandle>(null);
@@ -221,7 +244,7 @@ const AppContent: React.FC = () => {
     }
   }, [isStorageChecked, showStorageModal, showSettingsPanel, isReady]);
 
-  const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs'>('dashboard');
+  const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-management' | 'storage-settings' | 'system-logs'>('dashboard');
   const [showGrid, setShowGrid] = useState(true);
 
   useEffect(() => {
@@ -358,7 +381,7 @@ const AppContent: React.FC = () => {
 
     // 🚀 File System Shortcut Integration
     try {
-      const { fileSystemService } = await import('./services/fileSystemService');
+      const { fileSystemService } = await import('./services/storage/fileSystemService');
       const handle = fileSystemService.getGlobalHandle();
 
       if (handle) {
@@ -400,9 +423,12 @@ const AppContent: React.FC = () => {
     if (authLoading) return;
 
     const init = async () => {
+      // 0. Initialize Unified Model Service (loads admin configured models)
+      await unifiedModelService.initialize();
+
       // 1. Sync User ID
       if (user) {
-        import('./services/costService').then(async ({ setUserId }) => {
+        import('./services/billing/costService').then(async ({ setUserId }) => {
           await setUserId(user.id);
         }).catch(err => console.error('[App] CostService sync failed:', err));
         await keyManager.setUserId(user.id);
@@ -416,7 +442,7 @@ const AppContent: React.FC = () => {
       const isDevMode = window.location.hostname === 'localhost';
 
       // 3. Storage Mode Check
-      const { getStorageMode } = await import('./services/storagePreference');
+      const { getStorageMode } = await import('./services/storage/storagePreference');
       const storageMode = await getStorageMode();
 
       // 4. Tutorial Logic
@@ -481,7 +507,7 @@ const AppContent: React.FC = () => {
         const parsed = JSON.parse(saved);
         // Merge with defaults to ensure all fields exist
         return {
-          prompt: '', // Always reset prompt
+          prompt: parsed.prompt || '', // 🚀 恢复持久化的 Prompt
           enablePromptOptimization: parsed.enablePromptOptimization || false,
           aspectRatio: parsed.aspectRatio || AspectRatio.AUTO, // [Default: Auto]
           imageSize: parsed.imageSize || ImageSize.SIZE_1K,
@@ -493,6 +519,8 @@ const AppContent: React.FC = () => {
           })),
           model: parsed.model || KnownModel.IMAGEN_3,
           enableGrounding: parsed.enableGrounding || false,
+          enableImageSearch: parsed.enableImageSearch || false,
+          thinkingMode: (parsed.thinkingMode === 'high' || parsed.thinkingMode === 'deep') ? 'high' : 'minimal',
           mode: parsed.mode || GenerationMode.IMAGE,
           pptSlides: Array.isArray(parsed.pptSlides) ? parsed.pptSlides : [],
           pptStyleLocked: parsed.pptStyleLocked !== false
@@ -511,6 +539,8 @@ const AppContent: React.FC = () => {
       referenceImages: [],
       model: KnownModel.IMAGEN_3,
       enableGrounding: false,
+      enableImageSearch: false,
+      thinkingMode: 'minimal',
       mode: GenerationMode.IMAGE,
       pptSlides: [],
       pptStyleLocked: true
@@ -550,7 +580,7 @@ const AppContent: React.FC = () => {
       const needsHydration = config.referenceImages.some(img => !img.data && img.storageId);
       if (!needsHydration) return;
 
-      const { getImage } = await import('./services/imageStorage');
+      const { getImage } = await import('./services/storage/imageStorage');
 
       const hydratedImages = await Promise.all(config.referenceImages.map(async (img) => {
         if (!img.data && img.storageId) {
@@ -627,9 +657,20 @@ const AppContent: React.FC = () => {
       parallelCount: config.parallelCount,
       model: config.model,
       enableGrounding: config.enableGrounding,
+      enableImageSearch: config.enableImageSearch || false,
+      thinkingMode: config.thinkingMode || 'minimal',
       mode: config.mode,
       pptSlides: config.pptSlides || [],
       pptStyleLocked: config.pptStyleLocked !== false,
+      // 🚀 [New] 补齐缺失的视频、音频及提示词字段
+      prompt: config.prompt || '',
+      videoResolution: config.videoResolution,
+      videoDuration: config.videoDuration,
+      videoAudio: config.videoAudio,
+      audioDuration: config.audioDuration,
+      audioLyrics: config.audioLyrics,
+      maskUrl: config.maskUrl,
+      editMode: config.editMode,
       // Save metadata only (strip heavy data) appropriately? 
       // Actually PromptBar renders using `img.data`.
       // We must save the array structure, but we want `data` to be undefined or null in localStorage to save space.
@@ -642,8 +683,9 @@ const AppContent: React.FC = () => {
   }, [
     config.enablePromptOptimization,
     config.aspectRatio, config.imageSize, config.parallelCount,
-    config.model, config.enableGrounding, config.mode, config.pptSlides, config.pptStyleLocked,
-    config.referenceImages // Add referenceImages to dep array
+    config.model, config.enableGrounding, config.enableImageSearch, config.thinkingMode, config.mode, config.pptSlides, config.pptStyleLocked,
+    config.referenceImages, // Add referenceImages to dep array
+    config.prompt, config.videoResolution, config.videoDuration, config.videoAudio, config.audioDuration, config.audioLyrics, config.maskUrl, config.editMode // 🚀 全量依赖监听
   ]);
 
   // Pending generation state
@@ -707,7 +749,7 @@ const AppContent: React.FC = () => {
       if (alertKey && lastBudgetAlertRef.current !== alertKey) {
         lastBudgetAlertRef.current = alertKey;
         // Use appropriate level
-        import('./services/notificationService').then(({ notify }) => {
+        import('./services/system/notificationService').then(({ notify }) => {
           if (alertKey === 'critical' || alertKey === 'warning') {
             notify.warning(title, sub);
           } else {
@@ -1020,6 +1062,9 @@ const AppContent: React.FC = () => {
             node.model !== config.model ||
             node.aspectRatio !== config.aspectRatio ||
             node.imageSize !== config.imageSize ||
+            (node.thinkingMode || 'minimal') !== (config.thinkingMode || 'minimal') ||
+            !!node.enableGrounding !== !!config.enableGrounding ||
+            !!node.enableImageSearch !== !!config.enableImageSearch ||
             JSON.stringify(node.referenceImages) !== JSON.stringify(config.referenceImages) ||
             node.sourceImageId !== (activeSourceImage || undefined);
 
@@ -1045,6 +1090,9 @@ const AppContent: React.FC = () => {
                 aspectRatio: config.aspectRatio,
                 imageSize: config.imageSize,
                 model: config.model,
+                thinkingMode: config.thinkingMode || 'minimal',
+                enableGrounding: !!config.enableGrounding,
+                enableImageSearch: !!config.enableImageSearch,
                 referenceImages: config.referenceImages,
                 sourceImageId: activeSourceImage || undefined,
                 mode: config.mode,
@@ -1226,7 +1274,7 @@ const AppContent: React.FC = () => {
           const storageId = await calc.calculateImageHash(dataUrl.split(',')[1]);
 
           // 保存到存储
-          const storage = await import('./services/imageStorage');
+          const storage = await import('./services/storage/imageStorage');
           await storage.saveImage(storageId, dataUrl).catch(err =>
             console.error("Failed to save dropped image", err)
           );
@@ -1260,7 +1308,7 @@ const AppContent: React.FC = () => {
           addImageNodes([newImage]);
 
           // 通知用户
-          import('./services/notificationService').then(({ notify }) => {
+          import('./services/system/notificationService').then(({ notify }) => {
             notify.success('图片已添加', `${file.name} (${img.width}×${img.height})`);
           });
         };
@@ -1269,7 +1317,7 @@ const AppContent: React.FC = () => {
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('Failed to process dropped image:', error);
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.error('图片处理失败', '请重试');
       });
     }
@@ -1380,7 +1428,7 @@ const AppContent: React.FC = () => {
       }
       setIsGenerating(false);
     }
-  }, [activeCanvas, updatePromptNode]);
+  }, [activeCanvas, updatePromptNode, cancelGeneration]);
 
 
 
@@ -1640,9 +1688,16 @@ const AppContent: React.FC = () => {
                 timestamp: Date.now()
               }
             });
-            import('./services/notificationService').then(({ notify }) => {
+            import('./services/system/notificationService').then(({ notify }) => {
               notify.warning('生成超时', '已超过4分钟，任务已自动停止。请检查网络后重试。');
             });
+
+            // 🚀 返还积分
+            if (node.cost && node.cost > 0) {
+              refundCredits(node.cost, `超时退款: ${node.id}`);
+            } else if (node.provider !== 'Google') {
+              refundCredits(1, `超时退款: ${node.id}`); // 默认退还1
+            }
           }
         }, 240000);
 
@@ -1662,6 +1717,7 @@ const AppContent: React.FC = () => {
           let requestPath: string | undefined = undefined;
           let requestBodyPreview: string | undefined = undefined;
           let pythonSnippet: string | undefined = undefined;
+          let apiDurationMs: number | undefined = undefined;
 
           if (isAudio) {
             // 🚀 音频生成路由
@@ -1707,6 +1763,11 @@ const AppContent: React.FC = () => {
                 google: {
                   imageConfig: { imageSize: videoResolution }
                 }
+              },
+              onTaskId: (taskId: string) => {
+                console.log(`[executeGeneration] Received Video TaskID: ${taskId} for node ${promptNodeId}`);
+                const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
+                if (fresh) updatePromptNode({ ...fresh, jobId: taskId });
               }
             });
 
@@ -1729,11 +1790,19 @@ const AppContent: React.FC = () => {
               effectiveModel,
               '',
               currentRequestId,
-              false, // grounding config not preserved in node? assuming false for resume or need to add to PromptNode
+              !!node.enableGrounding || !!node.enableImageSearch,
               {
                 maskUrl: node.maskUrl,
                 editMode: node.mode === GenerationMode.INPAINT ? 'inpaint' : (node.mode === GenerationMode.EDIT ? 'edit' : undefined),
-                preferredKeyId: node.keySlotId
+                preferredKeyId: node.keySlotId,
+                enableWebSearch: !!node.enableGrounding,
+                enableImageSearch: !!node.enableImageSearch,
+                thinkingMode: node.thinkingMode || 'minimal',
+                onTaskId: (taskId) => {
+                  console.log(`[executeGeneration] Received TaskID: ${taskId} for node ${promptNodeId}`);
+                  const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
+                  if (fresh) updatePromptNode({ ...fresh, jobId: taskId });
+                }
               }
             );
             generatedBase64 = result.url;
@@ -1755,12 +1824,15 @@ const AppContent: React.FC = () => {
             requestPath = result.requestPath;
             requestBodyPreview = result.requestBodyPreview;
             pythonSnippet = result.pythonSnippet;
+            apiDurationMs = result.apiDurationMs;
           }
 
           isFinished = true;
           clearTimeout(timeoutId);
 
-          const generationTime = Date.now() - startTime;
+          const generationTime = (apiDurationMs && apiDurationMs > 0)
+            ? apiDurationMs
+            : (Date.now() - startTime);
 
           // 🚀 Latency Optimization: avoid blocking UI on remote image re-download
           let originalUrl = generatedBase64;
@@ -1776,7 +1848,7 @@ const AppContent: React.FC = () => {
           // Cloud Sync / Upload (后台执行，不阻塞返回)
           if (generatedBase64 && generatedBase64.startsWith('data:')) {
             // 后台上传到云端，但不影响本地显示
-            import('./services/syncService').then(async ({ syncService }) => {
+            import('./services/system/syncService').then(async ({ syncService }) => {
               try {
                 const res = await fetch(generatedBase64);
                 const blob = await res.blob();
@@ -1979,6 +2051,7 @@ const AppContent: React.FC = () => {
 
           return {
             id: uniqueId,
+            storageId: uniqueId, // 🚀 确保 storageId 被设置，用于持久化恢复
             url,
             originalUrl,
             prompt: itemTaskPrompt || node.originalPrompt || promptToUse,
@@ -2020,7 +2093,10 @@ const AppContent: React.FC = () => {
             generationTime,
             tokens,
             cost,
-            exactDimensions
+            exactDimensions,
+            promptOptimizerResult: node.promptOptimizerResult, // 🚀 全链路同步编译器结果
+            optimizedPromptEn: node.optimizedPromptEn, // 🚀 同步优化后的英文
+            optimizedPromptZh: node.optimizedPromptZh  // 🚀 同步优化后的中文
           } as GeneratedImage;
         });
 
@@ -2049,7 +2125,27 @@ const AppContent: React.FC = () => {
       updatePromptNode(updatedNode);
       addImageNodes(successResults);
 
-      import('./services/costService').then(({ recordCost }) => {
+      // 🚀 [Critical Fix] 强制立即持久化：由于状态更新和200ms防抖存在窗口期，如果用户此时刷新
+      // localStorage里尚未记录子图且 isGenerating 还是 true。在此做紧急快照修补
+      setTimeout(() => {
+        try {
+          const stored = localStorage.getItem('kk_studio_canvas_state');
+          if (stored) {
+            const state = JSON.parse(stored);
+            const activeC = state.canvases.find((c: any) => c.id === state.activeCanvasId);
+            if (activeC) {
+              const pn = activeC.promptNodes.find((n: any) => n.id === updatedNode.id);
+              if (pn) {
+                pn.isGenerating = false;
+                pn.childImageIds = updatedNode.childImageIds;
+                localStorage.setItem('kk_studio_canvas_state', JSON.stringify(state));
+              }
+            }
+          }
+        } catch (e) { }
+      }, 50);
+
+      import('./services/billing/costService').then(({ recordCost }) => {
         const usedModel = successResults[0]?.model || effectiveModel;
         const usedSize = successResults[0]?.imageSize || effectiveNode.imageSize;
         const firstDebug = validImageData[0];
@@ -2092,29 +2188,98 @@ const AppContent: React.FC = () => {
         return; // 🚀 Exit without showing error notification
       }
 
-      // 🚀 [修复] 确保错误卡片始终显示在计算出的 finalPos 上
+      // 🚀 [竞态检测] 获取节点最新实时状态，检查是否已被 pollTaskStatus 标记为成功
+      const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
+      const hasImagesOnFreshNode = freshNode && (freshNode.childImageIds?.length || 0) > 0;
+      const isNoLongerGenerating = freshNode && !freshNode.isGenerating;
+
+      if (hasImagesOnFreshNode || isNoLongerGenerating) {
+        console.warn('[executeGeneration] 发现竞态冲突：原始连接超时报错，但节点已通过轮询成功完成。放弃显示失败状态。', {
+          nodeId: node.id,
+          hasImages: hasImagesOnFreshNode,
+          isGenerating: freshNode?.isGenerating
+        });
+        return; // 💥 直接退出，不更新错误状态
+      }
+
+      // 🚀 [修复] 确保错误卡片始终显示在当前最新的 finalPos 上
+      const viewportRect = canvasRef.current?.getCanvasRect() || null;
+      const viewportOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
+      const latestCenter = getLiveViewportCenter(canvasTransform, viewportRect, viewportOffsets);
+      const errorPos = (liveNode?.userMoved) ? liveNode.position : latestCenter;
+
       const currentCanvasForError = activeCanvasRef.current;
       const currentNode = currentCanvasForError?.promptNodes.find(n => n.id === node.id) || node;
 
+      // 🚀 [Fix] 判断是否需要退费
+      // 条件：已扣费（cost > 0 且 isPaymentProcessed）或使用积分模型
+      const isCreditModelForError = node.model.includes('@system') || node.model.includes('@google') || isCreditBasedModel(node.model);
+      // 🚀 [关键修复] 放宽退费条件 - 只要有记录的 cost > 0 就尝试退费
+      const shouldRefund = (node.cost && node.cost > 0 && isCreditModelForError);
+
       const errorNode = {
         ...currentNode,
-        position: finalPos, // 🚀 Use latest center even on error!
+        position: errorPos, // 🚀 Use latest center even on error!
         isGenerating: false,
         error: err.message || 'Failed',
-        errorDetails: (err as any)?.details || extractErrorDetails(err, currentNode.model)
+        errorDetails: (err as any)?.details || extractErrorDetails(err, currentNode.model),
+        // 🚀 [修复] 使用 as const 修复类型错误
+        refundStatus: shouldRefund ? 'pending' as const : undefined
       };
       const existsInCanvas = currentCanvasForError?.promptNodes.some((n: any) => n.id === node.id);
 
+      // 🚀 [Refund Credits Fix] 退还此节点消耗的积分
+      const hasCustomUserKey = keyManager.hasCustomKeyForModel(node.model);
+      const isCreditModel = isCreditBasedModel(node.model, undefined, undefined, hasCustomUserKey);
+      let refundPromise: Promise<boolean> = Promise.resolve(false);
+      // 🚀 [修复] 放宽退费条件 - 只要是积分模型且有消费记录就退费
+      const shouldTryRefund = isCreditModel && (node.cost && node.cost > 0);
+      if (shouldTryRefund) {
+        const costToRefund = node.cost || (node.mode === GenerationMode.PPT ? (node.childImageIds?.length || 1) : (node.parallelCount || 1));
+        refundPromise = refundCredits(costToRefund, `生成失败退回: ${node.model} (${node.id})`);
+        refundPromise
+          .then(success => {
+            if (success) {
+              console.log(`[executeGeneration] 退回积分成功: ${costToRefund}`);
+              // 🚀 更新节点状态为"积分已退回"
+              const updatedNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
+              if (updatedNode) {
+                updatePromptNode({ ...updatedNode, refundStatus: 'success' as const });
+              }
+            } else {
+              const updatedNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
+              if (updatedNode) {
+                updatePromptNode({ ...updatedNode, refundStatus: 'failed' as const });
+              }
+            }
+          })
+          .catch(e => {
+            console.error('[executeGeneration] 退回积分异常:', e);
+            const updatedNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
+            if (updatedNode) {
+              updatePromptNode({ ...updatedNode, refundStatus: 'failed' as const });
+            }
+          });
+      }
+      // 🚀 [Fix] 只更新已存在的节点，不再添加新节点避免重复
       if (existsInCanvas) {
         updatePromptNode(errorNode);
       } else {
-        // 节点不存在，需要先添加
-        console.log('[executeGeneration] Adding missing error node to canvas:', node.id);
-        await addPromptNode(errorNode);
+        console.warn('[executeGeneration] Error node not found in canvas, skipping update:', node.id);
       }
 
-      import('./services/notificationService').then(({ notify }) => {
-        notify.error('生成任务失败', err.message || "Generation failed.");
+      // 🚀 [Fix] 等待退费完成后显示提示，告知用户积分已退回
+      refundPromise.then((refundSuccess) => {
+        import('./services/system/notificationService').then(({ notify }) => {
+          // 🚀 过滤掉模型不支持参考图的错误提示，不显示给用户
+          if (err.message && err.message.includes('does not support image input')) {
+            return;
+          }
+          // 🚀 [Fix] 只有 @system 后缀的积分模型才显示"积分已退回"
+          const isCredit = node.model?.toLowerCase().endsWith('@system') || isCreditModel;
+          const refundMsg = (isCredit && refundSuccess) ? '，积分已退回' : '';
+          notify.error('生成失败' + refundMsg, err.message || "Generation failed.");
+        });
       });
       if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
         setShowSettingsPanel(true);
@@ -2123,25 +2288,93 @@ const AppContent: React.FC = () => {
     }
   }, [isMobile, updatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions, extractErrorDetails, buildAutoPptSlides, rememberPreferredKeyForMode]);
 
+  // [New] Poll for task status
+  const pollTaskStatus = useCallback(async (node: PromptNode) => {
+    if (!node.jobId) return;
+
+    console.log(`[Auto-Resume] Polling task status for node ${node.id}, jobId: ${node.jobId}`);
+
+    try {
+      // Create a temporary "pending" state visualization if needed, 
+      // but usually the node is already in isGenerating state.
+
+      const result = await llmService.checkTaskStatus(node.jobId, node.mode || GenerationMode.IMAGE, node.keySlotId ? { id: node.keySlotId } as any : undefined);
+
+      if (result && 'status' in result && (result.status === 'success' || result.status === 'failed')) {
+        // We got a final result! 
+        // We can't easily "inject" this back into executeGeneration without refactoring, 
+        // so we'll handle the insertion here or trigger a simplified success flow.
+
+        if (result.status === 'success') {
+          console.log(`[Auto-Resume] Task success for node ${node.id}`);
+          // Handle result insertion... 
+          // (Simplified: just call executeGeneration to let it handle the full flow 
+          // if we can't easily mock the success)
+          // Actually, if it's already success, checkTaskStatus should return the URLs.
+
+          // For now, if it's finished, let's just let executeGeneration handles it if possible, 
+          // or we just call addImageNodes here.
+
+          // If result has urls/url, we can finish it.
+          const imageUrls = (result as any).urls || [(result as any).url].filter(Boolean);
+          if (imageUrls.length > 0) {
+            addImageNodes(imageUrls.map((url: string) => ({
+              url,
+              prompt: node.prompt,
+              model: node.model,
+              aspectRatio: node.aspectRatio,
+              imageSize: node.imageSize
+            })));
+            updatePromptNode({ ...node, isGenerating: false });
+            return;
+          }
+        } else {
+          // Failed
+          updatePromptNode({ ...node, isGenerating: false, error: '生成任务在后端执行失败' });
+          return;
+        }
+      }
+
+      // If still pending, poll again in 10s
+      setTimeout(() => {
+        // Refresh node from state to check if it's still generating
+        const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
+        if (freshNode && freshNode.isGenerating) {
+          pollTaskStatus(freshNode);
+        }
+      }, 10000);
+
+    } catch (err: any) {
+      console.error(`[Auto-Resume] Polling failed for node ${node.id}:`, err);
+      // Fallback: restart generation if polling fails
+      setTimeout(() => executeGeneration(node), 1000);
+    }
+  }, [llmService, updatePromptNode, addImageNodes, executeGeneration]);
+
   // Auto-Resume Effect
   const hasResumedRef = useRef(false);
   useEffect(() => {
     // Wait for canvas to be ready and loaded
-    if (!activeCanvas || hasResumedRef.current) return;
+    if (!activeCanvas || hasResumedRef.current || !isReady) return;
 
     const interruptedNodes = activeCanvas.promptNodes.filter(n => n.isGenerating);
     if (interruptedNodes.length > 0) {
       console.log(`[Auto-Resume] Found ${interruptedNodes.length} interrupted tasks. Resuming...`);
       interruptedNodes.forEach(node => {
-        // Delay slightly to prevent UI contention
-        setTimeout(() => executeGeneration(node), 500);
+        if (node.jobId) {
+          // Delay to ensure services are ready
+          setTimeout(() => pollTaskStatus(node), 1000);
+        } else {
+          // Restart normally
+          setTimeout(() => executeGeneration(node), 1500);
+        }
       });
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.info('任务自动恢复', `已恢复 ${interruptedNodes.length} 个未完成的生成任务`);
       });
     }
     hasResumedRef.current = true;
-  }, [activeCanvas, executeGeneration]);
+  }, [activeCanvas, isReady, executeGeneration, pollTaskStatus]);
 
 
   const handleGenerate = useCallback(async () => {
@@ -2150,6 +2383,58 @@ const AppContent: React.FC = () => {
       return;
     }
     if (!config.prompt.trim()) return;
+
+    // 🚀 [真实计费拦截与扣除]
+    // 首先判断是否为系统按积分计费的模型（自己添加的第三方渠道模型或明确带有 @ 后缀的调用不走积分流程）
+    const provider = config.model.includes('@') ? config.model.split('@')[1] : undefined;
+    const customLocal = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('kk_model_customizations') || '{}')[config.model] || {};
+      } catch { return {}; }
+    })();
+
+    const hasCustomUserKey = keyManager.hasCustomKeyForModel(config.model);
+    const isCreditModel = isCreditBasedModel(
+      config.model,
+      provider,
+      customLocal.alias,
+      hasCustomUserKey
+    );
+
+    console.log('[handleGenerate] 计费检查:', {
+      model: config.model,
+      provider,
+      hasCustomUserKey,
+      isCreditModel,
+      mode: config.mode
+    });
+
+    let requiredCredits = 0;
+    if (isCreditModel) {
+      const perImageCost = getModelCredits(config.model);
+      if (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) {
+        requiredCredits = (config.parallelCount || 1) * perImageCost;
+      } else {
+        requiredCredits = perImageCost || 1;
+      }
+
+      // 如果需要扣费，调用 Supabase RPC 扣除 
+      if (requiredCredits > 0) {
+        console.log('[handleGenerate] 准备扣费:', { model: config.model, requiredCredits });
+        // 🚀 [修复] 确保在扣费前记录消耗预估，以便 executeGeneration 失败时能退款
+        // @ts-ignore
+        const isPaymentSuccess = await consumeCredits(config.model, requiredCredits);
+        console.log('[handleGenerate] 扣费结果:', { isPaymentSuccess });
+        if (!isPaymentSuccess) {
+          import('./services/system/notificationService').then(({ notify }) => {
+            notify.error('生成失败', '您的账户余额不足，请先充值积分。');
+          });
+          setShowRechargeModal(true); // 自动弹出充值入口
+          return;
+        }
+      }
+    }
+
     generateLockRef.current = true;
     setIsGenerating(true);
     try {
@@ -2172,7 +2457,7 @@ const AppContent: React.FC = () => {
       let isReusingDraft = false;
 
       if (!isFollowUp) {
-        promptNodeId = Date.now().toString();
+        promptNodeId = `node_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
         currentPos = { ...liveCenter };
         isReusingDraft = false;
         console.log('[handleGenerate] Normal mode - locked to current viewport center:', currentPos);
@@ -2263,12 +2548,12 @@ const AppContent: React.FC = () => {
           }
         } else {
           // Draft ID stale?
-          promptNodeId = Date.now().toString();
+          promptNodeId = `node_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
           console.log('[handleGenerate] Creating new node at view center (Stale ID):', currentPos);
         }
       } else {
         // Follow-up mode but no draft id: create a new node at computed center/path
-        promptNodeId = Date.now().toString();
+        promptNodeId = `node_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
         console.log('[handleGenerate] Follow-up mode without draft, using computed center:', currentPos);
       }
 
@@ -2279,8 +2564,8 @@ const AppContent: React.FC = () => {
 
       // [CRITICAL FIX] Hydrate reference images before sending
       // When dragging from ImageCard, data might be empty (only storageId is passed)
-      const { getImage } = await import('./services/imageStorage');
-      const { fileSystemService } = await import('./services/fileSystemService');
+      const { getImage } = await import('./services/storage/imageStorage');
+      const { fileSystemService } = await import('./services/storage/fileSystemService');
       const globalHandle = fileSystemService.getGlobalHandle();
 
       let finalReferenceImages = await Promise.all(
@@ -2368,7 +2653,7 @@ const AppContent: React.FC = () => {
       // (Large images might be stripped from localStorage)
       finalReferenceImages.forEach(ref => {
         if (ref.data) {
-          import('./services/imageStorage').then(({ saveImage }) => {
+          import('./services/storage/imageStorage').then(({ saveImage }) => {
             // IMPORTANT: store as full DataURL so CanvasContext can rehydrate mimeType/base64 reliably
             const mime = (ref as any).mimeType || 'image/png';
             const fullUrl = ref.data!.startsWith('data:') ? ref.data! : `data:${mime};base64,${ref.data!}`;
@@ -2387,9 +2672,12 @@ const AppContent: React.FC = () => {
         console.log('[handleGenerate] Final position hard-guard (normal mode):', currentPos);
       }
 
+      const isNewAnim = true; // 🚀 Always set for standard generation
+
       const rawPrompt = config.prompt.trim();
       let optimizedPromptEn: string | undefined;
       let optimizedPromptZh: string | undefined;
+      let promptOptimizerResult: any | undefined; // 🚀 [New] 提示词编译器结果
 
       if ((config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) && config.enablePromptOptimization && rawPrompt) {
         try {
@@ -2413,9 +2701,10 @@ const AppContent: React.FC = () => {
           });
           optimizedPromptEn = optimized.optimizedEn;
           optimizedPromptZh = optimized.optimizedZh;
+          promptOptimizerResult = optimized.fullResult; // 🚀 捕获完整编译器结果
         } catch (e: any) {
           console.warn('[handleGenerate] Prompt optimization failed, fallback to raw prompt:', e);
-          import('./services/notificationService').then(({ notify }) => {
+          import('./services/system/notificationService').then(({ notify }) => {
             notify.error('提示词优化失败', '无法调用对话模型，已自动降级为原始提示词: ' + (e.message || ''));
           });
         }
@@ -2441,12 +2730,16 @@ const AppContent: React.FC = () => {
         originalPrompt: rawPrompt,
         optimizedPromptEn,
         optimizedPromptZh,
-        promptOptimizationEnabled: !!(config.enablePromptOptimization && optimizedPromptEn),
+        promptOptimizerResult, // 🚀 [New] 存储编译器结果
+        promptOptimizationEnabled: !!(config.enablePromptOptimization && (optimizedPromptEn || promptOptimizerResult)),
         position: currentPos,
         aspectRatio: config.aspectRatio,
         imageSize: config.imageSize,
         model: config.model,
         modelLabel: previewModelLabel,
+        thinkingMode: config.thinkingMode || 'minimal',
+        enableGrounding: !!config.enableGrounding,
+        enableImageSearch: !!config.enableImageSearch,
         provider: previewProvider,
         providerLabel: previewProviderLabel,
         keySlotId: selectedKey?.id,
@@ -2454,6 +2747,7 @@ const AppContent: React.FC = () => {
         referenceImages: finalReferenceImages,
         timestamp: Date.now(),
         isGenerating: true,
+        isNew: isNewAnim, // 🚀 启用动画标记
         parallelCount: pptCount,
         sourceImageId: activeSourceImage || undefined,
         mode: config.mode,
@@ -2462,7 +2756,9 @@ const AppContent: React.FC = () => {
         videoDuration: config.videoDuration,
         videoAudio: config.videoAudio,
         pptSlides: effectivePptSlides,
-        pptStyleLocked: config.pptStyleLocked !== false
+        pptStyleLocked: config.pptStyleLocked !== false,
+        cost: requiredCredits, // 🚀 [Fix] 明确记录本次消耗的积分，用于失败退回
+        isPaymentProcessed: requiredCredits > 0, // Mark that payment was successfully deducted
       };
 
       // 🚀 [Fix Duplicate Placeholders]
@@ -2508,23 +2804,24 @@ const AppContent: React.FC = () => {
       setActiveSourceImage(null);
 
       // Execute immediately after save completed
-      executeGeneration(generatingNode);
+      await executeGeneration(generatingNode);
     } catch (e: any) {
       console.error('[handleGenerate] failed:', e);
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.error('发送失败', e?.message || '请重试');
       });
     } finally {
       generateLockRef.current = false;
-      setIsGenerating(false);
+      // 🚀 [Fix] 不在此处 setIsGenerating(false)，因为 executeGeneration 内部已管理此状态
+      // 原来未 await executeGeneration 导致此处提前执行，generateLockRef 被过早解锁
     }
-  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth, buildAutoPptSlides, getPreferredKeyForMode]);
+  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth, buildAutoPptSlides, getPreferredKeyForMode, consumeCredits, balance, setShowRechargeModal]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
     if (files.length === 0) return;
     if (config.referenceImages.length + files.length > 5) {
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.warning('无法添加图片', "最多支持 5 张参考图");
       });
       files = files.slice(0, 5 - config.referenceImages.length);
@@ -2586,7 +2883,7 @@ const AppContent: React.FC = () => {
         setActiveSourceImage(null);
       }
 
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.success('已断开连接', '卡组已拆分为独立卡组');
       });
     }
@@ -2613,7 +2910,7 @@ const AppContent: React.FC = () => {
     setConfig(prev => ({ ...prev, prompt: '', referenceImages: [] }));
     setActiveSourceImage(null);
 
-    import('./services/notificationService').then(({ notify }) => {
+    import('./services/system/notificationService').then(({ notify }) => {
       notify.success('已固定', '草稿已转换为独立卡片');
     });
   }, [activeCanvas, updatePromptNode, setDraftNodeId, setConfig]);
@@ -2653,7 +2950,7 @@ const AppContent: React.FC = () => {
     // 3. Delete Original Image Node (Transformation complete)
     deleteImageNode(imageId);
 
-    import('./services/notificationService').then(({ notify }) => {
+    import('./services/system/notificationService').then(({ notify }) => {
       notify.success('想法已定格', '图片已转换为独立主卡');
     });
 
@@ -2662,14 +2959,14 @@ const AppContent: React.FC = () => {
   // Retry Logic (In-Place Regeneration)
   const handleRetryNode = useCallback(async (node: PromptNode) => {
     // 1. Reset state to generating
-      updatePromptNode({
-        ...node,
-        isGenerating: true,
-        error: undefined,
-        errorDetails: undefined,
-        isDraft: false, // 🚀 [Fix] Ensure visibility
-        timestamp: Date.now() // Reset timer
-      });
+    updatePromptNode({
+      ...node,
+      isGenerating: true,
+      error: undefined,
+      errorDetails: undefined,
+      isDraft: false, // 🚀 [Fix] Ensure visibility
+      timestamp: Date.now() // Reset timer
+    });
 
     const currentNodeId = node.id;
     const requestedCount = node.parallelCount || config.parallelCount || 1;
@@ -2704,6 +3001,7 @@ const AppContent: React.FC = () => {
           let requestPath: string | undefined = undefined;
           let requestBodyPreview: string | undefined = undefined;
           let pythonSnippet: string | undefined = undefined;
+          let apiDurationMs: number | undefined = undefined;
           const currentMode: GenerationMode = node.mode || GenerationMode.IMAGE;
           const taskPrompt = currentMode === GenerationMode.PPT
             ? (() => {
@@ -2751,15 +3049,19 @@ const AppContent: React.FC = () => {
               node.model,
               '', // managed key
               requestId,
-              false // grounding
+              !!node.enableGrounding || !!node.enableImageSearch
               , {
-                preferredKeyId: node.keySlotId
+                preferredKeyId: node.keySlotId,
+                enableWebSearch: !!node.enableGrounding,
+                enableImageSearch: !!node.enableImageSearch,
+                thinkingMode: node.thinkingMode || 'minimal'
               }
             );
             b64 = result.url;
             requestPath = result.requestPath;
             requestBodyPreview = result.requestBodyPreview;
             pythonSnippet = result.pythonSnippet;
+            apiDurationMs = result.apiDurationMs;
           }
 
           isFinished = true;
@@ -2772,7 +3074,7 @@ const AppContent: React.FC = () => {
           if (currentMode === GenerationMode.IMAGE || currentMode === GenerationMode.PPT) {
             originalUrl = b64;
             if (b64.startsWith('data:')) {
-              import('./services/syncService').then(async ({ syncService }) => {
+              import('./services/system/syncService').then(async ({ syncService }) => {
                 try {
                   const res = await fetch(b64);
                   const blob = await res.blob();
@@ -2789,7 +3091,9 @@ const AppContent: React.FC = () => {
             originalUrl = b64;
           }
 
-          const generationTime = Date.now() - startTime;
+          const generationTime = (apiDurationMs && apiDurationMs > 0)
+            ? apiDurationMs
+            : (Date.now() - startTime);
 
           // Calculate Hash/StorageID
           const storageId = await calculateImageHash(url);
@@ -2864,7 +3168,7 @@ const AppContent: React.FC = () => {
             seed: -1,
             id: `${Date.now()}_${index}_${Math.random().toString(36).substr(2, 5)}`,
             storageId, // Content-Based ID
-            mimeType: 'image/png', // TODO: video support
+            mimeType: currentMode === GenerationMode.VIDEO ? 'video/mp4' : 'image/png',
             timestamp: Date.now(),
             mode: currentMode,
             requestPath,
@@ -2984,7 +3288,7 @@ const AppContent: React.FC = () => {
       // 🚀 [Fair Billing] Use the computed/effective size from the first result (assuming all in batch are same)
       const effectiveSize = newImageNodes[0]?.imageSize || node.imageSize; // fallback
 
-      import('./services/costService').then(({ recordCost }) => {
+      import('./services/billing/costService').then(({ recordCost }) => {
         const firstDebug = (results as any[])[0] || {};
         recordCost(
           node.model,
@@ -3000,7 +3304,7 @@ const AppContent: React.FC = () => {
           }
         );
       });
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.success('生成完成', '重新生成成功');
       });
 
@@ -3012,7 +3316,7 @@ const AppContent: React.FC = () => {
         error: error.message || 'Retry failed',
         errorDetails: extractErrorDetails(error, node.model)
       });
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.error('重试失败', error.message);
       });
     }
@@ -3034,7 +3338,7 @@ const AppContent: React.FC = () => {
       });
 
     if (childImages.length === 0) {
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.warning('无可导出页面', '当前主卡还没有生成副卡页面');
       });
       return;
@@ -3150,7 +3454,7 @@ const AppContent: React.FC = () => {
     a.click();
     URL.revokeObjectURL(url);
 
-    import('./services/notificationService').then(({ notify }) => {
+    import('./services/system/notificationService').then(({ notify }) => {
       notify.success('导出完成', `已导出 ${childImages.length} 页与 pages/outline/meta 目录`);
     });
   }, [activeCanvas, parsePptOutlineLine]);
@@ -3174,7 +3478,7 @@ const AppContent: React.FC = () => {
 
     const target = ordered[pageIndex];
     if (!target) {
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.warning('页面不存在', `未找到图${pageIndex + 1}`);
       });
       return;
@@ -3218,9 +3522,12 @@ const AppContent: React.FC = () => {
         node.model,
         '',
         `${node.id}-ppt-single-${pageIndex}`,
-        false,
+        !!node.enableGrounding || !!node.enableImageSearch,
         {
-          preferredKeyId: node.keySlotId
+          preferredKeyId: node.keySlotId,
+          enableWebSearch: !!node.enableGrounding,
+          enableImageSearch: !!node.enableImageSearch,
+          thinkingMode: node.thinkingMode || 'minimal'
         }
       );
 
@@ -3259,7 +3566,7 @@ const AppContent: React.FC = () => {
 
       rememberPreferredKeyForMode(node.mode, result.keySlotId || node.keySlotId);
 
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.success('单页重生完成', `已更新图${pageIndex + 1}`);
       });
     } catch (error: any) {
@@ -3267,7 +3574,7 @@ const AppContent: React.FC = () => {
         isGenerating: false,
         error: error?.message || '单页重生失败'
       });
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.error('单页重生失败', error?.message || '请稍后重试');
       });
     }
@@ -3298,11 +3605,11 @@ const AppContent: React.FC = () => {
       const blob = await res.blob();
       const name = `ppt-page-${String(pageIndex + 1).padStart(2, '0')}.png`;
       saveAs(blob, name);
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.success('导出完成', `已导出图${pageIndex + 1}`);
       });
     } catch (e: any) {
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.error('导出失败', e?.message || '无法导出该页面');
       });
     }
@@ -3327,7 +3634,7 @@ const AppContent: React.FC = () => {
       .slice(0, 20);
 
     if (ordered.length === 0) {
-      import('./services/notificationService').then(({ notify }) => {
+      import('./services/system/notificationService').then(({ notify }) => {
         notify.warning('无可导出页面', '当前主卡还没有生成副卡页面');
       });
       return;
@@ -3527,7 +3834,7 @@ const AppContent: React.FC = () => {
 
     const pptxBlob = await zip.generateAsync({ type: 'blob' });
     saveAs(pptxBlob, `ppt-slides-${Date.now()}.pptx`);
-    import('./services/notificationService').then(({ notify }) => {
+    import('./services/system/notificationService').then(({ notify }) => {
       notify.success('PPTX导出完成', `已导出 ${ordered.length} 页的 .pptx 文件`);
     });
   }, [activeCanvas, parsePptOutlineLine]);
@@ -3543,7 +3850,7 @@ const AppContent: React.FC = () => {
           handleRetryNode(node);
         });
 
-        import('./services/notificationService').then(({ notify }) => {
+        import('./services/system/notificationService').then(({ notify }) => {
           notify.info('恢复任务', `系统已自动重新开始 ${interruptedNodes.length} 个中断的任务`);
         });
       }
@@ -3560,7 +3867,7 @@ const AppContent: React.FC = () => {
     // We do this BEFORE setting config so the UI never sees the "loading" state
     if (referenceImages.some(img => !img.data && img.storageId)) {
       try {
-        const { getImage } = await import('./services/imageStorage');
+        const { getImage } = await import('./services/storage/imageStorage');
         const hydrated = await Promise.all(referenceImages.map(async (img) => {
           if (!img.data && img.storageId) {
             const data = await getImage(img.storageId);
@@ -3791,7 +4098,8 @@ const AppContent: React.FC = () => {
 
 
   return (
-    <div id="canvas-container" className="relative w-screen h-screen bg-[#09090b] overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
+    <div id="canvas-container" className="relative w-screen h-screen overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
+      style={{ backgroundColor: 'var(--bg-canvas)' }}
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
       onMouseMove={(e) => {
@@ -3810,7 +4118,74 @@ const AppContent: React.FC = () => {
         }
       }}
     >
+      {/* Top Left Credits Display */}
+      {!isMobile && (
+        <div className="absolute top-4 left-4 z-[100] flex items-center gap-2">
+          <div
+            className="flex items-center gap-3 px-4 py-2 rounded-full border shadow-2xl backdrop-blur-md transition-all hover:border-[var(--border-medium)] group"
+            style={{ backgroundColor: 'rgba(26, 26, 28, 0.8)', borderColor: 'var(--border-light)' }}
+          >
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <Sparkles size={18} fill="currentColor" className="text-blue-500 mb-0.5" />
+              <div className="flex items-center select-none gap-1">
+                <span className="text-[18px] font-mono font-bold leading-none min-w-[20px] text-white drop-shadow-sm">
+                  {balanceLoading ? (
+                    <Loader2 size={16} className="animate-spin opacity-40 text-blue-400" />
+                  ) : balance}
+                </span>
+                <span className="text-[14px] font-bold text-blue-400 mt-0.5">积分</span>
+              </div>
+            </div>
+            <div className="w-px h-6 bg-white/10" />
+            <button
+              onClick={() => setShowRechargeModal(true)}
+              className="px-3 py-1 bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-bold rounded-lg transition-all active:scale-95 shadow-lg shadow-indigo-500/20"
+            >
+              充值
+            </button>
+          </div>
+        </div>
+      )}
 
+      {/* [NEW] Mobile Header & Navigation */}
+      {isMobile && (
+        <>
+          <MobileHeader
+            onMenuClick={() => setIsSidebarOpen(true)}
+            onDashboardClick={() => {
+              setShowSettingsPanel(true);
+              setSettingsInitialView('dashboard');
+            }}
+            onSettingsClick={() => {
+              setShowSettingsPanel(true);
+              setSettingsInitialView('api-management');
+            }}
+            onUserClick={() => {
+              setProfileInitialView('main');
+              setShowProfileModal(true);
+            }}
+            onBillingClick={() => {
+              setProfileInitialView('billing');
+              setShowProfileModal(true);
+            }}
+            title="KK Studio"
+          />
+          <MobileTabBar
+            onSetMode={(mode) => setConfig(prev => ({ ...prev, mode }))}
+            onOpenSettings={() => {
+              setShowSettingsPanel(true);
+              setSettingsInitialView('dashboard');
+            }}
+            onOpenProfile={() => {
+              setShowProfileModal(true);
+              setProfileInitialView('main');
+            }}
+            onToggleChat={() => setIsChatOpen(prev => !prev)}
+            currentMode={config.mode}
+            currentView={showSettingsPanel ? 'settings' : (showProfileModal ? 'profile' : (isChatOpen ? 'chat' : 'home'))}
+          />
+        </>
+      )}
 
       {/* Chat Sidebar (Left) */}
 
@@ -3884,6 +4259,22 @@ const AppContent: React.FC = () => {
                     >
                       <div className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-blue)' }}><User size={14} /></div>
                       个人中心
+                    </button>
+
+                    {/* [NEW] 账户管理入口 */}
+                    <button
+                      onClick={() => {
+                        setProfileInitialView('billing');
+                        setShowProfileModal(true);
+                        setShowUserMenu(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left"
+                      style={{ color: 'var(--text-secondary)' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    >
+                      <div className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-yellow)' }}><Zap size={14} /></div>
+                      账户管理
                     </button>
 
                     <button
@@ -4143,14 +4534,15 @@ const AppContent: React.FC = () => {
       >
         {/* 1. Connection Lines Layer (SVG) - Below all cards */}
         <svg
-          className="absolute top-0 left-0 pointer-events-none"
+          className="absolute top-0 left-0 pointer-events-none will-change-transform"
           style={{
             width: '10000px',
             height: '10000px',
             left: '-5000px',
             top: '-5000px',
             overflow: 'visible',
-            zIndex: 1
+            zIndex: 1,
+            transform: 'translateZ(0)' // 🚀 [GPU加速] 强制GPU渲染提升拖拽性能
           }}
         >
           {/* Active Drag Line */}
@@ -4215,16 +4607,16 @@ const AppContent: React.FC = () => {
 
               return (
                 <g key={`${pn.id}-${childId}`}>
-                  <circle cx={startX} cy={startY} r={connectorDotEnd} fill="#a1a1aa" opacity="0.6" />
+                  <circle cx={startX} cy={startY} r={connectorDotEnd} fill="var(--connector-color, #6366f1)" opacity="0.8" />
                   <path
                     d={d}
                     fill="none"
-                    stroke="#ffffff"
+                    stroke="var(--connector-color, #6366f1)"
                     strokeWidth={connectorStroke}
                     strokeDasharray={`${connectorDashA} ${connectorDashB}`}
                     strokeLinecap="round"
-                    opacity="0.3"
-                    className="group-hover:opacity-60"
+                    opacity="0.6"
+                    className="group-hover:opacity-100"
                   />
                   <path d={d} stroke="transparent" strokeWidth={connectorHitStroke} fill="none" className="pointer-events-auto cursor-pointer" />
                 </g>
@@ -4477,6 +4869,7 @@ const AppContent: React.FC = () => {
             }}
             onDelete={deletePromptNode}
             onDisconnect={handleDisconnectPrompt}
+            onUpdateNode={updatePromptNode}
             onHeightChange={(id, height) => {
               const latestNode = activeCanvas?.promptNodes.find(n => n.id === id);
               const targetNode = latestNode || node;
@@ -4493,11 +4886,23 @@ const AppContent: React.FC = () => {
               }
             }}
             onDragDelta={(delta, sourceNodeId) => {
-              if (sourceNodeId && selectedNodeIds.includes(sourceNodeId)) {
+              if (!sourceNodeId) return;
+
+              // 🚀 [主卡拖动逻辑] 如果拖动的是主卡(有childImageIds)，则同时拖动所有副卡
+              const mainCard = activeCanvas?.promptNodes.find(p => p.id === sourceNodeId);
+              const childImageIds = mainCard?.childImageIds || [];
+
+              if (childImageIds.length > 0) {
+                // 主卡拖动：移动主卡 + 所有副卡
+                const allIdsToMove: string[] = [sourceNodeId, ...childImageIds.filter((id): id is string => !!id)];
+                moveSelectedNodes(delta, allIdsToMove);
+              } else if (selectedNodeIds.includes(sourceNodeId)) {
                 moveSelectedNodes(delta, selectedNodeIds);
               } else {
                 moveSelectedNodes(delta, sourceNodeId);
               }
+              // 🚀 [Fix] Force re-render for real-time connection line updates
+              setDragUpdateTick(t => t + 1);
             }} // 🚀 Enable Safe Relative Drag
             canvasTransform={canvasTransform} // 🚀 Pass Transform for Animation Calculation
           />
@@ -4529,12 +4934,23 @@ const AppContent: React.FC = () => {
             zoomScale={canvasTransform.scale}
             isMobile={isMobile}
             onPreview={handleOpenPreview}
+            // 🚀 [Optimization] Identify if the node was created in the last 10 seconds
+            isNew={Date.now() - (node.timestamp || 0) < 10000}
+            canvasTransform={canvasTransform} // 🚀 Pass Transform for Animation Calculation
             onDragDelta={(delta, sourceNodeId) => {
-              if (sourceNodeId && selectedNodeIds.includes(sourceNodeId)) {
+              // 🚀 [副卡拖动逻辑] 如果拖动的是副卡(有parentPromptId)，只拖动副卡本身
+              const isSubCard = node.parentPromptId && activeCanvas?.promptNodes.some(p => p.id === node.parentPromptId);
+
+              if (isSubCard) {
+                // 副卡拖动：只移动副卡本身，不移动主卡
+                moveSelectedNodes(delta, sourceNodeId);
+              } else if (sourceNodeId && selectedNodeIds.includes(sourceNodeId)) {
                 moveSelectedNodes(delta, selectedNodeIds);
               } else {
                 moveSelectedNodes(delta, sourceNodeId);
               }
+              // 🚀 [Fix] Force re-render for real-time connection line updates
+              setDragUpdateTick(t => t + 1);
             }} // 🚀 Enable Safe Relative Drag
           />
         ))}
@@ -4629,6 +5045,14 @@ const AppContent: React.FC = () => {
         isOpen={showSettingsPanel}
         onClose={() => setShowSettingsPanel(false)}
         initialView={settingsInitialView}
+        onOpenSupplierManager={() => {
+          setShowSettingsPanel(false);
+          onOpenSupplierManager?.();
+        }}
+        onOpenCostEstimation={() => {
+          setShowSettingsPanel(false);
+          onOpenCostEstimation?.();
+        }}
       />
 
       {/* Storage Selection Modal (Post-Login) */}
@@ -4667,8 +5091,8 @@ const AppContent: React.FC = () => {
 
 
 
-      {/* [NEW] Draft Node Overlay (Fixed Center) */}
-      {draftNodeId && (() => {
+      {/* [NEW] Draft Node Overlay (Fixed Center) - 🚀 [已禁用] 用户不想要追问时的预览卡片 */}
+      {/* {draftNodeId && (() => {
         const draftNode = activeCanvas?.promptNodes.find(n => n.id === draftNodeId);
         // 🚀 [Fix] 只有当节点仍然是草稿时才显示叠加层，生成中的节点应该只在画布上显示
         if (!draftNode || !draftNode.isDraft) return null;
@@ -4692,24 +5116,25 @@ const AppContent: React.FC = () => {
               paddingBottom: 110
             }}
           >
-            {/* Wrapper to handle PromptNode's bottom-center anchor */}
+           
             <div className="relative pointer-events-auto transform translate-y-[50%]">
               <PromptNodeComponent
                 node={displayNode}
-                onPositionChange={() => { }} // No-op during preview
+                onPositionChange={() => { }} 
                 isSelected={true}
                 onSelect={() => { }}
-                zoomScale={1} // Always 1:1 in preview? Or match canvas? User said "center area". 1:1 is clearer.
+                zoomScale={1} 
                 isMobile={isMobile}
                 onCancel={handleCancelGeneration}
-                // Disable drag for the overlay
+               
                 onConnectStart={() => { }}
-                onPin={handlePinDraft} // 🚀 [Fix] Add Pin Button to Overlay
+                onPin={handlePinDraft} 
               />
             </div>
           </div>
         );
-      })()}
+      })()} */}
+
 
 
       {/* 全局灯箱与搜索面板 (搜索面板置于底部，灯箱置于最上层) */}
@@ -4720,10 +5145,11 @@ const AppContent: React.FC = () => {
           onClose={() => setPreviewImages(null)}
           onInpaint={(image, maskBase64, prompt) => {
             const userPrompt = (prompt || '局部重绘').trim();
-            // 按照用户要求，如果没有选区（没涂抹），则附带整体重绘指令；如果涂抹了，则强制限定只修改选区。
+            // 🚀 [简化对齐] 这里的 prompt 将会进入优化器，因此不需要带有太重的硬编码中文指令。
+            // 只需要标明核心意图：如果是 mask，强调修改涂抹区域；如果是全局参考，强调重绘。
             const finalPrompt = maskBase64
-              ? `${userPrompt} (请只修改图片中选区的部分，其他未框选或未涂抹的部分绝对禁止修改，保持原样)`
-              : `${userPrompt} (请参考提供的图片进行重绘和修改)`;
+              ? `${userPrompt} (change masked area only)`
+              : `${userPrompt} (remix based on image)`;
 
             const sourceImage = activeCanvas?.imageNodes.find(img => img.id === image.id) || image;
             const parentPromptId = sourceImage.parentPromptId;
@@ -4867,7 +5293,7 @@ const AppContent: React.FC = () => {
                 migrateNodes(selectedNodeIds, newCanvasId);
                 switchCanvas(newCanvasId);
 
-                import('./services/notificationService').then(({ notify }) => {
+                import('./services/system/notificationService').then(({ notify }) => {
                   notify.success('迁移成功', `已创建新项目并迁移 ${selectedNodeIds.length} 个项目`);
                 });
               }, 50);
@@ -4880,6 +5306,9 @@ const AppContent: React.FC = () => {
           clearSelection();
         }}
       />
+
+      {/* 🚀 全局充值模态框 */}
+      <RechargeModal />
     </div>
   );
 };
@@ -4887,11 +5316,47 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   const { user, loading } = useAuth();
 
+  // New Supplier System States
+  const [showApiKeyManager, setShowApiKeyManager] = useState(false);
+  const [showCostEstimation, setShowCostEstimation] = useState(false);
+
+  // Global ApiKeyModal State
+  const [showGlobalApiKeyModal, setShowGlobalApiKeyModal] = useState(false);
+  const [editGlobalSupplier, setEditGlobalSupplier] = useState<Supplier | null>(null);
+
+  // Global modal handlers
+  const openGlobalApiKeyModal = (supplier?: Supplier) => {
+    setEditGlobalSupplier(supplier || null);
+    setShowGlobalApiKeyModal(true);
+  };
+
+  const closeGlobalApiKeyModal = () => {
+    setShowGlobalApiKeyModal(false);
+    setEditGlobalSupplier(null);
+  };
+
+  // Expose global API for opening modal from anywhere
+  useEffect(() => {
+    (window as any).openApiKeyModal = openGlobalApiKeyModal;
+    apiKeyModalService.setOpenCallback(openGlobalApiKeyModal);
+    return () => {
+      delete (window as any).openApiKeyModal;
+      apiKeyModalService.setOpenCallback(() => { });
+    };
+  }, [openGlobalApiKeyModal]);
+
   // Initialize update check on mount (must be before any conditional returns per React Rules of Hooks)
   useEffect(() => {
     // Dynamic Import for Update Check
-    import('./services/updateCheck').then(({ initUpdateCheck }) => {
+    import('./services/system/updateCheck').then(({ initUpdateCheck }) => {
       initUpdateCheck();
+    });
+  }, []);
+
+  // 🚀 Pre-load admin models for credit-based model display
+  useEffect(() => {
+    import('./services/model/adminModelService').then(({ adminModelService }) => {
+      adminModelService.loadAdminModels();
     });
   }, []);
 
@@ -4911,14 +5376,51 @@ const App: React.FC = () => {
     );
   }
 
+  // New Supplier System Pages
+  if (showApiKeyManager) {
+    return (
+      <ThemeProvider>
+        <ApiKeyManager
+          onNavigateToPricing={() => {
+            setShowApiKeyManager(false);
+            setShowCostEstimation(true);
+          }}
+        />
+      </ThemeProvider>
+    );
+  }
+
+  if (showCostEstimation) {
+    return (
+      <ThemeProvider>
+        <CostEstimation
+          onBack={() => setShowCostEstimation(false)}
+        />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider>
-      <CanvasProvider>
-        <GpuBackground opacity={0.4} showConnections={true} />
-        <NotificationToast />
-        {/* <UpdateNotification /> moved to InfiniteCanvas */}
-        <AppContent />
-      </CanvasProvider>
+      <BillingProvider>
+        <CanvasProvider>
+          <GpuBackground opacity={0.4} showConnections={true} />
+          <NotificationToast />
+          {/* <UpdateNotification /> moved to InfiniteCanvas */}
+          <AppContent
+            onOpenSupplierManager={() => setShowApiKeyManager(true)}
+            onOpenCostEstimation={() => setShowCostEstimation(true)}
+            onOpenGlobalApiKeyModal={openGlobalApiKeyModal}
+          />
+        </CanvasProvider>
+      </BillingProvider>
+
+      {/* Global API Key Modal - 在所有 Provider 之外，确保最高层级 */}
+      <ApiKeyModal
+        isOpen={showGlobalApiKeyModal}
+        onClose={closeGlobalApiKeyModal}
+        editSupplier={editGlobalSupplier}
+      />
     </ThemeProvider>
   );
 };

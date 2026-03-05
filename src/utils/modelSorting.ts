@@ -1,4 +1,4 @@
-import { getModelDisplayInfo } from '../services/modelCapabilities';
+import { getModelDisplayInfo } from '../services/model/modelCapabilities';
 
 const PINNED_MODELS_KEY = 'kk_pinned_models';
 const NANO_BANANA_KEYWORDS = ['nano', 'banana'];
@@ -41,18 +41,19 @@ export const toggleModelPin = (modelId: string) => {
     window.dispatchEvent(new Event('model-pinned-change'));
 };
 
-const getModelWeight = (modelId: string, pinned: string[]): number => {
+const getModelWeight = (model: any, pinned: string[]): number => {
     let weight = 0;
+    const modelId = typeof model === 'string' ? model : (model.id || '');
     const lowerId = modelId.toLowerCase();
 
-    // 1. User Pinned Priority (Supreme)
-    if (pinned.includes(modelId)) {
-        weight += 100000; // Ensure pinned items are always at the very top
+    // 1. 系统内置模型优先级 (最高优先级)
+    if (model.isSystemInternal || NANO_BANANA_KEYWORDS.some(k => lowerId.includes(k))) {
+        weight += 1000000;
     }
 
-    // 2. Nano Banana Priority (High)
-    if (NANO_BANANA_KEYWORDS.some(k => lowerId.includes(k))) {
-        weight += 10000;
+    // 2. 用户顶置优先级
+    if (pinned.includes(modelId)) {
+        weight += 100000;
     }
 
     return weight;
@@ -205,32 +206,47 @@ export const filterAndSortModels = (models: any[], searchText: string, customiza
 };
 
 export const sortModels = (models: any[]): any[] => {
-    // ... (existing sortModels logic remains the same, but implemented cleaner if possible)
     const pinned = getPinnedModels();
 
+    // 🚀 [Fix] 新的排序逻辑：
+    // 1. 置顶模型在最上面（按置顶顺序）
+    // 2. 按厂商(provider)分组
+    // 3. 每组内按 Z-A (字母倒序) 排列
+    
+    const pinnedOrder = new Map(pinned.map((id, index) => [id, index]));
+    
     const sorted = [...models].sort((a, b) => {
-        const idA = a.id || a;
-        const idB = b.id || b;
-
-        const weightA = getModelWeight(idA, pinned);
-        const weightB = getModelWeight(idB, pinned);
-
-        if (weightA !== weightB) return weightB - weightA;
-
-        const charA = idA[0].toLowerCase();
-        const charB = idB[0].toLowerCase();
-
-        if (charA !== charB) return charA.localeCompare(charB);
-
-        const verA = extractVersionNumber(idA);
-        const verB = extractVersionNumber(idB);
-        if (verA !== verB) return verB - verA;
-
-        const sufA = getSuffixWeight(idA);
-        const sufB = getSuffixWeight(idB);
-        if (sufA !== sufB) return sufB - sufA;
-
-        return idA.localeCompare(idB);
+        const idA = typeof a === 'string' ? a : a.id;
+        const idB = typeof b === 'string' ? b : b.id;
+        const providerA = (typeof a === 'string' ? '' : (a.provider || '')).toLowerCase();
+        const providerB = (typeof b === 'string' ? '' : (b.provider || '')).toLowerCase();
+        
+        // 1. 置顶模型优先
+        const isPinnedA = pinnedOrder.has(idA);
+        const isPinnedB = pinnedOrder.has(idB);
+        
+        if (isPinnedA && isPinnedB) {
+            // 都是置顶模型，按置顶顺序排列
+            return (pinnedOrder.get(idA) || 0) - (pinnedOrder.get(idB) || 0);
+        }
+        if (isPinnedA) return -1;
+        if (isPinnedB) return 1;
+        
+        // 2. 系统内置模型次之
+        const isSystemA = typeof a !== 'string' && a.isSystemInternal;
+        const isSystemB = typeof b !== 'string' && b.isSystemInternal;
+        if (isSystemA && !isSystemB) return -1;
+        if (!isSystemA && isSystemB) return 1;
+        
+        // 3. 按厂商分组（厂商按字母顺序 A-Z）
+        if (providerA !== providerB) {
+            return providerA.localeCompare(providerB);
+        }
+        
+        // 4. 同厂商内按 Z-A 排序（字母倒序）
+        const nameA = (typeof a === 'string' ? a : (a.name || a.label || a.id || '')).toLowerCase();
+        const nameB = (typeof b === 'string' ? b : (b.name || b.label || b.id || '')).toLowerCase();
+        return nameB.localeCompare(nameA);
     });
 
     return sorted;

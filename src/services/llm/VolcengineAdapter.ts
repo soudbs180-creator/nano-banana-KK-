@@ -1,5 +1,5 @@
 import { LLMAdapter, ChatOptions, ImageGenerationOptions } from './LLMAdapter';
-import { KeySlot } from '../keyManager';
+import { KeySlot } from '../auth/keyManager';
 
 export class VolcengineAdapter implements LLMAdapter {
     id = 'volcengine-adapter';

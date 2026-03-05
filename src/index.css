@@ -14,7 +14,7 @@
   --bg-hover: #e5e5e5;
   --bg-canvas: #f3f4f6;
 
-  /* 兼容旧变量 */
+  /* 兼容旧变�?*/
   --bg-primary: var(--bg-base);
   --bg-secondary: var(--bg-surface);
   --bg-tertiary: var(--bg-elevated);
@@ -33,7 +33,7 @@
   --border-default: rgba(0, 0, 0, 0.08);
   --border-strong: rgba(0, 0, 0, 0.15);
   --border-focus: rgba(59, 130, 246, 0.5);
-  /* 兼容旧变量 */
+  /* 兼容旧变�?*/
   --border-light: var(--border-subtle);
   --border-medium: var(--border-default);
 
@@ -45,7 +45,7 @@
   --text-disabled: rgba(0, 0, 0, 0.2);
   --text-color: var(--text-primary);
 
-  /* ===== 强调色 ===== */
+  /* ===== 强调�?===== */
   --accent-blue: #2563eb;
   --accent-green: #16a34a;
   --accent-red: #dc2626;
@@ -54,6 +54,7 @@
   --accent-cyan: #0891b2;
   --accent-indigo: #4f46e5;
   --accent-orange: #ea580c;
+  --connector-color: #4338ca;
   --accent-pink: #db2777;
   --accent-color: var(--accent-blue);
 
@@ -103,7 +104,7 @@
   --duration-slow: 400ms;
   --duration-slower: 600ms;
 
-  /* 兼容旧变量 */
+  /* 兼容旧变�?*/
   --transition-fast: var(--duration-fast) var(--ease-default);
   --transition-normal: var(--duration-normal) var(--ease-default);
   --transition-slow: var(--duration-slow) var(--ease-default);
@@ -112,14 +113,14 @@
   /* ===== 网格 ===== */
   --grid-dot: rgba(0, 0, 0, 0.1);
 
-  /* ===== 字体系统 - 统一字体族 ===== */
+  /* ===== 字体系统 - 统一字体�?===== */
   --font-sans: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
 
   /* ===== 字体大小系统 ===== */
   /* 标题层级 */
   --text-h1: 28px;
-  /* 大标题：页面标题、Hero区 */
+  /* 大标题：页面标题、Hero�?*/
   --text-h2: 22px;
   /* 中标题：区块标题 */
   --text-h3: 18px;
@@ -129,7 +130,7 @@
   --text-body-lg: 16px;
   /* 大正文：重要内容 */
   --text-body-md: 14px;
-  /* 中正文：默认内容（最常用） */
+  /* 中正文：默认内容（最常用�?*/
   --text-body-sm: 13px;
   /* 小正文：紧凑内容 */
 
@@ -139,15 +140,15 @@
   --text-2xs: 11px;
   /* 中标注：辅助文字 */
   --text-3xs: 10px;
-  /* 小标注：最小文字 */
+  /* 小标注：最小文�?*/
 
   /* 字重 */
   --font-normal: 400;
   /* 正文 */
   --font-medium: 500;
-  /* 强调正文、按钮 */
+  /* 强调正文、按�?*/
   --font-semibold: 600;
-  /* 标题、重要文字 */
+  /* 标题、重要文�?*/
   --font-bold: 700;
   /* 特别强调 */
 
@@ -165,7 +166,7 @@ body {
   transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 为所有可能受主题影响的属性添加过渡 */
+/* 为所有可能受主题影响的属性添加过�?*/
 * {
   transition-property: background-color, border-color, color, box-shadow;
   transition-duration: 0.25s;
@@ -181,30 +182,30 @@ iframe {
   transition: none !important;
 }
 
-/* ===== 暗色模式 - 纯黑主题 ===== */
+/* ===== 暗色模式 - 深灰主题 (提亮版) ===== */
 body.dark-mode {
-  /* 背景层级 - 纯黑 */
-  --bg-base: #000000;
-  --bg-elevated: #0a0a0a;
-  --bg-surface: #1a1a1a;
-  --bg-overlay: #1e1e1e;
-  --bg-input: #242424;
-  --bg-hover: #2a2a2a;
-  --bg-canvas: #000000;
+  /* 背景层级 - 深灰色，便于区分（进一步提亮） */
+  --bg-base: #141416;
+  --bg-elevated: #1e1e21;
+  --bg-surface: #2a2a2e;
+  --bg-overlay: #323236;
+  --bg-input: #3a3a3e;
+  --bg-hover: #424246;
+  --bg-canvas: #0f0f10;
 
-  /* 兼容旧变量 */
+  /* 兼容旧变�?*/
   --bg-primary: var(--bg-base);
   --bg-secondary: var(--bg-surface);
   --bg-tertiary: var(--bg-overlay);
   --bg-color: var(--bg-surface);
   --menu-bg: var(--bg-overlay);
 
-  /* Toolbar & Glass */
-  --toolbar-bg: rgba(20, 20, 20, 0.85);
-  --toolbar-bg-dark: rgba(26, 26, 26, 0.9);
-  --toolbar-hover: rgba(255, 255, 255, 0.06);
-  --toolbar-active: rgba(255, 255, 255, 0.1);
-  --toolbar-divider: rgba(255, 255, 255, 0.08);
+  /* Toolbar & Glass - 提亮版 */
+  --toolbar-bg: rgba(37, 37, 40, 0.85);
+  --toolbar-bg-dark: rgba(42, 42, 46, 0.9);
+  --toolbar-hover: rgba(255, 255, 255, 0.08);
+  --toolbar-active: rgba(255, 255, 255, 0.12);
+  --toolbar-divider: rgba(255, 255, 255, 0.1);
 
   /* 边框 */
   --border-subtle: rgba(255, 255, 255, 0.06);
@@ -222,7 +223,7 @@ body.dark-mode {
   --text-disabled: rgba(255, 255, 255, 0.2);
   --text-color: var(--text-primary);
 
-  /* 强调色 - 暗色模式略微调亮 */
+  /* 强调�?- 暗色模式略微调亮 */
   --accent-blue: #3b82f6;
   --accent-green: #22c55e;
   --accent-red: #ef4444;
@@ -231,6 +232,7 @@ body.dark-mode {
   --accent-cyan: #06b6d4;
   --accent-indigo: #6366f1;
   --accent-orange: #f97316;
+  --connector-color: #818cf8;
   --accent-pink: #ec4899;
   --accent-color: var(--accent-blue);
 
@@ -269,7 +271,7 @@ body.dark-mode {
   --touch-target-comfortable: 48px;
   --touch-target-spacious: 56px;
 
-  /* 移动端间距 */
+  /* 移动端间�?*/
   --mobile-margin-xs: 12px;
   --mobile-margin-sm: 16px;
   --mobile-margin-md: 20px;
@@ -297,7 +299,7 @@ body.dark-mode {
     --radius-xl: 20px;
     --radius-2xl: 28px;
 
-    /* 移动端边距 */
+    /* 移动端边�?*/
     --mobile-margin: 16px;
   }
 }
@@ -355,7 +357,7 @@ body.dark-mode {
   }
 }
 
-/* 缩放退场 */
+/* 缩放退�?*/
 @keyframes scaleOut {
   from {
     opacity: 1;
@@ -381,7 +383,7 @@ body.dark-mode {
   }
 }
 
-/* 弹窗退场 */
+/* 弹窗退�?*/
 @keyframes modalOut {
   from {
     opacity: 1;
@@ -446,17 +448,24 @@ body.dark-mode {
   }
 }
 
-/* 卡片弹出入场 */
-@keyframes cardPopIn {
-  from {
+/* 卡片弹出入场 - 从底部输入框飞出动画 */
+@keyframes cardFlyOut {
+  0% {
     opacity: 0;
-    transform: scale(0.9);
+    transform: translate(-50%, 100px) scale(0.6);
   }
 
-  to {
+  100% {
     opacity: 1;
-    transform: scale(1);
+    transform: translate(-50%, -50%) scale(1);
   }
+}
+
+.prompt-node.is-new {
+  animation: cardFlyOut 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: center bottom;
+  pointer-events: none;
+  /* 动画期间禁止交互 */
 }
 
 /* 加载脉冲 */
@@ -472,7 +481,7 @@ body.dark-mode {
   }
 }
 
-/* 生成中流光 - 黑白灰扫光效果 */
+/* 生成中流�?- 黑白灰扫光效�?*/
 @keyframes shimmer {
   0% {
     background-position: -200% 0;
@@ -480,6 +489,20 @@ body.dark-mode {
 
   100% {
     background-position: 200% 0;
+  }
+}
+
+.animate-shimmer-sweep {
+  animation: shimmerSweep 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes shimmerSweep {
+  0% {
+    transform: translateX(-150%) rotate(-15deg);
+  }
+
+  100% {
+    transform: translateX(150%) rotate(-15deg);
   }
 }
 
@@ -513,7 +536,7 @@ body.dark-mode {
   }
 }
 
-/* 边框流光 (生成中) */
+/* 边框流光 (生成�? */
 @keyframes borderGlow {
 
   0%,
@@ -560,7 +583,7 @@ body.dark-mode {
   }
 }
 
-/* 外边框柔和呼吸 */
+/* 外边框柔和呼�?*/
 @keyframes borderGlowPulse {
 
   0%,
@@ -647,7 +670,7 @@ body,
   background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, transparent 70%);
   pointer-events: none;
   z-index: 0;
-  /* 快速过渡 */
+  /* 快速过�?*/
   transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   opacity: 1;
 }
@@ -661,7 +684,7 @@ body {
   background-color: var(--bg-color);
   color: var(--text-color);
   /* transition: all 0.3s ease;  <-- CAUSES JELLY EFFECT ON DRAG */
-  /* 快速过渡,避免卡顿 */
+  /* 快速过�?避免卡顿 */
   transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
     color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -761,12 +784,12 @@ input[type=number] {
    ============================================ */
 
 /* 
- * 仅为关键元素添加快速过渡
- * 200ms 快速响应,避免卡顿感
+ * 仅为关键元素添加快速过�?
+ * 200ms 快速响�?避免卡顿�?
  * 移除全局规则以提升性能
  */
 
-/* 拖拽时禁用所有过渡 */
+/* 拖拽时禁用所有过�?*/
 .dragging,
 .dragging * {
   transition: none !important;
@@ -776,7 +799,7 @@ input[type=number] {
    iOS Style Animations & Interactions (Apple HIG)
    ============================================ */
 
-/* 🚀 触控目标 - Apple HIG推荐最小44x44pt */
+/* 🚀 触控目标 - Apple HIG推荐最�?4x44pt */
 .touch-target {
   min-height: 44px;
   min-width: 44px;
@@ -816,7 +839,7 @@ button:active {
   transition-duration: 100ms;
 }
 
-/* 覆盖 Tailwind 默认的 transition-all 使其也带弹簧感 */
+/* 覆盖 Tailwind 默认�?transition-all 使其也带弹簧�?*/
 .transition-all {
   transition-property: all;
   transition-timing-function: var(--ease-spring);
@@ -834,7 +857,7 @@ button:active {
   transition: all 500ms cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
-/* 🚀 iOS弹性过渡 */
+/* 🚀 iOS弹性过�?*/
 .ios-spring {
   transition: all 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -902,7 +925,7 @@ button:active {
   margin: 10px auto 0;
 }
 
-/* 🚀 移动端涟漪效果 */
+/* 🚀 移动端涟漪效�?*/
 .ripple {
   position: relative;
   overflow: hidden;
@@ -926,10 +949,10 @@ button:active {
   transition: 0s;
 }
 
-/* 🚀 移动端按钮增强 */
+/* 🚀 移动端按钮增�?*/
 @media (max-width: 768px) {
 
-  /* 所有按钮增大触控区域 */
+  /* 所有按钮增大触控区�?*/
   button,
   [role="button"] {
     min-height: 44px;
@@ -945,7 +968,7 @@ button:active {
     min-height: 44px;
   }
 
-  /* 卡片内按钮紧凑模式 */
+  /* 卡片内按钮紧凑模�?*/
   .card-btn-compact {
     min-height: 32px;
     padding: 6px 8px;
@@ -1011,6 +1034,20 @@ button:active {
   -webkit-backdrop-filter: blur(40px) saturate(200%);
   border: 1px solid var(--border-medium);
   box-shadow: var(--shadow-lg);
+}
+
+.glass-frost {
+  background: rgba(18, 18, 20, 0.52);
+  backdrop-filter: blur(26px) saturate(180%);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-frost {
+    background: rgba(18, 18, 20, 0.78);
+  }
 }
 
 .toolbar {
@@ -1100,6 +1137,18 @@ button:active {
   background-size: 24px 24px;
   background-position: center center;
   transition: background-image 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* GSAP Flying Animation Override: 
+   Temporarily make the canvas container transparent and sit above the prompt bar 
+   (z-index > 100) so that flying cards appear on top of everything. */
+body.is-animating-card .canvas-container {
+  background-color: transparent !important;
+  z-index: 105 !important;
+}
+
+body.is-animating-card .canvas-grid {
+  opacity: 0.1 !important;
 }
 
 /* ============================================
@@ -1310,7 +1359,7 @@ button:active {
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  max-width: 640px;
+  max-width: 720px;
   /* Fallback for browsers without backdrop-filter support */
   background: rgba(255, 255, 255, 0.85);
   /* Modern browsers with backdrop-filter */
@@ -1324,7 +1373,7 @@ button:active {
   transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
-/* 支持backdrop-filter时使用更透明的背景 */
+/* 支持backdrop-filter时使用更透明的背�?*/
 @supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
   .input-bar {
     background: rgba(255, 255, 255, 0.6);
@@ -1336,7 +1385,7 @@ button:active {
 }
 
 body.dark-mode .input-bar {
-  background: rgba(24, 24, 27, 0.85);
+  background: rgba(37, 37, 40, 0.9);
 }
 
 .input-bar-inner {
@@ -2014,7 +2063,7 @@ body.dark-mode .input-bar {
   line-height: var(--leading-normal);
 }
 
-/* 兼容旧类名 */
+/* 兼容旧类�?*/
 .text-sm {
   font-size: var(--text-body-sm);
   line-height: var(--leading-normal);
@@ -2244,9 +2293,9 @@ body.dark-mode .input-bar {
   scrollbar-width: none;
 }
 
-/* Refined Pop-in Animation */
+/* Refined Pop-in Animation (fallback for non-GSAP contexts) */
 .animate-cardPopIn {
-  animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: cardPopIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Animation Keyframes */
@@ -2366,10 +2415,10 @@ a {
 
 .generating-flow-bg {
   position: relative;
-  /* ❌ 移除: overflow, animation, will-change */
+  /* �?移除: overflow, animation, will-change */
 }
 
-/* Light Mode: 纯色不透明背景 - 浅灰色 */
+/* Light Mode: 纯色不透明背景 - 浅灰�?*/
 body:not(.dark-mode) .generating-flow-bg {
   background-color: #f3f4f6;
   /* 不透明灰色 */
@@ -2380,7 +2429,7 @@ body:not(.dark-mode) .generating-flow-bg {
   color: #000000;
 }
 
-/* Dark Mode: 纯色不透明背景 - 深灰色 */
+/* Dark Mode: 纯色不透明背景 - 深灰�?*/
 body.dark-mode .generating-flow-bg {
   background-color: #1f2937;
   /* 不透明深灰 */
@@ -2393,7 +2442,7 @@ body.dark-mode .generating-flow-bg {
 
 
 /* Sweep Removed for Softness */
-/* 添加到 index.css 末尾的新动画 */
+/* 添加�?index.css 末尾的新动画 */
 
 /* 呼吸效果（慢速脉冲） */
 @keyframes pulse-slow {
@@ -2444,7 +2493,7 @@ body.dark-mode .generating-flow-bg {
 }
 
 /* ============================================== 
-   占位卡 - 呼吸光晕动画（黑白灰主题适配）
+   占位�?- 呼吸光晕动画（黑白灰主题适配�?
    ============================================== */
 @keyframes breatheGlow {
 
@@ -2490,7 +2539,7 @@ body.dark-mode .placeholder-breathe {
   border-radius: 50%;
 }
 
-/* Hover时加速动画 - 充能效果 */
+/* Hover时加速动�?- 充能效果 */
 .group:hover .uiverse .circle {
   animation-duration: calc(var(--duration) / 3) !important;
 }
@@ -2507,7 +2556,7 @@ body.dark-mode .placeholder-breathe {
   opacity: 1;
 }
 
-/* 12个渐变圆圈 - 不同的颜色和动画参数 */
+/* 12个渐变圆�?- 不同的颜色和动画参数 */
 .uiverse .circle-1 {
   --circle-color: 67, 56, 202;
   --circle-color-alt: 109, 40, 217;
@@ -2635,8 +2684,8 @@ body.dark-mode .placeholder-breathe {
    ============================================ */
 
 /**
- * 🚀 GPU 加速基础类
- * 使用 translateZ(0) 或 translate3d() 强制创建 GPU 合成层
+ * 🚀 GPU 加速基础�?
+ * 使用 translateZ(0) �?translate3d() 强制创建 GPU 合成�?
  * 适用于：需要频繁变换的元素（拖拽、动画、滚动）
  */
 .gpu-accelerated {
@@ -2666,7 +2715,7 @@ body.dark-mode .placeholder-breathe {
 
 /**
  * 🚀 画布专用 GPU 优化
- * 针对 InfiniteCanvas 的无限拖拽场景
+ * 针对 InfiniteCanvas 的无限拖拽场�?
  */
 .gpu-canvas {
   transform: translate3d(var(--canvas-x, 0), var(--canvas-y, 0), 0) scale(var(--canvas-scale, 1));
@@ -2677,8 +2726,8 @@ body.dark-mode .placeholder-breathe {
 }
 
 /**
- * 🚀 图片 GPU 加速
- * 优化图片渲染性能，减少重绘
+ * 🚀 图片 GPU 加�?
+ * 优化图片渲染性能，减少重�?
  */
 .gpu-image {
   transform: translateZ(0);
@@ -2689,7 +2738,7 @@ body.dark-mode .placeholder-breathe {
 }
 
 /**
- * 🚀 动画专用 GPU 加速
+ * 🚀 动画专用 GPU 加�?
  * 用于有动画的元素
  */
 .gpu-animate {
@@ -2700,8 +2749,8 @@ body.dark-mode .placeholder-breathe {
 }
 
 /**
- * 🚀 虚拟化容器优化
- * 使用 content-visibility 实现虚拟化渲染
+ * 🚀 虚拟化容器优�?
+ * 使用 content-visibility 实现虚拟化渲�?
  */
 .gpu-virtualize {
   content-visibility: auto;
@@ -2710,7 +2759,7 @@ body.dark-mode .placeholder-breathe {
 
 /**
  * 🚀 滚动容器优化
- * 平滑滚动 + GPU 加速
+ * 平滑滚动 + GPU 加�?
  */
 .gpu-scroll {
   transform: translateZ(0);
@@ -2733,7 +2782,7 @@ body.dark-mode .placeholder-breathe {
 
 /**
  * 🚀 卡片 GPU 优化
- * 用于可拖拽、可交互的卡片
+ * 用于可拖拽、可交互的卡�?
  */
 .gpu-card {
   transform: translateZ(0);
@@ -2744,7 +2793,7 @@ body.dark-mode .placeholder-breathe {
 
 /**
  * 🚀 粒子/特效 GPU 优化
- * 用于粒子效果、背景动画
+ * 用于粒子效果、背景动�?
  */
 .gpu-particle {
   transform: translate3d(0, 0, 0);
@@ -2756,14 +2805,14 @@ body.dark-mode .placeholder-breathe {
 
 /**
  * 🚀 清除 will-change (性能优化)
- * 动画结束后应移除 will-change 以释放 GPU 内存
+ * 动画结束后应移除 will-change 以释�?GPU 内存
  */
 .gpu-idle {
   will-change: auto;
 }
 
 /**
- * 🚀 高性能选择器
+ * 🚀 高性能选择�?
  * 批量应用 GPU 加速到常用动画元素
  */
 .animate-fadeIn,
@@ -2779,20 +2828,20 @@ body.dark-mode .placeholder-breathe {
   -webkit-backface-visibility: hidden;
 }
 
-/* 🚀 拖拽状态优化 - 禁用过渡提升性能 */
+/* 🚀 拖拽状态优�?- 禁用过渡提升性能 */
 .is-dragging,
 .is-dragging * {
   transition: none !important;
   will-change: transform !important;
 }
 
-/* 🚀 缩放状态优化 */
+/* 🚀 缩放状态优�?*/
 .is-zooming {
   will-change: transform !important;
   transition: none !important;
 }
 
-/* 🚀 降低动画复杂度 (省电模式/低性能设备) */
+/* 🚀 降低动画复杂�?(省电模式/低性能设备) */
 @media (prefers-reduced-motion: reduce) {
 
   *,
@@ -2842,7 +2891,7 @@ body.dark-mode .placeholder-breathe {
 
 
 
-/* 🚀 优化后的内发光动画 (Opacity based, GPU friendly) */
+/* 🚀 优化后的内发光动�?(Opacity based, GPU friendly) */
 .shimmer-static-glow {
   box-shadow: inset 0 0 60px 20px rgba(255, 255, 255, 0.15),
     inset 0 0 100px 40px rgba(255, 255, 255, 0.08);
@@ -2875,7 +2924,7 @@ body.dark-mode .placeholder-breathe {
 }
 
 /* ============================================== 
-   生成态连接线（脉冲线）
+   生成态连接线（脉冲线�?
    ============================================== */
 @keyframes connector-dot-pulse {
 

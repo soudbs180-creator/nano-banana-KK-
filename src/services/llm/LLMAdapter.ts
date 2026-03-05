@@ -1,4 +1,5 @@
-import { KeySlot } from '../keyManager';
+import { GenerationMode } from '../../types';
+import { KeySlot } from '../auth/keyManager';
 
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'system';
@@ -18,6 +19,9 @@ export interface ProviderConfig {
         imageConfig?: {
             aspectRatio?: string; // "16:9", "1:1" etc
             imageSize?: string;   // "2K", "4K"
+        };
+        thinkingConfig?: {
+            thinkingLevel?: 'minimal' | 'high';
         };
         // Tools/Grounding
         tools?: any[];
@@ -84,12 +88,23 @@ export interface ImageGenerationOptions {
      */
     imageSize?: string;
 
-    referenceImages?: string[]; // Base64 strings
+    // 🚀 [Fix] 支持携带 MIME 类型的参考图（严格对齐 Google 官方文档）
+    referenceImages?: Array<string | { data: string; mimeType: string }>;
 
     // 🚀 Advanced Editing Options
     maskUrl?: string; // Base64 mask for inpainting
     editMode?: 'inpaint' | 'outpaint' | 'vectorize' | 'reframe' | 'upscale' | 'replace-background' | 'edit';
     preferredKeyId?: string;
+    signal?: AbortSignal; // 🚀 支持请求取消
+    onTaskId?: (id: string) => void; // 🚀 [New] 异步任务 ID 回调
+}
+
+// 🚀 [Fix] 工具函数：从联合类型中提取 base64 数据和 MIME 类型
+export function extractRefImageData(ref: string | { data: string; mimeType: string }): { data: string; mimeType: string } {
+    if (typeof ref === 'string') {
+        return { data: ref, mimeType: 'image/png' };
+    }
+    return ref;
 }
 
 export interface ImageGenerationResult {
@@ -106,12 +121,14 @@ export interface ImageGenerationResult {
     providerName?: string; // 🚀 User-defined Channel Name (e.g. 'Google Official')
     modelName?: string; // 🚀 User-friendly Model Name (e.g. 'Nano Banana Pro')
     keySlotId?: string;
+    taskId?: string; // 🚀 [New] 异步任务 ID (用于持久化和恢复)
 
     // Metadata for debugging/display
     metadata?: {
         aspectRatio?: string;
         dimensions?: { width: number; height: number };
         requestId?: string;
+        apiDurationMs?: number;
         requestPath?: string;
         requestBodyPreview?: string;
         pythonSnippet?: string;
@@ -146,6 +163,8 @@ export interface VideoGenerationOptions {
     watermark?: boolean; // 是否添加水印
     providerConfig?: ProviderConfig;
     preferredKeyId?: string;
+    signal?: AbortSignal; // 🚀 支持请求取消
+    onTaskId?: (id: string) => void; // 🚀 [New] 异步任务 ID 回调
 }
 
 export interface VideoGenerationResult {
@@ -177,6 +196,7 @@ export interface AudioGenerationOptions {
     speed?: number; // MiniMax TTS 语速
     providerConfig?: ProviderConfig;
     preferredKeyId?: string;
+    signal?: AbortSignal; // 🚀 支持请求取消
 }
 
 export interface AudioGenerationResult {
@@ -236,4 +256,7 @@ export interface LLMAdapter {
      * Audio Generation (Optional)
      */
     generateAudio?(options: AudioGenerationOptions, keySlot: KeySlot): Promise<AudioGenerationResult>;
+
+    // 🚀 [Persistence] Polling for async tasks
+    checkTaskStatus?: (taskId: string, mode: GenerationMode, keySlot: KeySlot) => Promise<ImageGenerationResult | VideoGenerationResult | AudioGenerationResult>;
 }

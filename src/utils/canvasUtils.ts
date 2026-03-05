@@ -55,9 +55,9 @@ export const getViewportPreferredPosition = (
     const rightOffset = offsets.right || 0;
     const visibleWidth = vw - leftOffset - rightOffset;
 
-    // Get PromptBar height to calculate visible area
-    const promptBarHeight = 110;
-    const visibleHeight = vh - promptBarHeight;
+    // Get PromptBar height dynamically to avoid new cards overlapping with input bar
+    const promptBarHeight = Math.max(110, getPromptBarHeight() + 12);
+    const visibleHeight = Math.max(220, vh - promptBarHeight);
 
     // Center X relative to VISIBLE workspace (accounting for sidebars)
     const screenCenterX = leftOffset + (visibleWidth / 2);
@@ -73,13 +73,7 @@ export const getViewportPreferredPosition = (
     const worldX = (screenCenterX - transform.x) / transform.scale;
     const worldY = (screenTargetY - transform.y) / transform.scale;
 
-    console.log('[canvasUtils] Refined Multi-Offset Positioning:', {
-        viewport: { w: vw, h: vh },
-        visibleWidth,
-        offsets,
-        screen: { x: screenCenterX, y: screenTargetY },
-        world: { x: worldX, y: worldY }
-    });
+
 
     return {
         x: Math.round(worldX),

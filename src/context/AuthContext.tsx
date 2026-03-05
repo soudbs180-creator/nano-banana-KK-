@@ -1,13 +1,16 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
+import { tempUserService, type TempUserSession } from '../services/auth/tempUserService';
 
 interface AuthContextType {
     session: Session | null;
     user: User | null;
     loading: boolean;
     signOut: () => Promise<void>;
-    bypassAuth: (email?: string, name?: string) => Promise<void>;
+    loginAsTempUser: () => Promise<void>;
+    isTempUser: boolean;
+    tempUserExpiry: number | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -15,7 +18,9 @@ const AuthContext = createContext<AuthContextType>({
     user: null,
     loading: true,
     signOut: async () => { },
-    bypassAuth: async () => { },
+    loginAsTempUser: async () => { },
+    isTempUser: false,
+    tempUserExpiry: null,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -24,6 +29,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const [tempUserSession, setTempUserSession] = useState<TempUserSession | null>(null);
+
+    // Check for cached temp user on mount
+    useEffect(() => {
+        const cachedTempUser = tempUserService.getCachedTempUser();
+        if (cachedTempUser) {
+            console.log('[AuthContext] Restoring cached temp user session');
+            setTempUserSession(cachedTempUser);
+            setUser(cachedTempUser.user);
+            setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
         // Get initial session
@@ -50,47 +67,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const signOut = async () => {
         await supabase.auth.signOut();
-        // Also clear local dev state if needed
+        // Clear temp user cache if exists
+        tempUserService.clearCachedTempUser();
+        setTempUserSession(null);
         setSession(null);
         setUser(null);
     };
 
-    const bypassAuth = async (email = 'dev@local', name = 'Dev User') => {
-        // Simple deterministic hash for offline ID
-        const emailHash = email.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
-        const safeHash = Math.abs(emailHash).toString(36);
-
-        const fakeUser: User = {
-            id: 'dev-user-' + safeHash,
-            app_metadata: { provider: 'email' },
-            user_metadata: { full_name: name, avatar_url: null },
-            aud: 'authenticated',
-            created_at: new Date().toISOString(),
-            email: email,
-            phone: '',
-            confirmed_at: new Date().toISOString(),
-            last_sign_in_at: new Date().toISOString(),
-            role: 'authenticated',
-            updated_at: new Date().toISOString()
-        };
-
-        // 开发模式：创建本地会话（仅用于离线开发测试）
-        // 注意：此令牌仅用于本地开发，不会发送到任何服务器
-        const devSession: Session = {
-            access_token: 'dev-mode-local-session',
-            token_type: 'bearer',
-            expires_in: 3600,
-            refresh_token: 'dev-mode-refresh',
-            user: fakeUser
-        };
-
-        setSession(devSession);
-        setUser(fakeUser);
-        setLoading(false);
+    const loginAsTempUser = async () => {
+        setLoading(true);
+        try {
+            const tempSession = await tempUserService.getOrCreateTempUser();
+            setTempUserSession(tempSession);
+            setUser(tempSession.user);
+            setLoading(false);
+            console.log('[AuthContext] Temp user login successful, expires at:', new Date(tempSession.expiresAt).toISOString());
+        } catch (error: any) {
+            console.error('[AuthContext] Temp user login failed:', error);
+            setLoading(false);
+            throw error;
+        }
     };
 
+    const isTempUser = tempUserService.isTempUser(user);
+    const tempUserExpiry = tempUserSession?.expiresAt || null;
+
     return (
-        <AuthContext.Provider value={{ session, user, loading, signOut, bypassAuth }}>
+        <AuthContext.Provider value={{ 
+            session, 
+            user, 
+            loading, 
+            signOut, 
+            loginAsTempUser,
+            isTempUser,
+            tempUserExpiry
+        }}>
             {children}
         </AuthContext.Provider>
     );

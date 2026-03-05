@@ -1,4 +1,4 @@
-import { Provider } from '../keyManager';
+import { Provider } from '../../types';
 
 export type LLMCapability = 'chat' | 'stream' | 'image' | 'video' | 'multimodal';
 
@@ -57,6 +57,18 @@ export const PROVIDER_CAPABILITY_REGISTRY: ProviderCapabilityProfile[] = [
             stream: false,
             image: true,
             video: false,
+            multimodal: true
+        },
+        modelPatterns: [/./]
+    },
+    {
+        provider: '12AI',
+        adapterId: 'openai-compatible-adapter',
+        capability: {
+            chat: true,
+            stream: false,
+            image: true,
+            video: true,
             multimodal: true
         },
         modelPatterns: [/./]

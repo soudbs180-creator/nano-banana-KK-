@@ -57,3 +57,18 @@ export function triggerDownload(blobOrUrl: Blob | string, filename: string): voi
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 }
+
+/**
+ * 生成符合规范的下载文件名
+ * 格式: KKStudio_{类别}_{随机英文数字混合10位以内}.{扩展名}
+ * @param type 类别，如 'Image' | 'Video' | 'Audio'
+ * @param extension 扩展名，包含点（例如 '.png'）
+ */
+export function generateDownloadFilename(type: 'Image' | 'Video' | 'Audio', extension: string = '.png'): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let randomString = '';
+    for (let i = 0; i < 10; i++) {
+        randomString += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `KKStudio_${type}_${randomString}${extension}`;
+}

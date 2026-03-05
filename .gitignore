@@ -40,3 +40,9 @@ coverage/
 # API Keys - Never commit!
 **/api-keys.json
 **/secrets.json
+scripts/alipay-mcp.env
+
+# Backup files
+*.bak
+*.backup
+*~

@@ -1,0 +1,15 @@
+﻿src/components/layout/ChatSidebar.tsx(2195,73): error TS2339: Property 'creditCost' does not exist on type 'ChatModel'.
+src/components/layout/ChatSidebar.tsx(2195,114): error TS2339: Property 'creditCost' does not exist on type 'ChatModel'.
+src/services/image/imagePriorityLoader.ts(1,65): error TS2307: Cannot find module '../hooks/useLazyImage' or its corresponding type declarations.
+src/services/image/lodService.ts(8,68): error TS2307: Cannot find module '../services/image/imageQuality' or its corresponding type declarations.
+src/services/image/lodService.ts(9,45): error TS2307: Cannot find module '../services/storage/imageStorage' or its corresponding type declarations.
+src/services/image/lodService.ts(10,63): error TS2307: Cannot find module '../services/storage/memoryManager' or its corresponding type declarations.
+src/services/image/lodService.ts(115,74): error TS2307: Cannot find module '../services/storage/opfsService' or its corresponding type declarations.
+src/services/image/lodService.ts(127,63): error TS2307: Cannot find module '../services/storage/storagePreference' or its corresponding type declarations.
+src/services/image/lodService.ts(130,64): error TS2307: Cannot find module '../services/storage/fileSystemService' or its corresponding type declarations.
+src/services/index.ts(2,68): error TS2307: Cannot find module '../billing/supplierService' or its corresponding type declarations.
+src/services/index.ts(3,79): error TS2307: Cannot find module '../api/newApiManagementService' or its corresponding type declarations.
+src/services/index.ts(4,78): error TS2307: Cannot find module '../api/AI12APIService' or its corresponding type declarations.
+src/services/index.ts(5,69): error TS2307: Cannot find module '../model/modelCaller' or its corresponding type declarations.
+src/services/index.ts(8,28): error TS2307: Cannot find module '../auth/keyManager' or its corresponding type declarations.
+src/services/index.ts(9,24): error TS2307: Cannot find module '../system/notificationService' or its corresponding type declarations.

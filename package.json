@@ -1,22 +1,25 @@
 {
     "name": "kk-studio",
     "private": true,
-    "version": "1.3.4",
+    "version": "1.3.5",
     "type": "module",
     "scripts": {
-        "dev": "node node_modules/vite/bin/vite.js",
-        "build": "node node_modules/vite/bin/vite.js build",
-        "preview": "node node_modules/vite/bin/vite.js preview",
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
         "clean": "node -e \"try{require('fs').rmSync('node_modules/.vite',{recursive:true})}catch(e){}\""
     },
     "dependencies": {
         "@google/genai": "^1.35.0",
+        "@lobehub/icons": "^4.12.0",
         "@supabase/supabase-js": "^2.90.1",
         "@types/file-saver": "^2.0.7",
         "file-saver": "^2.0.5",
+        "framer-motion": "^12.34.4",
         "gsap": "^3.14.2",
         "jszip": "^3.10.1",
         "lucide-react": "^0.562.0",
+        "qrcode.react": "^4.2.0",
         "react": "^19.2.3",
         "react-dom": "^19.2.3"
     },
@@ -29,6 +32,7 @@
         "@vitejs/plugin-react": "^5.0.0",
         "autoprefixer": "^10.4.20",
         "postcss": "^8.5.0",
+        "supabase": "^2.76.15",
         "tailwindcss": "^4.0.0",
         "typescript": "~5.8.2",
         "vite": "^6.2.0"
