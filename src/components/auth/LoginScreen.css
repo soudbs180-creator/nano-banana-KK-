@@ -1,3 +1,12 @@
+.auth-screen-active,
+.auth-screen-active body,
+body.auth-screen-active,
+html.auth-screen-active,
+html.auth-screen-active body,
+body.auth-screen-active #root {
+  background: #07111f !important;
+}
+
 .auth-page {
   position: fixed;
   inset: 0;
@@ -6,12 +15,33 @@
   background: #07111f;
   color: #f7f9ff;
   overflow: hidden;
+  isolation: isolate;
+}
+
+.auth-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(77, 198, 255, 0.2), transparent 34%),
+    radial-gradient(circle at 86% 84%, rgba(255, 170, 88, 0.18), transparent 36%),
+    linear-gradient(180deg, #0b1425 0%, #07111f 46%, #050b16 100%);
+}
+
+.auth-page::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(3, 8, 18, 0.08), rgba(3, 8, 18, 0.22));
 }
 
 .auth-shader-background {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: 2;
   pointer-events: none;
 }
 
@@ -33,7 +63,7 @@
 .auth-background {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 3;
   pointer-events: none;
 }
 
@@ -77,7 +107,7 @@
 
 .auth-side-form {
   position: relative;
-  z-index: 2;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -88,7 +118,7 @@
   width: min(100%, 470px);
   max-height: calc(100vh - 36px);
   overflow: auto;
-  background: rgba(9, 15, 28, 0.78);
+  background: linear-gradient(180deg, rgba(13, 22, 40, 0.9), rgba(8, 14, 26, 0.84));
   border: 1px solid rgba(255, 255, 255, 0.2);
   backdrop-filter: blur(20px);
   border-radius: 26px;

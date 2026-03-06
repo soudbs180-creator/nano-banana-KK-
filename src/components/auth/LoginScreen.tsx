@@ -104,6 +104,28 @@ const LoginScreen: React.FC = () => {
   });
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
+  useEffect(() => {
+    const body = document.body;
+    const root = document.documentElement;
+    const previousBodyBackground = body.style.background;
+    const previousRootBackground = root.style.background;
+    const previousColorScheme = root.style.colorScheme;
+
+    body.classList.add('auth-screen-active');
+    root.classList.add('auth-screen-active');
+    body.style.background = '#07111f';
+    root.style.background = '#07111f';
+    root.style.colorScheme = 'dark';
+
+    return () => {
+      body.classList.remove('auth-screen-active');
+      root.classList.remove('auth-screen-active');
+      body.style.background = previousBodyBackground;
+      root.style.background = previousRootBackground;
+      root.style.colorScheme = previousColorScheme;
+    };
+  }, []);
+
   const localErrors = useMemo(
     () => validateFields(view, email, password, confirmPassword),
     [view, email, password, confirmPassword]
