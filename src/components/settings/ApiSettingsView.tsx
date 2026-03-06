@@ -618,6 +618,7 @@ const ApiSettingsView: React.FC = () => {
     const name = providerForm.name.trim();
     const baseUrl = providerForm.baseUrl.trim();
     const apiKey = providerForm.apiKey.trim();
+    const existingProvider = providerForm.id ? providers.find((item) => item.id === providerForm.id) : undefined;
 
     if (!name || !baseUrl || !apiKey) {
       notify.error('保存失败', '请填写供应商名称、基础地址和 API Key。');
@@ -632,6 +633,11 @@ const ApiSettingsView: React.FC = () => {
       models = detect.models || [];
     } catch (error) {
       console.warn('[ApiSettings] detect models before save failed', error);
+      models = existingProvider?.models || [];
+    }
+
+    if ((!models || models.length === 0) && existingProvider?.models?.length) {
+      models = existingProvider.models;
     }
 
     let pricingSnapshot: ProviderPricingSnapshot | undefined;
@@ -651,6 +657,10 @@ const ApiSettingsView: React.FC = () => {
           note: silentResult.pricingHint,
         });
       }
+    }
+
+    if (!pricingSnapshot && existingProvider?.pricingSnapshot) {
+      pricingSnapshot = existingProvider.pricingSnapshot;
     }
 
     const payload = {
@@ -773,6 +783,9 @@ const ApiSettingsView: React.FC = () => {
       if (providerForm.id === provider.id) {
         setAdvancedResult(result);
         setShowAdvancedMode(true);
+        if (!providerForm.group && result.availableGroups?.length) {
+          setProviderForm((prev) => ({ ...prev, group: prev.group || result.availableGroups?.[0] || '' }));
+        }
       }
       refresh();
     } finally {

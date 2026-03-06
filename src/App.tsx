@@ -20,7 +20,7 @@ import { unifiedModelService } from './services/model/unifiedModelService';
 import { llmService } from './services/llm/LLMService';
 import { getCardDimensions } from './utils/styleUtils';
 import { getViewportPreferredPosition, findSafePosition } from './utils/canvasUtils'; // 🚀 Smart Positioning
-import { getViewportOffsets, getLiveViewportCenter } from './utils/canvasCenter';
+import { getViewportOffsets, getPromptBarFrontPosition } from './utils/canvasCenter';
 
 const GENERATE_TRIGGER_COOLDOWN_MS = 500;
 const GENERATE_TIMEOUT_MS = 600000;
@@ -1814,8 +1814,9 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
               }
             );
             generatedBase64 = result.url;
-            tokenUsage = result.tokens || 0;
-            costUsd = result.cost || 0;
+            const runtimeUsage = (result as any).usage;
+            tokenUsage = result.tokens ?? runtimeUsage?.totalTokens ?? 0;
+            costUsd = result.cost ?? runtimeUsage?.cost ?? 0;
             // 🚀 Update effective model and size from result if available
             if (result.model) effectiveModel = result.model;
             // Capture returned metadata
@@ -2240,7 +2241,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       // 🚀 [修复] 确保错误卡片始终显示在当前最新的 finalPos 上
       const viewportRect = canvasRef.current?.getCanvasRect() || null;
       const viewportOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
-      const latestCenter = getLiveViewportCenter(canvasTransform, viewportRect, viewportOffsets);
+      const latestCenter = getPromptBarFrontPosition(canvasTransform, viewportRect, viewportOffsets, 200, 48);
       const errorPos = (liveNode?.userMoved) ? liveNode.position : latestCenter;
 
       const currentCanvasForError = activeCanvasRef.current;
@@ -2484,7 +2485,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
       const viewportRect = canvasRef.current?.getCanvasRect() || null;
       const viewportOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
-      const liveCenter = getLiveViewportCenter(currentTransform, viewportRect, viewportOffsets);
+      const liveCenter = getPromptBarFrontPosition(currentTransform, viewportRect, viewportOffsets, 200, 48);
       const realViewCenter = liveCenter;
       let viewCenter = { ...liveCenter };
       let currentPos = { ...viewCenter };
@@ -2707,7 +2708,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         const latestTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
         const latestViewportRect = canvasRef.current?.getCanvasRect() || null;
         const latestOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
-        currentPos = getLiveViewportCenter(latestTransform, latestViewportRect, latestOffsets);
+        currentPos = getPromptBarFrontPosition(latestTransform, latestViewportRect, latestOffsets, 200, 48);
         console.log('[handleGenerate] Final position hard-guard (normal mode):', currentPos);
       }
 
