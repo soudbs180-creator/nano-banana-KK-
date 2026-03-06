@@ -11,6 +11,63 @@ export interface CardLaunchMotionConfig {
   ease: string;
 }
 
+export interface CardLaunchTimelineConfig {
+  startX: number;
+  startY: number;
+  midX: number;
+  midY: number;
+  settleX: number;
+  settleY: number;
+  startScale: number;
+  midScale: number;
+  settleScale: number;
+  fadeInDuration: number;
+  travelDuration: number;
+  settleDuration: number;
+}
+
+type RectLike = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+const STACK_RESET_WINDOW_MS = 420;
+const STACK_PATTERN: ReadonlyArray<{ x: number; y: number }> = [
+  { x: 0, y: -4 },
+  { x: -12, y: -1 },
+  { x: 12, y: 1 },
+  { x: -20, y: 3 },
+  { x: 20, y: 5 },
+  { x: -28, y: 7 },
+  { x: 28, y: 9 },
+];
+
+let launchDeckCursor = 0;
+let lastLaunchAt = 0;
+
+const nextStackOffset = (): { x: number; y: number } => {
+  const now = Date.now();
+  if (now - lastLaunchAt > STACK_RESET_WINDOW_MS) {
+    launchDeckCursor = 0;
+  }
+  lastLaunchAt = now;
+
+  const offset = STACK_PATTERN[launchDeckCursor % STACK_PATTERN.length];
+  launchDeckCursor += 1;
+  return offset;
+};
+
+const resolvePromptInputRect = (promptBar: HTMLElement): RectLike | null => {
+  const textarea =
+    promptBar.querySelector<HTMLTextAreaElement>('textarea.input-bar-textarea')
+    || promptBar.querySelector<HTMLTextAreaElement>('textarea');
+
+  if (!textarea) return null;
+  return textarea.getBoundingClientRect();
+};
+
 /**
  * 计算新卡片的屏幕发牌起点：
  * - X：输入框中线（水平居中）
@@ -32,10 +89,11 @@ export const getPromptBarLaunchPoint = (
   const promptBar = document.getElementById('prompt-bar-container');
   if (!promptBar) return fallback;
 
-  const rect = promptBar.getBoundingClientRect();
+  const promptRect = resolvePromptInputRect(promptBar) || promptBar.getBoundingClientRect();
+  const stackOffset = nextStackOffset();
   const centerPoint: CardLaunchPoint = {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
+    x: promptRect.left + promptRect.width / 2 + stackOffset.x,
+    y: promptRect.top + promptRect.height / 2 + stackOffset.y,
   };
 
   if (anchor === 'center') {
@@ -44,7 +102,7 @@ export const getPromptBarLaunchPoint = (
 
   return {
     x: centerPoint.x,
-    y: Math.max(24, rect.top - safeGap),
+    y: Math.max(24, promptRect.top - safeGap + stackOffset.y),
   };
 };
 
@@ -68,5 +126,35 @@ export const getLaunchMotionByCanvasScale = (canvasScale: number = 1): CardLaunc
     fromScale: Math.min(0.55, Math.max(0.3, 0.22 + scale * 0.26)),
     duration: 0.68,
     ease: 'power3.out',
+  };
+};
+
+export const getLaunchTimelineByOffset = (
+  offsetX: number,
+  offsetY: number,
+  canvasScale: number = 1,
+): CardLaunchTimelineConfig => {
+  const launchMotion = getLaunchMotionByCanvasScale(canvasScale);
+  const driftSign = offsetX >= 0 ? 1 : -1;
+  const lift = Math.min(96, Math.max(28, Math.abs(offsetY) * 0.2 + 14));
+  const horizontalDrift = driftSign * Math.min(44, Math.max(12, Math.abs(offsetX) * 0.11));
+  const midScale = launchMotion.fromScale < 1
+    ? Math.min(1.08, launchMotion.fromScale + 0.22)
+    : Math.max(1.02, launchMotion.fromScale - 0.06);
+  const baseDuration = launchMotion.duration;
+
+  return {
+    startX: offsetX,
+    startY: offsetY,
+    midX: offsetX * 0.38 + horizontalDrift,
+    midY: offsetY * 0.45 - lift,
+    settleX: driftSign * -8,
+    settleY: 6,
+    startScale: launchMotion.fromScale,
+    midScale,
+    settleScale: 1.02,
+    fadeInDuration: Math.min(0.16, baseDuration * 0.26),
+    travelDuration: Math.max(0.28, baseDuration * 0.52),
+    settleDuration: Math.max(0.18, baseDuration * 0.32),
   };
 };

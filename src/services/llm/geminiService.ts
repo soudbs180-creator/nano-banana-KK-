@@ -87,30 +87,40 @@ function normalizeError(error: any): Error {
 
   const rawMessage = error?.message || error?.toString?.() || '未知错误';
   const msg = rawMessage.toLowerCase();
-  if (msg.includes('cancelled')) return new Error("任务已取消");
+  const withMeta = (normalized: Error): Error => {
+    const out: any = normalized;
+    if (error?.code !== undefined) out.code = error.code;
+    if (error?.status !== undefined) out.status = error.status;
+    if (error?.provider !== undefined) out.provider = error.provider;
+    if (error?.requestPath !== undefined) out.requestPath = error.requestPath;
+    if (error?.requestBody !== undefined) out.requestBody = error.requestBody;
+    if (error?.responseBody !== undefined) out.responseBody = error.responseBody;
+    return out as Error;
+  };
+  if (msg.includes('cancelled')) return withMeta(new Error("任务已取消"));
 
   // 🚀 [12AI 对齐] 精准网关与状态码映射
-  if (msg.includes('524') || msg.includes('timeout')) return new Error(`网络超时 (524): ${rawMessage.slice(0, 180)}`);
-  if (msg.includes('530') || msg.includes('502') || msg.includes('504')) return new Error(`网关错误 (530/502/504): ${rawMessage.slice(0, 180)}`);
-  if (msg.includes('413') || msg.includes('payload too large')) return new Error("请求体过大 (413)，请减少待识别的图片数量或压缩图片体积");
-  if (msg.includes('503') && msg.includes('no available channel')) return new Error(`服务暂不可用 (503: 无可用渠道): ${rawMessage.slice(0, 180)}`);
-  if (msg.includes('maxoutputtokens')) return new Error("Token 设置超出限制：请确保最大输出 Token 小于 65536");
+  if (msg.includes('524') || msg.includes('timeout')) return withMeta(new Error(`网络超时 (524): ${rawMessage.slice(0, 180)}`));
+  if (msg.includes('530') || msg.includes('502') || msg.includes('504')) return withMeta(new Error(`网关错误 (530/502/504): ${rawMessage.slice(0, 180)}`));
+  if (msg.includes('413') || msg.includes('payload too large')) return withMeta(new Error("请求体过大 (413)，请减少待识别的图片数量或压缩图片体积"));
+  if (msg.includes('503') && msg.includes('no available channel')) return withMeta(new Error(`服务暂不可用 (503: 无可用渠道): ${rawMessage.slice(0, 180)}`));
+  if (msg.includes('maxoutputtokens')) return withMeta(new Error("Token 设置超出限制：请确保最大输出 Token 小于 65536"));
 
   if (msg.includes('no accounts available with quota') || msg.includes('insufficient_quota')) {
-    return new Error("渠道额度不足：当前线路无可用配额，请切换到有余额的提供商或渠道");
+    return withMeta(new Error("渠道额度不足：当前线路无可用配额，请切换到有余额的提供商或渠道"));
   }
   if (msg.includes('429') || msg.includes('rate limit') || (msg.includes('quota') && !msg.includes('503'))) {
-    return new Error("请求太过频繁 (429)，正在尝试切换线路，请稍后...");
+    return withMeta(new Error("请求太过频繁 (429)，正在尝试切换线路，请稍后..."));
   }
-  if (msg.includes("503") || msg.includes("service unavailable") || msg.includes("too busy") || msg.includes("deadlock")) return new Error(`服务器繁忙 (503): ${rawMessage.slice(0, 180)}`);
-  if (msg.includes("403") || msg.includes("permission") || msg.includes("api_key_invalid")) return new Error("API Key 无效或余额不足 (403)，请检查设置或在 12AI 官网充值");
-  if (msg.includes("MISSING_API_KEY")) return new Error("请先在设置中配置有效的 API Key");
-  if (msg.includes("safety") || msg.includes("blocked") || msg.includes("policy")) return new Error("内容触发安全审查 (Safety Blocked)，请更换提示词或尝试非流式模式");
-  if (msg.includes("400") || msg.includes("invalid_argument")) return new Error("请求参数无效：Token 数可能过大或模型不支持当前配置");
-  if (msg.includes("500") || msg.includes("internal")) return new Error("远程服务器故障 (500)，请稍后重试");
-  if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) return new Error("网络连接失败 (Network Error)，请检查您的网络设置或代理配置");
+  if (msg.includes("503") || msg.includes("service unavailable") || msg.includes("too busy") || msg.includes("deadlock")) return withMeta(new Error(`服务器繁忙 (503): ${rawMessage.slice(0, 180)}`));
+  if (msg.includes("403") || msg.includes("permission") || msg.includes("api_key_invalid")) return withMeta(new Error("API Key 无效或余额不足 (403)，请检查设置或在 12AI 官网充值"));
+  if (msg.includes("MISSING_API_KEY")) return withMeta(new Error("请先在设置中配置有效的 API Key"));
+  if (msg.includes("safety") || msg.includes("blocked") || msg.includes("policy")) return withMeta(new Error("内容触发安全审查 (Safety Blocked)，请更换提示词或尝试非流式模式"));
+  if (msg.includes("400") || msg.includes("invalid_argument")) return withMeta(new Error("请求参数无效：Token 数可能过大或模型不支持当前配置"));
+  if (msg.includes("500") || msg.includes("internal")) return withMeta(new Error("远程服务器故障 (500)，请稍后重试"));
+  if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) return withMeta(new Error("网络连接失败 (Network Error)，请检查您的网络设置或代理配置"));
 
-  return new Error(`生成失败: ${error.message || '未知错误'} (请按 F12 查看控制台详情)`);
+  return withMeta(new Error(`生成失败: ${error.message || '未知错误'} (请按 F12 查看控制台详情)`));
 }
 
 /**

@@ -71,23 +71,54 @@ const StatCard: React.FC<{ title: string; value: string; helper?: string }> = ({
 };
 
 const DashboardView: React.FC = () => {
-  const { balance } = useBilling();
+  const { balance, billingLogs, usageLogs } = useBilling();
   const [stats, setStats] = useState(() => keyManager.getStats());
   const [todayCostUsd, setTodayCostUsd] = useState(0);
   const [todayTokens, setTodayTokens] = useState(0);
+  const [officialCount, setOfficialCount] = useState(0);
+  const [providerCount, setProviderCount] = useState(0);
+  const [activeProviderCount, setActiveProviderCount] = useState(0);
+  const [importantLogCount, setImportantLogCount] = useState(0);
 
   useEffect(() => {
     const refresh = () => {
-      setStats(keyManager.getStats());
+      const nextStats = keyManager.getStats();
+      const allSlots = keyManager.getSlots();
+      const providers = keyManager.getProviders();
       const cost = getTodayCosts();
+      const importantLogs = getTodayLogs().filter(
+        (item) =>
+          item.level === LogLevel.WARNING ||
+          item.level === LogLevel.ERROR ||
+          item.level === LogLevel.CRITICAL
+      );
+
+      const official = allSlots.filter((slot) => {
+        if (!slot.key || slot.disabled) return false;
+        if (slot.baseUrl) return false;
+        if (slot.provider === 'SystemProxy') return false;
+        return slot.type === 'official' || slot.provider === 'Google' || slot.provider === 'OpenAI';
+      });
+
+      setStats(nextStats);
       setTodayCostUsd(cost.totalCostUsd || 0);
       setTodayTokens(cost.totalTokens || 0);
+      setOfficialCount(official.length);
+      setProviderCount(providers.length);
+      setActiveProviderCount(providers.filter((item) => item.isActive).length);
+      setImportantLogCount(importantLogs.length);
     };
 
     refresh();
     const unsubscribe = keyManager.subscribe(refresh);
     return unsubscribe;
   }, []);
+
+  const keyHealthPercent =
+    stats.total > 0 ? Math.max(0, Math.min(100, Math.round((stats.valid / stats.total) * 100))) : 0;
+  const todayUsageCount = usageLogs.length;
+  const todayRechargeCount = billingLogs.length;
+  const latestUsage = usageLogs[0];
 
   return (
     <div className="space-y-4">
@@ -96,26 +127,104 @@ const DashboardView: React.FC = () => {
           仪表盘
         </h3>
         <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          查看今日消耗、密钥状态和积分余额。
+          重点信息聚合：积分、消耗、密钥健康、供应商状态、系统日志。
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="今日成本（美元）" value={`$${todayCostUsd.toFixed(4)}`} helper="该值来自当前用户 API 调用统计" />
-        <StatCard title="今日 Token 消耗" value={todayTokens.toLocaleString('zh-CN')} />
-        <StatCard title="可用积分余额" value={String(balance)} helper="仅管理员全局积分模型会扣减" />
-        <StatCard title="有效 API 密钥" value={`${stats.valid} / ${stats.total}`} helper={`失效 ${stats.invalid}，禁用 ${stats.disabled}`} />
-      </div>
-
-      <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-light)' }}>
-        <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-          <Activity size={15} /> 状态说明
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+        <div
+          className="relative overflow-hidden rounded-2xl border p-4 md:col-span-8"
+          style={{ borderColor: 'var(--border-light)', background: 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(16,185,129,0.10))' }}
+        >
+          <div className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-indigo-400/10 blur-2xl" />
+          <div className="absolute -bottom-12 left-24 h-32 w-32 rounded-full bg-emerald-400/10 blur-2xl" />
+          <div className="relative">
+            <div className="text-xs tracking-wide text-[var(--text-tertiary)]">今日总览</div>
+            <div className="mt-2 grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div className="text-[11px] text-[var(--text-tertiary)]">积分余额</div>
+                <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{balance}</div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div className="text-[11px] text-[var(--text-tertiary)]">今日成本</div>
+                <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">${todayCostUsd.toFixed(4)}</div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div className="text-[11px] text-[var(--text-tertiary)]">今日 Tokens</div>
+                <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{todayTokens.toLocaleString('zh-CN')}</div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div className="text-[11px] text-[var(--text-tertiary)]">关键日志</div>
+                <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{importantLogCount}</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <ul className="mt-2 space-y-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          <li>用户 API 管理仅对当前用户生效，不影响其他用户。</li>
-          <li>管理员后台配置的积分模型会同步给全部用户并实时生效。</li>
-          <li>模型达到总调用上限后会自动暂停，用户端模型库将自动隐藏该模型。</li>
-        </ul>
+
+        <div className="rounded-2xl border p-4 md:col-span-4" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="text-xs text-[var(--text-tertiary)]">密钥健康度</div>
+          <div className="mt-2 text-2xl font-bold text-[var(--text-primary)]">{keyHealthPercent}%</div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all"
+              style={{ width: `${keyHealthPercent}%` }}
+            />
+          </div>
+          <div className="mt-2 text-xs text-[var(--text-tertiary)]">
+            有效 {stats.valid} / 总计 {stats.total} · 失效 {stats.invalid} · 禁用 {stats.disabled}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border p-4 md:col-span-3" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="text-[11px] text-[var(--text-tertiary)]">官方接口</div>
+          <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{officialCount}</div>
+          <div className="mt-1 text-xs text-[var(--text-tertiary)]">仅当前用户可用</div>
+        </div>
+
+        <div className="rounded-2xl border p-4 md:col-span-3" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="text-[11px] text-[var(--text-tertiary)]">第三方供应商</div>
+          <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{providerCount}</div>
+          <div className="mt-1 text-xs text-[var(--text-tertiary)]">启用 {activeProviderCount} 个</div>
+        </div>
+
+        <div className="rounded-2xl border p-4 md:col-span-3" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="text-[11px] text-[var(--text-tertiary)]">今日生成记录</div>
+          <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{todayUsageCount}</div>
+          <div className="mt-1 text-xs text-[var(--text-tertiary)]">失败也会记录并走退回</div>
+        </div>
+
+        <div className="rounded-2xl border p-4 md:col-span-3" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="text-[11px] text-[var(--text-tertiary)]">今日充值记录</div>
+          <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{todayRechargeCount}</div>
+          <div className="mt-1 text-xs text-[var(--text-tertiary)]">人民币/美元分别记账</div>
+        </div>
+
+        <div className="rounded-2xl border p-4 md:col-span-8" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+            <Activity size={15} /> 最新状态
+          </div>
+          <div className="mt-2 text-xs text-[var(--text-tertiary)]">
+            {latestUsage
+              ? `最近一条记录：${latestUsage.type} / ${latestUsage.model_name || latestUsage.model_id || '未命名模型'} / ${new Date(
+                  latestUsage.created_at
+                ).toLocaleString('zh-CN', { hour12: false })}`
+              : '今日暂无使用记录。'}
+          </div>
+          <ul className="mt-3 space-y-1 text-xs text-[var(--text-tertiary)]">
+            <li>用户 API 管理仅对当前用户生效，不影响其他用户。</li>
+            <li>管理员后台配置的积分模型会同步给全部用户并实时生效。</li>
+            <li>模型达到总调用上限后会自动暂停，用户端模型库将自动隐藏该模型。</li>
+          </ul>
+        </div>
+
+        <div className="rounded-2xl border p-4 md:col-span-4" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="text-sm font-medium text-[var(--text-primary)]">快速巡检</div>
+          <div className="mt-2 space-y-2 text-xs text-[var(--text-tertiary)]">
+            <div className="rounded-lg border border-[var(--border-light)] p-2">密钥状态：{stats.valid > 0 ? '正常' : '需配置'}</div>
+            <div className="rounded-lg border border-[var(--border-light)] p-2">供应商状态：{activeProviderCount > 0 ? '可用' : '未启用'}</div>
+            <div className="rounded-lg border border-[var(--border-light)] p-2">日志状态：{importantLogCount > 0 ? '有重点告警' : '无重点告警'}</div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -395,19 +504,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/50 px-3 py-3 backdrop-blur-sm">
+    <div className={`fixed inset-0 z-[10001] flex justify-center bg-black/55 backdrop-blur-sm ${isMobile ? 'items-end px-2 pb-0 pt-8' : 'items-center px-3 py-3'}`}>
       <div
-        className={`flex w-full overflow-hidden rounded-2xl border shadow-2xl ${isMobile ? 'h-[96vh] flex-col' : 'h-[86vh] max-w-[1120px] flex-row'}`}
+        className={`flex w-full overflow-hidden border shadow-2xl ${isMobile ? 'h-[88dvh] max-h-[88dvh] flex-col rounded-t-[26px] rounded-b-none ios-mobile-sheet' : 'h-[80vh] max-w-[1120px] flex-row rounded-2xl'}`}
         style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-light)' }}
       >
         <aside
-          className={`${isMobile ? 'border-b p-2 flex-shrink-0' : 'border-r p-3 w-[220px] flex-shrink-0 overflow-y-auto'}`}
+          className={`${isMobile ? 'border-b px-3 pt-2 pb-3 flex-shrink-0' : 'border-r p-3 w-[220px] flex-shrink-0 overflow-y-auto'}`}
           style={{
             borderColor: 'var(--border-light)',
             backgroundColor: 'var(--bg-tertiary)',
           }}
         >
-          <div className="mb-2 flex items-center justify-between px-2 py-1">
+          <div className={`mb-2 flex items-center justify-between ${isMobile ? 'px-1 py-1.5' : 'px-2 py-1'}`}>
             <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
               系统设置
             </div>
@@ -420,7 +529,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </button>
           </div>
 
-          <div className={`${isMobile ? 'grid grid-cols-3 gap-2 sm:grid-cols-5' : 'space-y-1'}`}>
+          <div className={`${isMobile ? 'flex gap-2 overflow-x-auto pb-1 scrollbar-thin' : 'space-y-1'}`}>
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = activeView === item.id;
@@ -428,8 +537,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <button
                   key={item.id}
                   onClick={() => setActiveView(item.id)}
-                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${isMobile ? 'justify-center' : 'w-full justify-start'
-                    }`}
+                  className={`inline-flex items-center gap-2 rounded-xl text-sm ${isMobile ? 'min-w-[92px] shrink-0 flex-col justify-center px-2 py-2.5' : 'w-full justify-start px-3 py-2'}`}
                   style={{
                     backgroundColor: active ? 'rgba(99, 102, 241, 0.18)' : 'transparent',
                     color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
@@ -437,14 +545,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   }}
                 >
                   <Icon size={15} />
-                  {!isMobile ? item.label : null}
+                  <span className={isMobile ? 'text-[11px] leading-none' : ''}>{item.label}</span>
                 </button>
               );
             })}
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 min-h-0">
+        <main className={`min-h-0 flex-1 overflow-y-auto ${isMobile ? 'p-3 pb-6' : 'p-3 md:p-4'}`}>
           {renderBody()}
         </main>
       </div>

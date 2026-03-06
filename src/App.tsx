@@ -1502,6 +1502,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
     const details = {
       code: error?.code ? String(error.code) : undefined,
       status: typeof error?.status === 'number' ? error.status : (typeof error?.response?.status === 'number' ? error.response.status : undefined),
+      requestPath: error?.requestPath ? String(error.requestPath) : (error?.request?.path ? String(error.request.path) : undefined),
       requestBody: undefined as string | undefined,
       responseBody: undefined as string | undefined,
       provider: error?.provider ? String(error.provider) : undefined,
@@ -1525,7 +1526,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       details.responseBody = String(error.message);
     }
 
-    if (!details.code && !details.status && !details.requestBody && !details.responseBody && !details.provider) {
+    if (!details.code && !details.status && !details.requestPath && !details.requestBody && !details.responseBody && !details.provider) {
       return undefined;
     }
     return details;
@@ -1608,6 +1609,10 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       : promptToUse;
     let effectiveModel = initialModel;
     let successResults: GeneratedImage[] = [];
+    let generationTotalCount = Math.max(1, Number(count) || 1);
+    let generationSuccessCount = 0;
+    let generationFailCount = 0;
+    let partialFailureDetails: PromptNode['errorDetails'] | undefined = undefined;
 
     // 🚀 [Critical Fix] Define finalPos at a higher scope to ensure Error cards also land at latest center
     let finalPos = node.position;
@@ -1901,6 +1906,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
 
       const requestedCount = Math.max(1, Number(count) || 1);
       const actualCount = isPpt ? Math.min(20, requestedCount) : requestedCount;
+      generationTotalCount = actualCount;
       const tasks = Array.from({ length: actualCount }).map((_, index) => buildTask(index));
 
       const runWithConcurrency = async <T,>(taskList: Array<() => Promise<T>>, limit: number): Promise<T[]> => {
@@ -1918,6 +1924,11 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       };
 
       const imageData = await runWithConcurrency(tasks, actualCount);
+      generationTotalCount = imageData.length || actualCount;
+      const failedImageData = imageData.filter(d => !!d && 'error' in d) as Array<{
+        error: string;
+        errorDetails?: PromptNode['errorDetails'];
+      }>;
 
       // 过滤成功的结果
       const validImageData = imageData.filter(d => !!d && !('error' in d) && !!d.url && typeof d.index === 'number') as Array<{
@@ -1942,6 +1953,10 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         requestBodyPreview?: string;
         pythonSnippet?: string;
       }>;
+
+      generationSuccessCount = validImageData.length;
+      generationFailCount = Math.max(0, generationTotalCount - generationSuccessCount);
+      partialFailureDetails = failedImageData[0]?.errorDetails;
 
       if (validImageData.length === 0) {
         const firstError = imageData.find(d => d && 'error' in d);
@@ -2111,7 +2126,13 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         position: finalPos,
         isGenerating: false,
         childImageIds: successResults.map(r => r.id), // Use successResults
+        lastGenerationSuccessCount: generationSuccessCount,
+        lastGenerationFailCount: generationFailCount,
+        lastGenerationTotalCount: generationTotalCount,
         keySlotId: successResults[0]?.keySlotId || effectiveNode.keySlotId,
+        error: undefined,
+        errorDetails: generationFailCount > 0 ? partialFailureDetails : undefined,
+        refundStatus: undefined,
         isDraft: false,
       };
 
@@ -2124,6 +2145,12 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
 
       updatePromptNode(updatedNode);
       addImageNodes(successResults);
+
+      if (generationFailCount > 0) {
+        import('./services/system/notificationService').then(({ notify }) => {
+          notify.warning('部分生成完成', `成功 ${generationSuccessCount} 张，失败 ${generationFailCount} 张。失败项已跳过。`);
+        });
+      }
 
       // 🚀 [Critical Fix] 强制立即持久化：由于状态更新和200ms防抖存在窗口期，如果用户此时刷新
       // localStorage里尚未记录子图且 isGenerating 还是 true。在此做紧急快照修补
@@ -2183,7 +2210,12 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         updatePromptNode({
           ...currentNode,
           isGenerating: false,
-          // Do NOT set error.
+          error: undefined,
+          errorDetails: generationFailCount > 0 ? partialFailureDetails : undefined,
+          refundStatus: undefined,
+          lastGenerationSuccessCount: generationSuccessCount || successResults.length,
+          lastGenerationFailCount: generationFailCount,
+          lastGenerationTotalCount: generationTotalCount,
         });
         return; // 🚀 Exit without showing error notification
       }
@@ -2221,6 +2253,9 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         ...currentNode,
         position: errorPos, // 🚀 Use latest center even on error!
         isGenerating: false,
+        lastGenerationSuccessCount: generationSuccessCount,
+        lastGenerationFailCount: generationFailCount > 0 ? generationFailCount : generationTotalCount,
+        lastGenerationTotalCount: generationTotalCount,
         error: err.message || 'Failed',
         errorDetails: (err as any)?.details || extractErrorDetails(err, currentNode.model),
         // 🚀 [修复] 使用 as const 修复类型错误
@@ -2744,9 +2779,15 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         providerLabel: previewProviderLabel,
         keySlotId: selectedKey?.id,
         childImageIds: [],
+        lastGenerationSuccessCount: undefined,
+        lastGenerationFailCount: undefined,
+        lastGenerationTotalCount: undefined,
         referenceImages: finalReferenceImages,
         timestamp: Date.now(),
         isGenerating: true,
+        error: undefined,
+        errorDetails: undefined,
+        refundStatus: undefined,
         isNew: isNewAnim, // 🚀 启用动画标记
         parallelCount: pptCount,
         sourceImageId: activeSourceImage || undefined,
@@ -4098,7 +4139,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
 
 
   return (
-    <div id="canvas-container" className="relative w-screen h-screen overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30"
+    <div id="canvas-container" className={`relative w-screen h-screen overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30 ${isMobile ? 'ios-mobile-shell' : ''}`}
       style={{ backgroundColor: 'var(--bg-canvas)' }}
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
@@ -5038,6 +5079,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         user={user}
         onSignOut={signOut}
         initialView={profileInitialView}
+        isMobile={isMobile}
       />
 
       {/* Settings Panel (Dashboard, API Channels, Cost, Logs) */}

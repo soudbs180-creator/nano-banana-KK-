@@ -1,45 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Zap, Server, Globe, Plus, MoreHorizontal,
-  Trash2, Edit2, Play, Pause, Activity, RefreshCw
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Edit2, Globe, Pause, Play, Plus, RefreshCw, Server, Trash2, Zap } from 'lucide-react';
 import keyManager, { KeySlot } from '../../services/auth/keyManager';
 import { notify } from '../../services/system/notificationService';
 import { KeySlotModal } from './KeySlotModal';
-import {
-  OpenAI,
-  Claude,
-  DeepSeek,
-} from '@lobehub/icons';
-import { Gemini } from '../../icons/Gemini';
 
-// 预设服务商配置 - 严格按照文档要求
-const PRESET_PROVIDERS = [
-  { id: 'openai', name: 'OpenAI', Icon: OpenAI, color: '#10a37f' },
-  { id: 'gemini', name: 'Gemini', Icon: Gemini, color: '#4285F4' },
-  { id: 'anthropic', name: 'Anthropic', Icon: Claude, color: '#d97757' },
-  { id: 'deepseek', name: 'DeepSeek', Icon: DeepSeek, color: '#4d6bfa' },
-  { id: 'siliconflow', name: '硅基流动', Icon: null, color: '#6366f1', abbr: '硅基' },
-  { id: 't8star', name: 'T8Star', Icon: null, color: '#6366f1', abbr: 'T8' },
-  { id: '12ai', name: '12AI', Icon: null, color: '#0ea5e9', abbr: '12' },
-  { id: '12ai-nanobanana', name: '12AI NB', Icon: null, color: '#eab308', abbr: 'NB' },
-];
-
-const ApiManagementView = () => {
+const ApiManagementView: React.FC = () => {
   const [slots, setSlots] = useState<KeySlot[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'official' | 'proxy' | 'third-party'>('official');
   const [editingSlot, setEditingSlot] = useState<KeySlot | null>(null);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
-  // Filtered lists
-  const officialSlots = slots.filter(s => s.type === 'official');
-  const proxySlots = slots.filter(s => s.type === 'proxy');
-  const thirdPartySlots = slots.filter(s => s.type === 'third-party');
+  const officialSlots = slots.filter((slot) => slot.type === 'official');
+  const proxySlots = slots.filter((slot) => slot.type === 'proxy');
+  const thirdPartySlots = slots.filter((slot) => slot.type === 'third-party');
 
   useEffect(() => {
     setSlots(keyManager.getSlots());
     return keyManager.subscribe(() => setSlots(keyManager.getSlots()));
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   const openAddModal = (type: 'official' | 'proxy' | 'third-party') => {
@@ -55,10 +40,9 @@ const ApiManagementView = () => {
   };
 
   const handleDelete = (id: string) => {
-    if (confirm('确定要删除此 API 吗？')) {
-      keyManager.removeKey(id);
-      notify.success('操作成功', '已删除 API Key');
-    }
+    if (!confirm('确定要删除该 API 配置吗？')) return;
+    keyManager.removeKey(id);
+    notify.success('删除成功', '该 API 配置已移除。');
   };
 
   const handleToggle = (id: string) => {
@@ -79,9 +63,9 @@ const ApiManagementView = () => {
     const limit = Number(slot.budgetLimit || -1);
     if (limit > 0) {
       const remain = Math.max(0, limit - used);
-      return `总$${limit.toFixed(2)} 已用$${used.toFixed(2)} 剩$${remain.toFixed(2)}`;
+      return `预算 $${limit.toFixed(2)} · 已用 $${used.toFixed(2)} · 剩余 $${remain.toFixed(2)}`;
     }
-    return `总: 不限 已用$${used.toFixed(2)} 剩: 不限`;
+    return `预算不限 · 已用 $${used.toFixed(2)}`;
   };
 
   const getHealthScore = (slot: KeySlot) => {
@@ -93,179 +77,211 @@ const ApiManagementView = () => {
     return Math.max(0, Math.min(100, score));
   };
 
+  const getStatusLabel = (slot: KeySlot) => {
+    if (slot.disabled) return '已暂停';
+    if (slot.status === 'valid') return '在线';
+    if (slot.status === 'invalid') return '认证失败';
+    if (slot.status === 'rate_limited') return '限流中';
+    return '待验证';
+  };
+
+  const getStatusClass = (slot: KeySlot) => {
+    if (slot.disabled) return 'bg-zinc-700/50 text-zinc-300 border-zinc-600/50';
+    if (slot.status === 'valid') return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25';
+    if (slot.status === 'invalid') return 'bg-red-500/10 text-red-300 border-red-500/25';
+    if (slot.status === 'rate_limited') return 'bg-amber-500/10 text-amber-300 border-amber-500/25';
+    return 'bg-indigo-500/10 text-indigo-300 border-indigo-500/25';
+  };
+
   const renderCooldown = (slot: KeySlot) => {
     if (!slot.cooldownUntil) return null;
     const leftMs = slot.cooldownUntil - Date.now();
     if (leftMs <= 0) return null;
-    return `${Math.ceil(leftMs / 1000)}s`;
+    return `${Math.ceil(leftMs / 1000)} 秒`;
   };
 
-  // Card Renderer
-  const renderCard = (slot: KeySlot) => (
-    <div key={slot.id} className="bg-[#1e1e20] border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:border-indigo-500/20 transition-all">
-      {(() => {
-        const health = getHealthScore(slot);
-        const cooldown = renderCooldown(slot);
-        return (
-          <div className="flex items-center gap-4">
-            {/* Status Dot */}
-            <div className={`w-2 h-2 rounded-full ${slot.disabled ? 'bg-zinc-600' :
-              slot.status === 'valid' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
-                slot.status === 'invalid' ? 'bg-red-500' :
-                  'bg-amber-500'
-              }`} />
+  const renderCard = (slot: KeySlot) => {
+    const health = getHealthScore(slot);
+    const cooldown = renderCooldown(slot);
+    const actionVisibleClass = isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100';
 
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-semibold text-zinc-100">{slot.name}</h4>
-                {slot.status === 'valid' && <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded">在线</span>}
-                {slot.status === 'unknown' && !slot.disabled && <span className="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded">待重试</span>}
-                {slot.status === 'rate_limited' && !slot.disabled && <span className="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded">限流中</span>}
-                {slot.status === 'invalid' && !slot.disabled && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded">认证失败</span>}
-                {cooldown && <span className="text-[10px] bg-amber-500/10 text-amber-300 px-1.5 py-0.5 rounded">冷却 {cooldown}</span>}
-                {slot.disabled && <span className="text-[10px] bg-zinc-700/50 text-zinc-400 px-1.5 py-0.5 rounded">已禁用</span>}
-              </div>
-              <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-500 font-mono">
-                <span>{slot.key.slice(0, 4)}...{slot.key.slice(-4)}</span>
-                <span>{renderBudgetInfo(slot)}</span>
-                {slot.provider && <span className="hidden sm:inline-block px-1.5 py-0.5 bg-white/5 rounded text-[10px]">{slot.provider}</span>}
-                <span className={`hidden md:inline-block px-1.5 py-0.5 rounded text-[10px] ${health >= 85 ? 'bg-emerald-500/10 text-emerald-300' : health >= 60 ? 'bg-amber-500/10 text-amber-300' : 'bg-red-500/10 text-red-300'}`}>健康度 {health}%</span>
-              </div>
+    return (
+      <div
+        key={slot.id}
+        className="group rounded-2xl border p-3 md:p-4 transition-all"
+        style={{
+          borderColor: 'rgba(255,255,255,0.08)',
+          background: 'linear-gradient(180deg, rgba(30,30,34,0.88) 0%, rgba(22,22,25,0.92) 100%)',
+        }}
+      >
+        <div className={`flex ${isMobile ? 'flex-col gap-3' : 'items-center justify-between gap-4'}`}>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className={`h-2 w-2 rounded-full ${
+                  slot.disabled
+                    ? 'bg-zinc-500'
+                    : slot.status === 'valid'
+                    ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.45)]'
+                    : slot.status === 'invalid'
+                    ? 'bg-red-500'
+                    : 'bg-amber-500'
+                }`}
+              />
+              <h4 className="truncate text-sm font-semibold text-zinc-100">{slot.name}</h4>
+              <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] ${getStatusClass(slot)}`}>
+                {getStatusLabel(slot)}
+              </span>
+              {cooldown && (
+                <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">
+                  冷却 {cooldown}
+                </span>
+              )}
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+              <span className="font-mono">{slot.key.slice(0, 4)}...{slot.key.slice(-4)}</span>
+              <span className="hidden sm:inline">·</span>
+              <span>{renderBudgetInfo(slot)}</span>
+            </div>
+
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+              {slot.provider && (
+                <span className="inline-flex rounded-md border border-white/10 px-1.5 py-0.5">{slot.provider}</span>
+              )}
+              <span
+                className={`inline-flex rounded-md px-1.5 py-0.5 ${
+                  health >= 85
+                    ? 'bg-emerald-500/10 text-emerald-300'
+                    : health >= 60
+                    ? 'bg-amber-500/10 text-amber-300'
+                    : 'bg-red-500/10 text-red-300'
+                }`}
+              >
+                健康度 {health}%
+              </span>
             </div>
           </div>
-        );
-      })()}
 
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className={`flex items-center gap-1.5 transition-opacity ${actionVisibleClass}`}>
+            <button
+              onClick={() => handleTest(slot.id)}
+              disabled={!!refreshingId}
+              className="h-9 w-9 rounded-xl text-zinc-300 hover:text-indigo-300 hover:bg-white/10 disabled:opacity-60"
+              title="刷新并验证"
+            >
+              <RefreshCw size={16} className={refreshingId === slot.id ? 'mx-auto animate-spin' : 'mx-auto'} />
+            </button>
+            <button
+              onClick={() => handleToggle(slot.id)}
+              className="h-9 w-9 rounded-xl text-zinc-300 hover:text-emerald-300 hover:bg-white/10"
+              title={slot.disabled ? '启用' : '暂停'}
+            >
+              {slot.disabled ? <Play size={16} className="mx-auto" /> : <Pause size={16} className="mx-auto" />}
+            </button>
+            <button
+              onClick={() => openEditModal(slot)}
+              className="h-9 w-9 rounded-xl text-zinc-300 hover:text-sky-300 hover:bg-white/10"
+              title="编辑"
+            >
+              <Edit2 size={16} className="mx-auto" />
+            </button>
+            <button
+              onClick={() => handleDelete(slot.id)}
+              className="h-9 w-9 rounded-xl text-zinc-300 hover:text-red-300 hover:bg-white/10"
+              title="删除"
+            >
+              <Trash2 size={16} className="mx-auto" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSection = (
+    key: string,
+    title: string,
+    description: string,
+    icon: React.ReactNode,
+    buttonText: string,
+    onAdd: () => void,
+    list: KeySlot[],
+    emptyText: string
+  ) => (
+    <section key={key} className="space-y-3">
+      <div className={`flex ${isMobile ? 'flex-col gap-2' : 'items-center justify-between'} px-1`}>
+        <div className="flex items-start gap-2.5">
+          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 text-indigo-300">
+            {icon}
+          </div>
+          <div>
+            <h4 className="text-base font-bold text-zinc-100">{title}</h4>
+            <p className="text-[11px] text-zinc-400">{description}</p>
+          </div>
+        </div>
         <button
-          onClick={() => handleTest(slot.id)}
-          disabled={!!refreshingId}
-          className="p-1.5 rounded-lg text-zinc-400 hover:text-indigo-400 hover:bg-white/5"
-          title="测试连接"
+          onClick={onAdd}
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-indigo-500/15 px-3 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20"
         >
-          <RefreshCw size={14} className={refreshingId === slot.id ? 'animate-spin' : ''} />
-        </button>
-        <button
-          onClick={() => handleToggle(slot.id)}
-          className="p-1.5 rounded-lg text-zinc-400 hover:text-emerald-400 hover:bg-white/5"
-          title={slot.disabled ? "启用" : "禁用"}
-        >
-          {slot.disabled ? <Play size={14} /> : <Pause size={14} />}
-        </button>
-        <button
-          onClick={() => openEditModal(slot)}
-          className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-white/5"
-          title="编辑"
-        >
-          <Edit2 size={14} />
-        </button>
-        <button
-          onClick={() => handleDelete(slot.id)}
-          className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-white/5"
-          title="删除"
-        >
-          <Trash2 size={14} />
+          <Plus size={13} /> {buttonText}
         </button>
       </div>
-    </div>
+
+      <div className="grid gap-3">
+        {list.length > 0 ? (
+          list.map(renderCard)
+        ) : (
+          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-7 text-center text-xs text-zinc-500">
+            {emptyText}
+          </div>
+        )}
+      </div>
+    </section>
   );
 
   return (
-    <div className="space-y-8 pb-10">
-      {/* Header */}
-      <div className="px-1 py-2">
-        <h3 className="text-2xl font-bold text-zinc-100">API 管理</h3>
-        <p className="text-xs text-zinc-500 mt-1">管理您的所有 API 连接，支持多渠道负载均衡</p>
+    <div className={`${isMobile ? 'space-y-6 pb-7' : 'space-y-8 pb-10'}`}>
+      <div className="px-1 py-1">
+        <h3 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-zinc-100`}>API 管理</h3>
+        <p className="mt-1 text-xs text-zinc-400">
+          管理你自己的官方接口与第三方接口。此页面配置仅对当前用户生效，不会影响其他用户。
+        </p>
       </div>
 
-      {/* 1. Official Section */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-              <Zap size={16} />
-            </div>
-            <div>
-              <h4 className="text-base font-bold text-zinc-200">官方直连</h4>
-              <p className="text-[10px] text-zinc-500">Google Gemini 官方接口，自动匹配模型与负载</p>
-            </div>
-          </div>
-          <button
-            onClick={() => openAddModal('official')}
-            className="flex items-center gap-1 px-3 py-1.5 bg-blue-600/10 text-blue-500 hover:bg-blue-600/20 rounded-lg text-xs font-bold transition-colors"
-          >
-            <Plus size={12} /> 添加直连
-          </button>
-        </div>
+      {renderSection(
+        'official',
+        '官方接口',
+        '直接接入官方服务商，适合稳定主力调用。',
+        <Zap size={16} />,
+        '添加官方接口',
+        () => openAddModal('official'),
+        officialSlots,
+        '暂无官方接口，请先添加。'
+      )}
 
-        <div className="grid gap-3">
-          {officialSlots.length > 0 ? officialSlots.map(renderCard) : (
-            <div className="text-center py-6 border border-dashed border-white/10 rounded-xl">
-              <p className="text-xs text-zinc-600">暂无官方直连配置</p>
-            </div>
-          )}
-        </div>
-      </section>
+      {renderSection(
+        'proxy',
+        '代理接口',
+        '适配 OneAPI / NewAPI 等代理服务。',
+        <Server size={16} />,
+        '添加代理接口',
+        () => openAddModal('proxy'),
+        proxySlots,
+        '暂无代理接口配置。'
+      )}
 
-      {/* 2. Proxy Section */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-              <Server size={16} />
-            </div>
-            <div>
-              <h4 className="text-base font-bold text-zinc-200">代理服务器</h4>
-              <p className="text-[10px] text-zinc-500">OneAPI / NewAPI / Antigravity 中转服务</p>
-            </div>
-          </div>
-          <button
-            onClick={() => openAddModal('proxy')}
-            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600/10 text-emerald-500 hover:bg-emerald-600/20 rounded-lg text-xs font-bold transition-colors"
-          >
-            <Plus size={12} /> 添加代理
-          </button>
-        </div>
+      {renderSection(
+        'third-party',
+        '第三方接口',
+        '接入其他供应商，支持独立 URL 和独立价格体系。',
+        <Globe size={16} />,
+        '添加第三方接口',
+        () => openAddModal('third-party'),
+        thirdPartySlots,
+        '暂无第三方接口配置。'
+      )}
 
-        <div className="grid gap-3">
-          {proxySlots.length > 0 ? proxySlots.map(renderCard) : (
-            <div className="text-center py-6 border border-dashed border-white/10 rounded-xl">
-              <p className="text-xs text-zinc-600">暂无代理服务器配置</p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* 3. Third-Party Section */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
-              <Globe size={16} />
-            </div>
-            <div>
-              <h4 className="text-base font-bold text-zinc-200">第三方 API</h4>
-              <p className="text-[10px] text-zinc-500">智谱、DeepSeek 等其他服务商接口</p>
-            </div>
-          </div>
-          <button
-            onClick={() => openAddModal('third-party')}
-            className="flex items-center gap-1 px-3 py-1.5 bg-purple-600/10 text-purple-500 hover:bg-purple-600/20 rounded-lg text-xs font-bold transition-colors"
-          >
-            <Plus size={12} /> 添加服务商
-          </button>
-        </div>
-
-        <div className="grid gap-3">
-          {thirdPartySlots.length > 0 ? thirdPartySlots.map(renderCard) : (
-            <div className="text-center py-6 border border-dashed border-white/10 rounded-xl">
-              <p className="text-xs text-zinc-600">暂无第三方服务配置</p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Modal */}
       <KeySlotModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

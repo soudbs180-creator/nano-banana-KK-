@@ -1473,24 +1473,20 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     // 🚀 [Mobile Layout] Dock to bottom on mobile
     const mobileStyle: React.CSSProperties = isMobile ? {
         position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        width: '100%',
-        maxWidth: '100%',
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + var(--mobile-tabbar-height, 72px) + var(--mobile-tabbar-floating-offset, 12px) + var(--mobile-prompt-gap, 12px))',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 'calc(100vw - 20px)',
+        maxWidth: 'min(960px, calc(100vw - 20px))',
         margin: 0,
-        borderRadius: 0, // Flat for docked bar
-        borderTop: '1px solid rgba(255,255,255,0.1)',
-        borderBottom: 'none',
-        borderLeft: 'none',
-        borderRight: 'none',
-        zIndex: 50,
-        padding: '12px 16px',
-        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-        backdropFilter: 'blur(20px)',
-        backgroundColor: 'rgba(20, 20, 23, 0.85)', // Dark translucent iOS style
-        boxShadow: '0 -4px 30px rgba(0,0,0,0.5)',
-        alignItems: 'center'
+        borderRadius: '22px',
+        border: '1px solid var(--mobile-glass-border, rgba(255,255,255,0.16))',
+        zIndex: 960,
+        padding: 0,
+        WebkitBackdropFilter: 'blur(26px) saturate(170%)',
+        backdropFilter: 'blur(26px) saturate(170%)',
+        background: 'var(--mobile-glass-bg, rgba(20, 20, 23, 0.84))',
+        boxShadow: '0 24px 56px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.15)'
     } : {
         // Desktop floating style handling...
     };
@@ -1524,7 +1520,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         <>
             <div
                 id="prompt-bar-container"
-                className={`input-bar transition-all duration-300 !overflow-visible w-[calc(100vw-32px)] sm:w-[min(95vw,960px)] md:w-[min(93vw,1080px)] lg:w-[min(92vw,1200px)] ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
+                className={`input-bar ${isMobile ? 'ios-mobile-prompt' : ''} transition-all duration-300 !overflow-visible w-[calc(100vw-32px)] sm:w-[min(95vw,960px)] md:w-[min(93vw,1080px)] lg:w-[min(92vw,1200px)] ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
                 onDragEnter={handleDragEnter}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}

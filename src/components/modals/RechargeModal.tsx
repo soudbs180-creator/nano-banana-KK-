@@ -17,8 +17,17 @@ const RechargeModal: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [qrCodeResult, setQrCodeResult] = useState<{ qrCode: string; outTradeNo: string } | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
 
   const isCny = currency === 'CNY';
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const calculateCredits = (amt: number, curr: 'CNY' | 'USD') => {
     return curr === 'CNY' ? amt * 5 : amt * 30;
@@ -164,12 +173,18 @@ const RechargeModal: React.FC = () => {
   }
 
   return (
-    <div className="fixed inset-0 z-[10020] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+    <div
+      className={`fixed inset-0 z-[10020] flex justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 ${
+        isMobile ? 'items-end px-2 pb-0 pt-10' : 'items-center p-4'
+      }`}
+    >
       <div
-        className="w-full max-w-[440px] rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-white/10"
+        className={`w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-white/10 ${
+          isMobile ? 'ios-mobile-sheet max-h-[90dvh] rounded-t-[26px] rounded-b-none max-w-[760px]' : 'max-w-[440px] rounded-[32px]'
+        }`}
         style={{ backgroundColor: 'var(--bg-surface, #ffffff)' }}
       >
-        <div className="relative p-6 pb-4">
+        <div className={`relative ${isMobile ? 'p-4 pb-3' : 'p-6 pb-4'}`}>
           <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent ${theme.via} to-transparent`} />
           <div className="flex justify-between items-center mb-1">
             <div className="flex items-center gap-2">
@@ -189,7 +204,7 @@ const RechargeModal: React.FC = () => {
           </p>
         </div>
 
-        <div className="px-6 py-2 space-y-6">
+        <div className={`${isMobile ? 'px-4 py-2 pb-4 space-y-4 max-h-[72dvh]' : 'px-6 py-2 space-y-6'} overflow-y-auto`}>
           {qrCodeResult ? (
             <div className="flex flex-col items-center justify-center py-6 gap-4">
               {paymentSuccess ? (
@@ -328,7 +343,7 @@ const RechargeModal: React.FC = () => {
         </div>
 
         {!qrCodeResult && (
-          <div className="p-6 pt-4">
+          <div className={`${isMobile ? 'p-4 pt-3 pb-[max(16px,env(safe-area-inset-bottom))]' : 'p-6 pt-4'}`}>
             <button
               onClick={handleRecharge}
               disabled={isProcessing}

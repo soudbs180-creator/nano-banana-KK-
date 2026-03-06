@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { AspectRatio, GeneratedImage, GenerationMode } from '../../types';
 import { Download, Trash2, Loader2, ImageOff, Play, Pause, Music } from 'lucide-react';
 import { getCardDimensions } from '../../utils/styleUtils';
-import { getLaunchMotionByCanvasScale, getPromptBarLaunchPoint } from '../../utils/cardLaunch';
+import { getLaunchTimelineByOffset, getPromptBarLaunchPoint } from '../../utils/cardLaunch';
 import { generateTagColor } from '../../utils/colorUtils';
 import { useLazyImage } from '../../hooks/useLazyImage';
 import { getImage, getOriginalImage } from '../../services/storage/imageStorage';
@@ -90,36 +90,64 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 if (!el || !el.isConnected) return;
 
                 // 1. 计算起始世界坐标（输入框中线发牌，且整体在输入框上方）
-                const launchPoint = getPromptBarLaunchPoint(16, 'center');
+                const launchPoint = getPromptBarLaunchPoint(0, 'center');
                 const startScreenX = launchPoint.x;
                 const startScreenY = launchPoint.y;
                 const offsetX = (startScreenX - canvasTransform.x) / canvasTransform.scale - position.x;
                 const offsetY = (startScreenY - canvasTransform.y) / canvasTransform.scale - position.y;
-                const launchMotion = getLaunchMotionByCanvasScale(canvasTransform.scale || 1);
+                const timelineConfig = getLaunchTimelineByOffset(offsetX, offsetY, canvasTransform.scale || 1);
 
                 // 2. 单一 fromTo 动画 —— 消除双重动画抖动
-                gsap.fromTo(el, {
-                    x: offsetX,
-                    y: offsetY,
-                    scale: launchMotion.fromScale,
-                    opacity: 0,
-                }, {
-                    x: 0,
-                    y: 0,
-                    scale: 1,
-                    opacity: 1,
-                    duration: launchMotion.duration,
-                    ease: launchMotion.ease,
-                    force3D: true,
-                    clearProps: 'transform,opacity,will-change',
+                const timeline = gsap.timeline({
+                    defaults: { force3D: true },
                     onStart: () => {
                         document.body.classList.add('is-animating-card');
                     },
                     onComplete: () => {
                         document.body.classList.remove('is-animating-card');
                         el.style.willChange = '';
-                    }
+                    },
+                    onInterrupt: () => {
+                        document.body.classList.remove('is-animating-card');
+                        el.style.willChange = '';
+                    },
                 });
+
+                timeline
+                    .set(el, {
+                        x: timelineConfig.startX,
+                        y: timelineConfig.startY,
+                        scale: timelineConfig.startScale,
+                        opacity: 0,
+                    })
+                    .to(el, {
+                        opacity: 1,
+                        duration: timelineConfig.fadeInDuration,
+                        ease: 'power1.out',
+                    })
+                    .to(el, {
+                        x: timelineConfig.midX,
+                        y: timelineConfig.midY,
+                        scale: timelineConfig.midScale,
+                        duration: timelineConfig.travelDuration,
+                        ease: 'power3.out',
+                    }, '<')
+                    .to(el, {
+                        x: timelineConfig.settleX,
+                        y: timelineConfig.settleY,
+                        scale: timelineConfig.settleScale,
+                        duration: timelineConfig.settleDuration,
+                        ease: 'expo.out',
+                    })
+                    .to(el, {
+                        x: 0,
+                        y: 0,
+                        scale: 1,
+                        opacity: 1,
+                        duration: 0.14,
+                        ease: 'power2.out',
+                        clearProps: 'transform,opacity,will-change',
+                    });
             });
         }
     }, [image.id, image.timestamp, canvasTransform]);

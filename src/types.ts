@@ -195,6 +195,9 @@ export interface PromptNode {
   providerLabel?: string; // 🚀 生成通道显示名称（例如“反代”）
   keySlotId?: string;
   childImageIds: string[];
+  lastGenerationSuccessCount?: number;
+  lastGenerationFailCount?: number;
+  lastGenerationTotalCount?: number;
   referenceImages?: ReferenceImage[];
   timestamp: number;
   sourceImageId?: string;
@@ -204,6 +207,7 @@ export interface PromptNode {
   errorDetails?: {
     code?: string;
     status?: number;
+    requestPath?: string;
     requestBody?: string;
     responseBody?: string;
     provider?: string;

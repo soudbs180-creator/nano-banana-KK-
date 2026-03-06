@@ -1529,13 +1529,16 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     }}
                     onMouseDown={registerActivity}
                     onWheel={registerActivity}
-                    className={`fixed z-[100] flex flex-col bg-[var(--bg-secondary)] backdrop-blur-2xl border-l border-[var(--border-light)] shadow-[var(--shadow-lg)] overflow-hidden ${isMobile
-                        ? 'inset-0 rounded-none pb-0'
-                        : 'top-0 right-0 bottom-0'
+                    className={`fixed z-[100] flex flex-col bg-[var(--bg-secondary)] backdrop-blur-2xl border-[var(--border-light)] shadow-[var(--shadow-lg)] overflow-hidden ${isMobile
+                        ? 'left-2 right-2 rounded-[24px] border pb-0'
+                        : 'top-0 right-0 bottom-0 border-l border-t-0 border-r-0 border-b-0'
                         }`}
                     style={isMobile ? {
-                        height: keyboardHeight > 0 ? `${viewportHeight}px` : '100dvh',
-                        transition: 'height 0.2s ease-out'
+                        top: 'calc(env(safe-area-inset-top, 0px) + var(--mobile-header-height, 56px) + 10px)',
+                        bottom: keyboardHeight > 0
+                            ? 'max(env(safe-area-inset-bottom, 0px), 6px)'
+                            : 'calc(env(safe-area-inset-bottom, 0px) + var(--mobile-tabbar-height, 72px) + var(--mobile-tabbar-floating-offset, 12px) + 8px)',
+                        transition: 'top 0.25s ease, bottom 0.25s ease'
                     } : {
                         // Full height sidebar on the right
                         width: `${sidebarWidth}px`,
@@ -1573,7 +1576,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                     )}
 
                     {/* Session Header */}
-                    <div className="relative z-10 flex flex-col pt-4 bg-[var(--bg-secondary)] border-b border-[var(--border-light)] shrink-0">
+                    <div className={`relative z-10 flex flex-col bg-[var(--bg-secondary)] border-b border-[var(--border-light)] shrink-0 ${isMobile ? 'pt-3' : 'pt-4'}`}>
                         <div className="flex items-center justify-between px-4 pb-3">
                             {/* Left: Active Session Title */}
                             <div className="flex-1 min-w-0 flex items-center gap-2">

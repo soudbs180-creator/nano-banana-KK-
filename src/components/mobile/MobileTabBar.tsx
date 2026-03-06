@@ -1,11 +1,12 @@
-import { Home, Image as ImageIcon, Settings, Video, User, Sparkles, Music } from 'lucide-react';
+import React from 'react';
+import { Image as ImageIcon, Music, Settings, Sparkles, User, Video } from 'lucide-react';
 import { GenerationMode } from '../../types';
 
 interface MobileTabBarProps {
     onSetMode: (mode: GenerationMode) => void;
     onOpenSettings: () => void;
     onOpenProfile: () => void;
-    onToggleChat?: () => void; // [NEW]
+    onToggleChat?: () => void;
     currentMode: GenerationMode;
     currentView: 'gallery' | 'home' | 'settings' | 'profile' | 'chat';
     isVisible?: boolean;
@@ -20,81 +21,82 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
     currentMode,
     currentView,
     isVisible = true,
-    onInteract
+    onInteract,
 }) => {
+    const modeTabActive = (mode: GenerationMode) => {
+        if (currentView === 'settings' || currentView === 'profile' || currentView === 'chat') {
+            return false;
+        }
+        return currentMode === mode;
+    };
+
+    const tabs = [
+        {
+            key: 'settings',
+            label: '设置',
+            active: currentView === 'settings',
+            onClick: onOpenSettings,
+            icon: <Settings size={20} strokeWidth={2.15} />,
+        },
+        {
+            key: 'image',
+            label: '图片',
+            active: modeTabActive(GenerationMode.IMAGE),
+            onClick: () => onSetMode(GenerationMode.IMAGE),
+            icon: <ImageIcon size={20} strokeWidth={2.15} />,
+        },
+        {
+            key: 'chat',
+            label: '助手',
+            active: currentView === 'chat',
+            onClick: () => onToggleChat?.(),
+            icon: <Sparkles size={20} strokeWidth={2.15} />,
+        },
+        {
+            key: 'video',
+            label: '视频',
+            active: modeTabActive(GenerationMode.VIDEO),
+            onClick: () => onSetMode(GenerationMode.VIDEO),
+            icon: <Video size={20} strokeWidth={2.15} />,
+        },
+        {
+            key: 'audio',
+            label: '音频',
+            active: modeTabActive(GenerationMode.AUDIO),
+            onClick: () => onSetMode(GenerationMode.AUDIO),
+            icon: <Music size={20} strokeWidth={2.15} />,
+        },
+        {
+            key: 'profile',
+            label: '我的',
+            active: currentView === 'profile',
+            onClick: onOpenProfile,
+            icon: <User size={20} strokeWidth={2.15} />,
+        },
+    ];
+
     return (
         <div
-            className={`fixed bottom-0 left-0 right-0 z-[1000] md:hidden pb-safe transition-transform duration-300 ease-in-out ${isVisible ? 'translate-y-0' : 'translate-y-[150%]'}`}
+            className={`fixed bottom-0 left-0 right-0 z-[940] md:hidden transition-transform duration-300 ease-out ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-[140%] opacity-0'}`}
+            style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom, 0px))' }}
             onTouchStart={onInteract}
             onClick={onInteract}
         >
-            <div
-                className="mx-2 mb-4 h-16 rounded-[32px] flex items-center justify-between px-2 relative overflow-hidden liquid-glass shadow-2xl border border-white/10 gap-1"
-                id="mobile-tab-bar"
-                style={{
-                    backgroundColor: 'rgba(20, 20, 23, 0.85)',
-                    backdropFilter: 'blur(20px)',
-                }}
-            >
-                {/* Tab: Settings */}
-                <button
-                    onClick={onOpenSettings}
-                    className="flex-1 flex flex-col items-center justify-center min-w-[40px] h-full p-1 rounded-full transition-all active:scale-95"
-                    style={{ color: currentView === 'settings' ? 'white' : 'var(--text-tertiary)' }}
-                >
-                    <Settings size={22} strokeWidth={2} />
-                    <span className="mt-1 text-[10px] leading-none text-gray-500 dark:text-zinc-400 hidden sm:block">设置</span>
-                </button>
-
-                {/* Tab: Image Mode */}
-                <button
-                    onClick={() => onSetMode(GenerationMode.IMAGE)}
-                    className="flex-1 flex flex-col items-center justify-center min-w-[40px] h-full p-1 rounded-full transition-all active:scale-95"
-                    style={{ color: currentMode === GenerationMode.IMAGE && currentView !== 'settings' && currentView !== 'profile' && currentView !== 'chat' ? 'white' : 'var(--text-tertiary)' }}
-                >
-                    <ImageIcon size={22} strokeWidth={2} />
-                    <span className="mt-1 text-[10px] leading-none text-zinc-400 hidden sm:block">图像</span>
-                </button>
-
-                {/* AI Assistant (Center) */}
-                <button
-                    onClick={onToggleChat}
-                    className="flex-1 flex flex-col items-center justify-center min-w-[40px] h-full p-1 rounded-full transition-all active:scale-95"
-                    style={{ color: currentView === 'chat' ? 'white' : 'var(--text-tertiary)' }}
-                >
-                    <Sparkles size={22} strokeWidth={2} />
-                    <span className="mt-1 text-[10px] leading-none text-zinc-400 hidden sm:block">助手</span>
-                </button>
-
-                {/* Tab: Video Mode */}
-                <button
-                    onClick={() => onSetMode(GenerationMode.VIDEO)}
-                    className="flex-1 flex flex-col items-center justify-center min-w-[40px] h-full p-1 rounded-full transition-all active:scale-95"
-                    style={{ color: currentMode === GenerationMode.VIDEO && currentView !== 'settings' && currentView !== 'profile' && currentView !== 'chat' ? 'white' : 'var(--text-tertiary)' }}
-                >
-                    <Video size={22} strokeWidth={2} />
-                    <span className="mt-1 text-[10px] leading-none text-zinc-400 hidden sm:block">视频</span>
-                </button>
-
-                {/* Tab: Audio Mode */}
-                <button
-                    onClick={() => onSetMode(GenerationMode.AUDIO)}
-                    className="flex-1 flex flex-col items-center justify-center min-w-[40px] h-full p-1 rounded-full transition-all active:scale-95"
-                    style={{ color: currentMode === GenerationMode.AUDIO && currentView !== 'settings' && currentView !== 'profile' && currentView !== 'chat' ? 'white' : 'var(--text-tertiary)' }}
-                >
-                    <Music size={22} strokeWidth={2} />
-                    <span className="mt-1 text-[10px] leading-none text-zinc-400 hidden sm:block">音频</span>
-                </button>
-
-                {/* Tab: Profile */}
-                <button
-                    onClick={onOpenProfile}
-                    className="flex-1 flex flex-col items-center justify-center min-w-[40px] h-full p-1 rounded-full transition-all active:scale-95"
-                    style={{ color: currentView === 'profile' ? 'white' : 'var(--text-tertiary)' }}
-                >
-                    <User size={22} strokeWidth={2} />
-                    <span className="mt-1 text-[10px] leading-none text-zinc-400 hidden sm:block">我的</span>
-                </button>
+            <div id="mobile-tab-bar" className="ios-mobile-tabbar-shell mx-3 px-2 py-1.5">
+                <div className="grid grid-cols-6 gap-1">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.key}
+                            onClick={tab.onClick}
+                            aria-label={tab.label}
+                            className={`ios-mobile-tab-button flex flex-col items-center justify-center px-1 py-1 ${tab.active ? 'is-active' : ''}`}
+                            style={{ color: tab.active ? '#ffffff' : 'var(--text-tertiary)' }}
+                        >
+                            {tab.icon}
+                            <span className="ios-mobile-tab-label">{tab.label}</span>
+                        </button>
+                    ))}
+                </div>
             </div>
         </div>
     );

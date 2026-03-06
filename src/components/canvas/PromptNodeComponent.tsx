@@ -5,7 +5,7 @@ import { getCardDimensions } from '../../utils/styleUtils';
 import { generateTagColor } from '../../utils/colorUtils';
 import { getModelDisplayName } from '../../services/model/modelCapabilities';
 import { getModelBadgeInfo, getProviderBadgeColor } from '../../utils/modelBadge';
-import { getLaunchMotionByCanvasScale, getPromptBarLaunchPoint } from '../../utils/cardLaunch';
+import { getLaunchTimelineByOffset, getPromptBarLaunchPoint } from '../../utils/cardLaunch';
 import ImagePreview from '../image/ImagePreview';
 
 const truncateByChars = (text: string, maxChars: number): string => {
@@ -323,36 +323,64 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 if (!el || !el.isConnected) return;
 
                 // 1. 计算起始世界坐标（输入框中线发牌，且整体在输入框上方）
-                const launchPoint = getPromptBarLaunchPoint(16, 'center');
+                const launchPoint = getPromptBarLaunchPoint(0, 'center');
                 const startScreenX = launchPoint.x;
                 const startScreenY = launchPoint.y;
                 const offsetX = (startScreenX - canvasTransform.x) / canvasTransform.scale - node.position.x;
                 const offsetY = (startScreenY - canvasTransform.y) / canvasTransform.scale - node.position.y;
-                const launchMotion = getLaunchMotionByCanvasScale(canvasTransform.scale || 1);
+                const timelineConfig = getLaunchTimelineByOffset(offsetX, offsetY, canvasTransform.scale || 1);
 
                 // 2. 单一 fromTo 动画 —— 避免双重动画覆盖
-                gsap.fromTo(el, {
-                    x: offsetX,
-                    y: offsetY,
-                    scale: launchMotion.fromScale,
-                    opacity: 0,
-                }, {
-                    x: 0,
-                    y: 0,
-                    scale: 1,
-                    opacity: 1,
-                    duration: launchMotion.duration,
-                    ease: launchMotion.ease,
-                    force3D: true,
-                    clearProps: 'transform,opacity,will-change',
+                const timeline = gsap.timeline({
+                    defaults: { force3D: true },
                     onStart: () => {
                         document.body.classList.add('is-animating-card');
                     },
                     onComplete: () => {
                         document.body.classList.remove('is-animating-card');
                         el.style.willChange = '';
-                    }
+                    },
+                    onInterrupt: () => {
+                        document.body.classList.remove('is-animating-card');
+                        el.style.willChange = '';
+                    },
                 });
+
+                timeline
+                    .set(el, {
+                        x: timelineConfig.startX,
+                        y: timelineConfig.startY,
+                        scale: timelineConfig.startScale,
+                        opacity: 0,
+                    })
+                    .to(el, {
+                        opacity: 1,
+                        duration: timelineConfig.fadeInDuration,
+                        ease: 'power1.out',
+                    })
+                    .to(el, {
+                        x: timelineConfig.midX,
+                        y: timelineConfig.midY,
+                        scale: timelineConfig.midScale,
+                        duration: timelineConfig.travelDuration,
+                        ease: 'power3.out',
+                    }, '<')
+                    .to(el, {
+                        x: timelineConfig.settleX,
+                        y: timelineConfig.settleY,
+                        scale: timelineConfig.settleScale,
+                        duration: timelineConfig.settleDuration,
+                        ease: 'expo.out',
+                    })
+                    .to(el, {
+                        x: 0,
+                        y: 0,
+                        scale: 1,
+                        opacity: 1,
+                        duration: 0.14,
+                        ease: 'power2.out',
+                        clearProps: 'transform,opacity,will-change',
+                    });
             });
         }
     }, [node.id, node.timestamp, node.isDraft, canvasTransform]);
@@ -499,10 +527,15 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         };
     }, [isDragging, zoomScale, onDragDelta, onPositionChange, node.id]);
 
+    const renderedSuccessCount = (node.childImageIds?.length || 0) > 0
+        ? (node.childImageIds?.length || 0)
+        : (node.lastGenerationSuccessCount || 0);
+    const renderedFailCount = Math.max(0, Number(node.lastGenerationFailCount || 0));
+
     return (
         <div
             ref={containerRef}
-            className={`absolute z-20 flex flex-col items-center group antialiased select-none ${isSelected ? 'z-30' : ''} ${node.isNew ? 'is-new' : ''}`}
+            className={`absolute z-20 flex flex-col items-center group antialiased select-none ${isSelected ? 'z-30' : ''} ${node.isNew && !canvasTransform ? 'is-new' : ''}`}
             style={{
                 left: Math.round(node.position.x - cardWidth / 2),
                 top: Math.round(node.position.y - cardHeight),
@@ -592,8 +625,12 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                     <Sparkles size={12} className="text-amber-400" />
                                 </div>
                                 <span className="text-[13px] font-medium tracking-wide truncate">
-                                    {node.childImageIds?.length > 0 ? (
-                                        <span className="text-[var(--text-secondary)]">已生成 {node.childImageIds.length} 张</span>
+                                    {renderedSuccessCount > 0 ? (
+                                        <span className="text-[var(--text-secondary)]">
+                                            {renderedFailCount > 0
+                                                ? `成功 ${renderedSuccessCount} 张，失败 ${renderedFailCount} 张`
+                                                : `已生成 ${renderedSuccessCount} 张`}
+                                        </span>
                                     ) : (
                                         <span className="text-[var(--text-tertiary)]">
                                             {node.isDraft && !node.originalPrompt && !node.prompt ? '输入提示词...' : (node as any).title || node.id.slice(0, 8) + '...'}

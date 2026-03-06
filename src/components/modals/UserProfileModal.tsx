@@ -8,7 +8,6 @@ import {
   Lock,
   LogOut,
   Pencil,
-  User as UserIcon,
   Wallet,
   X,
 } from 'lucide-react';
@@ -24,6 +23,7 @@ interface UserProfileModalProps {
   user: User | null;
   onSignOut: () => void;
   initialView?: UserProfileView;
+  isMobile?: boolean;
 }
 
 const formatDateTime = (value?: string | null) => {
@@ -65,6 +65,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
   user,
   onSignOut,
   initialView = 'main',
+  isMobile = false,
 }) => {
   const { isTempUser, tempUserExpiry } = useAuth();
   const {
@@ -245,16 +246,27 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const nickname = displayName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || '未命名用户';
 
   return (
-    <div className="fixed inset-0 z-[10002] flex items-center justify-center bg-black/50 px-3 py-4 backdrop-blur-sm">
+    <div
+      className={`fixed inset-0 z-[10002] flex justify-center bg-black/55 backdrop-blur-sm ${
+        isMobile ? 'items-end px-2 pt-8 pb-0' : 'items-center px-3 py-4'
+      }`}
+    >
       <div
-        className="w-full max-w-[860px] overflow-hidden rounded-2xl border shadow-2xl"
+        className={`w-full overflow-hidden border shadow-2xl ${
+          isMobile
+            ? 'ios-mobile-sheet max-h-[88dvh] rounded-t-[26px] rounded-b-none'
+            : 'max-w-[860px] rounded-2xl'
+        }`}
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderColor: 'var(--border-light)',
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: 'var(--border-light)' }}>
+        <div
+          className={`flex items-center justify-between border-b ${isMobile ? 'px-3 py-3' : 'px-4 py-3'}`}
+          style={{ borderColor: 'var(--border-light)' }}
+        >
           <div className="flex items-center gap-2">
             {view !== 'main' && (
               <button
@@ -282,7 +294,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
           </button>
         </div>
 
-        <div className="max-h-[78vh] overflow-y-auto px-4 py-4">
+        <div className={`${isMobile ? 'max-h-[74dvh] px-3 py-3' : 'max-h-[78vh] px-4 py-4'} overflow-y-auto`}>
           {message && (
             <div
               className={`mb-4 rounded-lg border px-3 py-2 text-sm ${
@@ -296,7 +308,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
           )}
 
           {view === 'main' && (
-            <div className="space-y-4">
+            <div className={`${isMobile ? 'space-y-3' : 'space-y-4'}`}>
               {isTempUser && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
                   <div className="flex items-start gap-2">

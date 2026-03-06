@@ -2097,8 +2097,8 @@ export class KeyManager {
                     // Using dynamic import to avoid potential circular dependencies
                     import('../system/notificationService').then(({ notify }) => {
                         notify.warning(
-                            `棰勭畻鍗冲皢鑰楀敖`,
-                            `API Key "${slot.name}" 宸蹭娇鐢?${(usageRatio * 100).toFixed(0)}% 棰勭畻 ($${slot.totalCost.toFixed(2)} / $${slot.budgetLimit})`
+                            `预算即将耗尽`,
+                            `API Key "${slot.name}" 已使用 ${(usageRatio * 100).toFixed(0)}% 预算（$${slot.totalCost.toFixed(2)} / $${slot.budgetLimit}）`
                         );
                     });
                 }
@@ -2107,8 +2107,8 @@ export class KeyManager {
                 if (usageRatio >= 1.0 && previousRatio < 1.0) {
                     import('../system/notificationService').then(({ notify }) => {
                         notify.error(
-                            `棰勭畻宸茶€楀敖`,
-                            `API Key "${slot.name}" ??????????????????????`
+                            `预算已耗尽`,
+                            `API Key "${slot.name}" 已达到预算上限，请充值或调整预算后继续使用。`
                         );
                     });
                 }
@@ -2181,12 +2181,12 @@ export class KeyManager {
         const trimmedKey = key.replace(/[^\x00-\x7F]/g, "").trim();
 
         if (!trimmedKey) {
-            return { success: false, error: '璇疯緭鍏ユ湁鏁堢殑 API Key (闇€涓虹函鑻辨枃瀛楃)' };
+            return { success: false, error: '请输入有效的 API Key（需为英文字符）。' };
         }
 
         // Check for duplicates
         if (this.state.slots.some(s => s.key === trimmedKey && s.baseUrl === options?.baseUrl)) {
-            return { success: false, error: '? Key ???' };
+            return { success: false, error: '该 API Key 已存在，请勿重复添加。' };
         }
 
         const baseUrl = options?.baseUrl || '';
@@ -2559,10 +2559,14 @@ export class KeyManager {
         const activeSlots = this.state.slots.filter(s => !s.disabled && s.status !== 'invalid');
         const slotsHash = `${activeSlots.length}-${activeSlots.map(s => s.id).join(',')}`;
 
-        // 馃殌 [Fix] 娣诲姞 adminModels 鍒扮紦瀛橀敭锛岀‘淇濈鐞嗗憳閰嶇疆鍙樺寲鏃剁紦瀛樺け鏁?
+        // 🚀 [Fix] 添加 adminModels 到缓存键，确保管理员配置变化时缓存失效
         const adminModels = adminModelService.getModels();
         const adminHash = `${adminModels.length}-${adminModels.map(m => m.id).join(',')}`;
-        const combinedHash = `${slotsHash}|${adminHash}`;
+
+        // 🚀 [Fix] 添加 providers 到缓存键，确保供应商增减时模型选择立即响应
+        this.loadProviders();
+        const providerHash = `${this.providers.length}-${this.providers.filter(p => p.isActive).map(p => `${p.id}:${p.models.length}`).join(',')}`;
+        const combinedHash = `${slotsHash}|${adminHash}|${providerHash}`;
 
         const now = Date.now();
 
@@ -2823,6 +2827,7 @@ export class KeyManager {
 
         this.providers.push(provider);
         this.saveProviders();
+        this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
         this.notifyListeners();
 
         return provider;
@@ -2844,6 +2849,7 @@ export class KeyManager {
         };
 
         this.saveProviders();
+        this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
         this.notifyListeners();
         return true;
     }
@@ -2859,6 +2865,7 @@ export class KeyManager {
 
         this.providers.splice(index, 1);
         this.saveProviders();
+        this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
         this.notifyListeners();
         return true;
     }
@@ -3082,8 +3089,19 @@ export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): 
         });
 
         if (!response.ok) {
-            console.error('[KeyManager] Failed to fetch proxy models:', response.status);
-            return [];
+            console.error('[KeyManager] 获取代理模型失败:', response.status, response.statusText);
+            if (response.status === 401) {
+                throw new Error('认证失败(401): API密钥无效或权限不足。请确认使用 sk- 开头的密钥，且密钥未过期或被删除。');
+            }
+            if (response.status === 403) {
+                throw new Error('权限不足(403): 该密钥无权访问模型列表接口。请检查密钥分组权限设置。');
+            }
+            // 其他非致命错误（如 404 表示该供应商不支持 /v1/models 端点），返回空数组
+            if (response.status === 404) {
+                console.warn('[KeyManager] 该供应商不支持 /v1/models 端点，将返回空模型列表');
+                return [];
+            }
+            throw new Error(`获取模型列表失败(${response.status}): ${response.statusText || '请检查接口地址和密钥'}`);
         }
 
         const data = await response.json();
@@ -3239,3 +3257,4 @@ export async function autoDetectAndConfigureModels(apiKey: string, baseUrl?: str
 }
 
 // Re-export ProxyModelConfig for convenience
+

@@ -177,7 +177,9 @@ export const AdminSystem: React.FC = () => {
           <label className="mb-2 block text-xs text-[var(--text-tertiary)]">管理员密码</label>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
+                <Lock className="h-4 w-4 text-[var(--text-tertiary)]" />
+              </span>
               <input
                 type="password"
                 value={password}
@@ -188,7 +190,7 @@ export const AdminSystem: React.FC = () => {
                   }
                 }}
                 placeholder="请输入管理员密码"
-                className="w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-tertiary)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)]"
+                className="h-10 w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-tertiary)] pl-10 pr-3 text-sm text-[var(--text-primary)]"
               />
             </div>
             <button
