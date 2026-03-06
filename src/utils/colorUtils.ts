@@ -8,7 +8,7 @@
 
 export interface TagColor {
     bg: string;      // 背景色（inline style）
-    text: string;    // 文字色（inline style）
+    text: string;    // 文本色（inline style）
     border: string;  // 边框色（inline style）
 }
 

@@ -1,0 +1,11 @@
+﻿src/App.tsx(4196,13): error TS2322: Type '{ onMenuClick: () => void; onDashboardClick: () => void; onSettingsClick: () => void; onUserClick: () => void; onBillingClick: () => void; title: string; }' is not assignable to type 'IntrinsicAttributes & MobileHeaderProps'.
+  Property 'onDashboardClick' does not exist on type 'IntrinsicAttributes & MobileHeaderProps'.
+src/App.tsx(4224,13): error TS2322: Type '{ onSetMode: (mode: GenerationMode) => void; onOpenSettings: () => void; onOpenProfile: () => void; onToggleChat: () => void; currentMode: GenerationMode; currentView: "chat" | ... 2 more ... | "profile"; }' is not assignable to type 'IntrinsicAttributes & MobileTabBarProps'.
+  Property 'onToggleChat' does not exist on type 'IntrinsicAttributes & MobileTabBarProps'.
+src/components/ui/animated-shader-background.tsx(2,24): error TS7016: Could not find a declaration file for module 'three'. 'C:/Users/Administrator/Downloads/KK-Studio-1.0.0/node_modules/three/build/three.module.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/three` if it exists or add a new declaration (.d.ts) file containing `declare module 'three';`
+src/components/ui/sign-up.tsx(29,22): error TS7016: Could not find a declaration file for module 'canvas-confetti'. 'C:/Users/Administrator/Downloads/KK-Studio-1.0.0/node_modules/canvas-confetti/src/confetti.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/canvas-confetti` if it exists or add a new declaration (.d.ts) file containing `declare module 'canvas-confetti';`
+src/components/ui/sign-up.tsx(34,8): error TS7016: Could not find a declaration file for module 'canvas-confetti'. 'C:/Users/Administrator/Downloads/KK-Studio-1.0.0/node_modules/canvas-confetti/src/confetti.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/canvas-confetti` if it exists or add a new declaration (.d.ts) file containing `declare module 'canvas-confetti';`
+src/components/ui/sign-up.tsx(169,53): error TS2322: Type 'string' is not assignable to type 'MarginType | undefined'.

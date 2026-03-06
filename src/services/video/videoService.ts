@@ -18,7 +18,7 @@ export interface VideoGenerationConfig {
     prompt: string;
     model?: string; // 默认: 'veo-3.1-generate-preview'
     aspectRatio?: '16:9' | '9:16';
-    resolution?: '720p' | '1080p' | '4k'; // 🚀 [新增] 分辨率参数
+    resolution?: '720p' | '1080p' | '4k'; // 🚀 [添加] 分辨率参数
     negativePrompt?: string;
     /** 
      * 参考图片数组 (Base64编码, 不含data:前缀)
@@ -45,7 +45,7 @@ const DEFAULT_GOOGLE_BASE_URL = 'https://generativelanguage.googleapis.com';
 export async function generateVideo(
     config: VideoGenerationConfig,
     apiKey: string,
-    baseUrl?: string, // 🚀 [新增] 支持自定义代理 Base URL
+    baseUrl?: string, // 🚀 [添加] 支持自定义代理 Base URL
     onProgress?: (status: string) => void,
     signal?: AbortSignal
 ): Promise<VideoGenerationResult> {
@@ -98,7 +98,7 @@ export async function generateVideo(
         parameters.aspectRatio = config.aspectRatio;
     }
 
-    // 🚀 [新增] 添加分辨率到parameters
+    // 🚀 [添加] 添加分辨率到parameters
     if (config.resolution) {
         parameters.resolution = config.resolution;
         console.log(`[VideoService] 设置分辨率: ${config.resolution}`);

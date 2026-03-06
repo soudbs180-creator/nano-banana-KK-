@@ -25,7 +25,7 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
     setSelectedMode('local');
 
     if (!supportsLocal) {
-      setError('当前浏览器不支持本地文件夹模式，请改用浏览器存储。');
+      setError('当前浏览器不支持本地文档夹模式，请改用浏览器存储。');
       return;
     }
 
@@ -33,7 +33,7 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
     try {
       await connectLocalFolder();
     } catch {
-      setError('文件夹选择失败，请重新选择。');
+      setError('文档夹选择失败，请重新选择。');
     } finally {
       setSelectingLocal(false);
     }
@@ -52,7 +52,7 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
     }
 
     if (selectedMode === 'local' && !isConnectedToLocal) {
-      setError('本地文件夹尚未连接，请先完成文件夹授权。');
+      setError('本地文档夹尚未连接，请先完成文档夹授权。');
       return;
     }
 
@@ -103,10 +103,10 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
                 </div>
                 <div>
                   <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                    本地文件夹（推荐）
+                    本地文档夹（推荐）
                   </div>
                   <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    图片保存到你选择的系统文件夹，容量更稳定，不容易因浏览器清理缓存而丢失。
+                    图片保存到你选择的系统文档夹，容量更稳定，不容易因浏览器清理缓存而丢失。
                   </p>
                 </div>
               </div>
@@ -145,7 +145,7 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
           <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
             <div className="flex items-start gap-2">
               <AlertTriangle size={14} className="mt-0.5" />
-              <p>当前浏览器不支持文件夹授权。若要使用本地文件夹，请改用最新版 Chrome 或 Edge。</p>
+              <p>当前浏览器不支持文档夹授权。若要使用本地文档夹，请改用最新版 Chrome 或 Edge。</p>
             </div>
           </div>
         )}

@@ -430,7 +430,7 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                 }
             };
 
-            // 优先获取核心数据（渠道、分组）
+            // 优先获取内核数据（渠道、分组）
             notify.info('正在刷新...', '获取渠道和分组信息');
             
             const [channels, groups, pricing] = await Promise.all([
@@ -1071,7 +1071,7 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                             try {
                                                 const imported = JSON.parse(event.target?.result as string);
                                                 if (!Array.isArray(imported)) {
-                                                    notify.error('导入失败', '文件格式错误');
+                                                    notify.error('导入失败', '文档格式错误');
                                                     return;
                                                 }
                                                 
@@ -1088,7 +1088,7 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                                 saveProviders(merged);
                                                 notify.success('导入成功', `已导入 ${newProviders.length} 个厂商配置`);
                                             } catch (err) {
-                                                notify.error('导入失败', '无法解析文件');
+                                                notify.error('导入失败', '无法解析文档');
                                             }
                                         };
                                         reader.readAsText(file);

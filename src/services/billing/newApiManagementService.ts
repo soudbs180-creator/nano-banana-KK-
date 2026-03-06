@@ -121,7 +121,7 @@ class NewApiError extends Error {
   }
 }
 
-// ============== 核心服务类 ==============
+// ============== 内核服务类 ==============
 
 export class NewApiManagementService {
   private config: NewApiManagementConfig;

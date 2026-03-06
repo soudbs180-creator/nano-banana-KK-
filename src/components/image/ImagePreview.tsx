@@ -30,7 +30,7 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ imageUrl, originRect, onClo
         };
         window.addEventListener('keydown', handleKeyDown);
         
-        // 🚀 [新增] 监听拖拽开始事件，自动关闭预览
+        // 🚀 [添加] 监听拖拽开始事件，自动关闭预览
         const handleDragStart = () => {
             handleClose();
         };

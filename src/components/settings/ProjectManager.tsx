@@ -649,11 +649,11 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">确认删除项目？</h3>
-                                <p className="text-gray-500 dark:text-zinc-500 text-xs mt-1">本地文件夹不会被删除</p>
+                                <p className="text-gray-500 dark:text-zinc-500 text-xs mt-1">本地文档夹不会被删除</p>
                             </div>
                         </div>
                         <p className="text-gray-700 dark:text-zinc-300 text-sm mb-6 leading-relaxed bg-white/5 p-3 rounded-lg border border-white/5">
-                            删除后，该项目将从界面中移除。本地文件夹中的图片和视频仍会保留，您可以通过“刷新本地备份”按钮恢复。
+                            删除后，该项目将从界面中移除。本地文档夹中的图片和视频仍会保留，您可以通过“刷新本地备份”按钮恢复。
                         </p>
                         <div className="flex gap-3 justify-end">
                             <button

@@ -68,6 +68,15 @@ const normalizeBaseModelId = (value: string): string => {
   return (value || '').split('@')[0].trim();
 };
 
+const normalizeHexColor = (value?: string | null, fallback = ''): string => {
+  let color = (value || fallback || '').trim();
+  if (!color) return '';
+  if (/^[A-Fa-f0-9]{3,8}$/.test(color)) {
+    color = `#${color}`;
+  }
+  return color.toUpperCase();
+};
+
 const newModel = (): EditableModel => ({
   modelId: '',
   displayName: '',
@@ -149,6 +158,121 @@ const CreditModelSettings: React.FC = () => {
   useEffect(() => {
     void load();
   }, []);
+
+  const loadProviderRows = async (providerId: string): Promise<CreditModelRow[]> => {
+    const { data, error } = await supabase
+      .from('admin_credit_models')
+      .select(CREDIT_MODEL_SELECT_BASE)
+      .eq('provider_id', providerId)
+      .order('priority', { ascending: false });
+
+    if (error) throw error;
+    return (data || []) as CreditModelRow[];
+  };
+
+  const needsDirectStyleRepair = (
+    savedRows: CreditModelRow[],
+    payloadModels: Array<{
+      model_id: string;
+      color: string;
+      color_secondary: string | null;
+      text_color: 'white' | 'black';
+    }>
+  ) => {
+    const rowMap = new Map(
+      savedRows.map((row) => [normalizeBaseModelId(row.model_id), row] as const)
+    );
+
+    return payloadModels.some((model) => {
+      const saved = rowMap.get(normalizeBaseModelId(model.model_id));
+      if (!saved) return true;
+
+      const expectedPrimary = normalizeHexColor(model.color, '#3B82F6');
+      const savedPrimary = normalizeHexColor(saved.color, '#3B82F6');
+      if (savedPrimary !== expectedPrimary) return true;
+
+      const expectedSecondary = normalizeHexColor(model.color_secondary);
+      const savedSecondary = normalizeHexColor(saved.color_secondary);
+      if (expectedSecondary && savedSecondary !== expectedSecondary) return true;
+
+      const expectedText = model.text_color === 'black' ? 'black' : 'white';
+      const savedText = saved.text_color === 'black' ? 'black' : 'white';
+      if (savedText !== expectedText) return true;
+
+      return false;
+    });
+  };
+
+  const saveProviderDirect = async (
+    payloadModels: Array<{
+      model_id: string;
+      display_name: string;
+      description: string;
+      endpoint_type: string;
+      credit_cost: number;
+      priority: number;
+      weight: number;
+      is_active: boolean;
+      color: string;
+      color_secondary: string | null;
+      text_color: 'white' | 'black';
+      max_calls_limit?: number | null;
+      auto_pause_on_limit?: boolean;
+    }>
+  ) => {
+    const providerId = form.providerId.trim();
+    const providerName = form.providerName.trim();
+    const baseUrl = form.baseUrl.trim();
+    const apiKey = form.apiKey.trim();
+
+    const { error: deleteError } = await supabase
+      .from('admin_credit_models')
+      .delete()
+      .eq('provider_id', providerId);
+
+    if (deleteError) throw deleteError;
+
+    const rowsToInsert = payloadModels.map((item) => ({
+      provider_id: providerId,
+      provider_name: providerName,
+      base_url: baseUrl,
+      api_keys: [apiKey],
+      model_id: normalizeBaseModelId(item.model_id),
+      display_name: item.display_name.trim(),
+      description: item.description || '',
+      endpoint_type: item.endpoint_type,
+      credit_cost: Number(item.credit_cost || 1),
+      priority: item.priority,
+      weight: item.weight,
+      is_active: Boolean(item.is_active),
+      color: normalizeHexColor(item.color, '#3B82F6') || '#3B82F6',
+      color_secondary: normalizeHexColor(item.color_secondary) || null,
+      text_color: item.text_color === 'black' ? 'black' : 'white',
+      gradient: 'from-blue-500 to-indigo-600',
+      ...(supportsMaxCallsLimit
+        ? {
+            max_calls_limit: item.max_calls_limit ?? null,
+            auto_pause_on_limit: item.auto_pause_on_limit ?? true,
+          }
+        : {}),
+    }));
+
+    const { error: insertError } = await supabase
+      .from('admin_credit_models')
+      .insert(rowsToInsert);
+
+    if (insertError) throw insertError;
+  };
+
+  const refreshAdminModelSync = async () => {
+    const [{ adminModelService }, { unifiedModelService }] = await Promise.all([
+      import('../../services/model/adminModelService'),
+      import('../../services/model/unifiedModelService'),
+    ]);
+
+    await adminModelService.forceLoadAdminModels();
+    await unifiedModelService.refreshModels();
+  };
 
   useEffect(() => {
     if (!selectedProviderId) return;
@@ -232,18 +356,29 @@ const CreditModelSettings: React.FC = () => {
           : {}),
       }));
 
+      const providerId = form.providerId.trim();
       const { error } = await supabase.rpc('save_credit_provider', {
-        p_provider_id: form.providerId.trim(),
+        p_provider_id: providerId,
         p_provider_name: form.providerName.trim(),
         p_base_url: form.baseUrl.trim(),
         p_api_keys: [form.apiKey.trim()],
         p_models: payloadModels,
       });
 
-      if (error) throw error;
+      if (error) {
+        await saveProviderDirect(payloadModels);
+      } else {
+        const savedRows = await loadProviderRows(providerId);
+        if (needsDirectStyleRepair(savedRows, payloadModels)) {
+          await saveProviderDirect(payloadModels);
+          notify.warning('已自动修复副颜色保存', '检测到旧版云端函数未保存样式，已切换为直写同步。');
+        }
+      }
+
       notify.success('保存成功', '积分模型配置已更新');
       await load();
-      setSelectedProviderId(form.providerId.trim());
+      setSelectedProviderId(providerId);
+      await refreshAdminModelSync();
     } catch (error: any) {
       notify.error('保存失败', error.message || '请检查 Supabase 权限和 RPC');
     } finally {
@@ -486,7 +621,7 @@ const CreditModelSettings: React.FC = () => {
                       />
                     </label>
                     <label className="space-y-1">
-                      <span className="text-[11px] text-[var(--text-tertiary)]">文字颜色</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)]">文本颜色</span>
                       <select
                         value={model.textColor}
                         onChange={(e) => {

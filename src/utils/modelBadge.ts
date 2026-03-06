@@ -1,40 +1,43 @@
-export type ModelBadge = { colorClass: string; text: string }
+import type { CSSProperties } from 'react';
 
-// 模型颜色映射（仅文字颜色，不再包含背景高亮）
-const MODEL_TEXT_PALETTE: string[] = [
-  "text-purple-400",
-  "text-yellow-400",
-  "text-red-400",
-  "text-green-400",
-  "text-pink-400",
-  "text-indigo-400",
-  "text-teal-400",
-  "text-orange-400",
-]
+export type ModelBadge = { colorClass: string; text: string };
 
-// 供应商颜色映射（用于供应商标签，包含背景和边框）
-const PROVIDER_PALETTE: string[] = [
-  "bg-blue-600/20 text-blue-400 border-blue-500/30",
-  "bg-yellow-600/20 text-yellow-400 border-yellow-500/30",
-  "bg-green-600/20 text-green-400 border-green-500/30",
-  "bg-purple-600/20 text-purple-400 border-purple-500/30",
-  "bg-pink-600/20 text-pink-400 border-pink-500/30",
-  "bg-indigo-600/20 text-indigo-400 border-indigo-500/30",
-]
+const MODEL_TEXT_PALETTE = [
+  'text-purple-400',
+  'text-yellow-400',
+  'text-red-400',
+  'text-green-400',
+  'text-pink-400',
+  'text-indigo-400',
+  'text-teal-400',
+  'text-orange-400',
+];
 
-function hashString(str: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h = (h ^ str.charCodeAt(i)) * 16777619;
-  }
-  return Math.abs(h);
-}
+const PROVIDER_PALETTE = [
+  'bg-blue-600/20 text-blue-400 border-blue-500/30',
+  'bg-yellow-600/20 text-yellow-400 border-yellow-500/30',
+  'bg-green-600/20 text-green-400 border-green-500/30',
+  'bg-purple-600/20 text-purple-400 border-purple-500/30',
+  'bg-pink-600/20 text-pink-400 border-pink-500/30',
+  'bg-indigo-600/20 text-indigo-400 border-indigo-500/30',
+];
 
 const MODEL_COLOR_MAP_KEY = 'kk_model_color_map_v1';
 const PROVIDER_COLOR_MAP_KEY = 'kk_provider_color_map_v1';
+const PROVIDERS_STORAGE_KEY = 'kk_studio_third_party_providers';
 
 let modelColorMapCache: Record<string, string> | null = null;
 let providerColorMapCache: Record<string, string> | null = null;
+let configuredProviderColorCache: Record<string, string> | null = null;
+let configuredProviderColorRaw = '';
+
+function hashString(str: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < str.length; index += 1) {
+    hash = (hash ^ str.charCodeAt(index)) * 16777619;
+  }
+  return Math.abs(hash);
+}
 
 function readMap(key: string): Record<string, string> {
   if (typeof window === 'undefined') return {};
@@ -53,15 +56,14 @@ function writeMap(key: string, map: Record<string, string>) {
   try {
     localStorage.setItem(key, JSON.stringify(map));
   } catch {
-    // ignore storage quota / private mode
+    return;
   }
 }
 
 function normalizeModelKey(id?: string, label?: string): string {
   const raw = (id || label || '').toLowerCase().trim();
-  // Keep model family stable across providers/suffix noise
-  const noProvider = raw.split('@')[0];
-  return noProvider
+  const withoutProvider = raw.split('@')[0];
+  return withoutProvider
     .replace(/-\d{8}$/i, '')
     .replace(/-(16[x-]9|9[x-]16|1[x-]1|4[x-]3|3[x-]4|21[x-]9|9[x-]21|3[x-]2|2[x-]3|4[x-]5|5[x-]4)$/i, '')
     .replace(/-(4k|2k|1k|high|hd|ultra|medium|low|standard)$/i, '')
@@ -70,6 +72,26 @@ function normalizeModelKey(id?: string, label?: string): string {
 
 function normalizeProviderKey(provider?: string): string {
   return (provider || 'unknown').toLowerCase().trim();
+}
+
+function normalizeHexColor(input?: string | null): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  if (/^#[A-Fa-f0-9]{3,8}$/.test(trimmed)) return trimmed;
+  if (/^[A-Fa-f0-9]{3,8}$/.test(trimmed)) return `#${trimmed}`;
+  return null;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '');
+  const expanded = normalized.length === 3
+    ? normalized.split('').map((item) => item + item).join('')
+    : normalized.slice(0, 6);
+  const red = parseInt(expanded.slice(0, 2), 16);
+  const green = parseInt(expanded.slice(2, 4), 16);
+  const blue = parseInt(expanded.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function getStableClass(
@@ -88,48 +110,93 @@ function getStableClass(
   if (map[key]) return map[key];
 
   const used = new Set(Object.values(map));
-  const available = palette.find(c => !used.has(c));
-  const cls = available || palette[hashString(key) % palette.length];
-  map[key] = cls;
+  const available = palette.find((item) => !used.has(item));
+  const resolved = available || palette[hashString(key) % palette.length];
+  map[key] = resolved;
   writeMap(storageKey, map);
-  return cls;
+  return resolved;
 }
 
-// 供应商颜色：基于 provider 名称定义专属颜色，或回退到哈希颜色
-export function getProviderBadgeColor(provider?: string): string {
-  const providerLower = provider?.toLowerCase() || '';
-  if (providerLower.includes('12ai')) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-  if (providerLower.includes('official') || providerLower.includes('google')) return 'bg-green-500/20 text-green-400 border-green-500/30';
-  if (providerLower.includes('custom')) return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-
-  if (!provider) return PROVIDER_PALETTE[0];
-  const key = normalizeProviderKey(provider);
-  return getStableClass(key, PROVIDER_PALETTE, PROVIDER_COLOR_MAP_KEY, 'provider');
-}
-
-// 从标签样式中提取纯文字颜色
 function extractTextColor(badgeClass: string): string {
   const match = badgeClass.match(/text-\S+/);
   return match ? match[0] : 'text-gray-400';
 }
 
-// 模型颜色：随机分配文字颜色，保持不同模型之间的文字颜色区分度
-export function getModelBadgeInfo(model: { id: string; label?: string; provider?: string; colorStart?: string; colorEnd?: string; }): ModelBadge {
-  const id = model.id ?? '';
-  const baseName = model.label ?? id;
+function getConfiguredProviderColor(provider?: string): string | null {
+  if (typeof window === 'undefined' || !provider) return null;
 
-  // 🚀 [Fix] 如果管理员配置了颜色，优先使用配置的颜色
-  if (model.colorStart && model.colorEnd) {
-    // 将管理员配置的颜色转换为 Tailwind 类名（简化处理，使用渐变色）
-    return { 
-      colorClass: 'text-white', // 积分模型统一白色文字
-      text: baseName 
+  const raw = localStorage.getItem(PROVIDERS_STORAGE_KEY) || '';
+  if (configuredProviderColorCache && raw === configuredProviderColorRaw) {
+    return configuredProviderColorCache[normalizeProviderKey(provider)] || null;
+  }
+
+  configuredProviderColorRaw = raw;
+  configuredProviderColorCache = {};
+
+  try {
+    const providers = JSON.parse(raw);
+    if (Array.isArray(providers)) {
+      providers.forEach((item) => {
+        if (!item || typeof item !== 'object') return;
+        const key = normalizeProviderKey(String(item.name || item.provider || ''));
+        if (!key) return;
+        const color = normalizeHexColor(item.providerColor || item.badgeColor);
+        if (color) {
+          configuredProviderColorCache![key] = color;
+        }
+      });
+    }
+  } catch {
+    configuredProviderColorCache = {};
+  }
+
+  return configuredProviderColorCache[normalizeProviderKey(provider)] || null;
+}
+
+export function getProviderBadgeColor(provider?: string): string {
+  const providerLower = provider?.toLowerCase() || '';
+  if (providerLower.includes('official') || providerLower.includes('google')) {
+    return 'bg-green-500/20 text-green-400 border-green-500/30';
+  }
+  if (providerLower.includes('custom')) {
+    return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  }
+  if (!provider) return PROVIDER_PALETTE[0];
+  return getStableClass(normalizeProviderKey(provider), PROVIDER_PALETTE, PROVIDER_COLOR_MAP_KEY, 'provider');
+}
+
+export function getProviderBadgeStyle(provider?: string): CSSProperties | undefined {
+  const configuredColor = getConfiguredProviderColor(provider);
+  if (!configuredColor) return undefined;
+
+  return {
+    color: configuredColor,
+    backgroundColor: hexToRgba(configuredColor, 0.18),
+    borderColor: hexToRgba(configuredColor, 0.36),
+  };
+}
+
+export function getModelBadgeInfo(model: {
+  id: string;
+  label?: string;
+  provider?: string;
+  colorStart?: string;
+  colorEnd?: string;
+  textColor?: 'white' | 'black';
+}): ModelBadge {
+  const id = model.id ?? '';
+  const text = model.label ?? id;
+
+  if (model.colorStart || model.colorEnd) {
+    return {
+      colorClass: model.textColor === 'black' ? 'text-slate-900' : 'text-white',
+      text,
     };
   }
 
-  // Same model ID should keep same color across refreshes
-  const modelKey = normalizeModelKey(id, baseName) || id || baseName;
-  const textColorClass = getStableClass(modelKey, MODEL_TEXT_PALETTE, MODEL_COLOR_MAP_KEY, 'model');
-
-  return { colorClass: textColorClass, text: baseName };
+  const modelKey = normalizeModelKey(id, text);
+  const providerBadge = getProviderBadgeColor(model.provider);
+  const fallbackTextColor = extractTextColor(providerBadge);
+  const colorClass = getStableClass(modelKey, MODEL_TEXT_PALETTE, MODEL_COLOR_MAP_KEY, 'model') || fallbackTextColor;
+  return { colorClass, text };
 }

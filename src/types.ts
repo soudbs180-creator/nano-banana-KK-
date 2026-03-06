@@ -116,8 +116,8 @@ export interface GeneratedImage {
   tokens?: number; // New: Token usage
   cost?: number; // New: Estimated cost
   orphaned?: boolean; // 孤独副卡（无父节点）
-  fileName?: string; // 原始文件名
-  fileSize?: number; // 文件大小（字节）
+  fileName?: string; // 原始文档名
+  fileSize?: number; // 文档大小（字节）
   alias?: string; // 🚀 [New] 用户自定义备注名
   isGenerating?: boolean; // 🚀 [New] True when image is being generated
   error?: string; // 🚀 [New] Error message for failed generation
@@ -191,8 +191,8 @@ export interface PromptNode {
   imageSize: ImageSize;
   model: ModelType;
   modelLabel?: string; // 🚀 模型显示名称（用户选择时看到的名字）
-  provider?: string; // 🚀 生成通道 provider（内部标识）
-  providerLabel?: string; // 🚀 生成通道显示名称（例如“反代”）
+  provider?: string; // 🚀 生成信道 provider（内部标识）
+  providerLabel?: string; // 🚀 生成信道显示名称（例如“反代”）
   keySlotId?: string;
   childImageIds: string[];
   lastGenerationSuccessCount?: number;
@@ -214,7 +214,7 @@ export interface PromptNode {
     model?: string;
     timestamp?: number;
   };
-  // 🚀 [新增] 积分退回状态，用于显示"生成失败，积分已退回"
+  // 🚀 [添加] 积分退回状态，用于显示"生成失败，积分已退回"
   refundStatus?: 'pending' | 'success' | 'failed';
 
   mode?: GenerationMode; // New

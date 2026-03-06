@@ -3,9 +3,12 @@ import { Menu, Sparkles, User } from 'lucide-react';
 
 interface MobileHeaderProps {
     onMenuClick: () => void;
+    onDashboardClick?: () => void;
+    onSettingsClick?: () => void;
     onUserClick: () => void;
-    onRechargeClick: () => void;
-    balance: number;
+    onBillingClick?: () => void;
+    onRechargeClick?: () => void;
+    balance?: number;
     balanceLoading?: boolean;
     title?: string;
 }

@@ -12,7 +12,7 @@ interface VideoOptionsPanelProps {
     onDurationChange: (duration: string) => void;
     onAudioChange: (audio: boolean) => void;
     availableRatios?: AspectRatio[];
-    supportsAudio?: boolean; // 新增：是否支持音频开关
+    supportsAudio?: boolean; // 添加：是否支持音频开关
 }
 
 const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({

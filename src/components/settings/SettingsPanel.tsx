@@ -273,10 +273,10 @@ const StorageSettingsView: React.FC = () => {
     try {
       await connectLocalFolder();
       await setStorageMode('local');
-      notify.success('切换成功', '已切换为本地文件夹存储。');
+      notify.success('切换成功', '已切换为本地文档夹存储。');
       await refresh();
     } catch (error) {
-      notify.error('切换失败', '本地文件夹连接失败，请重试。');
+      notify.error('切换失败', '本地文档夹连接失败，请重试。');
       console.error('[StorageSettingsView] 切换本地模式失败:', error);
       setLoading(false);
     }
@@ -321,7 +321,7 @@ const StorageSettingsView: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <StatCard title="当前存储方式" value={mode === 'local' ? '本地文件夹' : mode === 'browser' ? '浏览器存储' : '未设置'} />
+        <StatCard title="当前存储方式" value={mode === 'local' ? '本地文档夹' : mode === 'browser' ? '浏览器存储' : '未设置'} />
         <StatCard title="已存图片数量" value={`${imageCount} 张`} />
         <StatCard title="占用空间" value={`${usageMB.toFixed(2)} MB`} />
       </div>
@@ -338,7 +338,7 @@ const StorageSettingsView: React.FC = () => {
             className="inline-flex h-10 items-center justify-center rounded-lg border px-3 text-sm disabled:opacity-60"
             style={{ borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}
           >
-            切换到本地文件夹
+            切换到本地文档夹
           </button>
 
           <button
@@ -352,7 +352,7 @@ const StorageSettingsView: React.FC = () => {
         </div>
 
         <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          本地文件夹连接状态：{isConnectedToLocal ? '已连接' : '未连接'}
+          本地文档夹连接状态：{isConnectedToLocal ? '已连接' : '未连接'}
         </div>
       </div>
 

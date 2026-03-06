@@ -4,7 +4,7 @@
  */
 
 
-// 🚀 新增OPFS模式支持手机端
+// 🚀 添加OPFS模式支持手机端
 export type StorageMode = 'local' | 'browser' | 'opfs';
 
 const FOLDER_HANDLE_KEY = 'kk_studio_local_folder_handle';
@@ -92,7 +92,7 @@ export async function setStorageMode(mode: StorageMode): Promise<boolean> {
         cachedMode = mode;
 
         import('../system/notificationService').then(({ notify }) => {
-            notify.success('存储设置成功', mode === 'browser' ? '原图将保存在浏览器中' : '原图将保存到本地文件夹');
+            notify.success('存储设置成功', mode === 'browser' ? '原图将保存在浏览器中' : '原图将保存到本地文档夹');
         });
         return true;
     } catch (e: any) {
@@ -232,8 +232,8 @@ export async function selectLocalFolder(): Promise<FileSystemDirectoryHandle | n
             // Dynamic import of notify for error display
             import('../system/notificationService').then(({ notify }) => {
                 notify.error(
-                    '文件夹选择失败',
-                    '无法获取文件夹访问权限',
+                    '文档夹选择失败',
+                    '无法获取文档夹访问权限',
                     `StoragePreference Error: ${e.message || e}`
                 );
             });
@@ -313,7 +313,7 @@ export async function mergeStorages(): Promise<void> {
 
         // Notify user about start
         import('../system/notificationService').then(({ notify }) => {
-            notify.info('正在同步图片', `正在将 ${ids.length} 张图片同步到本地文件夹...`);
+            notify.info('正在同步图片', `正在将 ${ids.length} 张图片同步到本地文档夹...`);
         });
 
         for (const id of ids) {

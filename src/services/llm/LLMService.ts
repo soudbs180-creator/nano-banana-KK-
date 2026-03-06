@@ -310,7 +310,7 @@ export class LLMService {
                     throw new Error(`Provider ${keySlot.provider} does not match model ${options.modelId} `);
                 }
 
-                // 鉁?Suffix Stripping for API Call
+                // 𨱅?Suffix Stripping for API Call
                 const fullBaseId = options.modelId.split('@')[0];
                 const cleanModelId = fullBaseId.split('|')[0]; // Strip Provider/Name metadata
 
@@ -370,7 +370,7 @@ export class LLMService {
                     result.keySlotId = keySlot.id;
                 }
 
-                // 鉁?Populate Names for Display
+                // 𨱅?Populate Names for Display
                 if (!result.providerName) {
                     result.providerName = keySlot.name || keySlot.provider;
                 }
@@ -387,7 +387,7 @@ export class LLMService {
                 lastError = error;
                 console.warn(`[LLMService] Image attempt ${i + 1} failed: `, error);
 
-                // 馃殌 [鏃ュ織澧炲己] 璁板綍鍗曟灏濊瘯澶辫触
+                // 馃殌 [镞ュ织澧炲己] 璁板綍鍗曟灏濊瘯澶辫触
                 logWarning('LLMService', `Image generation attempt ${i + 1} failed(${keySlot.name})`,
                     `Model: ${options.modelId} \nProvider: ${keySlot.provider} \nError: ${error.message} `);
 
@@ -446,7 +446,7 @@ export class LLMService {
                 const adapter = this.getAdapter(keySlot.provider);
                 const targetAdapter = adapter.generateVideo ? adapter : this.videoAdapter;
 
-                // 鉁?Suffix Stripping for API Call
+                // 𨱅?Suffix Stripping for API Call
                 const fullBaseId = options.modelId.split('@')[0];
                 const cleanModelId = fullBaseId.split('|')[0]; // Strip Provider/Name metadata
                 const cleanOptions: any = { ...options, modelId: cleanModelId, onTaskId };
@@ -476,7 +476,7 @@ export class LLMService {
                 lastError = error;
                 console.warn(`[LLMService] Video attempt ${i + 1} failed: `, error);
 
-                // 馃殌 [鏃ュ織澧炲己] 璁板綍鍗曟灏濊瘯澶辫触
+                // 馃殌 [镞ュ织澧炲己] 璁板綍鍗曟灏濊瘯澶辫触
                 logWarning('LLMService', `Video generation attempt ${i + 1} failed(${keySlot.name})`,
                     `Model: ${options.modelId} \nProvider: ${keySlot.provider} \nError: ${error.message} `);
 
@@ -509,7 +509,7 @@ export class LLMService {
                 const adapter = this.getAdapter(keySlot.provider);
                 const targetAdapter = adapter.generateAudio ? adapter : this.audioAdapter;
 
-                // 鉁?Suffix Stripping for API Call
+                // 𨱅?Suffix Stripping for API Call
                 const cleanModelId = options.modelId.split('@')[0];
                 const cleanOptions: any = { ...options, modelId: cleanModelId, onTaskId };
 
@@ -538,7 +538,7 @@ export class LLMService {
                 lastError = error;
                 console.warn(`[LLMService] Audio attempt ${i + 1} failed: `, error);
 
-                // 馃殌 [鏃ュ織澧炲己] 璁板綍鍗曟灏濊瘯澶辫触
+                // 馃殌 [镞ュ织澧炲己] 璁板綍鍗曟灏濊瘯澶辫触
                 logWarning('LLMService', `Audio generation attempt ${i + 1} failed(${keySlot.name})`,
                     `Model: ${options.modelId} \nProvider: ${keySlot.provider} \nError: ${error.message} `);
 

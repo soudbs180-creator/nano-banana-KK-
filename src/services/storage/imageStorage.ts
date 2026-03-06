@@ -138,7 +138,7 @@ async function toBlobFromAnyUrl(dataURL: string): Promise<Blob | null> {
 
             if (!res || !res.ok) return null;
             const blob = await res.blob();
-            // 防止无效小文件/错误文档
+            // 防止无效小文档/错误文档
             return blob.size > 1024 ? blob : null;
         }
 
@@ -738,9 +738,9 @@ export async function saveOriginalImage(id: string, dataURL: string, isVideo: bo
                 }
             }
 
-            // 1. 🚀【重要变更】此处原有的自动备份到本地文件系统 (globalHandle) 逻辑已被移除！
-            // 原因：为了支持项目独立文件夹架构，本地落盘由 CanvasContext.addImageNodes 等上层控制流
-            // 精确地携带着画布项目名去写入对应的子文件夹，此处底层拦截保存会导致重复写入且落入错误层级。
+            // 1. 🚀【重要变更】此处原有的自动备份到本地文档系统 (globalHandle) 逻辑已被移除！
+            // 原因：为了支持项目独立文档夹架构，本地落盘由 CanvasContext.addImageNodes 等上层控制流
+            // 精确地携带着画布项目名去写入对应的子文档夹，此处底层拦截保存会导致重复写入且落入错误层级。
 
             // 2. 内存缓存：存储Blob URL或原始URL
             if (saveObject.blob) {
@@ -806,7 +806,7 @@ export async function getOriginalImage(id: string): Promise<string | null> {
         if (!result) {
             console.debug(`[ImageStorage] Original not found in IndexedDB: ${id}. Attempting disk recovery...`);
 
-            // 🚀 Fallback: 尝试从本地文件加载 (最后的防线)
+            // 🚀 Fallback: 尝试从本地文档加载 (最后的防线)
             const globalHandle = fileSystemService.getGlobalHandle();
             if (globalHandle) {
                 try {

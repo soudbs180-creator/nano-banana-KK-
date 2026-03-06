@@ -38,7 +38,7 @@ export function base64ToBlob(base64: string, contentType: string = ''): Blob {
 /**
  * 触发浏览器下载
  * @param blobOrUrl Blob 对象或 URL
- * @param filename 下载文件名
+ * @param filename 下载文档名
  */
 export function triggerDownload(blobOrUrl: Blob | string, filename: string): void {
     const url = typeof blobOrUrl === 'string'
@@ -59,7 +59,7 @@ export function triggerDownload(blobOrUrl: Blob | string, filename: string): voi
 }
 
 /**
- * 生成符合规范的下载文件名
+ * 生成符合规范的下载文档名
  * 格式: KKStudio_{类别}_{随机英文数字混合10位以内}.{扩展名}
  * @param type 类别，如 'Image' | 'Video' | 'Audio'
  * @param extension 扩展名，包含点（例如 '.png'）

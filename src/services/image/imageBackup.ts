@@ -1,13 +1,13 @@
 /**
  * 🔒 图片本地备份服务
- * 实现原图的本地文件系统备份，作为IndexedDB的第二层防护
+ * 实现原图的本地文档系统备份，作为IndexedDB的第二层防护
  */
 
 import { getAllImageIds, getOriginalImage } from '../storage/imageStorage';
 import { notify } from '../system/notificationService';
 
 /**
- * 🔒 批量导出所有原图到本地文件夹
+ * 🔒 批量导出所有原图到本地文档夹
  * 使用 File System Access API 让用户选择保存位置
  */
 export async function exportAllOriginalImages(): Promise<void> {
@@ -16,7 +16,7 @@ export async function exportAllOriginalImages(): Promise<void> {
         if (!('showDirectoryPicker' in window)) {
             notify.error(
                 '浏览器不支持',
-                '您的浏览器不支持文件系统访问API。请使用最新版Chrome、Edge或支持的浏览器。'
+                '您的浏览器不支持文档系统访问API。请使用最新版Chrome、Edge或支持的浏览器。'
             );
             return;
         }
@@ -29,7 +29,7 @@ export async function exportAllOriginalImages(): Promise<void> {
             return;
         }
 
-        // 2. 让用户选择保存文件夹
+        // 2. 让用户选择保存文档夹
         const dirHandle = await (window as any).showDirectoryPicker({
             mode: 'readwrite',
             startIn: 'downloads'
@@ -57,7 +57,7 @@ export async function exportAllOriginalImages(): Promise<void> {
                 const response = await fetch(dataURL);
                 const blob = await response.blob();
 
-                // 创建文件
+                // 创建文档
                 const filename = `kk_original_${id}.png`;
                 const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
                 const writable = await fileHandle.createWritable();
@@ -95,7 +95,7 @@ export async function exportAllOriginalImages(): Promise<void> {
 }
 
 /**
- * 🔒 单张图片自动备份到下载文件夹
+ * 🔒 单张图片自动备份到下载文档夹
  * @param id 图片ID
  * @param dataURL 图片数据URL
  */
@@ -129,7 +129,7 @@ export async function autoBackupImage(id: string, dataURL: string): Promise<void
 /**
  * 🔒 单张图片导出（用于右键菜单等）
  * @param id 图片ID
- * @param filename 可选文件名
+ * @param filename 可选文档名
  */
 export async function exportSingleImage(id: string, filename?: string): Promise<void> {
     try {

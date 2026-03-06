@@ -12,11 +12,11 @@ interface GlobalLightboxProps {
 }
 
 /**
- * 鍏ㄥ眬鐏缁勪欢
- * 鐢ㄤ簬鍏ㄥ睆鏌ョ湅鐢熸垚鐨勫浘鐗囨垨瑙嗛锛屾敮鎸佺缉鏀俱€佸钩绉诲拰鍒楄〃瀵艰埅
- * @param images 鍥剧墖瀵硅薄鏁扮粍
- * @param initialIndex 鍒濆鏄剧ず鐨勫浘鐗囩储寮?
- * @param onClose 鍏抽棴浜嬩欢鍥炶皟
+ * 鍏ㄥ眬𨱔缁勪欢
+ * 鐢ㄤ簬鍏ㄥ睆镆ョ湅鐢熸垚镄勫浘鐗囨垨瑙嗛锛屾敮镌佺缉鏀俱€佸钩绉诲拰𫔄楄〃瀵艰埅
+ * @param images 锲剧墖瀵硅薄鏁扮粍
+ * @param initialIndex 𫔄𣸣鏄剧ず镄勫浘鐗囩储寮?
+ * @param onClose 鍏抽棴浜嬩欢锲炶𤾀
  */
 export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialIndex, onClose, onInpaint }) => {
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
@@ -25,7 +25,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     const [isPanning, setIsPanning] = useState(false);
     const [showInpaint, setShowInpaint] = useState(false);
 
-    // 鍥剧墖鍔犺浇鐘舵€?
+    // 锲剧墖锷犺浇钟舵€?
     const [displaySrc, setDisplaySrc] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
@@ -198,7 +198,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         return () => { active = false; };
     }, [image]);
 
-    // 2. 浜嬩欢鐩戝惉 (閿洏鎺у埗)
+    // 2. 浜嬩欢𬭼戝惉 (阌洏鎺у埗)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
@@ -207,7 +207,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [currentIndex, images.length]); // 閲嶆柊缁戝畾浠ヨ幏鍙栨渶鏂扮储寮?
+    }, [currentIndex, images.length]); // 阅嶆柊缁戝畾浠ヨ幏鍙栨渶鏂扮储寮?
 
     // 3. 瀵艰埅澶勭悊鍑芥暟
     const handlePrev = useCallback((e?: React.MouseEvent) => {
@@ -220,7 +220,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         setCurrentIndex(prev => (prev < images.length - 1 ? prev + 1 : 0));
     }, [images.length]);
 
-    // 4. 缂╂斁/骞崇Щ閫昏緫
+    // 4. 缂╂斁/骞崇Щ阃昏緫
     const handleWheel = useCallback((e: React.WheelEvent) => {
         e.stopPropagation();
         const delta = e.deltaY > 0 ? -0.25 : 0.25;
@@ -261,14 +261,14 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         }
     }, [isPanning, handleMouseMove, handleMouseUp]);
 
-    // 5. 涓嬭浇閫昏緫
+    // 5. 涓嬭浇阃昏緫
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
             const { getOriginalImage } = await import('../../services/storage/imageStorage');
             const { triggerDownload, generateDownloadFilename } = await import('../../utils/downloadUtils');
 
-            // 浼樺厛涓嬭浇鏈湴鍘熷浘閫氶亾锛圛DB/鏈湴纾佺洏鎭㈠锛?
+            // 浼桦厛涓嬭浇链湴铡熷浘阃氶亾锛圛DB/链湴纾佺洏镇㈠锛?
             let target = await getOriginalImage(image.id);
             if (!target && image.storageId && image.storageId !== image.id) {
                 target = await getOriginalImage(image.storageId);
@@ -283,7 +283,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             const exportExt = isAudioMode ? '.mp3' : (isVideoMode ? '.mp4' : '.png');
             const filename = generateDownloadFilename(exportType, exportExt);
 
-            // data/blob 鐩存帴涓嬭浇锛沨ttp(s) 鍏堟媺鍙?blob锛岄伩鍏嶈法鍩?涓存椂 URL 瀵艰嚧娴忚鍣ㄤ笅杞藉け璐?
+            // data/blob 𬭼存帴涓嬭浇锛沨ttp(s) 鍏堟媺鍙?blob锛岄伩鍏𡺃法锘?涓存椂 URL 瀵艰𠰷娴忚鍣ㄤ笅杞藉け璐?
             if (target.startsWith('data:') || target.startsWith('blob:')) {
                 triggerDownload(target, filename);
                 return;
@@ -299,13 +299,13 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
             }
         } catch (err) {
-            // 鏈€鍚庡厹搴曪細鏂版爣绛鹃〉鎵撳紑
+            // 链€钖庡厹搴曪细鏂版爣绛鹃〉镓揿紑
             const fallback = displaySrc || image.originalUrl || image.url;
             if (fallback) window.open(fallback, '_blank', 'noopener,noreferrer');
         }
     };
 
-    // 6. 闃叉鍙屽嚮杩囧揩瀵艰嚧鐨勮瑙﹀叧闂?(600ms瀹夊叏鏈?- 鏀寔鎱㈤€熷弻鍑?
+    // 6. 阒叉鍙屽向杩囧揩瀵艰𠰷镄勮瑙﹀叧闂?(600ms瀹夊叏链?- 鏀寔鎱㈤€熷弻鍑?
     const [isReady, setIsReady] = useState(false);
     useEffect(() => {
         const timer = setTimeout(() => setIsReady(true), 600);
@@ -357,7 +357,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             className="fixed inset-0 z-[99999] bg-black/95 flex flex-col items-center justify-center animate-fadeIn select-none overflow-hidden"
             onClick={handleBackgroundClick}
         >
-            {/* 椤舵爮: 鍏抽棴鎸夐挳 */}
+            {/* 椤舵爮: 鍏抽棴镌夐挳 */}
             <button
                 onClick={onClose}
                 className="absolute top-4 right-4 z-50 p-2 bg-white/10 hover:opacity-80 rounded-full text-white transition-opacity"
@@ -366,13 +366,13 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 <X size={24} />
             </button>
 
-            {/* 瀵艰埅鍖哄煙 (闅愬舰鎴栧井寮辨彁绀? */}
+            {/* 瀵艰埅鍖哄烟 (闅愬舰鎴栧井寮辨彁绀? */}
             {images.length > 1 && (
                 <>
                     <div
                         className="absolute left-0 top-0 bottom-0 w-[15%] z-40 flex items-center justify-start pl-4 cursor-pointer transition-colors group"
                         onClick={handlePrev}
-                        title="涓婁竴寮?(Previous)"
+                        title="涓娄竴寮?(Previous)"
                     >
                         <div className="p-3 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                             <ChevronLeft size={32} />
@@ -391,15 +391,15 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 </>
             )}
 
-            {/* 涓诲唴瀹瑰尯鍩?*/}
-            {/* 楂樺害闄愬埗: 100vh - 100px (搴曢儴鏍? */}
+            {/* 涓诲唴瀹瑰尯锘?*/}
+            {/* 楂桦害闄愬埗: 100vh - 100px (搴曢儴镙? */}
             <div
                 className="relative flex-1 w-full h-[calc(100vh-100px)] flex items-center justify-center overflow-hidden"
                 onWheel={handleWheel}
-                onClick={(e) => e.stopPropagation()} // 闃叉鐐瑰嚮鐢诲竷鍏抽棴
+                onClick={(e) => e.stopPropagation()} // 阒叉镣瑰向鐢诲竷鍏抽棴
             >
                 {isLoading ? (
-                    <div className="text-white">鍔犺浇涓?..</div>
+                    <div className="text-white">锷犺浇涓?..</div>
                 ) : isAudio ? (
                     <div className="flex flex-col items-center justify-center gap-6">
                         <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-pink-400/60">
@@ -469,14 +469,14 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-red-400 flex flex-col items-center gap-2">
                             <ZoomOut size={24} />
-                            <span>鍥剧墖鍔犺浇澶辫触 (Image Load Failed)</span>
+                            <span>锲剧墖锷犺浇澶辫触 (Image Load Failed)</span>
                         </div>
                     </div>
                 )}
             </div>
 
-            {/* 搴曢儴淇℃伅闈㈡澘 */}
-            {/* 鍥哄畾楂樺害锛屼綅浜庡浘鐗囦笅鏂癸紝闃叉閬尅 */}
+            {/* 搴曢儴淇℃伅闱㈡澘 */}
+            {/* 锲哄畾楂桦害锛屼綅浜庡浘鐗囦笅鏂癸纴阒叉阆尅 */}
             <div
                 className="h-[100px] w-full bg-[var(--bg-secondary)]/90 border-t border-[var(--border-light)] flex items-center justify-between px-8 py-4 z-50 text-[var(--text-primary)]"
                 onClick={e => e.stopPropagation()}
@@ -510,15 +510,15 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* 鎺у埗鏍?*/}
+                    {/* 鎺у埗镙?*/}
                     <div className="flex items-center bg-[var(--bg-tertiary)] rounded-lg p-1">
                         <button onClick={() => setZoom(z => Math.max(0.25, z - 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="缂╁皬"><ZoomOut size={16} /></button>
                         <span className="w-12 text-center text-xs">{Math.round(zoom * 100)}%</span>
                         <button onClick={() => setZoom(z => Math.min(5, z + 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="鏀惧ぇ"><ZoomIn size={16} /></button>
-                        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} className="p-2 hover:bg-[var(--bg-secondary)] rounded ml-1 border-l border-[var(--border-light)]" title="閲嶇疆"><RotateCcw size={16} /></button>
+                        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} className="p-2 hover:bg-[var(--bg-secondary)] rounded ml-1 border-l border-[var(--border-light)]" title="阅岖疆"><RotateCcw size={16} /></button>
                     </div>
 
-                    {/* 灞€閮ㄩ噸缁樻寜閽?- 浠呭鍥剧墖鏄剧ず */}
+                    {/* 灞€閮ㄩ吨缁樻寜阍?- 浠呭锲剧墖鏄剧ず */}
                     {onInpaint && !isVideo && !isAudio && displaySrc && (
                         <button
                             onClick={(e) => {
@@ -529,14 +529,14 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                             title="局部重绘"
                         >
                             <Pen size={16} />
-                            閲嶇粯
+                            阅岖粯
                         </button>
                     )}
 
                     <button
                         onClick={handleDownload}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition-colors"
-                        title="涓嬭浇鍘熷鍥剧墖"
+                        title="涓嬭浇铡熷锲剧墖"
                     >
                         <Download size={16} />
                         涓嬭浇
@@ -544,7 +544,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 </div>
             </div>
 
-            {/* InpaintModal - 灞€閮ㄩ噸缁樺脊绐?*/}
+            {/* InpaintModal - 灞€閮ㄩ吨缁桦脊绐?*/}
             {showInpaint && displaySrc && (
                 <InpaintModal
                     imageUrl={displaySrc}

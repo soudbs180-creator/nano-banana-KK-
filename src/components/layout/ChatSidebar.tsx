@@ -846,7 +846,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         }
     }, [registerActivity]);
 
-    // 处理文件选择
+    // 处理文档选择
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files ? Array.from(e.target.files) : [];
         await appendFilesAsAttachments(files);
@@ -882,7 +882,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
 
         e.preventDefault();
         await appendFilesAsAttachments(merged);
-        notify.success('已添加参考附件', `粘贴导入 ${merged.length} 个文件`);
+        notify.success('已添加参考附件', `粘贴导入 ${merged.length} 个文档`);
     }, [appendFilesAsAttachments]);
 
     const handleDropToAttach = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
@@ -894,7 +894,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         if (files.length === 0) return;
 
         await appendFilesAsAttachments(files);
-        notify.success('已添加参考附件', `拖拽导入 ${files.length} 个文件`);
+        notify.success('已添加参考附件', `拖拽导入 ${files.length} 个文档`);
     }, [appendFilesAsAttachments]);
 
     // 删除附件
@@ -2340,7 +2340,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                                         }}
                                                     />
                                                     <span className="flex-1 truncate text-[var(--text-secondary)]">{getSessionLabel(session)}</span>
-                                                    {newSet.has(session.id) && <span className="px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-200">新增</span>}
+                                                    {newSet.has(session.id) && <span className="px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-200">添加</span>}
                                                     {conflictSet.has(session.id) && <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-200">冲突</span>}
                                                     {duplicateSet.has(session.id) && <span className="px-1 py-0.5 rounded bg-blue-500/20 text-blue-200">重复</span>}
                                                 </label>
@@ -2356,7 +2356,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                 const visible = importPreviewShowAll ? list : list.slice(0, 8);
                                 return visible.length > 0 && (
                                     <div>
-                                        <div className="text-[10px] text-emerald-300 mb-1">将新增</div>
+                                        <div className="text-[10px] text-emerald-300 mb-1">将添加</div>
                                         <div className="text-[10px] text-[var(--text-secondary)] space-y-0.5">
                                             {visible.map((name, idx) => <div key={`new-${idx}`}>{name}</div>)}
                                         </div>

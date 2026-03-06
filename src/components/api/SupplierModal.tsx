@@ -182,7 +182,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
         const lines = content.split('\n').map(l => l.trim()).filter(l => l);
         if (lines.length > 0) {
           setFormData(prev => ({ ...prev, apiKey: lines[0] }));
-          notify.success('API Key 已加载', `从文件 ${file.name}`, 'API Key 已从文件读取');
+          notify.success('API Key 已加载', `从文档 ${file.name}`, 'API Key 已从文档读取');
         }
       };
       reader.readAsText(file);

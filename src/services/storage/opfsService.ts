@@ -1,7 +1,7 @@
 /**
- * OPFS Service - 浏览器私有文件系统服务
+ * OPFS Service - 浏览器私有文档系统服务
  * 
- * Origin Private File System (OPFS) 是现代浏览器提供的高性能虚拟文件系统
+ * Origin Private File System (OPFS) 是现代浏览器提供的高性能虚拟文档系统
  * iOS 15.2+, Chrome 86+, Firefox 111+ 支持
  * 
  * 用途：手机端图片存储，替代FileSystemAccessAPI（手机不支持）
@@ -52,7 +52,7 @@ async function getVideosDir(): Promise<FileSystemDirectoryHandle> {
 }
 
 /**
- * 流式写入文件到OPFS
+ * 流式写入文档到OPFS
  * 关键：不占用大量内存，适合手机端
  */
 export async function saveToOPFS(
@@ -64,7 +64,7 @@ export async function saveToOPFS(
         : type === 'thumbnail' ? await getThumbnailsDir()
             : await getVideosDir();
 
-    // 确定文件扩展名
+    // 确定文档扩展名
     let ext = 'png';
     if (file instanceof File) {
         const match = file.name.match(/\.(\w+)$/);
@@ -83,7 +83,7 @@ export async function saveToOPFS(
 
     const fileName = `${id}.${ext}`;
 
-    // 创建文件
+    // 创建文档
     const fileHandle = await dir.getFileHandle(fileName, { create: true });
 
     // 流式写入（关键：不占用大量内存）
@@ -97,7 +97,7 @@ export async function saveToOPFS(
 }
 
 /**
- * 从OPFS读取文件
+ * 从OPFS读取文档
  */
 export async function getFromOPFS(
     id: string,
@@ -116,7 +116,7 @@ export async function getFromOPFS(
                 const fileHandle = await dir.getFileHandle(`${id}.${ext}`);
                 return await fileHandle.getFile();
             } catch {
-                // 文件不存在，尝试下一个扩展名
+                // 文档不存在，尝试下一个扩展名
             }
         }
 
@@ -140,7 +140,7 @@ export async function getOPFSBlobUrl(
 }
 
 /**
- * 删除OPFS中的文件
+ * 删除OPFS中的文档
  */
 export async function deleteFromOPFS(
     id: string,
@@ -159,7 +159,7 @@ export async function deleteFromOPFS(
                 console.log(`[OPFS] 🗑️ Deleted ${type}: ${id}.${ext}`);
                 return true;
             } catch {
-                // 文件不存在，尝试下一个扩展名
+                // 文档不存在，尝试下一个扩展名
             }
         }
 
@@ -171,7 +171,7 @@ export async function deleteFromOPFS(
 }
 
 /**
- * 列出OPFS中的所有文件
+ * 列出OPFS中的所有文档
  */
 export async function listOPFS(type: 'image' | 'thumbnail' | 'video' = 'image'): Promise<string[]> {
     try {
@@ -215,7 +215,7 @@ export async function getOPFSUsage(): Promise<number> {
                         const file = await entry.getFile();
                         totalSize += file.size;
                     } catch {
-                        // 忽略无法读取的文件
+                        // 忽略无法读取的文档
                     }
                 }
             }
@@ -229,7 +229,7 @@ export async function getOPFSUsage(): Promise<number> {
 }
 
 /**
- * 清空OPFS中的所有文件
+ * 清空OPFS中的所有文档
  */
 export async function clearOPFS(): Promise<void> {
     try {
@@ -305,7 +305,7 @@ export async function compressIfNeeded(
 
         img.onerror = () => {
             URL.revokeObjectURL(url);
-            resolve(file); // 加载失败，返回原文件
+            resolve(file); // 加载失败，返回原文档
         };
 
         img.src = url;

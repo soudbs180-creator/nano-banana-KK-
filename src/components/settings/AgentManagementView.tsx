@@ -12,7 +12,7 @@ interface AgentConfig {
     name: string;
     description: string;
     systemPrompt: string;
-    apiChannels: string[]; // 关联的API通道ID列表
+    apiChannels: string[]; // 关联的API信道ID列表
     temperature?: number;
     maxTokens?: number;
     model?: string;

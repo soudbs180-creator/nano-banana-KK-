@@ -166,7 +166,7 @@ export const PROXY_MODEL_PRESETS: ProxyModelConfig[] = [
         ],
         supportedSizes: [ImageSize.SIZE_1K, ImageSize.SIZE_2K],
         supportsGrounding: false,
-        description: '文字渲染能力极强'
+        description: '文本渲染能力极强'
     },
 
     // Recraft

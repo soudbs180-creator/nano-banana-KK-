@@ -546,7 +546,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                 }}
                 style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
             >
-                {/* 拖拽悬停效果 - 只显示边框高亮，不显示提示文字 */}
+                {/* 拖拽悬停效果 - 只显示边框高亮，不显示提示文本 */}
                 {/* Grid Background */}
                 {showGrid && <div className="canvas-grid" />}
 
@@ -556,7 +556,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                     className="canvas-viewport"
                     style={{
                         // 🚀 [Fix] 使用 2D translate 代替 translate3d，并移除 backfaceVisibility
-                        // 这能防止浏览器将画布强制视为位图纹理，从而在缩放后重新渲染高清晰度的文字和矢量图标
+                        // 这能防止浏览器将画布强制视为位图纹理，从而在缩放后重新渲染高清晰度的文本和矢量图标
                         transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
                         transformOrigin: '0 0', // Explicitly set origin
                     }}

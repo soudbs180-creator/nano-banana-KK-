@@ -23,7 +23,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     if (this.state.hasError) {
       return (
         <div style={{ padding: 40, background: '#111', color: '#fff', height: '100vh', fontFamily: 'monospace' }}>
-          <h1 style={{ color: '#ff5555' }}>应用程序崩溃 (App Crashed)</h1>
+          <h1 style={{ color: '#ff5555' }}>应用进程崩溃 (App Crashed)</h1>
           <pre>{this.state.error?.toString()}</pre>
           <button onClick={() => window.location.reload()} style={{ padding: '10px 20px', marginTop: 20 }}>刷新页面</button>
         </div>

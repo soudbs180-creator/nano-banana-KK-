@@ -103,6 +103,12 @@ class AdminModelService {
     return this.loadAdminModels(true);
   }
 
+  private getRowKey(row: FlatModelRow): string {
+    const providerId = (row.provider_id || '').trim();
+    const modelId = (row.model_id || '').trim();
+    return `${providerId}|${modelId}`;
+  }
+
   private async readFromView(): Promise<FlatModelRow[] | null> {
     const styledResult = await supabase
       .from('public_credit_models')
@@ -192,6 +198,7 @@ class AdminModelService {
     this.loadingPromise = (async () => {
       try {
         let rows: FlatModelRow[] = [];
+        let viewRows: FlatModelRow[] | null = null;
 
         // RPC is preferred because it is stable across RLS/view changes and returns grouped provider config.
         try {
@@ -201,9 +208,36 @@ class AdminModelService {
           rows = [];
         }
 
+        try {
+          viewRows = await this.readFromView();
+        } catch (viewError) {
+          console.warn('[AdminModelService] 读取 public_credit_models 失败:', viewError);
+          viewRows = null;
+        }
+
         if (!rows || rows.length === 0) {
-          const fromView = await this.readFromView();
-          rows = fromView || [];
+          rows = viewRows || [];
+        } else if (viewRows && viewRows.length > 0) {
+          const viewMap = new Map(viewRows.map((row) => [this.getRowKey(row), row] as const));
+          rows = rows.map((row) => {
+            const viewRow = viewMap.get(this.getRowKey(row));
+            if (!viewRow) return row;
+
+            return {
+              ...viewRow,
+              ...row,
+              provider_name: row.provider_name || viewRow.provider_name,
+              base_url: row.base_url || viewRow.base_url,
+              api_keys: row.api_keys && row.api_keys.length > 0 ? row.api_keys : viewRow.api_keys,
+              color: row.color ?? viewRow.color,
+              color_secondary: row.color_secondary ?? viewRow.color_secondary,
+              text_color: row.text_color ?? viewRow.text_color,
+              endpoint_type: row.endpoint_type ?? viewRow.endpoint_type,
+              credit_cost: row.credit_cost ?? viewRow.credit_cost,
+              is_active: row.is_active ?? viewRow.is_active,
+              description: row.description ?? viewRow.description,
+            };
+          });
         }
 
         const grouped = new Map<string, AdminProvider>();

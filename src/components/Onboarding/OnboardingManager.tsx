@@ -243,7 +243,7 @@ export const TASKS_ADVANCED: OnboardingTask[] = [
   {
     id: 'adv_2',
     title: '保存项目',
-    description: '将项目保存到本地文件夹',
+    description: '将项目保存到本地文档夹',
     type: 'action',
     phase: 'advanced',
     targetElement: 'save-project'

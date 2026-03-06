@@ -5,7 +5,7 @@ import { modelRegistry, ActiveModel } from '../../services/model/modelRegistry';
 import { keyManager, getModelMetadata } from '../../services/auth/keyManager'; // Added getter
 import { getModelCapabilities, modelSupportsGrounding, getModelDisplayInfo, getModelDescription, getModelThemeColor, getModelThemeBgColor, getModelDisplayName } from '../../services/model/modelCapabilities';
 import ModelLogo from '../common/ModelLogo';
-import { getModelBadgeInfo, getProviderBadgeColor } from '../../utils/modelBadge';
+import { getModelBadgeInfo, getProviderBadgeColor, getProviderBadgeStyle } from '../../utils/modelBadge';
 import { calculateImageHash } from '../../utils/imageUtils';
 import { saveImage, getImage } from '../../services/storage/imageStorage'; // [NEW] Import getImage
 import { fileSystemService } from '../../services/storage/fileSystemService'; // 🚀 参考图持久化
@@ -201,7 +201,7 @@ function normalizeModelTextColor(textColor: string | undefined): string {
     return textColor === 'black' ? '#111827' : '#ffffff';
 }
 
-// 🚀 [新增] 积分专属发送按钮组件
+// 🚀 [添加] 积分专属发送按钮组件
 interface CreditSendButtonProps {
     isCreditModel: boolean;
     creditCost: number;
@@ -863,7 +863,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
         const remainingSlots = maxRefImages - config.referenceImages.length;
         const fileArray = Array.from(files).filter(f => {
-            // 根据当前模式决定接受什么类型的文件
+            // 根据当前模式决定接受什么类型的文档
             if (config.mode === GenerationMode.VIDEO) {
                 return f.type.startsWith('video/');
             }
@@ -901,7 +901,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 console.error("[PromptBar] Failed to save image to IndexedDB:", err);
                             }
 
-                            // 🚀 [NEW] 同时保存到本地文件系统（如果已连接项目文件夹）
+                            // 🚀 [NEW] 同时保存到本地文档系统（如果已连接项目文档夹）
                             const handle = fileSystemService.getGlobalHandle();
                             if (handle) {
                                 fileSystemService.saveReferenceImage(handle, storageId, data, mimeType).catch(err =>
@@ -1076,7 +1076,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             const pageNo = idx + 1;
             if (pageNo === 1) return `封面：${topic}`;
             if (pageNo === total) return `总结与行动建议：${topic}`;
-            return `${topic} - 第${pageNo}页核心内容`;
+            return `${topic} - 第${pageNo}页内核内容`;
         });
         setPptOutlineDraft(pages.join('\n'));
     }, [config.parallelCount, config.prompt]);
@@ -1141,7 +1141,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         const text = template === 'cover'
             ? `封面：${topic}`
             : template === 'agenda'
-                ? `目录页：${topic} 核心议题与章节安排`
+                ? `目录页：${topic} 内核议题与章节安排`
                 : template === 'section'
                     ? `章节过渡页：${topic} - 阶段重点`
                     : `总结页：${topic} 结论与下一步行动`;
@@ -1391,7 +1391,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             }
         }
 
-        // 2. 处理文件 (External files - only if not internal ref)
+        // 2. 处理文档 (External files - only if not internal ref)
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             processFiles(e.dataTransfer.files);
             return;
@@ -1446,6 +1446,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     // 🚀 [NEW] 计算总成本 (单价 * 数量)
     const totalCreditCost = currentCreditCost * (config.parallelCount || 1);
+    const currentModelPrimaryColor = normalizeColor(currentModel?.colorStart, '#3B82F6');
+    const currentModelSecondaryColor = normalizeColor(currentModel?.colorSecondary || currentModel?.colorEnd, '#2563EB');
+    const currentModelTextColor = normalizeModelTextColor(currentModel?.textColor);
 
     // 🚀 [Fix] 模型名称显示：优先使用管理员配置的label，其次使用ID映射的友好名称
     let currentModelName = isModelListEmpty
@@ -2184,8 +2187,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-opacity-50'
                                         }`}
                                     style={(!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? {
-                                        background: `linear-gradient(180deg, ${normalizeColor(currentModel.colorStart, '#3B82F6')} 0%, ${normalizeColor(currentModel.colorEnd, '#2563EB')} 100%)`,
-                                        border: 'none'
+                                        background: `linear-gradient(180deg, ${currentModelSecondaryColor} 0%, ${currentModelSecondaryColor} 100%)`,
+                                        border: `1px solid ${currentModelPrimaryColor}`,
+                                        boxShadow: `0 0 0 1px ${currentModelPrimaryColor} inset`
                                     } : {}}
                                     onMouseDown={(e) => e.stopPropagation()} // 🚀 阻止 mousedown 冒泡，防止被 handleClickOutside 误杀
                                     onClick={(e) => {
@@ -2200,7 +2204,11 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     {(() => {
                                         const badgeInfo = getModelBadgeInfo({ id: currentModel?.id ?? '', label: currentModel?.label ?? '', provider: currentModel?.provider });
                                         return (
-                                            <span className={`text-sm font-bold truncate flex items-center gap-1 min-w-0 ${(!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? 'text-white' : badgeInfo.colorClass}`} title={currentModelName}>
+                                            <span
+                                                className={`text-sm font-bold truncate flex items-center gap-1 min-w-0 ${(!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? '' : badgeInfo.colorClass}`}
+                                                style={(!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? { color: currentModelTextColor } : undefined}
+                                                title={currentModelName}
+                                            >
                                                 {currentModelName}
                                             </span>
                                         );
@@ -2221,7 +2229,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             // 用户API模型：显示Provider标签
                                             <span
                                                 className={`text-[9px] px-1.5 py-0.5 rounded border flex-shrink-0 ${getProviderBadgeColor(currentModel.provider)}`}
-                                                style={{ marginLeft: '6px' }}
+                                                style={{ marginLeft: '6px', ...getProviderBadgeStyle(currentModel.provider) }}
                                                 title={currentModel.provider}
                                             >
                                                 <span className="whitespace-nowrap">{truncateProviderLabel(currentModel.provider)}</span>
@@ -2307,13 +2315,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                     // 🚀 [修正] 增强 Exclusive 判定逻辑
                                                     const isExclusive = getIsExclusive(model);
 
-                                                    // 🚀 [新增] 区分标识：系统积分模型 vs 用户API模型
+                                                    // 🚀 [添加] 区分标识：系统积分模型 vs 用户API模型
                                                     const isSystemCreditModel = isExclusive;
                                                     const isUserApiModel = !isExclusive && (model.provider === 'Google' || model.provider === 'Custom' || model.provider === 'OpenAI');
 
 
                                                     const getFallbackDescription = (m: any) => {
-                                                        if (m.provider) return `由 ${m.provider} 通道提供的可用模型`;
+                                                        if (m.provider) return `由 ${m.provider} 信道提供的可用模型`;
                                                         if (m.group) return `隶属于 ${m.group} 分组的引擎模型`;
                                                         return '外部集成的第三方语言模型';
                                                     };
@@ -2335,7 +2343,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                                     // 悬停/激活时才展示的彩色底板
                                                     const activeGradientStyle = {
-                                                        background: `linear-gradient(180deg, ${colorStart} 0%, ${colorEnd} 100%)`,
+                                                        background: `linear-gradient(180deg, ${colorEnd} 0%, ${colorEnd} 100%)`,
+                                                        border: `1px solid ${colorStart}`,
+                                                        boxShadow: `0 0 0 1px ${colorStart} inset`,
                                                     };
 
                                                     return (
@@ -2350,11 +2360,15 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                             onMouseEnter={(e) => {
                                                                 if (isExclusive && !isModelActive) {
                                                                     e.currentTarget.style.background = activeGradientStyle.background;
+                                                                    e.currentTarget.style.border = activeGradientStyle.border || '';
+                                                                    e.currentTarget.style.boxShadow = activeGradientStyle.boxShadow || '';
                                                                 }
                                                             }}
                                                             onMouseLeave={(e) => {
                                                                 if (isExclusive && !isModelActive) {
                                                                     e.currentTarget.style.background = inactiveGradientStyle.background;
+                                                                    e.currentTarget.style.border = '';
+                                                                    e.currentTarget.style.boxShadow = '';
                                                                 }
                                                             }}
                                                             onClick={() => {
@@ -2414,7 +2428,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                                     );
                                                                 }
 
-                                                                // 🚀 [Fix] API模型：图标居中对齐，文字左对齐
+                                                                // 🚀 [Fix] API模型：图标居中对齐，文本左对齐
                                                                 return (
                                                                     <div className="flex items-center justify-between w-full">
                                                                         <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -2435,7 +2449,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                                             <span
                                                                                 className={`text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 whitespace-nowrap overflow-hidden ${getProviderBadgeColor(model.provider)}`}
                                                                                 title={model.provider}
-                                                                                style={{ maxWidth: '40%', textOverflow: 'ellipsis' }}
+                                                                                style={{ maxWidth: '40%', textOverflow: 'ellipsis', ...getProviderBadgeStyle(model.provider) }}
                                                                             >
                                                                                 {model.provider.length > 10 ? model.provider.substring(0, 9) + '…' : model.provider}
                                                                             </span>

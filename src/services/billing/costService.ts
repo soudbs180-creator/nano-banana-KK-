@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cost Estimation Service
  * Tracks daily API usage costs based on updated pricing models.
  * Includes 30-day history and recent 50 detailed entries.
@@ -113,6 +113,108 @@ export function parseModelSource(fullModelId: string): { modelId: string; source
     return { modelId: fullModelId, source: 'Official' }; // Default to Official if no @
 }
 
+function getSnapshotNumber(
+    source: Record<string, any> | undefined,
+    key: string
+): number | undefined {
+    if (!source) return undefined;
+    const direct = source[key];
+    if (typeof direct === 'number' && Number.isFinite(direct)) return direct;
+    if (typeof direct === 'string' && direct.trim() !== '') {
+        const parsed = Number(direct);
+        if (Number.isFinite(parsed)) return parsed;
+    }
+
+    const caseInsensitiveKey = Object.keys(source).find((entry) => entry.toLowerCase() === key.toLowerCase());
+    if (!caseInsensitiveKey) return undefined;
+
+    const fallback = source[caseInsensitiveKey];
+    if (typeof fallback === 'number' && Number.isFinite(fallback)) return fallback;
+    if (typeof fallback === 'string' && fallback.trim() !== '') {
+        const parsed = Number(fallback);
+        if (Number.isFinite(parsed)) return parsed;
+    }
+
+    return undefined;
+}
+
+function resolveSnapshotGroupRatio(groupRatio: unknown): number {
+    if (typeof groupRatio === 'number' && Number.isFinite(groupRatio)) return groupRatio;
+    if (groupRatio && typeof groupRatio === 'object' && !Array.isArray(groupRatio)) {
+        const map = groupRatio as Record<string, unknown>;
+        const direct =
+            map.default ??
+            map.Default ??
+            map.DEFAULT ??
+            Object.values(map).find((value) => typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''));
+
+        if (typeof direct === 'number' && Number.isFinite(direct)) return direct;
+        if (typeof direct === 'string' && direct.trim() !== '') {
+            const parsed = Number(direct);
+            if (Number.isFinite(parsed)) return parsed;
+        }
+    }
+    return 1;
+}
+
+function resolveSizeRatio(sizeRatioMap: Record<string, number> | undefined, size: ImageSize): number {
+    if (!sizeRatioMap) return 1;
+
+    const rawSize = typeof size === 'object' && size !== null && 'width' in size && 'height' in size
+        ? `${(size as any).width}x${(size as any).height}`
+        : String(size || '');
+
+    const normalized = rawSize.toLowerCase();
+    const candidates = new Set<string>([
+        rawSize,
+        normalized,
+        rawSize.replace(/x/gi, '*'),
+        normalized.replace(/x/gi, '*'),
+    ]);
+
+    if (normalized === '1k' || normalized === '1024x1024') {
+        candidates.add('1K');
+        candidates.add('1024x1024');
+        candidates.add('1024*1024');
+    } else if (normalized === '2k' || normalized === '2048x2048') {
+        candidates.add('2K');
+        candidates.add('2048x2048');
+        candidates.add('2048*2048');
+    } else if (normalized === '4k' || normalized === '4096x4096') {
+        candidates.add('4K');
+        candidates.add('4096x4096');
+        candidates.add('4096*4096');
+    }
+
+    for (const candidate of candidates) {
+        const ratio = getSnapshotNumber(sizeRatioMap as Record<string, any>, candidate);
+        if (ratio !== undefined) return ratio;
+    }
+
+    return 1;
+}
+
+function getDefaultGroupEntry<T>(map: Record<string, T> | undefined): T | undefined {
+    if (!map) return undefined;
+    return map.default ?? map.Default ?? map.DEFAULT ?? Object.values(map)[0];
+}
+
+function getPreferredGroupKey(
+    preferredGroup: string | undefined,
+    map: Record<string, any> | undefined
+): string | undefined {
+    if (!map) return undefined;
+    if (preferredGroup) {
+        const exact = Object.keys(map).find((key) => key === preferredGroup);
+        if (exact) return exact;
+        const normalized = preferredGroup.trim().toLowerCase();
+        const insensitive = Object.keys(map).find((key) => key.trim().toLowerCase() === normalized);
+        if (insensitive) return insensitive;
+    }
+
+    return Object.keys(map).find((key) => ['default', 'Default', 'DEFAULT'].includes(key)) || Object.keys(map)[0];
+}
+
 // --- Core Logic ---
 
 export const calculateCost = (
@@ -130,26 +232,35 @@ export const calculateCost = (
     const { modelId } = parseModelSource(fullModelId);
     const normalizedId = modelId.toLowerCase();
 
-    // =============== 新版 API 接口自定义计费逻辑 ===============
+    // =============== 鏂扮増 API 鎺ュ彛鑷畾涔夎璐归€昏緫 ===============
     if (keySlotId) {
         const slot = keyManager.getProviders().find(p => p.id === keySlotId);
         if (slot && slot.pricingSnapshot) {
             const snap = slot.pricingSnapshot;
-            const mPrice = snap.modelPrices?.[modelId];
-            const mRatio = snap.modelRatios?.[modelId];
+            const preferredGroup = slot.group;
+            const mPrice = getSnapshotNumber(snap.modelPrices, modelId) ?? getSnapshotNumber(snap.modelPrices, normalizedId);
+            let mRatio = getSnapshotNumber(snap.modelRatios, modelId) ?? getSnapshotNumber(snap.modelRatios, normalizedId);
+            const groupRatioKey = getPreferredGroupKey(preferredGroup, snap.groupRatioMap);
+            const gRatio =
+                (groupRatioKey ? getSnapshotNumber(snap.groupRatioMap, groupRatioKey) : undefined) ??
+                resolveSnapshotGroupRatio(snap.groupRatio ?? snap.groupRatioMap);
+            const groupModelRatioMap = snap.groupModelRatioMaps?.[modelId] || snap.groupModelRatioMaps?.[normalizedId];
+            const groupModelRatioKey = getPreferredGroupKey(preferredGroup, groupModelRatioMap);
+            const gmRatio =
+                (groupModelRatioKey ? getSnapshotNumber(groupModelRatioMap, groupModelRatioKey) : undefined) ??
+                getSnapshotNumber(snap.groupModelRatios, modelId) ??
+                getSnapshotNumber(snap.groupModelRatios, normalizedId) ??
+                1;
 
-            // 如果是按次计费
+            // 濡傛灉鏄寜娆¤璐?
             if (mPrice !== undefined) {
-                cost = mPrice * count;
-                details = `API按次: $${mPrice}/img`;
+                cost = mPrice * gRatio * gmRatio * count;
+                details = `API按次: $${mPrice}/img | 组=${preferredGroup || groupRatioKey || 'default'} | 分组×${gRatio} | 模型组×${gmRatio}`;
                 return { cost, details, tokens: 0 };
             }
 
-            // 否则尝试按 token 混合计费
+            // 鍚﹀垯灏濊瘯鎸?token 娣峰悎璁¤垂
             if (mRatio !== undefined) {
-                const gRatio = snap.groupRatio || 1;
-                const gmRatio = snap.groupModelRatios?.[modelId] || 1;
-
                 const textTokens = Math.ceil(promptLen / 4);
                 const refTokens = refCount * 560;
                 const inputTokens = textTokens + refTokens;
@@ -157,19 +268,45 @@ export const calculateCost = (
                 const outputTokensPerImage = getImageTokenEstimate(normalizedId, size);
                 const outputTokens = count * outputTokensPerImage;
 
-                const sRatioObj = snap.sizeRatios?.[modelId];
-                let strSize = "Unknown";
-                if (typeof size === 'object' && size !== null && 'width' in size && 'height' in size) {
-                    strSize = `${(size as any).width}x${(size as any).height}`;
-                } else {
-                    strSize = String(size);
+                const sRatioObj = snap.sizeRatios?.[modelId] || snap.sizeRatios?.[normalizedId];
+                const groupSizeMap = snap.groupSizeRatios?.[modelId] || snap.groupSizeRatios?.[normalizedId];
+                const groupSizeKey = getPreferredGroupKey(preferredGroup, groupSizeMap);
+                const groupSizeObj =
+                    (groupSizeKey ? groupSizeMap?.[groupSizeKey] : undefined) ||
+                    getDefaultGroupEntry(groupSizeMap);
+                const sRatio = Math.max(resolveSizeRatio(sRatioObj, size), resolveSizeRatio(groupSizeObj, size));
+
+                let cRatio =
+                    getSnapshotNumber(snap.completionRatios, modelId) ??
+                    getSnapshotNumber(snap.completionRatios, normalizedId) ??
+                    1;
+
+                const groupPriceMap = snap.groupModelPrices?.[modelId] || snap.groupModelPrices?.[normalizedId];
+                const groupPriceKey = getPreferredGroupKey(preferredGroup, groupPriceMap);
+                const groupPriceOverride =
+                    (groupPriceKey ? groupPriceMap?.[groupPriceKey] : undefined) ||
+                    getDefaultGroupEntry(groupPriceMap);
+
+                const overrideModelPrice = getSnapshotNumber(groupPriceOverride as Record<string, any> | undefined, 'modelPrice');
+                const overrideModelRatio = getSnapshotNumber(groupPriceOverride as Record<string, any> | undefined, 'modelRatio');
+                const overrideCompletionRatio = getSnapshotNumber(groupPriceOverride as Record<string, any> | undefined, 'completionRatio');
+
+                if (overrideModelPrice !== undefined) {
+                    cost = overrideModelPrice * gRatio * count;
+                    details = `API按次(分组覆盖): $${overrideModelPrice}/img | 组=${preferredGroup || groupPriceKey || 'default'} | 分组×${gRatio}`;
+                    return { cost, details, tokens: 0 };
                 }
-                const sRatio = sRatioObj ? (sRatioObj[strSize] || 1) : 1;
 
-                const cRatio = snap.completionRatios?.[modelId] || 1;
+                if (overrideModelRatio !== undefined) {
+                    mRatio = overrideModelRatio;
+                }
 
-                // 计算总倍率下的相当于多少标准 token (通常 OneAPI 的 model_ratio 表示按 500000 相当于 $1 的计价基准乘数)
-                // 具体计价常数因站而异，如果没有定义，系统目前使用兜底价格：0.002 / 1000 => 2 / 1000000
+                if (overrideCompletionRatio !== undefined) {
+                    cRatio = overrideCompletionRatio;
+                }
+
+                // 璁＄畻鎬诲€嶇巼涓嬬殑鐩稿綋浜庡灏戞爣鍑?token (閫氬父 OneAPI 鐨?model_ratio 琛ㄧず鎸?500000 鐩稿綋浜?$1 鐨勮浠峰熀鍑嗕箻鏁?
+                // 鍏蜂綋璁′环甯告暟鍥犵珯鑰屽紓锛屽鏋滄病鏈夊畾涔夛紝绯荤粺鐩墠浣跨敤鍏滃簳浠锋牸锛?.002 / 1000 => 2 / 1000000
                 const baseRate = 2.0 / 1000000; // $0.002 per 1k ratio
 
                 const inputCost = inputTokens * baseRate * mRatio * gRatio * gmRatio;
@@ -177,7 +314,7 @@ export const calculateCost = (
 
                 cost = Math.max(0.000001, inputCost + outputCost);
                 tokens = inputTokens + outputTokens;
-                details = `API按量: ${tokens} Toks (Ratio: ${mRatio})`;
+                details = `API按量: ${tokens} Toks | 组=${preferredGroup || groupRatioKey || 'default'} | 模型×${mRatio} | 补全×${cRatio} | 尺寸×${sRatio} | 分组×${gRatio} | 模型组×${gmRatio}`;
                 return { cost, details, tokens };
             }
         }
@@ -238,6 +375,7 @@ export function recordCost(
     let { cost, details, tokens } = calculateCost(model, imageSize, count, prompt.length, refImageCount, keySlotId);
 
     if (usage) {
+        const estimatedDetails = details;
         if (usage.totalTokens !== undefined) {
             tokens = usage.totalTokens;
             details = `Actual: ${tokens} Toks`;
@@ -245,6 +383,9 @@ export function recordCost(
         if (usage.cost !== undefined) {
             cost = usage.cost;
             details += ` | Cost: $${cost.toFixed(6)}`;
+            if (estimatedDetails) {
+                details += ` | Est: ${estimatedDetails}`;
+            }
         } else if (usage.totalTokens !== undefined) {
             // Re-calculate cost based on actual tokens if pricing exists
             const { modelId } = parseModelSource(model);
@@ -357,7 +498,7 @@ export function getTodayCosts(): DayStats {
                 }
             }
         } catch (e) {
-            // 统计数据解析失败，返回默认值
+            // 缁熻鏁版嵁瑙ｆ瀽澶辫触锛岃繑鍥為粯璁ゅ€?
             console.warn('[CostService] Failed to parse stats:', e);
         }
     }
@@ -496,3 +637,5 @@ async function syncWithCloud() {
         isSyncing = false;
     }
 }
+
+

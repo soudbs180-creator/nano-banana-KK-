@@ -22,6 +22,9 @@ import { getCardDimensions } from './utils/styleUtils';
 import { getViewportPreferredPosition, findSafePosition } from './utils/canvasUtils'; // 🚀 Smart Positioning
 import { getViewportOffsets, getLiveViewportCenter } from './utils/canvasCenter';
 
+const GENERATE_TRIGGER_COOLDOWN_MS = 500;
+const GENERATE_TIMEOUT_MS = 600000;
+
 // Lucide icons replaced with SVGs
 import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -1026,7 +1029,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
     currentPos: { x: number; y: number };
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const generateLockRef = useRef(false);
+  const lastGenerateAtRef = useRef(0);
   // error state removed, using notify service
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -1688,13 +1691,13 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
               error: '生成超时，请重新发送任务',
               errorDetails: {
                 code: 'TIMEOUT',
-                responseBody: 'Request exceeded 240000ms timeout in executeGeneration',
+                responseBody: 'Request exceeded 600000ms timeout in executeGeneration',
                 model: node.model,
                 timestamp: Date.now()
               }
             });
             import('./services/system/notificationService').then(({ notify }) => {
-              notify.warning('生成超时', '已超过4分钟，任务已自动停止。请检查网络后重试。');
+              notify.warning('生成超时', '已超过 600 秒（10 分钟），任务已自动停止。请检查网络后重试。');
             });
 
             // 🚀 返还积分
@@ -1704,7 +1707,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
               refundCredits(1, `超时退款: ${node.id}`); // 默认退还1
             }
           }
-        }, 240000);
+        }, GENERATE_TIMEOUT_MS);
 
         try {
           let generatedBase64 = '';
@@ -2413,11 +2416,14 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
 
 
   const handleGenerate = useCallback(async () => {
-    if (generateLockRef.current) {
+    const now = Date.now();
+    const cooldownRemaining = GENERATE_TRIGGER_COOLDOWN_MS - (now - lastGenerateAtRef.current);
+    if (cooldownRemaining > 0) {
       console.warn('[handleGenerate] blocked duplicate trigger');
       return;
     }
     if (!config.prompt.trim()) return;
+    lastGenerateAtRef.current = now;
 
     // 🚀 [真实计费拦截与扣除]
     // 首先判断是否为系统按积分计费的模型（自己添加的第三方渠道模型或明确带有 @ 后缀的调用不走积分流程）
@@ -2469,8 +2475,6 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         }
       }
     }
-
-    generateLockRef.current = true;
     setIsGenerating(true);
     try {
 
@@ -2479,7 +2483,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       const isFollowUp = !!activeSourceImage;
       const currentTransform = canvasRef.current?.getCurrentTransform() || canvasTransform;
       const viewportRect = canvasRef.current?.getCanvasRect() || null;
-      const viewportOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile);
+      const viewportOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
       const liveCenter = getLiveViewportCenter(currentTransform, viewportRect, viewportOffsets);
       const realViewCenter = liveCenter;
       let viewCenter = { ...liveCenter };
@@ -2852,9 +2856,8 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         notify.error('发送失败', e?.message || '请重试');
       });
     } finally {
-      generateLockRef.current = false;
       // 🚀 [Fix] 不在此处 setIsGenerating(false)，因为 executeGeneration 内部已管理此状态
-      // 原来未 await executeGeneration 导致此处提前执行，generateLockRef 被过早解锁
+      // 发送节流由 lastGenerateAtRef 控制，不再依赖整轮生成结束才解锁
     }
   }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth, buildAutoPptSlides, getPreferredKeyForMode, consumeCredits, balance, setShowRechargeModal]);
 
@@ -3029,13 +3032,13 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
               error: '生成超时',
               errorDetails: {
                 code: 'TIMEOUT',
-                responseBody: 'Retry request exceeded 360000ms timeout',
+                responseBody: 'Retry request exceeded 600000ms timeout',
                 model: node.model,
                 timestamp: Date.now()
               }
             });
           }
-        }, 360000);
+        }, GENERATE_TIMEOUT_MS);
 
         try {
           let b64 = '';
@@ -4929,16 +4932,24 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
             onDragDelta={(delta, sourceNodeId) => {
               if (!sourceNodeId) return;
 
-              // 🚀 [主卡拖动逻辑] 如果拖动的是主卡(有childImageIds)，则同时拖动所有副卡
               const mainCard = activeCanvas?.promptNodes.find(p => p.id === sourceNodeId);
               const childImageIds = mainCard?.childImageIds || [];
+              const expandedSelectedIds = Array.from(new Set(
+                selectedNodeIds.flatMap((selectedId) => {
+                  const selectedPrompt = activeCanvas?.promptNodes.find(p => p.id === selectedId);
+                  if (!selectedPrompt) return [selectedId];
 
-              if (childImageIds.length > 0) {
-                // 主卡拖动：移动主卡 + 所有副卡
-                const allIdsToMove: string[] = [sourceNodeId, ...childImageIds.filter((id): id is string => !!id)];
-                moveSelectedNodes(delta, allIdsToMove);
-              } else if (selectedNodeIds.includes(sourceNodeId)) {
-                moveSelectedNodes(delta, selectedNodeIds);
+                  return [
+                    selectedId,
+                    ...(selectedPrompt.childImageIds || []).filter((id): id is string => !!id),
+                  ];
+                })
+              ));
+
+              if (selectedNodeIds.includes(sourceNodeId) && expandedSelectedIds.length > 0) {
+                moveSelectedNodes(delta, expandedSelectedIds);
+              } else if (childImageIds.length > 0) {
+                moveSelectedNodes(delta, [sourceNodeId, ...childImageIds.filter((id): id is string => !!id)]);
               } else {
                 moveSelectedNodes(delta, sourceNodeId);
               }
@@ -4979,14 +4990,25 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
             isNew={Date.now() - (node.timestamp || 0) < 10000}
             canvasTransform={canvasTransform} // 🚀 Pass Transform for Animation Calculation
             onDragDelta={(delta, sourceNodeId) => {
-              // 🚀 [副卡拖动逻辑] 如果拖动的是副卡(有parentPromptId)，只拖动副卡本身
-              const isSubCard = node.parentPromptId && activeCanvas?.promptNodes.some(p => p.id === node.parentPromptId);
+              if (!sourceNodeId) return;
 
-              if (isSubCard) {
-                // 副卡拖动：只移动副卡本身，不移动主卡
+              const isSubCard = node.parentPromptId && activeCanvas?.promptNodes.some(p => p.id === node.parentPromptId);
+              const expandedSelectedIds = Array.from(new Set(
+                selectedNodeIds.flatMap((selectedId) => {
+                  const selectedPrompt = activeCanvas?.promptNodes.find(p => p.id === selectedId);
+                  if (!selectedPrompt) return [selectedId];
+
+                  return [
+                    selectedId,
+                    ...(selectedPrompt.childImageIds || []).filter((id): id is string => !!id),
+                  ];
+                })
+              ));
+
+              if (selectedNodeIds.includes(sourceNodeId) && expandedSelectedIds.length > 0) {
+                moveSelectedNodes(delta, expandedSelectedIds);
+              } else if (isSubCard) {
                 moveSelectedNodes(delta, sourceNodeId);
-              } else if (sourceNodeId && selectedNodeIds.includes(sourceNodeId)) {
-                moveSelectedNodes(delta, selectedNodeIds);
               } else {
                 moveSelectedNodes(delta, sourceNodeId);
               }

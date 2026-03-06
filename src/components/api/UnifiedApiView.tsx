@@ -4,13 +4,13 @@ import { notify } from '../../services/system/notificationService';
 
 /**
  * 统一 API 配置界面
- * 整合直连和代理两种模式的配置
+ * 集成直连和代理两种模式的配置
  */
 
-// API 通道类型
+// API 信道类型
 export type ApiChannelType = 'proxy' | 'direct';
 
-// API 通道配置
+// API 信道配置
 export interface ApiChannel {
     id: string;
     name: string;
@@ -44,7 +44,7 @@ const saveChannels = (channels: ApiChannel[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(channels));
 };
 
-// 获取激活的通道
+// 获取激活的信道
 export const getActiveChannel = (): ApiChannel | null => {
     const channels = loadChannels();
     return channels.find(c => c.isActive) || null;
@@ -110,11 +110,11 @@ const UnifiedApiView = () => {
         setEditingId(null);
     };
 
-    // 添加/编辑通道
+    // 添加/编辑信道
     const handleSave = async () => {
         // 验证
         if (!formData.name) {
-            notify.error('验证失败', '请输入通道名称');
+            notify.error('验证失败', '请输入信道名称');
             return;
         }
         if (formData.type === 'proxy' && (!formData.baseUrl || !formData.apiKey)) {
@@ -140,10 +140,10 @@ const UnifiedApiView = () => {
         let newChannels: ApiChannel[];
         if (editingId) {
             newChannels = channels.map(c => c.id === editingId ? { ...newChannel, isActive: c.isActive } : c);
-            notify.success('更新成功', `已更新通道: ${formData.name}`);
+            notify.success('更新成功', `已更新信道: ${formData.name}`);
         } else {
             newChannels = [...channels, newChannel];
-            notify.success('添加成功', `已添加通道: ${formData.name}`);
+            notify.success('添加成功', `已添加信道: ${formData.name}`);
         }
 
         updateChannels(newChannels);
@@ -153,24 +153,24 @@ const UnifiedApiView = () => {
         await testConnection(newChannel.id);
     };
 
-    // 删除通道
+    // 删除信道
     const handleDelete = (id: string) => {
         const channel = channels.find(c => c.id === id);
         if (channel?.isActive && channels.length > 1) {
-            notify.error('操作失败', '请先切换到其他通道再删除');
+            notify.error('操作失败', '请先切换到其他信道再删除');
             return;
         }
 
         const newChannels = channels.filter(c => c.id !== id);
-        // 如果删除的是激活通道且还有其他通道，激活第一个
+        // 如果删除的是激活信道且还有其他信道，激活第一个
         if (channel?.isActive && newChannels.length > 0) {
             newChannels[0].isActive = true;
         }
         updateChannels(newChannels);
-        notify.success('删除成功', '已删除通道');
+        notify.success('删除成功', '已删除信道');
     };
 
-    // 切换激活通道
+    // 切换激活信道
     const handleSetActive = (id: string) => {
         const newChannels = channels.map(c => ({
             ...c,
@@ -181,7 +181,7 @@ const UnifiedApiView = () => {
         notify.success('切换成功', `已切换到: ${channel?.name}`);
     };
 
-    // 编辑通道
+    // 编辑信道
     const handleEdit = (channel: ApiChannel) => {
         setFormData({
             name: channel.name,
@@ -277,15 +277,15 @@ const UnifiedApiView = () => {
                 <div className="flex items-center gap-3 mb-2">
                     <Activity className="text-blue-400" size={20} />
                     <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        API 通道配置
+                        API 信道配置
                     </h3>
                 </div>
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    配置 API 通道后，图片生成将自动使用激活的通道。支持代理模式（Antigravity/OneAPI）和直连模式（Google API）。
+                    配置 API 信道后，图片生成将自动使用激活的信道。支持代理模式（Antigravity/OneAPI）和直连模式（Google API）。
                 </p>
             </div>
 
-            {/* 通道列表 */}
+            {/* 信道列表 */}
             <div className="space-y-3">
                 {channels.map((channel) => {
                     const statusConfig = getStatusConfig(channel.status);
@@ -425,7 +425,7 @@ const UnifiedApiView = () => {
                     <div className="glass rounded-xl p-12 border border-dashed border-[var(--border-light)] text-center">
                         <Server className="mx-auto mb-3" size={32} style={{ color: 'var(--text-tertiary)' }} />
                         <p className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
-                            还没有配置 API 通道
+                            还没有配置 API 信道
                         </p>
                         <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                             添加代理服务器（推荐）或 Google API Key 开始使用
@@ -438,13 +438,13 @@ const UnifiedApiView = () => {
             {showAddForm && (
                 <div className="glass rounded-xl p-4 border border-[var(--border-light)] space-y-4">
                     <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        {editingId ? '编辑通道' : '添加 API 通道'}
+                        {editingId ? '编辑信道' : '添加 API 信道'}
                     </h4>
 
                     {/* 类型选择 */}
                     <div>
                         <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                            通道类型
+                            信道类型
                         </label>
                         <div className="flex gap-2">
                             <button
@@ -481,7 +481,7 @@ const UnifiedApiView = () => {
                     {/* 名称 */}
                     <div>
                         <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                            通道名称
+                            信道名称
                         </label>
                         <input
                             type="text"
@@ -576,7 +576,7 @@ const UnifiedApiView = () => {
                 >
                     <Plus size={16} style={{ color: '#6366f1' }} />
                     <span className="text-sm font-medium" style={{ color: '#6366f1' }}>
-                        添加 API 通道
+                        添加 API 信道
                     </span>
                 </button>
             )}

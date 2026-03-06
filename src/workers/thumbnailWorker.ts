@@ -74,7 +74,7 @@ async function generateThumbnail(
     // 绘制缩放后的图片
     ctx.drawImage(bitmap, 0, 0, width, height);
 
-    // 转换为WebP（更小的文件大小）
+    // 转换为WebP（更小的文档大小）
     const blob = await canvas.convertToBlob({
         type: 'image/webp',
         quality

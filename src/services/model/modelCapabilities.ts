@@ -1234,7 +1234,7 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
     },
     'dall-e-3': {
         category: '图像生成',
-        description: '文字理解好，风格多样化',
+        description: '文本理解好，风格多样化',
         rank: 'DALL-E 3'
     },
     'recraftv3': {
@@ -1244,7 +1244,7 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
     },
     'ideogram-3.0': {
         category: '图像生成',
-        description: '排版与极难文字嵌入标杆',
+        description: '排版与极难文本嵌入标杆',
         rank: 'Ideogram 3.0'
     },
 
@@ -1266,7 +1266,7 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
     },
     'cogvideo': {
         category: '视频生成',
-        description: '国产高质量序列模型',
+        description: '国产高质量串行模型',
         rank: 'CogVideo'
     },
 

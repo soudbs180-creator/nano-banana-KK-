@@ -36,7 +36,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
           gap: '20px'
         }}>
           <div style={{ maxWidth: '800px', width: '100%' }}>
-            <h1 style={{ fontSize: '24px', marginBottom: '16px', color: '#ef4444' }}>⚠️ 应用程序遇到错误 (Application Error)</h1>
+            <h1 style={{ fontSize: '24px', marginBottom: '16px', color: '#ef4444' }}>⚠️ 应用进程遇到错误 (Application Error)</h1>
             <div style={{ background: '#18181b', padding: '20px', borderRadius: '8px', border: '1px solid #27272a', marginBottom: '20px', overflow: 'auto', maxHeight: '400px' }}>
               <p style={{ color: '#f87171', fontWeight: 'bold', marginBottom: '8px' }}>{this.state.error?.toString()}</p>
               <pre style={{ fontSize: '12px', color: '#a1a1aa' }}>{this.state.errorInfo?.componentStack || this.state.error?.stack}</pre>

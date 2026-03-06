@@ -136,7 +136,7 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
   },
   // Gemini 3 Flash 预览版
   'gemini-3-flash-preview': {
-    inputPerMillionTokens: 0.50,   // 文字/图片/视频
+    inputPerMillionTokens: 0.50,   // 文本/图片/视频
     outputPerMillionTokens: 3.00,  // 包括思考token
     currency: 'USD'
   },
@@ -148,13 +148,13 @@ const BUILTIN_PRICING: Record<string, ModelPricing> = {
   },
   // Gemini 2.5 Flash
   'gemini-2.5-flash': {
-    inputPerMillionTokens: 0.30,   // 文字/图片/视频
+    inputPerMillionTokens: 0.30,   // 文本/图片/视频
     outputPerMillionTokens: 2.50,  // 包括思考token
     currency: 'USD'
   },
   // Gemini 2.5 Flash-Lite
   'gemini-2.5-flash-lite': {
-    inputPerMillionTokens: 0.10,   // 文字/图片/视频
+    inputPerMillionTokens: 0.10,   // 文本/图片/视频
     outputPerMillionTokens: 0.40,  // 包括思考token
     currency: 'USD'
   },

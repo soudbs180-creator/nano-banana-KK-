@@ -3,7 +3,7 @@
  * 
  * 根据设备能力自动切换数据源：
  * - PC端 (引用模式): 使用FileSystemAccessAPI，直接读取用户硬盘
- * - 手机端 (托管模式): 使用OPFS，将文件复制到浏览器私有文件系统
+ * - 手机端 (托管模式): 使用OPFS，将文档复制到浏览器私有文档系统
  */
 
 import {
@@ -24,7 +24,7 @@ import { fileSystemService } from './fileSystemService';
 // ============================================
 
 /**
- * 是否支持PC端的FileSystemAccessAPI（选择文件夹）
+ * 是否支持PC端的FileSystemAccessAPI（选择文档夹）
  */
 export const supportsNativeFileSystem = (): boolean => {
     return 'showDirectoryPicker' in window;
@@ -67,7 +67,7 @@ export interface ImageItem {
     id: string;
     type: StorageMode;
 
-    // 文件句柄（PC端或OPFS）
+    // 文档句柄（PC端或OPFS）
     handle?: FileSystemFileHandle;
 
     // 预览URL（缩略图Blob URL）
@@ -97,7 +97,7 @@ export interface ImageItem {
 /**
  * 导入图片（自动适配存储模式）
  * 
- * PC端：返回文件句柄，不复制文件
+ * PC端：返回文档句柄，不复制文档
  * 手机端：写入OPFS，生成缩略图
  */
 export async function importImages(
@@ -114,8 +114,8 @@ export async function importImages(
         const id = crypto.randomUUID();
 
         if (mode === 'native') {
-            // PC端：不复制文件，直接使用
-            // 注意：这里需要用户已经选择了文件夹并授权
+            // PC端：不复制文档，直接使用
+            // 注意：这里需要用户已经选择了文档夹并授权
             // 实际的句柄保存在CanvasContext中
             const dimensions = await getImageDimensionsFromFile(file);
 
@@ -235,7 +235,7 @@ export async function getImageUrl(
 }
 
 /**
- * 获取图片的原始文件（用于下载/编辑）
+ * 获取图片的原始文档（用于下载/编辑）
  */
 export async function getImageFile(item: ImageItem): Promise<File | Blob | null> {
     switch (item.type) {
@@ -278,7 +278,7 @@ export async function deleteImage(item: ImageItem): Promise<boolean> {
         URL.revokeObjectURL(item.originalUrl);
     }
 
-    // 🚀 [关键修复] 强制尝试从物理磁盘删除文件（防止被刷新死灰复燃）
+    // 🚀 [关键修复] 强制尝试从物理磁盘删除文档（防止被刷新死灰复燃）
     const globalHandle = fileSystemService.getGlobalHandle();
     if (globalHandle) {
         await fileSystemService.deleteImageFromHandle(globalHandle, item.id);
@@ -286,11 +286,11 @@ export async function deleteImage(item: ImageItem): Promise<boolean> {
 
     switch (item.type) {
         case 'native':
-            // PC端：原来不需要删除实际文件，现在上面已全局删除
+            // PC端：原来不需要删除实际文档，现在上面已全局删除
             return true;
 
         case 'opfs':
-            // 手机端：删除OPFS中的文件
+            // 手机端：删除OPFS中的文档
             const deletedOriginal = await deleteFromOPFS(item.id, 'image');
             const deletedThumbnail = await deleteFromOPFS(item.id, 'thumbnail');
             return deletedOriginal || deletedThumbnail;

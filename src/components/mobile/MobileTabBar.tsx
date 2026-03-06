@@ -6,6 +6,7 @@ interface MobileTabBarProps {
     onSetMode: (mode: GenerationMode) => void;
     onOpenSettings: () => void;
     onOpenProfile: () => void;
+    onToggleChat?: () => void;
     currentMode: GenerationMode;
     currentView: 'gallery' | 'home' | 'settings' | 'profile' | 'chat';
     isVisible?: boolean;

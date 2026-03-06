@@ -242,7 +242,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
     const handleDelete = (id: string, e?: React.MouseEvent) => {
         e?.stopPropagation();
-        if (confirm('确定要删除此通道吗?')) {
+        if (confirm('确定要删除此信道吗?')) {
             keyManager.removeKey(id);
         }
     };
@@ -460,7 +460,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
             {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-4 px-1 py-4 shrink-0">
                 <div>
-                    <h3 className="text-2xl font-bold text-left" style={{ color: 'var(--text-primary)' }}>API 通道</h3>
+                    <h3 className="text-2xl font-bold text-left" style={{ color: 'var(--text-primary)' }}>API 信道</h3>
                     <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
                         {isSequential ? '顺序优先: 按列表顺序依次调用' : '并发优先: 随机/负载均衡调用'}
                     </p>
@@ -497,7 +497,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                         style={{ color: 'white' }}
                     >
                         <Plus size={14} />
-                        <span className="hidden sm:inline">添加通道</span>
+                        <span className="hidden sm:inline">添加信道</span>
                         <span className="sm:hidden">添加</span>
                     </button>
                 </div>
@@ -510,12 +510,12 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                         <div className="w-16 h-16 rounded-2xl bg-[var(--bg-tertiary)]/50 flex items-center justify-center">
                             <Key className="w-8 h-8 opacity-50" />
                         </div>
-                        <p>暂无 API 通道</p>
+                        <p>暂无 API 信道</p>
                         <button
                             onClick={openAddModal}
                             className="text-indigo-400 hover:text-indigo-300 text-sm hover:underline"
                         >
-                            点击添加第一个通道
+                            点击添加第一个信道
                         </button>
                     </div>
                 ) : (
@@ -691,7 +691,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                     <div className="fixed inset-0 z-[10050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
                         <div className="bg-[var(--bg-secondary)] w-full max-w-md rounded-2xl border border-[var(--border-light)] shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] overflow-hidden">
                             <div className="flex justify-between items-center p-5 border-b border-[var(--border-light)]">
-                                <h4 className="text-lg font-bold text-[var(--text-primary)]">{editingId ? '编辑通道' : '添加通道'}</h4>
+                                <h4 className="text-lg font-bold text-[var(--text-primary)]">{editingId ? '编辑信道' : '添加信道'}</h4>
                                 <button onClick={() => setIsModalOpen(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"><X size={20} /></button>
                             </div>
 
@@ -961,7 +961,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">通道名称</label>
+                                            <label className="text-xs text-[var(--text-secondary)] mb-1.5 block">信道名称</label>
                                             <input
                                                 className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-indigo-500/50"
                                                 placeholder="My Channel"
@@ -1171,7 +1171,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                         </div>
                                         <p className="text-[10px] text-[var(--text-tertiary)] mt-1.5 flex items-start gap-1">
                                             <span>💡</span>
-                                            <span>-1 = 无限制 | &gt;0 = 达到预算后自动停用此通道</span>
+                                            <span>-1 = 无限制 | &gt;0 = 达到预算后自动停用此信道</span>
                                         </p>
                                     </div>
 
@@ -1227,7 +1227,7 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                                     disabled={loading}
                                     className="px-6 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
                                 >
-                                    {loading ? '处理中...' : (editingId ? '保存修改' : '添加通道')}
+                                    {loading ? '处理中...' : (editingId ? '保存修改' : '添加信道')}
                                 </button>
                             </div>
                         </div>

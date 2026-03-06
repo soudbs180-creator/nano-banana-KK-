@@ -37,7 +37,7 @@ const PHASE_CONTENT: Record<OnboardingPhase, PhaseContent> = {
   },
   basics: {
     title: '基础操作',
-    subtitle: '掌握核心交互',
+    subtitle: '掌握内核交互',
     icon: <MousePointer className="w-12 h-12 text-blue-400" />,
     steps: [
       '双击画布创建卡片',

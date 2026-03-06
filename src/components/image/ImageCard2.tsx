@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { AspectRatio, GeneratedImage, GenerationMode } from '../../types';
 import { Download, Trash2, Loader2, ImageOff, Play, Pause, Music } from 'lucide-react';
@@ -7,10 +7,10 @@ import { getLaunchTimelineByOffset, getPromptBarLaunchPoint } from '../../utils/
 import { generateTagColor } from '../../utils/colorUtils';
 import { useLazyImage } from '../../hooks/useLazyImage';
 import { getImage, getOriginalImage } from '../../services/storage/imageStorage';
-import { getModelBadgeInfo, getProviderBadgeColor } from '../../utils/modelBadge';
+import { getModelBadgeInfo, getProviderBadgeColor, getProviderBadgeStyle } from '../../utils/modelBadge';
 import { loadImage, cancelImageLoad } from '../../services/image/imageLoader';
 import { ImageQuality } from '../../services/image/imageQuality';
-import { getModelThemeColor, getModelDisplayName, getModelThemeBgColor } from '../../services/model/modelCapabilities';
+import { getModelThemeBgColor } from '../../services/model/modelCapabilities';
 import { getModelCredits, isCreditBasedModel } from '../../services/model/modelPricing';
 
 const truncateByChars = (text: string, maxChars: number): string => {
@@ -72,7 +72,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const [isDragging, setIsDragging] = useState(false);
 
     // 🚀 [丝滑优化] 统一飞入动画：从输入框中心飞向画布目标位置
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (hasAnimatedRef.current === image.id) return;
 
         const now = Date.now();
@@ -258,7 +258,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
     const [currentQuality, setCurrentQuality] = useState<string>('original');
     const qualityLoadingRef = useRef(false); // 防止重复加载
-    const lastZoomRef = useRef(zoomScale || 1.0); // 防抖：只在显著变化时切换
+    const lastZoomRef = useRef(zoomScale || 1.0); // 防抖：只在显着变化时切换
     const loadedRef = useRef(false); // 🚀 标记是否已从队列加载
     // 🚀 [Critical Fix] 初始加载状态判定：如果已有有效初始图，就不应该显示大遮罩
     const [isLoading, setIsLoading] = useState(!displaySrc);
@@ -361,6 +361,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         return isCreditBasedModel(modelId, image.provider);
     }, [image.provider, image.model, image.tokens, image.cost]);
 
+    const modelText = image.modelLabel || image.model || image.id;
+    const providerText = image.providerLabel || image.provider || '';
+    const modelBadge = useMemo(() => getModelBadgeInfo({ id: image.model || '', label: modelText, provider: providerText }), [image.model, modelText, providerText]);
+    const providerBadgeStyle = useMemo(() => getProviderBadgeStyle(providerText), [providerText]);
+
     // 🚀 根据画布缩放自动选择合适质量 - 使用队列加载优化
     useEffect(() => {
         // 🚀 如果不可见，取消加载并跳过
@@ -456,7 +461,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         }
                     }
 
-                    // 策略1.5: 通过原图读取通道恢复（支持本地磁盘/OPFS回填到缓存）
+                    // 策略1.5: 通过原图读取信道恢复（支持本地磁盘/OPFS回填到缓存）
                     try {
                         const recoveredOriginal = await getOriginalImage(imageStorageKey);
                         if (recoveredOriginal && loadId === loadGenRef.current) {
@@ -576,7 +581,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 }
             }
 
-            // 生成下载专用文件名 (格式: KKStudio_{类别}_{随机英数}.{后缀})
+            // 生成下载专用文档名 (格式: KKStudio_{类别}_{随机英数}.{后缀})
             const { generateDownloadFilename } = await import('../../utils/downloadUtils');
             const isVideoMode = image.mode === GenerationMode.VIDEO || (image.url && image.url.includes('.mp4'));
             const isAudioMode = image.mode === GenerationMode.AUDIO || (image.url && (image.url.includes('.mp3') || image.url.includes('.wav')));
@@ -587,7 +592,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             // 执行下载
             triggerDownload(blob, filename);
 
-            notify.success('下载成功', `已保存到下载文件夹: ${filename}`);
+            notify.success('下载成功', `已保存到下载文档夹: ${filename}`);
         } catch (err: any) {
             console.error('Download failed:', err);
 
@@ -638,7 +643,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         setIsDragging(true);
         wasDraggingRef.current = false;
 
-        // 🚀 [新增] 触发自定义事件通知 ImagePreview 关闭
+        // 🚀 [添加] 触发自定义事件通知 ImagePreview 关闭
         window.dispatchEvent(new CustomEvent('kk-drag-start'));
 
         // 🚀 [Fix] Auto-Select logic for dragging unselected cards
@@ -953,7 +958,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                 onDragStart={(e) => {
                                                     // HTML5 Drag for Data Transfer (to PromptBar)
                                                     e.stopPropagation();
-                                                    // 🚀 [新增] 触发自定义事件通知 ImagePreview 关闭
+                                                    // 🚀 [添加] 触发自定义事件通知 ImagePreview 关闭
                                                     window.dispatchEvent(new CustomEvent('kk-drag-start'));
                                                     const url = displaySrc || image.url;
                                                     if (url) {
@@ -970,7 +975,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                         }));
                                                         e.dataTransfer.effectAllowed = 'copy';
 
-                                                        // 🚀 [NEW] 如果 URL 是 data URL，同时保存到本地文件系统
+                                                        // 🚀 [NEW] 如果 URL 是 data URL，同时保存到本地文档系统
                                                         if (url.startsWith('data:')) {
                                                             const storageId = image.storageId || image.id;
                                                             import('../../services/storage/fileSystemService').then(({ fileSystemService }) => {
@@ -1109,7 +1114,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                 {/* 状态1: 孤独副卡（从外面拖入的图片）- 只有一层 */}
                                 {image.orphaned && (
                                     <div className="flex items-center justify-between h-5">
-                                        {/* 左侧：文件名 + 像素尺寸 */}
+                                        {/* 左侧：文档名 + 像素尺寸 */}
                                         <div className="flex items-center gap-2 min-w-0 flex-1">
                                             {isEditingAlias ? (
                                                 <input
@@ -1156,15 +1161,16 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                 {!image.orphaned && image.isGenerating && (
                                     <div className="flex items-center justify-center h-5 gap-2 flex-nowrap group relative">
                                         <div className={`flex items-center gap-1 px-2 h-5 rounded-lg border min-w-0 max-w-[170px] ${isCreditModel ? getModelThemeBgColor(image.model || '') : 'bg-[var(--bg-tertiary)] border-[var(--border-light)]'}`}>
-                                            <span className={`text-2xs leading-none font-medium whitespace-nowrap truncate ${isCreditModel ? 'text-white drop-shadow-sm' : getModelThemeColor(image.model || '')}`} title={image.modelLabel || image.model || 'AI'}>
-                                                {truncateByChars(image.modelLabel || image.model || 'AI', 15)}
+                                            <span className={`text-2xs leading-none font-medium whitespace-nowrap truncate ${isCreditModel ? 'text-white drop-shadow-sm' : modelBadge.colorClass}`} title={modelText || 'AI'}>
+                                                {truncateByChars(modelText || 'AI', 15)}
                                             </span>
-                                            {!isCreditModel && (image.providerLabel || image.provider) && (
+                                            {!isCreditModel && providerText && (
                                                 <span
-                                                    className={`text-[9px] leading-none px-1 py-0.5 rounded whitespace-nowrap border shrink-0 ${getProviderBadgeColor(image.providerLabel || image.provider)}`}
-                                                    title={image.providerLabel || image.provider}
+                                                    className={`text-[9px] leading-none px-1 py-0.5 rounded whitespace-nowrap border shrink-0 ${getProviderBadgeColor(providerText)}`}
+                                                    title={providerText}
+                                                    style={providerBadgeStyle}
                                                 >
-                                                    {truncateByChars(image.providerLabel || image.provider || '', 12)}
+                                                    {truncateByChars(providerText, 12)}
                                                 </span>
                                             )}
                                         </div>
@@ -1215,14 +1221,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                         );
                                                     }
 
-                                                    // 用户 API：普通灰色框 + 普通文字 + 供应商标签
+                                                    // 用户 API：普通灰色框 + 普通文本 + 供应商标签
                                                     return (
                                                         <>
-                                                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border-light)] truncate max-w-[140px]" title={modelText}>
+                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-[var(--bg-tertiary)] border border-[var(--border-light)] truncate max-w-[140px] ${modelBadge.colorClass}`} title={modelText}>
                                                                 {truncateByChars(modelText, 14)}
                                                             </span>
                                                             {providerText && (
-                                                                <span className={`text-[9px] px-1 py-0.5 rounded border shrink-0 ${getProviderBadgeColor(providerText)}`} title={providerText}>
+                                                                <span className={`text-[9px] px-1 py-0.5 rounded border shrink-0 ${getProviderBadgeColor(providerText)}`} title={providerText} style={providerBadgeStyle}>
                                                                     {truncateByChars(providerText, 12)}
                                                                 </span>
                                                             )}

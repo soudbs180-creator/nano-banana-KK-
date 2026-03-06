@@ -166,7 +166,7 @@ function BlurFade({
   blur = "4px",
 }: BlurFadeProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const inViewResult = useInView(ref, { once: true, margin: inViewMargin });
+  const inViewResult = useInView(ref, { once: true, margin: inViewMargin as any });
   const isInView = !inView || inViewResult;
 
   const defaultVariants: Variants = {
@@ -222,7 +222,7 @@ const glassButtonTextVariants = cva("relative block select-none tracking-tight",
 
 export interface GlassButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof glassButtonVariants> {
+  VariantProps<typeof glassButtonVariants> {
   contentClassName?: string;
 }
 

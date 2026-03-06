@@ -240,7 +240,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 // @ts-ignore
                                 const perm = await handle.queryPermission({ mode: 'readwrite' });
                                 if (perm === 'granted') {
-                                    logInfo('CanvasContext', `已恢复本地文件夹`, `folder: ${handle.name}`);
+                                    logInfo('CanvasContext', `已恢复本地文档夹`, `folder: ${handle.name}`);
 
                                     // [NEW] Load actual project data from disk to ensure sync
                                     // This overrides localStorage state with the true file state
@@ -315,12 +315,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                         setState(prev => ({ ...prev, fileSystemHandle: handle, folderName: handle.name }));
                                     }
                                 } else {
-                                    logInfo('CanvasContext', `本地文件夹权限等待中`, `permission: ${perm}`);
+                                    logInfo('CanvasContext', `本地文档夹权限等待中`, `permission: ${perm}`);
                                 }
-                                logInfo('CanvasContext', '未找到已保存的本地文件夹', 'no persisted handle found');
+                                logInfo('CanvasContext', '未找到已保存的本地文档夹', 'no persisted handle found');
                             }
                         } catch (e) {
-                            logError('CanvasContext', e, '恢复文件夹句柄失败');
+                            logError('CanvasContext', e, '恢复文档夹句柄失败');
                         }
                     });
                 });
@@ -405,7 +405,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 // 🚀 按需加载：只加载当前状态需要的图片
                 const imageMap = new Map<string, string>();
-                const BATCH_SIZE = 5; // 减小批次大小，避免内存峰值
+                const BATCH_SIZE = 5; // 减小批量大小，避免内存峰值
 
                 for (let i = 0; i < imageIdsArray.length; i += BATCH_SIZE) {
                     const batch = imageIdsArray.slice(i, i + BATCH_SIZE);
@@ -666,7 +666,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const isLoadingRef = useRef(isLoading);
     // 🚀 [防刷新漏洞] 用于标记需要紧急出盘(绕过200ms防抖)的关键操作
     const urgentSaveRef = useRef(false);
-    // 🚀 [锁流写] 控制文件系统并发写入，解决 `DOMException: file is locked`
+    // 🚀 [锁流写] 控制文档系统并发写入，解决 `DOMException: file is locked`
     const fsWriteLockRef = useRef<Promise<void> | null>(null);
 
     useLayoutEffect(() => {
@@ -694,7 +694,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (state.fileSystemHandle) {
                     const executeWrite = async () => {
                         try {
-                            // 🚀 [修复] 使用 fileSystemService.saveProject 正确保存到项目子文件夹
+                            // 🚀 [修复] 使用 fileSystemService.saveProject 正确保存到项目子文档夹
                             // 收集需要保存的图片（新生成的、不在 IndexedDB 中的）
                             const imagesToSave = new Map<string, Blob>();
                             const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
@@ -866,7 +866,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const newCanvas: Canvas = {
             id: generateId(),
             name: canvasName,
-            folderName: canvasName, // 【重要】首次创建时冻结物理文件夹名，此后改名只改 name 不改这个
+            folderName: canvasName, // 【重要】首次创建时冻结物理文档夹名，此后改名只改 name 不改这个
             promptNodes: [],
             imageNodes: [],
             groups: [] as CanvasGroup[],
@@ -895,13 +895,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (oldName === finalNewName) return;
 
-        // 【轻量级快捷方式重命名】物理文件夹名字永远不变，只修改 project.json 内的显示名
-        // 并在文件夹里写入一个说明性文本文件充当"快捷方式"标记
+        // 【轻量级快捷方式重命名】物理文档夹名字永远不变，只修改 project.json 内的显示名
+        // 并在文档夹里写入一个说明性文本文档充当"快捷方式"标记
         import('../services/storage/storagePreference').then(async ({ getLocalFolderHandle }) => {
             const handle = await getLocalFolderHandle();
             if (handle) {
                 try {
-                    // 物理文件夹名使用首次创建时固定的 folderName，如果没有则用旧名
+                    // 物理文档夹名使用首次创建时固定的 folderName，如果没有则用旧名
                     const physicalFolderName = (targetCanvas.folderName || oldName).trim().replace(/[\\/:*?"<>|]/g, '_');
                     // @ts-ignore
                     const projectDir = await handle.getDirectoryHandle(physicalFolderName);
@@ -922,7 +922,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         await writable.close();
                     } catch (e) { /* project.json 不存在时忽略，下次保存会创建 */ }
 
-                    // 2. 清除旧的快捷方式提示文件
+                    // 2. 清除旧的快捷方式提示文档
                     try {
                         // @ts-ignore
                         for await (const entry of projectDir.values()) {
@@ -933,13 +933,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         }
                     } catch (e) { /* 忽略 */ }
 
-                    // 3. 写入新的快捷方式提示文件
+                    // 3. 写入新的快捷方式提示文档
                     const hintFileName = `👉此项目已重命名为_${finalNewName.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
                     // @ts-ignore
                     const hintFile = await projectDir.getFileHandle(hintFileName, { create: true });
                     // @ts-ignore
                     const hintWritable = await hintFile.createWritable();
-                    await hintWritable.write(`此文件夹对应的 KK Studio 项目已被重命名为: ${finalNewName}\n原始文件夹名: ${physicalFolderName}\n更新时间: ${new Date().toLocaleString()}`);
+                    await hintWritable.write(`此文档夹对应的 KK Studio 项目已被重命名为: ${finalNewName}\n原始文档夹名: ${physicalFolderName}\n更新时间: ${new Date().toLocaleString()}`);
                     await hintWritable.close();
 
                     console.log(`[CanvasContext] 项目重命名成功 (轻量级): ${oldName} -> ${finalNewName}, 物理目录保持: ${physicalFolderName}`);
@@ -1186,7 +1186,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     const isVideo = node.mode === 'video' || node.url.startsWith('data:video/');
                     const storageId = node.storageId || node.id;
 
-                    // 🚀 [关键修复] 先保存原图到本地文件系统（最安全的存储）
+                    // 🚀 [关键修复] 先保存原图到本地文档系统（最安全的存储）
                     // A. File System First (持久化到本地磁盘 - 优先级最高)
                     // 🚀 [闭包修复] 使用getLocalFolderHandle动态获取最新handle，不依赖陈旧的state
                     const { getLocalFolderHandle, getStorageMode } = await import('../services/storage/storagePreference');
@@ -1216,7 +1216,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 await writable.close();
                                 console.log(`[CanvasContext] ✅ Saved ORIGINAL video ${storageId} to LOCAL DISK`);
                             } else {
-                                // 图片：保存原图到本地子文件夹
+                                // 图片：保存原图到本地子文档夹
                                 await fileSystemService.saveImageToHandle(currentHandle, storageId, blob, false, canvasDirName);
                                 console.log(`[CanvasContext] ✅ Saved ORIGINAL image ${storageId} to LOCAL DISK [${canvasDirName}]`);
                             }
@@ -1224,7 +1224,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             console.error(`[CanvasContext] ❌ Failed to save ${isVideo ? 'video' : 'image'} ${node.id} to LOCAL DISK`, e);
                         }
                     } else if (selectedStorageMode === 'opfs') {
-                        // 🚀 [新增] 没有本地文件夹时，检测是否支持OPFS（手机端）
+                        // 🚀 [添加] 没有本地文档夹时，检测是否支持OPFS（手机端）
                         const { isOPFSAvailable, saveToOPFS } = await import('../services/storage/opfsService');
 
                         if (isOPFSAvailable()) {
@@ -1473,7 +1473,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // Delete from IndexedDB (existing logic)
         deleteImage(id);
 
-        // 🚀 [关键修复] 让 storageAdapter 去尝试删除全局磁盘文件/OPFS
+        // 🚀 [关键修复] 让 storageAdapter 去尝试删除全局磁盘文档/OPFS
         import('../services/storage/storageAdapter').then(({ deleteImage: deleteImageFromDisk }) => {
             deleteImageFromDisk({
                 id: id,
@@ -1706,8 +1706,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                     if (childImages.length > 0) {
                         const currentMode = prompt.mode === GenerationMode.PPT ? 'column' : state.subCardLayoutMode;
-                        const SUB_GAP = 16;
-                        const PROMPT_TO_SUB_GAP = 60;
+                        const SUB_GAP = 20;
+                        const PROMPT_TO_SUB_GAP = 12;
 
                         // 计算副卡尺寸
                         const imageDims = childImages.map(img => getImageDims(img.aspectRatio, img.dimensions));
@@ -1994,10 +1994,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 // 1. 构建卡组列表 (类似全局整理)
                 const SUB_COLUMNS = 4; // 副卡4列
-                const SUB_IMAGE_GAP = 16;
-                const PROMPT_TO_SUB_GAP = 60;
-                const GROUP_GAP_X = 100;
-                const GROUP_GAP_Y = 160;
+                const SUB_IMAGE_GAP = 20;
+                const PROMPT_TO_SUB_GAP = 12;
+                const GROUP_GAP_X = 20;
+                const GROUP_GAP_Y = 20;
 
                 type SelectionGroup = {
                     prompt?: typeof selectedPrompts[0];
@@ -2164,8 +2164,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // --- 新布局逻辑: 从左上角开始,每行20组 ---
         // 配置
         const GROUPS_PER_ROW = 20;  // 每行20个卡组
-        const GROUP_GAP_X = 100;    // ✅ 卡组之间的横向间距 (增加防止重叠)
-        const GROUP_GAP_Y = 160;    // ✅ 行之间的纵向间距 (增加防止重叠)
+        const GROUP_GAP_X = 20;     // ✅ 卡组之间的横向间距
+        const GROUP_GAP_Y = 20;     // ✅ 行之间的纵向间距
         const SUB_CARD_GAP = 20;    // 子卡片之间的间距
         const START_X = -2000;      // 画布左上角起始X
         const START_Y = 200;        // 画布左上角起始Y
@@ -2204,8 +2204,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // 2a. 正确的卡组(Prompt + 子Image)
         const SUB_COLUMNS = 4; // ✅ 副卡横向4列
-        const SUB_IMAGE_GAP = 16; // 子卡间距
-        const PROMPT_TO_SUB_GAP = 60; // 主卡和副卡之间的间距 (行间距的1/2)
+        const SUB_IMAGE_GAP = 20; // 子卡间距
+        const PROMPT_TO_SUB_GAP = 12; // 主卡和副卡之间的间距
 
         normalPrompts.forEach(prompt => {
             const childImages = currentCanvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
@@ -2506,7 +2506,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const { restoreLocalFolderConnection } = await import('../services/storage/storagePreference');
                 handle = await restoreLocalFolderConnection();
             } catch (err) {
-                // 恢复本地文件夹连接失败，将继续使用文件选择器
+                // 恢复本地文档夹连接失败，将继续使用文档选择器
                 console.warn('[CanvasContext] Failed to restore local folder:', err);
             }
 
@@ -2582,7 +2582,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (promises.length > 0) {
                     // eslint-disable-next-line @typescript-eslint/no-var-requires
                     const { notify } = await import('../services/system/notificationService');
-                    notify.success('数据迁移', `已将 ${promises.length} 张临时图片保存到本地文件夹`);
+                    notify.success('数据迁移', `已将 ${promises.length} 张临时图片保存到本地文档夹`);
                 }
             }
 
@@ -2612,7 +2612,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // If found existing project in the folder, MERGE instead of overwrite
             if (canvases.length > 0) {
-                // 🚀 [Fix] 合并策略：以文件夹数据为底，将内存中的独有节点追加保留
+                // 🚀 [Fix] 合并策略：以文档夹数据为底，将内存中的独有节点追加保留
                 setState(prev => {
                     const mergedCanvases = canvases.map(diskCanvas => {
                         // 在内存中查找对应的画布
@@ -2631,7 +2631,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         });
 
                         if (!memCanvas) {
-                            // 文件夹中有、内存中没有 → 直接使用文件夹版本
+                            // 文档夹中有、内存中没有 → 直接使用文档夹版本
                             return {
                                 ...diskCanvas,
                                 imageNodes: hydratedImageNodes,
@@ -2664,7 +2664,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         };
                     });
 
-                    // 🚀 内存中有但文件夹中没有的画布 → 保留
+                    // 🚀 内存中有但文档夹中没有的画布 → 保留
                     const diskCanvasIds = new Set(canvases.map(c => c.id));
                     const extraCanvases = prev.canvases.filter(c => !diskCanvasIds.has(c.id));
                     // 排除空画布（没有任何节点的默认画布）
@@ -2762,14 +2762,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 1. Pick new folder
             const newHandle = await fileSystemService.selectDirectory();
             if (newHandle.name === state.folderName) {
-                notify.info('提示', '您选择了同一个文件夹');
+                notify.info('提示', '您选择了同一个文档夹');
                 return;
             }
 
             // 2. Confirm Migration
             const confirmed = window.confirm(
                 `移动项目到 "${newHandle.name}"?\n\n` +
-                `这将 移动 (剪切 & 粘贴) 所有文件从 "${state.folderName}" 到新位置。`
+                `这将 移动 (剪切 & 粘贴) 所有文档从 "${state.folderName}" 到新位置。`
             );
 
             if (!confirmed) return;
@@ -2843,7 +2843,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             reader.readAsDataURL(blob);
                         }
                     } catch (e) {
-                        // blob URL 已过期，尝试从本地文件系统重新加载
+                        // blob URL 已过期，尝试从本地文档系统重新加载
                         console.debug(`[CanvasContext] Blob URL expired for ${id}, trying to reload from local file system`);
                         try {
                             const file = await fileSystemService.loadOriginalFromDisk(handle, id);
@@ -2935,7 +2935,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                                 originalUrl: localData?.originalUrl || img.originalUrl
                                             };
                                         }),
-                                    // 2. 添加磁盘中新增的节点
+                                    // 2. 添加磁盘中添加的节点
                                     ...diskCanvas.imageNodes
                                         .filter(img => !prevCanvas.imageNodes.some(pimg => pimg.id === img.id))
                                         .map(img => {

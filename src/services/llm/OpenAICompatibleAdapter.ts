@@ -590,7 +590,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         // 🚀 [Protocol Routing]
         // 12AI + Gemini 图片模型：强制走 Gemini Native（严格对齐 12AI 文档），
-        // 忽略 compatibilityMode='chat'，避免命中 Chat-to-Image 通道导致 503。
+        // 忽略 compatibilityMode='chat'，避免命中 Chat-to-Image 信道导致 503。
         const forceGeminiNativeOn12AI = this.is12AIGateway(baseUrl, keySlot, options.modelId) && isGeminiImage;
         if (keySlot.compatibilityMode === 'chat' && !forceGeminiNativeOn12AI) {
             console.log(`[OpenAICompatibleAdapter] 使用 Chat API (显式 compatibilityMode='chat') -> ${keySlot.name}`);

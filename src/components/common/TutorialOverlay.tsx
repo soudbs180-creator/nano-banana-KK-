@@ -34,7 +34,7 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
         {
             targetId: isMobile ? "mobile-tab-bar" : "project-manager-container",
             title: "左侧工具栏",
-            description: "管理您的创意资产与视图设置。\n\n• 📁 项目管理：新建、切换与归档不同项目\n• 🔍 全局搜索：Ctrl+K 快速查找历史提示词\n• 📏 视图工具：网格对齐、一键归位、主题切换\n• 📂 导入导出：支持 .kk 格式项目文件",
+            description: "管理您的创意资产与视图设置。\n\n• 📁 项目管理：新建、切换与归档不同项目\n• 🔍 全局搜索：Ctrl+K 快速查找历史提示词\n• 📏 视图工具：网格对齐、一键归位、主题切换\n• 📂 导入导出：支持 .kk 格式项目文档",
             position: isMobile ? "top" : "right"
         },
         {

@@ -11,8 +11,8 @@ import { supabase } from '../../lib/supabase';
 const PROJECT_FILE = 'project.json';
 const DIRS = {
     // 🚀 新目录结构
-    PICTURE: 'picture',           // 图片文件
-    VIDEO: 'video',               // 视频文件
+    PICTURE: 'picture',           // 图片文档
+    VIDEO: 'video',               // 视频文档
     REFS: 'refs',                 // 参考图压缩备份
     SETTINGS: 'settings',         // 布局和设置信息
     TAGS: 'tags',                 // 标签快捷链接子目录名
@@ -41,7 +41,7 @@ export const fileSystemService = {
     },
 
     /**
-     * [重构版] - 模拟文件夹重命名逻辑（因浏览器无原生 API 支持，采用全息克隆转移方案）
+     * [重构版] - 模拟文档夹重命名逻辑（因浏览器无原生 API 支持，采用全息克隆转移方案）
      * 传入工作区根 handle，旧名字和新名字
      */
     async renameProjectFolder(handle: FileSystemDirectoryHandle, oldName: string, newName: string): Promise<boolean> {
@@ -51,13 +51,13 @@ export const fileSystemService = {
 
             if (safeOldName === safeNewName) return true;
 
-            // 1. 尝试获取旧文件夹
+            // 1. 尝试获取旧文档夹
             let oldDirHandle: FileSystemDirectoryHandle;
             try {
                 // @ts-ignore
                 oldDirHandle = await handle.getDirectoryHandle(safeOldName);
             } catch (e) {
-                console.log(`[FileSystem] 旧文件夹 ${safeOldName} 不存在，无需重命名，将在下次保存时建新结构`);
+                console.log(`[FileSystem] 旧文档夹 ${safeOldName} 不存在，无需重命名，将在下次保存时建新结构`);
                 return true;
             }
 
@@ -100,7 +100,7 @@ export const fileSystemService = {
 
             console.log(`[FileSystem] 开始重命名流转移：${safeOldName} -> ${finalNewName}`);
 
-            // 3. 创建新文件夹并开始全息克隆
+            // 3. 创建新文档夹并开始全息克隆
             // @ts-ignore
             const newDirHandle = await handle.getDirectoryHandle(finalNewName, { create: true });
 
@@ -129,7 +129,7 @@ export const fileSystemService = {
 
             await copyDir(oldDirHandle, newDirHandle);
 
-            // 4. 修改新文件夹里的 project.json
+            // 4. 修改新文档夹里的 project.json
             try {
                 // @ts-ignore
                 const pFile = await newDirHandle.getFileHandle(PROJECT_FILE);
@@ -145,7 +145,7 @@ export const fileSystemService = {
                 await writable.close();
             } catch (e) { /* ignore */ }
 
-            // 5. 摧毁旧文件夹
+            // 5. 摧毁旧文档夹
             // @ts-ignore
             await handle.removeEntry(safeOldName, { recursive: true });
 
@@ -172,7 +172,7 @@ export const fileSystemService = {
         const handle = await window.showDirectoryPicker({
             mode: 'readwrite'
         });
-        logInfo('FileSystem', `用户选择了文件夹`, `directory: ${handle.name}`);
+        logInfo('FileSystem', `用户选择了文档夹`, `directory: ${handle.name}`);
         return handle;
     },
 
@@ -196,7 +196,7 @@ export const fileSystemService = {
 
     /**
      * Load project from directory with Thumbnail Generation
-     * [重构版] - 支持工作区（多项目子文件夹）分层架构与无缝老工程迁移
+     * [重构版] - 支持工作区（多项目子文档夹）分层架构与无缝老工程迁移
      */
     async loadProjectWithThumbs(handle: FileSystemDirectoryHandle): Promise<{ canvases: Canvas[], images: Map<string, { url: string, originalUrl?: string, filename?: string }>, activeCanvasId: string | null }> {
         this.setGlobalHandle(handle);
@@ -212,7 +212,7 @@ export const fileSystemService = {
         const { data: { session } } = await supabase.auth.getSession();
         const ownerId = session?.user?.id || 'local_user';
 
-        // --- 1. 优先加载根目录的 project.json (整合版) ---
+        // --- 1. 优先加载根目录的 project.json (集成版) ---
         let hasRootConfig = false;
         try {
             // @ts-ignore
@@ -229,13 +229,13 @@ export const fileSystemService = {
                 }
                 activeCanvasId = rootProjectData.activeCanvasId || (canvases[0]?.id) || null;
                 hasRootConfig = true;
-                logInfo('FileSystem', '已从根目录加载整合配置文件', `共 ${canvases.length} 个画布`);
+                logInfo('FileSystem', '已从根目录加载集成配置文档', `共 ${canvases.length} 个画布`);
             }
         } catch (e) {
             // 根目录无配置或解析失败
         }
 
-        // --- 2. 遍历子文件夹：仅用于加载媒体文件 & 扫描旧版配置以便迁移 ---
+        // --- 2. 遍历子文档夹：仅用于加载媒体文档 & 扫描旧版配置以便迁移 ---
         // @ts-ignore
         for await (const entry of handle.values()) {
             if (entry.kind === 'directory' && !entry.name.startsWith('.')) {
@@ -243,7 +243,7 @@ export const fileSystemService = {
                 const projectDirHandle = await handle.getDirectoryHandle(entry.name);
 
                 try {
-                    // --- 2.1 扫描媒体文件 (picture / video) ---
+                    // --- 2.1 扫描媒体文档 (picture / video) ---
                     const scanSubDirectory = async (mediaDirName: string) => {
                         try {
                             // @ts-ignore
@@ -309,13 +309,13 @@ export const fileSystemService = {
             activeCanvasId = canvases[0]?.id || null;
         }
 
-        logInfo('FileSystem', `已深度挂载 ${canvases.length} 个项目, 共找到 ${images.size} 个媒体文件`, 'load complete');
+        logInfo('FileSystem', `已深度挂载 ${canvases.length} 个项目, 共找到 ${images.size} 个媒体文档`, 'load complete');
 
         return { canvases, images, activeCanvasId };
     },
     /**
      * Get usage of images folder in bytes (Recursive)
-     * [重构版] - 考虑到多项目架构，自动对所有子文件夹包含的内容进行统计
+     * [重构版] - 考虑到多项目架构，自动对所有子文档夹包含的内容进行统计
      */
     async getFolderUsage(handle: FileSystemDirectoryHandle): Promise<{ size: number, count: number }> {
         let totalSize = 0;
@@ -352,13 +352,13 @@ export const fileSystemService = {
 
         await processHandle(handle, 0);
 
-        logInfo('FileSystem', `已计算工作区大小`, `${fileCount} 个文件, ${totalSize} 字节`);
+        logInfo('FileSystem', `已计算工作区大小`, `${fileCount} 个文档, ${totalSize} 字节`);
         return { size: totalSize, count: fileCount };
     },
 
     /**
-     * 快速获取本地媒体 ID 集合（仅遍历文件名，不读取文件内容）
-     * [重构版] - 作用域仅限于传入的句柄（如果传项目子文件夹，则扫子文件夹；如果传工作区根目录，会扫描一层深度的子文件夹）
+     * 快速获取本地媒体 ID 集合（仅遍历文档名，不读取文档内容）
+     * [重构版] - 作用域仅限于传入的句柄（如果传项目子文档夹，则扫子文档夹；如果传工作区根目录，会扫描一层深度的子文档夹）
      */
     async getLocalMediaIds(handle: FileSystemDirectoryHandle): Promise<Set<string>> {
         const ids = new Set<string>();
@@ -402,8 +402,8 @@ export const fileSystemService = {
                 try {
                     // @ts-ignore
                     const dirHandle = await handle.getDirectoryHandle(dirName);
-                    // 由于新架构下文件名包含日期前缀 (YYYYMM_{id}.ext)，我们需要遍历或精准匹配
-                    // 这里我们尝试通过遍历匹配包含 id 的文件
+                    // 由于新架构下文档名包含日期前缀 (YYYYMM_{id}.ext)，我们需要遍历或精准匹配
+                    // 这里我们尝试通过遍历匹配包含 id 的文档
                     // @ts-ignore
                     for await (const entry of dirHandle.values()) {
                         if (entry.kind === 'file' && entry.name.includes(id)) {
@@ -563,7 +563,7 @@ export const fileSystemService = {
             // @ts-ignore
             const targetDir = await baseHandle.getDirectoryHandle(targetDirName, { create: true });
 
-            // 生成新格式文件名: YYYYMM_{id}.{ext}
+            // 生成新格式文档名: YYYYMM_{id}.{ext}
             const now = new Date();
             const datePrefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
             const ext = isVideo ? 'mp4' : 'png';
@@ -595,8 +595,8 @@ export const fileSystemService = {
     },
 
     /**
-     * 🚀 从本地文件夹彻底删除图片或视频文件
-     * [重构版] - 考虑到多项目结构体系，自动深入到所有可能的画板子文件夹进行全局清除
+     * 🚀 从本地文档夹彻底删除图片或视频文档
+     * [重构版] - 考虑到多项目结构体系，自动深入到所有可能的画板子文档夹进行全局清除
      */
     async deleteImageFromHandle(handle: FileSystemDirectoryHandle, id: string): Promise<boolean> {
         let deleted = false;
@@ -611,7 +611,7 @@ export const fileSystemService = {
                         try {
                             // @ts-ignore
                             await currentHandle.removeEntry(entry.name);
-                            logInfo('FileSystem', `已从本地删除文件`, `${currentHandle.name}/${entry.name}`);
+                            logInfo('FileSystem', `已从本地删除文档`, `${currentHandle.name}/${entry.name}`);
                             deleted = true;
                         } catch (e) {
                             console.error(`Failed to delete ${entry.name}`, e);
@@ -668,7 +668,7 @@ export const fileSystemService = {
 
     /**
      * 🚀 保存参考图到 refs/ 目录（压缩为 50% JPEG）
-     * 使用 storageId 作为文件名，自动去重
+     * 使用 storageId 作为文档名，自动去重
      */
     async saveReferenceImage(handle: FileSystemDirectoryHandle, storageId: string, base64Data: string, mimeType: string = 'image/jpeg'): Promise<void> {
         try {
@@ -729,14 +729,14 @@ export const fileSystemService = {
                 reader.readAsDataURL(file);
             });
         } catch (e) {
-            // 文件不存在
+            // 文档不存在
             return null;
         }
     },
 
     /**
      * Save the entire project state and new images
-     * [重构版] - 按项目名子文件夹独立保存，支持账户隔离
+     * [重构版] - 按项目名子文档夹独立保存，支持账户隔离
      */
     async saveProject(
         handle: FileSystemDirectoryHandle,
@@ -759,19 +759,19 @@ export const fileSystemService = {
 
                 // 以当前内存 state 为准合并（更新已有或添加新项）
                 const mergedMap = new Map<string, Canvas>();
-                // 先加载文件中已有的
+                // 先加载文档中已有的
                 cloudCanvases.forEach((c: Canvas) => mergedMap.set(c.id, c));
                 // 再覆盖内存中最新的
                 finalCanvases.forEach((c: Canvas) => mergedMap.set(c.id, c));
                 finalCanvases = Array.from(mergedMap.values());
             } catch (e) {
-                // 如果文件不存在，则直接使用传入的 canvases
+                // 如果文档不存在，则直接使用传入的 canvases
             }
 
-            // 2. 写入根目录整合配置文件
+            // 2. 写入根目录集成配置文档
             const consolidatedState = {
                 metadata: {
-                    version: "3.0", // 升级版本号表示整合版
+                    version: "3.0", // 升级版本号表示集成版
                     lastSaved: Date.now(),
                     ownerId: ownerId,
                     mode: 'consolidated_workspace'
@@ -877,7 +877,7 @@ export const fileSystemService = {
 
     /**
      * 🚀 创建标签快捷链接
-     * 在 picture/tags/{tagName}/ 或 video/tags/{tagName}/ 下创建指向原文件的.url快捷方式
+     * 在 picture/tags/{tagName}/ 或 video/tags/{tagName}/ 下创建指向原文档的.url快捷方式
      */
     async createTagShortcut(handle: FileSystemDirectoryHandle, tag: string, filename: string, isVideo: boolean = false): Promise<void> {
         try {
@@ -889,7 +889,7 @@ export const fileSystemService = {
             // @ts-ignore
             const tagDir = await tagsDir.getDirectoryHandle(tag, { create: true });
 
-            // 创建 .url 快捷方式文件（Windows格式）
+            // 创建 .url 快捷方式文档（Windows格式）
             const shortcutFilename = `${filename}.url`;
             const relativePath = `..\\..\\${filename}`;
 
@@ -902,7 +902,7 @@ export const fileSystemService = {
                 // 不存在，继续创建
             }
 
-            // 创建 Windows URL Shortcut 文件格式
+            // 创建 Windows URL Shortcut 文档格式
             const shortcutContent = `[InternetShortcut]\r\nURL=file:///${relativePath.replace(/\\/g, '/')}\r\n[{000214A0-0000-0000-C000-000000000046}]\r\nProp3=19,11\r\n`;
 
             // @ts-ignore
@@ -937,15 +937,15 @@ export const fileSystemService = {
             await tagDir.removeEntry(shortcutFilename);
             logInfo('FileSystem', `已删除标签快捷链接`, `${tag}/${shortcutFilename}`);
 
-            // 清理空文件夹
+            // 清理空文档夹
             await this.cleanupEmptyTagFolder(handle, tag, isVideo);
         } catch (e) {
-            // 文件可能不存在，忽略错误
+            // 文档可能不存在，忽略错误
         }
     },
 
     /**
-     * 🚀 清理空的标签文件夹
+     * 🚀 清理空的标签文档夹
      */
     async cleanupEmptyTagFolder(handle: FileSystemDirectoryHandle, tag: string, isVideo: boolean = false): Promise<void> {
         try {
@@ -968,7 +968,7 @@ export const fileSystemService = {
             if (isEmpty) {
                 // @ts-ignore
                 await tagsDir.removeEntry(tag);
-                logInfo('FileSystem', `已删除空标签文件夹`, tag);
+                logInfo('FileSystem', `已删除空标签文档夹`, tag);
             }
         } catch (e) {
             // 目录可能不存在，忽略
@@ -976,7 +976,7 @@ export const fileSystemService = {
     },
 
     /**
-     * 🚀 为文件的所有标签创建快捷链接
+     * 🚀 为文档的所有标签创建快捷链接
      */
     async syncFileTagShortcuts(handle: FileSystemDirectoryHandle, filename: string, tags: string[], isVideo: boolean = false): Promise<void> {
         for (const tag of tags) {
@@ -1022,10 +1022,10 @@ export const fileSystemService = {
     },
 
     /**
-     * 🚀 迁移旧文件到新目录结构
-     * 将 originals/ 和 images/ 中的文件移动到 picture/ 或 video/
+     * 🚀 迁移旧文档到新目录结构
+     * 将 originals/ 和 images/ 中的文档移动到 picture/ 或 video/
      * 并重命名为 YYYYMM_{id}.{ext} 格式
-     * @returns 迁移的文件数量和ID映射
+     * @returns 迁移的文档数量和ID映射
      */
     async migrateLegacyFiles(handle: FileSystemDirectoryHandle): Promise<{ count: number, idMapping: Map<string, string> }> {
         const idMapping = new Map<string, string>();
@@ -1052,7 +1052,7 @@ export const fileSystemService = {
                     const oldId = entry.name.replace(/\.[^.]+$/, '');
                     const newFilename = `${datePrefix}_${oldId}.${isVideo ? 'mp4' : 'png'}`;
 
-                    // 读取文件
+                    // 读取文档
                     // @ts-ignore
                     const file = await entry.getFile();
 
@@ -1061,7 +1061,7 @@ export const fileSystemService = {
                     // @ts-ignore
                     const targetDir = await handle.getDirectoryHandle(targetDirName, { create: true });
 
-                    // 检查新文件是否已存在
+                    // 检查新文档是否已存在
                     try {
                         // @ts-ignore
                         await targetDir.getFileHandle(newFilename);
@@ -1080,14 +1080,14 @@ export const fileSystemService = {
                     await writable.write(file);
                     await writable.close();
 
-                    // 删除旧文件
+                    // 删除旧文档
                     // @ts-ignore
                     await legacyDir.removeEntry(entry.name);
 
                     idMapping.set(oldId, newFilename);
                     count++;
 
-                    logInfo('FileSystem', `已迁移文件`, `${entry.name} -> ${targetDirName}/${newFilename}`);
+                    logInfo('FileSystem', `已迁移文档`, `${entry.name} -> ${targetDirName}/${newFilename}`);
                 }
 
                 // 如果目录为空，删除旧目录
@@ -1112,7 +1112,7 @@ export const fileSystemService = {
         await migrateFromDir(DIRS.LEGACY);
 
         if (count > 0) {
-            logInfo('FileSystem', `迁移完成`, `共迁移 ${count} 个文件`);
+            logInfo('FileSystem', `迁移完成`, `共迁移 ${count} 个文档`);
         }
 
         return { count, idMapping };

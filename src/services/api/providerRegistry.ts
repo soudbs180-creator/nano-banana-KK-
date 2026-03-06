@@ -63,7 +63,7 @@ export const PROVIDER_REGISTRY: Record<Provider, ProviderMetadata> = {
         id: '12AI',
         label: '12AI (官方平台)',
         defaultBaseUrl: 'https://cdn.12ai.org',
-        description: '12AI 官方聚合通道',
+        description: '12AI 官方聚合信道',
         docsUrl: 'https://doc.12ai.org/'
     },
     Custom: {

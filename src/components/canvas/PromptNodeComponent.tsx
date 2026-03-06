@@ -1,10 +1,10 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { PromptNode, AspectRatio, GenerationMode } from '../../types';
 import { Sparkles, Loader2, Video, Image, Pin, Music, Copy, Check, Languages, Info, ChevronRight } from 'lucide-react';
 import { getCardDimensions } from '../../utils/styleUtils';
 import { generateTagColor } from '../../utils/colorUtils';
 import { getModelDisplayName } from '../../services/model/modelCapabilities';
-import { getModelBadgeInfo, getProviderBadgeColor } from '../../utils/modelBadge';
+import { getModelBadgeInfo, getProviderBadgeColor, getProviderBadgeStyle } from '../../utils/modelBadge';
 import { getLaunchTimelineByOffset, getPromptBarLaunchPoint } from '../../utils/cardLaunch';
 import ImagePreview from '../image/ImagePreview';
 
@@ -117,7 +117,7 @@ const ReferenceThumbnail: React.FC<{
                     return;
                 }
                 e.stopPropagation(); // Prevent card drag
-                // 🚀 [新增] 触发自定义事件通知 ImagePreview 关闭
+                // 🚀 [添加] 触发自定义事件通知 ImagePreview 关闭
                 window.dispatchEvent(new CustomEvent('kk-drag-start'));
                 // Pass URL as text so PromptBar can read it
                 e.dataTransfer.setData('text/plain', src);
@@ -305,7 +305,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
     // 🚀 [丝滑优化] 统一飞入动画：从输入框中心飞向画布目标位置
     // 使用 useLayoutEffect + 单一 gsap.fromTo 避免双重动画冲突和位置跳动
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (node.isDraft || hasAnimatedRef.current === node.id) return;
 
         const now = Date.now();
@@ -464,7 +464,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         setIsDragging(true);
         hasMoved.current = false;
 
-        // 🚀 [新增] 触发自定义事件通知 ImagePreview 关闭
+        // 🚀 [添加] 触发自定义事件通知 ImagePreview 关闭
         window.dispatchEvent(new CustomEvent('kk-drag-start'));
     };
 
@@ -714,7 +714,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                         </div>
                     )}
 
-                    {/* Prompt Text Area - 文字可选，但选择范围被约束在本卡片内 */}
+                    {/* Prompt Text Area - 文本可选，但选择范围被约束在本卡片内 */}
                     <div
                         className="relative text-[var(--text-primary)] text-[15px] leading-7 font-normal flex-1 tracking-wide overflow-y-auto max-h-[160px] custom-scrollbar pr-1 min-h-[40px] select-text cursor-text group/content"
                         onWheel={(e) => e.stopPropagation()}
@@ -845,7 +845,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                     onExportPptx(node);
                                 }}
                                 className="px-2 py-1 rounded-md border text-[11px] leading-none bg-indigo-500/10 text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/20"
-                                title="导出PPTX文件"
+                                title="导出PPTX文档"
                             >
                                 导出PPTX
                             </button>
@@ -1158,10 +1158,11 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                                     <span className={`text-[7px] leading-none font-medium whitespace-nowrap max-w-[88px] truncate ${modelBadge.colorClass}`} title={modelText}>
                                                                         {truncateByChars(modelText, 15)}
                                                                     </span>
-                                                                    {providerText && !isCreditModel && !providerText.toLowerCase().includes('12ai') && (
+                                                                    {providerText && !isCreditModel && (
                                                                         <span
                                                                             className={`text-[7px] leading-none px-1 py-0.5 rounded whitespace-nowrap border ${getProviderBadgeColor(providerText)}`}
                                                                             title={providerText}
+                                                                            style={getProviderBadgeStyle(providerText)}
                                                                         >
                                                                             {truncateByChars(providerText, 5)}
                                                                         </span>
