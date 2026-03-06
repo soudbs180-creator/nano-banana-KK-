@@ -144,6 +144,38 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
     selectedNodeIdsRef.current = selectedNodeIds;
   }, [selectedNodeIds]);
 
+  const resolveProviderDisplay = useCallback((keySlotId?: string, fallbackProviderLabel?: string, fallbackProvider?: string) => {
+    if (fallbackProviderLabel) {
+      return {
+        provider: fallbackProvider,
+        providerLabel: fallbackProviderLabel,
+      };
+    }
+
+    if (keySlotId) {
+      const provider = keyManager.getProvider(keySlotId);
+      if (provider) {
+        return {
+          provider: provider.name || fallbackProvider,
+          providerLabel: provider.name || fallbackProvider || 'Custom',
+        };
+      }
+
+      const keySlot = keyManager.getKey(keySlotId);
+      if (keySlot) {
+        return {
+          provider: String(keySlot.provider || fallbackProvider || ''),
+          providerLabel: keySlot.name || String(keySlot.provider || fallbackProvider || 'Official'),
+        };
+      }
+    }
+
+    return {
+      provider: fallbackProvider,
+      providerLabel: fallbackProviderLabel || fallbackProvider,
+    };
+  }, []);
+
   // Track reserved regions for rapid-fire generation to prevent overlaps (before React update reflects)
   const reservedRegionsRef = useRef<{ bounds: { x: number; y: number; width: number; height: number }; timestamp: number; }[]>([]);
 
@@ -2016,6 +2048,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
             exactDimensions, provider, providerLabel: itemProviderLabel, modelName, taskPrompt: itemTaskPrompt
             , keySlotId, requestPath, requestBodyPreview, pythonSnippet
           } = item;
+          const providerDisplay = resolveProviderDisplay(keySlotId, itemProviderLabel, provider);
 
           // 🚀 Use result model/size if available, otherwise fallback
           const finalModel = resModel || effectiveModel;
@@ -2094,8 +2127,8 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
               if (m.includes('veo')) return 'Veo 2';
               return effectiveModel;
             })(),
-            provider: provider,
-            providerLabel: itemProviderLabel || provider, // ✨ Use custom name if available, else provider ID
+            provider: providerDisplay.provider,
+            providerLabel: providerDisplay.providerLabel,
             keySlotId,
             sourceReferenceStorageIds: (files || []).map(ref => ref.storageId || ref.id).filter(Boolean),
             requestPath,
@@ -3588,6 +3621,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       }
 
       updateImageNode(target.id, {
+        ...resolveProviderDisplay(result.keySlotId || node.keySlotId, result.providerName || target.providerLabel, result.provider || target.provider),
         url: result.url,
         originalUrl: result.url,
         prompt: taskPrompt,
@@ -3595,8 +3629,6 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         generationTime: Date.now() - startTime,
         model: result.model || node.model,
         modelLabel: result.modelName || target.modelLabel,
-        provider: result.provider || target.provider,
-        providerLabel: result.providerName || target.providerLabel,
         keySlotId: result.keySlotId || node.keySlotId,
         imageSize: result.imageSize || node.imageSize,
         aspectRatio: result.aspectRatio || node.aspectRatio,

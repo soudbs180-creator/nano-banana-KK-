@@ -204,3 +204,67 @@ export const buildProviderPricingSnapshot = (
 
   return snapshot;
 };
+
+const mergeRatioMap = <T extends Record<string, any> | undefined>(primary: T, fallback: T): T => {
+  if (!primary && !fallback) return undefined as T;
+  return {
+    ...(fallback || {}),
+    ...(primary || {}),
+  } as T;
+};
+
+export const mergeProviderPricingSnapshot = (
+  primary?: ProviderPricingSnapshot,
+  fallback?: ProviderPricingSnapshot
+): ProviderPricingSnapshot | undefined => {
+  if (!primary && !fallback) return undefined;
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+
+  const rowsByModel = new Map<string, NonNullable<ProviderPricingSnapshot['rows']>[number]>();
+  for (const row of fallback.rows || []) {
+    const model = String(row?.model || '').trim();
+    if (!model) continue;
+    rowsByModel.set(model.toLowerCase(), { ...row });
+  }
+  for (const row of primary.rows || []) {
+    const model = String(row?.model || '').trim();
+    if (!model) continue;
+    const key = model.toLowerCase();
+    const previous = rowsByModel.get(key);
+    rowsByModel.set(key, {
+      ...(previous || {}),
+      ...row,
+      sizeRatio: mergeRatioMap(row.sizeRatio, previous?.sizeRatio),
+      groupModelRatio: mergeRatioMap(row.groupModelRatio, previous?.groupModelRatio),
+      groupSizeRatio: mergeRatioMap(row.groupSizeRatio, previous?.groupSizeRatio),
+      groupModelPrice: mergeRatioMap(row.groupModelPrice, previous?.groupModelPrice),
+    });
+  }
+
+  const merged: ProviderPricingSnapshot = {
+    ...fallback,
+    ...primary,
+    fetchedAt: Math.max(primary.fetchedAt || 0, fallback.fetchedAt || 0),
+    note: primary.note || fallback.note,
+    groupRatio: primary.groupRatio ?? fallback.groupRatio,
+    groupRatioMap: mergeRatioMap(primary.groupRatioMap, fallback.groupRatioMap),
+    modelPrices: mergeRatioMap(primary.modelPrices, fallback.modelPrices),
+    modelRatios: mergeRatioMap(primary.modelRatios, fallback.modelRatios),
+    sizeRatios: mergeRatioMap(primary.sizeRatios, fallback.sizeRatios),
+    groupModelRatios: mergeRatioMap(primary.groupModelRatios, fallback.groupModelRatios),
+    groupModelRatioMaps: mergeRatioMap(primary.groupModelRatioMaps, fallback.groupModelRatioMaps),
+    groupSizeRatios: mergeRatioMap(primary.groupSizeRatios, fallback.groupSizeRatios),
+    groupModelPrices: mergeRatioMap(primary.groupModelPrices, fallback.groupModelPrices),
+    completionRatios: mergeRatioMap(primary.completionRatios, fallback.completionRatios),
+    rows: Array.from(rowsByModel.values()),
+    _rawData:
+      (Array.isArray(primary._rawData) && primary._rawData.length ? primary._rawData : undefined) ||
+      (Array.isArray(fallback._rawData) && fallback._rawData.length ? fallback._rawData : undefined),
+  };
+
+  if (!merged.rows?.length) delete merged.rows;
+  if (!merged._rawData?.length) delete merged._rawData;
+
+  return merged;
+};

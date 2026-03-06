@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   ArrowRight,
@@ -11,7 +11,6 @@ import {
   Lock,
   Mail,
   Sparkles,
-  User,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -22,6 +21,15 @@ type AuthView = 'login' | 'register' | 'forgot-password';
 type FieldName = 'email' | 'password' | 'confirmPassword';
 type FieldErrors = Partial<Record<FieldName, string>>;
 type FieldTouched = Record<FieldName, boolean>;
+type StarPoint = {
+  id: number;
+  top: string;
+  left: string;
+  delay: string;
+  duration: string;
+  size: string;
+  opacity: string;
+};
 
 const MAX_RETRY = 3;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -47,7 +55,7 @@ function mapAuthError(error: unknown, view: AuthView): string {
     return '请先完成邮箱验证后再登录。';
   }
   if (message.includes('Password should be at least')) {
-    return '密码长度至少为 6 位。';
+    return '密码长度至少 6 位。';
   }
   if (message.includes('For security purposes')) {
     return '操作过于频繁，请稍后再试。';
@@ -69,7 +77,7 @@ function validateFields(view: AuthView, email: string, password: string, confirm
     if (!password) {
       errors.password = '请输入登录密码。';
     } else if (password.length < 6) {
-      errors.password = '密码长度至少为 6 位。';
+      errors.password = '密码长度至少 6 位。';
     }
   }
 
@@ -131,6 +139,20 @@ const LoginScreen: React.FC = () => {
     [view, email, password, confirmPassword]
   );
 
+  const stars = useMemo<StarPoint[]>(
+    () =>
+      Array.from({ length: 18 }, (_, index) => ({
+        id: index,
+        top: `${6 + Math.random() * 72}%`,
+        left: `${4 + Math.random() * 88}%`,
+        delay: `${Math.random() * 10}s`,
+        duration: `${2.6 + Math.random() * 4.8}s`,
+        size: `${1.2 + Math.random() * 2.4}px`,
+        opacity: `${0.35 + Math.random() * 0.55}`,
+      })),
+    []
+  );
+
   useEffect(() => {
     setError(null);
     setMessage(null);
@@ -146,8 +168,7 @@ const LoginScreen: React.FC = () => {
     setFieldErrors({});
   }, [view]);
 
-  const showFieldError = (field: FieldName) =>
-    Boolean(fieldErrors[field] && (submitted || fieldTouched[field]));
+  const showFieldError = (field: FieldName) => Boolean(fieldErrors[field] && (submitted || fieldTouched[field]));
 
   const syncFieldErrors = () => {
     setFieldErrors(localErrors);
@@ -156,10 +177,6 @@ const LoginScreen: React.FC = () => {
   const markTouched = (field: FieldName) => {
     setFieldTouched((current) => ({ ...current, [field]: true }));
     setFieldErrors(localErrors);
-  };
-
-  const handleTempUserClick = () => {
-    setShowTempUserWarning(true);
   };
 
   const confirmTempUserLogin = async () => {
@@ -181,7 +198,7 @@ const LoginScreen: React.FC = () => {
     const emailValue = email.trim();
 
     if (view === 'register') {
-      const displayName = emailValue.split('@')[0] || '新用户';
+      const displayName = emailValue.split('@')[0] || 'New User';
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: emailValue,
         password,
@@ -296,6 +313,24 @@ const LoginScreen: React.FC = () => {
         <div className="auth-gradient auth-gradient-a" />
         <div className="auth-gradient auth-gradient-b" />
         <div className="auth-grid" />
+        <div className="auth-star-layer">
+          {stars.map((star) => (
+            <span
+              key={star.id}
+              className="auth-star-point"
+              style={
+                {
+                  '--star-top': star.top,
+                  '--star-left': star.left,
+                  '--star-delay': star.delay,
+                  '--star-duration': star.duration,
+                  '--star-size': star.size,
+                  '--star-opacity': star.opacity,
+                } as React.CSSProperties
+              }
+            />
+          ))}
+        </div>
       </div>
 
       <section className="auth-side-visual" aria-hidden>
@@ -305,36 +340,6 @@ const LoginScreen: React.FC = () => {
           </div>
           <h1>KK 创作平台</h1>
           <p>下一代智能创作工作台</p>
-        </div>
-
-        <div className="auth-characters">
-          <div className="auth-character auth-character-a">
-            <span className="auth-character-eye">
-              <span className="auth-character-pupil" />
-            </span>
-            <span className="auth-character-eye">
-              <span className="auth-character-pupil" />
-            </span>
-            <span className="auth-character-mouth" />
-          </div>
-          <div className="auth-character auth-character-b">
-            <span className="auth-character-eye">
-              <span className="auth-character-pupil" />
-            </span>
-            <span className="auth-character-eye">
-              <span className="auth-character-pupil" />
-            </span>
-            <span className="auth-character-mouth" />
-          </div>
-          <div className="auth-character auth-character-c">
-            <span className="auth-character-eye">
-              <span className="auth-character-pupil" />
-            </span>
-            <span className="auth-character-eye">
-              <span className="auth-character-pupil" />
-            </span>
-            <span className="auth-character-mouth" />
-          </div>
         </div>
 
         <p className="auth-side-note">登录后自动同步你的模型、积分与生成记录。</p>
@@ -357,7 +362,7 @@ const LoginScreen: React.FC = () => {
             </h2>
             <p>
               {view === 'login' && '请登录后继续使用 KK 创作平台。'}
-              {view === 'register' && '创建新账号后即可开启完整功能。'}
+              {view === 'register' && '创建新账户后即可开启完整功能。'}
               {view === 'forgot-password' && '输入邮箱后我们会发送重置链接。'}
             </p>
           </header>
@@ -452,7 +457,7 @@ const LoginScreen: React.FC = () => {
                     value={confirmPassword}
                     onChange={(event) => {
                       setConfirmPassword(event.target.value);
-                      if (submitted || fieldTouched.confirmPassword) syncFieldErrors();
+                      if (submitted || fieldTouched.confirmPassword || fieldTouched.password) syncFieldErrors();
                     }}
                     onBlur={() => markTouched('confirmPassword')}
                     placeholder="请再次输入密码"
@@ -462,54 +467,51 @@ const LoginScreen: React.FC = () => {
                   />
                 </div>
                 <div className="auth-field-help">
-                  {showFieldError('confirmPassword') ? (
-                    <span className="auth-field-error">{fieldErrors.confirmPassword}</span>
-                  ) : (
-                    <span>　</span>
-                  )}
+                  {showFieldError('confirmPassword') ? <span className="auth-field-error">{fieldErrors.confirmPassword}</span> : <span>　</span>}
                 </div>
               </label>
             )}
 
-            <button type="submit" className="auth-btn auth-btn-main auth-submit" disabled={loading}>
+            <button type="submit" className="auth-btn auth-btn-main" disabled={loading}>
               {loading ? (
                 <>
-                  <Loader2 size={16} className="auth-spin" />
+                  <Loader2 size={16} className="animate-spin" />
                   处理中...
                 </>
               ) : (
                 <>
                   {view === 'login' && '登录'}
-                  {view === 'register' && '创建账号'}
-                  {view === 'forgot-password' && '发送链接'}
+                  {view === 'register' && '注册'}
+                  {view === 'forgot-password' && '发送重置邮件'}
                   <ArrowRight size={16} />
                 </>
               )}
             </button>
-          </form>
 
-          <footer className="auth-footer">
-            {view === 'login' ? (
-              <p>
-                还没有账号？
-                <button type="button" className="auth-text-btn" onClick={() => setView('register')}>
-                  立即注册
-                </button>
-              </p>
-            ) : (
-              <p>
-                已有账号？
-                <button type="button" className="auth-text-btn" onClick={() => setView('login')}>
-                  去登录
-                </button>
-              </p>
+            {view === 'login' && (
+              <button type="button" className="auth-btn auth-btn-ghost" onClick={() => setShowTempUserWarning(true)} disabled={loading}>
+                临时用户登录
+              </button>
             )}
 
-            <button type="button" className="auth-temp-entry" onClick={handleTempUserClick} disabled={loading}>
-              <User size={14} />
-              临时用户登录（24 小时体验）
-            </button>
-          </footer>
+            <div className="auth-footer-actions">
+              {view === 'login' && (
+                <button type="button" className="auth-text-btn" onClick={() => setView('register')}>
+                  没有账号？立即注册
+                </button>
+              )}
+              {view === 'register' && (
+                <button type="button" className="auth-text-btn" onClick={() => setView('login')}>
+                  已有账号？返回登录
+                </button>
+              )}
+              {view === 'forgot-password' && (
+                <button type="button" className="auth-text-btn" onClick={() => setView('login')}>
+                  想起来了？返回登录
+                </button>
+              )}
+            </div>
+          </form>
         </div>
       </section>
     </div>

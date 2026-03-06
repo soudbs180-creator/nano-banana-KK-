@@ -307,7 +307,7 @@ const extractEmbeddedJson = (html: string): unknown[] => {
           try {
             raw = JSON.parse(raw);
           } catch {
-            raw = raw.slice(1, -1);
+            raw = raw.substring(1, raw.length - 1);
           }
         }
 

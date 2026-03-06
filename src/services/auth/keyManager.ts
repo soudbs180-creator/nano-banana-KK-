@@ -12,7 +12,7 @@ import { RegionService } from '../system/RegionService';
 import { Provider } from '../../types';
 import { MODEL_REGISTRY } from '../model/modelRegistry';
 import { adminModelService } from '../model/adminModelService'; // 馃殌 [鏂板] 绠＄悊锻橀历缃湇锷?
-import { buildProviderPricingSnapshot, type ProviderPricingSnapshot } from './providerPricingSnapshot';
+import { buildProviderPricingSnapshot, mergeProviderPricingSnapshot, type ProviderPricingSnapshot } from './providerPricingSnapshot';
 
 /**
  * Helper: Parse "id(name, description)" format
@@ -2884,8 +2884,9 @@ export class KeyManager {
         this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
         this.notifyListeners();
 
-        // 自动提取定价信息
-        this.syncProviderPricing(provider.id);
+        if (!provider.pricingSnapshot) {
+            this.syncProviderPricing(provider.id);
+        }
 
         return provider;
     }
@@ -2909,8 +2910,7 @@ export class KeyManager {
         this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
         this.notifyListeners();
 
-        // 自动拉取最新的定价配置
-        if (updates.baseUrl !== undefined) {
+        if (updates.baseUrl !== undefined && !updates.pricingSnapshot) {
             this.syncProviderPricing(id);
         }
 
@@ -3048,10 +3048,12 @@ export class KeyManager {
                 return false;
             }
 
-            provider.pricingSnapshot = buildProviderPricingSnapshot(json.data, json.group_ratio, {
+            const fetchedSnapshot = buildProviderPricingSnapshot(json.data, json.group_ratio, {
                 fetchedAt: Date.now(),
                 note: `Synced from ${url}`,
             });
+
+            provider.pricingSnapshot = mergeProviderPricingSnapshot(fetchedSnapshot, provider.pricingSnapshot);
 
             this.saveProviders();
             this.notifyListeners();

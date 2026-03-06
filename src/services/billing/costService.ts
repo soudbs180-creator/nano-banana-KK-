@@ -108,9 +108,12 @@ export function parseModelSource(fullModelId: string): { modelId: string; source
 
     if (fullModelId.includes('@')) {
         const [model, source] = fullModelId.split('@');
-        return { modelId: model, source: source || 'Custom' };
+        return {
+            modelId: model.split('|')[0].replace(/^models\//, ''),
+            source: source || 'Custom'
+        };
     }
-    return { modelId: fullModelId, source: 'Official' }; // Default to Official if no @
+    return { modelId: fullModelId.split('|')[0].replace(/^models\//, ''), source: 'Official' }; // Default to Official if no @
 }
 
 function getSnapshotNumber(
