@@ -1763,7 +1763,7 @@ export class KeyManager {
             // [Proxy / Channel Connection]
             // Strategy: Find keys matching the suffix (Custom Name or Provider Name)
             const normalizedSuffix = String(suffix || '').trim().toLowerCase();
-            const isSystemRoute = normalizedSuffix.startsWith('system') || normalizedSuffix === 'systemproxy' || normalizedSuffix === '12ai';
+            const isSystemRoute = normalizedSuffix.startsWith('system') || normalizedSuffix === 'systemproxy';
             const proxyAliasSet = new Set(['custom', 'proxy', 'proxied', '浠ｇ悊', '鍙崭唬', 'system', 'builtin']);
 
             // 绯荤粺绉垎璺敱锛氢弗绂佸洖钀藉埌鐢ㄦ埛镊畾涔夋笭阆掳纴阆垮历钬沧墸绉垎 + 镓ｇ敤鎴禀PI钬𣸣弻阅𡺃璐?
