@@ -208,7 +208,7 @@ export class LLMService {
 
     public async chat(options: ChatOptions): Promise<string> {
         let lastError: any;
-        const maxAttempts = 3;
+        const maxAttempts = 1;
 
         for (let i = 0; i < maxAttempts; i++) {
             const keySlot = this.resolveKey(options.modelId, options.preferredKeyId);
@@ -286,7 +286,7 @@ export class LLMService {
     }
     public async generateImage(options: ImageGenerationOptions, onTaskId?: (id: string) => void): Promise<import('./LLMAdapter').ImageGenerationResult> {
         let lastError: any;
-        const maxAttempts = 3;
+        const maxAttempts = 1;
 
         for (let i = 0; i < maxAttempts; i++) {
             let keySlot = this.resolveKey(options.modelId, options.preferredKeyId);
@@ -425,7 +425,7 @@ export class LLMService {
 
     public async generateVideo(options: VideoGenerationOptions, onTaskId?: (id: string) => void): Promise<VideoGenerationResult> {
         let lastError: any;
-        const maxAttempts = 3;
+        const maxAttempts = 1;
 
         for (let i = 0; i < maxAttempts; i++) {
             let keySlot = this.resolveKey(options.modelId, options.preferredKeyId);

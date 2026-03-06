@@ -1674,6 +1674,12 @@ export class KeyManager {
             name: p.name,
             provider: (['Google', 'OpenAI', 'Anthropic', 'Volcengine', 'Aliyun', 'Tencent', 'SiliconFlow', '12AI'].includes(p.name) ? p.name : 'Custom') as Provider,
             baseUrl: p.baseUrl,
+            authMethod: getDefaultAuthMethod(p.baseUrl),
+            headerName: inferHeaderName(
+                (['Google', 'OpenAI', 'Anthropic', 'Volcengine', 'Aliyun', 'Tencent', 'SiliconFlow', '12AI'].includes(p.name) ? p.name : 'Custom') as Provider,
+                p.baseUrl,
+                getDefaultAuthMethod(p.baseUrl)
+            ),
             group: p.group,
             status: 'valid',
             budgetLimit: -1,
@@ -1792,7 +1798,7 @@ export class KeyManager {
             } else {
 
                 // Step 1: 绮剧‘钖岖О鍖归历
-                const nameMatchedCandidates = this.state.slots.filter(s => {
+                const nameMatchedCandidates = allSlots.filter(s => {
                     const slotNameLower = String(s.name || '').trim().toLowerCase();
                     const slotSuffix = String(s.proxyConfig?.serverName || s.provider || 'Custom').trim();
                     const slotSuffixLower = slotSuffix.toLowerCase();
@@ -1826,7 +1832,7 @@ export class KeyManager {
                 // Step 4: 濡傛灉娌℃湁浠讳綍钖岖О鍖归历锛屼笖钖庣紑灞炰簬阃氱敤浠ｇ悊𫔄悕锛?
                 // 锲为€€𫔄?浠绘剰闱濭oogle阃氶亾涓敮镌佽妯″瀷镄?妯″纺
                 if (candidates.length === 0 && proxyAliasSet.has(normalizedSuffix)) {
-                    candidates = this.state.slots.filter(s => {
+                    candidates = allSlots.filter(s => {
                         if (s.provider === 'Google') return false;
                         return modelSupportedBySlot(s);
                     });
@@ -2572,11 +2578,17 @@ export class KeyManager {
         id: string;
         name: string;
         provider: string;
+        providerLabel?: string;
+        providerLogo?: string;
         isCustom: boolean;
         isSystemInternal?: boolean;
         type: GlobalModelType;
         icon?: string;
         description?: string;
+        tags?: string[];
+        tokenGroup?: string;
+        billingType?: string;
+        endpointType?: string;
         colorStart?: string; // 馃殌 [鏂板] 绠＄悊锻橀历缃殑棰滆壊
         colorEnd?: string;
         colorSecondary?: string;
@@ -2595,7 +2607,9 @@ export class KeyManager {
 
         // 🚀 [Fix] 添加 providers 到缓存键，确保供应商增减时模型选择立即响应
         this.loadProviders();
-        const providerHash = `${this.providers.length}-${this.providers.filter(p => p.isActive).map(p => `${p.id}:${p.models.length}`).join(',')}`;
+        const providerHash = `${this.providers.length}-${this.providers
+            .map(p => `${p.id}:${p.isActive ? '1' : '0'}:${p.models.length}:${p.updatedAt}`)
+            .join(',')}`;
         const combinedHash = `${slotsHash}|${adminHash}|${providerHash}`;
 
         const now = Date.now();
@@ -2610,11 +2624,17 @@ export class KeyManager {
             id: string;
             name: string;
             provider: string;
+            providerLabel?: string;
+            providerLogo?: string;
             isCustom: boolean;
             isSystemInternal?: boolean;
             type: GlobalModelType;
             icon?: string;
             description?: string;
+            tags?: string[];
+            tokenGroup?: string;
+            billingType?: string;
+            endpointType?: string;
             colorStart?: string; // 馃殌 [鏂板] 绠＄悊锻橀历缃殑棰滆壊
             colorEnd?: string;
             colorSecondary?: string;
@@ -2623,10 +2643,17 @@ export class KeyManager {
         }>();
         const chatModelIds = new Set(GOOGLE_CHAT_MODELS.map(model => model.id));
 
+        const providerSignatureSet = new Set(
+            this.providers.map((provider) => `${String(provider.name || '').trim().toLowerCase()}|${String(provider.baseUrl || '').trim().toLowerCase()}`)
+        );
+
         // 1. Add models from all active keys (Proxies/Custom) - THESE GO FIRST
         this.state.slots.forEach(slot => {
             // 馃殌 [Strict Mode] Skip disabled, invalid OR empty key slots
             if (slot.disabled || slot.status === 'invalid' || !slot.key) return;
+            const slotSignature = `${String(slot.name || slot.provider || '').trim().toLowerCase()}|${String(slot.baseUrl || '').trim().toLowerCase()}`;
+            const isLegacyThirdPartySlot = !!slot.baseUrl && providerSignatureSet.has(slotSignature);
+            if (isLegacyThirdPartySlot) return;
 
             if (slot.supportedModels && slot.supportedModels.length > 0) {
                 let cleanModels = normalizeModelList(slot.supportedModels, slot.provider);
@@ -2662,6 +2689,44 @@ export class KeyManager {
                 });
             }
         });
+
+        // 1.5 Add active third-party provider models managed in API settings
+        this.providers
+            .filter(provider => provider.isActive && provider.apiKey && provider.baseUrl)
+            .forEach(provider => {
+                const cleanModels = normalizeModelList(provider.models || [], 'Custom');
+
+                cleanModels.forEach(rawModelStr => {
+                    const { id, name, description } = parseModelString(rawModelStr);
+                    if (!id || id === 'nano-banana' || id === 'nano-banana-pro') return;
+
+                    const distinctId = `${id}@${provider.name}`;
+                    if (uniqueModels.has(distinctId)) return;
+
+                    const meta = GOOGLE_MODEL_METADATA.get(id);
+                    const registryInfo = (MODEL_REGISTRY as any)[id];
+                    const pricingMeta = provider.pricingSnapshot?.modelMeta?.[id]
+                        || provider.pricingSnapshot?.modelMeta?.[String(id || '').toLowerCase()]
+                        || provider.pricingSnapshot?.rows?.find((row) => String(row?.model || '').trim().toLowerCase() === String(id || '').trim().toLowerCase());
+
+                    uniqueModels.set(distinctId, {
+                        id: distinctId,
+                        name: name || registryInfo?.name || (meta ? meta.name : id),
+                        provider: provider.name,
+                        providerLabel: pricingMeta?.providerLabel || pricingMeta?.provider || provider.name,
+                        providerLogo: pricingMeta?.providerLogo,
+                        isCustom: false,
+                        isSystemInternal: false,
+                        type: MODEL_TYPE_MAP.get(id) || inferModelType(id),
+                        icon: provider.icon || registryInfo?.icon || meta?.icon,
+                        description: description || registryInfo?.description || meta?.description || '',
+                        tags: Array.isArray(pricingMeta?.tags) ? pricingMeta.tags : undefined,
+                        tokenGroup: pricingMeta?.tokenGroup,
+                        billingType: pricingMeta?.billingType,
+                        endpointType: pricingMeta?.endpointType,
+                    });
+                });
+            });
 
         // 2. Add Standard Google Models (ONLY if valid keys exist for them)
         const googleSlots = this.state.slots.filter(s => s.provider === 'Google' && !s.disabled && s.status !== 'invalid' && !!s.key);

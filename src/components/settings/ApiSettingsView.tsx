@@ -170,6 +170,13 @@ const restorePricingDataFromSnapshot = (snapshot?: ProviderPricingSnapshot) => {
       if (!model) return null;
       return {
         model,
+        provider: item.provider,
+        provider_label: item.providerLabel,
+        provider_logo: item.providerLogo,
+        tags: item.tags,
+        token_group: item.tokenGroup,
+        billing_type: item.billingType,
+        endpoint_type: item.endpointType,
         model_name: model,
         model_ratio: item.modelRatio,
         model_price: item.modelPrice,
@@ -251,6 +258,7 @@ const ApiSettingsView: React.FC = () => {
 
   const [advancedResult, setAdvancedResult] = useState<AdvancedResult | null>(null);
   const [advancedLoading, setAdvancedLoading] = useState(false);
+  const [pricingSearch, setPricingSearch] = useState('');
 
   const [detectingProviderId, setDetectingProviderId] = useState<string | null>(null);
   const [syncingProviderId, setSyncingProviderId] = useState<string | null>(null);
@@ -326,6 +334,7 @@ const ApiSettingsView: React.FC = () => {
   };
 
   useEffect(() => {
+    setTab('official');
     migrateLegacyDataIfNeeded();
     refresh();
     const unsubscribe = keyManager.subscribe(() => refresh());
@@ -368,6 +377,12 @@ const ApiSettingsView: React.FC = () => {
 
         return {
           model,
+          provider: typeof item.provider === 'string' ? item.provider.trim() : undefined,
+          providerLabel: typeof item.provider_label === 'string' ? item.provider_label.trim() : undefined,
+          tokenGroup: typeof item.token_group === 'string' ? item.token_group.trim() : undefined,
+          billingType: typeof item.billing_type === 'string' ? item.billing_type.trim() : undefined,
+          endpointType: typeof item.endpoint_type === 'string' ? item.endpoint_type.trim() : undefined,
+          tags: Array.isArray(item.tags) ? item.tags.map((entry: unknown) => String(entry || '').trim()).filter(Boolean) : [],
           quotaType: item.quota_type,
           basePrice: item.model_price,
           modelRatio: item.model_ratio,
@@ -380,6 +395,12 @@ const ApiSettingsView: React.FC = () => {
       })
       .filter(Boolean) as Array<{
       model: string;
+      provider?: string;
+      providerLabel?: string;
+      tokenGroup?: string;
+      billingType?: string;
+      endpointType?: string;
+      tags: string[];
       quotaType?: number | string;
       basePrice?: number;
       modelRatio?: number;
@@ -390,6 +411,27 @@ const ApiSettingsView: React.FC = () => {
       groupModelPrices: string[];
     }>;
   }, [advancedResult]);
+
+  const filteredAdvancedPricingRows = useMemo(() => {
+    const keyword = pricingSearch.trim().toLowerCase();
+    if (!keyword) return advancedPricingRows;
+
+    return advancedPricingRows.filter((row) => {
+      const haystack = [
+        row.model,
+        row.quotaType,
+        ...row.sizeRatios,
+        ...row.groupModelRatios,
+        ...row.groupSizeRatios,
+        ...row.groupModelPrices,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(keyword);
+    });
+  }, [advancedPricingRows, pricingSearch]);
 
   const parseCost = (mode: CostMode, value: number) => {
     if (mode === 'unlimited') return { budgetLimit: -1, tokenLimit: -1 };
@@ -405,6 +447,7 @@ const ApiSettingsView: React.FC = () => {
   const resetThirdPartyForm = (closeCreate = true) => {
     setProviderForm(defaultProviderForm);
     setAdvancedResult(null);
+    setPricingSearch('');
     setShowAdvancedMode(false);
     if (closeCreate) setShowProviderCreateForm(false);
   };
@@ -432,6 +475,7 @@ const ApiSettingsView: React.FC = () => {
 
   const loadProviderToForm = (provider: ThirdPartyProvider) => {
     setProviderForm(toProviderForm(provider));
+    setPricingSearch('');
     const snapshot = provider.pricingSnapshot;
 
     if (snapshot) {
@@ -449,7 +493,7 @@ const ApiSettingsView: React.FC = () => {
         groupRatio: restoredGroupRatio,
         availableGroups: extractAvailableGroups(restoredPricingData, restoredGroupRatio),
       });
-      setShowAdvancedMode(true);
+      setShowAdvancedMode(false);
     } else {
       setAdvancedResult(null);
       setShowAdvancedMode(false);
@@ -782,7 +826,6 @@ const ApiSettingsView: React.FC = () => {
 
       if (providerForm.id === provider.id) {
         setAdvancedResult(result);
-        setShowAdvancedMode(true);
         if (!providerForm.group && result.availableGroups?.length) {
           setProviderForm((prev) => ({ ...prev, group: prev.group || result.availableGroups?.[0] || '' }));
         }
@@ -1024,46 +1067,65 @@ const ApiSettingsView: React.FC = () => {
 
                     <div className="space-y-3">
                       <div className="text-xs font-medium text-[var(--text-primary)]">价格明细</div>
-                      {advancedPricingRows.length === 0 ? (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-[11px] text-[var(--text-tertiary)]">支持搜索模型 ID、quota 类型和倍率内容。</div>
+                        <div className="relative w-full sm:w-72">
+                          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
+                          <input
+                            value={pricingSearch}
+                            onChange={(event) => setPricingSearch(event.target.value)}
+                            placeholder="搜索模型 ID / 倍率..."
+                            className="h-9 w-full rounded-xl border border-[var(--border-light)] bg-transparent pl-9 pr-3 text-xs text-[var(--text-primary)] outline-none transition focus:border-indigo-500"
+                          />
+                        </div>
+                      </div>
+                      {filteredAdvancedPricingRows.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-[var(--border-light)] p-4 text-xs text-[var(--text-tertiary)]">当前没有可展示的基础价和倍率明细。</div>
                       ) : (
-                        <div className="grid gap-3 md:grid-cols-2">
-                          {advancedPricingRows.map((row) => (
-                            <div key={row.model} className="rounded-xl border border-[var(--border-light)] p-3">
-                              <div className="mb-3 flex items-start justify-between gap-2">
+                        <div className="space-y-2">
+                          {filteredAdvancedPricingRows.map((row) => (
+                            <div key={row.model} className="rounded-xl border border-[var(--border-light)] bg-[var(--surface-secondary)]/25 p-3">
+                              <div className="flex items-start justify-between gap-2">
                                 <div>
                                   <div className="text-sm font-semibold text-[var(--text-primary)]">{row.model}</div>
                                   <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">quota_type: {row.quotaType ?? '-'}</div>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">
+                                    {row.providerLabel || row.provider ? <span className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">{row.providerLabel || row.provider}</span> : null}
+                                    {row.tokenGroup ? <span className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">{row.tokenGroup}</span> : null}
+                                    {row.billingType ? <span className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">{row.billingType}</span> : null}
+                                    {row.endpointType ? <span className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">{row.endpointType}</span> : null}
+                                    {row.tags.slice(0, 3).map((tag) => <span key={tag} className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)]">#{tag}</span>)}
+                                  </div>
                                 </div>
                                 <span className="rounded-full px-2 py-1 text-[11px] font-medium" style={{ backgroundColor: `${providerForm.providerColor}22`, color: providerForm.providerColor }}>供应商颜色</span>
                               </div>
 
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                <div className="rounded-lg bg-[var(--surface-primary)]/60 p-2"><div className="text-[11px] text-[var(--text-tertiary)]">基础价</div><div className="mt-1 text-sm text-[var(--text-primary)]">{formatPriceValue(row.basePrice)}</div></div>
-                                <div className="rounded-lg bg-[var(--surface-primary)]/60 p-2"><div className="text-[11px] text-[var(--text-tertiary)]">模型倍率</div><div className="mt-1 text-sm text-[var(--text-primary)]">{formatMultiplier(row.modelRatio)}</div></div>
-                                <div className="rounded-lg bg-[var(--surface-primary)]/60 p-2"><div className="text-[11px] text-[var(--text-tertiary)]">completion 倍率</div><div className="mt-1 text-sm text-[var(--text-primary)]">{formatMultiplier(row.completionRatio)}</div></div>
-                                <div className="rounded-lg bg-[var(--surface-primary)]/60 p-2"><div className="text-[11px] text-[var(--text-tertiary)]">默认分组倍率</div><div className="mt-1 text-sm text-[var(--text-primary)]">×{getDefaultGroupRatio(advancedResult.groupRatio)}</div></div>
+                              <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                                <div className="rounded-lg bg-[var(--surface-primary)]/50 p-2"><div className="text-[10px] text-[var(--text-tertiary)]">基础价</div><div className="mt-1 text-xs font-medium text-[var(--text-primary)]">{formatPriceValue(row.basePrice)}</div></div>
+                                <div className="rounded-lg bg-[var(--surface-primary)]/50 p-2"><div className="text-[10px] text-[var(--text-tertiary)]">模型倍率</div><div className="mt-1 text-xs font-medium text-[var(--text-primary)]">{formatMultiplier(row.modelRatio)}</div></div>
+                                <div className="rounded-lg bg-[var(--surface-primary)]/50 p-2"><div className="text-[10px] text-[var(--text-tertiary)]">Completion</div><div className="mt-1 text-xs font-medium text-[var(--text-primary)]">{formatMultiplier(row.completionRatio)}</div></div>
+                                <div className="rounded-lg bg-[var(--surface-primary)]/50 p-2"><div className="text-[10px] text-[var(--text-tertiary)]">默认分组</div><div className="mt-1 text-xs font-medium text-[var(--text-primary)]">×{getDefaultGroupRatio(advancedResult.groupRatio)}</div></div>
                               </div>
 
-                              <div className="mt-3 space-y-2">
-                                <div>
-                                  <div className="text-[11px] text-[var(--text-tertiary)]">尺寸倍率</div>
-                                  <div className="mt-1 flex flex-wrap gap-2">{row.sizeRatios.length ? row.sizeRatios.map((item) => <span key={item} className="rounded-full border border-[var(--border-light)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">{item}</span>) : <span className="text-[11px] text-[var(--text-tertiary)]">无</span>}</div>
+                              <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                                <div className="rounded-lg border border-[var(--border-light)]/80 p-2">
+                                  <div className="text-[10px] text-[var(--text-tertiary)]">尺寸倍率</div>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">{row.sizeRatios.length ? row.sizeRatios.map((item) => <span key={item} className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">{item}</span>) : <span className="text-[10px] text-[var(--text-tertiary)]">无</span>}</div>
                                 </div>
 
-                                <div>
-                                  <div className="text-[11px] text-[var(--text-tertiary)]">分组模型倍率</div>
-                                  <div className="mt-1 flex flex-wrap gap-2">{row.groupModelRatios.length ? row.groupModelRatios.map((item) => <span key={item} className="rounded-full border border-[var(--border-light)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">{item}</span>) : <span className="text-[11px] text-[var(--text-tertiary)]">无</span>}</div>
+                                <div className="rounded-lg border border-[var(--border-light)]/80 p-2">
+                                  <div className="text-[10px] text-[var(--text-tertiary)]">分组模型倍率</div>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">{row.groupModelRatios.length ? row.groupModelRatios.map((item) => <span key={item} className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">{item}</span>) : <span className="text-[10px] text-[var(--text-tertiary)]">无</span>}</div>
                                 </div>
 
-                                <div>
-                                  <div className="text-[11px] text-[var(--text-tertiary)]">分组尺寸倍率</div>
-                                  <div className="mt-1 flex flex-wrap gap-2">{row.groupSizeRatios.length ? row.groupSizeRatios.map((item) => <span key={item} className="rounded-full border border-[var(--border-light)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">{item}</span>) : <span className="text-[11px] text-[var(--text-tertiary)]">无</span>}</div>
+                                <div className="rounded-lg border border-[var(--border-light)]/80 p-2">
+                                  <div className="text-[10px] text-[var(--text-tertiary)]">分组尺寸倍率</div>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">{row.groupSizeRatios.length ? row.groupSizeRatios.map((item) => <span key={item} className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">{item}</span>) : <span className="text-[10px] text-[var(--text-tertiary)]">无</span>}</div>
                                 </div>
 
-                                <div>
-                                  <div className="text-[11px] text-[var(--text-tertiary)]">分组价格覆盖</div>
-                                  <div className="mt-1 flex flex-wrap gap-2">{row.groupModelPrices.length ? row.groupModelPrices.map((item) => <span key={item} className="rounded-full border border-[var(--border-light)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">{item}</span>) : <span className="text-[11px] text-[var(--text-tertiary)]">无</span>}</div>
+                                <div className="rounded-lg border border-[var(--border-light)]/80 p-2">
+                                  <div className="text-[10px] text-[var(--text-tertiary)]">分组价格覆盖</div>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">{row.groupModelPrices.length ? row.groupModelPrices.map((item) => <span key={item} className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">{item}</span>) : <span className="text-[10px] text-[var(--text-tertiary)]">无</span>}</div>
                                 </div>
                               </div>
                             </div>
@@ -1140,14 +1202,13 @@ const ApiSettingsView: React.FC = () => {
             <button className="inline-flex h-9 items-center gap-1 rounded-xl bg-indigo-600 px-4 text-sm text-white" onClick={() => { setShowProviderCreateForm(true); resetThirdPartyForm(false); }}><Plus size={14} />新增供应商</button>
           </div>
 
-          {showProviderCreateForm && renderProviderForm()}
-
           <div className="grid gap-3">
             {providers.length === 0 ? (
               <div className="rounded-2xl border border-dashed p-6 text-sm text-[var(--text-tertiary)]" style={{ borderColor: 'var(--border-light)' }}>暂无第三方供应商配置。</div>
             ) : (
               providers.map((provider) => (
-                <div key={provider.id} className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-light)' }}>
+                <React.Fragment key={provider.id}>
+                <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-light)' }}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1157,7 +1218,6 @@ const ApiSettingsView: React.FC = () => {
                       </div>
                       <div className="mt-1 break-all text-xs text-[var(--text-tertiary)]">{provider.baseUrl}</div>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--text-secondary)]"><span>模型数：{provider.models?.length || 0}</span>{provider.group ? <span>分组：{provider.group}</span> : null}<span>最近校验：{formatDate(provider.lastChecked)}</span><span>上次扫描：{formatDate(provider.pricingSnapshot?.fetchedAt)}</span></div>
-                      {provider.pricingSnapshot?.rows?.length ? <div className="mt-3 flex flex-wrap gap-2">{provider.pricingSnapshot.rows.slice(0, 8).map((row) => <span key={row.model} className="rounded-full border border-[var(--border-light)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">{row.model}</span>)}{provider.pricingSnapshot.rows.length > 8 ? <span className="rounded-full border border-[var(--border-light)] px-2 py-1 text-[11px] text-[var(--text-tertiary)]">+{provider.pricingSnapshot.rows.length - 8}</span> : null}</div> : null}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -1169,9 +1229,13 @@ const ApiSettingsView: React.FC = () => {
                     </div>
                   </div>
                 </div>
+                {showProviderCreateForm && providerForm.id === provider.id ? renderProviderForm() : null}
+                </React.Fragment>
               ))
             )}
           </div>
+
+          {showProviderCreateForm && !providerForm.id ? renderProviderForm() : null}
         </div>
       )}
     </div>

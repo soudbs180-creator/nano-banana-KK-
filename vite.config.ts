@@ -92,6 +92,21 @@ export default defineConfig(({ mode }) => {
             strictPort: true, // Fail if port 3000 is in use (don't auto-switch)
             host: '0.0.0.0',
             open: true, // Auto-open browser on start
+            watch: {
+                // 🚀 [Critical Fix] 忽略应用自身生成的本地数据文档，防止 Vite HMR 触发强制刷新
+                ignored: [
+                    '**/project.json',
+                    '**/picture/**',
+                    '**/video/**',
+                    '**/refs/**',
+                    '**/settings/**',
+                    '**/tags/**',
+                    '**/originals/**',
+                    '**/thumbnails/**',
+                    '**/cache/**',
+                    '**/images/**'
+                ]
+            }
         },
         plugins: [react(), pricingProxyPlugin()],
         resolve: {

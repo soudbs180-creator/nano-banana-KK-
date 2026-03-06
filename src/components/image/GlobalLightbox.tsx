@@ -469,7 +469,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-red-400 flex flex-col items-center gap-2">
                             <ZoomOut size={24} />
-                            <span>锲剧墖锷犺浇澶辫触 (Image Load Failed)</span>
+                            <span>图片加载失败 (Image Load Failed)</span>
                         </div>
                     </div>
                 )}
@@ -504,7 +504,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                         </span>
                         <span>{image.model.split('/').pop()}</span>
                         {/* 馃殌 [Fix] Show REAL dimensions from loaded image, fallback to metadata */}
-                        <span>{realDimensions || image.dimensions || 'Loading...'}</span>
+                        <span>{realDimensions || image.dimensions || '加载中...'}</span>
                         {image.generationTime && <span>{(image.generationTime / 1000).toFixed(1)}s</span>}
                     </div>
                 </div>
@@ -512,10 +512,10 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 <div className="flex items-center gap-3">
                     {/* 鎺у埗镙?*/}
                     <div className="flex items-center bg-[var(--bg-tertiary)] rounded-lg p-1">
-                        <button onClick={() => setZoom(z => Math.max(0.25, z - 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="缂╁皬"><ZoomOut size={16} /></button>
+                        <button onClick={() => setZoom(z => Math.max(0.25, z - 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="缩小"><ZoomOut size={16} /></button>
                         <span className="w-12 text-center text-xs">{Math.round(zoom * 100)}%</span>
-                        <button onClick={() => setZoom(z => Math.min(5, z + 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="鏀惧ぇ"><ZoomIn size={16} /></button>
-                        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} className="p-2 hover:bg-[var(--bg-secondary)] rounded ml-1 border-l border-[var(--border-light)]" title="阅岖疆"><RotateCcw size={16} /></button>
+                        <button onClick={() => setZoom(z => Math.min(5, z + 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="放大"><ZoomIn size={16} /></button>
+                        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} className="p-2 hover:bg-[var(--bg-secondary)] rounded ml-1 border-l border-[var(--border-light)]" title="重置"><RotateCcw size={16} /></button>
                     </div>
 
                     {/* 灞€閮ㄩ吨缁樻寜阍?- 浠呭锲剧墖鏄剧ず */}

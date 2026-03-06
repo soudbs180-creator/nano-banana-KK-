@@ -121,9 +121,6 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
 
   const { balance, loading: balanceLoading, setShowRechargeModal, consumeCredits, refundCredits } = useBilling();
 
-  // 🚀 [Fix] Force re-render tick for real-time connection line updates during drag
-  const [dragUpdateTick, setDragUpdateTick] = useState(0);
-
   // Canvas Ref for Zoom/Pan Controls
   const canvasRef = useRef<InfiniteCanvasHandle>(null);
 
@@ -544,8 +541,8 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         return {
           prompt: parsed.prompt || '', // 🚀 恢复持久化的 Prompt
           enablePromptOptimization: parsed.enablePromptOptimization || false,
-          aspectRatio: parsed.aspectRatio || AspectRatio.AUTO, // [Default: Auto]
-          imageSize: parsed.imageSize || ImageSize.SIZE_1K,
+          aspectRatio: AspectRatio.AUTO, // [Default: Auto]
+          imageSize: ImageSize.SIZE_1K,
           parallelCount: parsed.parallelCount || 1,
           // 🚀 [Fix] 恢复参考图元数据（不含 base64），让 hydrate effect 从 IndexedDB 还原图片数据
           referenceImages: (parsed.referenceImages || []).map((img: any) => ({
@@ -1062,6 +1059,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const lastGenerateAtRef = useRef(0);
+  const pollTaskStatusRef = useRef<((node: PromptNode) => Promise<void>) | null>(null);
   // error state removed, using notify service
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -1807,7 +1805,16 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
               onTaskId: (taskId: string) => {
                 console.log(`[executeGeneration] Received Video TaskID: ${taskId} for node ${promptNodeId}`);
                 const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-                if (fresh) updatePromptNode({ ...fresh, jobId: taskId });
+                if (fresh) {
+                  const patchedNode = { ...fresh, jobId: taskId };
+                  urgentUpdatePromptNode(patchedNode);
+                  window.setTimeout(() => {
+                    const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
+                    if (latest?.jobId && latest.isGenerating) {
+                      pollTaskStatusRef.current?.(latest);
+                    }
+                  }, 2000);
+                }
               }
             });
 
@@ -1822,6 +1829,12 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
             if (videoResult.keySlotId) keySlotId = videoResult.keySlotId;
 
           } else {
+            // 🚀 [Security/Persistence Fix] Verify model capabilities before request
+            // We keep the user preference in the node, but degrade the actual request params
+            const { modelSupportsGrounding, getModelCapabilities } = await import('./services/model/modelCapabilities');
+            const canGround = modelSupportsGrounding(effectiveModel);
+            const canImageSearch = getModelCapabilities(effectiveModel)?.supportsImageSearch ?? false;
+
             const result = await generateImage(
               taskPrompt,
               node.aspectRatio,
@@ -1830,18 +1843,28 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
               effectiveModel,
               '',
               currentRequestId,
-              !!node.enableGrounding || !!node.enableImageSearch,
+              (!!node.enableGrounding && canGround) || (!!node.enableImageSearch && canImageSearch),
               {
                 maskUrl: node.maskUrl,
                 editMode: node.mode === GenerationMode.INPAINT ? 'inpaint' : (node.mode === GenerationMode.EDIT ? 'edit' : undefined),
                 preferredKeyId: node.keySlotId,
-                enableWebSearch: !!node.enableGrounding,
-                enableImageSearch: !!node.enableImageSearch,
+                enableWebSearch: !!node.enableGrounding && canGround,
+                enableImageSearch: !!node.enableImageSearch && canImageSearch,
                 thinkingMode: node.thinkingMode || 'minimal',
+
                 onTaskId: (taskId) => {
                   console.log(`[executeGeneration] Received TaskID: ${taskId} for node ${promptNodeId}`);
                   const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-                  if (fresh) updatePromptNode({ ...fresh, jobId: taskId });
+                  if (fresh) {
+                    const patchedNode = { ...fresh, jobId: taskId };
+                    urgentUpdatePromptNode(patchedNode);
+                    window.setTimeout(() => {
+                      const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
+                      if (latest?.jobId && latest.isGenerating) {
+                        pollTaskStatusRef.current?.(latest);
+                      }
+                    }, 2000);
+                  }
                 }
               }
             );
@@ -2162,6 +2185,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         ...effectiveNode, // 🚀 Use effectiveNode (latest or fallback)
         position: finalPos,
         isGenerating: false,
+        jobId: undefined,
         childImageIds: successResults.map(r => r.id), // Use successResults
         lastGenerationSuccessCount: generationSuccessCount,
         lastGenerationFailCount: generationFailCount,
@@ -2175,39 +2199,13 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
 
       rememberPreferredKeyForMode(updatedNode.mode, updatedNode.keySlotId);
 
-      // 🚀 [Critical Fix] Execute updates in sequence/batch to prevent state overwrite race conditions
+      // 🚀 [Critical Fix] Execute updates atomically to prevent state overwrite race conditions
       // 先清理旧子卡，避免并发/重入导致同一主卡出现重复副卡
       const oldChildIds = (effectiveNode.childImageIds || []).filter(id => !successResults.some(r => r.id === id));
       oldChildIds.forEach(id => deleteImageNode(id));
 
-      updatePromptNode(updatedNode);
-      addImageNodes(successResults);
-
-      if (generationFailCount > 0) {
-        import('./services/system/notificationService').then(({ notify }) => {
-          notify.warning('部分生成完成', `成功 ${generationSuccessCount} 张，失败 ${generationFailCount} 张。失败项已跳过。`);
-        });
-      }
-
-      // 🚀 [Critical Fix] 强制立即持久化：由于状态更新和200ms防抖存在窗口期，如果用户此时刷新
-      // localStorage里尚未记录子图且 isGenerating 还是 true。在此做紧急快照修补
-      setTimeout(() => {
-        try {
-          const stored = localStorage.getItem('kk_studio_canvas_state');
-          if (stored) {
-            const state = JSON.parse(stored);
-            const activeC = state.canvases.find((c: any) => c.id === state.activeCanvasId);
-            if (activeC) {
-              const pn = activeC.promptNodes.find((n: any) => n.id === updatedNode.id);
-              if (pn) {
-                pn.isGenerating = false;
-                pn.childImageIds = updatedNode.childImageIds;
-                localStorage.setItem('kk_studio_canvas_state', JSON.stringify(state));
-              }
-            }
-          }
-        } catch (e) { }
-      }, 50);
+      // 🎨 Atomic update: Use the new parentUpdates feature of addImageNodes
+      addImageNodes(successResults, { [updatedNode.id]: updatedNode });
 
       import('./services/billing/costService').then(({ recordCost }) => {
         const usedModel = successResults[0]?.model || effectiveModel;
@@ -2236,6 +2234,41 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
 
     } catch (err: any) {
       console.error('[executeGeneration] Error:', err);
+
+      const currentNodeSnapshot = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id) || node;
+      const errorMessage = String(err?.message || '');
+      const hasRecoverableTask = !!currentNodeSnapshot?.jobId;
+      const isRecoverableTaskError = hasRecoverableTask && /timeout|timed out|network|fetch|abort|socket|econn|etimedout|503|504/i.test(errorMessage);
+
+      if (isRecoverableTaskError) {
+        console.warn('[executeGeneration] Task switched to polling recovery mode:', {
+          nodeId: node.id,
+          jobId: currentNodeSnapshot.jobId,
+          errorMessage,
+        });
+        urgentUpdatePromptNode({
+          ...currentNodeSnapshot,
+          isGenerating: true,
+          error: undefined,
+          errorDetails: undefined,
+          generationMetadata: {
+            ...(currentNodeSnapshot.generationMetadata || {}),
+            recoveryMode: 'polling',
+            lastRecoverableErrorAt: Date.now(),
+            lastRecoverableErrorMessage: errorMessage,
+          }
+        });
+        window.setTimeout(() => {
+          const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
+          if (latest?.jobId && latest.isGenerating) {
+            pollTaskStatusRef.current?.(latest);
+          }
+        }, 3000);
+        import('./services/system/notificationService').then(({ notify }) => {
+          notify.warning('任务继续查询', '供应商任务已提交，前端改为轮询恢复，暂不直接判定失败。');
+        });
+        return;
+      }
 
       // 🚀 [Safe Fault Tolerance] If we generated images but failed later (e.g. Cost Service / UI Update),
       // DO NOT mark the node as failed. Just log it and ensure it's not "Generating".
@@ -2358,7 +2391,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         setSettingsInitialView('api-management');
       }
     }
-  }, [isMobile, updatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions, extractErrorDetails, buildAutoPptSlides, rememberPreferredKeyForMode]);
+  }, [isMobile, updatePromptNode, urgentUpdatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions, extractErrorDetails, buildAutoPptSlides, rememberPreferredKeyForMode]);
 
   // [New] Poll for task status
   const pollTaskStatus = useCallback(async (node: PromptNode) => {
@@ -2390,19 +2423,46 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
           // If result has urls/url, we can finish it.
           const imageUrls = (result as any).urls || [(result as any).url].filter(Boolean);
           if (imageUrls.length > 0) {
-            addImageNodes(imageUrls.map((url: string) => ({
-              url,
-              prompt: node.prompt,
-              model: node.model,
-              aspectRatio: node.aspectRatio,
-              imageSize: node.imageSize
-            })));
-            updatePromptNode({ ...node, isGenerating: false });
+            const recoveredImages = imageUrls.map((url: string, index: number) => {
+              const imageId = `${node.id}_recovered_${Date.now()}_${index}`;
+              return {
+                id: imageId,
+                storageId: imageId,
+                url,
+                originalUrl: url,
+                prompt: node.prompt,
+                model: node.model,
+                aspectRatio: node.aspectRatio,
+                imageSize: node.imageSize,
+                timestamp: Date.now(),
+                canvasId: activeCanvasRef.current?.id || 'default',
+                parentPromptId: node.id,
+                position: {
+                  x: node.position.x,
+                  y: node.position.y + 320 + index * 24
+                },
+                dimensions: `${node.aspectRatio} · ${node.imageSize || '1K'}`,
+                provider: (result as any).provider || node.provider,
+                providerLabel: (result as any).providerName || node.providerLabel,
+                keySlotId: node.keySlotId,
+                generationTime: (result as any).generationTime || 0,
+              };
+            });
+            addImageNodes(recoveredImages as any);
+            updatePromptNode({
+              ...node,
+              isGenerating: false,
+              jobId: undefined,
+              childImageIds: recoveredImages.map((img: { id: string }) => img.id),
+              error: undefined,
+              errorDetails: undefined,
+              refundStatus: undefined
+            });
             return;
           }
         } else {
           // Failed
-          updatePromptNode({ ...node, isGenerating: false, error: '生成任务在后端执行失败' });
+          updatePromptNode({ ...node, isGenerating: false, error: 'Task failed on backend' });
           return;
         }
       }
@@ -2418,10 +2478,16 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
 
     } catch (err: any) {
       console.error(`[Auto-Resume] Polling failed for node ${node.id}:`, err);
-      // Fallback: restart generation if polling fails
-      setTimeout(() => executeGeneration(node), 1000);
+      const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
+      if (freshNode?.isGenerating) {
+        setTimeout(() => pollTaskStatus(freshNode), 15000);
+      }
     }
-  }, [llmService, updatePromptNode, addImageNodes, executeGeneration]);
+  }, [llmService, updatePromptNode, addImageNodes]);
+
+  useEffect(() => {
+    pollTaskStatusRef.current = pollTaskStatus;
+  }, [pollTaskStatus]);
 
   // Auto-Resume Effect
   const hasResumedRef = useRef(false);
@@ -2437,8 +2503,23 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
           // Delay to ensure services are ready
           setTimeout(() => pollTaskStatus(node), 1000);
         } else {
-          // Restart normally
-          setTimeout(() => executeGeneration(node), 1500);
+          urgentUpdatePromptNode({
+            ...node,
+            isGenerating: false,
+            error: '刷新后无法确认任务状态，已阻止自动重发以避免重复扣费',
+            errorDetails: {
+              ...(node.errorDetails || {}),
+              code: 'RESUME_REQUIRES_TASK_ID',
+              responseBody: '任务已发送但缺少 jobId，刷新后不会自动重发，避免供应商重复扣费',
+              model: node.model,
+              timestamp: Date.now()
+            },
+            generationMetadata: {
+              ...(node.generationMetadata || {}),
+              resumeBlocked: true,
+              reason: 'missing_job_id_after_reload'
+            }
+          });
         }
       });
       import('./services/system/notificationService').then(({ notify }) => {
@@ -2446,7 +2527,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       });
     }
     hasResumedRef.current = true;
-  }, [activeCanvas, isReady, executeGeneration, pollTaskStatus]);
+  }, [activeCanvas, isReady, pollTaskStatus, urgentUpdatePromptNode]);
 
 
   const handleGenerate = useCallback(async () => {
@@ -2844,6 +2925,66 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       // Always check if the ID we are about to add/update actually exists on canvas
       // If not, revert to add. If yes, update.
       const canvasForWrite = activeCanvasRef.current;
+      const STACK_SHIFT_Y = 10;
+      const STACK_MATCH_X = 36;
+      const STACK_MATCH_Y = 120;
+
+      const overlappingPromptGroups = (canvasForWrite?.promptNodes || [])
+        .filter(node =>
+          node.id !== generatingNode.id &&
+          Math.abs(node.position.x - generatingNode.position.x) <= STACK_MATCH_X &&
+          Math.abs(node.position.y - generatingNode.position.y) <= STACK_MATCH_Y
+        )
+        .sort((a, b) => b.position.y - a.position.y);
+
+      const promptUpdates: { id: string, updates: Partial<PromptNode> }[] = [];
+      const imageUpdates: { id: string, updates: Partial<GeneratedImage> }[] = [];
+
+      overlappingPromptGroups.forEach((node) => {
+        promptUpdates.push({
+          id: node.id,
+          updates: {
+            position: {
+              ...node.position,
+              y: node.position.y - STACK_SHIFT_Y,
+            }
+          }
+        });
+
+        (canvasForWrite?.imageNodes || [])
+          .filter(img => img.parentPromptId === node.id)
+          .forEach((img) => {
+            imageUpdates.push({
+              id: img.id,
+              updates: {
+                position: {
+                  ...img.position,
+                  y: img.position.y - STACK_SHIFT_Y,
+                }
+              }
+            });
+          });
+      });
+
+      if (promptUpdates.length > 0) {
+        promptUpdates.forEach(({ id, updates }) => {
+          const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === id);
+          if (freshNode) {
+            updatePromptNode({ ...freshNode, ...updates });
+          }
+        });
+      }
+
+      if (imageUpdates.length > 0) {
+        imageUpdates.forEach(({ id, updates }) => {
+          if (updates.position) {
+            updateImageNodePosition(id, updates.position, { ignoreSelection: true });
+          } else {
+            updateImageNode(id, updates);
+          }
+        });
+      }
+
       const existingNode = canvasForWrite?.promptNodes.find(n => n.id === generatingNode.id);
 
       if (existingNode) {
@@ -2893,7 +3034,7 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
       // 🚀 [Fix] 不在此处 setIsGenerating(false)，因为 executeGeneration 内部已管理此状态
       // 发送节流由 lastGenerateAtRef 控制，不再依赖整轮生成结束才解锁
     }
-  }, [config, draftNodeId, addPromptNode, updatePromptNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth, buildAutoPptSlides, getPreferredKeyForMode, consumeCredits, balance, setShowRechargeModal]);
+  }, [config, draftNodeId, addPromptNode, updatePromptNode, updateImageNodePosition, updateImageNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth, buildAutoPptSlides, getPreferredKeyForMode, consumeCredits, balance, setShowRechargeModal]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
@@ -3349,17 +3490,15 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
         };
       });
 
-      // Add to canvas
-      addImageNodes(newImageNodes);
-
-      // Update Prompt Node (Success)
-      updatePromptNode({
-        ...node,
-        isGenerating: false,
-        isDraft: false, // 🚀 [Fix] Ensure persistence
-        childImageIds: newImageNodes.map(n => n.id),
-        error: undefined,
-        errorDetails: undefined
+      // Add to canvas atomically with parent linking
+      addImageNodes(newImageNodes, {
+        [node.id]: {
+          isGenerating: false,
+          isDraft: false, // 🚀 [Fix] Ensure persistence
+          childImageIds: newImageNodes.map(n => n.id),
+          error: undefined,
+          errorDetails: undefined
+        }
       });
 
       // Record cost
@@ -4987,7 +5126,6 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
                 moveSelectedNodes(delta, sourceNodeId);
               }
               // 🚀 [Fix] Force re-render for real-time connection line updates
-              setDragUpdateTick(t => t + 1);
             }} // 🚀 Enable Safe Relative Drag
             canvasTransform={canvasTransform} // 🚀 Pass Transform for Animation Calculation
           />
@@ -5046,7 +5184,6 @@ const AppContent: React.FC<AppContentProps> = ({ onOpenSupplierManager, onOpenCo
                 moveSelectedNodes(delta, sourceNodeId);
               }
               // 🚀 [Fix] Force re-render for real-time connection line updates
-              setDragUpdateTick(t => t + 1);
             }} // 🚀 Enable Safe Relative Drag
           />
         ))}

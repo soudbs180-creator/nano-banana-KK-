@@ -101,6 +101,12 @@ export interface ActiveModel {
     colorEnd?: string;
     colorSecondary?: string;
     textColor?: 'white' | 'black';
+    providerLabel?: string;
+    providerLogo?: string;
+    tags?: string[];
+    tokenGroup?: string;
+    billingType?: string;
+    endpointType?: string;
 }
 
 /**

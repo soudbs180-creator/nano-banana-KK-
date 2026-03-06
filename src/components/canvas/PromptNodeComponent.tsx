@@ -102,6 +102,7 @@ const ReferenceThumbnail: React.FC<{
     return (
         <div
             className="w-10 h-10 rounded border border-[var(--border-light)] overflow-hidden relative bg-[var(--bg-tertiary)] cursor-pointer active:scale-95 transition-transform"
+            data-native-drag-source="true"
             draggable={!!src}
             onMouseDown={(e) => {
                 // Allow Standard Click, but prevent Drag unless moved
@@ -322,8 +323,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             import('gsap').then(({ default: gsap }) => {
                 if (!el || !el.isConnected) return;
 
-                // 1. 计算起始世界坐标（输入框中线发牌，且整体在输入框上方）
-                const launchPoint = getPromptBarLaunchPoint(0, 'center');
+                // 1. 计算起始世界坐标（从输入框下沿外侧弹出，避免压在输入框上层）
+                const launchPoint = getPromptBarLaunchPoint(18, 'bottom');
                 const startScreenX = launchPoint.x;
                 const startScreenY = launchPoint.y;
                 const offsetX = (startScreenX - canvasTransform.x) / canvasTransform.scale - node.position.x;
@@ -332,17 +333,20 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
                 // 2. 单一 fromTo 动画 —— 避免双重动画覆盖
                 const timeline = gsap.timeline({
-                    defaults: { force3D: true },
+                    defaults: { force3D: true, overwrite: 'auto' },
                     onStart: () => {
                         document.body.classList.add('is-animating-card');
+                        el.style.zIndex = String(isSelected ? 30 : 20);
                     },
                     onComplete: () => {
                         document.body.classList.remove('is-animating-card');
                         el.style.willChange = '';
+                        el.style.zIndex = '';
                     },
                     onInterrupt: () => {
                         document.body.classList.remove('is-animating-card');
                         el.style.willChange = '';
+                        el.style.zIndex = '';
                     },
                 });
 
@@ -352,33 +356,34 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                         y: timelineConfig.startY,
                         scale: timelineConfig.startScale,
                         opacity: 0,
+                        transformOrigin: '50% 100%',
                     })
                     .to(el, {
                         opacity: 1,
                         duration: timelineConfig.fadeInDuration,
-                        ease: 'power1.out',
+                        ease: 'sine.out',
                     })
                     .to(el, {
                         x: timelineConfig.midX,
                         y: timelineConfig.midY,
                         scale: timelineConfig.midScale,
                         duration: timelineConfig.travelDuration,
-                        ease: 'power3.out',
+                        ease: 'power2.out',
                     }, '<')
                     .to(el, {
-                        x: timelineConfig.settleX,
-                        y: timelineConfig.settleY,
-                        scale: timelineConfig.settleScale,
-                        duration: timelineConfig.settleDuration,
-                        ease: 'expo.out',
+                        x: timelineConfig.nearX,
+                        y: timelineConfig.nearY,
+                        scale: timelineConfig.nearScale,
+                        duration: timelineConfig.nearDuration,
+                        ease: 'sine.out',
                     })
                     .to(el, {
                         x: 0,
                         y: 0,
                         scale: 1,
                         opacity: 1,
-                        duration: 0.14,
-                        ease: 'power2.out',
+                        duration: timelineConfig.settleDuration + 0.06,
+                        ease: 'expo.out',
                         clearProps: 'transform,opacity,will-change',
                     });
             });

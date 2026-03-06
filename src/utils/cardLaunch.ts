@@ -3,7 +3,7 @@ export interface CardLaunchPoint {
   y: number;
 }
 
-export type CardLaunchAnchor = 'center' | 'top';
+export type CardLaunchAnchor = 'center' | 'top' | 'bottom';
 
 export interface CardLaunchMotionConfig {
   fromScale: number;
@@ -16,13 +16,17 @@ export interface CardLaunchTimelineConfig {
   startY: number;
   midX: number;
   midY: number;
+  nearX: number;
+  nearY: number;
   settleX: number;
   settleY: number;
   startScale: number;
   midScale: number;
+  nearScale: number;
   settleScale: number;
   fadeInDuration: number;
   travelDuration: number;
+  nearDuration: number;
   settleDuration: number;
 }
 
@@ -31,6 +35,7 @@ type RectLike = {
   top: number;
   width: number;
   height: number;
+  bottom?: number;
 };
 
 const STACK_RESET_WINDOW_MS = 420;
@@ -100,6 +105,16 @@ export const getPromptBarLaunchPoint = (
     return centerPoint;
   }
 
+  if (anchor === 'bottom') {
+    const rectBottom = typeof promptRect.bottom === 'number'
+      ? promptRect.bottom
+      : (promptRect.top + promptRect.height);
+    return {
+      x: centerPoint.x,
+      y: Math.min(window.innerHeight - 24, rectBottom + safeGap + Math.max(0, stackOffset.y)),
+    };
+  }
+
   return {
     x: centerPoint.x,
     y: Math.max(24, promptRect.top - safeGap + stackOffset.y),
@@ -116,16 +131,16 @@ export const getLaunchMotionByCanvasScale = (canvasScale: number = 1): CardLaunc
 
   if (scale > 1.1) {
     return {
-      fromScale: Math.min(1.35, Math.max(1.05, 1 + (scale - 1) * 0.35)),
-      duration: 0.58,
+      fromScale: Math.min(1.22, Math.max(1.03, 1 + (scale - 1) * 0.2)),
+      duration: 0.52,
       ease: 'power2.out',
     };
   }
 
   return {
-    fromScale: Math.min(0.55, Math.max(0.3, 0.22 + scale * 0.26)),
-    duration: 0.68,
-    ease: 'power3.out',
+    fromScale: Math.min(0.82, Math.max(0.6, 0.52 + scale * 0.18)),
+    duration: 0.56,
+    ease: 'power2.out',
   };
 };
 
@@ -136,25 +151,30 @@ export const getLaunchTimelineByOffset = (
 ): CardLaunchTimelineConfig => {
   const launchMotion = getLaunchMotionByCanvasScale(canvasScale);
   const driftSign = offsetX >= 0 ? 1 : -1;
-  const lift = Math.min(96, Math.max(28, Math.abs(offsetY) * 0.2 + 14));
-  const horizontalDrift = driftSign * Math.min(44, Math.max(12, Math.abs(offsetX) * 0.11));
+  const lift = Math.min(96, Math.max(28, Math.abs(offsetY) * 0.16 + 14));
+  const horizontalDrift = driftSign * Math.min(34, Math.max(8, Math.abs(offsetX) * 0.08));
   const midScale = launchMotion.fromScale < 1
-    ? Math.min(1.08, launchMotion.fromScale + 0.22)
-    : Math.max(1.02, launchMotion.fromScale - 0.06);
+    ? Math.min(1.02, launchMotion.fromScale + 0.12)
+    : Math.max(1.005, launchMotion.fromScale - 0.03);
+  const nearScale = 1.004;
   const baseDuration = launchMotion.duration;
 
   return {
     startX: offsetX,
     startY: offsetY,
-    midX: offsetX * 0.38 + horizontalDrift,
-    midY: offsetY * 0.45 - lift,
-    settleX: driftSign * -8,
-    settleY: 6,
+    midX: offsetX * 0.22 + horizontalDrift,
+    midY: offsetY * 0.58 - lift,
+    nearX: offsetX * 0.06,
+    nearY: offsetY * 0.14 - 6,
+    settleX: driftSign * -1,
+    settleY: 0,
     startScale: launchMotion.fromScale,
     midScale,
-    settleScale: 1.02,
-    fadeInDuration: Math.min(0.16, baseDuration * 0.26),
-    travelDuration: Math.max(0.28, baseDuration * 0.52),
-    settleDuration: Math.max(0.18, baseDuration * 0.32),
+    nearScale,
+    settleScale: 1.002,
+    fadeInDuration: Math.min(0.12, baseDuration * 0.2),
+    travelDuration: Math.max(0.28, baseDuration * 0.5),
+    nearDuration: Math.max(0.12, baseDuration * 0.18),
+    settleDuration: Math.max(0.16, baseDuration * 0.24),
   };
 };

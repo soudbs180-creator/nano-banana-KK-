@@ -3,6 +3,13 @@ export interface ProviderPricingSnapshot {
   note?: string;
   rows?: Array<{
     model: string;
+    provider?: string;
+    providerLabel?: string;
+    providerLogo?: string;
+    tags?: string[];
+    tokenGroup?: string;
+    billingType?: string;
+    endpointType?: string;
     modelRatio?: number;
     modelPrice?: number;
     completionRatio?: number;
@@ -22,6 +29,15 @@ export interface ProviderPricingSnapshot {
   groupSizeRatios?: Record<string, Record<string, Record<string, number>>>;
   groupModelPrices?: Record<string, Record<string, { modelRatio?: number; completionRatio?: number; modelPrice?: number }>>;
   completionRatios?: Record<string, number>;
+  modelMeta?: Record<string, {
+    provider?: string;
+    providerLabel?: string;
+    providerLogo?: string;
+    tags?: string[];
+    tokenGroup?: string;
+    billingType?: string;
+    endpointType?: string;
+  }>;
   _rawData?: any[];
 }
 
@@ -126,6 +142,7 @@ export const buildProviderPricingSnapshot = (
     groupSizeRatios: {},
     groupModelPrices: {},
     completionRatios: {},
+    modelMeta: {},
     _rawData: Array.isArray(pricingData) ? pricingData : [],
   };
 
@@ -137,6 +154,15 @@ export const buildProviderPricingSnapshot = (
     const modelRatio = toNumber(item?.model_ratio);
     const completionRatio = toNumber(item?.completion_ratio);
     const quotaType = item?.quota_type;
+    const provider = typeof item?.provider === 'string' ? item.provider.trim() : undefined;
+    const providerLabel = typeof item?.provider_label === 'string' ? item.provider_label.trim() : undefined;
+    const providerLogo = typeof item?.provider_logo === 'string' ? item.provider_logo.trim() : undefined;
+    const tags = Array.isArray(item?.tags)
+      ? item.tags.map((value: unknown) => String(value || '').trim()).filter(Boolean)
+      : undefined;
+    const tokenGroup = typeof item?.token_group === 'string' ? item.token_group.trim() : undefined;
+    const billingType = typeof item?.billing_type === 'string' ? item.billing_type.trim() : undefined;
+    const endpointType = typeof item?.endpoint_type === 'string' ? item.endpoint_type.trim() : undefined;
     const sizeRatio = normalizeRatioMap(item?.size_ratio);
     const groupModelRatio = normalizeRatioMap(item?.group_model_ratio);
     const groupSizeRatio = normalizeNestedRatioMap(item?.group_size_ratio);
@@ -144,6 +170,13 @@ export const buildProviderPricingSnapshot = (
 
     snapshot.rows!.push({
       model,
+      provider,
+      providerLabel,
+      providerLogo,
+      tags,
+      tokenGroup,
+      billingType,
+      endpointType,
       modelRatio,
       modelPrice,
       completionRatio,
@@ -166,6 +199,18 @@ export const buildProviderPricingSnapshot = (
 
     if (completionRatio !== undefined) {
       snapshot.completionRatios![model] = completionRatio;
+    }
+
+    if (provider || providerLabel || providerLogo || tags?.length || tokenGroup || billingType || endpointType) {
+      snapshot.modelMeta![model] = {
+        provider,
+        providerLabel,
+        providerLogo,
+        tags,
+        tokenGroup,
+        billingType,
+        endpointType,
+      };
     }
 
     if (sizeRatio) {
@@ -199,6 +244,7 @@ export const buildProviderPricingSnapshot = (
   if (Object.keys(snapshot.groupSizeRatios!).length === 0) delete snapshot.groupSizeRatios;
   if (Object.keys(snapshot.groupModelPrices!).length === 0) delete snapshot.groupModelPrices;
   if (Object.keys(snapshot.completionRatios!).length === 0) delete snapshot.completionRatios;
+  if (Object.keys(snapshot.modelMeta!).length === 0) delete snapshot.modelMeta;
   if (!snapshot.rows?.length) delete snapshot.rows;
   if (!snapshot._rawData?.length) delete snapshot._rawData;
 

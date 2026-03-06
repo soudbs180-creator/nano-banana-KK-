@@ -7,6 +7,8 @@ const VERSION_CHECK_INTERVAL = 60000; // Check every 60 seconds
 let currentBuildHash: string | null = null;
 let updateAvailable = false;
 let updateListeners: ((available: boolean) => void)[] = [];
+let initPromise: Promise<void> | null = null;
+let intervalId: number | null = null;
 
 /**
  * Get the current build fingerprint from index.html script tags
@@ -40,20 +42,28 @@ async function fetchBuildHash(): Promise<string | null> {
  * Initialize version checking
  */
 export async function initUpdateCheck(): Promise<void> {
-    // Get initial build hash
-    currentBuildHash = await fetchBuildHash();
-    console.log('[UpdateCheck] Initial build hash:', currentBuildHash);
+    if (initPromise) return initPromise;
 
-    // Start periodic checking
-    setInterval(async () => {
-        const newHash = await fetchBuildHash();
+    initPromise = (async () => {
+        currentBuildHash = await fetchBuildHash();
+        console.log('[UpdateCheck] Initial build hash:', currentBuildHash);
 
-        if (newHash && currentBuildHash && newHash !== currentBuildHash && !updateAvailable) {
-            console.log('[UpdateCheck] New version detected:', newHash);
-            updateAvailable = true;
-            notifyListeners();
+        if (intervalId !== null) {
+            window.clearInterval(intervalId);
         }
-    }, VERSION_CHECK_INTERVAL);
+
+        intervalId = window.setInterval(async () => {
+            const newHash = await fetchBuildHash();
+
+            if (newHash && currentBuildHash && newHash !== currentBuildHash && !updateAvailable) {
+                console.log('[UpdateCheck] New version detected:', newHash);
+                updateAvailable = true;
+                notifyListeners();
+            }
+        }, VERSION_CHECK_INTERVAL);
+    })();
+
+    return initPromise;
 }
 
 /**

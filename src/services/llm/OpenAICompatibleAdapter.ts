@@ -20,10 +20,9 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         return Math.max(15000, Math.min(raw, 240000));
     }
 
-    private async fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+    private async fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, maxRetries: number = 3): Promise<Response> {
         let lastError: Error | null = null;
         let lastResponse: Response | null = null;
-        const maxRetries = 3;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             const controller = new AbortController();
@@ -96,6 +95,12 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const token = String(rawKey || '').trim();
         if (!token) return 'Bearer ';
         return /^Bearer\s+/i.test(token) ? token : `Bearer ${token}`;
+    }
+
+    private getQueryApiKey(rawKey: string): string {
+        const token = String(rawKey || '').trim();
+        if (!token) return '';
+        return token.replace(/^Bearer\s+/i, '').trim();
     }
 
     private getRequestPathFromUrl(url: string): string {
@@ -806,7 +811,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             method: 'POST',
             headers,
             body: payloadStr
-        }, this.getTimeoutMs(keySlot, 150000));
+        }, this.getTimeoutMs(keySlot, 150000), 1);
 
         if (!response.ok) {
             const text = await response.text().catch(() => '');
@@ -1268,7 +1273,11 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const requestedImageSize = this.normalizeGeminiImageSize(options.imageSize);
 
         // 🚀 [鉴权修复] 12AI 原生接口必须使用 URL 参数中的 key 字段进行鉴权，Header 鉴权可能无效
-        const url = `${cleanBase}/v1beta/models/${effectiveModelId}:generateContent?key=${keySlot.key}`;
+        const queryKey = this.getQueryApiKey(keySlot.key);
+        if (!queryKey) {
+            throw new Error('12AI API Key 为空或格式无效');
+        }
+        const url = `${cleanBase}/v1beta/models/${effectiveModelId}:generateContent?key=${encodeURIComponent(queryKey)}`;
 
         const parts: any[] = [{ text: options.prompt }];
 
@@ -1300,6 +1309,27 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             }
         };
 
+        if (options.providerConfig?.google?.thinkingConfig?.thinkingLevel) {
+            payload.generationConfig.thinkingConfig = {
+                thinkingLevel: options.providerConfig.google.thinkingConfig.thinkingLevel,
+                includeThoughts: false
+            };
+        }
+
+        const googleSearchTool = options.providerConfig?.google?.tools?.find((tool: any) => tool.googleSearch);
+        if (googleSearchTool) {
+            const searchTypes: Record<string, Record<string, never>> = {};
+            if (googleSearchTool.googleSearch?.searchTypes?.webSearch || !googleSearchTool.googleSearch?.searchTypes) {
+                searchTypes.webSearch = {};
+            }
+            if (googleSearchTool.googleSearch?.searchTypes?.imageSearch) {
+                searchTypes.imageSearch = {};
+            }
+            payload.tools = [{
+                googleSearch: Object.keys(searchTypes).length > 0 ? { searchTypes } : {}
+            }];
+        }
+
         const payloadStr = JSON.stringify(payload);
         // 🚀 [修复] 12AI 原生接口在浏览器端极其敏感，移除特殊的 x-goog-api-key 标头
         // 官方文档要求认证仅通过 URL 参数 key=... 进行，添加额外标头常导致 CORS Preflight 失败
@@ -1322,7 +1352,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             method: 'POST',
             headers,
             body: payloadStr
-        }, this.getTimeoutMs(keySlot, 120000));
+        }, this.getTimeoutMs(keySlot, 120000), 1);
 
         const duration = Date.now() - startTime;
 
@@ -1392,7 +1422,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             method: 'POST',
             headers,
             body: payloadStr
-        }, this.getTimeoutMs(keySlot, 150000));
+        }, this.getTimeoutMs(keySlot, 150000), 1);
 
         const requestPath = this.getRequestPathFromUrl(url);
 

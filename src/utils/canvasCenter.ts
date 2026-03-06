@@ -55,7 +55,13 @@ export const getPromptBarFrontPosition = (
   const ty = Number.isFinite(currentTransform?.y) ? currentTransform.y : 0;
 
   const screenX = rect.left + rect.width / 2;
-  const screenY = rect.top - gap + cardHeight / 2;
+  const viewportTop = viewportRect?.top ?? 0;
+  const promptTop = rect.top;
+  const availableHeight = Math.max(promptTop - viewportTop, cardHeight + gap);
+  const upwardBias = Math.min(56, Math.max(28, availableHeight * 0.12));
+  const frontCenterY = viewportTop + availableHeight * 0.46 - upwardBias;
+  const maxCenterY = promptTop - gap - cardHeight / 2;
+  const screenY = Math.min(frontCenterY, maxCenterY);
 
   return {
     x: Math.round((screenX - tx) / scale),

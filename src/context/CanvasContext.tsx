@@ -48,7 +48,7 @@ interface CanvasContextType {
     renameCanvas: (id: string, newName: string) => void;
     addPromptNode: (node: PromptNode) => Promise<void>;
     updatePromptNode: (node: PromptNode) => Promise<void>;
-    addImageNodes: (nodes: GeneratedImage[]) => Promise<void>;
+    addImageNodes: (nodes: GeneratedImage[], parentUpdates?: Record<string, Partial<PromptNode>>) => Promise<void>;
     updatePromptNodePosition: (id: string, pos: { x: number; y: number }, options?: { moveChildren?: boolean; ignoreSelection?: boolean }) => void;
     updateImageNodePosition: (id: string, pos: { x: number; y: number }, options?: { ignoreSelection?: boolean }) => void;
     updateImageNodeDimensions: (id: string, dimensions: string) => void;
@@ -90,6 +90,11 @@ interface CanvasContextType {
     migrateNodes: (nodeIds: string[], targetCanvasId: string) => void;
     // 🚀 [Persistence] Urgent state saving for generation tasks
     urgentUpdatePromptNode: (node: PromptNode) => void;
+    // 🚀 [Batch Update] Atomic update for multiple nodes (e.g. stacking)
+    updateNodes: (updates: {
+        promptNodes?: { id: string, updates: Partial<PromptNode> }[],
+        imageNodes?: { id: string, updates: Partial<GeneratedImage> }[]
+    }) => void;
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -1151,8 +1156,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
     }, [updateCanvas]);
 
-    const addImageNodes = useCallback(async (nodes: GeneratedImage[]) => {
-        console.log('[CanvasContext.addImageNodes] 🖼️ 开始添加图片节点', { count: nodes?.length });
+    const addImageNodes = useCallback(async (nodes: GeneratedImage[], parentUpdates?: Record<string, Partial<PromptNode>>) => {
+        console.log('[CanvasContext.addImageNodes] 🖼️ 开始添加图片节点', { count: nodes?.length, hasParentUpdates: !!parentUpdates });
 
         // 🛡️ 防御性检查：过滤掉无效节点 (允许 isGenerating 状态的节点)
         const validNodes = Array.isArray(nodes) ? nodes.filter(n => n && n.id && (n.url || n.isGenerating)) : [];
@@ -1307,10 +1312,43 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // 🚀 [修复] 先立即显示图片（乐观更新），保持连续发送能力
         console.log('[CanvasContext.addImageNodes] 🎨 立即更新UI，添加', stateNodes.length, '个节点到画布');
         try {
-            updateCanvas(c => ({
-                ...c,
-                imageNodes: [...c.imageNodes, ...stateNodes.filter(n => !c.imageNodes.some(existing => existing.id === n.id))]
-            }));
+            updateCanvas(c => {
+                let nextPromptNodes = [...c.promptNodes];
+                let nextImageNodes = [...c.imageNodes, ...stateNodes.filter(n => !c.imageNodes.some(existing => existing.id === n.id))];
+
+                // 🚀 [Critical Fix] Atomic linking: update parent nodes in the same state transaction
+                if (parentUpdates) {
+                    nextPromptNodes = nextPromptNodes.map(pn => {
+                        const updates = parentUpdates[pn.id];
+                        if (updates) {
+                            return { ...pn, ...updates };
+                        }
+                        return pn;
+                    });
+                } else {
+                    // Backward compatibility: If no explicit updates, auto-link based on parentPromptId
+                    const parentIds = Array.from(new Set(nodes.map(n => n.parentPromptId).filter(Boolean)));
+                    if (parentIds.length > 0) {
+                        nextPromptNodes = nextPromptNodes.map(pn => {
+                            if (parentIds.includes(pn.id)) {
+                                const newChildIds = nodes.filter(n => n.parentPromptId === pn.id).map(n => n.id);
+                                return {
+                                    ...pn,
+                                    childImageIds: [...new Set([...(pn.childImageIds || []), ...newChildIds])],
+                                    isGenerating: false
+                                };
+                            }
+                            return pn;
+                        });
+                    }
+                }
+
+                return {
+                    ...c,
+                    promptNodes: nextPromptNodes,
+                    imageNodes: nextImageNodes
+                };
+            });
             console.log('[CanvasContext.addImageNodes] ✅ UI更新成功，卡片已显示');
         } catch (uiError: any) {
             // 🚨 致命错误：UI更新失败
@@ -1466,6 +1504,45 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             )
         }));
     }, [updateCanvas]);
+
+    // 🚀 [Batch Update] Implementation for stacking or massive moves
+    const updateNodes = useCallback((batch: {
+        promptNodes?: { id: string, updates: Partial<PromptNode> }[],
+        imageNodes?: { id: string, updates: Partial<GeneratedImage> }[]
+    }) => {
+        updateCanvas(c => {
+            let nextPromptNodes = [...c.promptNodes];
+            let nextImageNodes = [...c.imageNodes];
+            let changed = false;
+
+            if (batch.promptNodes && batch.promptNodes.length > 0) {
+                const updateMap = new Map(batch.promptNodes.map(u => [u.id, u.updates]));
+                nextPromptNodes = nextPromptNodes.map(n => {
+                    const u = updateMap.get(n.id);
+                    if (u) {
+                        changed = true;
+                        return { ...n, ...u };
+                    }
+                    return n;
+                });
+            }
+
+            if (batch.imageNodes && batch.imageNodes.length > 0) {
+                const updateMap = new Map(batch.imageNodes.map(u => [u.id, u.updates]));
+                nextImageNodes = nextImageNodes.map(img => {
+                    const u = updateMap.get(img.id);
+                    if (u) {
+                        changed = true;
+                        return { ...img, ...u };
+                    }
+                    return img;
+                });
+            }
+
+            return changed ? { ...c, promptNodes: nextPromptNodes, imageNodes: nextImageNodes } : c;
+        });
+    }, [updateCanvas]);
+
 
     const deleteImageNode = useCallback((id: string) => {
         pushToHistory();
@@ -1994,7 +2071,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 // 1. 构建卡组列表 (类似全局整理)
                 const SUB_COLUMNS = 4; // 副卡4列
-                const SUB_IMAGE_GAP = 20;
+                const SUB_IMAGE_GAP = 12;
                 const PROMPT_TO_SUB_GAP = 12;
                 const GROUP_GAP_X = 20;
                 const GROUP_GAP_Y = 20;
@@ -2069,11 +2146,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const centerY = groups.reduce((sum, g) => sum + g.originalY, 0) / groups.length;
 
                 // 5. 两遍处理: 先分行,再设置位置
-                const gridColumns = Math.ceil(Math.sqrt(groups.length));
+                const gridColumns = Math.min(20, Math.max(1, groups.length));
                 const layoutRows: Array<{ groups: SelectionGroup[]; maxPromptHeight: number; maxTotalHeight: number }> = [];
                 let currentRow: typeof layoutRows[0] = { groups: [], maxPromptHeight: 0, maxTotalHeight: 0 };
-
-                groups.forEach((group, i) => {
+                groups.forEach((group) => {
                     if (currentRow.groups.length >= gridColumns) {
                         layoutRows.push(currentRow);
                         currentRow = { groups: [], maxPromptHeight: 0, maxTotalHeight: 0 };
@@ -2194,23 +2270,32 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // 2. 构建卡组列表
         type LayoutGroupType = 'normal' | 'orphan-prompt' | 'orphan-image' | 'error';
-        const layoutGroups: Array<{
+        type LayoutGroup = {
             type: LayoutGroupType;
             prompt?: typeof normalPrompts[0];
             images: typeof currentCanvas.imageNodes;
             width: number;
             height: number;
-        }> = [];
+            sourcePromptId?: string;
+            layoutHeight?: number;
+        };
+        const layoutGroups: LayoutGroup[] = [];
+        const promptById = new Map(currentCanvas.promptNodes.map(prompt => [prompt.id, prompt]));
+        const imageById = new Map(currentCanvas.imageNodes.map(img => [img.id, img]));
 
         // 2a. 正确的卡组(Prompt + 子Image)
         const SUB_COLUMNS = 4; // ✅ 副卡横向4列
-        const SUB_IMAGE_GAP = 20; // 子卡间距
+        const SUB_IMAGE_GAP = 12; // 子卡间距
         const PROMPT_TO_SUB_GAP = 12; // 主卡和副卡之间的间距
 
         normalPrompts.forEach(prompt => {
             const childImages = currentCanvas.imageNodes.filter(img => img.parentPromptId === prompt.id);
             const promptWidth = 320;
             const promptHeight = prompt.height || 200;
+            const sourceImage = prompt.sourceImageId ? imageById.get(prompt.sourceImageId) : undefined;
+            const sourcePromptId = sourceImage?.parentPromptId && promptById.has(sourceImage.parentPromptId)
+                ? sourceImage.parentPromptId
+                : undefined;
 
             // 计算子卡尺寸
             let maxSubWidth = 0;
@@ -2242,18 +2327,24 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 prompt,
                 images: childImages,
                 width: groupWidth,
-                height: groupHeight
+                height: groupHeight,
+                sourcePromptId
             });
         });
 
         // 2b. 孤独的Prompt卡
         orphanPrompts.forEach(prompt => {
+            const sourceImage = prompt.sourceImageId ? imageById.get(prompt.sourceImageId) : undefined;
+            const sourcePromptId = sourceImage?.parentPromptId && promptById.has(sourceImage.parentPromptId)
+                ? sourceImage.parentPromptId
+                : undefined;
             layoutGroups.push({
                 type: 'orphan-prompt',
                 prompt,
                 images: [],
                 width: 320,
-                height: prompt.height || 200
+                height: prompt.height || 200,
+                sourcePromptId
             });
         });
 
@@ -2273,12 +2364,40 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         //   第一遍: 分配卡组到行,计算每行的最大主卡高度
         //   第二遍: 根据每行的最大主卡高度设置位置,实现副卡顶部对齐
 
+        const followUpGroups = layoutGroups.filter(group => !!group.sourcePromptId && group.prompt);
+        const rootLayoutGroups = layoutGroups.filter(group => !group.sourcePromptId);
+        const followUpChildrenMap = new Map<string, LayoutGroup[]>();
+        followUpGroups.forEach(group => {
+            const sourcePromptId = group.sourcePromptId!;
+            const existing = followUpChildrenMap.get(sourcePromptId) || [];
+            existing.push(group);
+            followUpChildrenMap.set(sourcePromptId, existing);
+        });
+        followUpChildrenMap.forEach((groups) => {
+            groups.sort((a, b) => (a.prompt?.timestamp || 0) - (b.prompt?.timestamp || 0));
+        });
+
+        const computeLayoutHeight = (group: LayoutGroup, stack = new Set<string>()): number => {
+            const promptId = group.prompt?.id;
+            if (!promptId || stack.has(promptId)) return group.height;
+            const nextStack = new Set(stack);
+            nextStack.add(promptId);
+            const children = followUpChildrenMap.get(promptId) || [];
+            return children.length === 0
+                ? group.height
+                : Math.max(group.height, ...children.map(child => computeLayoutHeight(child, nextStack)));
+        };
+
+        rootLayoutGroups.forEach(group => {
+            group.layoutHeight = computeLayoutHeight(group);
+        });
+
         const STANDARD_CARD_WIDTH = 320;
         const MAX_ROW_WIDTH = GROUPS_PER_ROW * (STANDARD_CARD_WIDTH + GROUP_GAP_X);
 
         // ✅ 第一遍: 将卡组分配到行
         const rows: Array<{
-            groups: typeof layoutGroups;
+            groups: LayoutGroup[];
             maxPromptHeight: number;  // 该行最高主卡高度
             maxTotalHeight: number;   // 该行最高卡组总高度
             startX: number;
@@ -2287,7 +2406,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         let currentX = START_X;
         let currentRow: typeof rows[0] = { groups: [], maxPromptHeight: 0, maxTotalHeight: 0, startX: START_X };
 
-        layoutGroups.forEach((group) => {
+        rootLayoutGroups.forEach((group) => {
             const willExceedWidth = (currentX - START_X + group.width + GROUP_GAP_X) > MAX_ROW_WIDTH;
             const groupsInCurrentRow = currentRow.groups.length;
 
@@ -2304,7 +2423,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 更新该行最大主卡高度
             const promptHeight = group.prompt?.height || 200;
             currentRow.maxPromptHeight = Math.max(currentRow.maxPromptHeight, promptHeight);
-            currentRow.maxTotalHeight = Math.max(currentRow.maxTotalHeight, group.height);
+            currentRow.maxTotalHeight = Math.max(currentRow.maxTotalHeight, group.layoutHeight || group.height);
 
             currentX += group.width + GROUP_GAP_X;
         });
@@ -2316,70 +2435,121 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // ✅ 第二遍: 根据每行的最大主卡高度设置位置
         const positions: { [id: string]: { x: number; y: number } } = {};
+        const placedBounds = new Map<string, { left: number; top: number; right: number; bottom: number; width: number; height: number }>();
+        const followUpRightEdge = new Map<string, number>();
         let currentY = START_Y;
+
+        const placeGroup = (group: LayoutGroup, left: number, top: number) => {
+            const groupCenterX = left + group.width / 2;
+            const promptHeight = group.prompt?.height || 200;
+            const subCardsStartY = top + promptHeight + PROMPT_TO_SUB_GAP;
+
+            if (group.type === 'normal' && group.prompt) {
+                positions[group.prompt.id] = {
+                    x: groupCenterX,
+                    y: top + promptHeight
+                };
+
+                if (group.images.length > 0) {
+                    const imageDims = group.images.map(img => getImageDims(img.aspectRatio, img.dimensions));
+                    const maxWidth = Math.max(...imageDims.map(d => d.w));
+                    const maxHeight = Math.max(...imageDims.map(d => d.h));
+                    const actualColumns = Math.min(SUB_COLUMNS, group.images.length);
+                    const blockWidth = actualColumns * maxWidth + (actualColumns - 1) * SUB_IMAGE_GAP;
+                    const blockStartX = groupCenterX - blockWidth / 2;
+
+                    group.images.forEach((img, index) => {
+                        const col = index % SUB_COLUMNS;
+                        const imgRow = Math.floor(index / SUB_COLUMNS);
+                        const cardCenterX = blockStartX + col * (maxWidth + SUB_IMAGE_GAP) + maxWidth / 2;
+                        const cardTopY = subCardsStartY + imgRow * (maxHeight + SUB_IMAGE_GAP);
+                        const dims = imageDims[index];
+                        positions[img.id] = {
+                            x: cardCenterX,
+                            y: cardTopY + dims.h
+                        };
+                    });
+                }
+            } else if (group.type === 'orphan-prompt' && group.prompt) {
+                positions[group.prompt.id] = {
+                    x: groupCenterX,
+                    y: top + promptHeight
+                };
+            } else if (group.type === 'orphan-image' && group.images[0]) {
+                const img = group.images[0];
+                const dims = getImageDims(img.aspectRatio, img.dimensions);
+                positions[img.id] = {
+                    x: groupCenterX,
+                    y: subCardsStartY + dims.h
+                };
+            }
+
+            if (group.prompt?.id) {
+                placedBounds.set(group.prompt.id, {
+                    left,
+                    top,
+                    right: left + group.width,
+                    bottom: top + group.height,
+                    width: group.width,
+                    height: group.height
+                });
+            }
+        };
 
         rows.forEach((row) => {
             let rowX = START_X;
-            const rowMaxPromptHeight = row.maxPromptHeight; // 该行最高主卡高度
-            const subCardsStartY = currentY + rowMaxPromptHeight + PROMPT_TO_SUB_GAP; // ✅ 该行所有副卡的顶部Y
 
             row.groups.forEach((group) => {
-                const groupCenterX = rowX + group.width / 2;
-
-                if (group.type === 'normal' && group.prompt) {
-                    // ✅ 主卡位置: 所有主卡顶部对齐到该行最高主卡顶部
-                    const promptHeight = group.prompt.height || 200;
-                    positions[group.prompt.id] = {
-                        x: groupCenterX,
-                        y: currentY + promptHeight  // 重点: 改变由于 CSS 定位是以底部为基准导致的高低不一
-                    };
-
-                    // ✅ 子卡位置: 所有副卡顶部对齐到 subCardsStartY
-                    if (group.images.length > 0) {
-                        const imageDims = group.images.map(img => getImageDims(img.aspectRatio, img.dimensions));
-                        const maxWidth = Math.max(...imageDims.map(d => d.w));
-                        const maxHeight = Math.max(...imageDims.map(d => d.h));
-
-                        const actualColumns = Math.min(SUB_COLUMNS, group.images.length);
-                        const blockWidth = actualColumns * maxWidth + (actualColumns - 1) * SUB_IMAGE_GAP;
-                        const blockStartX = groupCenterX - blockWidth / 2;
-
-                        group.images.forEach((img, i) => {
-                            const col = i % SUB_COLUMNS;
-                            const imgRow = Math.floor(i / SUB_COLUMNS);
-                            const cardCenterX = blockStartX + col * (maxWidth + SUB_IMAGE_GAP) + maxWidth / 2;
-                            // ✅ 副卡顶部对齐: 使用该行统一的副卡起始Y
-                            const cardTopY = subCardsStartY + imgRow * (maxHeight + SUB_IMAGE_GAP);
-                            const dims = imageDims[i];
-                            positions[img.id] = {
-                                x: cardCenterX,
-                                y: cardTopY + dims.h  // 底部锚点
-                            };
-                        });
-                    }
-                } else if (group.type === 'orphan-prompt' && group.prompt) {
-                    // 孤立主卡: 顶部对齐
-                    const promptHeight = group.prompt.height || 200;
-                    positions[group.prompt.id] = {
-                        x: groupCenterX,
-                        y: currentY + promptHeight
-                    };
-                } else if (group.type === 'orphan-image' && group.images[0]) {
-                    // ✅ 孤立副卡: 顶部与该行其他副卡对齐
-                    const img = group.images[0];
-                    const dims = getImageDims(img.aspectRatio, img.dimensions);
-                    positions[img.id] = {
-                        x: groupCenterX,
-                        y: subCardsStartY + dims.h  // 底部锚点
-                    };
-                }
-
+                placeGroup(group, rowX, currentY);
                 rowX += group.width + GROUP_GAP_X;
             });
 
-            // 下一行起始Y = 当前行所有卡组的最大总高度 + 行间距
             currentY += row.maxTotalHeight + GROUP_GAP_Y;
         });
+
+        const pendingFollowUps = [...followUpGroups];
+        let guard = 0;
+
+        while (pendingFollowUps.length > 0 && guard < 1000) {
+            guard += 1;
+            let placedInLoop = 0;
+
+            for (let index = 0; index < pendingFollowUps.length; index += 1) {
+                const group = pendingFollowUps[index];
+                const sourcePromptId = group.sourcePromptId;
+
+                if (!sourcePromptId) {
+                    continue;
+                }
+
+                const anchorBounds = placedBounds.get(sourcePromptId);
+                if (!anchorBounds) {
+                    continue;
+                }
+
+                const left = followUpRightEdge.get(sourcePromptId) ?? (anchorBounds.right + GROUP_GAP_X);
+                placeGroup(group, left, anchorBounds.top);
+
+                if (group.prompt?.id) {
+                    const placed = placedBounds.get(group.prompt.id);
+                    if (placed) {
+                        followUpRightEdge.set(sourcePromptId, placed.right + GROUP_GAP_X);
+                    }
+                }
+
+                pendingFollowUps.splice(index, 1);
+                index -= 1;
+                placedInLoop += 1;
+            }
+
+            if (placedInLoop === 0) {
+                pendingFollowUps.forEach((group) => {
+                    placeGroup(group, START_X, currentY);
+                    currentY += (group.layoutHeight || group.height) + GROUP_GAP_Y;
+                });
+                pendingFollowUps.length = 0;
+            }
+        }
 
         // 4. 错误卡片单独换行排列
         if (errorPrompts.length > 0) {
@@ -2417,7 +2587,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
 
                 // 换行检查
-                if (errorGroupsInRow >= GROUPS_PER_ROW) {
+                if (errorGroupsInRow >= GROUPS_PER_ROW || (errorGroupsInRow > 0 && (errorX - START_X + groupWidth) > MAX_ROW_WIDTH)) {
                     errorX = START_X;
                     currentY += errorRowMaxHeight + GROUP_GAP_Y;
                     errorRowMaxHeight = 0;
@@ -3105,8 +3275,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     // 🚀 [Drag Optimization] Real-time state update for smooth drag and connection lines
-    const moveSelectedNodes = useCallback((delta: { x: number; y: number }, sourceNodeIdOrIds?: string | string[]) => {
-        // Immediately update state for real-time connection line updates
+    const applyMoveSelectedNodes = useCallback((delta: { x: number; y: number }, sourceNodeIdOrIds?: string | string[]) => {
         setState(prev => {
             let selectedIds = prev.selectedNodeIds || [];
 
@@ -3144,6 +3313,46 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             return { ...prev, canvases: newCanvases };
         });
+    }, []);
+
+    const pendingMoveDeltaRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+    const pendingMoveSourceRef = useRef<string | string[] | undefined>(undefined);
+    const moveRafRef = useRef<number | null>(null);
+
+    const moveSelectedNodes = useCallback((delta: { x: number; y: number }, sourceNodeIdOrIds?: string | string[]) => {
+        pendingMoveDeltaRef.current = {
+            x: pendingMoveDeltaRef.current.x + delta.x,
+            y: pendingMoveDeltaRef.current.y + delta.y,
+        };
+
+        if (sourceNodeIdOrIds !== undefined) {
+            pendingMoveSourceRef.current = sourceNodeIdOrIds;
+        }
+
+        if (moveRafRef.current !== null) {
+            return;
+        }
+
+        moveRafRef.current = window.requestAnimationFrame(() => {
+            moveRafRef.current = null;
+            const batchedDelta = pendingMoveDeltaRef.current;
+            const batchedSource = pendingMoveSourceRef.current;
+
+            pendingMoveDeltaRef.current = { x: 0, y: 0 };
+            pendingMoveSourceRef.current = undefined;
+
+            if (batchedDelta.x !== 0 || batchedDelta.y !== 0) {
+                applyMoveSelectedNodes(batchedDelta, batchedSource);
+            }
+        });
+    }, [applyMoveSelectedNodes]);
+
+    useEffect(() => {
+        return () => {
+            if (moveRafRef.current !== null) {
+                cancelAnimationFrame(moveRafRef.current);
+            }
+        };
     }, []);
 
     const getNextCardPosition = useCallback((): { x: number; y: number } => {
@@ -3466,6 +3675,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const contextValue = React.useMemo(() => ({
         state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
         addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions, updateImageNode,
+        updateNodes, // 🚀 Batch Update
         deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
         undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition,
         connectLocalFolder, disconnectLocalFolder, changeLocalFolder, refreshLocalFolder,
@@ -3488,6 +3698,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }), [
         state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas,
         addPromptNode, updatePromptNode, addImageNodes, updatePromptNodePosition, updateImageNodePosition, updateImageNodeDimensions, updateImageNode,
+        updateNodes,
         deleteImageNode, deletePromptNode, linkNodes, unlinkNodes, clearAllData, canCreateCanvas,
         undo, redo, pushToHistory, canUndo, canRedo, arrangeAllNodes, getNextCardPosition,
         connectLocalFolder, disconnectLocalFolder, changeLocalFolder, refreshLocalFolder,

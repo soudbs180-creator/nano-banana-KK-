@@ -90,7 +90,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 if (!el || !el.isConnected) return;
 
                 // 1. 计算起始世界坐标（输入框中线发牌，且整体在输入框上方）
-                const launchPoint = getPromptBarLaunchPoint(0, 'center');
+                const launchPoint = getPromptBarLaunchPoint(18, 'bottom');
                 const startScreenX = launchPoint.x;
                 const startScreenY = launchPoint.y;
                 const offsetX = (startScreenX - canvasTransform.x) / canvasTransform.scale - position.x;
@@ -99,17 +99,20 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                 // 2. 单一 fromTo 动画 —— 消除双重动画抖动
                 const timeline = gsap.timeline({
-                    defaults: { force3D: true },
+                    defaults: { force3D: true, overwrite: 'auto' },
                     onStart: () => {
                         document.body.classList.add('is-animating-card');
+                        el.style.zIndex = String(isSelected ? 30 : 20);
                     },
                     onComplete: () => {
                         document.body.classList.remove('is-animating-card');
                         el.style.willChange = '';
+                        el.style.zIndex = '';
                     },
                     onInterrupt: () => {
                         document.body.classList.remove('is-animating-card');
                         el.style.willChange = '';
+                        el.style.zIndex = '';
                     },
                 });
 
@@ -119,33 +122,34 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         y: timelineConfig.startY,
                         scale: timelineConfig.startScale,
                         opacity: 0,
+                        transformOrigin: '50% 100%',
                     })
                     .to(el, {
                         opacity: 1,
                         duration: timelineConfig.fadeInDuration,
-                        ease: 'power1.out',
+                        ease: 'sine.out',
                     })
                     .to(el, {
                         x: timelineConfig.midX,
                         y: timelineConfig.midY,
                         scale: timelineConfig.midScale,
                         duration: timelineConfig.travelDuration,
-                        ease: 'power3.out',
+                        ease: 'power2.out',
                     }, '<')
                     .to(el, {
-                        x: timelineConfig.settleX,
-                        y: timelineConfig.settleY,
-                        scale: timelineConfig.settleScale,
-                        duration: timelineConfig.settleDuration,
-                        ease: 'expo.out',
+                        x: timelineConfig.nearX,
+                        y: timelineConfig.nearY,
+                        scale: timelineConfig.nearScale,
+                        duration: timelineConfig.nearDuration,
+                        ease: 'sine.out',
                     })
                     .to(el, {
                         x: 0,
                         y: 0,
                         scale: 1,
                         opacity: 1,
-                        duration: 0.14,
-                        ease: 'power2.out',
+                        duration: timelineConfig.settleDuration + 0.06,
+                        ease: 'expo.out',
                         clearProps: 'transform,opacity,will-change',
                     });
             });
@@ -627,6 +631,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     }, []);
 
     const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest?.('[data-native-drag-source="true"]')) {
+            e.stopPropagation();
+            return;
+        }
+
         // Handle Right Click (2) - Select Only
         if ('button' in e && e.button === 2) {
             e.stopPropagation();
@@ -954,7 +964,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                     }
                                                 }}
                                                 className="w-full h-full block select-none"
+                                                data-native-drag-source="true"
                                                 draggable={true}
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                }}
                                                 onDragStart={(e) => {
                                                     // HTML5 Drag for Data Transfer (to PromptBar)
                                                     e.stopPropagation();

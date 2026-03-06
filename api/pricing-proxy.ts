@@ -9,6 +9,57 @@ type PricingRow = Record<string, any>;
 type ParsedPayload = { data: PricingRow[]; groupRatio: Record<string, number> };
 type DiscoveryTarget = { key: string; url: string; accept: string };
 
+const inferProviderFromModel = (model: string): string | undefined => {
+  const raw = String(model || '').toLowerCase();
+  if (!raw) return undefined;
+  if (raw.includes('gemini') || raw.includes('imagen') || raw.includes('veo')) return 'Google';
+  if (raw.includes('gpt') || raw.includes('o1') || raw.includes('o3') || raw.includes('dall-e')) return 'OpenAI';
+  if (raw.includes('claude')) return 'Anthropic';
+  if (raw.includes('deepseek')) return 'DeepSeek';
+  if (raw.includes('qwen') || raw.includes('wanx')) return 'Alibaba';
+  if (raw.includes('doubao')) return 'ByteDance';
+  if (raw.includes('hunyuan')) return 'Tencent';
+  if (raw.includes('glm') || raw.includes('zhipu')) return '智谱';
+  if (raw.includes('moonshot') || raw.includes('kimi')) return 'Moonshot';
+  if (raw.includes('minimax')) return 'MiniMax';
+  if (raw.includes('xai') || raw.includes('grok')) return 'xAI';
+  if (raw.includes('pixverse')) return 'PixVerse';
+  if (raw.includes('luma')) return 'Luma';
+  if (raw.includes('runway')) return 'Runway';
+  return undefined;
+};
+
+const normalizeStringArray = (value: unknown): string[] | undefined => {
+  if (Array.isArray(value)) {
+    const result = value.map((item) => String(item || '').trim()).filter(Boolean);
+    return result.length ? result : undefined;
+  }
+  if (typeof value === 'string') {
+    const result = value.split(/[,|/、\s]+/).map((item) => item.trim()).filter(Boolean);
+    return result.length ? result : undefined;
+  }
+  return undefined;
+};
+
+const normalizeBillingType = (value: unknown, quotaType?: unknown): string | undefined => {
+  const raw = String(value ?? quotaType ?? '').trim().toLowerCase();
+  if (!raw) return undefined;
+  if (/按次|per.?request|request|fixed|image/i.test(raw)) return 'per_request';
+  if (/按量|token|tokens|quota/i.test(raw)) return 'token';
+  if (/倍率|multiplier|ratio/i.test(raw)) return 'multiplier';
+  return raw;
+};
+
+const normalizeEndpointType = (value: unknown, modelName?: string): string | undefined => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw) return raw;
+  const model = String(modelName || '').toLowerCase();
+  if (!model) return undefined;
+  if (model.includes('gemini') || model.includes('imagen') || model.includes('veo')) return 'gemini';
+  if (model.includes('claude')) return 'anthropic';
+  return 'openai';
+};
+
 const toNumber = (value: unknown): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim() !== '') {
@@ -77,11 +128,24 @@ const isPricingLikeObject = (value: unknown): value is PricingRow => {
 const normalizePricingRow = (value: PricingRow): PricingRow | null => {
   const modelName = String(value.model_name ?? value.modelName ?? value.model ?? value.model_id ?? value.name ?? '').trim();
   if (!modelName) return null;
+  const quotaType = value.quota_type ?? value.quotaType;
+  const provider =
+    String(
+      value.provider ?? value.provider_name ?? value.providerName ?? value.vendor ?? value.manufacturer ?? value.owned_by ?? inferProviderFromModel(modelName) ?? ''
+    ).trim() || undefined;
+  const providerLabel = String(value.provider_label ?? value.providerLabel ?? provider ?? '').trim() || undefined;
 
   return {
     ...value,
     model: String(value.model ?? value.model_id ?? modelName).trim(),
     model_name: modelName,
+    provider,
+    provider_label: providerLabel,
+    provider_logo: String(value.provider_logo ?? value.providerLogo ?? value.logo ?? value.icon ?? '').trim() || undefined,
+    tags: normalizeStringArray(value.tags ?? value.tag ?? value.labels ?? value.label),
+    token_group: String(value.token_group ?? value.tokenGroup ?? value.group_name ?? value.groupName ?? value.tokenGroupName ?? '').trim() || undefined,
+    billing_type: normalizeBillingType(value.billing_type ?? value.billingType ?? value.type, quotaType),
+    endpoint_type: normalizeEndpointType(value.endpoint_type ?? value.endpointType ?? value.endpoint, modelName),
     model_ratio: toNumber(value.model_ratio ?? value.modelRatio ?? value.price_ratio ?? value.priceRatio),
     model_price: toNumber(value.model_price ?? value.modelPrice ?? value.price ?? value.per_request_price),
     completion_ratio: toNumber(value.completion_ratio ?? value.completionRatio ?? value.output_ratio ?? value.outputRatio),
@@ -91,7 +155,7 @@ const normalizePricingRow = (value: PricingRow): PricingRow | null => {
     ),
     group_size_ratio: value.group_size_ratio ?? value.groupSizeRatio,
     group_model_price: value.group_model_price ?? value.groupModelPrice,
-    quota_type: value.quota_type ?? value.quotaType,
+    quota_type: quotaType,
   };
 };
 
@@ -248,6 +312,10 @@ const extractTableRows = (html: string): PricingRow[] => {
     const sizeRatioIndex = findHeaderIndex(headerCells, [/尺寸倍率|size/i]);
     const groupRatioIndex = findHeaderIndex(headerCells, [/分组倍率|group/i]);
     const quotaTypeIndex = findHeaderIndex(headerCells, [/quota|计费方式|类型|type/i]);
+    const providerIndex = findHeaderIndex(headerCells, [/供应商|厂商|provider|vendor|manufacturer|owned/i]);
+    const tokenGroupIndex = findHeaderIndex(headerCells, [/令牌分组|token.?group|group.?name|用户分组|分组/i]);
+    const endpointTypeIndex = findHeaderIndex(headerCells, [/端点|endpoint|接口类型|api.?type/i]);
+    const tagsIndex = findHeaderIndex(headerCells, [/标签|tag|label/i]);
 
     for (const rowHtml of rowMatches.slice(1)) {
       const cells = Array.from(rowHtml.matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)).map((match) => stripTags(match[1] || ''));
@@ -262,6 +330,10 @@ const extractTableRows = (html: string): PricingRow[] => {
         completion_ratio: completionRatioIndex >= 0 ? toNumber(cells[completionRatioIndex].replace(/[^\d.]/g, '')) : undefined,
         size_ratio: sizeRatioIndex >= 0 ? parseRatioMapFromText(cells[sizeRatioIndex]) : undefined,
         group_model_ratio: groupRatioIndex >= 0 ? parseRatioMapFromText(cells[groupRatioIndex]) : undefined,
+        provider: providerIndex >= 0 ? cells[providerIndex] : undefined,
+        token_group: tokenGroupIndex >= 0 ? cells[tokenGroupIndex] : undefined,
+        endpoint_type: endpointTypeIndex >= 0 ? cells[endpointTypeIndex] : undefined,
+        tags: tagsIndex >= 0 ? cells[tagsIndex] : undefined,
         quota_type: quotaType,
       });
 
@@ -300,14 +372,14 @@ const extractEmbeddedJson = (html: string): unknown[] => {
 
     for (const pattern of assignmentPatterns) {
       for (const match of script.matchAll(pattern)) {
-        let raw: unknown = (match[1] || '').trim();
+        let raw = String(match[1] || '').trim();
         if (!raw) continue;
 
-        if (typeof raw === 'string' && ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'")))) {
+        if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
           try {
             raw = JSON.parse(raw);
           } catch {
-            raw = raw.substring(1, raw.length - 1);
+            raw = raw.slice(1, -1);
           }
         }
 

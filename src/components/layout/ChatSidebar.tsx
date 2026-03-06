@@ -357,7 +357,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
             if (e.key === 'kk_model_customizations' && e.newValue) {
-                setModelCustomizations(JSON.parse(e.newValue));
+                try {
+                    const parsed = JSON.parse(e.newValue);
+                    setModelCustomizations(parsed && typeof parsed === 'object' ? parsed : {});
+                } catch {
+                    setModelCustomizations({});
+                }
             }
         };
         window.addEventListener('storage', handleStorageChange);

@@ -26,8 +26,9 @@ import { isCreditBasedModel, getModelCredits } from '../../services/model/modelP
 // [FIX] Robust Image Component that self-heals from Storage if data is missing
 const ReferenceThumbnail: React.FC<{
     image: { id: string, data?: string, mimeType?: string, storageId?: string };
-    onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
-}> = ({ image, onClick }) => {
+    onClick?: (e: React.MouseEvent<HTMLDivElement>, resolvedSrc: string) => void;
+    onRecovered?: (payload: { id: string; data: string; mimeType?: string; storageId?: string }) => void;
+}> = ({ image, onClick, onRecovered }) => {
     const [data, setData] = useState<string | undefined>(undefined);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
@@ -65,6 +66,12 @@ const ReferenceThumbnail: React.FC<{
                 if (active) {
                     if (cached) {
                         setData(cached);
+                        onRecovered?.({
+                            id: image.id,
+                            data: cached,
+                            mimeType: image.mimeType,
+                            storageId: image.storageId,
+                        });
                     } else if (image.data) {
                         // Fallback to original data if IDB has nothing
                         setData(image.data);
@@ -86,7 +93,7 @@ const ReferenceThumbnail: React.FC<{
             });
 
         return () => { active = false; };
-    }, [image.data, image.storageId]);
+    }, [image.data, image.storageId, image.id, image.mimeType, onRecovered]);
 
     if (error) {
         return (
@@ -113,7 +120,7 @@ const ReferenceThumbnail: React.FC<{
 
     return (
         <div
-            onClick={onClick}
+            onClick={(e) => onClick?.(e, src)}
             className="w-12 h-12 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all"
             title="点击放大查看"
         >
@@ -771,7 +778,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     // 🚀 [Note] 计费逻辑已移除，内置加速功能不再可用
     const estimatedCredits = 0;
 
-    // Auto-reset grounding if not supported
+    // Auto-reset grounding if not supported - REMOVED to allow preference persistence
+    /*
     useEffect(() => {
         if (config.enableGrounding && !groundingSupported) {
             setConfig(prev => ({ ...prev, enableGrounding: false }));
@@ -792,6 +800,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             setConfig(prev => ({ ...prev, thinkingMode: 'minimal' }));
         }
     }, [thinkingSupported, config.thinkingMode, setConfig]);
+    */
 
     // Auto-adjust ratio/size if current selection not available
     useEffect(() => {
@@ -2059,13 +2068,25 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             >
                                                 <ReferenceThumbnail
                                                     image={img}
-                                                    onClick={(e) => {
+                                                    onRecovered={(payload) => {
+                                                        setConfig(curr => ({
+                                                            ...curr,
+                                                            referenceImages: curr.referenceImages.map(ref =>
+                                                                ref.id === payload.id
+                                                                    ? {
+                                                                        ...ref,
+                                                                        data: payload.data,
+                                                                        mimeType: payload.mimeType || ref.mimeType,
+                                                                        storageId: payload.storageId || ref.storageId,
+                                                                    }
+                                                                    : ref
+                                                            )
+                                                        }));
+                                                    }}
+                                                    onClick={(e, resolvedSrc) => {
                                                         e.stopPropagation();
                                                         const rect = e.currentTarget.getBoundingClientRect();
-                                                        const src = (img.data?.startsWith('data:') || img.data?.startsWith('blob:'))
-                                                            ? img.data
-                                                            : `data:${img.mimeType || 'image/png'};base64,${img.data}`;
-                                                        setPreviewImage({ url: src, originRect: rect });
+                                                        setPreviewImage({ url: resolvedSrc, originRect: rect });
                                                     }}
                                                 />
                                                 {/* Mask Indicator - 当前已设置遮罩时显示高亮边框 */}
