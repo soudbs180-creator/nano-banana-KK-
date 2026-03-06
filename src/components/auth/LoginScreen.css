@@ -8,9 +8,32 @@
   overflow: hidden;
 }
 
+.auth-shader-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.auth-shader-background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 12% 16%, rgba(80, 190, 255, 0.16), transparent 42%),
+    radial-gradient(circle at 88% 84%, rgba(255, 180, 90, 0.16), transparent 44%),
+    linear-gradient(160deg, rgba(4, 12, 24, 0.58), rgba(2, 6, 14, 0.76));
+}
+
+.auth-shader-canvas {
+  width: 100%;
+  height: 100%;
+  opacity: 0.88;
+}
+
 .auth-background {
   position: absolute;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
 }
 

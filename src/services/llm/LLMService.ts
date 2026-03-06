@@ -336,7 +336,7 @@ export class LLMService {
                 if (tokensForStats === 0 || costForStats === 0) {
                     // Get estimate fallback using costService
                     try {
-                        const est = costService.calculateCost(options.modelId, sizeRaw as ImageSize, count, options.prompt.length, refCount);
+                        const est = costService.calculateCost(options.modelId, sizeRaw as ImageSize, count, options.prompt.length, refCount, keySlot.id);
                         if (tokensForStats === 0) tokensForStats = est.tokens;
                         if (costForStats === 0) costForStats = keySlot.creditCost !== undefined ? keySlot.creditCost : est.cost;
                     } catch (e) {

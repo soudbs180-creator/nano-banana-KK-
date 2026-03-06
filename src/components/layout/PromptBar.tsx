@@ -197,6 +197,10 @@ function normalizeColor(color: string | undefined, fallback: string): string {
     return trimmed;
 }
 
+function normalizeModelTextColor(textColor: string | undefined): string {
+    return textColor === 'black' ? '#111827' : '#ffffff';
+}
+
 // 🚀 [新增] 积分专属发送按钮组件
 interface CreditSendButtonProps {
     isCreditModel: boolean;
@@ -413,203 +417,6 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
 
     // [NEW] Flying Animation State
-    const [flyingImage, setFlyingImage] = useState < {
-        x: number;
-        y: number;
-        url: string;
-        targetX: number;
-```
-    // 🚀 [积分模型专属] 使用模型主题色的渐变样式 - 更精致的玻璃态效果
-    const getGradientStyle = () => {
-        if (!isCreditModel || isDisabled) return {};
-        const start = normalizeColor(colorStart, '#3B82F6');
-        const end = normalizeColor(colorEnd, '#2563EB');
-        return {
-            background: `linear-gradient(135deg, ${ start } 0 %, ${ end } 100 %)`,
-            boxShadow: `0 2px 8px 0 ${ start } 50, inset 0 1px 0 0 rgba(255, 255, 255, 0.2)`
-        };
-    };
-
-    // 🚀 [普通模型/禁用状态] 样式
-    const getDefaultStyle = () => {
-        if (isDisabled) {
-            return { className: 'bg-gray-100 dark:bg-zinc-800/50 cursor-not-allowed opacity-50' };
-        }
-        if (isInsufficient) {
-            return { className: 'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20' };
-        }
-
-        // 如果有自定义颜色，则使用自定义渐变，否则使用默认类
-        if (colorStart || colorEnd) {
-            const start = normalizeColor(colorStart, '#3B82F6');
-            const end = normalizeColor(colorEnd, '#2563EB');
-            return {
-                className: 'text-white shadow-md hover:shadow-lg transition-shadow',
-                style: {
-                    background: `linear - gradient(135deg, ${ start } 0 %, ${ end } 100 %)`,
-                    boxShadow: `0 2px 8px 0 ${ start } 40`
-                }
-            };
-        }
-        return { className: 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/30' };
-    };
-
-    // 🚀 [动画] 箭头从左到右的滑动动画关键帧
-    const arrowAnimStyle = `
-    @keyframes arrow - slide - right {
-        0 % { transform: translateX(-3px); opacity: 0.4; }
-        50 % { transform: translateX(2px); opacity: 1; }
-        100 % { transform: translateX(-3px); opacity: 0.4; }
-    }
-    `;
-
-    // 如果是积分模型且有提示词，使用胶囊渐变样式
-    if (isCreditModel && hasPrompt && !isInsufficient) {
-        return (
-            <>
-                <style>{arrowAnimStyle}</style>
-                <button
-                    onClick={onClick}
-                    className="group relative h-10 pl-3.5 pr-1 rounded-full flex items-center gap-2 ml-auto transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] hover:-translate-y-0.5"
-                    style={getGradientStyle()}
-                >
-                    {/* 积分消耗显示 */}
-                    <div className="flex items-center gap-1 text-white/95">
-                        <Sparkles size={14} className="animate-pulse" fill="currentColor" />
-                        <span className="text-sm font-bold tabular-nums">{creditCost}</span>
-                    </div>
-
-                    {/* 分隔线 */}
-                    <div className="w-px h-4 bg-white/25" />
-
-                    {/* 发送箭头按钮 - 内嵌圆形按钮 🚀 箭头朝右 + 滑动动画 */}
-                    <div className="w-7 h-7 rounded-full bg-white/25 flex items-center justify-center transition-all duration-200 group-hover:bg-white/35 group-hover:scale-105 backdrop-blur-sm overflow-hidden">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white transition-transform duration-300 group-hover:translate-x-0.5" style={{ animation: 'arrow-slide-right 1.5s ease-in-out infinite' }}>
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                            <polyline points="12 5 19 12 12 19" />
-                        </svg>
-                    </div>
-
-                    {/* 悬停提示 - 精确居中于整个按钮 */}
-                    <div className="absolute -top-10 left-0 right-0 flex justify-center pointer-events-none">
-                        <div className="px-3 py-1.5 bg-black/85 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap scale-95 group-hover:scale-100">
-                            消耗 {creditCost} 积分生成
-                            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-black/85 rotate-45" />
-                        </div>
-                    </div>
-                </button>
-            </>
-        );
-    }
-
-    // 🚀 [普通状态/禁用状态] 默认样式 - 用户 API 模型只显示"发送"
-    const defaultStyleProps = getDefaultStyle() as any;
-
-    return (
-        <>
-            <style>{arrowAnimStyle}</style>
-            <button
-                onClick={onClick}
-                disabled={isDisabled}
-                className={`
-                    group relative h - 10 px - 1 py - 1 rounded - full flex flex - row items - center whitespace - nowrap shrink - 0 ml - auto transition - all duration - 200
-                    ${ defaultStyleProps.className || '' }
-    `}
-                style={{ paddingRight: '4px', ...(defaultStyleProps.style || {}) }}
-            >
-                <div className="flex items-center gap-2 px-3">
-                    {isCreditModel && creditCost > 0 ? (
-                        <div className="flex items-center gap-1.5">
-                            <Sparkles size={14} fill="currentColor" className={isDisabled ? 'text-gray-400' : isInsufficient ? 'text-red-500' : 'text-white'} />
-                            <span className={`text - sm font - bold ${ isDisabled ? 'text-gray-400' : isInsufficient ? 'text-red-500' : 'text-white' } `}>
-                                {isInsufficient ? '积分不足' : creditCost}
-                            </span>
-                        </div>
-                    ) : (
-                        <span className={`text - sm font - bold ${ isDisabled ? 'text-gray-400' : isInsufficient ? 'text-red-500' : 'text-white' } `}>
-                            发送
-                        </span>
-                    )}
-                </div>
-
-                {/* 发送箭头 🚀 箭头朝右 + 动画 */}
-                <div className={`
-    w - 8 h - 8 rounded - full flex items - center justify - center transition - all duration - 300 overflow - hidden
-                    ${
-        isDisabled
-            ? 'bg-gray-300 dark:bg-zinc-700 text-gray-500'
-            : isInsufficient
-                ? 'bg-red-500 text-white'
-                : 'bg-white/20 text-white group-hover:scale-110'
-    }
-    `}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                        className="transition-transform duration-300 group-hover:translate-x-0.5"
-                        style={!isDisabled ? { animation: 'arrow-slide-right 1.5s ease-in-out infinite' } : undefined}
-                    >
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                        <polyline points="12 5 19 12 12 19" />
-                    </svg>
-                </div>
-            </button>
-        </>
-    );
-};
-
-interface PromptBarProps {
-    config: GenerationConfig;
-    setConfig: React.Dispatch<React.SetStateAction<GenerationConfig>>;
-    onGenerate: () => void;
-    isGenerating: boolean;
-    onFilesDrop?: (files: File[]) => void;
-    activeSourceImage?: { id: string; url: string; prompt: string } | null;
-    onClearSource?: () => void;
-    onCancel?: () => void;
-    isMobile?: boolean;
-    onOpenSettings?: (view?: 'api-management') => void;
-    onInteract?: () => void;
-    onFocus?: () => void;  // 输入框获取焦点时调用
-    onBlur?: () => void;   // 输入框失去焦点时调用
-    onOpenMore?: () => void; // [NEW] Mobile More Menu
-}
-
-const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings, onInteract, onFocus, onBlur, onOpenMore }) => {
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const [activeMenu, setActiveMenu] = useState<string | null>(null);
-    const [modelSearch, setModelSearch] = useState('');
-    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, modelId: string } | null>(null);
-
-    // [NEW] Model Settings Modal State
-    const [modelSettingsModal, setModelSettingsModal] = useState<{ modelId: string; alias: string; description: string } | null>(null);
-
-    // [NEW] Model Customizations (stored in localStorage)
-    const [modelCustomizations, setModelCustomizations] = useState<Record<string, { alias?: string; description?: string }>>(() => {
-        try {
-            const stored = localStorage.getItem('kk_model_customizations');
-            return stored ? JSON.parse(stored) : {};
-        } catch { return {}; }
-    });
-
-    // Save model customizations to localStorage
-    const saveModelCustomization = (modelId: string, alias: string, description: string) => {
-        const newCustomizations = {
-            ...modelCustomizations,
-            [modelId]: { alias: alias.trim() || undefined, description: description.trim() || undefined }
-        };
-        // Clean up empty entries
-        if (!newCustomizations[modelId].alias && !newCustomizations[modelId].description) {
-            delete newCustomizations[modelId];
-        }
-        setModelCustomizations(newCustomizations);
-        localStorage.setItem('kk_model_customizations', JSON.stringify(newCustomizations));
-    };
-
-    // [NEW] Drag-to-Reorder State
-    const [dragSourceId, setDragSourceId] = useState<string | null>(null);
-    const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
-
-    // [NEW] Flying Animation State
     const [flyingImage, setFlyingImage] = useState<{
         x: number;
         y: number;
@@ -621,7 +428,6 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     // [NEW] 参考图放大状态
     const [previewImage, setPreviewImage] = useState<{ url: string; originRect: DOMRect } | null>(null);
     const [inpaintImage, setInpaintImage] = useState<{ url: string } | null>(null); // [NEW] 局部重绘所需图像
-    const lastGenerateTime = useRef<number>(0);
 
     const refContainerRef = useRef<HTMLDivElement>(null);
     const optionsPanelRef = useRef<HTMLDivElement>(null); // [NEW] Ref for options panel
@@ -808,7 +614,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 // 🚀 [Debug] 打印积分模型的颜色
                 const creditModels = newModels.filter((m: any) => m.isSystemInternal);
                 creditModels.forEach((m: any) => {
-                    console.log(`[PromptBar] Credit model: ${ m.id }, color: ${ m.colorStart } -> ${ m.colorEnd } `);
+                    console.log(`[PromptBar] Credit model: ${m.id}, color: ${m.colorStart} -> ${m.colorEnd}`);
                 });
                 setGlobalModels(newModels);
             } catch (err) {
@@ -864,7 +670,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 description: m.description,
                 creditCost: m.creditCost,
                 colorStart: m.colorStart,
-                colorEnd: m.colorEnd
+                colorEnd: m.colorEnd,
+                colorSecondary: m.colorSecondary,
+                textColor: m.textColor
             } as ActiveModel;
         });
 
@@ -1008,7 +816,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         // 如果当前模型 ID 在列表中找不到，尝试加上 @system 查找
         const existsAsIs = availableModels.some(m => m.id === currentModelId);
         if (!existsAsIs) {
-            const systemId = `${ currentModelId } @system`;
+            const systemId = `${currentModelId}@system`;
             const existsWithSystem = availableModels.some(m => m.id === systemId);
             if (existsWithSystem) {
                 setConfig(prev => ({ ...prev, model: systemId }));
@@ -1023,7 +831,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         const lineHeight = 22.5; // 1.5 * 15px (text-[15px] with line-height: 1.5)
         const maxHeight = lineHeight * 6; // 6 lines max
         const newHeight = Math.max(36, Math.min(e.target.scrollHeight, maxHeight));
-        e.target.style.height = `${ newHeight } px`;
+        e.target.style.height = `${newHeight}px`;
     }, [setConfig]);
 
     // Auto-resize height when prompt changes (handles paste, select, clear)
@@ -1035,7 +843,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             if (config.prompt) {
                 // detailed check: if it has content, expand up to max
                 const newHeight = Math.max(36, Math.min(textareaRef.current.scrollHeight, 200));
-                textareaRef.current.style.height = `${ newHeight } px`;
+                textareaRef.current.style.height = `${newHeight}px`;
             } else {
                 // empty content - shrink to 1 row
                 textareaRef.current.style.height = '36px';
@@ -1049,7 +857,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         const maxRefImages = modelCaps?.maxRefImages ?? 5; // 默认 5 张，Gemini 3 Pro 支持 10 张
 
         if (config.referenceImages.length >= maxRefImages) {
-            notify.warning('参考图数量限制', `最多只能上传 ${ maxRefImages } 张参考图`);
+            notify.warning('参考图数量限制', `最多只能上传 ${maxRefImages} 张参考图`);
             return;
         }
 
@@ -1063,7 +871,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         });
 
         if (fileArray.length > remainingSlots) {
-            notify.info('参考图已调整', `最多只能上传 ${ maxRefImages } 张参考图，已自动忽略 ${ fileArray.length - remainingSlots } 张`);
+            notify.info('参考图已调整', `最多只能上传 ${maxRefImages} 张参考图，已自动忽略 ${fileArray.length - remainingSlots} 张`);
         }
 
         const filesToProcess = fileArray.slice(0, remainingSlots);
@@ -1086,7 +894,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                             // 🚀 [FIX] 立即保存到 IndexedDB（使用正确格式）
                             // 🚀 [关键修复] 必须await等待保存完成，否则刷新时可能丢失
-                            const fullDataUrl = `data:${ mimeType }; base64, ${ data } `;
+                            const fullDataUrl = `data:${mimeType};base64,${data}`;
                             try {
                                 await saveImage(storageId, fullDataUrl);
                             } catch (err) {
@@ -1246,7 +1054,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const applyPromptTemplate = useCallback((templatePrompt: string) => {
         const current = (config.prompt || '').trim();
         const nextPrompt = current
-            ? `${ config.prompt.replace(/\s+$/, '') } \n${ templatePrompt } `
+            ? `${config.prompt.replace(/\s+$/, '')}\n${templatePrompt}`
             : templatePrompt;
         setConfig(prev => ({ ...prev, prompt: nextPrompt }));
         setShowPromptLibrary(false);
@@ -1266,9 +1074,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         const total = Math.min(20, Math.max(1, Number(config.parallelCount) || 1));
         const pages = Array.from({ length: total }).map((_, idx) => {
             const pageNo = idx + 1;
-            if (pageNo === 1) return `封面：${ topic } `;
-            if (pageNo === total) return `总结与行动建议：${ topic } `;
-            return `${ topic } - 第${ pageNo } 页核心内容`;
+            if (pageNo === 1) return `封面：${topic}`;
+            if (pageNo === total) return `总结与行动建议：${topic}`;
+            return `${topic} - 第${pageNo}页核心内容`;
         });
         setPptOutlineDraft(pages.join('\n'));
     }, [config.parallelCount, config.prompt]);
@@ -1281,7 +1089,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             pptSlides: slides,
             parallelCount: nextCount
         }));
-        notify.success('PPT页纲已应用', `已设置 ${ nextCount } 页，生成时将按图1~图${ nextCount } 输出`);
+        notify.success('PPT页纲已应用', `已设置 ${nextCount} 页，生成时将按图1~图${nextCount}输出`);
     }, [config.parallelCount, parsePptSlides, pptOutlineDraft, setConfig]);
 
     const exportPptOutlineJson = useCallback(() => {
@@ -1296,7 +1104,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `ppt - outline - ${ Date.now() }.json`;
+        a.download = `ppt-outline-${Date.now()}.json`;
         a.click();
         URL.revokeObjectURL(url);
     }, [config.prompt, parsePptSlides, pptOutlineDraft]);
@@ -1322,7 +1130,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         const slides = parsePptSlides(pptOutlineDraft);
         if (slides.length >= 20) return;
         const next = [...slides];
-        next.splice(index + 1, 0, `新页面 ${ Math.min(20, index + 2) } `);
+        next.splice(index + 1, 0, `新页面 ${Math.min(20, index + 2)}`);
         setPptOutlineDraft(next.slice(0, 20).join('\n'));
     }, [parsePptSlides, pptOutlineDraft]);
 
@@ -1331,12 +1139,12 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         if (slides.length >= 20) return;
         const topic = (config.prompt || '').trim() || '主题演示';
         const text = template === 'cover'
-            ? `封面：${ topic } `
+            ? `封面：${topic}`
             : template === 'agenda'
-                ? `目录页：${ topic } 核心议题与章节安排`
+                ? `目录页：${topic} 核心议题与章节安排`
                 : template === 'section'
-                    ? `章节过渡页：${ topic } - 阶段重点`
-                    : `总结页：${ topic } 结论与下一步行动`;
+                    ? `章节过渡页：${topic} - 阶段重点`
+                    : `总结页：${topic} 结论与下一步行动`;
         setPptOutlineDraft([...slides, text].join('\n'));
     }, [config.prompt, parsePptSlides, pptOutlineDraft]);
 
@@ -1501,7 +1309,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         const maxRefImages = modelCaps?.maxRefImages ?? 5;
 
                         if (prev.referenceImages.length >= maxRefImages) {
-                            notify.warning('参考图数量限制', `最多只能上传 ${ maxRefImages } 张参考图`);
+                            notify.warning('参考图数量限制', `最多只能上传 ${maxRefImages} 张参考图`);
                             return prev;
                         }
 
@@ -1689,8 +1497,6 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         // Desktop floating style handling...
     };
 
-    const mobileFloatingPanelBottom = 'calc(env(safe-area-inset-bottom, 0px) + var(--mobile-tabbar-height, 72px) + var(--mobile-tabbar-floating-offset, 12px) + var(--mobile-prompt-gap, 12px) + 92px)';
-
     // Swipe Detection State
     const wrapperTouchStartY = useRef<number | null>(null);
 
@@ -1720,7 +1526,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         <>
             <div
                 id="prompt-bar-container"
-                className={`input - bar ${ isMobile ? 'ios-mobile-prompt' : '' } transition - all duration - 300!overflow - visible w - [calc(100vw - 32px)] sm: w - [min(95vw, 960px)] md: w - [min(93vw, 1080px)] lg: w - [min(92vw, 1200px)] ${ isDragging ? 'ring-2 ring-indigo-500' : '' } `}
+                className={`input-bar ${isMobile ? 'ios-mobile-prompt' : ''} transition-all duration-300 !overflow-visible w-[calc(100vw-32px)] sm:w-[min(95vw,960px)] md:w-[min(93vw,1080px)] lg:w-[min(92vw,1200px)] ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
                 onDragEnter={handleDragEnter}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -1741,19 +1547,19 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         style={{
                             left: 0,
                             top: 0,
-                            backgroundImage: `url(${ flyingImage.url })`,
+                            backgroundImage: `url(${flyingImage.url})`,
                             backgroundSize: 'cover',
-                            transform: `translate(${ flyingImage.targetX }px, ${ flyingImage.targetY }px) scale(1)`,
-                            animation: `flyToTarget 0.6s cubic - bezier(0.22, 1, 0.36, 1) forwards`,
+                            transform: `translate(${flyingImage.targetX}px, ${flyingImage.targetY}px) scale(1)`,
+                            animation: `flyToTarget 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards`,
                         }}
                     >
                         <style>{`
-    @keyframes flyToTarget {
-        0 % { transform: translate(${ flyingImage.x }px, ${ flyingImage.y }px) scale(1); opacity: 0.8; }
-        50 % { opacity: 1; scale: 1.2; }
-        100 % { transform: translate(${ flyingImage.targetX }px, ${ flyingImage.targetY }px) scale(1); opacity: 0; }
-    }
-    `}</style>
+@keyframes flyToTarget {
+    0% { transform: translate(${flyingImage.x}px, ${flyingImage.y}px) scale(1); opacity: 0.8; }
+    50% { opacity: 1; scale: 1.2; }
+    100% { transform: translate(${flyingImage.targetX}px, ${flyingImage.targetY}px) scale(1); opacity: 0; }
+}
+`}</style>
                     </div>
                 )}
 
@@ -1794,28 +1600,26 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     )}
 
                     {/* Top Controls Row: Mode toggle on left, prompt optimizer on right */}
-                    <div className={`mb - 2 gap - 2 ${ isMobile ? 'flex items-center' : 'flex items-center justify-between' } `}>
-                        {!isMobile && (
+                    <div className="flex items-center justify-between mb-2 gap-2">
                         <div className="flex items-center gap-2">
 
 
                             {(() => {
-                                const MODE_SLOT_WIDTH = isMobile ? 64 : 82;
-                                const sliderWidth = isMobile ? 56 : 74;
+                                const MODE_SLOT_WIDTH = 82;
+                                const sliderWidth = 74;
                                 const sliderLeft = 4 + activeModeIndex * MODE_SLOT_WIDTH + (MODE_SLOT_WIDTH - sliderWidth) / 2;
                                 return (
                                     <div className="relative inline-flex items-center p-1 rounded-xl border"
                                         style={{
                                             backgroundColor: 'var(--bg-tertiary)',
-                                            borderColor: 'var(--border-light)',
-                                            minWidth: isMobile ? `${ 4 * MODE_SLOT_WIDTH + 8 } px` : undefined
+                                            borderColor: 'var(--border-light)'
                                         }}
                                     >
                                         <div
                                             className="absolute top-1 h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
                                             style={{
-                                                width: `${ sliderWidth } px`,
-                                                left: `${ sliderLeft } px`,
+                                                width: `${sliderWidth}px`,
+                                                left: `${sliderLeft}px`,
                                                 backgroundColor: modeOptions[activeModeIndex]?.activeBg || 'rgba(99,102,241,0.16)',
                                                 boxShadow: '0 0 10px rgba(0,0,0,0.18) inset'
                                             }}
@@ -1823,10 +1627,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                         {[1, 2, 3].map((splitIndex) => (
                                             <span
-                                                key={`split - ${ splitIndex } `}
+                                                key={`split-${splitIndex}`}
                                                 className="absolute inset-y-0 my-auto w-px h-[50%] pointer-events-none"
                                                 style={{
-                                                    left: `${ 4 + splitIndex * MODE_SLOT_WIDTH } px`,
+                                                    left: `${4 + splitIndex * MODE_SLOT_WIDTH}px`,
                                                     backgroundColor: 'rgba(255,255,255,0.08)'
                                                 }}
                                             />
@@ -1838,13 +1642,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             return (
                                                 <div key={item.mode} className="relative z-10">
                                                     <button
-                                                        className={`${ isMobile ? 'w-[64px] text-xs' : 'w-[82px] text-sm' } px - 2 py - 1 rounded - md font - medium transition - all duration - 200`}
+                                                        className="w-[82px] px-2 py-1 rounded-md text-sm font-medium transition-all duration-200"
                                                         style={{
                                                             color: isActive ? item.color : 'var(--text-secondary)'
                                                         }}
                                                         onClick={item.onSelect}
                                                     >
-                                                        <span className={`inline - flex items - center ${ isMobile ? 'gap-0.5' : 'gap-1' } `}>
+                                                        <span className="inline-flex items-center gap-1">
                                                             <Icon size={12} />
                                                             <span>{item.label}</span>
                                                         </span>
@@ -1856,9 +1660,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 );
                             })()}
                         </div>
-                        )}
 
-                        <div className={`relative flex items - center gap - 1 ${ isMobile ? 'w-full overflow-x-auto scrollbar-hide pb-0.5' : '' } `}>
+                        <div className="relative flex items-center gap-1">
                             <button
                                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0"
                                 style={{
@@ -1898,11 +1701,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             )}
 
                             <button
-                                className={`flex items - center justify - center gap - 1.5 px - 2.5 py - 1.5 rounded - lg border transition - all text - [11px] font - medium whitespace - nowrap flex - shrink - 0 ${
-        config.enablePromptOptimization
-        ? 'bg-green-500/15 text-green-500 border-green-500/30'
-        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-[var(--border-medium)]'
-    } `}
+                                className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0 ${config.enablePromptOptimization
+                                    ? 'bg-green-500/15 text-green-500 border-green-500/30'
+                                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-[var(--border-medium)]'
+                                    }`}
                                 style={{
                                     opacity: (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? 1 : 0.45,
                                     pointerEvents: (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? 'auto' : 'none'
@@ -1910,38 +1712,27 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 onClick={() => setConfig(prev => ({ ...prev, enablePromptOptimization: !prev.enablePromptOptimization }))}
                                 title={(config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? '开启后先优化提示词，再发送生成' : '仅图片/PPT模式支持提示词优化'}
                             >
-                                <Wand2 className={`w - 3 h - 3 ${ config.enablePromptOptimization ? 'animate-pulse' : '' } `} />
+                                <Wand2 className={`w-3 h-3 ${config.enablePromptOptimization ? 'animate-pulse' : ''}`} />
                                 <span className="font-bold">优化提示词</span>
                             </button>
 
                             {showPromptLibrary && (
-                                <div
-                                    className={`${ isMobile ? 'fixed z-[988]' : 'absolute bottom-full right-0 mb-2 z-40' } w - [min(34rem, 90vw)] rounded - 2xl border shadow - xl p - 2`}
-                                    style={isMobile ? {
-                                        left: '50%',
-                                        transform: 'translateX(-50%)',
-                                        bottom: mobileFloatingPanelBottom,
-                                        backgroundColor: 'var(--bg-secondary)',
-                                        borderColor: 'var(--border-medium)',
-                                        width: 'min(34rem, calc(100vw - 24px))',
-                                        maxWidth: 'calc(100vw - 24px)'
-                                    } : { backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }}
-                                >
+                                <div className="absolute bottom-full right-0 mb-2 z-40 w-[min(34rem,90vw)] rounded-2xl border shadow-xl p-2" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }}>
                                     <div className="flex items-center gap-1 mb-2">
                                         <button
-                                            className={`px - 2 py - 1 rounded - md text - [11px] border ${ promptLibraryCategory === 'all' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]' } `}
+                                            className={`px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === 'all' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]'}`}
                                             onClick={() => setPromptLibraryCategory('all')}
                                         >全部</button>
                                         <button
-                                            className={`px - 2 py - 1 rounded - md text - [11px] border ${ promptLibraryCategory === 'banana-pro' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]' } `}
+                                            className={`px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === 'banana-pro' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]'}`}
                                             onClick={() => setPromptLibraryCategory('banana-pro')}
                                         >Banana Pro</button>
                                         <button
-                                            className={`px - 2 py - 1 rounded - md text - [11px] border ${ promptLibraryCategory === 'banana' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]' } `}
+                                            className={`px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === 'banana' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]'}`}
                                             onClick={() => setPromptLibraryCategory('banana')}
                                         >Banana</button>
                                         <button
-                                            className={`px - 2 py - 1 rounded - md text - [11px] border ${ promptLibraryCategory === 'general' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]' } `}
+                                            className={`px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === 'general' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]'}`}
                                             onClick={() => setPromptLibraryCategory('general')}
                                         >通用</button>
                                         <input
@@ -1997,25 +1788,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             )}
 
                             {showPptOutlinePanel && config.mode === GenerationMode.PPT && (
-                                <div
-                                    className={`${ isMobile ? 'fixed z-[988]' : 'absolute bottom-full right-0 mb-2 z-40' } w - [min(38rem, 92vw)] rounded - 2xl border shadow - xl p - 2`}
-                                    style={isMobile ? {
-                                        left: '50%',
-                                        transform: 'translateX(-50%)',
-                                        bottom: mobileFloatingPanelBottom,
-                                        backgroundColor: 'var(--bg-secondary)',
-                                        borderColor: 'var(--border-medium)',
-                                        width: 'min(38rem, calc(100vw - 24px))',
-                                        maxWidth: 'calc(100vw - 24px)'
-                                    } : { backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }}
-                                >
+                                <div className="absolute bottom-full right-0 mb-2 z-40 w-[min(38rem,92vw)] rounded-2xl border shadow-xl p-2" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }}>
                                     <div className="flex items-center justify-between gap-2 mb-2">
                                         <div className="text-xs font-semibold text-[var(--text-primary)]">PPT页纲（每行一页）</div>
                                         <div className="text-[10px] text-[var(--text-tertiary)]">{Math.min(20, parsePptSlides(pptOutlineDraft).length)} / 20 页，生成结果按图1~图N命名</div>
                                     </div>
                                     <div className="flex items-center gap-2 mb-2">
                                         <button
-                                            className={`px - 2 py - 1 rounded - md text - [11px] border ${ config.pptStyleLocked !== false ? 'border-sky-500/40 bg-sky-500/10 text-sky-300' : 'border-[var(--border-light)] text-[var(--text-secondary)]' } `}
+                                            className={`px-2 py-1 rounded-md text-[11px] border ${config.pptStyleLocked !== false ? 'border-sky-500/40 bg-sky-500/10 text-sky-300' : 'border-[var(--border-light)] text-[var(--text-secondary)]'}`}
                                             onClick={() => setConfig(prev => ({ ...prev, pptStyleLocked: !(prev.pptStyleLocked !== false) }))}
                                             title="锁定整套PPT视觉风格一致性"
                                         >
@@ -2040,7 +1820,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                         <div className="mt-2 max-h-36 overflow-y-auto space-y-1 pr-1">
                                             {parsePptSlides(pptOutlineDraft).map((line, idx) => (
                                                 <div
-                                                    key={`${ idx } -${ line } `}
+                                                    key={`${idx}-${line}`}
                                                     className="relative flex items-center gap-1 rounded-md border px-2 py-1"
                                                     style={{
                                                         borderColor: (pptDropIndex === idx && pptDragIndex !== null && pptDragIndex !== idx)
@@ -2254,14 +2034,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             {/* Spacer */}
                                             <div
                                                 id="spacer"
-                                                className={`transition - all duration - 300 ease - [cubic - bezier(0.25, 1, 0.5, 1)] rounded - lg overflow - hidden ${ showSpacer ? 'w-12 opacity-100 mr-2' : 'w-0 opacity-0 mr-0' } `}
+                                                className={`transition-all duration-300 ease-[cubic-bezier(0.25, 1, 0.5, 1)] rounded-lg overflow-hidden ${showSpacer ? 'w-12 opacity-100 mr-2' : 'w-0 opacity-0 mr-0'}`}
                                                 style={{ height: showSpacer ? '48px' : '0px' }}
                                             >
                                                 <div className="w-12 h-12 rounded-lg border-2 border-dashed border-indigo-500/30 bg-indigo-500/5"></div>
                                             </div>
 
                                             <div
-                                                className={`relative group cursor - move transition - all duration - 300 ${ isSource ? 'opacity-0 w-0 overflow-hidden m-0 p-0 scale-0' : 'hover:scale-105' } ${ !isSource ? 'w-12' : '' } `}
+                                                className={`relative group cursor-move transition-all duration-300 ${isSource ? 'opacity-0 w-0 overflow-hidden m-0 p-0 scale-0' : 'hover:scale-105'} ${!isSource ? 'w-12' : ''}`}
                                                 draggable
                                                 onDragStart={(e) => {
                                                     e.stopPropagation();
@@ -2281,7 +2061,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                         const rect = e.currentTarget.getBoundingClientRect();
                                                         const src = (img.data?.startsWith('data:') || img.data?.startsWith('blob:'))
                                                             ? img.data
-                                                            : `data:${ img.mimeType || 'image/png' }; base64, ${ img.data } `;
+                                                            : `data:${img.mimeType || 'image/png'};base64,${img.data}`;
                                                         setPreviewImage({ url: src, originRect: rect });
                                                     }}
                                                 />
@@ -2309,7 +2089,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                 {/* [NEW] Uploading Skeletons */}
                                 {Array.from({ length: uploadingCount }).map((_, idx) => (
-                                    <div key={`uploading - ${ idx } `} className="relative w-12 h-12 rounded-lg border-2 border-dashed border-gray-400/30 dark:border-zinc-500/30 flex items-center justify-center bg-gray-100/50 dark:bg-zinc-800/50 overflow-hidden flex-shrink-0 animate-pulse">
+                                    <div key={`uploading-${idx}`} className="relative w-12 h-12 rounded-lg border-2 border-dashed border-gray-400/30 dark:border-zinc-500/30 flex items-center justify-center bg-gray-100/50 dark:bg-zinc-800/50 overflow-hidden flex-shrink-0 animate-pulse">
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin text-gray-500 dark:text-zinc-400">
                                             <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                                         </svg>
@@ -2318,7 +2098,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                 <div
                                     id="spacer"
-                                    className={`transition - all duration - 300 ease - [cubic - bezier(0.25, 1, 0.5, 1)] rounded - lg overflow - hidden ${ dropTargetIndex === config.referenceImages.length ? 'w-12 opacity-100 h-12' : 'w-0 opacity-0 h-0' } `}
+                                    className={`transition-all duration-300 ease-[cubic-bezier(0.25, 1, 0.5, 1)] rounded-lg overflow-hidden ${dropTargetIndex === config.referenceImages.length ? 'w-12 opacity-100 h-12' : 'w-0 opacity-0 h-0'}`}
                                 >
                                     <div className="w-12 h-12 rounded-lg border-2 border-dashed border-indigo-500/30 bg-indigo-500/5"></div>
                                 </div>
@@ -2397,16 +2177,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             <div className="relative inline-flex flex-shrink-0 min-w-0">
                                 <button
                                     id="models-dropdown-trigger"
-                                    className={`input - bar - model flex items - center flex - nowrap justify - center gap - 1.5 md: gap - 2 px - 2 md: px - 3 h - 10 rounded - lg border transition - all duration - 300 min - w - 0 ${
-        isModelListEmpty
-            ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] cursor-not-allowed border-[var(--border-light)]'
-            : (currentModel?.colorStart && currentModel?.colorEnd)
-                ? 'border-white/20 !opacity-100 shadow-sm'
-                : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-opacity-50'
-    } `}
+                                    className={`input-bar-model flex items-center flex-nowrap justify-center gap-1.5 md:gap-2 px-2 md:px-3 h-10 rounded-lg border transition-all duration-300 min-w-0 ${isModelListEmpty
+                                        ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] cursor-not-allowed border-[var(--border-light)]'
+                                        : (currentModel?.colorStart && currentModel?.colorEnd)
+                                            ? 'border-white/20 !opacity-100 shadow-sm'
+                                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-opacity-50'
+                                        }`}
                                     style={(!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? {
-                                        background: `linear - gradient(180deg, ${ normalizeColor(currentModel.colorStart, '#3B82F6')
-} 0 %, ${ normalizeColor(currentModel.colorEnd, '#2563EB') } 100 %)`,
+                                        background: `linear-gradient(180deg, ${normalizeColor(currentModel.colorStart, '#3B82F6')} 0%, ${normalizeColor(currentModel.colorEnd, '#2563EB')} 100%)`,
                                         border: 'none'
                                     } : {}}
                                     onMouseDown={(e) => e.stopPropagation()} // 🚀 阻止 mousedown 冒泡，防止被 handleClickOutside 误杀
@@ -2422,7 +2200,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     {(() => {
                                         const badgeInfo = getModelBadgeInfo({ id: currentModel?.id ?? '', label: currentModel?.label ?? '', provider: currentModel?.provider });
                                         return (
-                                            <span className={`text - sm font - bold truncate flex items - center gap - 1 min - w - 0 ${ (!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? 'text-white' : badgeInfo.colorClass } `} title={currentModelName}>
+                                            <span className={`text-sm font-bold truncate flex items-center gap-1 min-w-0 ${(!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? 'text-white' : badgeInfo.colorClass}`} title={currentModelName}>
                                                 {currentModelName}
                                             </span>
                                         );
@@ -2442,7 +2220,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                         ) : currentModel?.provider ? (
                                             // 用户API模型：显示Provider标签
                                             <span
-                                                className={`text - [9px] px - 1.5 py - 0.5 rounded border flex - shrink - 0 ${ getProviderBadgeColor(currentModel.provider) } `}
+                                                className={`text-[9px] px-1.5 py-0.5 rounded border flex-shrink-0 ${getProviderBadgeColor(currentModel.provider)}`}
                                                 style={{ marginLeft: '6px' }}
                                                 title={currentModel.provider}
                                             >
@@ -2454,17 +2232,573 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                 {/* Dropdown Menu */}
                                 {!isModelListEmpty && activeMenu === 'model' && (
+                                    <div ref={modelDropdownRef} className="absolute bottom-full mb-3 z-50 animate-scaleIn origin-bottom" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                        {/* 🔍 Search Input Module - Above the list - 只在多个模型时显示 */}
+                                        {sortedAvailableModels.length > 1 && (
+                                            <div className="mb-2 p-2.5 bg-[var(--bg-secondary)] border border-[var(--border-medium)] rounded-2xl shadow-xl animate-scaleIn origin-bottom" style={{ width: 'min(22rem,90vw)' }}>
+                                                <div className="relative flex items-center">
+                                                    <svg className="absolute left-2 w-3.5 h-3.5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                    </svg>
+                                                    <input
+                                                        type="text"
+                                                        value={modelSearch}
+                                                        onChange={(e) => setModelSearch(e.target.value)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        placeholder="搜索模型..."
+                                                        className="w-full bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-xs rounded-xl py-1.5 pl-7 pr-2 outline-none border border-transparent focus:border-indigo-500/50 placeholder-[var(--text-tertiary)]"
+                                                        autoFocus
+                                                    />
+                                                    {modelSearch && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setModelSearch(''); }}
+                                                            className="absolute right-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                                                        >
+                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                            </svg>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div
+                                            ref={modelListScrollRef}
+                                            className="dropdown static w-[min(22rem,90vw)] max-w-[90vw] max-h-[50vh] overflow-y-auto scrollbar-thin animate-scaleIn origin-bottom p-4 flex flex-col gap-2"
+                                            style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)', borderRadius: '1rem' }}
+                                            onScroll={(e) => {
+                                                // 保存滚动位置
+                                                modelListScrollPos.current = e.currentTarget.scrollTop;
+                                            }}
+                                        >
+                                            {(() => {
+                                                const rawModels = filterAndSortModels(availableModels, modelSearch, modelCustomizations);
+                                                // 🚀 [修正] 使用复合键 (ID + Provider) 去重，确保积分模型和第三方模型能共存
+                                                let uniqueModels = Array.from(new Map(rawModels.map(m => [`${m.id}-${m.provider || ''}`, m])).values());
+
+                                                const getIsExclusive = (m: any) => {
+                                                    // 🚀 [Style Isolation] 严格判断：必须是系统内置模型
+                                                    // 用户添加的第三方API即使模型ID相同，也不应该使用胶囊样式
+                                                    return !!m.isSystemInternal;
+                                                };
+
+                                                uniqueModels.sort((a, b) => {
+                                                    const aExclusive = getIsExclusive(a);
+                                                    const bExclusive = getIsExclusive(b);
+                                                    if (aExclusive && !bExclusive) return -1;
+                                                    if (!aExclusive && bExclusive) return 1;
+
+                                                    const pinnedModels = getPinnedModels();
+                                                    const aPinned = pinnedModels.includes(a.id);
+                                                    const bPinned = pinnedModels.includes(b.id);
+                                                    if (aPinned && !bPinned) return -1;
+                                                    if (!aPinned && bPinned) return 1;
+
+                                                    return 0; // 同层级保持原始排序
+                                                });
+
+                                                return uniqueModels.map((model: any, index: number) => {
+                                                    const isLast = index === uniqueModels.length - 1;
+                                                    const lowerId = model.id.toLowerCase();
+                                                    const custom = modelCustomizations[model.id] || {};
+                                                    const baseName = custom.alias || (model.label || model.id);
+
+                                                    // 🚀 [修正] 增强 Exclusive 判定逻辑
+                                                    const isExclusive = getIsExclusive(model);
+
+                                                    // 🚀 [新增] 区分标识：系统积分模型 vs 用户API模型
+                                                    const isSystemCreditModel = isExclusive;
+                                                    const isUserApiModel = !isExclusive && (model.provider === 'Google' || model.provider === 'Custom' || model.provider === 'OpenAI');
+
+
+                                                    const getFallbackDescription = (m: any) => {
+                                                        if (m.provider) return `由 ${m.provider} 通道提供的可用模型`;
+                                                        if (m.group) return `隶属于 ${m.group} 分组的引擎模型`;
+                                                        return '外部集成的第三方语言模型';
+                                                    };
+                                                    const advantage = custom.description || model.description || getFallbackDescription(model);
+                                                    const isPinned = getPinnedModels().includes(model.id);
+
+                                                    const isActive = config.model === model.id;
+                                                    // 🚀 [Fix] 使用统一的 normalizeColor 函数处理颜色
+                                                    const colorStart = normalizeColor(model.colorStart, '#60a5fa');
+                                                    const colorEnd = normalizeColor(model.colorEnd, '#2563eb');
+
+                                                    // 🚀 [Fix] 积分模型：选中或悬停时显示彩色渐变，否则使用灰色调
+                                                    const isModelActive = config.model === model.id;
+
+                                                    // 默认使用的统一灰色渐变底板
+                                                    const inactiveGradientStyle = {
+                                                        background: `linear-gradient(180deg, rgba(75, 85, 99, 0.4) 0%, rgba(55, 65, 81, 0.4) 100%)`,
+                                                    };
+
+                                                    // 悬停/激活时才展示的彩色底板
+                                                    const activeGradientStyle = {
+                                                        background: `linear-gradient(180deg, ${colorStart} 0%, ${colorEnd} 100%)`,
+                                                    };
+
+                                                    return (
+                                                        <button
+                                                            key={model.id}
+                                                            className={`group w-full transition-all duration-300 mx-auto cursor-pointer
+                                                            ${isExclusive
+                                                                    ? `h-14 px-5 flex items-center justify-between rounded-full flex-shrink-0 text-white shadow-md active:scale-[0.98] ${isLast ? '' : 'mb-3'} ${isModelActive ? 'ring-2 ring-white/50 shadow-lg scale-[1.02]' : 'hover:scale-[1.02] hover:shadow-lg opacity-80 hover:opacity-100 grayscale-[0.8] hover:grayscale-0'}`
+                                                                    : `px-3 py-2.5 text-left flex flex-col gap-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-all border-2 ${isModelActive ? 'bg-blue-50 dark:bg-white/10 ring-2 ring-blue-500 dark:ring-white/40 border-blue-500 dark:border-white/20 shadow-md' : 'border-transparent opacity-80 hover:opacity-100 grayscale-[0.8] hover:grayscale-0'}`}
+                                                            `}
+                                                            style={isExclusive ? (isModelActive ? activeGradientStyle : inactiveGradientStyle) : undefined}
+                                                            onMouseEnter={(e) => {
+                                                                if (isExclusive && !isModelActive) {
+                                                                    e.currentTarget.style.background = activeGradientStyle.background;
+                                                                }
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                if (isExclusive && !isModelActive) {
+                                                                    e.currentTarget.style.background = inactiveGradientStyle.background;
+                                                                }
+                                                            }}
+                                                            onClick={() => {
+                                                                setModelManualLock(true); // 🚀 用户手动点击，开启锁定
+                                                                setConfig(prev => {
+                                                                    // 🚀 [Fix] 智能参数保持：获取新模型支持的参数
+                                                                    const newModelCaps = getModelCapabilities(model.id);
+                                                                    const supportedSizes = newModelCaps?.supportedSizes?.length ? newModelCaps.supportedSizes : Object.values(ImageSize);
+                                                                    const supportedRatios = newModelCaps?.supportedRatios?.length ? newModelCaps.supportedRatios : Object.values(AspectRatio);
+
+                                                                    // 检查当前参数是否被新模型支持，支持则保持，不支持则回退到默认值
+                                                                    const newImageSize = supportedSizes.includes(prev.imageSize) ? prev.imageSize : getDefaultImageSizeForModel(model.id);
+                                                                    const newAspectRatio = supportedRatios.includes(prev.aspectRatio) ? prev.aspectRatio : getDefaultAspectForModel(model.id);
+
+                                                                    return { ...prev, model: model.id, imageSize: newImageSize, aspectRatio: newAspectRatio };
+                                                                });
+                                                                setActiveMenu(null);
+                                                                setModelSearch(''); // Clear search on selection
+                                                            }}
+                                                            onContextMenu={(e) => {
+                                                                if (isExclusive) {
+                                                                    e.preventDefault();
+                                                                    return; // Disallow context menu for exclusive models
+                                                                }
+                                                                e.preventDefault();
+                                                                setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
+                                                            }}
+                                                        >
+                                                            {(() => {
+                                                                const displayInfo = getModelDisplayInfo(model);
+                                                                const badgeInfo = getModelBadgeInfo({ id: model.id, label: model.label, provider: model.provider });
+                                                                const displayName = displayInfo.displayName;
+
+                                                                if (isExclusive) {
+                                                                    // 🚀 [Fix] 积分模型：胶囊样式，图标+名称左对齐，积分标识右对齐
+                                                                    return (
+                                                                        <div className="flex items-center justify-between w-full h-full">
+                                                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                                                <div className="flex-shrink-0 flex items-center justify-center w-6 h-6">
+                                                                                    <ModelLogo
+                                                                                        modelId={model.id}
+                                                                                        provider={model.provider}
+                                                                                        size={20}
+                                                                                        active={isActive}
+                                                                                    />
+                                                                                </div>
+                                                                                <span className="text-sm font-semibold truncate text-white text-left">
+                                                                                    {displayName}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                                                                                <span className="text-xs px-2.5 py-1 rounded-full bg-white/25 text-white border border-white/30 font-semibold flex items-center gap-1">
+                                                                                    ✨{model.creditCost !== undefined ? model.creditCost : getModelCredits((model.id || '').split('@')[0])}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                }
+
+                                                                // 🚀 [Fix] API模型：图标居中对齐，文字左对齐
+                                                                return (
+                                                                    <div className="flex items-center justify-between w-full">
+                                                                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                                            <div className="flex-shrink-0 flex items-center justify-center w-5 h-5">
+                                                                                <ModelLogo
+                                                                                    modelId={model.id}
+                                                                                    provider={model.provider}
+                                                                                    size={16}
+                                                                                    active={isActive}
+                                                                                />
+                                                                            </div>
+                                                                            <span className={`text-sm font-medium ${badgeInfo.colorClass} break-all text-left`} title={displayInfo.displayName}>
+                                                                                {displayName}
+                                                                            </span>
+                                                                        </div>
+                                                                        {/* 供应商标签 - 右对齐带框（最多显示10个字符，单行） */}
+                                                                        {model.provider && (
+                                                                            <span
+                                                                                className={`text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 whitespace-nowrap overflow-hidden ${getProviderBadgeColor(model.provider)}`}
+                                                                                title={model.provider}
+                                                                                style={{ maxWidth: '40%', textOverflow: 'ellipsis' }}
+                                                                            >
+                                                                                {model.provider.length > 10 ? model.provider.substring(0, 9) + '…' : model.provider}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
+
+                                                            {/* Metadata Display - 三层简洁结构 - 专属模型不显示 */}
+                                                            {!isExclusive && (() => {
+                                                                const modelDesc = getModelDescription(model.id);
+                                                                const description = modelDesc?.description || advantage;
+
+                                                                return (
+                                                                    <div className="flex justify-between items-start mt-1 gap-2">
+                                                                        <div className="flex flex-col gap-1 flex-1 min-w-0">
+
+                                                                            {description && (
+                                                                                <span className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                                                                                    {description}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        {isPinned && <span className="text-[12px] opacity-80 flex-shrink-0 mr-1 mt-0.5">📌</span>}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </button >
+                                                    );
+                                                })
+                                            })()}
+                                        </div>
+                                    </div >
+                                )}
+                            </div >
+
+                            {/* Options Button - Shows current ratio and size, shrink on mobile */}
+                            <div className="relative inline-flex flex-shrink-0">
+                                <button
+                                    data-options-toggle
+                                    className="flex items-center gap-1.5 px-3 h-10 rounded-lg border transition-all text-xs font-medium whitespace-nowrap flex-shrink-0"
+                                    style={{
+                                        backgroundColor: showOptionsPanel ? 'var(--bg-hover)' : 'var(--bg-tertiary)',
+                                        color: 'var(--text-secondary)',
+                                        borderColor: showOptionsPanel ? 'var(--border-medium)' : 'var(--border-light)'
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMenu(null); // 关闭其他菜单
+                                        setShowOptionsPanel(prev => !prev);
+                                    }}
+                                    title="图片/视频选项"
+                                >
+                                    {config.mode === GenerationMode.AUDIO ? (
+                                        <>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M9 18V5l12-2v13" />
+                                                <circle cx="6" cy="18" r="3" />
+                                                <circle cx="18" cy="16" r="3" />
+                                            </svg>
+                                            <span>{config.audioDuration || '自动'}</span>
+                                        </>
+                                    ) : (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? (
+                                        <>
+                                            {config.aspectRatio === AspectRatio.AUTO ? (
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                                                    <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                                                    <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                                                    <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                                                    <rect width="10" height="8" x="7" y="8" rx="1"></rect>
+                                                </svg>
+                                            ) : (
+                                                getRatioIcon(config.aspectRatio)
+                                            )}
+                                            <span>{config.aspectRatio === AspectRatio.AUTO ? '自适应' : config.aspectRatio} · {config.imageSize}</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            {config.aspectRatio === AspectRatio.AUTO ? (
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                                                    <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                                                    <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                                                    <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                                                    <rect width="10" height="8" x="7" y="8" rx="1"></rect>
+                                                </svg>
+                                            ) : (
+                                                getRatioIcon(config.aspectRatio)
+                                            )}
+                                            <span>{config.aspectRatio === AspectRatio.AUTO ? '自适应' : config.aspectRatio} · {config.videoResolution || '720p'}</span>
+                                        </>
+                                    )}
+                                    <svg className={`w-3 h-3 transition-transform ${showOptionsPanel ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M6 9l6 6 6-6" />
+                                    </svg>
+                                </button>
+
+                                {/* Options Panel - positioned relative to button */}
+                                {showOptionsPanel && (
+                                    <div className="absolute bottom-full mb-2 z-30" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                        <div ref={optionsPanelRef}>
+                                            {config.mode === GenerationMode.AUDIO ? (
+                                                /* 音频选项面板 - 时长选择 */
+                                                <div className="w-56 p-3 rounded-xl border shadow-xl animate-scaleIn origin-bottom" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }}>
+                                                    <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">音频时长</div>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {['自动', '30s', '60s', '120s', '240s'].map(dur => (
+                                                            <button
+                                                                key={dur}
+                                                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${(config.audioDuration || '自动') === dur
+                                                                    ? 'bg-pink-500/20 text-pink-400 border-pink-500/30'
+                                                                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-pink-500/30'
+                                                                    }`}
+                                                                onClick={() => setConfig(prev => ({ ...prev, audioDuration: dur === '自动' ? undefined : dur }))}
+                                                            >
+                                                                {dur}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ) : (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) ? (
+                                                <ImageOptionsPanel
+                                                    aspectRatio={config.aspectRatio}
+                                                    imageSize={config.imageSize}
+                                                    showThinkingMode={thinkingSupported}
+                                                    thinkingMode={config.thinkingMode || 'minimal'}
+                                                    onThinkingModeChange={(mode) => setConfig(prev => ({ ...prev, thinkingMode: mode }))}
+                                                    onAspectRatioChange={(ratio) => setConfig(prev => ({ ...prev, aspectRatio: ratio }))}
+                                                    onImageSizeChange={(size) => setConfig(prev => ({ ...prev, imageSize: size }))}
+                                                    availableRatios={availableRatios}
+                                                    availableSizes={availableSizes}
+                                                />
+                                            ) : (
+                                                <VideoOptionsPanel
+                                                    aspectRatio={config.aspectRatio}
+                                                    resolution={config.videoResolution || '720p'}
+                                                    duration={config.videoDuration || '4s'}
+                                                    audio={config.videoAudio || false}
+                                                    onAspectRatioChange={(ratio) => setConfig(prev => ({ ...prev, aspectRatio: ratio }))}
+                                                    onResolutionChange={(res) => setConfig(prev => ({ ...prev, videoResolution: res }))}
+                                                    onDurationChange={(dur) => setConfig(prev => ({ ...prev, videoDuration: dur }))}
+                                                    onAudioChange={(audio) => setConfig(prev => ({ ...prev, videoAudio: audio }))}
+                                                    availableRatios={availableRatios}
+                                                    supportsAudio={!!getModelCapabilities(config.model)?.supportsVideoAudio}
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Removed duplicate ratio and size controls - now only in options panel */}
+                            {/* End of Left Group Items */}
+
+                            {/* Right: Actions Group */}
+                            {/* Group 1: Network & Provider Settings - Hidden on mobile for compact layout */}
+                            {/* Group 1: Network & Provider Settings - 只在支持时显示 */}
+                            {!isMobile && (groundingSupported || imageSearchSupported) && (
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
                                     <div
-                                        ref={modelDropdownRef}
-                                        className={`${ isMobile ? 'fixed z-[990]' : 'absolute bottom-full mb-3 z-50' } animate - scaleIn origin - bottom`}
-                                        style={isMobile ? {
-                                            left: '50%',
-                                            transform: 'translateX(-50%)',
-                                            bottom: mobileFloatingPanelBottom,
-                                            width: 'min(22rem, calc(100vw - 24px))',
-                                            maxWidth: 'calc(100vw - 24px)'
-                                        } : { left: '50%', transform: 'translateX(-50%)' }}
+                                        className="flex items-center gap-1.5 px-1 py-0.5 rounded-lg h-10 transition-all duration-200 border border-[var(--border-light)] bg-[var(--bg-tertiary)]"
+                                        style={{
+                                            opacity: (config.mode === GenerationMode.VIDEO || config.mode === GenerationMode.AUDIO) ? 0 : 1,
+                                            visibility: (config.mode === GenerationMode.VIDEO || config.mode === GenerationMode.AUDIO) ? 'hidden' : 'visible',
+                                            pointerEvents: (config.mode === GenerationMode.VIDEO || config.mode === GenerationMode.AUDIO) ? 'none' : 'auto'
+                                        }}
                                     >
+                                        {/* Grounding Tool */}
+                                        {groundingSupported && (
+                                            <button
+                                                className={`flex items-center gap-1.5 px-2 h-full rounded-md transition-all text-[11px] font-medium whitespace-nowrap ${config.enableGrounding
+                                                    ? 'bg-indigo-500/15 text-indigo-500 shadow-sm'
+                                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]'
+                                                    }`}
+                                                onClick={() => setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding }))}
+                                                title="Google 搜索 (实时信息)"
+                                            >
+                                                <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M2 8.8a15 15 0 0 1 20 0" />
+                                                    <path d="M5 12.5a10 10 0 0 1 14 0" />
+                                                    <path d="M8.5 16.3a5 5 0 0 1 7 0" />
+                                                    <line x1="12" y1="20" x2="12.01" y2="20" />
+                                                </svg>
+                                                <span>谷歌搜索</span>
+                                            </button>
+                                        )}
+
+                                        {/* 垂直分界线 */}
+                                        {groundingSupported && imageSearchSupported && (
+                                            <div className="w-[1px] h-4 bg-[var(--border-light)] mx-0.5" />
+                                        )}
+
+                                        {imageSearchSupported && (
+                                            <button
+                                                className={`flex items-center gap-1.5 px-2 h-full rounded-md transition-all text-[11px] font-medium whitespace-nowrap ${config.enableImageSearch
+                                                    ? 'bg-indigo-500/15 text-indigo-500 shadow-sm'
+                                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]'
+                                                    }`}
+                                                onClick={() => setConfig(prev => ({ ...prev, enableImageSearch: !prev.enableImageSearch }))}
+                                                title="图片搜索 (参考网络图片)"
+                                            >
+                                                <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                                    <circle cx="8.5" cy="8.5" r="1.5" />
+                                                    <path d="M21 15l-5-5L5 21" />
+                                                </svg>
+                                                <span>图片搜索</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Group 2: Generation Settings - Hidden on mobile for compact footer */}
+                            {!isMobile && (
+                                <div className="flex items-center gap-0.5 p-0.5 rounded-lg border h-10 shrink-0" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-light)' }}>
+                                    {/* Parallel Count */}
+                                    <div className="relative h-full">
+                                        <button
+                                            className="flex items-center gap-1.5 px-3 h-full rounded-md transition-all whitespace-nowrap text-[11px] font-medium hover:bg-white/5"
+                                            style={{ color: 'var(--text-secondary)' }}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleMenu('count');
+                                            }}
+                                            title="并发数量"
+                                        >
+                                            <span className="text-[11px] font-medium">{config.parallelCount} 张</span>
+                                            <svg className={`w-2.5 h-2.5 opacity-50 flex-shrink-0 transition-transform duration-200 ${activeMenu === 'count' ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+                                        </button>
+                                        {
+                                            activeMenu === 'count' && (
+                                                <div className="absolute bottom-full mb-2 z-20" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                                    <div className="dropdown static w-24 animate-scaleIn origin-bottom p-1 flex flex-col gap-1" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-lg)' }}>
+                                                        {(config.mode === GenerationMode.PPT
+                                                            ? Array.from({ length: 20 }, (_, i) => i + 1)
+                                                            : [1, 2, 3, 4]
+                                                        ).map(count => (
+                                                            <button key={count} className={`dropdown-item justify-between rounded-md ${config.parallelCount === count ? 'active' : ''}`} onClick={() => { setConfig(prev => ({ ...prev, parallelCount: count })); setActiveMenu(null); }}>
+                                                                <span>{count} 张</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )
+                                        }
+
+                                        {/* Context Menu for Pinning */}
+                                        {contextMenu && ReactDOM.createPortal(
+                                            <div
+                                                className="fixed z-[10010] bg-[#2a2a2e] border border-white/10 rounded-lg shadow-xl py-1 w-32 backdrop-blur-md"
+                                                style={{ top: contextMenu.y, left: contextMenu.x }}
+                                            >
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleModelPin(contextMenu.modelId);
+                                                        setContextMenu(null);
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"
+                                                >
+                                                    {getPinnedModels().includes(contextMenu.modelId) ? '❌ 取消置顶' : '📌 置顶模型'}
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const custom = modelCustomizations[contextMenu.modelId] || {};
+                                                        setModelSettingsModal({
+                                                            modelId: contextMenu.modelId,
+                                                            alias: custom.alias || '',
+                                                            description: custom.description || ''
+                                                        });
+                                                        setContextMenu(null);
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"
+                                                >
+                                                    ⚙️ 设置
+                                                </button>
+                                            </div>,
+                                            document.body
+                                        )}
+
+                                        {/* Model Settings Modal */}
+                                        {modelSettingsModal && ReactDOM.createPortal(
+                                            <div
+                                                className="fixed inset-0 z-[10020] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                                                onClick={() => setModelSettingsModal(null)}
+                                            >
+                                                <div
+                                                    className="bg-[#1e1e20] w-full max-w-md rounded-2xl border border-white/10 shadow-2xl p-5 space-y-4"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <div className="flex justify-between items-center">
+                                                        <h3 className="text-lg font-bold text-white">模型设置</h3>
+                                                        <button onClick={() => setModelSettingsModal(null)} className="text-gray-500 dark:text-zinc-400 hover:text-gray-800 dark:hover:text-white">✕</button>
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 dark:text-zinc-500 font-mono break-all">ID: {modelSettingsModal.modelId}</div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">显示别名</label>
+                                                        <input
+                                                            value={modelSettingsModal.alias}
+                                                            onChange={(e) => setModelSettingsModal({ ...modelSettingsModal, alias: e.target.value })}
+                                                            placeholder="留空则使用默认名称"
+                                                            className="w-full bg-gray-100 dark:bg-zinc-900 border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">模型介绍</label>
+                                                        <textarea
+                                                            value={modelSettingsModal.description}
+                                                            onChange={(e) => setModelSettingsModal({ ...modelSettingsModal, description: e.target.value })}
+                                                            placeholder="留空则使用默认介绍"
+                                                            rows={2}
+                                                            className="w-full bg-gray-100 dark:bg-zinc-900 border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-end gap-2 pt-2">
+                                                        <button
+                                                            onClick={() => setModelSettingsModal(null)}
+                                                            className="px-4 py-2 rounded-lg text-sm text-gray-500 dark:text-zinc-400 hover:text-gray-800 dark:hover:text-white hover:bg-white/5"
+                                                        >
+                                                            取消
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                // Placeholder function
+                                                                setModelSettingsModal(null);
+                                                            }}
+                                                            className="px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white"
+                                                        >
+                                                            保存
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>,
+                                            document.body
+                                        )}
+                                    </div>
+                                </div>
+                            )}                            {/* 🚀 发送按钮 - 积分专属样式 */}
+                            <CreditSendButton
+                                isCreditModel={isNanoBanana2}
+                                creditCost={totalCreditCost}
+                                balance={balance}
+                                hasPrompt={!!config.prompt}
+                                colorStart={availableModels.find((m: any) => m.id === config.model)?.colorStart}
+                                colorEnd={availableModels.find((m: any) => m.id === config.model)?.colorEnd}
+                                onClick={() => {
+                                    if (isNanoBanana2 && totalCreditCost > 0 && balance < totalCreditCost) {
+                                        notify.error('积分不足', `使用当前配置需要 ${totalCreditCost} 积分，当前余额: ${balance}，请充值。`);
+                                        return;
+                                    }
+                                    onGenerate();
+                                }}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={(e) => e.target.files && processFiles(e.target.files)} />
+
+                {/* 参考图放大浮层 */}
                 {
                     previewImage && (
                         <ImagePreview

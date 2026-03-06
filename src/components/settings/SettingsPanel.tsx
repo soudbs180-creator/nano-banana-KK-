@@ -504,10 +504,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   return (
-    <div className={`fixed inset-0 z-[10001] flex justify-center bg-black/55 backdrop-blur-sm ${isMobile ? 'items-end px-2 pb-0 pt-8' : 'items-center px-3 py-3'}`}>
+    <div 
+      className={`fixed inset-0 z-[10001] flex justify-center bg-black/55 backdrop-blur-sm ${isMobile ? 'items-end px-2 pb-0 pt-8' : 'items-center px-3 py-3'}`}
+      onClick={onClose}
+    >
       <div
         className={`flex w-full overflow-hidden border shadow-2xl ${isMobile ? 'h-[88dvh] max-h-[88dvh] flex-col rounded-t-[26px] rounded-b-none ios-mobile-sheet' : 'h-[80vh] max-w-[1120px] flex-row rounded-2xl'}`}
         style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-light)' }}
+        onClick={(e) => e.stopPropagation()}
       >
         <aside
           className={`${isMobile ? 'border-b px-3 pt-2 pb-3 flex-shrink-0' : 'border-r p-3 w-[220px] flex-shrink-0 overflow-y-auto'}`}

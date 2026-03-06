@@ -1,0 +1,1171 @@
+{
+  "_": "a42d372ccf0b5dd13ecf71203521f9d2",
+  "auto_groups": [
+    "default"
+  ],
+  "data": [
+    {
+      "model_name": "gpt-5.3-codex",
+      "vendor_id": 2,
+      "quota_type": 0,
+      "model_ratio": 0.625,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ],
+      "pricing_version": "82c4a357505fff6fee8462c3f7ec8a645bb95532669cb73b2cabee6a416ec24f"
+    },
+    {
+      "model_name": "seedance2-10s",
+      "description": "即梦最新的视频模型，能力十分强大。调用方式请参考我们的文档。",
+      "icon": "Jimeng.Color",
+      "vendor_id": 7,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 5,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "seedance2-5s",
+      "description": "即梦最新的视频模型，能力十分强大。调用方式请参考我们的文档。",
+      "icon": "Jimeng.Color",
+      "vendor_id": 7,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 2.8,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "claude-opus-4-6-c",
+      "description": "Anthropic 推出的最新模型，模型质量与响应速度优异，采取 Aws Claude 逆向渠道，非 awsq。",
+      "icon": "Claude.Color",
+      "vendor_id": 3,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.1,
+      "owner_by": "",
+      "completion_ratio": 5,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "anthropic",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-3.1-pro-preview-c",
+      "description": "Google 最新一代模型",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.06,
+      "owner_by": "",
+      "completion_ratio": 4,
+      "enable_groups": [
+        "default",
+        "Standard"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "sora2-pro-portrait-25s",
+      "description": "OpenAI 最新的视频模型，名称含 Pro 的代表官方的 sora2-pro 模型，含“hd”代表生成高清版视频，名称内带有 portrait 代表生成竖版（手机）视频，带有 landscape 代表生成横版（电脑）视频。带有“15s”表示生成视频时长为 15s，不带此后缀表示生成 10s 视频。",
+      "icon": "OpenAI",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 2.5,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai-videos"
+      ]
+    },
+    {
+      "model_name": "veo-3.1-fast-generate-preview",
+      "description": "Veo 官方 API ，GCP 转出。Fast 模型相较于另一个版本速度更快，但是相应的质量有一定的折损。请参考站点的文档页中对应部分来调用此模型。",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.8,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "claude-opus-4-5-20251101-c",
+      "description": "Anthropic 推出的最新模型，模型质量与响应速度优异，采取 Aws Claude 逆向渠道，非 awsq。",
+      "icon": "Claude.Color",
+      "vendor_id": 3,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.1,
+      "owner_by": "",
+      "completion_ratio": 5,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai",
+        "anthropic"
+      ]
+    },
+    {
+      "model_name": "gemini-2.5-flash-preview-tts",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 0.15,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 20,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "grok-4.1-mini",
+      "vendor_id": 6,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.01,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "grok-4.1-thinking",
+      "vendor_id": 6,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.01,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "sora2-landscape-15s",
+      "description": "OpenAI 最新的视频模型，名称含 Pro 的代表官方的 sora2-pro 模型，含“hd”代表生成高清版视频，名称内带有 portrait 代表生成竖版（手机）视频，带有 landscape 代表生成横版（电脑）视频。带有“15s”表示生成视频时长为 15s，不带此后缀表示生成 10s 视频。",
+      "icon": "OpenAI",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.2,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai-videos"
+      ]
+    },
+    {
+      "model_name": "veo-3.1-generate-preview",
+      "description": "Veo 官方 API ，GCP 转出。Google 目前最强大的视频模型。请参考站点的文档页中对应部分来调用此模型。",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 2,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "claude-sonnet-4-6",
+      "vendor_id": 3,
+      "quota_type": 0,
+      "model_ratio": 1.5,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 5,
+      "enable_groups": [
+        "Claude Re",
+        "ClaudeCode",
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "anthropic",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-2.5-flash-nothinking",
+      "description": "谷歌的轻量化模型，适合简单快速的任务，nothinking为无思考版本，输出更快。",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 0.15,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "default",
+        "image",
+        "t1",
+        "t2"
+      ],
+      "supported_endpoint_types": [
+        "openai",
+        "gemini"
+      ]
+    },
+    {
+      "model_name": "gemini-robotics-er-1.5-preview",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 0.3,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 10,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gpt-5",
+      "description": "OpenAI 最新一代的模型，官网逆向渠道。",
+      "icon": "OpenAI.Color",
+      "vendor_id": 2,
+      "quota_type": 0,
+      "model_ratio": 0.35,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "grok-4.20-beta",
+      "vendor_id": 6,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.01,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "MiniMax-M2.5",
+      "icon": "Minimax.Color",
+      "vendor_id": 10,
+      "quota_type": 0,
+      "model_ratio": 1.125,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 4,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "sora2-portrait-15s",
+      "description": "OpenAI 最新的视频模型，名称含 Pro 的代表官方的 sora2-pro 模型，含“hd”代表生成高清版视频，名称内带有 portrait 代表生成竖版（手机）视频，带有 landscape 代表生成横版（电脑）视频。带有“15s”表示生成视频时长为 15s，不带此后缀表示生成 10s 视频。",
+      "icon": "OpenAI",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.2,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai-videos"
+      ]
+    },
+    {
+      "model_name": "deepseek-v3.2",
+      "vendor_id": 4,
+      "quota_type": 0,
+      "model_ratio": 0.6,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 2,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-2.5-flash",
+      "description": "谷歌最新一代的模型，轻量版本",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 0.125,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "default",
+        "Standard"
+      ],
+      "supported_endpoint_types": [
+        "openai",
+        "gemini"
+      ]
+    },
+    {
+      "model_name": "gpt-5.1-codex",
+      "vendor_id": 2,
+      "quota_type": 0,
+      "model_ratio": 0.35,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "sora2-portrait",
+      "description": "OpenAI 最新的视频模型，名称含 Pro 的代表官方的 sora2-pro 模型，含“hd”代表生成高清版视频，名称内带有 portrait 代表生成竖版（手机）视频，带有 landscape 代表生成横版（电脑）视频。带有“15s”表示生成视频时长为 15s，不带此后缀表示生成 10s 视频。",
+      "icon": "OpenAI",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.2,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai-videos"
+      ]
+    },
+    {
+      "model_name": "claude-haiku-4-5-20251001",
+      "description": "Anthropic 最新一代的轻量化模型，适合简单快速的任务，不同令牌分组对应不同模型渠道，用前请选择对应渠道。",
+      "icon": "Claude.Color",
+      "vendor_id": 3,
+      "quota_type": 0,
+      "model_ratio": 1,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 5,
+      "enable_groups": [
+        "Claude Re",
+        "ClaudeCode",
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai",
+        "anthropic"
+      ]
+    },
+    {
+      "model_name": "gemini-2.5-pro",
+      "description": "谷歌最新一代的模型",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 0.625,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "default",
+        "Gemini",
+        "Mega",
+        "Mini",
+        "Standard"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "sora2-pro-landscape-25s",
+      "description": "OpenAI 最新的视频模型，名称含 Pro 的代表官方的 sora2-pro 模型，含“hd”代表生成高清版视频，名称内带有 portrait 代表生成竖版（手机）视频，带有 landscape 代表生成横版（电脑）视频。带有“15s”表示生成视频时长为 15s，不带此后缀表示生成 10s 视频。",
+      "icon": "OpenAI",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 2.5,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai-videos"
+      ]
+    },
+    {
+      "model_name": "gemini-3-pro-preview-c",
+      "description": "Google 最新的对话模型，性能强大，多模态。-c 表示该模型按次计费。性能无区分。",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.04,
+      "owner_by": "",
+      "completion_ratio": 6,
+      "enable_groups": [
+        "default",
+        "Standard"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "grok-4.1-fast",
+      "vendor_id": 6,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.01,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "grok-imagine-1.0",
+      "vendor_id": 6,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.02,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "claude-opus-4-6",
+      "description": "Claude 最新一代模型",
+      "icon": "Claude.Color",
+      "vendor_id": 3,
+      "quota_type": 0,
+      "model_ratio": 2.5,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 5,
+      "enable_groups": [
+        "Claude Re",
+        "ClaudeCode",
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "anthropic",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-3.1-pro-preview",
+      "description": "Google 最新一代模型",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 1,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 6,
+      "enable_groups": [
+        "default",
+        "Gemini",
+        "Mega",
+        "Mini",
+        "Standard"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "glm-5",
+      "vendor_id": 8,
+      "quota_type": 0,
+      "model_ratio": 1.2,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 4,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gpt-5.2",
+      "vendor_id": 2,
+      "quota_type": 0,
+      "model_ratio": 0.5,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "t1",
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gpt-5.2-codex",
+      "vendor_id": 2,
+      "quota_type": 0,
+      "model_ratio": 0.5,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "sora2-pro-portrait-hd-15s",
+      "description": "OpenAI 最新的视频模型，名称含 Pro 的代表官方的 sora2-pro 模型，含“hd”代表生成高清版视频，名称内带有 portrait 代表生成竖版（手机）视频，带有 landscape 代表生成横版（电脑）视频。带有“15s”表示生成视频时长为 15s，不带此后缀表示生成 10s 视频。",
+      "icon": "OpenAI",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 2.5,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai-videos"
+      ]
+    },
+    {
+      "model_name": "claude-sonnet-4-6-c",
+      "vendor_id": 3,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.08,
+      "owner_by": "",
+      "completion_ratio": 5,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "anthropic",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "qwen3.5-plus",
+      "vendor_id": 5,
+      "quota_type": 0,
+      "model_ratio": 0.3,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 6,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "claude-sonnet-4-5-20250929",
+      "description": "Anthropic 推出的最新模型，模型质量与响应速度优异，不同令牌分组对应不同模型渠道，用前请选择对应渠道。",
+      "icon": "Claude.Color",
+      "vendor_id": 3,
+      "quota_type": 0,
+      "model_ratio": 1.5,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 5,
+      "enable_groups": [
+        "Claude Re",
+        "ClaudeCode",
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai",
+        "anthropic"
+      ]
+    },
+    {
+      "model_name": "gemini-embedding-001",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 0.15,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 4,
+      "enable_groups": [
+        "Mega",
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "grok-4.1-expert",
+      "vendor_id": 6,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.01,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-3-pro-image-preview-url",
+      "description": "GCP 转出的原生 API，做了一层中转，将图片上传到了图床，最终返回图片的 url，跑并发时对带宽与机器性能要求低。",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.18,
+      "owner_by": "",
+      "completion_ratio": 60,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-2.5-pro-preview-tts",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 0.3,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 20,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-3-flash-preview",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 0.25,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 6,
+      "enable_groups": [
+        "Standard",
+        "t1",
+        "t2",
+        "default",
+        "Gemini",
+        "image",
+        "Mega",
+        "Mini"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "grok-imagine-1.0-video",
+      "vendor_id": 6,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.05,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "o4-mini-deep-research",
+      "icon": "OpenAi.Color",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.8,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai-response"
+      ]
+    },
+    {
+      "model_name": "gemini-3.1-pro-preview-customtools",
+      "description": "Google 最新一代模型",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 1,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 6,
+      "enable_groups": [
+        "Mega"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-2.5-pro-c",
+      "description": "谷歌最新一代的模型，带“-c\"为站内的特有表示，为按次计费的版本，与 Token 计费渠道完全一致，能力相同，仅计费方式区别。",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.03,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "Standard",
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai",
+        "gemini"
+      ]
+    },
+    {
+      "model_name": "gemini-3-pro-preview",
+      "description": "谷歌最新一代的Pro模型，能力强大。支持多模态。",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 0,
+      "model_ratio": 1,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 6,
+      "enable_groups": [
+        "default",
+        "Gemini",
+        "Mega",
+        "Mini",
+        "Standard"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gpt-5.1",
+      "vendor_id": 2,
+      "quota_type": 0,
+      "model_ratio": 0.35,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 8,
+      "enable_groups": [
+        "default",
+        "t1"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "kimi-k2.5",
+      "vendor_id": 9,
+      "quota_type": 0,
+      "model_ratio": 1.6,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 5.25,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "sora2-landscape",
+      "description": "OpenAI 最新的视频模型，名称含 Pro 的代表官方的 sora2-pro 模型，含“hd”代表生成高清版视频，名称内带有 portrait 代表生成竖版（手机）视频，带有 landscape 代表生成横版（电脑）视频。带有“15s”表示生成视频时长为 15s，不带此后缀表示生成 10s 视频。",
+      "icon": "OpenAI",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.2,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai-videos"
+      ]
+    },
+    {
+      "model_name": "sora2-pro-landscape-hd-15s",
+      "description": "OpenAI 最新的视频模型，名称含 Pro 的代表官方的 sora2-pro 模型，含“hd”代表生成高清版视频，名称内带有 portrait 代表生成竖版（手机）视频，带有 landscape 代表生成横版（电脑）视频。带有“15s”表示生成视频时长为 15s，不带此后缀表示生成 10s 视频。",
+      "icon": "OpenAI",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 2.5,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai-videos"
+      ]
+    },
+    {
+      "model_name": "gpt-image-1.5-chat",
+      "description": "OpenAI 最新的绘图模型，逆向渠道，使用聊天补全接口进行请求",
+      "icon": "OpenAI.Color",
+      "vendor_id": 2,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.08,
+      "owner_by": "",
+      "completion_ratio": 2,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "seedance2-15s",
+      "description": "即梦最新的视频模型，能力十分强大。调用方式请参考我们的文档。",
+      "icon": "Jimeng.Color",
+      "vendor_id": 7,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 6,
+      "owner_by": "",
+      "completion_ratio": 1,
+      "enable_groups": [
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-3-pro-image-preview",
+      "description": "Google 最新的绘图模型，代称：NanoBanana2、NanoBananaPro，性能强大，分辨率高。GCP Aistudio Tier3 转出，支持原生格式。支持传参指定清晰度与宽高比。",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.25,
+      "owner_by": "",
+      "completion_ratio": 60,
+      "enable_groups": [
+        "back",
+        "default",
+        "Mega",
+        "Mini",
+        "Standard"
+      ],
+      "supported_endpoint_types": [
+        "openai",
+        "gemini"
+      ],
+      "size_ratio": {
+        "1K": 1,
+        "2K": 1,
+        "4K": 1
+      },
+      "group_size_ratio": {
+        "default": {
+          "4K": 1.4
+        }
+      },
+      "group_model_ratio": {
+        "Mini": 1.2
+      }
+    },
+    {
+      "model_name": "claude-opus-4-5-20251101",
+      "description": "Anthropic 最新一代的最强大的模型，适合复杂的编码与文本任务，不同令牌分组对应不同模型渠道，用前请选择对应渠道。",
+      "icon": "Claude.Color",
+      "vendor_id": 3,
+      "quota_type": 0,
+      "model_ratio": 2.5,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 5,
+      "enable_groups": [
+        "Claude Re",
+        "ClaudeCode",
+        "default"
+      ],
+      "supported_endpoint_types": [
+        "anthropic",
+        "openai"
+      ]
+    },
+    {
+      "model_name": "gemini-2.5-flash-image",
+      "description": "谷歌最新的绘图模型，对话生图，支持多图输入，与官方的开发者平台中使用效果一致！",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.06,
+      "owner_by": "",
+      "completion_ratio": 8.333333333333334,
+      "enable_groups": [
+        "default",
+        "image",
+        "Standard"
+      ],
+      "supported_endpoint_types": [
+        "openai",
+        "gemini"
+      ]
+    },
+    {
+      "model_name": "gemini-3.1-flash-image-preview",
+      "description": "NanoBanana2",
+      "icon": "Gemini.Color",
+      "vendor_id": 1,
+      "quota_type": 1,
+      "model_ratio": 37.5,
+      "model_price": 0.1,
+      "owner_by": "",
+      "completion_ratio": 4,
+      "enable_groups": [
+        "default",
+        "Mega",
+        "Standard"
+      ],
+      "supported_endpoint_types": [
+        "gemini",
+        "openai"
+      ],
+      "size_ratio": {
+        "1K": 1,
+        "2K": 1,
+        "4K": 1
+      }
+    },
+    {
+      "model_name": "gpt-4.1-mini",
+      "description": "OpenAI 的轻量级模型，响应速度快，价格低，适用于翻译与其他简单任务",
+      "icon": "OpenAI.Color",
+      "vendor_id": 2,
+      "quota_type": 0,
+      "model_ratio": 0.2,
+      "model_price": 0,
+      "owner_by": "",
+      "completion_ratio": 4,
+      "enable_groups": [
+        "default",
+        "t1"
+      ],
+      "supported_endpoint_types": [
+        "openai"
+      ]
+    }
+  ],
+  "group_ratio": {
+    "Claude Re": 0.55,
+    "ClaudeCode": 1.2,
+    "Gemini": 0.8,
+    "Mega": 6.5,
+    "Mini": 0.6,
+    "Standard": 1.5,
+    "default": 1
+  },
+  "success": true,
+  "supported_endpoint": {
+    "anthropic": {
+      "path": "/v1/messages",
+      "method": "POST"
+    },
+    "gemini": {
+      "path": "/v1beta/models/{model}:generateContent",
+      "method": "POST"
+    },
+    "openai": {
+      "path": "/v1/chat/completions",
+      "method": "POST"
+    },
+    "openai-response": {
+      "path": "/v1/responses",
+      "method": "POST"
+    },
+    "openai-videos": {
+      "path": "/v1/videos",
+      "method": "POST"
+    }
+  },
+  "usable_group": {
+    "Claude Re": "未知逆向 Claude ",
+    "ClaudeCode": "ClaudeCode 客户端专用分组，MAX 号池",
+    "Gemini": "Gemini 分组，即将废弃，请勿使用",
+    "Mega": "企业-官转分组",
+    "Mini": "特惠-混合分组",
+    "Standard": "标准-稳定分组",
+    "default": "默认(全模型推荐)"
+  },
+  "vendors": [
+    {
+      "id": 2,
+      "name": "OpenAI",
+      "icon": "OpenAI.Color"
+    },
+    {
+      "id": 3,
+      "name": "Anthropic",
+      "icon": "Anthropic.Color"
+    },
+    {
+      "id": 9,
+      "name": "Moonshot",
+      "icon": "Moonshot"
+    },
+    {
+      "id": 10,
+      "name": "Minimax",
+      "icon": "Minimax.Color"
+    },
+    {
+      "id": 1,
+      "name": "Google",
+      "icon": "Google.Color"
+    },
+    {
+      "id": 4,
+      "name": "DeepSeek",
+      "icon": "DeepSeek.Color"
+    },
+    {
+      "id": 5,
+      "name": "阿里巴巴",
+      "icon": "Qwen.Color"
+    },
+    {
+      "id": 6,
+      "name": "xAI",
+      "icon": "XAI"
+    },
+    {
+      "id": 7,
+      "name": "即梦",
+      "icon": "Jimeng.Color"
+    },
+    {
+      "id": 8,
+      "name": "智谱",
+      "icon": "Zhipu.Color"
+    }
+  ]
+}

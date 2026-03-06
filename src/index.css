@@ -1,5 +1,6 @@
 /* KK Studio - Design System v2.0 */
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /* ============================================
    CSS Variables & Design Tokens

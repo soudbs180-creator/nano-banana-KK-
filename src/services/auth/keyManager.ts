@@ -181,43 +181,45 @@ interface KeyManagerState {
  */
 export interface ThirdPartyProvider {
     id: string;
-    name: string;                 // 鏄剧ず鍚嶇О锛堝 "鏅鸿氨 AI"锛?
-    baseUrl: string;              // API 鍩虹 URL
+    name: string;                 // 显示名称（如 "智谱 AI"）
+    baseUrl: string;              // API 基础 URL
     apiKey: string;               // API Key
-    models: string[];             // 鏀寔鐨勬ā鍨嬪垪琛?
-    format: 'auto' | 'openai' | 'gemini';  // 鍗忚鏍煎紡
-    icon?: string;                // 鍥炬爣 emoji
-    isActive: boolean;            // 鏄惁婵€娲?
+    models: string[];             // 支持的模型列表
+    format: 'auto' | 'openai' | 'gemini';  // 协议格式
+    icon?: string;                // 图标 emoji
+    isActive: boolean;            // 是否激活
     badgeColor?: string;
     budgetLimit?: number;
     tokenLimit?: number;
     customCostMode?: 'unlimited' | 'amount' | 'tokens';
     customCostValue?: number;
+
+    // 🔥 [Feature] 后台拉取 New API 价格表的缓存
     pricingSnapshot?: {
         fetchedAt: number;
-        note?: string;
-        rows?: Array<{
-            model: string;
-            price?: string;
-            tokens?: number;
-        }>;
+        groupRatio?: number;        // 用户所在分组倍率
+        modelPrices?: Record<string, number>; // 按次计费模型基础单价
+        modelRatios?: Record<string, number>; // 按量计费模型倍率
+        sizeRatios?: Record<string, Record<string, number>>; // 各种尺寸的分辨率倍率
+        groupModelRatios?: Record<string, number>; // 模型针对所在分组的特殊倍率
+        completionRatios?: Record<string, number>; // 按量计费补全倍率
     };
 
-    // 鐙珛璁¤垂
+    // 独立计费
     usage: {
         totalTokens: number;
         totalCost: number;
         dailyTokens: number;
         dailyCost: number;
-        lastReset: number;        // 姣忔棩閲嶇疆鏃堕棿鎴?
+        lastReset: number;        // 每日重置时间戳
     };
 
-    // 鐘舵€?
+    // 状态
     status: 'active' | 'error' | 'checking';
     lastError?: string;
     lastChecked?: number;
 
-    // 鍏冩暟鎹?
+    // 元数据
     createdAt: number;
     updatedAt: number;
 }
@@ -2581,6 +2583,8 @@ export class KeyManager {
         description?: string;
         colorStart?: string; // 馃殌 [鏂板] 绠＄悊鍛橀厤缃殑棰滆壊
         colorEnd?: string;
+        colorSecondary?: string;
+        textColor?: 'white' | 'black';
         creditCost?: number; // 馃殌 [鏂板] 绉垎娑堣€?
     }[] {
         // 馃殌 浣跨敤缂撳瓨锛氬鏋?slots 鍜?adminModels 娌℃湁鍙樺寲锛岀洿鎺ヨ繑鍥炵紦瀛?
@@ -2589,7 +2593,9 @@ export class KeyManager {
 
         // 🚀 [Fix] 添加 adminModels 到缓存键，确保管理员配置变化时缓存失效
         const adminModels = adminModelService.getModels();
-        const adminHash = `${adminModels.length}-${adminModels.map(m => m.id).join(',')}`;
+        const adminHash = `${adminModels.length}-${adminModels
+            .map(m => `${m.id}:${m.colorStart}:${m.colorEnd}:${m.colorSecondary || ''}:${m.textColor || ''}:${m.creditCost}`)
+            .join(',')}`;
 
         // 🚀 [Fix] 添加 providers 到缓存键，确保供应商增减时模型选择立即响应
         this.loadProviders();
@@ -2615,6 +2621,8 @@ export class KeyManager {
             description?: string;
             colorStart?: string; // 馃殌 [鏂板] 绠＄悊鍛橀厤缃殑棰滆壊
             colorEnd?: string;
+            colorSecondary?: string;
+            textColor?: 'white' | 'black';
             creditCost?: number; // 馃殌 [鏂板] 绉垎娑堣€?
         }>();
         const chatModelIds = new Set(GOOGLE_CHAT_MODELS.map(model => model.id));
@@ -2710,6 +2718,8 @@ export class KeyManager {
                     description: adminModel.advantages || '鐢辩郴缁熺Н鍒嗛┍鍔ㄧ殑绋冲畾鍔犻€熼€氶亾',
                     colorStart: adminModel.colorStart, // 馃殌 [鏂板] 浼犻€掔鐞嗗憳閰嶇疆鐨勯鑹?
                     colorEnd: adminModel.colorEnd,
+                    colorSecondary: adminModel.colorSecondary,
+                    textColor: adminModel.textColor,
                     creditCost: adminModel.creditCost, // 馃殌 [鏂板] 浼犻€掔Н鍒嗘秷鑰?
                 });
             }
@@ -2878,6 +2888,9 @@ export class KeyManager {
         this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
         this.notifyListeners();
 
+        // 自动提取定价信息
+        this.syncProviderPricing(provider.id);
+
         return provider;
     }
 
@@ -2899,6 +2912,12 @@ export class KeyManager {
         this.saveProviders();
         this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
         this.notifyListeners();
+
+        // 自动拉取最新的定价配置
+        if (updates.baseUrl !== undefined) {
+            this.syncProviderPricing(id);
+        }
+
         return true;
     }
 
@@ -2967,13 +2986,13 @@ export class KeyManager {
     }
 
     /**
-     * 浠庨璁惧垱寤烘湇鍔″晢
+     * 从预设创建服务商
      */
     createProviderFromPreset(presetKey: string, apiKey: string, customModels?: string[]): ThirdPartyProvider | null {
         const preset = PROVIDER_PRESETS[presetKey];
         if (!preset) return null;
 
-        return this.addProvider({
+        const provider = this.addProvider({
             name: preset.name,
             baseUrl: preset.baseUrl,
             apiKey,
@@ -2982,6 +3001,112 @@ export class KeyManager {
             icon: preset.icon,
             isActive: true
         });
+
+        // 自动拉取定价
+        this.syncProviderPricing(provider.id);
+
+        return provider;
+    }
+
+    /**
+     * 自动从供应商的 /api/pricing 接口拉取价格表并保存快照
+     */
+    async syncProviderPricing(providerId: string): Promise<boolean> {
+        this.loadProviders();
+        const provider = this.providers.find(p => p.id === providerId);
+        if (!provider || !provider.baseUrl) return false;
+
+        try {
+            // 解析 BaseURL，如果是 /v1 结尾则退回到根目录加上 /api/pricing
+            let url = provider.baseUrl;
+            if (url.endsWith('/v1')) {
+                url = url.replace(/\/v1$/, '');
+            } else if (url.endsWith('/v1/')) {
+                url = url.replace(/\/v1\/$/, '');
+            }
+            if (url.endsWith('/')) {
+                url = url.slice(0, -1);
+            }
+            url = `${url}/api/pricing`;
+
+            console.log(`[KeyManager] Syncing pricing for ${provider.name} from ${url}...`);
+
+            // Use AbortSignal to prevent hanging if the API doesn't exist
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+            const response = await fetch(url, {
+                method: 'GET',
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                console.warn(`[KeyManager] Pricing API not available for ${provider.name} (${response.status})`);
+                return false;
+            }
+
+            const json = await response.json();
+            if (!json || !json.data || !Array.isArray(json.data)) {
+                console.warn(`[KeyManager] Invalid pricing JSON format for ${provider.name}`);
+                return false;
+            }
+
+            const modelPrices: Record<string, number> = {};
+            const modelRatios: Record<string, number> = {};
+            const groupModelRatios: Record<string, number> = {};
+            const sizeRatios: Record<string, Record<string, number>> = {};
+            const completionRatios: Record<string, number> = {};
+            let groupRatio: number | undefined;
+
+            if (json.group_ratio) {
+                // 默认抓取 default 组倍率。如果有更多需定制的，可在外部修改。
+                groupRatio = json.group_ratio["default"] || 1;
+            }
+
+            for (const item of json.data) {
+                if (!item.model_name) continue;
+                const modelName = item.model_name;
+
+                if (item.quota_type === 1 && typeof item.model_price === 'number' && item.model_price > 0) {
+                    modelPrices[modelName] = item.model_price;
+                } else if (item.quota_type === 0 && typeof item.model_ratio === 'number') {
+                    modelRatios[modelName] = item.model_ratio;
+                }
+
+                if (typeof item.completion_ratio === 'number') {
+                    completionRatios[modelName] = item.completion_ratio;
+                }
+
+                if (item.size_ratio && typeof item.size_ratio === 'object') {
+                    sizeRatios[modelName] = item.size_ratio;
+                }
+
+                if (item.group_model_ratio && typeof item.group_model_ratio === 'object') {
+                    if (item.group_model_ratio['default']) {
+                        groupModelRatios[modelName] = item.group_model_ratio['default'];
+                    }
+                }
+            }
+
+            provider.pricingSnapshot = {
+                fetchedAt: Date.now(),
+                groupRatio,
+                modelPrices,
+                modelRatios,
+                sizeRatios,
+                groupModelRatios,
+                completionRatios
+            };
+
+            this.saveProviders();
+            this.notifyListeners();
+            console.log(`[KeyManager] Successfully synced pricing for ${provider.name}. Models found: ${json.data.length}`);
+            return true;
+        } catch (e) {
+            console.warn(`[KeyManager] Failed or timed out syncing pricing for ${provider.name}:`, e);
+            return false;
+        }
     }
 
     /**

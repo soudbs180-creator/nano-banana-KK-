@@ -39,6 +39,8 @@ export interface AdminModelConfig {
   provider: string;
   colorStart: string;
   colorEnd: string;
+  colorSecondary?: string;
+  textColor?: 'white' | 'black';
   creditCost: number;
   billingType: 'token' | 'per_request' | 'multiplier';
   endpoint: string;
@@ -66,6 +68,8 @@ interface FlatModelRow {
   display_name?: string;
   description?: string | null;
   color?: string | null;
+  color_secondary?: string | null;
+  text_color?: string | null;
   endpoint_type?: string | null;
   credit_cost?: number | null;
   is_active?: boolean | null;
@@ -100,17 +104,29 @@ class AdminModelService {
   }
 
   private async readFromView(): Promise<FlatModelRow[] | null> {
-    const result = await supabase
+    const styledResult = await supabase
       .from('public_credit_models')
-      // Keep this list minimal for cross-version compatibility.
+      // Prefer style fields when available; fallback query is handled below.
+      .select(
+        'provider_id, provider_name, base_url, api_keys, model_id, display_name, description, color, color_secondary, text_color, endpoint_type, credit_cost, is_active'
+      )
+      .order('provider_id', { ascending: true });
+
+    if (!styledResult.error && Array.isArray(styledResult.data)) {
+      return styledResult.data as FlatModelRow[];
+    }
+
+    // Legacy schemas may expose a reduced view without style columns.
+    const fallbackResult = await supabase
+      .from('public_credit_models')
       .select('provider_id, model_id, display_name, endpoint_type, credit_cost, is_active')
       .order('provider_id', { ascending: true });
 
-    if (result.error || !Array.isArray(result.data)) {
+    if (fallbackResult.error || !Array.isArray(fallbackResult.data)) {
       return null;
     }
 
-    return result.data as FlatModelRow[];
+    return fallbackResult.data as FlatModelRow[];
   }
 
   private async readFromRpc(): Promise<FlatModelRow[]> {
@@ -138,6 +154,8 @@ class AdminModelService {
         display_name: model.display_name,
         description: model.description,
         color: model.color,
+        color_secondary: model.color_secondary,
+        text_color: model.text_color,
         endpoint_type: model.endpoint_type,
         credit_cost: model.credit_cost,
         is_active: true,
@@ -145,31 +163,47 @@ class AdminModelService {
     );
   }
 
-  private normalizeColor(input?: string | null): { colorStart: string; colorEnd: string } {
-    let color = (input || '#3B82F6').trim();
+  private normalizeHexColor(input?: string | null, fallback = '#3B82F6'): string {
+    let color = (input || fallback).trim();
 
     if (/^[A-Fa-f0-9]{3,8}$/.test(color)) {
       color = `#${color}`;
     }
 
-    const colorStart = color;
-    const colorEnd = darkenColor(color, 20);
-    return { colorStart, colorEnd };
+    return color;
+  }
+
+  private normalizeStyle(
+    primary?: string | null,
+    secondary?: string | null
+  ): { colorStart: string; colorEnd: string; colorSecondary: string } {
+    const colorStart = this.normalizeHexColor(primary, '#3B82F6');
+    const secondaryRaw = secondary ? this.normalizeHexColor(secondary, colorStart) : '';
+    const colorEnd = secondaryRaw || darkenColor(colorStart, 20);
+    const colorSecondary = secondaryRaw || colorEnd;
+    return { colorStart, colorEnd, colorSecondary };
+  }
+
+  private normalizeTextColor(input?: string | null): 'white' | 'black' {
+    return input === 'black' ? 'black' : 'white';
   }
 
   private async doLoad(): Promise<void> {
     this.loadingPromise = (async () => {
       try {
-        const fromView = await this.readFromView();
-        let rows: FlatModelRow[] = fromView || [];
+        let rows: FlatModelRow[] = [];
+
+        // RPC is preferred because it is stable across RLS/view changes and returns grouped provider config.
+        try {
+          rows = await this.readFromRpc();
+        } catch (rpcError) {
+          console.warn('[AdminModelService] RPC unavailable, fallback to view:', rpcError);
+          rows = [];
+        }
 
         if (!rows || rows.length === 0) {
-          try {
-            rows = await this.readFromRpc();
-          } catch (rpcError) {
-            console.warn('[AdminModelService] RPC fallback unavailable:', rpcError);
-            rows = [];
-          }
+          const fromView = await this.readFromView();
+          rows = fromView || [];
         }
 
         const grouped = new Map<string, AdminProvider>();
@@ -193,14 +227,16 @@ class AdminModelService {
             }
 
             const provider = grouped.get(providerId)!;
-            const colors = this.normalizeColor(row.color);
+            const style = this.normalizeStyle(row.color, row.color_secondary);
 
             provider.models.push({
               id: modelId,
               displayName: (row.display_name || modelId).trim(),
               provider: providerId,
-              colorStart: colors.colorStart,
-              colorEnd: colors.colorEnd,
+              colorStart: style.colorStart,
+              colorEnd: style.colorEnd,
+              colorSecondary: style.colorSecondary,
+              textColor: this.normalizeTextColor(row.text_color),
               creditCost: Number(row.credit_cost || 0),
               billingType: 'token',
               endpoint: (row.endpoint_type || 'openai').trim(),
@@ -287,6 +323,8 @@ class AdminModelService {
       provider: model.provider,
       colorStart: model.colorStart,
       colorEnd: model.colorEnd,
+      colorSecondary: model.colorSecondary,
+      textColor: model.textColor,
       creditCost: model.creditCost,
       billingType: model.billingType,
       advantages: model.advantages,

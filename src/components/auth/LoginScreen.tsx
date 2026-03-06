@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import AnoAI from '@/components/ui/animated-shader-background';
 import './LoginScreen.css';
 
 type AuthView = 'login' | 'register' | 'forgot-password';
@@ -265,7 +266,11 @@ const LoginScreen: React.FC = () => {
         </div>
       )}
 
-      <div className="auth-background">
+      <div className="auth-shader-background" aria-hidden>
+        <AnoAI className="auth-shader-canvas" />
+      </div>
+
+      <div className="auth-background" aria-hidden>
         <div className="auth-gradient auth-gradient-a" />
         <div className="auth-gradient auth-gradient-b" />
         <div className="auth-grid" />

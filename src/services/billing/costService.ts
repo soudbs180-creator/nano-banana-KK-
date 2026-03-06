@@ -120,7 +120,8 @@ export const calculateCost = (
     size: ImageSize,
     count: number,
     promptLen: number = 0,
-    refCount: number = 0
+    refCount: number = 0,
+    keySlotId?: string
 ): { cost: number; details: string; tokens: number } => {
     let cost = 0;
     let details = '';
@@ -128,6 +129,60 @@ export const calculateCost = (
 
     const { modelId } = parseModelSource(fullModelId);
     const normalizedId = modelId.toLowerCase();
+
+    // =============== 新版 API 接口自定义计费逻辑 ===============
+    if (keySlotId) {
+        const slot = keyManager.getProviders().find(p => p.id === keySlotId);
+        if (slot && slot.pricingSnapshot) {
+            const snap = slot.pricingSnapshot;
+            const mPrice = snap.modelPrices?.[modelId];
+            const mRatio = snap.modelRatios?.[modelId];
+
+            // 如果是按次计费
+            if (mPrice !== undefined) {
+                cost = mPrice * count;
+                details = `API按次: $${mPrice}/img`;
+                return { cost, details, tokens: 0 };
+            }
+
+            // 否则尝试按 token 混合计费
+            if (mRatio !== undefined) {
+                const gRatio = snap.groupRatio || 1;
+                const gmRatio = snap.groupModelRatios?.[modelId] || 1;
+
+                const textTokens = Math.ceil(promptLen / 4);
+                const refTokens = refCount * 560;
+                const inputTokens = textTokens + refTokens;
+
+                const outputTokensPerImage = getImageTokenEstimate(normalizedId, size);
+                const outputTokens = count * outputTokensPerImage;
+
+                const sRatioObj = snap.sizeRatios?.[modelId];
+                let strSize = "Unknown";
+                if (typeof size === 'object' && size !== null && 'width' in size && 'height' in size) {
+                    strSize = `${(size as any).width}x${(size as any).height}`;
+                } else {
+                    strSize = String(size);
+                }
+                const sRatio = sRatioObj ? (sRatioObj[strSize] || 1) : 1;
+
+                const cRatio = snap.completionRatios?.[modelId] || 1;
+
+                // 计算总倍率下的相当于多少标准 token (通常 OneAPI 的 model_ratio 表示按 500000 相当于 $1 的计价基准乘数)
+                // 具体计价常数因站而异，如果没有定义，系统目前使用兜底价格：0.002 / 1000 => 2 / 1000000
+                const baseRate = 2.0 / 1000000; // $0.002 per 1k ratio
+
+                const inputCost = inputTokens * baseRate * mRatio * gRatio * gmRatio;
+                const outputCost = outputTokens * baseRate * mRatio * cRatio * sRatio * gRatio * gmRatio;
+
+                cost = Math.max(0.000001, inputCost + outputCost);
+                tokens = inputTokens + outputTokens;
+                details = `API按量: ${tokens} Toks (Ratio: ${mRatio})`;
+                return { cost, details, tokens };
+            }
+        }
+    }
+    // =========================================================
 
     const pricing = getModelPricing(normalizedId);
 
@@ -171,7 +226,8 @@ export function recordCost(
     prompt: string = '',
     refImageCount: number = 0,
     usage?: UsageStats,
-    debugMeta?: CostDebugMeta
+    debugMeta?: CostDebugMeta,
+    keySlotId?: string
 ): void {
     if (count <= 0) return;
 
@@ -179,7 +235,7 @@ export function recordCost(
     const todayStr = getTodayString();
 
     // 1. Calculate Cost
-    let { cost, details, tokens } = calculateCost(model, imageSize, count, prompt.length, refImageCount);
+    let { cost, details, tokens } = calculateCost(model, imageSize, count, prompt.length, refImageCount, keySlotId);
 
     if (usage) {
         if (usage.totalTokens !== undefined) {

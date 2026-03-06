@@ -11,7 +11,7 @@ export interface ModelCapability {
     costPer1kOutput?: number; // USD
     pricingRef?: string; // 引用 pricing key
     isVision?: boolean;
-    isSystemInternal?: boolean; // 🚀 是否是系统内置模型
+    isSystemInternal?: boolean; // 🚀 是否是系统内置模�?
 }
 
 // 静态模型注册表 (Phase 1: 基础填充)
@@ -95,10 +95,12 @@ export interface ActiveModel {
     type: string;
     enabled: boolean;
     description?: string;
-    isSystemInternal?: boolean; // 🚀 是否是系统内置模型
-    creditCost?: number; // 🚀 积分消耗值（管理员配置）
-    colorStart?: string; // 🚀 管理员配置的渐变起始颜色
-    colorEnd?: string; // 🚀 管理员配置的渐变结束颜色
+    isSystemInternal?: boolean;
+    creditCost?: number;
+    colorStart?: string;
+    colorEnd?: string;
+    colorSecondary?: string;
+    textColor?: 'white' | 'black';
 }
 
 /**
@@ -116,3 +118,4 @@ export const modelRegistry = {
         }));
     }
 };
+

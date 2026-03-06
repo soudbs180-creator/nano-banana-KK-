@@ -117,6 +117,7 @@ const ApiSettingsView: React.FC = () => {
 
   const [testingKeyId, setTestingKeyId] = useState<string | null>(null);
   const [detectingProviderId, setDetectingProviderId] = useState<string | null>(null);
+  const [syncingProviderId, setSyncingProviderId] = useState<string | null>(null);
 
   const migrateLegacyDataIfNeeded = () => {
     const existingProviders = keyManager.getProviders();
@@ -628,6 +629,21 @@ const ApiSettingsView: React.FC = () => {
     }
   };
 
+  const handleManualSyncPricing = async (provider: ThirdPartyProvider) => {
+    setSyncingProviderId(provider.id);
+    try {
+      const ok = await keyManager.syncProviderPricing(provider.id);
+      if (ok) {
+        notify.success('同步成功', `已拉取 ${provider.name} 的最新价格配置。`);
+      } else {
+        notify.error('同步失败', `无法拉取 ${provider.name} 的价格信息，该供应商可能不支持此功能或网络异常。`);
+      }
+      refresh();
+    } finally {
+      setSyncingProviderId(null);
+    }
+  };
+
   const renderOfficialForm = (mode: 'create' | 'edit') => (
     <div className="space-y-3">
       <div className="text-sm font-semibold text-[var(--text-primary)]">
@@ -1054,7 +1070,11 @@ const ApiSettingsView: React.FC = () => {
                             错误详情：{(provider as any).lastError}
                           </div>
                         )}
-                        {snapshot?.fetchedAt ? <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">高级模式获取：{formatDate(snapshot.fetchedAt)}</div> : null}
+                        {snapshot?.fetchedAt && (
+                          <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
+                            价格同步时间：{formatDate(snapshot.fetchedAt)}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-1">
                         <button className="rounded-lg border border-[var(--border-light)] px-2 py-1 text-xs" onClick={() => loadProviderToForm(provider)} title="编辑">
