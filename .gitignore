@@ -46,3 +46,6 @@ scripts/alipay-mcp.env
 *.bak
 *.backup
 *~
+
+# Supabase CLI 临时文件
+supabase/.temp/
