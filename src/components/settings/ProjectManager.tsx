@@ -288,23 +288,23 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
         };
     }, []);
 
+    const iconButtonClass = `${isMobile ? 'w-10 h-10 p-0 rounded-xl' : 'p-2 rounded-lg'} flex items-center justify-center transition-all outline-none focus:outline-none`;
+
     return (
         <div
             id="project-manager-container"
-            // Mobile: Fixed Top-Left (2,2) to match standard drawer position. Desktop: Dynamic.
-            className={`fixed ${isMobile ? 'top-2 left-2' : 'left-4'} z-50 flex flex-col items-center gap-2 select-none transition-all duration-300 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
+            className={`fixed ${isMobile ? 'left-3' : 'left-4'} z-50 flex flex-col items-center gap-2 select-none transition-all duration-300 ease-out ${isCollapsed ? '-translate-x-full opacity-30 hover:opacity-100' : 'translate-x-0 opacity-100'}`}
             style={{
-                top: isMobile ? undefined : topPosition,
+                top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + var(--mobile-header-height, 64px) + 18px)' : topPosition,
                 // Move sidebar up when keyboard is open on mobile
-                transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : undefined
+                transform: keyboardOffset > 0 ? `translate3d(0, -${keyboardOffset}px, 0)` : undefined
             }}
             onMouseEnter={() => setIsCollapsed(false)}
             onTouchStart={() => setIsCollapsed(false)}
         >
             {/* Project Module Container */}
             <div
-                // Mobile: Slightly bigger (w-12), proper padding for centered icons.
-                className={`flex flex-col ${isMobile ? 'gap-0.5 p-1 w-12' : 'gap-2 p-1.5'} items-center justify-center rounded-2xl transition-all duration-300 cursor-grab active:cursor-grabbing ${isDragging ? 'scale-[0.98]' : ''}`}
+                className={`flex flex-col ${isMobile ? 'gap-1 p-1.5 w-[52px]' : 'gap-2 p-1.5'} items-center justify-center rounded-2xl transition-all duration-300 cursor-grab active:cursor-grabbing ${isDragging ? 'scale-[0.98]' : ''}`}
                 style={{
                     backgroundColor: theme === 'dark' ? '#27272a' : '#ffffff', // zinc-800 in dark, white in light
                     border: theme === 'dark' ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.05)',
@@ -338,7 +338,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                     <button
                         id="project-manager-trigger"
                         onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown); }}
-                        className={`${isMobile ? 'min-w-[44px] min-h-[44px] p-2' : 'p-2'} rounded-lg transition-all active:scale-95 group relative flex items-center justify-center outline-none focus:outline-none`}
+                        className={`${iconButtonClass} active:scale-95 group relative`}
                         style={{
                             color: theme === 'dark' ? (showDropdown ? '#818cf8' : '#a1a1aa') : (showDropdown ? '#4f46e5' : '#000000'),
                             backgroundColor: showDropdown ? (theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : 'transparent'
@@ -511,7 +511,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 {/* 3. Search Button */}
                 <button
                     onClick={(e) => { e.stopPropagation(); onSearch(); }}
-                    className="p-2 rounded-lg transition-all outline-none focus:outline-none"
+                    className={iconButtonClass}
                     style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
                     onMouseEnter={(e) => {
                         e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';
@@ -530,9 +530,10 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 <div className="w-full h-px my-1" style={{ backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
 
                 {/* 4. Fit All - 缩放到全览 */}
+                {!isMobile && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onFitToAll(); }}
-                    className="p-2 rounded-lg transition-all outline-none focus:outline-none"
+                    className={iconButtonClass}
                     style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
                     onMouseEnter={(e) => {
                         e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';
@@ -547,10 +548,11 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 >
                     <Maximize2 size={20} />
                 </button>
+                )}
 
                 <button
                     onClick={(e) => { e.stopPropagation(); onResetView(); }}
-                    className="p-2 rounded-lg transition-all outline-none focus:outline-none"
+                    className={iconButtonClass}
                     style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
                     onMouseEnter={(e) => {
                         e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';
@@ -568,7 +570,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
                 <button
                     onClick={(e) => { e.stopPropagation(); onToggleGrid(); }}
-                    className="p-2 rounded-lg transition-all outline-none focus:outline-none"
+                    className={iconButtonClass}
                     style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
                     onMouseEnter={(e) => {
                         e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';
@@ -584,9 +586,10 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                     {showGrid ? <Grid3x3 size={20} /> : <Square size={20} />}
                 </button>
 
+                {!isMobile && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onAutoArrange(); }}
-                    className="p-2 rounded-lg transition-all outline-none focus:outline-none"
+                    className={iconButtonClass}
                     style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
                     onMouseEnter={(e) => {
                         e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';
@@ -601,12 +604,13 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 >
                     <LayoutDashboard size={20} />
                 </button>
+                )}
 
                 <div className="w-full h-px my-1" style={{ backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
 
                 <button
                     onClick={(e) => { e.stopPropagation(); toggleTheme(); }}
-                    className="p-2 rounded-lg transition-all outline-none focus:outline-none"
+                    className={iconButtonClass}
                     style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
                     onMouseEnter={(e) => {
                         e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';

@@ -348,15 +348,8 @@ export class LLMService {
                     costForStats = keySlot.creditCost;
                 }
 
-                // 绯荤粺绉垎妯″瀷涓嶈鍏ョ敤鎴锋笭閬?token/cost 缁熻锛岄伩鍏嶁€滅Н鍒?+ 鐢ㄦ埛API鈥濆弻閲嶆秷鑰楁劅鐭?
-                // 馃殌 [Fix] 鏀寔澶氱绯荤粺绉垎妯″瀷鍚庣紑
-                const lowerModelId = options.modelId.toLowerCase();
-                const isSystemRoute = lowerModelId.endsWith('@system') ||
-                    lowerModelId.endsWith('@systemproxy') ||
-                    lowerModelId.endsWith('@google') ||
-                    lowerModelId.endsWith('@openai') ||
-                    lowerModelId.endsWith('@anthropic') ||
-                    lowerModelId.endsWith('@12ai');
+                // 系统积分模型不计入用户渠道 token/cost 统计，避免“积分 + 用户API”双重消耗感知
+                const isSystemRoute = keySlot.provider === 'SystemProxy';
                 if (!isSystemRoute) {
                     keyManager.addUsage(keySlot.id, tokensForStats);
                     keyManager.addCost(keySlot.id, costForStats);

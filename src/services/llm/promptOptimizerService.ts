@@ -156,13 +156,35 @@ const pickOptimizerModel = (preferredModelId?: string): string | null => {
     if (candidates.length === 0) return null;
 
     if (preferredModelId) {
+        // 1. Exact match if the preferred model IS a chat model
         const exact = candidates.find(m => m.id === preferredModelId);
         if (exact) return exact.id;
-        const preferredBase = preferredModelId.split('@')[0].replace('-image', '').replace('-preview', '');
-        const sameBase = candidates.find(m => m.id.split('@')[0].includes(preferredBase));
-        if (sameBase) return sameBase.id;
+
+        const parts = preferredModelId.split('@');
+        const preferredBase = parts[0].replace('-image', '').replace('-preview', '');
+        const suffix = parts.length > 1 ? parts[1] : null;
+
+        // 2. Look for any chat model pointing to the same custom provider (same suffix)
+        if (suffix) {
+            // Priority: A model with same base AND same suffix
+            const sameBaseAndSuffix = candidates.find(m => m.id.split('@')[0].includes(preferredBase) && m.id.split('@')[1] === suffix);
+            if (sameBaseAndSuffix) return sameBaseAndSuffix.id;
+
+            // Priority: ANY chat model with the same suffix (i.e. same custom API)
+            const sameSuffix = candidates.find(m => m.id.endsWith(`@${suffix}`));
+            if (sameSuffix) {
+                // Ideally pick a lightweight/cheap model like flash/mini if available
+                const lightweight = candidates.find(m => m.id.endsWith(`@${suffix}`) && (m.id.includes('flash') || m.id.includes('mini') || m.id.includes('haiku')));
+                return lightweight ? lightweight.id : sameSuffix.id;
+            }
+        } else {
+            // 3. Look for models with the same base (No suffix case)
+            const sameBase = candidates.find(m => m.id.split('@')[0].includes(preferredBase) && !m.id.includes('@'));
+            if (sameBase) return sameBase.id;
+        }
     }
 
+    // Fallback: system chat model (will consume points if it's a system proxy model)
     const chatFirst = candidates.find(m => m.id.toLowerCase().includes('gemini-2.5-flash'));
     return chatFirst ? chatFirst.id : candidates[0].id;
 };

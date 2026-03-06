@@ -1636,10 +1636,10 @@ export class KeyManager {
 
         // Normalize the requested model ID and apply migration mapping
         let normalizedModelId = baseIdPart.replace(/^models\//, '');
-        // 鍏煎 UI/鍘嗗彶鏁版嵁閲屽彲鑳藉嚭鐜扮殑灞曠ず鍚嶄綔涓?modelId
+        // 兼容 UI/历史数据里可能出现的展示名作为 modelId
         const lowerRequested = normalizedModelId.toLowerCase();
-        // 浠呬慨姝ｂ€滃睍绀哄悕杈撳叆鈥濆満鏅紙绌烘牸褰㈠紡锛夛紝涓嶆敼鍐欐爣鍑嗘ā鍨婭D锛堣繛瀛楃褰㈠紡锛夈€?
-        // 杩炲瓧绗﹀舰寮忓彲鑳芥槸鍒嗗彂娓犻亾鐨勭湡瀹炴ā鍨嬪悕锛堜緥濡?nano-banana-2锛夈€?
+        // 仅修正“展示名输入”场景（空格形式），不改写标准模型ID（连字符形式）。
+        // 连字符形式可能是分发渠道的真实模型名（例如 nano-banana-2）。
         if (lowerRequested === 'nano banana pro') {
             normalizedModelId = 'gemini-3-pro-image-preview';
         } else if (lowerRequested === 'nano banana') {
@@ -1648,15 +1648,15 @@ export class KeyManager {
             normalizedModelId = 'gemini-3.1-flash-image-preview';
         }
 
-        // 鏈夊悗缂€鏃朵唬琛ㄥ己缁戝畾鏌愪釜娓犻亾锛園xxx锛夛紝浼樺厛灏婇噸璇ユ笭閬撶殑鍘熷妯″瀷ID锛?
-        // 閬垮厤鎶婃笭閬撳唴鍒悕寮哄埗杩佺Щ涓哄畼鏂笽D瀵艰嚧鈥滄棤鍙敤娓犻亾鈥濄€?
+        // 有后缀时代表强绑定某个渠道（@xxx），优先尊重该渠道的原始模型ID，
+        // 避免把渠道内别名强制迁移为官方ID导致“无可用渠道”。
         if (!suffix && MODEL_MIGRATION_MAP[normalizedModelId]) {
             normalizedModelId = MODEL_MIGRATION_MAP[normalizedModelId];
         }
 
-        // 馃殌 [Model-Driven Logic]
-        // 妫€娴嬫槸鍚︿负鈥滅Н鍒嗘ā鍨嬧€濓紙鍗冲唴缃ā鍨嬶紝濡?Nano Banana 绯诲垪锛?
-        // 杩欎簺妯″瀷濡傛灉娌℃湁鎸囧畾鍚庣紑锛岄粯璁よ蛋鍐呯疆 PROXY 绾胯矾
+        // 🚀 [Model-Driven Logic]
+        // 检测是否为“积分模型”（即内置模型，如 Nano Banana 系列）
+        // 这些模型如果没有指定后缀，默认走内置 PROXY 线路
         const isCreditModel = normalizedModelId.includes('nano-banana') ||
             normalizedModelId.includes('gemini-3.1-flash-image') ||
             normalizedModelId.includes('gemini-3-pro-image') ||
@@ -1664,10 +1664,38 @@ export class KeyManager {
             normalizedModelId.includes('lyria');
 
         // --- SEPARATION STRATEGY ---
-        // 1. 濡傛灉鏈夋樉绀哄悗缂€ (@Suffix)锛屽己鍒跺鎵惧搴旈閬?
-        // 2. 濡傛灉鏃犲悗缂€锛?
-        //    - 濡傛灉鏄Н鍒嗘ā鍨?(Nano Banana 绛? -> 璧板唴缃?PROXY
-        //    - 濡傛灉鏄櫘閫氭ā鍨?(Gemini 1.5 绛? -> 璧扮敤鎴烽厤缃殑 Google Key
+        // 1. 如果有显示后缀 (@Suffix)，强制寻找对应频道
+        // 2. 如果无后缀：
+        //    - 如果是积分模型 (Nano Banana 等) -> 走内置 PROXY
+        //    - 如果是普通模型 (Gemini 1.5 等) -> 走用户配置的 Google Key
+
+        // 🚀 [Fix] 将 providers 转换为临时的 KeySlot 以便统一调度
+        this.loadProviders();
+        const providerSlots: KeySlot[] = this.providers.filter(p => p.isActive).map(p => ({
+            id: p.id,
+            key: p.apiKey,
+            name: p.name,
+            provider: (['Google', 'OpenAI', 'Anthropic', 'Volcengine', 'Aliyun', 'Tencent', 'SiliconFlow', '12AI'].includes(p.name) ? p.name : 'Custom') as Provider,
+            baseUrl: p.baseUrl,
+            status: 'valid',
+            budgetLimit: -1,
+            totalCost: 0,
+            successCount: 0,
+            failCount: 0,
+            supportedModels: p.models,
+            type: 'third-party',
+            lastUsed: 0,
+            lastError: null,
+            disabled: false,
+            createdAt: 0,
+            proxyConfig: {
+                serverUrl: p.baseUrl,
+                serverName: p.name,
+                isEnabled: true
+            }
+        }));
+
+        const allSlots = [...this.state.slots, ...providerSlots];
 
         const modelSupportedBySlot = (slot: KeySlot) => {
             const supported = slot.supportedModels || [];
@@ -1686,12 +1714,12 @@ export class KeyManager {
         };
 
         const matchesRequestedRoute = (slot: KeySlot) => {
-            // 鏃犲悗缂€ = 瀹樻柟鐩磋繛锛屽彧鍏佽 Google
+            // 无后缀 = 官方直连，只允许 Google
             if (!suffix) {
                 return slot.provider === 'Google';
             }
 
-            // 鏈夊悗缂€ = 蹇呴』鍛戒腑璇ュ悗缂€娓犻亾
+            // 有后缀 = 必须命中该后缀渠道
             const normalizedSuffix = String(suffix || '').trim().toLowerCase();
             const slotNameLower = String(slot.name || '').trim().toLowerCase();
             const slotSuffix = String(slot.proxyConfig?.serverName || slot.provider || 'Custom').trim();
@@ -1706,10 +1734,10 @@ export class KeyManager {
             return false;
         };
 
-        // [Note] 绉垎妯″瀷寮哄埗璺敱宸茬Щ闄?
+        // [Note] 积分模型强制路由已移除
 
         if (preferredKeyId) {
-            const preferred = this.state.slots.find(s => s.id === preferredKeyId);
+            const preferred = allSlots.find(s => s.id === preferredKeyId);
             if (preferred && isSlotHealthy(preferred) && modelSupportedBySlot(preferred) && matchesRequestedRoute(preferred)) {
                 return this.prepareKeyResult(preferred);
             }
@@ -1721,16 +1749,16 @@ export class KeyManager {
         if (!suffix) {
             // [No Suffix Case]
 
-            // [Note] 绉垎妯″瀷浼樺厛閫昏緫宸茬Щ闄?
+            // [Note] 积分模型优先逻辑已移除
 
-            // B. 闈炵Н鍒嗘ā鍨嬶細瀵绘壘鐢ㄦ埛鑷繁鐨?Google 瀹樻柟 Key (鐩磋繛妯″紡)
-            candidates = this.state.slots.filter(s => s.provider === 'Google' || (s.provider as string) === 'Gemini');
+            // B. 非积分模型：寻找用户自己的 Google 官方 Key (直连模式)
+            candidates = allSlots.filter(s => s.provider === 'Google' || (s.provider as string) === 'Gemini');
             let strictCandidates = candidates.filter(s => modelSupportedBySlot(s));
 
             if (strictCandidates.length > 0) {
                 candidates = strictCandidates;
             } else {
-                console.warn(`[KeyManager] 鎵句笉鍒板畼鏂?Key: ${normalizedModelId}`);
+                console.warn(`[KeyManager] 找不到官方 Key: ${normalizedModelId}`);
             }
 
         } else {
@@ -2749,7 +2777,7 @@ export class KeyManager {
             return false;
         }
 
-        return this.state.slots.some(s => {
+        const hasValidSlot = this.state.slots.some(s => {
             if (s.disabled || s.status === 'invalid') return false;
             // Budget check: if budget is set and exhausted, it's effectively invalid
             if (s.budgetLimit > 0 && s.totalCost >= s.budgetLimit) return false;
@@ -2767,6 +2795,26 @@ export class KeyManager {
                 if (slotNameLower === suffix || slotSuffixLower === suffix || providerLower === suffix) {
                     return true;
                 }
+            }
+
+            return false;
+        });
+
+        if (hasValidSlot) return true;
+
+        // 🚀 [Fix] 也要检查 ThirdPartyProvider，因为用户在设置里添加的自定义 API 存在于 providers 中
+        this.loadProviders();
+        return this.providers.some(p => {
+            if (!p.isActive) return false;
+
+            // Check if model matches asterisk or specifically supported
+            if (p.models.includes('*') || p.models.includes(normalizedModelId)) return true;
+
+            // Check if suffix matches provider name
+            if (suffix) {
+                const providerNameLower = String(p.name || '').trim().toLowerCase();
+                if (providerNameLower === suffix) return true;
+                if (providerNameLower.includes(suffix)) return true;
             }
 
             return false;
@@ -3107,7 +3155,7 @@ export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): 
         const data = await response.json();
         const rawModels: any[] = data.data || [];
 
-        console.log(`[KeyManager] fetched ${rawModels.length} raw models from compatible endpoint`);
+        console.log(`[KeyManager] /v1/models 响应: 共 ${rawModels.length} 个模型`, rawModels.length > 0 ? `第一个: ${JSON.stringify(rawModels[0]?.id || rawModels[0])}` : '(空列表)', 'data字段类型:', typeof data.data, '是否有object字段:', !!data.object);
 
         // 鍘婚噸绛栫暐锛?
         // - 鍒嗚鲸鐜?璐ㄩ噺/姣斾緥鍚庣紑瑙嗕负鈥滃弬鏁板瀷鍚庣紑鈥濆苟鎶樺彔

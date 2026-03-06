@@ -1,21 +1,21 @@
 import React from 'react';
-import { LayoutDashboard, Menu, Settings, User, Zap } from 'lucide-react';
+import { Menu, Sparkles, User } from 'lucide-react';
 
 interface MobileHeaderProps {
     onMenuClick: () => void;
-    onDashboardClick: () => void;
-    onSettingsClick: () => void;
     onUserClick: () => void;
-    onBillingClick: () => void;
+    onRechargeClick: () => void;
+    balance: number;
+    balanceLoading?: boolean;
     title?: string;
 }
 
 const MobileHeader: React.FC<MobileHeaderProps> = ({
     onMenuClick,
-    onDashboardClick,
-    onSettingsClick,
     onUserClick,
-    onBillingClick,
+    onRechargeClick,
+    balance,
+    balanceLoading = false,
     title = 'KK Studio',
 }) => {
     const iconButtonClass = 'h-11 w-11 rounded-2xl flex items-center justify-center transition-all active:scale-95 hover:bg-white/10';
@@ -29,7 +29,7 @@ const MobileHeader: React.FC<MobileHeaderProps> = ({
                 <div className="flex min-w-0 items-center gap-1">
                     <button
                         onClick={onMenuClick}
-                        aria-label="打开侧边栏"
+                        aria-label="\u6253\u5f00\u529f\u80fd\u83dc\u5355"
                         className={`${iconButtonClass} text-[var(--text-secondary)] hover:text-[var(--text-primary)]`}
                     >
                         <Menu size={20} strokeWidth={2.15} />
@@ -45,32 +45,27 @@ const MobileHeader: React.FC<MobileHeaderProps> = ({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-0.5">
-                    <button
-                        onClick={onDashboardClick}
-                        aria-label="打开仪表盘"
-                        className={`${iconButtonClass} text-[var(--text-tertiary)] hover:text-[var(--text-primary)]`}
+                <div className="flex items-center gap-1">
+                    <div
+                        className="flex shrink-0 items-center gap-1 rounded-xl px-2 py-1 border"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.12)' }}
                     >
-                        <LayoutDashboard size={19} strokeWidth={2.1} />
-                    </button>
+                        <Sparkles size={13} className="text-amber-300" />
+                        <span className="text-[12px] font-bold text-amber-300">{balanceLoading ? '...' : balance}</span>
+                    </div>
+
                     <button
-                        onClick={onSettingsClick}
-                        aria-label="打开设置"
-                        className={`${iconButtonClass} text-[var(--text-tertiary)] hover:text-[var(--text-primary)]`}
+                        onClick={onRechargeClick}
+                        aria-label="\u5145\u503c\u79ef\u5206"
+                        className="h-9 rounded-xl px-2.5 text-[11px] font-semibold text-white transition-all active:scale-95"
+                        style={{ backgroundColor: 'rgba(99, 102, 241, 0.92)' }}
                     >
-                        <Settings size={19} strokeWidth={2.1} />
+                        {'\u5145\u503c'}
                     </button>
-                    <button
-                        onClick={onBillingClick}
-                        aria-label="打开账户管理"
-                        className={`${iconButtonClass} text-amber-400 hover:text-amber-300`}
-                        title="账户管理"
-                    >
-                        <Zap size={19} strokeWidth={2.1} fill="currentColor" />
-                    </button>
+
                     <button
                         onClick={onUserClick}
-                        aria-label="打开个人中心"
+                        aria-label="\u6253\u5f00\u4e2a\u4eba\u4e2d\u5fc3"
                         className={`${iconButtonClass} text-[var(--text-tertiary)] hover:text-[var(--text-primary)]`}
                     >
                         <User size={19} strokeWidth={2.1} />

@@ -600,8 +600,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                 </div>
                                 <span className="text-[13px] font-medium tracking-wide truncate text-red-500" title={node.error}>
                                     生成失败{(() => {
-                                        // 🚀 [Fix] 只有 @system 后缀才是积分模型
-                                        const isCreditModel = node.model?.toLowerCase().endsWith('@system');
+                                        // 🚀 [Fix] 只有 SystemProxy 或者明确带有 @system 后缀才是积分模型
+                                        const isCreditModel = node.provider === 'SystemProxy' || node.model?.toLowerCase().endsWith('@system') || node.model?.toLowerCase().endsWith('@systemproxy');
                                         if (!isCreditModel) return '';
                                         if (node.refundStatus === 'success') return '，积分已退回';
                                         if (node.refundStatus === 'failed') return '，积分退回失败';

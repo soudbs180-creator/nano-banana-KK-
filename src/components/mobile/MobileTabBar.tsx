@@ -1,12 +1,11 @@
 import React from 'react';
-import { Image as ImageIcon, Music, Settings, Sparkles, User, Video } from 'lucide-react';
+import { Image as ImageIcon, Music, Settings, User, Video } from 'lucide-react';
 import { GenerationMode } from '../../types';
 
 interface MobileTabBarProps {
     onSetMode: (mode: GenerationMode) => void;
     onOpenSettings: () => void;
     onOpenProfile: () => void;
-    onToggleChat?: () => void;
     currentMode: GenerationMode;
     currentView: 'gallery' | 'home' | 'settings' | 'profile' | 'chat';
     isVisible?: boolean;
@@ -17,7 +16,6 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
     onSetMode,
     onOpenSettings,
     onOpenProfile,
-    onToggleChat,
     currentMode,
     currentView,
     isVisible = true,
@@ -33,42 +31,35 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
     const tabs = [
         {
             key: 'settings',
-            label: '设置',
+            label: '\u8bbe\u7f6e',
             active: currentView === 'settings',
             onClick: onOpenSettings,
             icon: <Settings size={20} strokeWidth={2.15} />,
         },
         {
             key: 'image',
-            label: '图片',
+            label: '\u56fe\u7247',
             active: modeTabActive(GenerationMode.IMAGE),
             onClick: () => onSetMode(GenerationMode.IMAGE),
             icon: <ImageIcon size={20} strokeWidth={2.15} />,
         },
         {
-            key: 'chat',
-            label: '助手',
-            active: currentView === 'chat',
-            onClick: () => onToggleChat?.(),
-            icon: <Sparkles size={20} strokeWidth={2.15} />,
-        },
-        {
             key: 'video',
-            label: '视频',
+            label: '\u89c6\u9891',
             active: modeTabActive(GenerationMode.VIDEO),
             onClick: () => onSetMode(GenerationMode.VIDEO),
             icon: <Video size={20} strokeWidth={2.15} />,
         },
         {
             key: 'audio',
-            label: '音频',
+            label: '\u97f3\u9891',
             active: modeTabActive(GenerationMode.AUDIO),
             onClick: () => onSetMode(GenerationMode.AUDIO),
             icon: <Music size={20} strokeWidth={2.15} />,
         },
         {
             key: 'profile',
-            label: '我的',
+            label: '\u6211\u7684',
             active: currentView === 'profile',
             onClick: onOpenProfile,
             icon: <User size={20} strokeWidth={2.15} />,
@@ -83,7 +74,7 @@ const MobileTabBar: React.FC<MobileTabBarProps> = ({
             onClick={onInteract}
         >
             <div id="mobile-tab-bar" className="ios-mobile-tabbar-shell mx-3 px-2 py-1.5">
-                <div className="grid grid-cols-6 gap-1">
+                <div className="grid grid-cols-5 gap-1">
                     {tabs.map((tab) => (
                         <button
                             key={tab.key}

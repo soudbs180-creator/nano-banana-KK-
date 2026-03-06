@@ -342,24 +342,23 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         const modelId = image.model || '';
         const lowerModelId = modelId.toLowerCase();
 
-        // 系统积分模型
-        const isSystemProvider = lowerModelId.includes('@system') ||
-            lowerModelId.includes('@systemproxy') ||
-            isCreditBasedModel(modelId, image.provider);
-
-        if (isSystemProvider) {
+        // 1. 明确的系统路由
+        if (image.provider === 'SystemProxy' || lowerModelId.includes('@system') || lowerModelId.includes('@systemproxy')) {
             return true;
         }
 
-        // 如果是外部API或者未命中内置积分模型池，再判断令牌金额数据
+        // 2. 有代币或金额必然是用户 API (系统积分不记录此值，且前面已拦截)
         if ((image.tokens && image.tokens > 0) || (image.cost && image.cost > 0)) {
             return false;
         }
 
-        return lowerModelId.includes('@google') ||
-            lowerModelId.includes('@openai') ||
-            lowerModelId.includes('@anthropic') ||
-            lowerModelId.includes('@12ai');
+        // 3. 有明确的特定提供商（且非 SystemProxy），认为是外部渠道
+        if (image.provider && image.provider !== 'SystemProxy') {
+            return false;
+        }
+
+        // 4. 兜底猜测历史数据
+        return isCreditBasedModel(modelId, image.provider);
     }, [image.provider, image.model, image.tokens, image.cost]);
 
     // 🚀 根据画布缩放自动选择合适质量 - 使用队列加载优化
@@ -1165,7 +1164,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                     className={`text-[9px] leading-none px-1 py-0.5 rounded whitespace-nowrap border shrink-0 ${getProviderBadgeColor(image.providerLabel || image.provider)}`}
                                                     title={image.providerLabel || image.provider}
                                                 >
-                                                    {truncateByChars(image.providerLabel || image.provider || '', 5)}
+                                                    {truncateByChars(image.providerLabel || image.provider || '', 12)}
                                                 </span>
                                             )}
                                         </div>
@@ -1224,7 +1223,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                             </span>
                                                             {providerText && (
                                                                 <span className={`text-[9px] px-1 py-0.5 rounded border shrink-0 ${getProviderBadgeColor(providerText)}`} title={providerText}>
-                                                                    {truncateByChars(providerText, 6)}
+                                                                    {truncateByChars(providerText, 12)}
                                                                 </span>
                                                             )}
                                                         </>

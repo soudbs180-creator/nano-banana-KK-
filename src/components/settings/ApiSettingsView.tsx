@@ -20,6 +20,7 @@ import keyManager, {
 } from '../../services/auth/keyManager';
 import { supplierService } from '../../services/billing/supplierService';
 import { notify } from '../../services/system/notificationService';
+import { mergeModelPricingOverrides } from '../../services/model/modelPricing';
 
 type Tab = 'official' | 'thirdparty';
 type CostMode = 'unlimited' | 'amount' | 'tokens';
@@ -48,6 +49,8 @@ type AdvancedResult = {
   apiType: string;
   pricingHint: string;
   fetchedAt: number;
+  pricingData?: any[]; // 原始价格数据
+  groupRatio?: Record<string, number>; // 分组倍率
 };
 
 const defaultOfficialForm: OfficialForm = {
@@ -108,7 +111,7 @@ const ApiSettingsView: React.FC = () => {
   const [showProviderCreateForm, setShowProviderCreateForm] = useState(false);
   const [showAdvancedMode, setShowAdvancedMode] = useState(false);
 
-  const [advancedIdentityKey, setAdvancedIdentityKey] = useState('');
+  // 高级模式不再需要系统令牌，自动从 baseUrl/api/pricing 公开端点获取
   const [advancedResult, setAdvancedResult] = useState<AdvancedResult | null>(null);
   const [advancedLoading, setAdvancedLoading] = useState(false);
 
@@ -230,7 +233,6 @@ const ApiSettingsView: React.FC = () => {
 
   const resetThirdPartyForm = (closeCreate = true) => {
     setProviderForm(defaultProviderForm);
-    setAdvancedIdentityKey('');
     setAdvancedResult(null);
     setShowAdvancedMode(false);
     if (closeCreate) {
@@ -261,7 +263,7 @@ const ApiSettingsView: React.FC = () => {
 
   const loadProviderToForm = (provider: ThirdPartyProvider) => {
     setProviderForm(toProviderForm(provider));
-    setAdvancedIdentityKey(((provider as any).identityKey as string) || '');
+    // 加载已保存的价格快照（如果有）
 
     const snapshot = (provider as any).pricingSnapshot as
       | { fetchedAt?: number; apiType?: string; note?: string; rows?: Array<{ model?: string }> }
@@ -345,32 +347,111 @@ const ApiSettingsView: React.FC = () => {
     }
   };
 
-  const handleDetectAdvanced = async () => {
-    const providerName = providerForm.name.trim();
-    const baseUrl = providerForm.baseUrl.trim();
-    const identityKey = advancedIdentityKey.trim();
+  /**
+   * 从供应商的 /pricing 页面获取价格数据
+   * /pricing 是 SPA 网页，/api/pricing 是其背后的 JSON 数据源
+   * 通过服务端代理（/api/pricing-proxy）绕过浏览器 CORS 限制
+   */
+  const fetchPricingFromUrl = async (baseUrl: string): Promise<AdvancedResult | null> => {
+    const cleanUrl = baseUrl.replace(/\/v1\/?$/, '').replace(/\/$/, '');
 
-    if (!providerName || !baseUrl || !identityKey) {
-      notify.error('缺少字段', '请先填写供应商名称、接口地址和系统令牌。');
+    try {
+      // 通过服务端代理请求，绕过浏览器 CORS 限制
+      console.log(`[ApiSettings] 通过代理扫描价格页面: ${cleanUrl}/pricing`);
+      const proxyResponse = await fetch('/api/pricing-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl: cleanUrl }),
+      });
+
+      if (proxyResponse.ok) {
+        const proxyData = await proxyResponse.json();
+
+        if (proxyData.error) {
+          console.log(`[ApiSettings] 代理返回错误: ${proxyData.error}`);
+          return null;
+        }
+
+        const pricingList: any[] = proxyData.data || [];
+        const groupRatio: Record<string, number> = proxyData.group_ratio || {};
+
+        if (pricingList.length === 0) {
+          console.log('[ApiSettings] 代理返回空的价格列表');
+          return null;
+        }
+
+        const modelNames = pricingList.map((item: any) => item.model_name || item.model || '').filter(Boolean);
+        console.log(`[ApiSettings] 价格扫描成功: ${pricingList.length} 个模型`);
+        return {
+          models: modelNames,
+          apiType: 'proxy',
+          pricingHint: `已从供应商价格页面获取 ${pricingList.length} 个模型的价格与倍率。`,
+          fetchedAt: Date.now(),
+          pricingData: pricingList,
+          groupRatio,
+        };
+      }
+    } catch (e: any) {
+      console.log('[ApiSettings] 代理请求失败，尝试直接请求:', e?.message);
+    }
+
+    // 回退方案：直接请求（可能受 CORS 限制）
+    try {
+      const directUrl = `${cleanUrl}/api/pricing`;
+      console.log(`[ApiSettings] 尝试直接请求: ${directUrl}`);
+      const response = await fetch(directUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!response.ok) return null;
+
+      const text = await response.text();
+      if (text.trimStart().startsWith('<!') || text.trimStart().startsWith('<html')) return null;
+
+      const data = JSON.parse(text);
+      const pricingList: any[] = data.data || [];
+      const groupRatio: Record<string, number> = data.group_ratio || {};
+      if (pricingList.length === 0) return null;
+
+      const modelNames = pricingList.map((item: any) => item.model_name || item.model || '').filter(Boolean);
+      return {
+        models: modelNames,
+        apiType: 'proxy',
+        pricingHint: `已从供应商价格页面获取 ${pricingList.length} 个模型的价格与倍率。`,
+        fetchedAt: Date.now(),
+        pricingData: pricingList,
+        groupRatio,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  // 高级模式手动触发价格扫描
+  const handleDetectAdvanced = async () => {
+    const baseUrl = providerForm.baseUrl.trim();
+
+    if (!baseUrl) {
+      notify.error('缺少字段', '请先填写接口地址。');
       return;
     }
 
     setAdvancedLoading(true);
     try {
-      const detect = await autoDetectAndConfigureModels(identityKey, baseUrl);
-      const result: AdvancedResult = {
-        models: detect.models || [],
-        apiType: detect.apiType || 'auto',
-        pricingHint: '该供应商价格体系已按当前系统令牌抓取。系统令牌刷新后，请重新粘贴并重新获取。',
-        fetchedAt: Date.now(),
-      };
-      setAdvancedResult(result);
-      notify.success('获取成功', `已识别 ${result.models.length} 个模型。`);
-    } catch (error: any) {
-      const errMsg = error?.message || '请检查系统令牌与接口地址。';
-      notify.error('获取失败', errMsg.includes('401')
-        ? `${errMsg} 提示：若使用12AI，请在主站令牌管理页重新创建 sk- 密钥。`
-        : errMsg);
+      const result = await fetchPricingFromUrl(baseUrl);
+      if (result) {
+        setAdvancedResult(result);
+        notify.success('扫描成功', `已从价格页面识别 ${result.models.length} 个模型及价格。`);
+      } else {
+        setAdvancedResult({
+          models: [],
+          apiType: 'proxy',
+          pricingHint: '该供应商暂不支持价格页面扫描，或价格数据为空。',
+          fetchedAt: Date.now(),
+        });
+        notify.error('扫描失败', '未从价格页面获取到数据。该供应商可能不支持此功能。');
+      }
     } finally {
       setAdvancedLoading(false);
     }
@@ -388,18 +469,49 @@ const ApiSettingsView: React.FC = () => {
 
     const { budgetLimit, tokenLimit } = parseCost(providerForm.costMode, providerForm.costValue);
 
-    // 🚀 [Fix] 优先使用高级模式（系统身份令牌）已获取的模型列表
-    // 系统令牌通常是一次性的或有时效性的，保存时不应再次消耗
+    // 通过 apiKey + /v1/models 获取模型列表
     let models: string[] = [];
-    if (advancedResult && advancedResult.models.length > 0) {
-      models = advancedResult.models;
+    try {
+      const detect = await autoDetectAndConfigureModels(apiKey, baseUrl);
+      models = detect.models || [];
+    } catch (saveDetectErr: any) {
+      console.warn('[ApiSettings] 保存时自动获取模型失败:', saveDetectErr?.message);
+      models = [];
+    }
+
+    // 🚀 自动无感扫描价格页面（baseUrl/pricing 的数据源）
+    let pricingSnapshot: any = undefined;
+    if (advancedResult && advancedResult.pricingData && advancedResult.pricingData.length > 0) {
+      // 已有手动扫描结果，直接使用
+      pricingSnapshot = {
+        fetchedAt: advancedResult.fetchedAt,
+        note: advancedResult.pricingHint,
+        rows: advancedResult.pricingData.map((item: any) => ({
+          model: item.model_name || item.model || '',
+          modelRatio: item.model_ratio,
+          modelPrice: item.model_price,
+          completionRatio: item.completion_ratio,
+          quotaType: item.quota_type,
+        })),
+        groupRatio: advancedResult.groupRatio,
+      };
     } else {
-      try {
-        const detect = await autoDetectAndConfigureModels(apiKey, baseUrl);
-        models = detect.models || [];
-      } catch (saveDetectErr: any) {
-        console.warn('[ApiSettings] 保存时自动获取模型失败:', saveDetectErr?.message);
-        models = [];
+      // 静默自动扫描价格页面
+      const silentResult = await fetchPricingFromUrl(baseUrl);
+      if (silentResult && silentResult.pricingData && silentResult.pricingData.length > 0) {
+        pricingSnapshot = {
+          fetchedAt: silentResult.fetchedAt,
+          note: silentResult.pricingHint,
+          rows: silentResult.pricingData.map((item: any) => ({
+            model: item.model_name || item.model || '',
+            modelRatio: item.model_ratio,
+            modelPrice: item.model_price,
+            completionRatio: item.completion_ratio,
+            quotaType: item.quota_type,
+          })),
+          groupRatio: silentResult.groupRatio,
+        };
+        console.log(`[ApiSettings] 自动价格扫描成功: ${silentResult.pricingData.length} 个模型`);
       }
     }
 
@@ -415,15 +527,7 @@ const ApiSettingsView: React.FC = () => {
       customCostMode: providerForm.costMode,
       customCostValue: providerForm.costValue,
       badgeColor: providerForm.badgeColor,
-      identityKey: advancedIdentityKey.trim() || undefined,
-      pricingSnapshot: advancedResult
-        ? {
-          fetchedAt: advancedResult.fetchedAt,
-          apiType: advancedResult.apiType,
-          note: advancedResult.pricingHint,
-          rows: advancedResult.models.map((model) => ({ model })),
-        }
-        : undefined,
+      pricingSnapshot,
     } as any;
 
     if (providerForm.id) {
@@ -436,6 +540,26 @@ const ApiSettingsView: React.FC = () => {
     } else {
       keyManager.addProvider(payload);
       notify.success('添加成功', '第三方供应商已添加。');
+    }
+
+    // 🚀 将扫描到的价格数据注入到 modelPricing 覆写系统
+    // 这样 costService.calculateCost → getModelPricing 就能拿到精确的倍率和价格
+    // pricingData 原始数据已包含 model_ratio、completion_ratio 等字段
+    const rawPricingData = advancedResult?.pricingData || (pricingSnapshot as any)?._rawData;
+    if (rawPricingData?.length) {
+      // 找到 default 分组的倍率（用户大多属于 default 组）
+      const gRatioMap = (advancedResult?.groupRatio || pricingSnapshot?.groupRatio || {}) as Record<string, number>;
+      const defaultGroupRatio = gRatioMap['default'] ?? gRatioMap['Default'] ?? 1;
+
+      // 为每个模型补上 group_ratio 数值（原始数据中没有逐模型的 group_ratio）
+      const enrichedData = rawPricingData.map((item: any) => ({
+        ...item,
+        // model_name 或 model 作为 ID（extractPricingMap 会读 item.model）
+        model: item.model_name || item.model,
+        group_ratio: defaultGroupRatio,
+      }));
+      mergeModelPricingOverrides(enrichedData);
+      console.log(`[ApiSettings] 已将 ${enrichedData.length} 个模型的价格数据注入计费系统 (默认组倍率: ×${defaultGroupRatio})`);
     }
 
     resetThirdPartyForm(true);
@@ -463,15 +587,8 @@ const ApiSettingsView: React.FC = () => {
   const handleValidateProvider = async (provider: ThirdPartyProvider) => {
     setDetectingProviderId(provider.id);
     try {
-      // 先尝试用普通 apiKey 检测
-      let detect = await autoDetectAndConfigureModels(provider.apiKey, provider.baseUrl);
-
-      // 如果普通 apiKey 获取为空，并且有系统令牌，尝试用系统令牌
-      if (!detect.success && (provider as any).identityKey) {
-        try {
-          detect = await autoDetectAndConfigureModels((provider as any).identityKey, provider.baseUrl);
-        } catch { /* 忽略系统令牌失败 */ }
-      }
+      // 用普通 apiKey 检测
+      const detect = await autoDetectAndConfigureModels(provider.apiKey, provider.baseUrl);
 
       if (detect.success) {
         // 🚀 检测成功：更新模型列表和状态
@@ -672,46 +789,50 @@ const ApiSettingsView: React.FC = () => {
 
         {showAdvancedMode && (
           <div className="mt-3 space-y-2">
-            <div className="text-sm font-medium text-[var(--text-primary)]">高级模式（按该供应商独立价格体系）</div>
+            <div className="text-sm font-medium text-[var(--text-primary)]">价格扫描</div>
             <p className="text-xs text-[var(--text-tertiary)]">
-              使用该供应商系统令牌抓取模型与价格体系。令牌刷新后需重新粘贴并重新获取。
+              保存时会自动扫描供应商价格页面（接口地址/pricing）获取模型价格与倍率。也可点击下方按钮手动扫描预览。
             </p>
-
-            <label className="block space-y-1">
-              <span className="text-[11px] text-[var(--text-tertiary)]">系统令牌</span>
-              <input
-                type="password"
-                value={advancedIdentityKey}
-                onChange={(event) => setAdvancedIdentityKey(event.target.value)}
-                placeholder="粘贴该供应商系统令牌（会刷新）"
-                className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm"
-              />
-            </label>
 
             <div className="flex flex-wrap items-center gap-2">
               <button
                 className="inline-flex h-8 items-center gap-1 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 text-xs text-indigo-300"
                 onClick={() => void handleDetectAdvanced()}
-                disabled={advancedLoading}
+                disabled={advancedLoading || !providerForm.baseUrl.trim()}
               >
-                <Search size={12} /> {advancedLoading ? '获取中...' : '获取模型与价格体系'}
+                <Search size={12} /> {advancedLoading ? '扫描中...' : '扫描模型与价格'}
               </button>
+              {!providerForm.baseUrl.trim() && (
+                <span className="text-[11px] text-[var(--text-tertiary)]">请先填写接口地址</span>
+              )}
             </div>
 
             {advancedResult && (
               <div className="rounded-lg border border-[var(--border-light)] p-3 text-xs text-[var(--text-tertiary)]">
-                <div>最近获取：{formatDate(advancedResult.fetchedAt)}</div>
-                <div className="mt-1">接口类型：{advancedResult.apiType}</div>
+                <div>扫描时间：{formatDate(advancedResult.fetchedAt)}</div>
                 <div className="mt-1">{advancedResult.pricingHint}</div>
-                <div className="mt-2 flex flex-wrap gap-1">
+                {advancedResult.groupRatio && Object.keys(advancedResult.groupRatio).length > 0 && (
+                  <div className="mt-1">分组倍率：{Object.entries(advancedResult.groupRatio).map(([g, r]) => `${g}(×${r})`).join('、')}</div>
+                )}
+                <div className="mt-2 max-h-40 overflow-y-auto">
                   {advancedResult.models.length === 0 ? (
                     <span>暂无模型</span>
                   ) : (
-                    advancedResult.models.map((model) => (
-                      <span key={model} className="rounded-full border border-[var(--border-light)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">
-                        {model}
-                      </span>
-                    ))
+                    <div className="flex flex-wrap gap-1">
+                      {advancedResult.models.map((model) => {
+                        const priceInfo = advancedResult.pricingData?.find((p: any) => (p.model_name || p.model) === model);
+                        const priceLabel = priceInfo
+                          ? priceInfo.quota_type === 1
+                            ? `¥${priceInfo.model_price}/次`
+                            : `×${priceInfo.model_ratio}`
+                          : '';
+                        return (
+                          <span key={model} className="rounded-full border border-[var(--border-light)] px-2 py-1 text-[11px] text-[var(--text-secondary)]" title={priceLabel}>
+                            {model}{priceLabel ? ` (${priceLabel})` : ''}
+                          </span>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
@@ -863,7 +984,6 @@ const ApiSettingsView: React.FC = () => {
                   const next = !prev;
                   if (next) {
                     setProviderForm(defaultProviderForm);
-                    setAdvancedIdentityKey('');
                     setAdvancedResult(null);
                     setShowAdvancedMode(false);
                   }
