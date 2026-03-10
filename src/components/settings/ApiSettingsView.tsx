@@ -843,6 +843,12 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     }
   };
 
+  useEffect(() => {
+    if (initialSupplier) return;
+    resetThirdPartyForm(true);
+    appliedInitialSupplierRef.current = '';
+  }, [initialSupplier]);
+
   const loadOfficialToForm = (slot: KeySlot) => {
     setOfficialForm({
       id: slot.id,

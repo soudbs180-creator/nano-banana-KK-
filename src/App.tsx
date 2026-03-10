@@ -294,11 +294,13 @@ const AppContent: React.FC<AppContentProps> = () => {
 
   const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-management' | 'storage-settings' | 'system-logs'>('dashboard');
   const [settingsInitialSupplier, setSettingsInitialSupplier] = useState<Supplier | null>(null);
+  const [settingsPanelSessionKey, setSettingsPanelSessionKey] = useState(0);
   const [showGrid, setShowGrid] = useState(true);
   const openSettingsPanel = useCallback((
     view: 'dashboard' | 'api-management' | 'storage-settings' | 'system-logs' = 'api-management',
     supplier: Supplier | null = null
   ) => {
+    setSettingsPanelSessionKey((prev) => prev + 1);
     setSettingsInitialSupplier(supplier);
     setSettingsInitialView(view);
     setShowSettingsPanel(true);
@@ -5690,6 +5692,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       {showSettingsPanel && (
         <Suspense fallback={null}>
           <SettingsPanel
+            key={`${settingsPanelSessionKey}-${settingsInitialView}-${settingsInitialSupplier?.id || 'none'}`}
             isOpen={showSettingsPanel}
             onClose={() => {
               setShowSettingsPanel(false);
