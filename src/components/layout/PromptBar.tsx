@@ -24,6 +24,28 @@ import { isCreditBasedModel, getModelCredits } from '../../services/model/modelP
 import PromptBarTopRow from './prompt-bar/PromptBarTopRow';
 import PromptBarFooter from './prompt-bar/PromptBarFooter';
 
+// [Animation Styles] Mode switcher animations
+const ModeSwitcherStyles = () => (
+    <style>{`
+        @keyframes pulse-once {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+        .animate-pulse-once {
+            animation: pulse-once 0.4s ease-out;
+        }
+        
+        @keyframes glow-pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 0.8; }
+        }
+        
+        .mode-slider-glow {
+            animation: glow-pulse 2s ease-in-out infinite;
+        }
+    `}</style>
+);
 
 // [FIX] Robust Image Component that self-heals from Storage if data is missing
 const ReferenceThumbnail: React.FC<{
@@ -1265,32 +1287,32 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             mode: GenerationMode.IMAGE,
             label: '图片',
             icon: Camera,
-            color: '#818cf8',
-            activeBg: 'rgba(99,102,241,0.16)',
+            color: '#8b5cf6',
+            activeBg: 'rgba(139,92,246,0.18)',
             onSelect: () => setConfig(prev => ({ ...prev, mode: GenerationMode.IMAGE, parallelCount: Math.min(4, Math.max(1, prev.parallelCount || 1)) }))
         },
         {
             mode: GenerationMode.VIDEO,
             label: '视频',
             icon: Video,
-            color: '#c084fc',
-            activeBg: 'rgba(168,85,247,0.16)',
+            color: '#a855f7',
+            activeBg: 'rgba(168,85,247,0.18)',
             onSelect: () => setConfig(prev => ({ ...prev, mode: GenerationMode.VIDEO, parallelCount: Math.min(4, Math.max(1, prev.parallelCount || 1)) }))
         },
         {
             mode: GenerationMode.AUDIO,
             label: '音乐',
             icon: Mic,
-            color: '#f472b6',
-            activeBg: 'rgba(236,72,153,0.16)',
+            color: '#ec4899',
+            activeBg: 'rgba(236,72,153,0.18)',
             onSelect: () => setConfig(prev => ({ ...prev, mode: GenerationMode.AUDIO, parallelCount: Math.min(4, Math.max(1, prev.parallelCount || 1)) }))
         },
         {
             mode: GenerationMode.PPT,
             label: 'PPT',
             icon: LayoutDashboard,
-            color: '#38bdf8',
-            activeBg: 'rgba(14,165,233,0.16)',
+            color: '#0ea5e9',
+            activeBg: 'rgba(14,165,233,0.18)',
             onSelect: () => setConfig(prev => ({ ...prev, mode: GenerationMode.PPT, parallelCount: Math.min(20, Math.max(1, prev.parallelCount || 6)), pptStyleLocked: prev.pptStyleLocked !== false }))
         }
     ]), [setConfig]);
@@ -1590,6 +1612,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     return (
         <>
+            <ModeSwitcherStyles />
             <div
                 id="prompt-bar-container"
                 className={`input-bar ${isMobile ? 'ios-mobile-prompt' : ''} transition-all duration-300 !overflow-visible w-[calc(100vw-32px)] sm:w-[min(95vw,960px)] md:w-[min(93vw,1080px)] lg:w-[min(92vw,1200px)] ${isDragging ? 'ring-2 ring-indigo-500' : ''}`}
@@ -1647,7 +1670,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                     {/* Active Source Image Banner */}
                     {activeSourceImage && (
-                        <div className="flex items-center gap-3 px-3 py-2.5 mb-2 rounded-xl border transition-all animate-in slide-in-from-bottom-2"
+                        <div className="flex items-center gap-3 px-3 py-2.5 mb-2 rounded-xl border transition-all animate-in slide-in-from-bottom-2 group"
                             style={{
                                 backgroundColor: 'rgba(245, 158, 11, 0.1)',
                                 borderColor: 'rgba(245, 158, 11, 0.2)'
@@ -1662,6 +1685,20 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <div className="text-xs font-semibold text-amber-600 dark:text-amber-500">从此图继续创作</div>
                                 <div className="text-xs text-[var(--text-tertiary)] truncate">{activeSourceImage.prompt}</div>
                             </div>
+                            <button
+                                onClick={onClearSource}
+                                className="
+                                    flex items-center justify-center w-7 h-7 rounded-lg
+                                    bg-amber-500/10 hover:bg-amber-500/20
+                                    text-amber-600 dark:text-amber-500
+                                    transition-all duration-200
+                                    hover:scale-110 active:scale-95
+                                    opacity-80 hover:opacity-100
+                                "
+                                title="取消继续创作"
+                            >
+                                <X size={14} />
+                            </button>
                         </div>
                     )}
 
@@ -1675,32 +1712,57 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 const sliderWidth = isMobile ? 64 : 74;
                                 const sliderLeft = 4 + activeModeIndex * MODE_SLOT_WIDTH + (MODE_SLOT_WIDTH - sliderWidth) / 2;
                                 return (
-                                    <div className={`relative inline-flex items-center p-1 rounded-xl border ${isMobile ? 'min-w-max' : ''}`}
+                                    <div className={`
+                                        relative inline-flex items-center p-1 rounded-xl border 
+                                        ${isMobile ? 'min-w-max' : ''}
+                                        backdrop-blur-sm
+                                    `}
                                         style={{
                                             backgroundColor: 'var(--bg-tertiary)',
-                                            borderColor: 'var(--border-light)'
+                                            borderColor: 'var(--border-light)',
+                                            boxShadow: `
+                                                0 1px 2px rgba(0,0,0,0.05),
+                                                0 0 0 1px rgba(255,255,255,0.02) inset
+                                            `,
                                         }}
                                     >
                                         <div
-                                            className="absolute top-1 h-[calc(100%-8px)] rounded-md transition-all duration-300 ease-out"
+                                            className="absolute top-1 h-[calc(100%-8px)] rounded-lg transition-all duration-500"
                                             style={{
                                                 width: `${sliderWidth}px`,
                                                 left: `${sliderLeft}px`,
                                                 backgroundColor: modeOptions[activeModeIndex]?.activeBg || 'rgba(99,102,241,0.16)',
-                                                boxShadow: '0 0 10px rgba(0,0,0,0.18) inset'
+                                                boxShadow: `
+                                                    0 0 20px ${modeOptions[activeModeIndex]?.color || '#818cf8'}30,
+                                                    0 2px 8px rgba(0,0,0,0.15) inset,
+                                                    0 1px 0 rgba(255,255,255,0.1) inset
+                                                `,
+                                                transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
                                             }}
                                         />
 
-                                        {[1, 2, 3].map((splitIndex) => (
-                                            <span
-                                                key={`split-${splitIndex}`}
-                                                className="absolute inset-y-0 my-auto w-px h-[50%] pointer-events-none"
-                                                style={{
-                                                    left: `${4 + splitIndex * MODE_SLOT_WIDTH}px`,
-                                                    backgroundColor: 'rgba(255,255,255,0.08)'
-                                                }}
-                                            />
-                                        ))}
+                                        {[1, 2, 3].map((splitIndex) => {
+                                            // Calculate if this divider is near the active slider for dynamic effect
+                                            const dividerCenter = 4 + splitIndex * MODE_SLOT_WIDTH;
+                                            const sliderCenter = sliderLeft + sliderWidth / 2;
+                                            const distance = Math.abs(dividerCenter - sliderCenter);
+                                            const maxDistance = MODE_SLOT_WIDTH;
+                                            const opacity = Math.max(0.04, 0.12 - (distance / maxDistance) * 0.08);
+                                            const scaleY = Math.max(0.5, 1 - (distance / maxDistance) * 0.5);
+                                            
+                                            return (
+                                                <span
+                                                    key={`split-${splitIndex}`}
+                                                    className="absolute inset-y-0 my-auto w-px pointer-events-none transition-all duration-500"
+                                                    style={{
+                                                        left: `${dividerCenter}px`,
+                                                        height: `${50 * scaleY}%`,
+                                                        backgroundColor: `rgba(255,255,255,${opacity})`,
+                                                        transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+                                                    }}
+                                                />
+                                            );
+                                        })}
 
                                         {modeOptions.map((item) => {
                                             const isActive = config.mode === item.mode;
@@ -1708,15 +1770,36 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             return (
                                                 <div key={item.mode} className="relative z-10">
                                                     <button
-                                                        className={`px-2 py-1 rounded-md font-medium transition-all duration-200 ${isMobile ? 'w-[72px] text-[12px]' : 'w-[82px] text-sm'}`}
+                                                        className={`
+                                                            px-2 py-1.5 rounded-lg font-medium 
+                                                            ${isMobile ? 'w-[72px] text-[12px]' : 'w-[82px] text-sm'}
+                                                            transition-all duration-300 ease-out
+                                                            hover:scale-105 active:scale-95
+                                                            ${isActive ? 'scale-105' : 'hover:text-[var(--text-primary)]'}
+                                                        `}
                                                         style={{
-                                                            color: isActive ? item.color : 'var(--text-secondary)'
+                                                            color: isActive ? item.color : 'var(--text-secondary)',
+                                                            textShadow: isActive ? `0 0 12px ${item.color}40` : 'none',
                                                         }}
                                                         onClick={item.onSelect}
                                                     >
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <Icon size={12} />
-                                                            <span>{item.label}</span>
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            <Icon 
+                                                                size={isActive ? 14 : 13} 
+                                                                className={`
+                                                                    transition-all duration-300 ease-out
+                                                                    ${isActive ? 'animate-pulse-once' : ''}
+                                                                `}
+                                                                style={{
+                                                                    filter: isActive ? `drop-shadow(0 0 6px ${item.color})` : 'none',
+                                                                }}
+                                                            />
+                                                            <span className={`
+                                                                transition-all duration-300
+                                                                ${isActive ? 'font-semibold tracking-wide' : ''}
+                                                            `}>
+                                                                {item.label}
+                                                            </span>
                                                         </span>
                                                     </button>
                                                 </div>

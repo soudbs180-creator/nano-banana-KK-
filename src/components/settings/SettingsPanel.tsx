@@ -39,6 +39,13 @@ const CostEstimation = lazy(() => import('../../pages/CostEstimation'));
 
 export type SettingsView = 'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs' | 'admin-system';
 
+type NavItem = {
+  id: SettingsView;
+  label: string;
+  description: string;
+  icon: React.ComponentType<any>;
+};
+
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -46,13 +53,13 @@ interface SettingsPanelProps {
   initialSupplier?: Supplier | null;
 }
 
-const navItems: Array<{ id: SettingsView; label: string; icon: React.ComponentType<any> }> = [
-  { id: 'dashboard', label: '仪表盘', icon: LayoutDashboard },
-  { id: 'api-management', label: '接口管理', icon: Key },
-  { id: 'cost-estimation', label: '价格估算', icon: Calculator },
-  { id: 'storage-settings', label: '存储设置', icon: HardDrive },
-  { id: 'system-logs', label: '系统日志', icon: ScrollText },
-  { id: 'admin-system', label: '管理员后台', icon: Shield },
+const navItems: NavItem[] = [
+  { id: 'dashboard', label: '仪表盘', description: '查看接口、模型、费用和运行概况。', icon: LayoutDashboard },
+  { id: 'api-management', label: '接口管理', description: '统一管理官方接口和第三方供应商。', icon: Key },
+  { id: 'cost-estimation', label: '价格估算', description: '快速查看不同模型和分辨率的成本。', icon: Calculator },
+  { id: 'storage-settings', label: '存储设置', description: '切换存储模式并检查本地占用。', icon: HardDrive },
+  { id: 'system-logs', label: '系统日志', description: '排查运行日志和错误信息。', icon: ScrollText },
+  { id: 'admin-system', label: '管理员后台', description: '处理后台配置、权限和系统操作。', icon: Shield },
 ];
 
 const StatCard: React.FC<{ title: string; value: string; helper?: string }> = ({ title, value, helper }) => {
@@ -491,6 +498,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 }) => {
   const [activeView, setActiveView] = useState<SettingsView>(initialView);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const activeNavItem = useMemo(() => navItems.find((item) => item.id === activeView) || navItems[0], [activeView]);
+  const ActiveIcon = activeNavItem.icon;
 
   useEffect(() => {
     if (isOpen) {
@@ -572,32 +581,66 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           </aside>
 
-          <section className="relative min-h-0 flex-1 overflow-hidden">
-            <div className="absolute top-3 right-3 z-10">
-              <button
-                onClick={onClose}
-                className="apple-icon-button h-8 w-8 rounded-xl"
-              >
-                <X size={16} />
-              </button>
+          <section className="min-h-0 flex-1 overflow-hidden">
+            <div
+              className="settings-panel-header border-b px-4 py-4"
+              style={{
+                borderColor: 'var(--border-light)',
+                backgroundColor: 'var(--bg-surface)',
+              }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{ borderColor: 'var(--border-light)', color: 'var(--text-secondary)' }}>
+                    <ActiveIcon size={13} />
+                    当前模块
+                  </div>
+                  <div className="mt-3 text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {activeNavItem.label}
+                  </div>
+                  <div className="mt-1 text-xs leading-5" style={{ color: 'var(--text-tertiary)' }}>
+                    {activeNavItem.description}
+                  </div>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="apple-icon-button h-9 w-9 rounded-xl"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
-            <main className="h-full overflow-y-auto p-3 pt-14 pb-6">
+            <main className="h-full overflow-y-auto p-3 pt-4 pb-6">
               {renderBody()}
             </main>
           </section>
         </div>
       ) : (
         <div
-          className="flex h-[84vh] max-h-[920px] w-full max-w-[1480px] items-start gap-4"
+          className="flex h-[86vh] max-h-[940px] w-full max-w-[1540px] items-stretch gap-5"
           onClick={(e) => e.stopPropagation()}
         >
-          <aside className="w-[232px] flex-shrink-0 self-start">
+          <aside className="w-[260px] flex-shrink-0">
             <div
-              className="settings-panel apple-glass-card flex max-h-[84vh] flex-col overflow-y-auto rounded-[28px] p-3 shadow-2xl"
+              className="settings-panel apple-glass-card flex h-full flex-col rounded-[32px] p-4 shadow-2xl"
               style={{ backgroundColor: 'var(--bg-surface)' }}
             >
-              <div className="apple-pill-group flex flex-col items-stretch gap-1">
+              <div className="mb-4 flex items-center gap-3 px-2">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
+                  <ActiveIcon size={18} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>
+                    设置导航
+                  </div>
+                  <div className="mt-1 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {navItems.length} 个模块
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   const active = activeView === item.id;
@@ -605,10 +648,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <button
                       key={item.id}
                       onClick={() => setActiveView(item.id)}
-                      className={`apple-pill-button w-full justify-start px-4 py-3 text-left ${active ? 'active' : ''}`}
+                      className={`settings-sidebar-item ${active ? 'active' : ''}`}
                     >
-                      <Icon size={15} />
-                      <span>{item.label}</span>
+                      <span className="settings-sidebar-item__icon">
+                        <Icon size={16} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold">{item.label}</span>
+                        <span className="settings-sidebar-item__desc mt-1 block text-xs leading-5">{item.description}</span>
+                      </span>
                     </button>
                   );
                 })}
@@ -617,19 +665,46 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </aside>
 
           <section
-            className="settings-panel apple-glass-card relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-[28px] shadow-2xl"
+            className="settings-panel apple-glass-card flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-[32px] shadow-2xl"
             style={{ backgroundColor: 'var(--bg-surface)' }}
           >
-            <div className="absolute top-4 right-4 z-10">
-              <button
-                onClick={onClose}
-                className="apple-icon-button h-9 w-9 rounded-xl"
-              >
-                <X size={16} />
-              </button>
+            <div
+              className="settings-panel-header border-b px-6 py-5"
+              style={{
+                borderColor: 'var(--border-light)',
+                backgroundColor: 'var(--bg-surface)',
+              }}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium" style={{ borderColor: 'var(--border-light)', color: 'var(--text-secondary)' }}>
+                    <ActiveIcon size={13} />
+                    当前模块
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl border" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
+                      <ActiveIcon size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {activeNavItem.label}
+                      </div>
+                      <div className="mt-1 text-sm leading-6" style={{ color: 'var(--text-tertiary)' }}>
+                        {activeNavItem.description}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="apple-icon-button h-10 w-10 rounded-2xl"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
-            <main className="h-full overflow-y-auto p-4 pt-16 md:p-5 md:pt-16">
+            <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-4 md:px-6 md:pb-6">
               {renderBody()}
             </main>
           </section>

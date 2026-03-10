@@ -80,11 +80,18 @@ const RechargeModal: React.FC = () => {
       return;
     }
 
-    if (currency !== 'CNY' || selectedChannel !== 'alipay') {
-      notify.info('提示', '当前演示仅支持支付宝扫码充值');
-      return;
+    // 支付通道未开通提示 - 根据选择的支付方式显示对应颜色
+    const paymentChannel = isCny ? selectedChannel : 'paypal';
+    if (paymentChannel === 'alipay') {
+      notify.alipay('充值通道维护中', '请联系管理员，目前支付宝支付功能暂未开通');
+    } else if (paymentChannel === 'wechat') {
+      notify.wechat('充值通道维护中', '请联系管理员，目前微信支付功能暂未开通');
+    } else {
+      notify.paypal('充值通道维护中', '请联系管理员，目前国际支付功能暂未开通');
     }
+    return;
 
+    /* [暂停使用] 原支付逻辑
     setIsProcessing(true);
     setQrCodeResult(null);
     setPaymentSuccess(false);
@@ -112,6 +119,7 @@ const RechargeModal: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
+    */
   };
 
   useEffect(() => {

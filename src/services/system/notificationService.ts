@@ -6,7 +6,7 @@
 
 import { addLog, LogLevel } from './systemLogService';
 
-export type NotificationType = 'success' | 'error' | 'warning' | 'info';
+export type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'alipay' | 'wechat' | 'paypal';
 
 export interface Notification {
     id: string;
@@ -130,6 +130,21 @@ class NotificationService {
     }
 
     /**
+     * Payment channel specific notifications
+     */
+    alipay(title: string, message: string, details?: string) {
+        return this.show('alipay', title, message, { details });
+    }
+
+    wechat(title: string, message: string, details?: string) {
+        return this.show('wechat', title, message, { details });
+    }
+
+    paypal(title: string, message: string, details?: string) {
+        return this.show('paypal', title, message, { details });
+    }
+
+    /**
      * Dismiss a notification
      */
     dismiss(id: string) {
@@ -189,6 +204,12 @@ export const notify = {
         notificationService.warning(title, message, details),
     info: (title: string, message: string, details?: string) =>
         notificationService.info(title, message, details),
+    alipay: (title: string, message: string, details?: string) =>
+        notificationService.alipay(title, message, details),
+    wechat: (title: string, message: string, details?: string) =>
+        notificationService.wechat(title, message, details),
+    paypal: (title: string, message: string, details?: string) =>
+        notificationService.paypal(title, message, details),
     dismiss: (id: string) => notificationService.dismiss(id),
     dismissAll: () => notificationService.dismissAll(),
     pause: (id: string) => notificationService.pauseTimer(id),

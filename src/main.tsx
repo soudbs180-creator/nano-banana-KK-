@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import './index.css';
 
 type FatalError = {
@@ -225,6 +226,7 @@ async function bootstrap() {
       <ErrorBoundary>
         <AuthProvider>
           <App />
+          <SpeedInsights />
         </AuthProvider>
       </ErrorBoundary>
     );

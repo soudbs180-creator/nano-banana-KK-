@@ -32,6 +32,9 @@ const NotificationToast: React.FC = () => {
             case 'error': return <AlertCircle size={18} style={iconStyle} />;
             case 'warning': return <AlertTriangle size={18} style={iconStyle} />;
             case 'info': return <Info size={18} style={iconStyle} />;
+            case 'alipay': return <Info size={18} style={iconStyle} />;
+            case 'wechat': return <Info size={18} style={iconStyle} />;
+            case 'paypal': return <Info size={18} style={iconStyle} />;
         }
     };
 
@@ -41,6 +44,9 @@ const NotificationToast: React.FC = () => {
             case 'error': return 'var(--accent-red)';
             case 'warning': return 'var(--accent-gold)';
             case 'info': return 'var(--accent-blue)';
+            case 'alipay': return '#3b82f6'; // 支付宝蓝
+            case 'wechat': return '#22c55e'; // 微信绿
+            case 'paypal': return '#f59e0b'; // 国际金/琥珀色
         }
     };
 
@@ -50,6 +56,9 @@ const NotificationToast: React.FC = () => {
             case 'error': return { borderColor: 'rgba(220, 38, 38, 0.3)', backgroundColor: 'rgba(220, 38, 38, 0.1)' };
             case 'warning': return { borderColor: 'rgba(217, 119, 6, 0.3)', backgroundColor: 'rgba(217, 119, 6, 0.1)' };
             case 'info': return { borderColor: 'rgba(37, 99, 235, 0.3)', backgroundColor: 'rgba(37, 99, 235, 0.1)' };
+            case 'alipay': return { borderColor: 'rgba(59, 130, 246, 0.4)', backgroundColor: 'rgba(59, 130, 246, 0.12)' }; // 支付宝蓝
+            case 'wechat': return { borderColor: 'rgba(34, 197, 94, 0.4)', backgroundColor: 'rgba(34, 197, 94, 0.12)' }; // 微信绿
+            case 'paypal': return { borderColor: 'rgba(245, 158, 11, 0.4)', backgroundColor: 'rgba(245, 158, 11, 0.12)' }; // 国际金/琥珀色
         }
     };
 

@@ -3523,16 +3523,53 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             const promptById = new Map(currentCanvas.promptNodes.map(node => [node.id, node]));
             const imageById = new Map(currentCanvas.imageNodes.map(node => [node.id, node]));
+            const canvasGroupsByNodeId = new Map<string, CanvasGroup[]>();
+            currentCanvas.groups.forEach(group => {
+                group.nodeIds.forEach(id => {
+                    const linkedGroups = canvasGroupsByNodeId.get(id) || [];
+                    linkedGroups.push(group);
+                    canvasGroupsByNodeId.set(id, linkedGroups);
+                });
+            });
             const orderedNodeIds: string[] = [];
             const orderedNodeIdSet = new Set<string>();
+            const expandedPromptIds = new Set<string>();
+            const expandedCanvasGroupIds = new Set<string>();
+
+            const pushCanvasGroup = (group: CanvasGroup) => {
+                if (expandedCanvasGroupIds.has(group.id)) return;
+                expandedCanvasGroupIds.add(group.id);
+
+                group.nodeIds.forEach(memberId => {
+                    const prompt = promptById.get(memberId);
+                    if (prompt) {
+                        pushPromptGroup(prompt.id);
+                        return;
+                    }
+
+                    const image = imageById.get(memberId);
+                    if (image?.parentPromptId) {
+                        pushPromptGroup(image.parentPromptId);
+                        return;
+                    }
+
+                    pushNodeId(memberId);
+                });
+            };
 
             const pushNodeId = (id?: string) => {
                 if (!id || orderedNodeIdSet.has(id)) return;
                 orderedNodeIdSet.add(id);
                 orderedNodeIds.push(id);
+
+                const linkedGroups = canvasGroupsByNodeId.get(id) || [];
+                linkedGroups.forEach(pushCanvasGroup);
             };
 
             const pushPromptGroup = (promptId: string) => {
+                if (expandedPromptIds.has(promptId)) return;
+                expandedPromptIds.add(promptId);
+
                 const prompt = promptById.get(promptId);
                 if (!prompt) return;
 

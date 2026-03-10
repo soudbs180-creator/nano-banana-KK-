@@ -2663,6 +2663,32 @@ body.dark-mode .apple-pill-button:hover {
   background: rgba(99, 102, 241, 0.15);
 }
 
+body.dark-mode .settings-panel-header {
+  background:
+    linear-gradient(180deg, rgba(36, 36, 40, 0.94) 0%, rgba(26, 26, 30, 0.9) 100%);
+}
+
+body.dark-mode .settings-sidebar-item {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+}
+
+body.dark-mode .settings-sidebar-item:hover {
+  border-color: rgba(129, 140, 248, 0.26);
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text-primary);
+}
+
+body.dark-mode .settings-sidebar-item.active {
+  border-color: rgba(129, 140, 248, 0.42);
+}
+
+body.dark-mode .settings-sidebar-item__icon {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 body.dark-mode .apple-page-shell {
   background:
     radial-gradient(circle at top left, rgba(96, 165, 250, 0.12), transparent 26%),
@@ -2983,6 +3009,149 @@ iframe,
   box-shadow:
     0 10px 24px rgba(79, 70, 229, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.settings-panel-header {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(248, 250, 252, 0.88) 100%);
+}
+
+.settings-sidebar-item {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--text-secondary);
+  text-align: left;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.settings-sidebar-item:hover {
+  border-color: rgba(99, 102, 241, 0.18);
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.settings-sidebar-item.active {
+  color: #fff;
+  border-color: rgba(79, 70, 229, 0.28);
+  background: linear-gradient(180deg, #6a7cff 0%, #4f46e5 100%);
+  box-shadow:
+    0 14px 28px rgba(79, 70, 229, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.settings-sidebar-item__icon {
+  display: inline-flex;
+  height: 36px;
+  width: 36px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.settings-sidebar-item.active .settings-sidebar-item__icon {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.settings-sidebar-item__desc {
+  color: inherit;
+  opacity: 0.72;
+}
+
+.api-settings-view,
+.api-settings-view * {
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+}
+
+.api-settings-provider-item {
+  word-break: normal;
+}
+
+.api-settings-provider-name,
+.api-settings-provider-url {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.api-settings-layout {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  max-width: 840px;
+  margin: 0 auto;
+  transition: max-width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (min-width: 1024px) {
+  .api-settings-layout {
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
+    transition:
+      grid-template-columns 320ms cubic-bezier(0.22, 1, 0.36, 1),
+      max-width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: grid-template-columns, max-width;
+  }
+
+  .api-settings-layout.is-editing {
+    max-width: 100%;
+    grid-template-columns: minmax(0, 460px) minmax(0, 1fr);
+  }
+
+  .api-settings-list-panel {
+    min-width: 0;
+  }
+
+  .api-settings-editor-panel {
+    min-width: 0;
+    animation: api-settings-editor-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .api-settings-editor-card {
+    animation: api-settings-editor-card-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes api-settings-editor-enter {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes api-settings-editor-card-enter {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
 }
 
 .apple-button-primary,
