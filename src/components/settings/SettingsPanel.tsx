@@ -593,7 +593,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <div className="min-w-0">
                   <div className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{ borderColor: 'var(--border-light)', color: 'var(--text-secondary)' }}>
                     <ActiveIcon size={13} />
-                    当前模块
+                    高级设置
                   </div>
                   <div className="mt-3 text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
                     {activeNavItem.label}
@@ -631,11 +631,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <ActiveIcon size={18} />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>
-                    设置导航
-                  </div>
-                  <div className="mt-1 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    {navItems.length} 个模块
+                  <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    高级设置
                   </div>
                 </div>
               </div>
@@ -679,7 +676,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <div className="min-w-0">
                   <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium" style={{ borderColor: 'var(--border-light)', color: 'var(--text-secondary)' }}>
                     <ActiveIcon size={13} />
-                    当前模块
+                    高级设置
                   </div>
                   <div className="mt-3 flex items-center gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl border" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
