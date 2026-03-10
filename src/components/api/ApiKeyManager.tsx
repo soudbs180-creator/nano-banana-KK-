@@ -38,7 +38,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onNavigateToPricin
       activeTab === 'api'
         ? {
             badge: '统一管理中心',
-            title: '接口管理',
+            title: 'API管理',
             description: '统一管理官方接口、第三方供应商与管理员后台，布局与系统设置页保持一致，便于在不同入口下获得同样的体验。',
           }
         : {

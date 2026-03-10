@@ -55,7 +55,7 @@ interface SettingsPanelProps {
 
 const navItems: NavItem[] = [
   { id: 'dashboard', label: '仪表盘', description: '查看接口、模型、费用和运行概况。', icon: LayoutDashboard },
-  { id: 'api-management', label: '接口管理', description: '统一管理官方接口和第三方供应商。', icon: Key },
+  { id: 'api-management', label: 'API管理', description: '统一管理官方接口和第三方供应商。', icon: Key },
   { id: 'cost-estimation', label: '价格估算', description: '快速查看不同模型和分辨率的成本。', icon: Calculator },
   { id: 'storage-settings', label: '存储设置', description: '切换存储模式并检查本地占用。', icon: HardDrive },
   { id: 'system-logs', label: '系统日志', description: '排查运行日志和错误信息。', icon: ScrollText },
@@ -526,7 +526,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     if (activeView === 'api-management') {
       return (
         <Suspense fallback={lazyFallback}>
-          <ApiSettingsView initialSupplier={initialSupplier} />
+          <ApiSettingsView key={initialSupplier?.id || 'default-api-management'} initialSupplier={initialSupplier} />
         </Suspense>
       );
     }

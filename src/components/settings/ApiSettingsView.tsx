@@ -1674,7 +1674,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
         className="rounded-2xl border p-5"
         style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}
       >
-        <h3 className="text-xl font-semibold text-[var(--text-primary)]">接口管理</h3>
+        <h3 className="text-xl font-semibold text-[var(--text-primary)]">API管理</h3>
         <p className="mt-1 text-xs text-[var(--text-tertiary)]">管理官方接口与第三方供应商，第三方支持价格扫描快照保存、恢复与计费同步。</p>
       </div>
 

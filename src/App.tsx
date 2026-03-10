@@ -295,12 +295,18 @@ const AppContent: React.FC<AppContentProps> = () => {
   const [settingsInitialView, setSettingsInitialView] = useState<'dashboard' | 'api-management' | 'storage-settings' | 'system-logs'>('dashboard');
   const [settingsInitialSupplier, setSettingsInitialSupplier] = useState<Supplier | null>(null);
   const [showGrid, setShowGrid] = useState(true);
+  const openSettingsPanel = useCallback((
+    view: 'dashboard' | 'api-management' | 'storage-settings' | 'system-logs' = 'api-management',
+    supplier: Supplier | null = null
+  ) => {
+    setSettingsInitialSupplier(supplier);
+    setSettingsInitialView(view);
+    setShowSettingsPanel(true);
+  }, []);
 
   useEffect(() => {
     const openApiManagement = (supplier?: Supplier) => {
-      setSettingsInitialSupplier(supplier || null);
-      setSettingsInitialView('api-management');
-      setShowSettingsPanel(true);
+      openSettingsPanel('api-management', supplier || null);
     };
 
     (window as any).openApiKeyModal = openApiManagement;
@@ -310,7 +316,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       delete (window as any).openApiKeyModal;
       apiKeyModalService.setOpenCallback(() => {});
     };
-  }, []);
+  }, [openSettingsPanel]);
 
   useEffect(() => {
     const unsubscribe = keyManager.subscribe(() => {
@@ -532,8 +538,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         const hasKeys = keyManager.hasValidKeys();
         if (!hasKeys && !hasLoggedInBefore && !isDevMode) {
           // 鍙湁棣栨鐢ㄦ埛鎵嶈嚜鍔ㄥ脊鍑?API 璁剧疆闈㈡澘
-          setShowSettingsPanel(true);
-          setSettingsInitialView('api-management');
+          openSettingsPanel('api-management');
         }
         setIsStorageChecked(true);
       }
@@ -2651,11 +2656,10 @@ const AppContent: React.FC<AppContentProps> = () => {
         });
       });
       if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
-        setShowSettingsPanel(true);
-        setSettingsInitialView('api-management');
+        openSettingsPanel('api-management');
       }
     }
-  }, [isMobile, updatePromptNode, urgentUpdatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions, extractErrorDetails, buildAutoPptSlides, rememberPreferredKeyForMode]);
+  }, [isMobile, updatePromptNode, urgentUpdatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions, extractErrorDetails, buildAutoPptSlides, rememberPreferredKeyForMode, openSettingsPanel]);
 
   // [New] Poll for task status
   const pollTaskStatus = useCallback(async (node: PromptNode) => {
@@ -4766,12 +4770,10 @@ const AppContent: React.FC<AppContentProps> = () => {
           <MobileHeader
             onMenuClick={() => setIsSidebarOpen(true)}
             onDashboardClick={() => {
-              setShowSettingsPanel(true);
-              setSettingsInitialView('dashboard');
+              openSettingsPanel('dashboard');
             }}
             onSettingsClick={() => {
-              setShowSettingsPanel(true);
-              setSettingsInitialView('api-management');
+              openSettingsPanel('api-management');
             }}
             onUserClick={() => {
               setProfileInitialView('main');
@@ -5618,8 +5620,7 @@ const AppContent: React.FC<AppContentProps> = () => {
           onClearSource={handleClearSource}
           isMobile={isMobile}
           onOpenSettings={(view) => {
-            setSettingsInitialView(view || 'api-management');
-            setShowSettingsPanel(true);
+            openSettingsPanel(view || 'api-management');
             handleHideMobileNav(); // Hide nav when opening settings (optional, but requested behavior implies consistent handling)
           }}
           onInteract={handleShowMobileNav}
@@ -5646,8 +5647,7 @@ const AppContent: React.FC<AppContentProps> = () => {
           onClose={() => setIsChatOpen(false)}
           isMobile={isMobile}
           onOpenSettings={(view) => {
-            setSettingsInitialView(view || 'api-management');
-            setShowSettingsPanel(true);
+            openSettingsPanel(view || 'api-management');
           }}
           onHoverChange={(isHovered) => setIsSidebarHovered(isHovered)}
           onWidthChange={setChatSidebarWidth}
@@ -5710,8 +5710,7 @@ const AppContent: React.FC<AppContentProps> = () => {
               setShowStorageModal(false);
               setIsStorageChecked(true);
               if (!keyManager.hasValidKeys()) {
-                setShowSettingsPanel(true);
-                setSettingsInitialView('api-management');
+                openSettingsPanel('api-management');
               }
             }}
           />
