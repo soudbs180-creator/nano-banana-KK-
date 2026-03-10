@@ -43,26 +43,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     useEffect(() => {
+        let active = true;
+        const settleAuthState = (nextSession: Session | null) => {
+            if (!active) return;
+            setSession(nextSession);
+            setUser(nextSession?.user ?? null);
+            setLoading(false);
+        };
+
+        const sessionTimeout = window.setTimeout(() => {
+            console.warn('[AuthContext] getSession timeout, fallback to logged-out state');
+            settleAuthState(null);
+        }, 5000);
+
         // Get initial session
         supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
+            window.clearTimeout(sessionTimeout);
+            settleAuthState(session);
         }).catch((err) => {
+            window.clearTimeout(sessionTimeout);
             console.error('[AuthContext] Failed to get session:', err);
-            setSession(null);
-            setUser(null);
-            setLoading(false);
+            settleAuthState(null);
         });
 
         // Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
+            window.clearTimeout(sessionTimeout);
+            settleAuthState(session);
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            active = false;
+            window.clearTimeout(sessionTimeout);
+            subscription.unsubscribe();
+        };
     }, []);
 
     const signOut = async () => {

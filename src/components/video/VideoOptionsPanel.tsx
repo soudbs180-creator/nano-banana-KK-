@@ -129,7 +129,7 @@ const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
         <div
             className="p-4 rounded-xl border shadow-2xl max-w-[90vw]"
             style={{
-                width: '380px',
+                width: 'min(380px, calc(100vw - 24px))',
                 backgroundColor: 'var(--bg-secondary)',
                 backdropFilter: 'blur(8px)',
                 borderColor: 'var(--border-light)'
@@ -207,9 +207,9 @@ const VideoOptionsPanel: React.FC<VideoOptionsPanelProps> = ({
 
                     {/* 右侧：网格 - 使用CSS Grid固定5列 */}
                     <div
-                        className="grid gap-1 flex-1 overflow-x-auto scrollbar-none"
+                        className="grid gap-1 flex-1 min-w-0"
                         style={{
-                            gridTemplateColumns: 'repeat(5, minmax(44px, 52px))'
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(44px, 1fr))'
                         }}
                     >
                         {gridRatios.map(ratio => (

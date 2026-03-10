@@ -1,6 +1,6 @@
 import { keyManager } from '../auth/keyManager';
 import { llmService } from './LLMService';
-import { PromptOptimizerResult } from '../../types';
+import { PromptOptimizationMode, PromptOptimizerResult } from '../../types';
 
 export interface PromptOptimizationResult {
     optimizedEn: string;
@@ -40,16 +40,22 @@ const buildOptimizerCacheKey = (
         imageSize?: string;
         mode?: string;
         referenceImages?: { mimeType: string; data: string }[];
+        optimizationMode?: PromptOptimizationMode;
+        optimizationTemplateTitle?: string;
+        optimizationPrompt?: string;
     }
 ) => {
     const model = (options?.preferredModelId || '').toLowerCase();
     const ratio = (options?.aspectRatio || '').toLowerCase();
     const size = (options?.imageSize || '').toLowerCase();
     const mode = (options?.mode || '').toLowerCase();
+    const optimizationMode = (options?.optimizationMode || 'auto').toLowerCase();
+    const optimizationTemplateTitle = (options?.optimizationTemplateTitle || '').trim();
+    const optimizationPrompt = (options?.optimizationPrompt || '').trim();
     const refSign = (options?.referenceImages || [])
         .map(ref => `${(ref.mimeType || '').toLowerCase()}:${(ref.data || '').slice(0, 32)}`)
         .join('|');
-    return `${model}::${ratio}::${size}::${mode}::${input.trim()}::${refSign}`;
+    return `${model}::${ratio}::${size}::${mode}::${optimizationMode}::${optimizationTemplateTitle}::${optimizationPrompt}::${input.trim()}::${refSign}`;
 };
 
 /**
@@ -210,6 +216,9 @@ export const optimizePromptForImage = async (
         imageSize?: string;
         mode?: string;
         referenceImages?: { mimeType: string; data: string }[];
+        optimizationMode?: PromptOptimizationMode;
+        optimizationTemplateTitle?: string;
+        optimizationPrompt?: string;
     }
 ): Promise<PromptOptimizationResult> => {
     const input = rawPrompt.trim();
@@ -225,9 +234,13 @@ export const optimizePromptForImage = async (
     if (!modelId) throw new Error('No chat model available');
 
     const executeWithRetry = async (useImages: boolean): Promise<any> => {
+        const optimizationInstruction = (options?.optimizationPrompt || '').trim();
         const userMessage = [
             `User raw prompt: "${input}"`,
-            `Context: { ratio: "${options?.aspectRatio || '1:1'}", mode: "${options?.mode || 'image'}" }`
+            `Context: { ratio: "${options?.aspectRatio || '1:1'}", mode: "${options?.mode || 'image'}", optimization_mode: "${options?.optimizationMode || 'auto'}" }`,
+            optimizationInstruction
+                ? `Additional optimization preference${options?.optimizationTemplateTitle ? ` (${options.optimizationTemplateTitle})` : ''}: ${optimizationInstruction}`
+                : 'Additional optimization preference: None. Use the best automatic image prompt optimization strategy.'
         ].join('\n');
 
         const raw = await llmService.chat({

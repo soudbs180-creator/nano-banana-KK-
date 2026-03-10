@@ -134,6 +134,9 @@ export interface GeneratedImage {
   optimizedPromptZh?: string; // 🚀 [New] 存储优化后的中文解释
   // 🚀 [New] 完整的提示词编译器结果对象
   promptOptimizerResult?: PromptOptimizerResult;
+
+  // 🚀 [Layering] Z-index for rendering order
+  zIndex?: number;
 }
 
 export type Provider =
@@ -174,6 +177,8 @@ export interface PromptOptimizerResult {
     timestamp: string;
   };
 }
+
+export type PromptOptimizationMode = 'auto' | 'custom';
 
 export interface PromptNode {
   id: string;
@@ -249,12 +254,17 @@ export interface PromptNode {
   jobId?: string; // 任务 ID (用于异步轮询和刷新恢复)
   isNew?: boolean; // 🚀 [New] 是否为新生成的节点（用于触发飞出动画）
   generationMetadata?: any; // 生成上下文元数据
+
+  // 🚀 [Layering] Z-index for rendering order
+  zIndex?: number;
 }
 
 export interface CanvasGroup {
   id: string;
   nodeIds: string[]; // IDs of PromptNodes or ImageNodes
   bounds: { x: number; y: number; width: number; height: number };
+  // 🚀 [Layering] Z-index for rendering order
+  zIndex?: number;
   label?: string;
   color?: string; // Border color
   type: 'custom';
@@ -295,6 +305,9 @@ export const VIDEO_RESOLUTION_DURATION_MAP = {
 export interface GenerationConfig {
   prompt: string;
   enablePromptOptimization?: boolean;
+  promptOptimizationMode?: PromptOptimizationMode;
+  promptOptimizationTemplateId?: string;
+  promptOptimizationCustomPrompt?: string;
   aspectRatio: AspectRatio;
   imageSize: ImageSize;
   referenceImages: ReferenceImage[];

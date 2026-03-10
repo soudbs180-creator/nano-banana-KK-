@@ -3,9 +3,26 @@ trigger: glob
 description: KK Studio 完整设计系统 - 暗色主题、动效规范、代码标准
 ---
 
-# KK Studio 设计系统 v2.0
+# KK Studio 设计系统 v2.2
 
 本文档定义 KK Studio 的完整设计规范，所有 AI 代码助手在修改 UI 时必须严格遵循。
+
+---
+
+## 🚨 当前项目基线（强制）
+
+- **当前项目版本**：`1.3.6`
+- **版本源文件**：`package.json` + `src/config/appInfo.ts`
+- **文档基线文件**：`README.md`、`docs/development/session-handoff.md`、`docs/development/progress.md`
+- **规则基线文件**：`.agent/README.md` + 本文件
+
+### 修改时必须遵守
+- 不要在多个组件里手写版本号；展示版本统一读取常量。
+- 不要在文档里写死 `KK-Studio-1.0.0` 这类目录名；统一改用 `<project-root>`。
+- 涉及版本、功能说明、项目结构、部署方式变化时，必须同步 README 与开发文档。
+- 涉及存储、计费、Supabase、支付、接口代理时，必须检查前后端两侧是否一起更新。
+- 不允许为追求“好看”而大幅改动既有 UI 动线；优先稳定、兼容、专业、可维护。
+- 修改完成后，默认执行：`npm run typecheck`、`npm run check:encoding`、`npm run build`。
 
 ---
 
@@ -1823,10 +1840,17 @@ describe('useImageLoader', () => {
 
 ---
 
-**KK Studio Design System v2.1**  
-Last updated: 2026-02-09
+**KK Studio Design System v2.2**  
+Last updated: 2026-03-09
 
 ## 📋 变更日志
+
+### v2.2 (2026-03-09)
+- 新增项目版本基线说明（当前版本 `1.3.6`）
+- 新增版本同步源文件要求
+- 新增 `<project-root>` 路径规范，避免目录名与版本耦合
+- 新增文档同步与验证要求
+- 明确“稳定优先、少改 UI 动线”的修改原则
 
 ### v2.1 (2026-02-09)
 - 新增多渠道 API 调用规范（Google 官方、Gemini API CN、OpenAI 兼容）

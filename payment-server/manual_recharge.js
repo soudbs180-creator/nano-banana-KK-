@@ -3,7 +3,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const supabaseKey = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+
+if (!supabaseUrl || !supabaseKey) {
+    throw new Error('[manual_recharge] 缺少 Supabase 服务端配置，禁止使用 anon key 进行充值写入。');
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function recharge() {

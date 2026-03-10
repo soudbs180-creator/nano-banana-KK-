@@ -119,41 +119,44 @@ export const KeySlotModal: React.FC<KeySlotModalProps> = ({
       onClick={onClose}
     >
       <div
-        className={`w-full overflow-hidden border border-zinc-800 bg-zinc-900 shadow-2xl ${
+        className={`w-full overflow-hidden border shadow-2xl ${
           isMobile ? 'ios-mobile-sheet max-h-[88dvh] rounded-t-[26px] rounded-b-none max-w-[720px]' : 'max-w-md rounded-2xl'
         }`}
+        style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-surface)' }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className={`flex items-center justify-between border-b border-zinc-800 ${isMobile ? 'px-4 py-3' : 'px-6 py-4'}`}>
-          <h3 className="text-base font-semibold text-zinc-100">{editingSlot ? '编辑接口配置' : '添加接口配置'}</h3>
-          <button onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800">
+        <div className={`flex items-center justify-between border-b ${isMobile ? 'px-4 py-3' : 'px-6 py-4'}`} style={{ borderColor: 'var(--border-light)' }}>
+          <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{editingSlot ? '编辑接口配置' : '添加接口配置'}</h3>
+          <button onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-xl hover:bg-[var(--toolbar-hover)]" style={{ color: 'var(--text-secondary)' }}>
             <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className={`space-y-4 overflow-y-auto ${isMobile ? 'max-h-[74dvh] px-4 py-4 pb-6' : 'px-6 py-5'}`}>
           <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-300">显示名称</label>
+            <label className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
             <div className="relative">
-              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
                 <LayoutTemplate size={16} />
               </div>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(event) => setFormData({ ...formData, name: event.target.value })}
-                className="h-11 w-full rounded-xl border border-zinc-700/60 bg-zinc-800/60 pl-10 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/45"
+                className="h-11 w-full rounded-xl border pl-10 pr-3 text-sm outline-none transition focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/45"
+                style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)' }}
                 placeholder="例如：我的主接口"
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-300">服务商</label>
+            <label className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>服务商</label>
             <select
               value={formData.providerId}
               onChange={(event) => setFormData({ ...formData, providerId: normalizeProvider(event.target.value) })}
-              className="h-11 w-full rounded-xl border border-zinc-700/60 bg-zinc-800/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/45"
+              className="h-11 w-full rounded-xl border px-3 text-sm outline-none transition focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/45"
+              style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)' }}
               disabled={!!editingSlot || !!providerId}
             >
               {modalType === 'official' && (
@@ -170,51 +173,57 @@ export const KeySlotModal: React.FC<KeySlotModalProps> = ({
 
           {(formData.providerId === 'Custom' || modalType === 'third-party') && (
             <div>
-              <label className="mb-1 block text-sm font-medium text-zinc-300">Base URL</label>
+              <label className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Base URL</label>
               <div className="relative">
-                <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
                   <Globe size={16} />
                 </div>
                 <input
                   type="text"
                   value={formData.baseUrl}
                   onChange={(event) => setFormData({ ...formData, baseUrl: event.target.value })}
-                  className="h-11 w-full rounded-xl border border-zinc-700/60 bg-zinc-800/60 pl-10 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/45"
+                  className="h-11 w-full rounded-xl border pl-10 pr-3 text-sm outline-none transition focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/45"
+                  style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)' }}
                   placeholder="https://api.example.com/v1"
                 />
               </div>
-              <p className="mt-1 text-xs text-zinc-500">请填写完整地址，建议包含 /v1 后缀。</p>
+              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>请填写完整地址，建议包含 /v1 后缀。</p>
             </div>
           )}
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-300">API Key</label>
+            <label className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>API Key</label>
             <div className="relative">
-              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
                 <Key size={16} />
               </div>
               <input
                 type="text"
                 value={formData.key}
                 onChange={(event) => setFormData({ ...formData, key: event.target.value })}
-                className="h-11 w-full rounded-xl border border-zinc-700/60 bg-zinc-800/60 pl-10 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/45"
+                className="h-11 w-full rounded-xl border pl-10 pr-3 text-sm outline-none transition focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/45"
+                style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)' }}
                 placeholder="sk-..."
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-zinc-800 pt-3">
+          <div className="flex items-center justify-end gap-2 border-t pt-3" style={{ borderColor: 'var(--border-light)' }}>
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm text-zinc-300 hover:bg-zinc-800"
+              className="inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm transition"
+              style={{ color: 'var(--text-secondary)' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
               取消
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="inline-flex h-10 items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ backgroundColor: 'var(--accent-indigo)', color: 'white' }}
             >
               {isLoading ? '保存中...' : '保存配置'}
             </button>

@@ -362,7 +362,7 @@ export class GoogleAdapter implements LLMAdapter {
         const imageConfig: any = {};
 
         // Aspect Ratio
-        if (options.aspectRatio) {
+        if (options.aspectRatio && String(options.aspectRatio).toLowerCase() !== 'auto') {
             imageConfig.aspectRatio = options.aspectRatio;
         }
 
@@ -593,7 +593,7 @@ export class GoogleAdapter implements LLMAdapter {
         };
 
         // Aspect Ratio
-        if (options.aspectRatio) {
+        if (options.aspectRatio && String(options.aspectRatio).toLowerCase() !== 'auto') {
             parameters.aspectRatio = options.aspectRatio;
         }
 
@@ -735,8 +735,10 @@ export class GoogleAdapter implements LLMAdapter {
             {
                 prompt: options.prompt,
                 model: options.modelId,
-                aspectRatio: options.aspectRatio as any,
-                resolution: (options.providerConfig?.google?.imageConfig?.imageSize || '720p') as any,
+                aspectRatio: (options.aspectRatio && String(options.aspectRatio).toLowerCase() !== 'auto'
+                    ? options.aspectRatio
+                    : undefined) as any,
+                resolution: (options.resolution || '720p') as any,
                 referenceImages: images.length > 0 ? images.map(i => i.replace(/^data:image\/[^;]+;base64,/, '')) : undefined
             },
             keySlot.key,

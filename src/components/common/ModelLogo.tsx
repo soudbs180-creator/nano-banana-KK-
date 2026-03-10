@@ -97,14 +97,14 @@ const ModelLogo: React.FC<ModelLogoProps> = ({
     active = true,
     className = ""
 }) => {
-    const { theme } = useTheme();
+    const { resolvedTheme: theme } = useTheme();
     const [hasError, setHasError] = useState(false);
     // 去掉 @ 后缀进行匹配，支持 API 获取的带后缀模型ID
     const baseModelId = (modelId || '').split('@')[0];
     const lowerId = baseModelId.toLowerCase();
 
     // 判断是否为亮色模式
-    const isLight = theme === 'light' || (theme === 'system' && !window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const isLight = theme === 'light';
 
     // 未选中时的样式
     const inactiveClasses = !active ? "opacity-50" : "";

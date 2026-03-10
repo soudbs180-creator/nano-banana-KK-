@@ -1,7 +1,7 @@
 
-import os
+from pathlib import Path
 
-target_file = r"c:\Users\Administrator\Downloads\KK-Studio-1.0.0\src\context\CanvasContext.tsx"
+target_file = Path(__file__).resolve().parents[1] / "src" / "context" / "CanvasContext.tsx"
 
 new_logic = r"""        // --- SCOPED ARRANGE: Selected Nodes Only (Smart Layout) ---
         const selectedIds = state.selectedNodeIds || [];

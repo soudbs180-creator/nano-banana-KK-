@@ -273,6 +273,28 @@ export async function getImage(id: string): Promise<string | null> {
         });
 
         if (!result) {
+            console.debug(`[ImageStorage] ${id} not found in IndexedDB. Attempting local recovery...`);
+
+            const globalHandle = fileSystemService.getGlobalHandle();
+            if (globalHandle) {
+                try {
+                    const blob = await fileSystemService.loadOriginalFromDisk(globalHandle, id);
+                    if (blob) {
+                        const blobURL = URL.createObjectURL(blob);
+                        memoryCache.set(id, blobURL);
+
+                        saveImage(id, blobURL).catch(error => {
+                            console.warn('[ImageStorage] Failed to restore local image back to IndexedDB:', error);
+                        });
+
+                        console.log(`[ImageStorage] Recovered ${id} from local storage fallback`);
+                        return blobURL;
+                    }
+                } catch (error) {
+                    console.warn(`[ImageStorage] Failed local recovery for ${id}:`, error);
+                }
+            }
+
             return null;
         }
 
@@ -865,6 +887,56 @@ export async function getOriginalImage(id: string): Promise<string | null> {
  * 🔒 获取所有图片ID列表（用于批量导出）
  * @returns 所有图片ID数组
  */
+export async function getStrictOriginalImage(id: string): Promise<string | null> {
+    try {
+        const db = await openDB();
+        const transaction = db.transaction(IMAGES_STORE, 'readonly');
+        const store = transaction.objectStore(IMAGES_STORE);
+
+        const result: { id: string; blob?: Blob; url?: string; protected?: boolean; quality?: string } | undefined = await new Promise((resolve, reject) => {
+            const request = store.get(id);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+
+        const isProtectedOriginal = !!result && (result.protected === true || result.quality === 'original');
+
+        if (isProtectedOriginal && result?.blob) {
+            if (result.blob.size === 0) {
+                return null;
+            }
+
+            const blobURL = URL.createObjectURL(result.blob);
+            memoryCache.set(id, blobURL);
+            return blobURL;
+        }
+
+        if (isProtectedOriginal && result?.url) {
+            memoryCache.set(id, result.url);
+            return result.url;
+        }
+
+        const globalHandle = fileSystemService.getGlobalHandle();
+        if (globalHandle) {
+            try {
+                const blob = await fileSystemService.loadOriginalFromDisk(globalHandle, id);
+                if (blob) {
+                    const blobURL = URL.createObjectURL(blob);
+                    memoryCache.set(id, blobURL);
+                    saveOriginalImage(id, blobURL).catch(() => { /* noop */ });
+                    return blobURL;
+                }
+            } catch {
+                // noop
+            }
+        }
+    } catch {
+        // noop
+    }
+
+    return null;
+}
+
 export async function getAllImageIds(): Promise<string[]> {
     try {
         const db = await openDB();

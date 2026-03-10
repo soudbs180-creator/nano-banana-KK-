@@ -231,21 +231,17 @@ export const AdminSystem: React.FC = () => {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="apple-pill-group">
         <button
           onClick={() => setActiveTab('credit-models')}
-          className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs ${
-            activeTab === 'credit-models' ? 'bg-indigo-600 text-white' : 'border border-[var(--border-light)] text-[var(--text-secondary)]'
-          }`}
+          className={`apple-pill-button ${activeTab === 'credit-models' ? 'active' : ''}`}
         >
           <Settings size={14} />
           积分模型
         </button>
         <button
           onClick={() => setActiveTab('admin-console')}
-          className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs ${
-            activeTab === 'admin-console' ? 'bg-indigo-600 text-white' : 'border border-[var(--border-light)] text-[var(--text-secondary)]'
-          }`}
+          className={`apple-pill-button ${activeTab === 'admin-console' ? 'active' : ''}`}
         >
           <UserCog size={14} />
           后台管理

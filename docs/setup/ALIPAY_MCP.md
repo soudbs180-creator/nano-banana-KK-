@@ -50,7 +50,7 @@ cmd /c scripts\start-alipay-inspector.bat
       "command": "cmd",
       "args": [
         "/c",
-        "c:\\Users\\Administrator\\Downloads\\KK-Studio-1.0.0\\scripts\\start-alipay-mcp.bat"
+        "<project-root>\\scripts\\start-alipay-mcp.bat"
       ]
     }
   }

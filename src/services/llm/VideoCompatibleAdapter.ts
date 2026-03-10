@@ -1,13 +1,6 @@
 import { KeySlot } from '../auth/keyManager';
 import { LLMAdapter, VideoGenerationOptions, VideoGenerationResult } from './LLMAdapter';
-import { notify } from '../system/notificationService';
 
-/**
- * 视频生成适配器
- * 严格使用 OpenAI 兼容格式 (/v1/videos/generations)
- * 
- * v2 统一格式状态码：NOT_START / SUBMITTED / QUEUED / IN_PROGRESS / SUCCESS / FAILURE
- */
 export class VideoCompatibleAdapter implements LLMAdapter {
     id = 'video-compatible-adapter';
     provider = 'VideoProxy';
@@ -41,85 +34,283 @@ export class VideoCompatibleAdapter implements LLMAdapter {
     }
 
     async generateVideo(options: VideoGenerationOptions, keySlot: KeySlot): Promise<VideoGenerationResult> {
-        const baseUrl = (keySlot.baseUrl || 'https://api.openai.com').replace(/\/+$/, '');
-        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
-        const submitUrl = `${cleanBase}/videos/generations`;
-        const pollBaseUrl = submitUrl;
+        const cleanBase = this.normalizeBaseUrl(keySlot.baseUrl);
 
+        if (this.isNewApiLikeGateway(cleanBase, keySlot)) {
+            return this.generateVideoViaNewApi(options, keySlot, cleanBase);
+        }
+
+        try {
+            return await this.generateVideoViaNewApi(options, keySlot, cleanBase);
+        } catch (error: any) {
+            if (!this.isNewApiCompatibilityError(error)) {
+                throw error;
+            }
+            return this.generateVideoViaLegacyProxy(options, keySlot, cleanBase);
+        }
+    }
+
+    private normalizeBaseUrl(baseUrl?: string): string {
+        const clean = (baseUrl || 'https://api.openai.com').replace(/\/+$/, '');
+        return clean.endsWith('/v1') ? clean : `${clean}/v1`;
+    }
+
+    private isNewApiLikeGateway(cleanBase: string, keySlot: KeySlot): boolean {
+        const fingerprint = [
+            cleanBase,
+            keySlot.name || '',
+            String(keySlot.provider || '')
+        ].join(' ').toLowerCase();
+
+        return fingerprint.includes('newapi') ||
+            fingerprint.includes('new-api') ||
+            fingerprint.includes('oneapi') ||
+            fingerprint.includes('one-api');
+    }
+
+    private isNewApiCompatibilityError(error: any): boolean {
+        const message = String(error?.message || '').toLowerCase();
+        return message.includes('/videos') ||
+            message.includes('not found') ||
+            message.includes('404') ||
+            message.includes('405') ||
+            message.includes('415') ||
+            message.includes('unsupported') ||
+            message.includes('invalid request');
+    }
+
+    private buildHeaders(keySlot: KeySlot, includeJsonContentType: boolean): Record<string, string> {
+        const token = String(keySlot.key || '').trim();
         const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${keySlot.key}`
+            'Authorization': /^Bearer\s+/i.test(token) ? token : `Bearer ${token}`
         };
+
+        if (includeJsonContentType) {
+            headers['Content-Type'] = 'application/json';
+        }
+
         if (keySlot.headerName && keySlot.headerName !== 'Authorization') {
             headers[keySlot.headerName] = keySlot.key;
         }
 
-        // 构建请求体 - 兼容 v2 统一格式
-        const body: any = {
-            model: options.modelId,
-            prompt: options.prompt,
-        };
+        return headers;
+    }
 
-        // 尺寸 & 比例
-        if (options.aspectRatio) {
-            body.aspect_ratio = options.aspectRatio;
-        }
-        if (options.resolution) {
-            body.resolution = options.resolution;
-        }
-        if (options.size) {
-            body.size = options.size;
-        } else {
-            body.size = '1024x576'; // 默认 16:9
-        }
-        if (options.duration) {
-            body.duration = options.duration;
+    private getDurationSeconds(options: VideoGenerationOptions): number | undefined {
+        if (typeof options.duration === 'number' && Number.isFinite(options.duration) && options.duration > 0) {
+            return Math.round(options.duration);
         }
 
-        // 图生视频 - images 字段
-        if (options.imageUrl) {
-            body.images = [options.imageUrl];
-        }
-        // 首尾帧 - 添加尾帧
-        if (options.imageTailUrl) {
-            if (!body.images) body.images = [];
-            body.images.push(options.imageTailUrl);
-        }
-        // 视频生视频 - videos 字段
-        if (options.videoUrl) {
-            body.videos = [options.videoUrl];
+        const legacyDuration = Number.parseInt(String(options.videoDuration || '').trim(), 10);
+        if (Number.isFinite(legacyDuration) && legacyDuration > 0) {
+            return legacyDuration;
         }
 
-        // 水印控制
-        if (options.watermark !== undefined) {
-            body.watermark = options.watermark;
+        return undefined;
+    }
+
+    private extractTaskId(payload: any): string | undefined {
+        return payload?.task_id ||
+            payload?.id ||
+            payload?.data?.task_id ||
+            payload?.data?.id;
+    }
+
+    private extractStatus(payload: any): string {
+        return String(
+            payload?.status ||
+            payload?.data?.status ||
+            payload?.state ||
+            payload?.data?.state ||
+            ''
+        );
+    }
+
+    private extractVideoUrl(payload: any): string {
+        return payload?.video_url ||
+            payload?.url ||
+            payload?.output ||
+            payload?.data?.video_url ||
+            payload?.data?.url ||
+            payload?.data?.output ||
+            payload?.video?.url ||
+            payload?.data?.video?.url ||
+            payload?.data?.outputs?.[0] ||
+            '';
+    }
+
+    private isSuccessStatus(status: string): boolean {
+        const normalized = status.trim().toUpperCase();
+        return normalized === 'SUCCESS' ||
+            normalized === 'SUCCEEDED' ||
+            normalized === 'COMPLETED' ||
+            normalized === 'DONE';
+    }
+
+    private isFailureStatus(status: string): boolean {
+        const normalized = status.trim().toUpperCase();
+        return normalized === 'FAILURE' ||
+            normalized === 'FAILED' ||
+            normalized === 'ERROR' ||
+            normalized === 'CANCELLED';
+    }
+
+    private async appendInputReference(formData: FormData, imageSource: string): Promise<void> {
+        if (!imageSource) return;
+
+        if (imageSource.startsWith('data:')) {
+            const response = await fetch(imageSource);
+            const blob = await response.blob();
+            formData.append('input_reference', blob, 'reference-image.png');
+            return;
         }
 
         try {
-            console.log(`[VideoAdapter] 提交视频生成: ${submitUrl}, 模型: ${options.modelId}`);
-            const response = await fetch(submitUrl, {
-                method: 'POST',
+            const response = await fetch(imageSource);
+            if (response.ok) {
+                const blob = await response.blob();
+                const fileName = blob.type.includes('jpeg') ? 'reference-image.jpg' : 'reference-image.png';
+                formData.append('input_reference', blob, fileName);
+                return;
+            }
+        } catch (error) {
+            console.warn('[VideoCompatibleAdapter] 远程参考图转文件失败，回退到兼容字段 image');
+        }
+
+        formData.append('image', imageSource);
+    }
+
+    private async fetchContentUrl(
+        cleanBase: string,
+        taskId: string,
+        headers: Record<string, string>,
+        signal?: AbortSignal
+    ): Promise<string> {
+        const contentUrl = `${cleanBase}/videos/${encodeURIComponent(taskId)}/content`;
+        const response = await fetch(contentUrl, { headers, signal });
+        if (!response.ok) {
+            return '';
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const payload = await response.json().catch(() => ({}));
+            return this.extractVideoUrl(payload);
+        }
+
+        const blob = await response.blob();
+        if (!blob.size || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+            return '';
+        }
+
+        return URL.createObjectURL(blob);
+    }
+
+    private async generateVideoViaNewApi(
+        options: VideoGenerationOptions,
+        keySlot: KeySlot,
+        cleanBase: string
+    ): Promise<VideoGenerationResult> {
+        const submitUrl = `${cleanBase}/videos`;
+        const headers = this.buildHeaders(keySlot, false);
+        const formData = new FormData();
+
+        formData.append('model', options.modelId);
+        formData.append('prompt', options.prompt);
+
+        const seconds = this.getDurationSeconds(options);
+        if (seconds) {
+            formData.append('seconds', String(seconds));
+        }
+
+        if (options.imageUrl) {
+            await this.appendInputReference(formData, options.imageUrl);
+        }
+
+        if (options.aspectRatio || options.resolution || options.size || options.imageTailUrl || options.videoUrl) {
+            console.warn('[VideoCompatibleAdapter] new-api 严格模式仅转发文档字段 model / prompt / seconds / input_reference，其他视频字段不再私自改写。');
+        }
+
+        const response = await fetch(submitUrl, {
+            method: 'POST',
+            headers,
+            body: formData,
+            signal: options.signal
+        });
+
+        if (!response.ok) {
+            const errText = await response.text().catch(() => '');
+            throw new Error(`视频 API 错误 ${response.status}: ${errText.slice(0, 300)}`);
+        }
+
+        const payload = await response.json().catch(() => ({}));
+        const taskId = this.extractTaskId(payload);
+        const directUrl = this.extractVideoUrl(payload);
+        const status = this.extractStatus(payload);
+
+        if (taskId) {
+            options.onTaskId?.(taskId);
+        }
+
+        if (directUrl && (!status || this.isSuccessStatus(status))) {
+            return {
+                url: directUrl,
+                taskId,
+                status: 'success',
+                provider: this.provider,
+                providerName: keySlot.name || this.provider,
+                model: options.modelId
+            };
+        }
+
+        if (!taskId) {
+            throw new Error('视频接口返回成功，但未提供任务 ID 或可用视频地址');
+        }
+
+        return this.pollNewApiTask(taskId, options, keySlot, cleanBase);
+    }
+
+    private async pollNewApiTask(
+        taskId: string,
+        options: VideoGenerationOptions,
+        keySlot: KeySlot,
+        cleanBase: string
+    ): Promise<VideoGenerationResult> {
+        const headers = this.buildHeaders(keySlot, false);
+        const pollUrl = `${cleanBase}/videos/${encodeURIComponent(taskId)}`;
+        const maxDurationMs = 30 * 60 * 1000;
+        const startTime = Date.now();
+        let pollInterval = 3000;
+        const maxInterval = 15000;
+
+        while (Date.now() - startTime < maxDurationMs) {
+            if (options.signal?.aborted) {
+                throw new Error('视频生成已取消');
+            }
+
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+            pollInterval = Math.min(Math.round(pollInterval * 1.5), maxInterval);
+
+            const response = await fetch(pollUrl, {
                 headers,
-                body: JSON.stringify(body),
+                signal: options.signal
             });
 
             if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(`视频 API 错误 ${response.status}: ${errText.slice(0, 300)}`);
+                const errText = await response.text().catch(() => '');
+                if (response.status >= 500) {
+                    continue;
+                }
+                throw new Error(`视频轮询错误 ${response.status}: ${errText.slice(0, 200)}`);
             }
 
-            let data = await response.json();
+            const payload = await response.json().catch(() => ({}));
+            const status = this.extractStatus(payload);
+            const directUrl = this.extractVideoUrl(payload);
 
-            // 提取 task_id - 兼容多种返回格式
-            let taskId = data.task_id || data.id || data.data?.task_id;
-            let videoUrl = data.video_url || data.video?.url || data.data?.video_url ||
-                data.data?.output || '';
-            let status = data.status || data.data?.status || 'pending';
-
-            // 如果直接返回结果（同步模式）
-            if (this.isTerminalStatus(status) && videoUrl) {
+            if (directUrl && this.isSuccessStatus(status || 'SUCCESS')) {
                 return {
-                    url: videoUrl,
+                    url: directUrl,
                     taskId,
                     status: 'success',
                     provider: this.provider,
@@ -128,95 +319,160 @@ export class VideoCompatibleAdapter implements LLMAdapter {
                 };
             }
 
-            // 异步轮询 - 指数退避策略
-            if (taskId) {
-                const pollUrl = `${pollBaseUrl}/${taskId}`;
-                const maxDuration = 30 * 60 * 1000; // 最长 30 分钟
-                const startTime = Date.now();
-                let pollInterval = 3000; // 起始 3 秒
-                const maxInterval = 15000; // 最大 15 秒
-
-                while (Date.now() - startTime < maxDuration) {
-                    await new Promise(r => setTimeout(r, pollInterval));
-                    // 指数退避：3s → 6s → 10s → 15s (封顶)
-                    pollInterval = Math.min(pollInterval * 1.5, maxInterval);
-
-                    try {
-                        const pollRes = await fetch(pollUrl, { headers });
-                        if (!pollRes.ok) {
-                            console.warn(`[VideoAdapter] 轮询返回 ${pollRes.status}, 继续...`);
-                            continue;
-                        }
-
-                        const pollData = await pollRes.json();
-                        status = pollData.status || pollData.data?.status || status;
-
-                        // v2 统一格式：data.output 或 data.outputs
-                        videoUrl = pollData.video_url ||
-                            pollData.data?.video_url ||
-                            pollData.data?.output ||
-                            pollData.video?.url ||
-                            (pollData.data?.outputs && pollData.data.outputs[0]) ||
-                            videoUrl;
-
-                        // 进度日志
-                        const progress = pollData.progress || '';
-                        if (progress) console.log(`[VideoAdapter] 进度: ${progress}, 状态: ${status}`);
-
-                        // 成功完成
-                        if (this.isSuccessStatus(status)) {
-                            if (!videoUrl) throw new Error('任务完成但未返回视频 URL');
-                            console.log(`[VideoAdapter] 视频生成成功: ${videoUrl.substring(0, 80)}...`);
-                            break;
-                        }
-
-                        // 失败
-                        if (this.isFailureStatus(status)) {
-                            const reason = pollData.fail_reason || pollData.error ||
-                                pollData.data?.error || JSON.stringify(pollData);
-                            throw new Error(`视频生成失败: ${reason}`);
-                        }
-
-                    } catch (pollErr: any) {
-                        if (pollErr.message.includes('视频生成失败')) throw pollErr;
-                        console.warn(`[VideoAdapter] 轮询异常:`, pollErr.message);
-                    }
+            if (this.isSuccessStatus(status)) {
+                const contentUrl = await this.fetchContentUrl(cleanBase, taskId, headers, options.signal);
+                if (contentUrl) {
+                    return {
+                        url: contentUrl,
+                        taskId,
+                        status: 'success',
+                        provider: this.provider,
+                        providerName: keySlot.name || this.provider,
+                        model: options.modelId
+                    };
                 }
 
-                if (!this.isSuccessStatus(status)) {
-                    throw new Error(`视频生成超时 (30分钟)。最后状态: ${status}`);
-                }
+                throw new Error('视频任务已成功完成，但未取回可用的视频内容');
             }
 
+            if (this.isFailureStatus(status)) {
+                const reason = payload?.error || payload?.message || payload?.data?.error || JSON.stringify(payload);
+                throw new Error(`视频生成失败: ${reason}`);
+            }
+        }
+
+        throw new Error('视频生成超时（30 分钟）');
+    }
+
+    private async generateVideoViaLegacyProxy(
+        options: VideoGenerationOptions,
+        keySlot: KeySlot,
+        cleanBase: string
+    ): Promise<VideoGenerationResult> {
+        const submitUrl = `${cleanBase}/videos/generations`;
+        const headers = this.buildHeaders(keySlot, true);
+        const body: any = {
+            model: options.modelId,
+            prompt: options.prompt,
+        };
+
+        if (options.aspectRatio && String(options.aspectRatio).toLowerCase() !== 'auto') {
+            body.aspect_ratio = options.aspectRatio;
+        }
+        if (options.resolution) {
+            body.resolution = options.resolution;
+        }
+        if (options.size) {
+            body.size = options.size;
+        }
+        if (this.getDurationSeconds(options)) {
+            body.duration = this.getDurationSeconds(options);
+        }
+        if (options.imageUrl) {
+            body.images = [options.imageUrl];
+        }
+        if (options.imageTailUrl) {
+            body.images = Array.isArray(body.images) ? body.images : [];
+            body.images.push(options.imageTailUrl);
+        }
+        if (options.videoUrl) {
+            body.videos = [options.videoUrl];
+        }
+        if (options.watermark !== undefined) {
+            body.watermark = options.watermark;
+        }
+
+        const response = await fetch(submitUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+            signal: options.signal
+        });
+
+        if (!response.ok) {
+            const errText = await response.text().catch(() => '');
+            throw new Error(`视频 API 错误 ${response.status}: ${errText.slice(0, 300)}`);
+        }
+
+        const payload = await response.json().catch(() => ({}));
+        const taskId = this.extractTaskId(payload);
+        const directUrl = this.extractVideoUrl(payload);
+        const status = this.extractStatus(payload);
+
+        if (taskId) {
+            options.onTaskId?.(taskId);
+        }
+
+        if (directUrl && (!status || this.isSuccessStatus(status))) {
             return {
-                url: videoUrl,
+                url: directUrl,
                 taskId,
                 status: 'success',
                 provider: this.provider,
                 providerName: keySlot.name || this.provider,
                 model: options.modelId
             };
-
-        } catch (e: any) {
-            console.error('[VideoCompatibleAdapter] 失败:', e);
-            throw new Error(e.message || String(e));
         }
-    }
 
-    /** 判断是否为终态 */
-    private isTerminalStatus(status: string): boolean {
-        return this.isSuccessStatus(status) || this.isFailureStatus(status);
-    }
+        if (!taskId) {
+            return {
+                url: directUrl || '',
+                status: directUrl ? 'success' : 'processing',
+                provider: this.provider,
+                providerName: keySlot.name || this.provider,
+                model: options.modelId
+            };
+        }
 
-    /** 判断是否成功 */
-    private isSuccessStatus(status: string): boolean {
-        const s = status.toUpperCase();
-        return s === 'SUCCESS' || s === 'COMPLETED' || s === 'SUCCEED';
-    }
+        const pollHeaders = this.buildHeaders(keySlot, false);
+        const pollUrl = `${submitUrl}/${encodeURIComponent(taskId)}`;
+        const maxDurationMs = 30 * 60 * 1000;
+        const startTime = Date.now();
+        let pollInterval = 3000;
+        const maxInterval = 15000;
 
-    /** 判断是否失败 */
-    private isFailureStatus(status: string): boolean {
-        const s = status.toUpperCase();
-        return s === 'FAILURE' || s === 'FAILED' || s === 'ERROR';
+        while (Date.now() - startTime < maxDurationMs) {
+            if (options.signal?.aborted) {
+                throw new Error('视频生成已取消');
+            }
+
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+            pollInterval = Math.min(Math.round(pollInterval * 1.5), maxInterval);
+
+            const pollResponse = await fetch(pollUrl, {
+                headers: pollHeaders,
+                signal: options.signal
+            });
+
+            if (!pollResponse.ok) {
+                if (pollResponse.status >= 500) {
+                    continue;
+                }
+                const errText = await pollResponse.text().catch(() => '');
+                throw new Error(`视频轮询错误 ${pollResponse.status}: ${errText.slice(0, 200)}`);
+            }
+
+            const pollPayload = await pollResponse.json().catch(() => ({}));
+            const pollStatus = this.extractStatus(pollPayload);
+            const pollVideoUrl = this.extractVideoUrl(pollPayload);
+
+            if (pollVideoUrl && this.isSuccessStatus(pollStatus || 'SUCCESS')) {
+                return {
+                    url: pollVideoUrl,
+                    taskId,
+                    status: 'success',
+                    provider: this.provider,
+                    providerName: keySlot.name || this.provider,
+                    model: options.modelId
+                };
+            }
+
+            if (this.isFailureStatus(pollStatus)) {
+                const reason = pollPayload?.error || pollPayload?.message || pollPayload?.data?.error || JSON.stringify(pollPayload);
+                throw new Error(`视频生成失败: ${reason}`);
+            }
+        }
+
+        throw new Error('视频生成超时（30 分钟）');
     }
 }

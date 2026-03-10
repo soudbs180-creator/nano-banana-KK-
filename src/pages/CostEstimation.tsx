@@ -1,206 +1,356 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, DollarSign, Calculator, Info, ExternalLink } from 'lucide-react';
-import { SupplierPricing } from '../components/api/SupplierPricing';
-import { supplierService } from '../services/billing/supplierService';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Calculator, DollarSign, Info, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { creditService } from '../services/billing/creditService';
-import { adminModelService, AdminModelConfig } from '../services/model/adminModelService';
+import {
+  getHistorySummary,
+  getRecentEntries,
+  parseModelSource,
+  type CostBreakdownItem,
+  type CostEntry,
+} from '../services/billing/costService';
+import { adminModelService, type AdminModelConfig } from '../services/model/adminModelService';
 
 interface CostEstimationProps {
-  onBack: () => void;
+  onBack?: () => void;
+  embedded?: boolean;
 }
 
-export const CostEstimation: React.FC<CostEstimationProps> = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState<'suppliers' | 'credits'>('suppliers');
-  const [hasSuppliers, setHasSuppliers] = useState(false);
+const formatUsd = (value: number) => `$${Number(value || 0).toFixed(6)}`;
 
+const formatDateTime = (value: number) =>
+  new Date(value).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+export const CostEstimation: React.FC<CostEstimationProps> = ({ onBack, embedded = false }) => {
+  const [activeTab, setActiveTab] = useState<'records' | 'credits'>('records');
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [adminModels, setAdminModels] = useState<AdminModelConfig[]>([]);
-
-  useEffect(() => {
-    setHasSuppliers(supplierService.getAll().length > 0);
-    const unsubscribe = supplierService.subscribe(() => {
-      setHasSuppliers(supplierService.getAll().length > 0);
-    });
-    return unsubscribe;
-  }, []);
+  const [summaryRows, setSummaryRows] = useState<CostBreakdownItem[]>([]);
+  const [recentRows, setRecentRows] = useState<CostEntry[]>([]);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     const fetchBalance = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       if (user) {
         const credits = await creditService.getUserCredits(user.id);
         setUserBalance(credits?.balance ?? 0);
       }
     };
-    fetchBalance();
 
     const updateAdminModels = () => {
-      const models = adminModelService.getModels().filter(m => m.creditCost !== undefined && m.creditCost > 0);
+      const models = adminModelService
+        .getModels()
+        .filter((item) => item.creditCost !== undefined && item.creditCost > 0);
       setAdminModels(models);
     };
 
+    void fetchBalance();
     updateAdminModels();
-    adminModelService.loadAdminModels().then(updateAdminModels);
+    void adminModelService.loadAdminModels().then(updateAdminModels);
 
     const unsubscribeAdmin = adminModelService.subscribe(updateAdminModels);
     return unsubscribeAdmin;
   }, []);
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      {/* Header */}
-      <header className="sticky top-0 z-40 backdrop-blur-xl bg-gray-900/80 border-b border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-4">
+  useEffect(() => {
+    setSummaryRows(getHistorySummary(30));
+    setRecentRows(getRecentEntries(50));
+  }, [refreshTick, activeTab]);
+
+  useEffect(() => {
+    const handleFocus = () => setRefreshTick((value) => value + 1);
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  const recordsOverview = useMemo(() => {
+    const totalCost = summaryRows.reduce((sum, item) => sum + (item.cost || 0), 0);
+    const totalTokens = summaryRows.reduce((sum, item) => sum + (item.tokens || 0), 0);
+    const totalCount = summaryRows.reduce((sum, item) => sum + (item.count || 0), 0);
+
+    return {
+      totalCost,
+      totalTokens,
+      totalCount,
+    };
+  }, [summaryRows]);
+
+  const content = (
+    <div className="space-y-6">
+      <div className={embedded ? 'apple-glass-card rounded-[28px] p-5 md:p-6' : 'apple-glass-card rounded-[30px] p-5 md:p-6'}>
+        <div className="flex flex-col items-start gap-5 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-4">
+            {!embedded && onBack ? (
+              <button onClick={onBack} className="apple-icon-button mt-0.5">
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+            ) : null}
+            <div>
+              <div className="apple-badge info mb-3">成本与积分面板</div>
+              <h1 className={`${embedded ? 'text-2xl' : 'text-[28px]'} font-semibold tracking-tight text-[var(--text-primary)]`}>
+                价格估算
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+                分别查看模型累计消耗、单次消耗记录，以及积分模型的当前可用情况。
+              </p>
+            </div>
+          </div>
+
+          <div className="apple-pill-group self-start">
             <button
-              onClick={onBack}
-              className="p-2 hover:bg-gray-700/50 rounded-lg transition-colors"
+              onClick={() => setActiveTab('records')}
+              className={`apple-pill-button ${activeTab === 'records' ? 'active' : ''}`}
             >
-              <ArrowLeft className="w-5 h-5 text-gray-400" />
+              <DollarSign className="h-4 w-4" />
+              费用记录
             </button>
-            <h1 className="text-xl font-bold text-white">成本估算</h1>
+            <button
+              onClick={() => setActiveTab('credits')}
+              className={`apple-pill-button ${activeTab === 'credits' ? 'active' : ''}`}
+            >
+              <Calculator className="h-4 w-4" />
+              积分系统
+            </button>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setActiveTab('suppliers')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'suppliers'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-          >
-            <DollarSign className="w-4 h-4" />
-            供应商定价
-          </button>
-          <button
-            onClick={() => setActiveTab('credits')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'credits'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-          >
-            <Calculator className="w-4 h-4" />
-            积分系统
-          </button>
-        </div>
-
-        {/* Content */}
-        {activeTab === 'suppliers' ? (
-          hasSuppliers ? (
-            <SupplierPricing />
-          ) : (
-            <div className="text-center py-16 bg-gray-800/50 rounded-2xl border border-gray-700 border-dashed">
-              <DollarSign className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-400 mb-2">暂无供应商定价</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                添加供应商后，这里会显示模型定价信息
-              </p>
-              <p className="text-xs text-gray-600">
-                前往"第三方服务商"添加供应商
-              </p>
-            </div>
-          )
-        ) : (
-          <div className="space-y-6">
-            {/* Credit System Info */}
-            <div className="bg-gradient-to-br from-blue-900/20 to-indigo-900/20 rounded-xl p-6 border border-blue-700/30">
-              <div className="flex items-center gap-3 mb-4">
-                <Calculator className="w-6 h-6 text-blue-400" />
-                <h3 className="text-lg font-semibold text-white">积分系统</h3>
+      {activeTab === 'records' ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="apple-soft-card rounded-[24px] p-5">
+              <div className="text-xs text-[var(--text-tertiary)]">模型累计总消耗</div>
+              <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                {formatUsd(recordsOverview.totalCost)}
               </div>
-              <p className="text-gray-300 mb-4">
-                积分系统用于结算特定的 AI 模型调用。管理员配置的积分模型会显示在这里。
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-gray-800/50 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-white">
-                    {userBalance !== null ? userBalance.toString() : '--'}
-                  </p>
-                  <p className="text-sm text-gray-400">当前可用积分</p>
-                </div>
-                <div className="bg-gray-800/50 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-white">{adminModels.length}</p>
-                  <p className="text-sm text-gray-400">可用积分模型</p>
-                </div>
-                <div className="bg-gray-800/50 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-white">联系管理员</p>
-                  <p className="text-sm text-gray-400">充值方式</p>
-                </div>
-              </div>
+              <div className="mt-1 text-xs text-[var(--text-tertiary)]">按模型累计，持续计入总成本</div>
             </div>
 
-            {/* Credit Models */}
-            <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-700">
-                <h4 className="text-lg font-medium text-white">积分模型列表</h4>
+            <div className="apple-soft-card rounded-[24px] p-5">
+              <div className="text-xs text-[var(--text-tertiary)]">累计调用次数</div>
+              <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                {recordsOverview.totalCount}
               </div>
-              <div className="p-6">
-                <div className="space-y-3">
-                  {adminModels.length > 0 ? (
-                    adminModels.map((model) => (
-                      <div key={model.id} className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
-                        <div>
-                          <p className="font-medium text-white">{model.displayName}</p>
-                          <p className="text-sm text-gray-400">{model.id}@system</p>
-                        </div>
-                        <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-sm">
-                          {model.creditCost} 积分 / 次
-                        </span>
-                      </div>
-                    ))
+              <div className="mt-1 text-xs text-[var(--text-tertiary)]">统计所有成功记录</div>
+            </div>
+
+            <div className="apple-soft-card rounded-[24px] p-5">
+              <div className="text-xs text-[var(--text-tertiary)]">累计 Tokens</div>
+              <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+                {recordsOverview.totalTokens.toLocaleString('zh-CN')}
+              </div>
+              <div className="mt-1 text-xs text-[var(--text-tertiary)]">来自费用记录汇总</div>
+            </div>
+          </div>
+
+          <div className="apple-table-card">
+            <div className="flex flex-col items-start gap-3 border-b border-[rgba(148,163,184,0.14)] px-6 py-5 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-[var(--text-primary)]">该模型总消耗</h3>
+                <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                  每个模型的累计费用会持续累加，便于长期核算成本。
+                </p>
+              </div>
+              <button
+                onClick={() => setRefreshTick((value) => value + 1)}
+                className="apple-button-secondary self-start px-3 text-xs"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                刷新
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="apple-table">
+                <thead>
+                  <tr>
+                    <th className="text-left">模型</th>
+                    <th className="text-left">来源</th>
+                    <th className="text-right">累计次数</th>
+                    <th className="text-right">累计 Tokens</th>
+                    <th className="text-right">累计费用</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summaryRows.length > 0 ? (
+                    summaryRows.map((item, index) => {
+                      const parsed = parseModelSource(item.model);
+                      return (
+                        <tr key={`${item.model}_${item.imageSize}_${index}`}>
+                          <td>
+                            <div className="text-sm font-medium text-[var(--text-primary)]">{parsed.modelId}</div>
+                            <div className="mt-1 text-xs text-[var(--text-tertiary)]">{item.imageSize}</div>
+                          </td>
+                          <td className="text-sm text-[var(--text-secondary)]">{parsed.source}</td>
+                          <td className="text-right text-sm text-[var(--text-secondary)]">{item.count}</td>
+                          <td className="text-right text-sm text-[var(--text-secondary)]">
+                            {item.tokens.toLocaleString('zh-CN')}
+                          </td>
+                          <td className="text-right text-sm font-semibold text-emerald-600">{formatUsd(item.cost)}</td>
+                        </tr>
+                      );
+                    })
                   ) : (
-                    <p className="text-center text-sm text-gray-500 py-4">
-                      暂无积分模型或正在加载中...
-                    </p>
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-sm text-[var(--text-tertiary)]">
+                        暂无累计费用记录，生成成功后这里会逐步汇总每个模型的总消耗。
+                      </td>
+                    </tr>
                   )}
-                </div>
-              </div>
-            </div>
-
-            {/* Info */}
-            <div className="flex items-start gap-3 p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
-              <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-gray-300">
-                <p className="font-medium text-blue-300 mb-1">关于积分系统</p>
-                <p>积分模型使用系统代理调用，无需用户配置 API Key。调用时会自动扣除相应积分，积分不足时请联系管理员充值。</p>
-              </div>
+                </tbody>
+              </table>
             </div>
           </div>
-        )}
-      </main>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-700 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="text-center text-sm text-gray-500">
-            <p>API 文档参考：</p>
-            <div className="flex items-center justify-center gap-4 mt-2">
-              <a
-                href="https://doc.12ai.org/api/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 flex items-center gap-1"
-              >
-                12AI API 文档 <ExternalLink className="w-3 h-3" />
-              </a>
-              <a
-                href="https://docs.newapi.pro/en/docs/api"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 flex items-center gap-1"
-              >
-                NewAPI 管理文档 <ExternalLink className="w-3 h-3" />
-              </a>
+          <div className="apple-table-card">
+            <div className="border-b border-[rgba(148,163,184,0.14)] px-6 py-5">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">单次消耗记录</h3>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                每一次调用都会单独记录，方便回查某次生成的实际消耗。
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="apple-table">
+                <thead>
+                  <tr>
+                    <th className="text-left">时间</th>
+                    <th className="text-left">模型</th>
+                    <th className="text-right">本次数量</th>
+                    <th className="text-right">本次 Tokens</th>
+                    <th className="text-right">本次费用</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentRows.length > 0 ? (
+                    recentRows.map((entry) => {
+                      const parsed = parseModelSource(entry.model);
+                      return (
+                        <tr key={entry.id}>
+                          <td className="text-sm text-[var(--text-secondary)]">{formatDateTime(entry.timestamp)}</td>
+                          <td>
+                            <div className="text-sm font-medium text-[var(--text-primary)]">{parsed.modelId}</div>
+                            <div className="mt-1 text-xs text-[var(--text-tertiary)]">{parsed.source}</div>
+                          </td>
+                          <td className="text-right text-sm text-[var(--text-secondary)]">{entry.count}</td>
+                          <td className="text-right text-sm text-[var(--text-secondary)]">
+                            {(entry.tokens || 0).toLocaleString('zh-CN')}
+                          </td>
+                          <td className="text-right text-sm font-semibold text-emerald-600">
+                            {formatUsd(entry.costUsd)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-sm text-[var(--text-tertiary)]">
+                        暂无单次消耗记录。
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="apple-note-card flex items-start gap-3 rounded-[24px] p-5">
+            <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-sky-600" />
+            <div className="text-sm text-[var(--text-secondary)]">
+              <p className="mb-1 font-medium text-sky-700">费用记录说明</p>
+              <p>
+                上面的“该模型总消耗”会累计计入模型总成本；下面的“单次消耗记录”只记录某一次调用本身的消耗，
+                两者分开用于长期统计和单次排查。
+              </p>
             </div>
           </div>
         </div>
-      </footer>
+      ) : (
+        <div className="space-y-6">
+          <div className="apple-glass-card rounded-[28px] p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <Calculator className="h-6 w-6 text-indigo-600" />
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">积分系统</h3>
+            </div>
+            <p className="mb-4 text-sm leading-6 text-[var(--text-secondary)]">
+              积分模型由管理员统一配置，用户调用时会直接扣减积分，无需单独填写对应模型的 API Key。
+            </p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="apple-soft-card rounded-[22px] p-4">
+                <p className="text-2xl font-semibold text-[var(--text-primary)]">
+                  {userBalance !== null ? userBalance.toString() : '--'}
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-tertiary)]">当前可用积分</p>
+              </div>
+              <div className="apple-soft-card rounded-[22px] p-4">
+                <p className="text-2xl font-semibold text-[var(--text-primary)]">{adminModels.length}</p>
+                <p className="mt-1 text-sm text-[var(--text-tertiary)]">可用积分模型</p>
+              </div>
+              <div className="apple-soft-card rounded-[22px] p-4">
+                <p className="text-2xl font-semibold text-[var(--text-primary)]">联系管理员</p>
+                <p className="mt-1 text-sm text-[var(--text-tertiary)]">充值与补充方式</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="apple-table-card">
+            <div className="border-b border-[rgba(148,163,184,0.14)] px-6 py-5">
+              <h4 className="text-lg font-medium text-[var(--text-primary)]">积分模型列表</h4>
+            </div>
+            <div className="p-6">
+              <div className="space-y-3">
+                {adminModels.length > 0 ? (
+                  adminModels.map((model) => (
+                    <div key={model.id} className="apple-soft-card flex items-center justify-between rounded-[22px] p-4">
+                      <div>
+                        <p className="font-medium text-[var(--text-primary)]">{model.displayName}</p>
+                        <p className="text-sm text-[var(--text-tertiary)]">{model.id}@system</p>
+                      </div>
+                      <span className="apple-badge warn">{model.creditCost} 积分 / 次</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="py-4 text-center text-sm text-[var(--text-tertiary)]">暂无积分模型，或正在加载中...</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="apple-note-card flex items-start gap-3 rounded-[24px] p-5">
+            <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-sky-600" />
+            <div className="text-sm text-[var(--text-secondary)]">
+              <p className="mb-1 font-medium text-sky-700">关于积分系统</p>
+              <p>
+                积分模型通过系统代理调用，用户无需再单独配置 API Key；调用时会自动扣减对应积分，积分不足时请先联系管理员充值。
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  const contentBlocks = React.Children.toArray(content.props.children);
+
+  return (
+    <div className="apple-page-shell">
+      <header className="apple-topbar">
+        <div className="apple-shell py-4">{contentBlocks[0]}</div>
+      </header>
+      <main className="apple-shell py-6">{contentBlocks.slice(1)}</main>
     </div>
   );
 };

@@ -41,7 +41,7 @@ supabase --version
 
 ```bash
 # 在项目目录安装 (不需要全局)
-cd c:\Users\Administrator\Downloads\KK-Studio-1.0.0
+cd <project-root>
 npm install --save-dev supabase
 
 # 使用 npx 运行

@@ -1,6 +1,5 @@
 import { Canvas } from '../../types';
 import { logError, logInfo, logWarning } from '../system/systemLogService';
-import { notify } from '../system/notificationService';
 import { supabase } from '../../lib/supabase';
 
 /**
@@ -10,18 +9,161 @@ import { supabase } from '../../lib/supabase';
 
 const PROJECT_FILE = 'project.json';
 const DIRS = {
-    // 🚀 新目录结构
-    PICTURE: 'picture',           // 图片文档
-    VIDEO: 'video',               // 视频文档
-    REFS: 'refs',                 // 参考图压缩备份
-    SETTINGS: 'settings',         // 布局和设置信息
-    TAGS: 'tags',                 // 标签快捷链接子目录名
-    // 兼容旧目录
-    ORIGINALS: 'originals',       // 旧版原图目录（向后兼容）
+    ORIGINALS: 'originals',
     THUMBNAILS: 'thumbnails',
+    REFS: 'refs',
+    PICTURE: 'picture',
+    VIDEO: 'video',
+    SETTINGS: 'settings',
+    TAGS: 'tags',
     CACHE: 'cache',
     LEGACY: 'images'
 };
+
+const ROOT_CANONICAL_DIRS = new Set([
+    DIRS.ORIGINALS,
+    DIRS.THUMBNAILS,
+    DIRS.REFS
+]);
+
+const ROOT_LEGACY_DIRS = new Set([
+    DIRS.PICTURE,
+    DIRS.VIDEO,
+    DIRS.SETTINGS,
+    DIRS.TAGS,
+    DIRS.CACHE,
+    DIRS.LEGACY
+]);
+
+const ALL_MANAGED_ROOT_DIRS = new Set([
+    ...Array.from(ROOT_CANONICAL_DIRS),
+    ...Array.from(ROOT_LEGACY_DIRS)
+]);
+
+const MEDIA_EXTENSIONS = /\.(png|jpe?g|webp|gif|bmp|mp4|webm|mov)$/i;
+const THUMBNAIL_EXTENSIONS = /\.(png|jpe?g|webp)$/i;
+
+const consolidatedWorkspaceHandles = new WeakSet<FileSystemDirectoryHandle>();
+
+function normalizeStoredFileId(filename: string): string {
+    const baseName = filename.replace(/\.[^.]+$/, '');
+    return /^\d{6}_/.test(baseName) ? baseName.slice(7) : baseName;
+}
+
+function getFileExtension(filename: string, fallback: string): string {
+    const match = filename.match(/\.([^.]+)$/);
+    return (match?.[1] || fallback).toLowerCase();
+}
+
+function extensionFromMimeType(mimeType: string | undefined, fallback: string): string {
+    const normalizedMimeType = (mimeType || '').toLowerCase();
+
+    if (normalizedMimeType.includes('png')) return 'png';
+    if (normalizedMimeType.includes('jpeg') || normalizedMimeType.includes('jpg')) return 'jpg';
+    if (normalizedMimeType.includes('webp')) return 'webp';
+    if (normalizedMimeType.includes('gif')) return 'gif';
+    if (normalizedMimeType.includes('bmp')) return 'bmp';
+    if (normalizedMimeType.includes('mp4')) return 'mp4';
+    if (normalizedMimeType.includes('webm')) return 'webm';
+    if (normalizedMimeType.includes('quicktime') || normalizedMimeType.includes('mov')) return 'mov';
+
+    return fallback;
+}
+
+function matchesStoredFileId(filename: string, id: string): boolean {
+    const normalizedId = normalizeStoredFileId(filename);
+    const baseName = filename.replace(/\.[^.]+$/, '');
+    return normalizedId === id || baseName === id || filename.startsWith(`${id}.`);
+}
+
+async function findExistingFileNameByStoredId(
+    dirHandle: FileSystemDirectoryHandle,
+    id: string,
+    pattern: RegExp
+): Promise<string | null> {
+    // @ts-ignore
+    for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file' && pattern.test(entry.name) && matchesStoredFileId(entry.name, id)) {
+            return entry.name;
+        }
+    }
+    return null;
+}
+
+async function copyFileBetweenDirectories(
+    sourceDirHandle: FileSystemDirectoryHandle,
+    sourceFilename: string,
+    targetDirHandle: FileSystemDirectoryHandle,
+    targetFilename: string
+): Promise<void> {
+    // @ts-ignore
+    const sourceFileHandle = await sourceDirHandle.getFileHandle(sourceFilename);
+    // @ts-ignore
+    const file = await sourceFileHandle.getFile();
+    // @ts-ignore
+    const targetFileHandle = await targetDirHandle.getFileHandle(targetFilename, { create: true });
+    // @ts-ignore
+    const writable = await targetFileHandle.createWritable();
+    await writable.write(file);
+    await writable.close();
+}
+
+async function removeEntryIfExists(
+    dirHandle: FileSystemDirectoryHandle,
+    entryName: string,
+    recursive: boolean = false
+): Promise<void> {
+    try {
+        if (recursive) {
+            // @ts-ignore
+            await dirHandle.removeEntry(entryName, { recursive: true });
+        } else {
+            // @ts-ignore
+            await dirHandle.removeEntry(entryName);
+        }
+    } catch {
+        // ignore
+    }
+}
+
+async function isDirectoryEmpty(dirHandle: FileSystemDirectoryHandle): Promise<boolean> {
+    // @ts-ignore
+    for await (const _ of dirHandle.values()) {
+        return false;
+    }
+    return true;
+}
+
+function sanitizeCanvasesForProjectFile(canvases: Canvas[]): Canvas[] {
+    return canvases.map(canvas => ({
+        ...canvas,
+        imageNodes: (canvas.imageNodes || []).map(imageNode => ({
+            ...imageNode,
+            url: '',
+            originalUrl: '',
+            requestBodyPreview: undefined,
+            pythonSnippet: undefined,
+            fileName: imageNode.fileName || imageNode.storageId || imageNode.id
+        })),
+        promptNodes: (canvas.promptNodes || []).map(promptNode => ({
+            ...promptNode,
+            referenceImages: (promptNode.referenceImages || []).map(ref => ({
+                ...ref,
+                storageId: ref.storageId || ref.id,
+                data: '',
+                url: undefined
+            })),
+            errorDetails: promptNode.errorDetails ? {
+                code: promptNode.errorDetails.code,
+                status: promptNode.errorDetails.status,
+                requestPath: promptNode.errorDetails.requestPath,
+                provider: promptNode.errorDetails.provider,
+                model: promptNode.errorDetails.model,
+                timestamp: promptNode.errorDetails.timestamp
+            } : undefined
+        }))
+    }));
+}
 
 // 🚀 全局句柄（单例），用于跨服务访问（如自动备份）
 let globalHandle: FileSystemDirectoryHandle | null = null;
@@ -36,7 +178,7 @@ export const fileSystemService = {
     /**
      * Set global handle for auto-saving
      */
-    setGlobalHandle(handle: FileSystemDirectoryHandle) {
+    setGlobalHandle(handle: FileSystemDirectoryHandle | null) {
         globalHandle = handle;
     },
 
@@ -206,14 +348,77 @@ export const fileSystemService = {
         let activeCanvasId: string | null = null;
         let rootProjectData: any = null;
 
-        logInfo('FileSystem', `正在加载工作区`, `folder: ${handle.name}`);
+        logInfo('FileSystem', 'Loading workspace', `folder: ${handle.name}`);
 
-        // --- 0. 环境指纹 ---
         const { data: { session } } = await supabase.auth.getSession();
         const ownerId = session?.user?.id || 'local_user';
-
-        // --- 1. 优先加载根目录的 project.json (集成版) ---
         let hasRootConfig = false;
+        const canvasMap = new Map<string, Canvas>();
+
+        const mergeCanvasList = (incoming: Canvas[] | undefined, overwrite: boolean = true) => {
+            (incoming || []).forEach((canvas) => {
+                if (!canvas?.id) return;
+                if (!overwrite && canvasMap.has(canvas.id)) return;
+                canvasMap.set(canvas.id, canvas);
+            });
+        };
+
+        const registerOriginalMedia = async (dirHandle: FileSystemDirectoryHandle) => {
+            // @ts-ignore
+            for await (const mediaEntry of dirHandle.values()) {
+                if (mediaEntry.kind !== 'file' || !MEDIA_EXTENSIONS.test(mediaEntry.name)) continue;
+                const id = normalizeStoredFileId(mediaEntry.name);
+                try {
+                    // @ts-ignore
+                    const file = await mediaEntry.getFile();
+                    const url = URL.createObjectURL(file);
+                    const current = images.get(id);
+                    images.set(id, {
+                        url: current?.url || url,
+                        originalUrl: url,
+                        filename: mediaEntry.name
+                    });
+                } catch {
+                    // ignore file read error
+                }
+            }
+        };
+
+        const registerThumbnailMedia = async (dirHandle: FileSystemDirectoryHandle) => {
+            // @ts-ignore
+            for await (const mediaEntry of dirHandle.values()) {
+                if (mediaEntry.kind !== 'file' || !THUMBNAIL_EXTENSIONS.test(mediaEntry.name)) continue;
+                const id = normalizeStoredFileId(mediaEntry.name);
+                try {
+                    // @ts-ignore
+                    const file = await mediaEntry.getFile();
+                    const url = URL.createObjectURL(file);
+                    const current = images.get(id);
+                    images.set(id, {
+                        url,
+                        originalUrl: current?.originalUrl || current?.url,
+                        filename: current?.filename || mediaEntry.name
+                    });
+                } catch {
+                    // ignore file read error
+                }
+            }
+        };
+
+        const scanDirectoryMedia = async (baseHandle: FileSystemDirectoryHandle, dirName: string, mode: 'original' | 'thumbnail') => {
+            try {
+                // @ts-ignore
+                const dirHandle = await baseHandle.getDirectoryHandle(dirName);
+                if (mode === 'thumbnail') {
+                    await registerThumbnailMedia(dirHandle);
+                } else {
+                    await registerOriginalMedia(dirHandle);
+                }
+            } catch {
+                // ignore missing directories
+            }
+        };
+
         try {
             // @ts-ignore
             const rootFile = await handle.getFileHandle(PROJECT_FILE);
@@ -223,95 +428,290 @@ export const fileSystemService = {
 
             if (rootProjectData?.canvases || rootProjectData?.canvas) {
                 if (rootProjectData.canvases) {
-                    canvases = rootProjectData.canvases;
+                    mergeCanvasList(rootProjectData.canvases);
                 } else if (rootProjectData.canvas) {
-                    canvases = [rootProjectData.canvas];
+                    mergeCanvasList([rootProjectData.canvas]);
                 }
-                activeCanvasId = rootProjectData.activeCanvasId || (canvases[0]?.id) || null;
+                activeCanvasId = rootProjectData.activeCanvasId || null;
                 hasRootConfig = true;
-                logInfo('FileSystem', '已从根目录加载集成配置文档', `共 ${canvases.length} 个画布`);
+                logInfo('FileSystem', 'Loaded root project metadata', `activeCanvas: ${activeCanvasId || 'none'}`);
+            } else {
+                logInfo('FileSystem', 'No canvas data in root project.json', JSON.stringify(rootProjectData).slice(0, 200));
             }
         } catch (e) {
-            // 根目录无配置或解析失败
+            logWarning('FileSystem', 'Failed to parse root project.json, fallback to legacy recovery', e instanceof Error ? e.message : 'unknown');
         }
 
-        // --- 2. 遍历子文档夹：仅用于加载媒体文档 & 扫描旧版配置以便迁移 ---
+        await scanDirectoryMedia(handle, DIRS.ORIGINALS, 'original');
+        await scanDirectoryMedia(handle, DIRS.THUMBNAILS, 'thumbnail');
+        await scanDirectoryMedia(handle, DIRS.PICTURE, 'original');
+        await scanDirectoryMedia(handle, DIRS.VIDEO, 'original');
+        await scanDirectoryMedia(handle, DIRS.LEGACY, 'original');
+
         // @ts-ignore
         for await (const entry of handle.values()) {
-            if (entry.kind === 'directory' && !entry.name.startsWith('.')) {
-                // @ts-ignore
-                const projectDirHandle = await handle.getDirectoryHandle(entry.name);
+            if (entry.kind !== 'directory' || entry.name.startsWith('.')) continue;
+            if (ALL_MANAGED_ROOT_DIRS.has(entry.name)) continue;
+
+            // @ts-ignore
+            const projectDirHandle = await handle.getDirectoryHandle(entry.name);
+
+            try {
+                await scanDirectoryMedia(projectDirHandle, DIRS.ORIGINALS, 'original');
+                await scanDirectoryMedia(projectDirHandle, DIRS.THUMBNAILS, 'thumbnail');
+                await scanDirectoryMedia(projectDirHandle, DIRS.PICTURE, 'original');
+                await scanDirectoryMedia(projectDirHandle, DIRS.VIDEO, 'original');
+                await scanDirectoryMedia(projectDirHandle, DIRS.LEGACY, 'original');
 
                 try {
-                    // --- 2.1 扫描媒体文档 (picture / video) ---
-                    const scanSubDirectory = async (mediaDirName: string) => {
-                        try {
-                            // @ts-ignore
-                            const mediaDirHandle = await projectDirHandle.getDirectoryHandle(mediaDirName);
-                            // @ts-ignore
-                            for await (const mediaEntry of mediaDirHandle.values()) {
-                                if (mediaEntry.kind === 'file' && /\.(png|jpg|webp|mp4|webm|mov)$/i.test(mediaEntry.name)) {
-                                    let id = mediaEntry.name.substring(0, mediaEntry.name.lastIndexOf('.'));
-                                    if (/^\d{6}_/.test(id)) id = id.substring(7);
+                    // @ts-ignore
+                    const pFile = await projectDirHandle.getFileHandle(PROJECT_FILE);
+                    // @ts-ignore
+                    const pText = await (await pFile.getFile()).text();
+                    const pData = JSON.parse(pText);
 
-                                    try {
-                                        // @ts-ignore
-                                        const file = await mediaEntry.getFile();
-                                        const url = URL.createObjectURL(file);
-                                        if (!images.has(id)) {
-                                            images.set(id, { url, originalUrl: url, filename: mediaEntry.name });
-                                        }
-                                    } catch (e) { /* ignore */ }
-                                }
-                            }
-                        } catch (e) { /* ignore missing */ }
-                    };
-
-                    await scanSubDirectory(DIRS.PICTURE);
-                    await scanSubDirectory(DIRS.VIDEO);
-
-                    // --- 2.2 辅助：如果根目录没配置，则尝试从子目录合并配置 (旧架构兼容) ---
-                    if (!hasRootConfig) {
-                        try {
-                            // @ts-ignore
-                            const pFile = await projectDirHandle.getFileHandle(PROJECT_FILE);
-                            // @ts-ignore
-                            const pText = await (await pFile.getFile()).text();
-                            const pData = JSON.parse(pText);
-
-                            if (pData.canvas) {
-                                // 检查 ownerId 匹配
-                                if (!pData.metadata?.ownerId || pData.metadata.ownerId === ownerId) {
-                                    // 检查是否已存在（防冲突）
-                                    if (!canvases.find(c => c.id === pData.canvas.id)) {
-                                        canvases.push(pData.canvas);
-                                    }
-                                }
-                            } else if (pData.canvases && Array.isArray(pData.canvases)) {
-                                pData.canvases.forEach((c: Canvas) => {
-                                    if (!canvases.find(can => can.id === c.id)) {
-                                        canvases.push(c);
-                                    }
-                                });
-                            }
-                        } catch (e) { /* 子目录无 project.json */ }
+                    if (pData.canvas) {
+                        if (!pData.metadata?.ownerId || pData.metadata.ownerId === ownerId) {
+                            mergeCanvasList([pData.canvas], !hasRootConfig);
+                        }
+                    } else if (pData.canvases && Array.isArray(pData.canvases)) {
+                        mergeCanvasList(pData.canvases, !hasRootConfig);
                     }
-
-                } catch (e) { /* 遍历项目出错 */ }
+                } catch {
+                    // ignore nested project.json parse failures
+                }
+            } catch {
+                // ignore nested workspace traversal errors
             }
         }
 
-        // --- 4. 容错回退机制 ---
+        canvases = Array.from(canvasMap.values());
+
         if (canvases.length === 0) {
-            logInfo('FileSystem', '工作区为空或无归属权项目，将创建全新空配置', 'project.json not found');
+            logInfo('FileSystem', 'Workspace contains no recoverable canvases', 'project.json not found');
             canvases = [];
-        } else if (!activeCanvasId) {
+        } else if (!activeCanvasId || !canvases.some(canvas => canvas.id === activeCanvasId)) {
             activeCanvasId = canvases[0]?.id || null;
         }
 
-        logInfo('FileSystem', `已深度挂载 ${canvases.length} 个项目, 共找到 ${images.size} 个媒体文档`, 'load complete');
+        logInfo('FileSystem', `Loaded ${canvases.length} canvases and ${images.size} media files`, hasRootConfig ? 'root+legacy merged' : 'legacy recovered');
+
+        if (!consolidatedWorkspaceHandles.has(handle)) {
+            try {
+                await this.consolidateWorkspaceLayout(handle, canvases, activeCanvasId);
+                consolidatedWorkspaceHandles.add(handle);
+            } catch (e) {
+                logWarning('FileSystem', 'Workspace consolidation skipped after failure', e instanceof Error ? e.message : 'unknown');
+            }
+        }
 
         return { canvases, images, activeCanvasId };
+    },
+
+    async consolidateWorkspaceLayout(
+        handle: FileSystemDirectoryHandle,
+        canvases: Canvas[] = [],
+        activeCanvasId: string | null = null
+    ): Promise<void> {
+        // @ts-ignore
+        const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
+        // @ts-ignore
+        const thumbnailsDir = await handle.getDirectoryHandle(DIRS.THUMBNAILS, { create: true });
+        // @ts-ignore
+        const refsDir = await handle.getDirectoryHandle(DIRS.REFS, { create: true });
+
+        let movedFiles = 0;
+        let cleanedFolders = 0;
+        let wroteRootProject = false;
+
+        const moveManagedFiles = async (
+            baseHandle: FileSystemDirectoryHandle,
+            sourceDirName: string,
+            kind: 'original' | 'thumbnail' | 'ref'
+        ) => {
+            try {
+                // @ts-ignore
+                const sourceDirHandle = await baseHandle.getDirectoryHandle(sourceDirName);
+
+                // @ts-ignore
+                for await (const entry of sourceDirHandle.values()) {
+                    if (entry.kind !== 'file') continue;
+
+                    const normalizedId = normalizeStoredFileId(entry.name);
+                    if (!normalizedId) continue;
+
+                    let targetDirHandle = originalsDir;
+                    let targetFilename = entry.name;
+                    let allowedPattern = MEDIA_EXTENSIONS;
+
+                    if (kind === 'thumbnail') {
+                        allowedPattern = THUMBNAIL_EXTENSIONS;
+                        if (!allowedPattern.test(entry.name)) continue;
+                        targetDirHandle = thumbnailsDir;
+                        const ext = getFileExtension(entry.name, 'webp');
+                        targetFilename = `${normalizedId}.${ext}`;
+                    } else if (kind === 'ref') {
+                        allowedPattern = /\.(png|jpe?g|webp|gif|bmp)$/i;
+                        if (!allowedPattern.test(entry.name)) continue;
+                        targetDirHandle = refsDir;
+                        const ext = getFileExtension(entry.name, 'jpg');
+                        targetFilename = `${normalizedId}.${ext}`;
+                    } else {
+                        if (!allowedPattern.test(entry.name)) continue;
+                        targetDirHandle = originalsDir;
+                        const ext = getFileExtension(entry.name, 'png');
+                        targetFilename = `${normalizedId}.${ext}`;
+                    }
+
+                    const isAlreadyCanonicalLocation =
+                        baseHandle === handle &&
+                        ((kind === 'original' && sourceDirName === DIRS.ORIGINALS) ||
+                            (kind === 'thumbnail' && sourceDirName === DIRS.THUMBNAILS) ||
+                            (kind === 'ref' && sourceDirName === DIRS.REFS)) &&
+                        entry.name === targetFilename;
+
+                    if (!isAlreadyCanonicalLocation) {
+                        const existingFileName = await findExistingFileNameByStoredId(targetDirHandle, normalizedId, allowedPattern);
+                        if (!existingFileName) {
+                            await copyFileBetweenDirectories(sourceDirHandle, entry.name, targetDirHandle, targetFilename);
+                            movedFiles++;
+                        }
+
+                        await removeEntryIfExists(sourceDirHandle, entry.name);
+                    }
+                }
+
+                if (
+                    sourceDirName !== DIRS.ORIGINALS &&
+                    sourceDirName !== DIRS.THUMBNAILS &&
+                    sourceDirName !== DIRS.REFS &&
+                    await isDirectoryEmpty(sourceDirHandle)
+                ) {
+                    await removeEntryIfExists(baseHandle, sourceDirName, true);
+                    cleanedFolders++;
+                }
+            } catch {
+                // ignore missing directory
+            }
+        };
+
+        await moveManagedFiles(handle, DIRS.ORIGINALS, 'original');
+        await moveManagedFiles(handle, DIRS.PICTURE, 'original');
+        await moveManagedFiles(handle, DIRS.VIDEO, 'original');
+        await moveManagedFiles(handle, DIRS.LEGACY, 'original');
+        await moveManagedFiles(handle, DIRS.THUMBNAILS, 'thumbnail');
+        await moveManagedFiles(handle, DIRS.REFS, 'ref');
+
+        const nestedFolderNames: string[] = [];
+
+        // @ts-ignore
+        for await (const entry of handle.values()) {
+            if (entry.kind !== 'directory' || entry.name.startsWith('.')) continue;
+            if (ALL_MANAGED_ROOT_DIRS.has(entry.name) || ROOT_CANONICAL_DIRS.has(entry.name)) continue;
+
+            nestedFolderNames.push(entry.name);
+
+            try {
+                // @ts-ignore
+                const projectDirHandle = await handle.getDirectoryHandle(entry.name);
+                await moveManagedFiles(projectDirHandle, DIRS.ORIGINALS, 'original');
+                await moveManagedFiles(projectDirHandle, DIRS.PICTURE, 'original');
+                await moveManagedFiles(projectDirHandle, DIRS.VIDEO, 'original');
+                await moveManagedFiles(projectDirHandle, DIRS.LEGACY, 'original');
+                await moveManagedFiles(projectDirHandle, DIRS.THUMBNAILS, 'thumbnail');
+                await moveManagedFiles(projectDirHandle, DIRS.REFS, 'ref');
+            } catch {
+                // ignore nested folder failure
+            }
+        }
+
+        const sanitizedCanvases = sanitizeCanvasesForProjectFile(canvases);
+        if (sanitizedCanvases.length > 0) {
+            const { data: { session } } = await supabase.auth.getSession();
+            const ownerId = session?.user?.id || 'local_user';
+            const consolidatedState = {
+                metadata: {
+                    version: '4.0',
+                    lastSaved: Date.now(),
+                    ownerId,
+                    mode: 'single_file_workspace'
+                },
+                activeCanvasId: activeCanvasId || sanitizedCanvases[0]?.id || null,
+                canvases: sanitizedCanvases
+            };
+
+            // @ts-ignore
+            const projectFile = await handle.getFileHandle(PROJECT_FILE, { create: true });
+            // @ts-ignore
+            const writable = await projectFile.createWritable();
+            await writable.write(JSON.stringify(consolidatedState, null, 2));
+            await writable.close();
+            wroteRootProject = true;
+        }
+
+        for (const nestedFolderName of nestedFolderNames) {
+            try {
+                // @ts-ignore
+                const projectDirHandle = await handle.getDirectoryHandle(nestedFolderName);
+                const removeChildDirIfEmpty = async (dirName: string) => {
+                    try {
+                        // @ts-ignore
+                        const childDirHandle = await projectDirHandle.getDirectoryHandle(dirName);
+                        if (await isDirectoryEmpty(childDirHandle)) {
+                            await removeEntryIfExists(projectDirHandle, dirName, true);
+                        }
+                    } catch {
+                        // ignore missing directory
+                    }
+                };
+
+                if (wroteRootProject) {
+                    await removeEntryIfExists(projectDirHandle, PROJECT_FILE);
+                }
+
+                await removeChildDirIfEmpty(DIRS.PICTURE);
+                await removeChildDirIfEmpty(DIRS.VIDEO);
+                await removeChildDirIfEmpty(DIRS.ORIGINALS);
+                await removeChildDirIfEmpty(DIRS.LEGACY);
+                await removeChildDirIfEmpty(DIRS.THUMBNAILS);
+                await removeChildDirIfEmpty(DIRS.REFS);
+                await removeEntryIfExists(projectDirHandle, DIRS.SETTINGS, true);
+                await removeEntryIfExists(projectDirHandle, DIRS.TAGS, true);
+                await removeEntryIfExists(projectDirHandle, DIRS.CACHE, true);
+
+                if (wroteRootProject && await isDirectoryEmpty(projectDirHandle)) {
+                    await removeEntryIfExists(handle, nestedFolderName, true);
+                    cleanedFolders++;
+                }
+            } catch {
+                // ignore nested cleanup failure
+            }
+        }
+
+        const removeRootDirIfEmpty = async (dirName: string) => {
+            try {
+                // @ts-ignore
+                const childDirHandle = await handle.getDirectoryHandle(dirName);
+                if (await isDirectoryEmpty(childDirHandle)) {
+                    await removeEntryIfExists(handle, dirName, true);
+                }
+            } catch {
+                // ignore missing directory
+            }
+        };
+
+        await removeRootDirIfEmpty(DIRS.PICTURE);
+        await removeRootDirIfEmpty(DIRS.VIDEO);
+        await removeRootDirIfEmpty(DIRS.LEGACY);
+        await removeEntryIfExists(handle, DIRS.SETTINGS, true);
+        await removeEntryIfExists(handle, DIRS.TAGS, true);
+        await removeEntryIfExists(handle, DIRS.CACHE, true);
+
+        logInfo(
+            'FileSystem',
+            'Workspace consolidated',
+            `movedFiles=${movedFiles}, cleanedFolders=${cleanedFolders}, wroteRootProject=${wroteRootProject}`
+        );
     },
     /**
      * Get usage of images folder in bytes (Recursive)
@@ -396,48 +796,53 @@ export const fileSystemService = {
      */
     async loadOriginalFromDisk(handle: FileSystemDirectoryHandle, id: string): Promise<Blob | null> {
         try {
-            // 1. 先尝试在 picture/ 和 video/ 目录下搜索 (新架构)
-            const mediaDirs = [DIRS.PICTURE, DIRS.VIDEO];
-            for (const dirName of mediaDirs) {
+            const readFromDirectories = async (
+                baseHandle: FileSystemDirectoryHandle,
+                dirNames: string[]
+            ): Promise<Blob | null> => {
+                for (const dirName of dirNames) {
+                    try {
+                        // @ts-ignore
+                        const dirHandle = await baseHandle.getDirectoryHandle(dirName);
+                        const existingFileName = await findExistingFileNameByStoredId(dirHandle, id, MEDIA_EXTENSIONS);
+                        if (!existingFileName) continue;
+                        // @ts-ignore
+                        const fileHandle = await dirHandle.getFileHandle(existingFileName);
+                        // @ts-ignore
+                        return await fileHandle.getFile();
+                    } catch {
+                        // ignore missing directory
+                    }
+                }
+                return null;
+            };
+
+            const rootFile = await readFromDirectories(handle, [
+                DIRS.ORIGINALS,
+                DIRS.PICTURE,
+                DIRS.VIDEO,
+                DIRS.LEGACY
+            ]);
+            if (rootFile) return rootFile;
+
+            // @ts-ignore
+            for await (const entry of handle.values()) {
+                if (entry.kind !== 'directory' || entry.name.startsWith('.')) continue;
+                if (ALL_MANAGED_ROOT_DIRS.has(entry.name) || ROOT_CANONICAL_DIRS.has(entry.name)) continue;
+
                 try {
                     // @ts-ignore
-                    const dirHandle = await handle.getDirectoryHandle(dirName);
-                    // 由于新架构下文档名包含日期前缀 (YYYYMM_{id}.ext)，我们需要遍历或精准匹配
-                    // 这里我们尝试通过遍历匹配包含 id 的文档
-                    // @ts-ignore
-                    for await (const entry of dirHandle.values()) {
-                        if (entry.kind === 'file' && entry.name.includes(id)) {
-                            // @ts-ignore
-                            return await entry.getFile();
-                        }
-                    }
-                } catch (e) {
-                    // 目录不存在或读取失败
+                    const projectDirHandle = await handle.getDirectoryHandle(entry.name);
+                    const nestedFile = await readFromDirectories(projectDirHandle, [
+                        DIRS.ORIGINALS,
+                        DIRS.PICTURE,
+                        DIRS.VIDEO,
+                        DIRS.LEGACY
+                    ]);
+                    if (nestedFile) return nestedFile;
+                } catch {
+                    // ignore nested directory failure
                 }
-            }
-
-            // 2. 尝试旧版的 originals/ 目录
-            try {
-                // @ts-ignore
-                const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS);
-                // @ts-ignore
-                const fileHandle = await originalsDir.getFileHandle(`${id}.png`);
-                // @ts-ignore
-                return await fileHandle.getFile();
-            } catch (e) {
-                // Not in originals
-            }
-
-            // 3. 尝试 legacy (images 根目录)
-            try {
-                // @ts-ignore
-                const legacyDir = await handle.getDirectoryHandle(DIRS.LEGACY);
-                // @ts-ignore
-                const fileHandle = await legacyDir.getFileHandle(`${id}.png`);
-                // @ts-ignore
-                return await fileHandle.getFile();
-            } catch (e) {
-                // Not found
             }
 
             return null;
@@ -547,49 +952,62 @@ export const fileSystemService = {
 
     /**
      * Store new generated image as Blob
-     * [重构版] - 支持写入对应项目的子目录。若提供 canvasDirName，则结构为 `Workspace/项目名/picture/xxx.png`
+     * [重构版] - 统一写入根目录 originals/，不再拆分到子项目目录
      */
     async saveImageToHandle(handle: FileSystemDirectoryHandle, id: string, blob: Blob, isVideo: boolean = false, canvasDirName?: string): Promise<string> {
         try {
-            const targetDirName = isVideo ? DIRS.VIDEO : DIRS.PICTURE;
-
-            // 如果传了特定的项目目录名，则将写入锚点转至该子目录
-            let baseHandle = handle;
-            if (canvasDirName) {
-                // @ts-ignore
-                baseHandle = await handle.getDirectoryHandle(canvasDirName, { create: true });
+            // @ts-ignore
+            const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
+            const existingFileName = await findExistingFileNameByStoredId(originalsDir, id, MEDIA_EXTENSIONS);
+            if (existingFileName) {
+                return existingFileName;
             }
 
-            // @ts-ignore
-            const targetDir = await baseHandle.getDirectoryHandle(targetDirName, { create: true });
-
-            // 生成新格式文档名: YYYYMM_{id}.{ext}
-            const now = new Date();
-            const datePrefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-            const ext = isVideo ? 'mp4' : 'png';
-            const newFilename = `${datePrefix}_${id}.${ext}`;
-
-            // 检查是否已存在（去重）
-            try {
-                // @ts-ignore
-                await targetDir.getFileHandle(newFilename);
-                // 已存在，跳过保存
-                return newFilename;
-            } catch {
-                // 不存在，继续保存
-            }
+            const ext = extensionFromMimeType(blob.type, isVideo ? 'mp4' : 'png');
+            const filename = `${id}.${ext}`;
 
             // @ts-ignore
-            const fileHandle = await targetDir.getFileHandle(newFilename, { create: true });
+            const fileHandle = await originalsDir.getFileHandle(filename, { create: true });
             // @ts-ignore
             const writable = await fileHandle.createWritable();
             await writable.write(blob);
             await writable.close();
 
-            logInfo('FileSystem', `已保存${isVideo ? '视频' : '图片'}`, `${newFilename} (${Math.round(blob.size / 1024)}KB)`);
-            return newFilename;
+            logInfo(
+                'FileSystem',
+                `已保存${isVideo ? '视频' : '图片'}`,
+                `${filename} (${Math.round(blob.size / 1024)}KB)${canvasDirName ? `, source=${canvasDirName}` : ''}`
+            );
+            return filename;
         } catch (e) {
             console.error('Failed to save image to handle', e);
+            throw e;
+        }
+    },
+
+    async saveThumbnailToHandle(handle: FileSystemDirectoryHandle, id: string, blob: Blob): Promise<string> {
+        try {
+            // @ts-ignore
+            const thumbnailsDir = await handle.getDirectoryHandle(DIRS.THUMBNAILS, { create: true });
+            const existingFileName = await findExistingFileNameByStoredId(thumbnailsDir, id, THUMBNAIL_EXTENSIONS);
+            if (existingFileName) {
+                return existingFileName;
+            }
+
+            const ext = extensionFromMimeType(blob.type, 'webp');
+            const filename = `${id}.${ext}`;
+
+            // @ts-ignore
+            const fileHandle = await thumbnailsDir.getFileHandle(filename, { create: true });
+            // @ts-ignore
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+
+            logInfo('FileSystem', '已保存缩略图', `${filename} (${Math.round(blob.size / 1024)}KB)`);
+            return filename;
+        } catch (e) {
+            console.error('Failed to save thumbnail to handle', e);
             throw e;
         }
     },
@@ -674,19 +1092,15 @@ export const fileSystemService = {
         try {
             // @ts-ignore
             const refsDir = await handle.getDirectoryHandle(DIRS.REFS, { create: true });
+            const existingFileName = await findExistingFileNameByStoredId(refsDir, storageId, /\.(png|jpe?g|webp|gif|bmp)$/i);
+            if (existingFileName) {
+                console.log(`[FileSystem] 参考图已存在: ${storageId}`);
+                return;
+            }
+
             const filename = `${storageId}.jpg`;
 
             // 检查是否已存在（去重）
-            try {
-                // @ts-ignore
-                await refsDir.getFileHandle(filename);
-                // 已存在，跳过保存
-                console.log(`[FileSystem] 参考图已存在: ${storageId}`);
-                return;
-            } catch {
-                // 不存在，继续保存
-            }
-
             // 压缩图片到 50% 质量 JPEG
             const compressedBlob = await this.compressImage(base64Data, mimeType, 0.5);
 
@@ -710,7 +1124,10 @@ export const fileSystemService = {
         try {
             // @ts-ignore
             const refsDir = await handle.getDirectoryHandle(DIRS.REFS);
-            const filename = `${storageId}.jpg`;
+            const filename = await findExistingFileNameByStoredId(refsDir, storageId, /\.(png|jpe?g|webp|gif|bmp)$/i);
+            if (!filename) {
+                return null;
+            }
 
             // @ts-ignore
             const fileHandle = await refsDir.getFileHandle(filename);
@@ -736,7 +1153,7 @@ export const fileSystemService = {
 
     /**
      * Save the entire project state and new images
-     * [重构版] - 按项目名子文档夹独立保存，支持账户隔离
+     * [重构版] - 统一写入根目录 project.json，卡片位置全部存一份
      */
     async saveProject(
         handle: FileSystemDirectoryHandle,
@@ -744,40 +1161,64 @@ export const fileSystemService = {
         imagesToSave: Map<string, Blob>
     ): Promise<void> {
         try {
+            // 🛡️ [防御性修复] 防止保存空数据导致 project.json 被清空
+            if (!state.canvases || state.canvases.length === 0) {
+                console.error('[FileSystem] 🚨 Aborting save: state.canvases is empty! This would corrupt project.json');
+                throw new Error('Cannot save empty project: canvases array is empty');
+            }
+
             const { data: { session } } = await supabase.auth.getSession();
             const ownerId = session?.user?.id || 'local_user';
 
             // 1. 获取并合并根目录的 project.json
             let finalCanvases = [...state.canvases];
+            let existingCanvases: Canvas[] = [];
             try {
                 // @ts-ignore
                 const rootFile = await handle.getFileHandle(PROJECT_FILE);
                 // @ts-ignore
                 const text = await (await rootFile.getFile()).text();
                 const rootData = JSON.parse(text);
-                const cloudCanvases = rootData.canvases || (rootData.canvas ? [rootData.canvas] : []);
+                existingCanvases = rootData.canvases || (rootData.canvas ? [rootData.canvas] : []);
+
+                // 🛡️ [防御性修复] 如果内存中的 canvases 数量显著少于磁盘中的，可能是数据丢失
+                if (existingCanvases.length > 0 && state.canvases.length < existingCanvases.length / 2) {
+                    console.warn('[FileSystem] ⚠️ Memory has significantly fewer canvases than disk:', {
+                        memory: state.canvases.length,
+                        disk: existingCanvases.length
+                    });
+                }
 
                 // 以当前内存 state 为准合并（更新已有或添加新项）
                 const mergedMap = new Map<string, Canvas>();
                 // 先加载文档中已有的
-                cloudCanvases.forEach((c: Canvas) => mergedMap.set(c.id, c));
+                existingCanvases.forEach((c: Canvas) => mergedMap.set(c.id, c));
                 // 再覆盖内存中最新的
                 finalCanvases.forEach((c: Canvas) => mergedMap.set(c.id, c));
                 finalCanvases = Array.from(mergedMap.values());
             } catch (e) {
                 // 如果文档不存在，则直接使用传入的 canvases
+                console.log('[FileSystem] No existing project.json found, creating new one');
             }
 
-            // 2. 写入根目录集成配置文档
+            // 🛡️ [最终检查] 确保 finalCanvases 不为空
+            if (finalCanvases.length === 0) {
+                console.error('[FileSystem] 🚨 CRITICAL: finalCanvases is empty after merge! Aborting save to prevent data loss.');
+                throw new Error('Cannot save: final canvases array is empty after merge');
+            }
+
+            const sanitizedCanvases = sanitizeCanvasesForProjectFile(finalCanvases);
+
+            // 2. 写入根目录 project.json
             const consolidatedState = {
                 metadata: {
-                    version: "3.0", // 升级版本号表示集成版
+                    version: '4.0',
                     lastSaved: Date.now(),
-                    ownerId: ownerId,
-                    mode: 'consolidated_workspace'
+                    ownerId,
+                    mode: 'single_file_workspace'
                 },
-                activeCanvasId: state.activeCanvasId,
-                canvases: finalCanvases
+                activeCanvasId: state.activeCanvasId || sanitizedCanvases[0]?.id || null,
+                canvases: sanitizedCanvases
             };
 
             // @ts-ignore
@@ -787,19 +1228,15 @@ export const fileSystemService = {
             await writable.write(JSON.stringify(consolidatedState, null, 2));
             await writable.close();
 
-            // 3. 增量保存图片到对应的子目录
-            const activeCanvas = state.canvases.find(c => c.id === state.activeCanvasId);
-            if (activeCanvas && imagesToSave.size > 0) {
-                let projectDirName = (activeCanvas.folderName || activeCanvas.name || '未命名项目').trim();
-                projectDirName = projectDirName.replace(/[\\/:*?"<>|]/g, '_');
-
+            // 3. 增量保存原图到根目录 originals/
+            if (imagesToSave.size > 0) {
                 // @ts-ignore
-                const projectDirHandle = await handle.getDirectoryHandle(projectDirName, { create: true });
-                const existingIds = await this.getLocalMediaIds(projectDirHandle);
+                const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
 
                 for (const [id, blob] of imagesToSave.entries()) {
-                    if (existingIds.has(id)) continue;
-                    await this.saveImageToHandle(projectDirHandle, id, blob, false);
+                    const existingFileName = await findExistingFileNameByStoredId(originalsDir, id, MEDIA_EXTENSIONS);
+                    if (existingFileName) continue;
+                    await this.saveImageToHandle(handle, id, blob, false);
                 }
             }
 
@@ -821,8 +1258,8 @@ export const fileSystemService = {
 
             // @ts-ignore
             for await (const entry of refsDir.values()) {
-                if (entry.kind === 'file' && entry.name.endsWith('.jpg')) {
-                    const storageId = entry.name.replace('.jpg', '');
+                if (entry.kind === 'file' && /\.(png|jpe?g|webp|gif|bmp)$/i.test(entry.name)) {
+                    const storageId = normalizeStoredFileId(entry.name);
                     try {
                         // @ts-ignore
                         const file = await entry.getFile();
@@ -880,145 +1317,42 @@ export const fileSystemService = {
      * 在 picture/tags/{tagName}/ 或 video/tags/{tagName}/ 下创建指向原文档的.url快捷方式
      */
     async createTagShortcut(handle: FileSystemDirectoryHandle, tag: string, filename: string, isVideo: boolean = false): Promise<void> {
-        try {
-            const mediaDir = isVideo ? DIRS.VIDEO : DIRS.PICTURE;
-            // @ts-ignore
-            const mediaDirHandle = await handle.getDirectoryHandle(mediaDir, { create: true });
-            // @ts-ignore
-            const tagsDir = await mediaDirHandle.getDirectoryHandle(DIRS.TAGS, { create: true });
-            // @ts-ignore
-            const tagDir = await tagsDir.getDirectoryHandle(tag, { create: true });
-
-            // 创建 .url 快捷方式文档（Windows格式）
-            const shortcutFilename = `${filename}.url`;
-            const relativePath = `..\\..\\${filename}`;
-
-            // 检查是否已存在
-            try {
-                // @ts-ignore
-                await tagDir.getFileHandle(shortcutFilename);
-                return; // 已存在
-            } catch {
-                // 不存在，继续创建
-            }
-
-            // 创建 Windows URL Shortcut 文档格式
-            const shortcutContent = `[InternetShortcut]\r\nURL=file:///${relativePath.replace(/\\/g, '/')}\r\n[{000214A0-0000-0000-C000-000000000046}]\r\nProp3=19,11\r\n`;
-
-            // @ts-ignore
-            const fileHandle = await tagDir.getFileHandle(shortcutFilename, { create: true });
-            // @ts-ignore
-            const writable = await fileHandle.createWritable();
-            await writable.write(shortcutContent);
-            await writable.close();
-
-            logInfo('FileSystem', `已创建标签快捷链接`, `${tag}/${shortcutFilename}`);
-        } catch (e) {
-            logWarning('FileSystem', `创建标签快捷链接失败: ${tag}/${filename}`, (e as Error).message);
-        }
+        logInfo('FileSystem', '跳过标签快捷方式', `${tag}/${filename}`);
     },
 
     /**
      * 🚀 删除标签快捷链接
      */
     async removeTagShortcut(handle: FileSystemDirectoryHandle, tag: string, filename: string, isVideo: boolean = false): Promise<void> {
-        try {
-            const mediaDir = isVideo ? DIRS.VIDEO : DIRS.PICTURE;
-            // @ts-ignore
-            const mediaDirHandle = await handle.getDirectoryHandle(mediaDir);
-            // @ts-ignore
-            const tagsDir = await mediaDirHandle.getDirectoryHandle(DIRS.TAGS);
-            // @ts-ignore
-            const tagDir = await tagsDir.getDirectoryHandle(tag);
-
-            const shortcutFilename = `${filename}.url`;
-
-            // @ts-ignore
-            await tagDir.removeEntry(shortcutFilename);
-            logInfo('FileSystem', `已删除标签快捷链接`, `${tag}/${shortcutFilename}`);
-
-            // 清理空文档夹
-            await this.cleanupEmptyTagFolder(handle, tag, isVideo);
-        } catch (e) {
-            // 文档可能不存在，忽略错误
-        }
+        logInfo('FileSystem', '跳过删除标签快捷方式', `${tag}/${filename}`);
     },
 
     /**
      * 🚀 清理空的标签文档夹
      */
     async cleanupEmptyTagFolder(handle: FileSystemDirectoryHandle, tag: string, isVideo: boolean = false): Promise<void> {
-        try {
-            const mediaDir = isVideo ? DIRS.VIDEO : DIRS.PICTURE;
-            // @ts-ignore
-            const mediaDirHandle = await handle.getDirectoryHandle(mediaDir);
-            // @ts-ignore
-            const tagsDir = await mediaDirHandle.getDirectoryHandle(DIRS.TAGS);
-            // @ts-ignore
-            const tagDir = await tagsDir.getDirectoryHandle(tag);
-
-            // 检查是否为空
-            let isEmpty = true;
-            // @ts-ignore
-            for await (const _ of tagDir.values()) {
-                isEmpty = false;
-                break;
-            }
-
-            if (isEmpty) {
-                // @ts-ignore
-                await tagsDir.removeEntry(tag);
-                logInfo('FileSystem', `已删除空标签文档夹`, tag);
-            }
-        } catch (e) {
-            // 目录可能不存在，忽略
-        }
+        logInfo('FileSystem', '跳过标签目录清理', tag);
     },
 
     /**
      * 🚀 为文档的所有标签创建快捷链接
      */
     async syncFileTagShortcuts(handle: FileSystemDirectoryHandle, filename: string, tags: string[], isVideo: boolean = false): Promise<void> {
-        for (const tag of tags) {
-            await this.createTagShortcut(handle, tag, filename, isVideo);
-        }
+        logInfo('FileSystem', '跳过批量标签快捷方式', `${filename} (${tags.length})`);
     },
 
     /**
      * 🚀 保存布局和设置到 settings/ 目录
      */
     async saveSettings(handle: FileSystemDirectoryHandle, settings: Record<string, any>): Promise<void> {
-        try {
-            // @ts-ignore
-            const settingsDir = await handle.getDirectoryHandle(DIRS.SETTINGS, { create: true });
-            // @ts-ignore
-            const fileHandle = await settingsDir.getFileHandle('layout.json', { create: true });
-            // @ts-ignore
-            const writable = await fileHandle.createWritable();
-            await writable.write(JSON.stringify(settings, null, 2));
-            await writable.close();
-            logInfo('FileSystem', `已保存设置`, 'settings/layout.json');
-        } catch (e) {
-            logError('FileSystem', e, '保存设置失败');
-        }
+        logInfo('FileSystem', '跳过文件系统设置保存', Object.keys(settings || {}).join(','));
     },
 
     /**
      * 🚀 加载布局和设置
      */
     async loadSettings(handle: FileSystemDirectoryHandle): Promise<Record<string, any> | null> {
-        try {
-            // @ts-ignore
-            const settingsDir = await handle.getDirectoryHandle(DIRS.SETTINGS);
-            // @ts-ignore
-            const fileHandle = await settingsDir.getFileHandle('layout.json');
-            // @ts-ignore
-            const file = await fileHandle.getFile();
-            const text = await file.text();
-            return JSON.parse(text);
-        } catch (e) {
-            return null;
-        }
+        return null;
     },
 
     /**

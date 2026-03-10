@@ -11,7 +11,7 @@ export interface ModelCapability {
     costPer1kOutput?: number; // USD
     pricingRef?: string; // 引用 pricing key
     isVision?: boolean;
-    isSystemInternal?: boolean; // 🚀 是否是系统内置模�?
+    isSystemInternal?: boolean; // 🚀 是否是系统内置模型
 }
 
 // 静态模型注册表 (Phase 1: 基础填充)

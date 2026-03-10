@@ -2,6 +2,70 @@ import path from 'path';
 import { defineConfig, loadEnv, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
+function resolveManualChunk(id: string): string | undefined {
+    const normalizedId = id.replace(/\\/g, '/');
+
+    if (
+        normalizedId.includes('/src/components/settings/') ||
+        normalizedId.includes('/src/pages/CostEstimation.tsx')
+    ) {
+        return 'settings-panel';
+    }
+
+    if (
+        normalizedId.includes('/src/components/modals/StorageSelectionModal.tsx') ||
+        normalizedId.includes('/src/components/modals/MigrateModal.tsx') ||
+        normalizedId.includes('/src/components/modals/RechargeModal.tsx') ||
+        normalizedId.includes('/src/components/modals/UserProfileModal.tsx') ||
+        normalizedId.includes('/src/components/modals/TagInputModal.tsx')
+    ) {
+        return 'modal-panels';
+    }
+
+    if (
+        normalizedId.includes('/src/components/layout/SearchPalette.tsx') ||
+        normalizedId.includes('/src/components/common/TutorialOverlay.tsx') ||
+        normalizedId.includes('/src/components/image/GlobalLightbox.tsx')
+    ) {
+        return 'experience-panels';
+    }
+
+    if (normalizedId.includes('/node_modules/')) {
+        if (normalizedId.includes('/@supabase/')) {
+            return 'supabase-vendor';
+        }
+
+        if (normalizedId.includes('/lucide-react/')) {
+            return 'lucide-vendor';
+        }
+
+        if (normalizedId.includes('/@lobehub/icons/') || normalizedId.includes('/@lobehub/fluent-emoji/')) {
+            return 'lobehub-icons-vendor';
+        }
+
+        if (normalizedId.includes('/@lobehub/ui/')) {
+            return 'lobehub-ui-vendor';
+        }
+
+        if (normalizedId.includes('/three/')) {
+            return 'three-vendor';
+        }
+
+        if (
+            normalizedId.includes('/jszip/') ||
+            normalizedId.includes('/file-saver/') ||
+            normalizedId.includes('/canvas-confetti/') ||
+            normalizedId.includes('/qrcode.react/')
+        ) {
+            return 'media-utils-vendor';
+        }
+
+        return 'vendor';
+    }
+
+    return undefined;
+}
+
 /**
  * 开发环境价格扫描代理插件
  * 从服务端去爬取供应商的 /pricing 页面数据（实际请求 /api/pricing）
@@ -118,6 +182,11 @@ export default defineConfig(({ mode }) => {
         build: {
             // 确保构建时清理旧文件
             emptyOutDir: true,
+            rollupOptions: {
+                output: {
+                    manualChunks: resolveManualChunk,
+                },
+            },
         }
     };
 });

@@ -1,16 +1,6 @@
 {
-    "installCommand": "npm install --ignore-scripts",
-    "buildCommand": "node node_modules/vite/bin/vite.js build",
-    "outputDirectory": "dist",
-    "framework": "vite",
-    "rewrites": [
-        {
-            "source": "/api/(.*)",
-            "destination": "/api/$1"
-        },
-        {
-            "source": "/(.*)",
-            "destination": "/index.html"
-        }
-    ]
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Server, Globe, Key, Lock, DollarSign, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Globe, Key, Lock, DollarSign, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { supplierService, type Supplier } from '../../services/billing/supplierService';
 import { newApiManagementService } from '../../services/api/newApiManagementService';
 import { notify } from '../../services/system/notificationService';
@@ -25,6 +25,17 @@ const PRESET_PROVIDERS = [
   { label: 'OneAPI / NewAPI', value: 'oneapi', url: 'https://ai.newapi.pro', icon: '🔌' },
   { label: '自定义', value: 'custom', url: '', icon: '⚙️' },
 ];
+
+const modalShellClass =
+  'relative z-[1] flex w-full max-w-[920px] flex-col overflow-hidden rounded-[28px] border shadow-[0_28px_80px_rgba(0,0,0,0.42)]';
+const fieldClass =
+  'w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-elevated)] px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-tertiary)] focus:border-indigo-500';
+const compactFieldClass =
+  'flex-1 rounded-xl border border-[var(--border-light)] bg-[var(--bg-elevated)] px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-tertiary)] focus:border-indigo-500';
+const labelClass = 'mb-2 block text-sm font-medium text-[var(--text-secondary)]';
+const helperTextClass = 'mt-1 text-xs text-[var(--text-tertiary)]';
+const secondaryButtonClass =
+  'inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--border-light)] bg-[var(--bg-elevated)] px-4 py-2.5 text-sm font-medium text-[var(--text-primary)] transition hover:bg-[var(--bg-overlay)] disabled:opacity-50';
 
 export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ 
   isOpen, 
@@ -223,43 +234,59 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   if (!isOpen || typeof window === 'undefined') return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center px-4 py-5 sm:px-6 sm:py-6">
       {/* Backdrop - 全屏模糊背景 */}
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-xl"
         onClick={onClose}
       />
       {/* Modal Container - 必须在 backdrop 之上 */}
-      <div className="relative z-[1] w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl shadow-2xl border border-gray-700 m-4">
+      <div
+        className={modalShellClass}
+        style={{
+          borderColor: 'var(--border-light)',
+          background: 'linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)',
+          maxHeight: 'calc(100vh - 24px)',
+        }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h2 className="text-xl font-bold text-white">
-            {editSupplier ? '编辑供应商' : '添加第三方服务商'}
-          </h2>
+        <div
+          className="flex items-start justify-between gap-4 border-b p-5 sm:p-6"
+          style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-surface)' }}
+        >
+          <div>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)]">
+              {editSupplier ? '编辑供应商' : '添加第三方服务商'}
+            </h2>
+            <p className="mt-2 text-sm text-[var(--text-tertiary)]">
+              编辑面板已放大，内容区与底部操作区分离，避免保存按钮和高级字段被裁切。
+            </p>
+          </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-700/50 transition-colors"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-light)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition hover:bg-[var(--bg-overlay)] hover:text-[var(--text-primary)]"
           >
-            <X className="w-5 h-5 text-gray-400" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5 sm:p-6">
           {/* Preset Providers */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className={labelClass}>
               选择服务商类型
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {PRESET_PROVIDERS.map(provider => (
                 <button
                   key={provider.value}
                   type="button"
                   onClick={() => handlePresetChange(provider.value)}
-                  className={`p-2 rounded-lg text-sm transition-all flex items-center justify-center gap-1 ${
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-all ${
                     formData.presetProvider === provider.value
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      ? 'border-transparent bg-gradient-to-r from-indigo-600 to-blue-500 text-white shadow-[0_12px_28px_rgba(79,70,229,0.24)]'
+                      : 'border-[var(--border-light)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   <span>{provider.icon}</span>
@@ -271,7 +298,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
 
           {/* Supplier Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className={labelClass}>
               供应商名称 <span className="text-red-500">*</span>
             </label>
             <input
@@ -279,13 +306,13 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               value={formData.name}
               onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
               placeholder="例如：My AI Provider"
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className={fieldClass}
             />
           </div>
 
           {/* Base URL */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className={labelClass}>
               <Globe className="w-4 h-4 inline mr-1" />
               Base URL <span className="text-red-500">*</span>
             </label>
@@ -294,16 +321,16 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               value={formData.baseUrl}
               onChange={e => setFormData(prev => ({ ...prev, baseUrl: e.target.value }))}
               placeholder="https://cdn.12ai.org"
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className={fieldClass}
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className={helperTextClass}>
               用于调用模型的 API 地址
             </p>
           </div>
 
           {/* API Key */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className={labelClass}>
               <Key className="w-4 h-4 inline mr-1" />
               API Key <span className="text-red-500">*</span>
             </label>
@@ -312,18 +339,18 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               value={formData.apiKey}
               onChange={e => setFormData(prev => ({ ...prev, apiKey: e.target.value }))}
               placeholder="sk-..."
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className={fieldClass}
             />
-            <p className="text-xs text-gray-500 mt-1">用于调用 API 的密钥</p>
+            <p className={helperTextClass}>用于调用 API 的密钥</p>
           </div>
 
           {/* System Access Token */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className={labelClass}>
               <Lock className="w-4 h-4 inline mr-1" />
-              System Access Token <span className="text-gray-500">(可选)</span>
+              System Access Token <span className="text-[var(--text-tertiary)]">(可选)</span>
             </label>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 type="password"
                 value={formData.systemToken}
@@ -332,13 +359,13 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                   setTokenValid(null);
                 }}
                 placeholder="用于获取模型价格信息 (NewAPI)"
-                className="flex-1 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={compactFieldClass}
               />
               <button
                 type="button"
                 onClick={handleVerifyToken}
                 disabled={isVerifying || !formData.systemToken}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm transition-colors flex items-center gap-2"
+                className={secondaryButtonClass}
               >
                 {isVerifying ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
@@ -350,13 +377,13 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                 验证
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className={helperTextClass}>
               仅用于获取模型列表和价格，参考
               <a 
                 href="https://docs.newapi.pro/en/docs/api" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 ml-1"
+                className="ml-1 text-indigo-400 hover:text-indigo-300"
               >
                 NewAPI 管理文档 →
               </a>
@@ -380,9 +407,9 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
 
           {/* Budget Limit */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className={labelClass}>
               <DollarSign className="w-4 h-4 inline mr-1" />
-              预算限制 <span className="text-gray-500">(可选)</span>
+              预算限制 <span className="text-[var(--text-tertiary)]">(可选)</span>
             </label>
             <input
               type="number"
@@ -391,22 +418,22 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               placeholder="0.00"
               min="0"
               step="0.01"
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className={fieldClass}
             />
-            <p className="text-xs text-gray-500 mt-1">达到预算限制时发送警告（USD）</p>
+            <p className={helperTextClass}>达到预算限制时发送警告（USD）</p>
           </div>
 
           {/* Fetched Models Preview */}
           {fetchedModels && fetchedModels.length > 0 && (
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <h4 className="text-sm font-medium text-gray-300 mb-3">
-                已获取模型 ({fetchedModels.length}个)
+            <div className="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-overlay)] p-4">
+              <h4 className="mb-3 text-sm font-medium text-[var(--text-primary)]">
+                已获取模型 ({fetchedModels.length} 个)
               </h4>
               <div className="max-h-48 overflow-y-auto space-y-2">
                 {fetchedModels.slice(0, 10).map(model => (
-                  <div key={model.id} className="flex items-center justify-between py-1 px-2 bg-gray-700/30 rounded">
-                    <span className="text-sm text-gray-300 truncate">{model.name}</span>
-                    <span className="text-xs text-gray-500">
+                  <div key={model.id} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-elevated)] px-3 py-2">
+                    <span className="truncate text-sm text-[var(--text-primary)]">{model.name}</span>
+                    <span className="text-xs text-[var(--text-tertiary)]">
                       {model.billingType === 'token' 
                         ? `$${model.inputPrice}/${model.outputPrice} per 1M tokens`
                         : model.billingType}
@@ -414,7 +441,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                   </div>
                 ))}
                 {fetchedModels.length > 10 && (
-                  <p className="text-xs text-gray-500 text-center">
+                  <p className="text-center text-xs text-[var(--text-tertiary)]">
                     还有 {fetchedModels.length - 10} 个模型...
                   </p>
                 )}
@@ -422,19 +449,24 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             </div>
           )}
 
+          </div>
+
           {/* Actions */}
-          <div className="flex gap-3 pt-4 border-t border-gray-700">
+          <div
+            className="flex shrink-0 flex-col gap-3 border-t p-5 sm:flex-row sm:justify-end sm:p-6"
+            style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-surface)' }}
+          >
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-medium transition-colors"
+              className="inline-flex items-center justify-center rounded-xl border border-[var(--border-light)] bg-[var(--bg-elevated)] px-4 py-2.5 text-sm font-medium text-[var(--text-primary)] transition hover:bg-[var(--bg-overlay)] sm:min-w-[128px]"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 rounded-lg text-white font-medium transition-all"
+              className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-blue-500 px-4 py-2.5 text-sm font-medium text-white transition hover:from-indigo-500 hover:to-blue-400 disabled:opacity-50 sm:min-w-[140px]"
             >
               {isLoading ? '保存中...' : editSupplier ? '更新' : '保存'}
             </button>

@@ -33,7 +33,7 @@ async function getMcpClient() {
   if (mcpClient) return mcpClient;
 
   const transport = createTransport(resolveMcpUrl());
-  const client = new Client({ name: 'kk-studio-payment', version: '1.0.0' }, { capabilities: {} });
+  const client = new Client({ name: 'kk-studio-payment', version: '1.3.6' }, { capabilities: {} });
   await client.connect(transport);
 
   mcpClient = client;

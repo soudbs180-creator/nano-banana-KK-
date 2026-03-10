@@ -128,7 +128,7 @@
 
 ```bash
 # 进入项目目录
-cd c:\Users\Administrator\Downloads\KK-Studio-1.0.0
+cd <project-root>
 
 # 登录（如未登录）
 npx supabase login

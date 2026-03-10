@@ -221,11 +221,18 @@
   border-radius: 10px;
   font-size: 15px;
   font-weight: 500;
+  line-height: 1;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+}
+
+.btn-skip svg,
+.btn-next svg {
+  flex-shrink: 0;
 }
 
 .btn-skip {

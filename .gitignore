@@ -30,6 +30,7 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+errors.txt
 
 # Testing
 coverage/
@@ -46,6 +47,15 @@ scripts/alipay-mcp.env
 *.bak
 *.backup
 *~
+
+# Local diagnostics / comparison artifacts
+.npm-cache/
+app-compare.patch
+canvas-compare.patch
+check-tc*.json
+check-tc*.js
+modal-fix-test-*.png
+settings-panel-current.png
 
 # Supabase CLI 临时文件
 supabase/.temp/

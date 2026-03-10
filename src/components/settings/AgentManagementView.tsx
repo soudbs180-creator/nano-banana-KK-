@@ -65,7 +65,7 @@ const AgentManagementView = () => {
         });
         setShowAddForm(false);
 
-        notify.success('创建成功', `已添加 Agent: ${formData.name}`);
+        notify.success('创建成功', `已添加 Agent：${formData.name}`);
     };
 
     // 删除Agent
@@ -90,7 +90,7 @@ const AgentManagementView = () => {
                     </h3>
                 </div>
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    创建和管理 AI Agent,配置提示词模板和行为参数
+                    创建和管理 AI Agent，配置提示词模板和行为参数
                 </p>
             </div>
 
@@ -251,7 +251,7 @@ const AgentManagementView = () => {
                                 type="text"
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                placeholder="例如: 代码助手"
+                                placeholder="例如：代码助手"
                                 className="w-full px-3 py-2 rounded-lg text-sm border"
                                 style={{
                                     backgroundColor: 'var(--bg-tertiary)',
@@ -263,7 +263,7 @@ const AgentManagementView = () => {
 
                         <div>
                             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                                描述 (可选)
+                                描述（可选）
                             </label>
                             <input
                                 type="text"

@@ -37,7 +37,7 @@ npx supabase status
 ### 1. 登录 Supabase CLI
 
 ```bash
-cd c:\Users\Administrator\Downloads\KK-Studio-1.0.0
+cd <project-root>
 npx supabase login
 ```
 

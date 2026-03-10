@@ -1,0 +1,94 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e59]:
+    - generic [ref=e61]:
+      - generic [ref=e62]:
+        - img [ref=e63]
+        - generic [ref=e66]:
+          - generic [ref=e67]: "0"
+          - generic [ref=e68]: 积分
+      - button "充值" [ref=e70] [cursor=pointer]
+    - button "3" [ref=e73] [cursor=pointer]:
+      - generic [ref=e74]: "3"
+    - generic [ref=e76]:
+      - generic [ref=e77]:
+        - generic:
+          - img
+      - generic [ref=e78]:
+        - generic [ref=e79]:
+          - slider [ref=e80] [cursor=pointer]: "100"
+          - generic [ref=e81]: 100%
+        - generic [ref=e83]: v1.3.6
+    - generic [ref=e86]:
+      - generic [ref=e87]:
+        - generic [ref=e89]:
+          - button "图片" [ref=e92] [cursor=pointer]:
+            - generic [ref=e93]:
+              - img [ref=e94]
+              - generic [ref=e97]: 图片
+          - button "视频" [ref=e99] [cursor=pointer]:
+            - generic [ref=e100]:
+              - img [ref=e101]
+              - generic [ref=e104]: 视频
+          - button "音乐" [ref=e106] [cursor=pointer]:
+            - generic [ref=e107]:
+              - img [ref=e108]
+              - generic [ref=e111]: 音乐
+          - button "PPT" [ref=e113] [cursor=pointer]:
+            - generic [ref=e114]:
+              - img [ref=e115]
+              - generic [ref=e120]: PPT
+        - generic [ref=e121]:
+          - button "提示词库" [ref=e122] [cursor=pointer]:
+            - generic [ref=e123]: 提示词库
+          - button "优化提示词" [ref=e124] [cursor=pointer]:
+            - img [ref=e125]
+            - generic [ref=e128]: 优化提示词
+      - generic [ref=e129]:
+        - button "上传参考图" [ref=e131] [cursor=pointer]:
+          - img [ref=e132]
+        - textbox "描述你想要生成的图片..." [ref=e135]
+      - generic [ref=e137]:
+        - button "无可用模型" [ref=e139] [cursor=pointer]:
+          - generic "无可用模型" [ref=e140]
+        - button "自适应 · 1K" [ref=e142] [cursor=pointer]:
+          - img [ref=e143]
+          - generic [ref=e149]: 自适应 · 1K
+          - img [ref=e150]
+        - button "1 张" [ref=e154] [cursor=pointer]:
+          - generic [ref=e155]: 1 张
+          - img [ref=e156]
+        - button "发送" [disabled] [ref=e158]:
+          - generic [ref=e160]: 发送
+          - img [ref=e162]
+    - generic [ref=e232]:
+      - button "项目1" [ref=e236] [cursor=pointer]:
+        - img [ref=e237]
+      - button "搜索提示词 (Ctrl+K)" [ref=e242] [cursor=pointer]:
+        - img [ref=e243]
+      - button "缩放到全览 (Fit All)" [ref=e247] [cursor=pointer]:
+        - img [ref=e248]
+      - button "定位卡组 (Locate Group)" [ref=e253] [cursor=pointer]:
+        - img [ref=e254]
+      - button "显示/隐藏网点" [ref=e260] [cursor=pointer]:
+        - img [ref=e261]
+      - button "自动整理 (Auto Arrange)" [ref=e263] [cursor=pointer]:
+        - img [ref=e264]
+      - button "切换到亮色模式" [ref=e270] [cursor=pointer]:
+        - img [ref=e271]
+    - button [ref=e274] [cursor=pointer]:
+      - img [ref=e289]
+  - generic [ref=e451]:
+    - img
+    - generic [ref=e453]:
+      - generic [ref=e454]:
+        - generic [ref=e457]: Step 1 of 5
+        - button [ref=e458] [cursor=pointer]:
+          - img [ref=e459]
+      - heading "欢迎使用无限画布" [level=3] [ref=e462]
+      - paragraph [ref=e463]: 这是您的自由创作空间，没有任何边界限制。 • 🖱️ 双击空白处：快速创建新的图像卡片 • 🔍 滚轮缩放：自由缩放查看细节 • ✋ 按住空格拖拽：平移画布视角 • 💡这不仅仅是一个画板，更是一个思维导图式的创作流工具。
+      - generic [ref=e464]:
+        - button [disabled] [ref=e465]:
+          - img [ref=e466]
+        - button "下一步" [ref=e468] [cursor=pointer]:
+          - text: 下一步
+          - img [ref=e469]

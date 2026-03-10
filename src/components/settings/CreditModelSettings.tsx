@@ -366,13 +366,7 @@ const CreditModelSettings: React.FC = () => {
       });
 
       if (error) {
-        await saveProviderDirect(payloadModels);
-      } else {
-        const savedRows = await loadProviderRows(providerId);
-        if (needsDirectStyleRepair(savedRows, payloadModels)) {
-          await saveProviderDirect(payloadModels);
-          notify.warning('已自动修复副颜色保存', '检测到旧版云端函数未保存样式，已切换为直写同步。');
-        }
+        throw error;
       }
 
       notify.success('保存成功', '积分模型配置已更新');

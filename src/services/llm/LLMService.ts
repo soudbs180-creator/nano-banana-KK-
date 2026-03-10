@@ -13,9 +13,7 @@ import * as costService from '../billing/costService';
 import { logWarning } from '../system/systemLogService';
 import { ImageSize, Provider } from '../../types';
 import { getProviderCapability, modelSupportedByProvider, ProviderCapabilityProfile } from './providerCapabilities';
-import { supabase } from '../../lib/supabase';
-import { creditService } from '../billing/creditService';
-import { callSecureSystemProxyChat } from '../model/secureModelProxy';
+import { callSecureSystemProxyChat, callSecureSystemProxyImage, callSecureSystemProxyVideo, callSecureSystemProxyAudio, checkSecureSystemProxyTaskStatus } from '../model/secureModelProxy';
 
 export class LLMService {
     private static instance: LLMService;
@@ -70,125 +68,6 @@ export class LLMService {
     private resolveSystemBaseModelId(modelId: string): string {
         const [baseModelId] = (modelId || '').split('@');
         return baseModelId.trim();
-    }
-
-    private async getSystemProxyCallConfig(modelId: string): Promise<{
-        baseUrl: string;
-        apiKey: string;
-        endpointType?: string;
-    } | null> {
-        const resolvedModelId = this.resolveSystemBaseModelId(modelId);
-
-        const tryRpc = async (payload: Record<string, string>) => {
-            return await supabase.rpc('get_credit_model_for_call', payload);
-        };
-
-        const tryExtractFromRpc = async (candidateId: string) => {
-            let rpcResult = await tryRpc({ p_model_id: candidateId });
-            if (rpcResult.error) {
-                rpcResult = await tryRpc({ model_id: candidateId });
-            }
-
-            if (rpcResult.error) {
-                return { config: null as null, error: rpcResult.error };
-            }
-
-            const row = Array.isArray(rpcResult.data) ? rpcResult.data[0] : rpcResult.data;
-            if (!row?.api_key || !row?.base_url) {
-                return { config: null as null, error: null };
-            }
-
-            return {
-                config: {
-                    baseUrl: String(row.base_url),
-                    apiKey: String(row.api_key),
-                    endpointType: row.endpoint_type ? String(row.endpoint_type) : undefined
-                },
-                error: null
-            };
-        };
-
-        const rpcCandidates = [resolvedModelId, `${resolvedModelId}@system`];
-        let lastRpcError: any = null;
-        for (const candidateId of rpcCandidates) {
-            const { config, error } = await tryExtractFromRpc(candidateId);
-            if (config) return config;
-            if (error) lastRpcError = error;
-        }
-
-        // Compatibility fallback:
-        // Some projects have not deployed get_credit_model_for_call RPC yet.
-        // In that case we try reading from table directly (works only if policy allows).
-        const { data: tableRows, error: tableError } = await supabase
-            .from('admin_credit_models')
-            .select('base_url, api_keys, endpoint_type, model_id, is_active')
-            .in('model_id', rpcCandidates)
-            .eq('is_active', true)
-            .limit(10);
-
-        if (!tableError && Array.isArray(tableRows) && tableRows.length > 0) {
-            const row = tableRows[0] as any;
-            const keys = Array.isArray(row?.api_keys)
-                ? row.api_keys.map((k: unknown) => String(k || '').trim()).filter(Boolean)
-                : [];
-            const selectedKey = keys.length > 0
-                ? keys[Math.floor(Math.random() * keys.length)]
-                : '';
-
-            if (selectedKey && row?.base_url) {
-                return {
-                    baseUrl: String(row.base_url),
-                    apiKey: selectedKey,
-                    endpointType: row.endpoint_type ? String(row.endpoint_type) : undefined
-                };
-            }
-        }
-
-        if (lastRpcError || tableError) {
-            console.error('[LLMService] Failed to get system proxy config:', {
-                modelId: resolvedModelId,
-                rpcError: lastRpcError ? {
-                    message: lastRpcError.message,
-                    code: lastRpcError.code,
-                    details: lastRpcError.details,
-                    hint: lastRpcError.hint
-                } : null,
-                tableError: tableError ? {
-                    message: tableError.message,
-                    code: tableError.code,
-                    details: tableError.details,
-                    hint: tableError.hint
-                } : null
-            });
-        }
-
-        return null;
-    }
-
-    /**
-     * Helper to prepare system proxy model details and deduct credits.
-     * Required so we use the admin configured base URL and API key and accurately deduct user balances.
-     */
-    private async prepareSystemProxy(keySlot: KeySlot, modelId: string): Promise<{ slot: KeySlot, transactionId?: string }> {
-        if (keySlot.provider !== 'SystemProxy') return { slot: keySlot };
-        const baseModelId = this.resolveSystemBaseModelId(modelId);
-        const config = await this.getSystemProxyCallConfig(modelId);
-        if (!config) {
-            throw new Error(`无法从 Supabase 加载系统模型路由：${baseModelId}`);
-        }
-
-        // Build a temporary slot with server-managed route values for this request.
-        // This keeps adapter code unchanged while resolving model config dynamically.
-
-
-        // Replace placeholder key/baseUrl with resolved values.
-        const newSlot: KeySlot = {
-            ...keySlot,
-            key: config.apiKey,
-            baseUrl: config.baseUrl
-        };
-
-        return { slot: newSlot };
     }
 
     public getProviderProfile(provider: Provider): ProviderCapabilityProfile | null {
@@ -295,18 +174,32 @@ export class LLMService {
                 break;
             }
 
-            let transactionId: string | undefined;
-            // 馃殌 [Fix] For system credit models, fetch actual config and handle billing
             if (keySlot.provider === 'SystemProxy') {
-                const prep = await this.prepareSystemProxy(keySlot, options.modelId);
-                keySlot = prep.slot;
-                transactionId = prep.transactionId;
+                const response = await callSecureSystemProxyImage({
+                    modelId: options.modelId,
+                    prompt: options.prompt,
+                    aspectRatio: options.aspectRatio,
+                    imageSize: options.imageSize,
+                    imageCount: options.imageCount,
+                    referenceImages: options.referenceImages,
+                });
+
+                const cleanModelId = options.modelId.split('@')[0];
+                return {
+                    urls: response.urls,
+                    usage: response.usage,
+                    provider: 'SystemProxy',
+                    providerName: '系统积分模型',
+                    modelName: getModelMetadata(cleanModelId)?.name || cleanModelId,
+                    model: cleanModelId,
+                    keySlotId: keySlot.id,
+                };
             }
 
             try {
                 const adapter = this.getAdapter(keySlot.provider);
 
-                if (keySlot.provider !== 'SystemProxy' && !this.canProviderHandleModel(keySlot.provider, options.modelId)) {
+                if (!this.canProviderHandleModel(keySlot.provider, options.modelId)) {
                     throw new Error(`Provider ${keySlot.provider} does not match model ${options.modelId} `);
                 }
 
@@ -349,11 +242,8 @@ export class LLMService {
                 }
 
                 // 系统积分模型不计入用户渠道 token/cost 统计，避免“积分 + 用户API”双重消耗感知
-                const isSystemRoute = keySlot.provider === 'SystemProxy';
-                if (!isSystemRoute) {
-                    keyManager.addUsage(keySlot.id, tokensForStats);
-                    keyManager.addCost(keySlot.id, costForStats);
-                }
+                keyManager.addUsage(keySlot.id, tokensForStats);
+                keyManager.addCost(keySlot.id, costForStats);
 
                 // Ensure result has usage populated for caller
                 if (!result.usage) {
@@ -381,9 +271,6 @@ export class LLMService {
 
                 return result;
             } catch (error: any) {
-                if (transactionId) {
-                    await creditService.refundCredits(transactionId, 'image_generation_failed');
-                }
                 lastError = error;
                 console.warn(`[LLMService] Image attempt ${i + 1} failed: `, error);
 
@@ -434,12 +321,33 @@ export class LLMService {
                 break;
             }
 
-            let transactionId: string | undefined;
-            // 馃殌 [Fix] For system credit models, fetch actual config and handle billing
             if (keySlot.provider === 'SystemProxy') {
-                const prep = await this.prepareSystemProxy(keySlot, options.modelId);
-                keySlot = prep.slot;
-                transactionId = prep.transactionId;
+                const cleanModelId = options.modelId.split('@')[0];
+                const response = await callSecureSystemProxyVideo({
+                    modelId: options.modelId,
+                    prompt: options.prompt,
+                    aspectRatio: options.aspectRatio,
+                    resolution: options.resolution,
+                    duration: options.duration,
+                    videoDuration: options.videoDuration,
+                    imageUrl: options.imageUrl,
+                    imageTailUrl: options.imageTailUrl,
+                });
+
+                if (response.taskId) {
+                    onTaskId?.(response.taskId);
+                }
+
+                return {
+                    url: response.url || '',
+                    taskId: response.taskId,
+                    status: response.status,
+                    provider: 'SystemProxy',
+                    providerName: '系统积分模型',
+                    modelName: getModelMetadata(cleanModelId)?.name || cleanModelId,
+                    model: cleanModelId,
+                    keySlotId: keySlot.id,
+                };
             }
 
             try {
@@ -464,15 +372,12 @@ export class LLMService {
                     result.keySlotId = keySlot.id;
                 }
 
-                if (keySlot.creditCost !== undefined && keySlot.provider !== 'SystemProxy') {
+                if (keySlot.creditCost !== undefined) {
                     keyManager.addCost(keySlot.id, keySlot.creditCost);
                 }
 
                 return result;
             } catch (error: any) {
-                if (transactionId) {
-                    await creditService.refundCredits(transactionId, 'video_generation_failed');
-                }
                 lastError = error;
                 console.warn(`[LLMService] Video attempt ${i + 1} failed: `, error);
 
@@ -497,12 +402,23 @@ export class LLMService {
                 break;
             }
 
-            let transactionId: string | undefined;
-            // 馃殌 [Fix] For system credit models, fetch actual config and handle billing
             if (keySlot.provider === 'SystemProxy') {
-                const prep = await this.prepareSystemProxy(keySlot, options.modelId);
-                keySlot = prep.slot;
-                transactionId = prep.transactionId;
+                const cleanModelId = options.modelId.split('@')[0];
+                const response = await callSecureSystemProxyAudio({
+                    modelId: options.modelId,
+                    prompt: options.prompt,
+                });
+
+                return {
+                    url: response.url,
+                    status: 'success',
+                    usage: response.usage,
+                    provider: 'SystemProxy',
+                    providerName: '系统积分模型',
+                    modelName: getModelMetadata(cleanModelId)?.name || cleanModelId,
+                    model: cleanModelId,
+                    keySlotId: keySlot.id,
+                };
             }
 
             try {
@@ -526,15 +442,12 @@ export class LLMService {
                     result.keySlotId = keySlot.id;
                 }
 
-                if (keySlot.creditCost !== undefined && keySlot.provider !== 'SystemProxy') {
+                if (keySlot.creditCost !== undefined) {
                     keyManager.addCost(keySlot.id, keySlot.creditCost);
                 }
 
                 return result;
             } catch (error: any) {
-                if (transactionId) {
-                    await creditService.refundCredits(transactionId, 'audio_generation_failed');
-                }
                 lastError = error;
                 console.warn(`[LLMService] Audio attempt ${i + 1} failed: `, error);
 
@@ -551,9 +464,23 @@ export class LLMService {
     /**
      * 馃殌 [Persistence] Check status/poll for background tasks
      */
-    public async checkTaskStatus(taskId: string, mode: GenerationMode, preferredKeyId?: string): Promise<any> {
+    public async checkTaskStatus(taskId: string, mode: GenerationMode, preferredKeyId?: string | { id?: string }): Promise<any> {
+        const normalizedPreferredKeyId = typeof preferredKeyId === 'string'
+            ? preferredKeyId
+            : preferredKeyId?.id;
+
+        if (normalizedPreferredKeyId === 'system_proxy_slot' || taskId.startsWith('system_proxy:')) {
+            const result = await checkSecureSystemProxyTaskStatus(taskId);
+            return {
+                ...result,
+                provider: 'SystemProxy',
+                providerName: '系统积分模型',
+                keySlotId: 'system_proxy_slot',
+            };
+        }
+
         // Try to get the key first to identify the provider
-        const nextKey = keyManager.getNextKey(mode === GenerationMode.VIDEO ? 'veo-3.1-generate-preview' : 'gemini-1.5-flash', preferredKeyId);
+        const nextKey = keyManager.getNextKey(mode === GenerationMode.VIDEO ? 'veo-3.1-generate-preview' : 'gemini-1.5-flash', normalizedPreferredKeyId);
         if (!nextKey) throw new Error("No API key available to check task status");
 
         const keySlot = keyManager.getKey(nextKey.id);

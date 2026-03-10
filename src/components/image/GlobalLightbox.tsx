@@ -83,17 +83,17 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         recoveringRef.current = true;
 
         try {
-            const current = sanitizeUrl(displaySrc || image.url || image.originalUrl || null);
+            const current = sanitizeUrl(displaySrc || image.originalUrl || image.url || null);
             if (current) {
                 triedSourcesRef.current.add(current);
             }
 
-            const { getOriginalImage, getImage } = await import('../../services/storage/imageStorage');
+            const { getStrictOriginalImage, getImage } = await import('../../services/storage/imageStorage');
             const keyCandidates = Array.from(new Set([image.storageId, image.id].filter(Boolean) as string[]));
 
             for (const key of keyCandidates) {
                 try {
-                    const original = await getOriginalImage(key);
+                    const original = await getStrictOriginalImage(key);
                     if (trySwitchSource(original)) return;
                 } catch {
                     // ignore
@@ -108,7 +108,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             }
 
             const remoteCandidates = Array.from(new Set(
-                [displaySrc, image.url, image.originalUrl]
+                [displaySrc, image.originalUrl, image.url]
                     .map((u) => sanitizeUrl(u || null))
                     .filter((u): u is string => !!u && /^https?:\/\//i.test(u))
             ));
@@ -136,30 +136,26 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         setZoom(1);
         setPan({ x: 0, y: 0 });
 
-        const initialSrc = sanitizeUrl(image.url || image.originalUrl || null);
-        if (initialSrc) {
-            setDisplaySrc(initialSrc);
-            setIsLoading(false);
-        } else {
-            setDisplaySrc(null);
-            setIsLoading(true);
-        }
+        const initialOriginalHint = sanitizeUrl(image.originalUrl || null);
+        const initialFallbackSrc = sanitizeUrl(image.url || null);
+        setDisplaySrc(initialOriginalHint || null);
+        setIsLoading(true);
 
         const loadContent = async () => {
             try {
-                const { getOriginalImage } = await import('../../services/storage/imageStorage');
+                const { getStrictOriginalImage } = await import('../../services/storage/imageStorage');
                 const keyCandidates = Array.from(new Set([image.storageId, image.id].filter(Boolean) as string[]));
                 let original: string | null = null;
 
                 for (const key of keyCandidates) {
-                    original = await getOriginalImage(key);
+                    original = await getStrictOriginalImage(key);
                     if (original) break;
                 }
 
                 if (!original) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                     for (const key of keyCandidates) {
-                        original = await getOriginalImage(key);
+                        original = await getStrictOriginalImage(key);
                         if (original) break;
                     }
                 }
@@ -168,7 +164,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
 
                 if (original) {
                     const cleanOriginal = sanitizeUrl(original);
-                    if (cleanOriginal !== initialSrc) {
+                    if (cleanOriginal !== initialOriginalHint) {
                         setDisplaySrc(cleanOriginal);
                         console.log('[Lightbox] upgraded to original source');
                     }
@@ -176,19 +172,21 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     return;
                 }
 
-                if (!initialSrc) {
+                const bestAvailableSrc = initialOriginalHint || initialFallbackSrc;
+                if (!bestAvailableSrc) {
                     await recoverLightboxSource();
                 } else {
-                    setDisplaySrc(initialSrc);
+                    setDisplaySrc(bestAvailableSrc);
                     setIsLoading(false);
                 }
             } catch (e) {
                 console.error('[Lightbox] loadContent error:', e);
                 if (!active) return;
-                if (!initialSrc) {
+                const bestAvailableSrc = initialOriginalHint || initialFallbackSrc;
+                if (!bestAvailableSrc) {
                     await recoverLightboxSource();
                 } else {
-                    setDisplaySrc(sanitizeUrl(image.url || image.originalUrl || null));
+                    setDisplaySrc(bestAvailableSrc);
                     setIsLoading(false);
                 }
             }
@@ -265,16 +263,16 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
-            const { getOriginalImage } = await import('../../services/storage/imageStorage');
+            const { getStrictOriginalImage } = await import('../../services/storage/imageStorage');
             const { triggerDownload, generateDownloadFilename } = await import('../../utils/downloadUtils');
 
             // 浼桦厛涓嬭浇链湴铡熷浘阃氶亾锛圛DB/链湴纾佺洏镇㈠锛?
-            let target = await getOriginalImage(image.id);
+            let target = await getStrictOriginalImage(image.id);
             if (!target && image.storageId && image.storageId !== image.id) {
-                target = await getOriginalImage(image.storageId);
+                target = await getStrictOriginalImage(image.storageId);
             }
 
-            target = target || displaySrc || image.originalUrl || image.url;
+            target = target || image.originalUrl || displaySrc || image.url;
             if (!target) return;
 
             const isVideoMode = image.mode === GenerationMode.VIDEO || (image.url && image.url.includes('.mp4'));
@@ -300,7 +298,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             }
         } catch (err) {
             // 链€钖庡厹搴曪细鏂版爣绛鹃〉镓揿紑
-            const fallback = displaySrc || image.originalUrl || image.url;
+            const fallback = image.originalUrl || displaySrc || image.url;
             if (fallback) window.open(fallback, '_blank', 'noopener,noreferrer');
         }
     };
@@ -361,7 +359,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             <button
                 onClick={onClose}
                 className="absolute top-4 right-4 z-50 p-2 bg-white/10 hover:opacity-80 rounded-full text-white transition-opacity"
-                title="鍏抽棴 (Close)"
+                title="关闭"
             >
                 <X size={24} />
             </button>
@@ -372,7 +370,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     <div
                         className="absolute left-0 top-0 bottom-0 w-[15%] z-40 flex items-center justify-start pl-4 cursor-pointer transition-colors group"
                         onClick={handlePrev}
-                        title="涓娄竴寮?(Previous)"
+                        title="上一张"
                     >
                         <div className="p-3 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                             <ChevronLeft size={32} />
@@ -382,7 +380,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     <div
                         className="absolute right-0 top-0 bottom-0 w-[15%] z-40 flex items-center justify-end pr-4 cursor-pointer transition-colors group"
                         onClick={handleNext}
-                        title="涓嬩竴寮?(Next)"
+                        title="下一张"
                     >
                         <div className="p-3 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                             <ChevronRight size={32} />
@@ -399,7 +397,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                 onClick={(e) => e.stopPropagation()} // 阒叉镣瑰向鐢诲竷鍏抽棴
             >
                 {isLoading ? (
-                    <div className="text-white">锷犺浇涓?..</div>
+                    <div className="text-white">加载中...</div>
                 ) : isAudio ? (
                     <div className="flex flex-col items-center justify-center gap-6">
                         <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-pink-400/60">
@@ -478,12 +476,12 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             {/* 搴曢儴淇℃伅闱㈡澘 */}
             {/* 锲哄畾楂桦害锛屼綅浜庡浘鐗囦笅鏂癸纴阒叉阆尅 */}
             <div
-                className="h-[100px] w-full bg-[var(--bg-secondary)]/90 border-t border-[var(--border-light)] flex items-center justify-between px-8 py-4 z-50 text-[var(--text-primary)]"
+                className="min-h-[100px] w-full bg-[var(--bg-secondary)]/90 border-t border-[var(--border-light)] grid grid-cols-1 gap-4 px-4 py-4 sm:min-h-[100px] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-8 z-50 text-[var(--text-primary)]"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex flex-col max-w-[70%]">
+                <div className="flex min-w-0 flex-col text-left justify-center">
                     <div
-                        className="text-sm font-medium line-clamp-2 cursor-pointer hover:text-indigo-300 transition-colors"
+                        className="text-left text-sm font-medium line-clamp-2 cursor-pointer hover:text-indigo-300 transition-colors"
                         title="点击复制提示词"
                         onClick={async (e) => {
                             e.stopPropagation();
@@ -498,7 +496,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     >
                         {image.prompt}
                     </div>
-                    <div className="flex items-center gap-3 mt-2 text-xs text-[var(--text-tertiary)]">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-left text-xs text-[var(--text-tertiary)] sm:gap-3">
                         <span className="bg-[var(--bg-tertiary)] px-2 py-0.5 rounded border border-[var(--border-medium)]">
                             {currentIndex + 1} / {images.length}
                         </span>
@@ -509,7 +507,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex w-full items-center justify-end gap-2 self-center sm:w-auto sm:flex-nowrap sm:justify-end sm:justify-self-end sm:gap-3">
                     {/* 鎺у埗镙?*/}
                     <div className="flex items-center bg-[var(--bg-tertiary)] rounded-lg p-1">
                         <button onClick={() => setZoom(z => Math.max(0.25, z - 0.25))} className="p-2 hover:bg-[var(--bg-secondary)] rounded" title="缩小"><ZoomOut size={16} /></button>
@@ -529,17 +527,17 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                             title="局部重绘"
                         >
                             <Pen size={16} />
-                            阅岖粯
+                            重绘
                         </button>
                     )}
 
                     <button
                         onClick={handleDownload}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition-colors"
-                        title="涓嬭浇铡熷锲剧墖"
+                        title="下载原图"
                     >
                         <Download size={16} />
-                        涓嬭浇
+                        下载
                     </button>
                 </div>
             </div>
@@ -562,4 +560,3 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         document.body
     );
 };
-

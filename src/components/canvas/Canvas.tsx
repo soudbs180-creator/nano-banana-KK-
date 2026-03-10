@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { APP_DISPLAY_VERSION } from '../../config/appInfo';
 
 interface InfiniteCanvasProps {
     children: React.ReactNode;
@@ -373,7 +374,7 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
 
                 {/* Version Badge */}
                 <div className="glass px-3 py-2 rounded-xl">
-                    <span className="text-xs text-gray-400 dark:text-zinc-500 font-semibold">v1.3.5</span>
+                    <span className="text-xs text-gray-400 dark:text-zinc-500 font-semibold">{APP_DISPLAY_VERSION}</span>
                 </div>
             </div>
         </div>

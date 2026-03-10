@@ -53,8 +53,6 @@ export interface AdminProvider {
   id: string;
   providerId: string;
   name: string;
-  baseUrl: string;
-  apiKeys: string[];
   models: AdminModelConfig[];
 }
 
@@ -62,8 +60,6 @@ interface FlatModelRow {
   id?: string;
   provider_id?: string;
   provider_name?: string;
-  base_url?: string;
-  api_keys?: string[] | null;
   model_id?: string;
   display_name?: string;
   description?: string | null;
@@ -103,38 +99,6 @@ class AdminModelService {
     return this.loadAdminModels(true);
   }
 
-  private getRowKey(row: FlatModelRow): string {
-    const providerId = (row.provider_id || '').trim();
-    const modelId = (row.model_id || '').trim();
-    return `${providerId}|${modelId}`;
-  }
-
-  private async readFromView(): Promise<FlatModelRow[] | null> {
-    const styledResult = await supabase
-      .from('public_credit_models')
-      // Prefer style fields when available; fallback query is handled below.
-      .select(
-        'provider_id, provider_name, base_url, api_keys, model_id, display_name, description, color, color_secondary, text_color, endpoint_type, credit_cost, is_active'
-      )
-      .order('provider_id', { ascending: true });
-
-    if (!styledResult.error && Array.isArray(styledResult.data)) {
-      return styledResult.data as FlatModelRow[];
-    }
-
-    // Legacy schemas may expose a reduced view without style columns.
-    const fallbackResult = await supabase
-      .from('public_credit_models')
-      .select('provider_id, model_id, display_name, endpoint_type, credit_cost, is_active')
-      .order('provider_id', { ascending: true });
-
-    if (fallbackResult.error || !Array.isArray(fallbackResult.data)) {
-      return null;
-    }
-
-    return fallbackResult.data as FlatModelRow[];
-  }
-
   private async readFromRpc(): Promise<FlatModelRow[]> {
     const rpcResult = await supabase.rpc('get_active_credit_models');
     if (rpcResult.error) {
@@ -144,8 +108,6 @@ class AdminModelService {
     const grouped = (rpcResult.data || []) as Array<{
       provider_id: string;
       provider_name: string;
-      base_url: string;
-      api_keys: string[] | null;
       models: Array<any>;
     }>;
 
@@ -154,8 +116,6 @@ class AdminModelService {
         id: model.id,
         provider_id: provider.provider_id,
         provider_name: provider.provider_name,
-        base_url: provider.base_url,
-        api_keys: provider.api_keys || [],
         model_id: model.model_id,
         display_name: model.display_name,
         description: model.description,
@@ -197,48 +157,7 @@ class AdminModelService {
   private async doLoad(): Promise<void> {
     this.loadingPromise = (async () => {
       try {
-        let rows: FlatModelRow[] = [];
-        let viewRows: FlatModelRow[] | null = null;
-
-        // RPC is preferred because it is stable across RLS/view changes and returns grouped provider config.
-        try {
-          rows = await this.readFromRpc();
-        } catch (rpcError) {
-          console.warn('[AdminModelService] RPC unavailable, fallback to view:', rpcError);
-          rows = [];
-        }
-
-        try {
-          viewRows = await this.readFromView();
-        } catch (viewError) {
-          console.warn('[AdminModelService] 读取 public_credit_models 失败:', viewError);
-          viewRows = null;
-        }
-
-        if (!rows || rows.length === 0) {
-          rows = viewRows || [];
-        } else if (viewRows && viewRows.length > 0) {
-          const viewMap = new Map(viewRows.map((row) => [this.getRowKey(row), row] as const));
-          rows = rows.map((row) => {
-            const viewRow = viewMap.get(this.getRowKey(row));
-            if (!viewRow) return row;
-
-            return {
-              ...viewRow,
-              ...row,
-              provider_name: row.provider_name || viewRow.provider_name,
-              base_url: row.base_url || viewRow.base_url,
-              api_keys: row.api_keys && row.api_keys.length > 0 ? row.api_keys : viewRow.api_keys,
-              color: row.color ?? viewRow.color,
-              color_secondary: row.color_secondary ?? viewRow.color_secondary,
-              text_color: row.text_color ?? viewRow.text_color,
-              endpoint_type: row.endpoint_type ?? viewRow.endpoint_type,
-              credit_cost: row.credit_cost ?? viewRow.credit_cost,
-              is_active: row.is_active ?? viewRow.is_active,
-              description: row.description ?? viewRow.description,
-            };
-          });
-        }
+        const rows: FlatModelRow[] = await this.readFromRpc();
 
         const grouped = new Map<string, AdminProvider>();
 
@@ -254,8 +173,6 @@ class AdminModelService {
                 id: providerId,
                 providerId,
                 name: (row.provider_name || providerId).trim(),
-                baseUrl: (row.base_url || '').trim(),
-                apiKeys: (row.api_keys || []).filter(Boolean) as string[],
                 models: [],
               });
             }

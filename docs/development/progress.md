@@ -1,48 +1,50 @@
-# Project Progress Report - KK Studio V1.1.0
+# Project Progress Report - KK Studio v1.3.6
 
-## Status: In Development
+## 状态
+**Current Status**: Active / Stable Baseline
 
-### 1. Completed Items (本次会话 2026-01-15)
+## 1. 已完成
 
-#### 1.1 Netlify 部署修复
-- [x] 修复 `vite: Permission denied` 构建错误
-- [x] 修改 `netlify.toml` 构建命令为 `npm ci && node node_modules/vite/bin/vite.js build`
-- [x] 移除冲突的 `/api/*` 重定向规则（Netlify Functions v2 使用 `config.path`）
+### 1.1 版本与说明统一
+- [x] 主项目版本统一为 `1.3.6`
+- [x] 画布上的版本展示统一改为集中常量
+- [x] README 当前版本说明更新为 `v1.3.6`
+- [x] 开发交接文档、进度文档、移动端报告同步到当前版本口径
+- [x] 支付子服务版本元信息同步到 `1.3.6`
 
-#### 1.2 API Key 管理重构
-- [x] 移除 Netlify Blobs 依赖（解决 401 Unauthorized 错误）
-- [x] 简化后端函数：`generate.ts` 和 `keys.ts` 不再存储 key
-- [x] 前端 localStorage 存储 API key，每次请求时传递给后端
-- [x] 修复 `geminiService.ts` API 端点从 `/.netlify/functions/generate` 改为 `/api/generate`
+### 1.2 工程规范收口
+- [x] `.agent` 说明文档更新为当前版本
+- [x] `.agent` 规范中加入版本同步、路径规范、验证要求
+- [x] 将固定目录名路径示例逐步替换为 `<project-root>` 风格
 
-#### 1.3 图片持久化修复
-- [x] 创建 `src/services/imageStorage.ts` IndexedDB 存储服务
-- [x] 修改 `CanvasContext.tsx` 集成 IndexedDB：
-  - 加载时从 IndexedDB 恢复图片 URL
-  - 保存时 localStorage 只存元数据（不含图片）
-  - 添加/删除图片时同步 IndexedDB
-- [x] 解决 localStorage 5MB 配额超限导致图片丢失问题
+### 1.3 稳定性与构建
+- [x] 修复设置面板损坏导致的类型检查阻塞
+- [x] 扩展编码巡检范围并修复关键日志乱码
+- [x] 对设置模块与部分 UI 依赖做分块优化
+- [x] `typecheck / build / encoding check` 已通过
 
-#### 1.4 UI 修复
-- [x] 修复网格不显示问题（CSS 改用更明显的线条网格）
-- [x] 修复生成时无法继续发送（移除发送按钮的 `isGenerating` 禁用）
-- [x] 修复 PendingNode 连线错误（简化连线逻辑）
-- [x] PromptNodeComponent 添加参考图片缩略图显示
+## 2. 当前重点
+- **稳定优先**：不大改 UI 动线的前提下，继续提升流畅度与可靠性
+- **部署一致性**：减少“本地正常 / 线上白屏”类差异
+- **文档一致性**：今后所有版本说明以 `1.3.6` 当前基线为主
 
-### 2. Current Architecture
-- **Frontend**: React 19 + Vite 6 + Tailwind CSS 4
-- **Backend**: Netlify Functions v2 (Serverless)
-- **AI Service**: Google Gemini API (`@google/genai`)
-- **State**: React Context + IndexedDB (图片) + localStorage (元数据)
+## 3. 待继续项
+- [ ] 继续压缩超大图标包与首屏无关资源
+- [ ] 深入排查 Vercel 环境下的运行差异
+- [ ] 继续清理 Supabase 表结构重复项与权限边界
+- [ ] 为桌面端 / 手机端进一步拆分更稳定的 UI 组织方式
 
-### 3. Pending / TODO
-- [ ] 测试 Netlify 部署是否正常
-- [ ] 验证图片刷新后持久化
-- [ ] 验证 API key 流程在生产环境工作
+## 4. 已知观察
+- `@lobehub/icons` 相关构建体积仍偏大
+- 一些模块同时存在静态导入和动态导入，影响理想分块效果
+- 文档中部分历史记录会保留旧版本号，但仅作为历史档案，不代表当前基线
 
-### 4. Known Issues
-- 本地开发需要运行 `netlify dev` 才能测试后端函数
-- 旧版本的图片数据需要重新生成（IndexedDB 中无历史数据）
+## 5. 推荐回归检查
+```bash
+npm run typecheck
+npm run check:encoding
+npm run build
+```
 
 ---
-*Report Updated: 2026-01-15 18:19*
+*Report Updated: 2026-03-09*

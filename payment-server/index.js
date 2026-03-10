@@ -28,14 +28,12 @@ function sanitizePaymentUrl(raw) {
     url = markdownMatch[1];
   }
 
-  // 去掉可能被拼接进去的结尾符号，避免签名串被污染
   url = url.replace(/[)\],.;]+$/g, '');
   return url;
 }
 
 const alipaySdk = new AlipaySdk({
   appId: process.env.AP_APP_ID || process.env.ALIPAY_APP_ID,
-  // 当前私钥来自支付宝密钥工具，属于 PKCS8 结构
   privateKey: formatKey(process.env.AP_APP_KEY || process.env.ALIPAY_PRIVATE_KEY, 'PRIVATE KEY'),
   keyType: 'PKCS8',
   alipayPublicKey: formatKey(process.env.AP_PUB_KEY || process.env.ALIPAY_PUBLIC_KEY, 'PUBLIC KEY'),
@@ -53,16 +51,19 @@ if (!alipaySdk) {
   console.warn('[payment-server] Alipay SDK 未配置完整，支付将不可用。');
 }
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://ovdjhdofjysanamgkfng.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
-);
+const supabaseUrl = process.env.SUPABASE_URL || 'https://ovdjhdofjysanamgkfng.supabase.co';
+const supabaseServiceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+
+if (!supabaseServiceRoleKey) {
+  throw new Error('[payment-server] 缺少 SUPABASE_SERVICE_ROLE_KEY，已拒绝以低权限密钥启动充值服务。');
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 const creditedOrders = new Set();
 
 app.use('/api/pay/notify', webhookRouter);
 
-// 可选值：page / wap
 const alipayPayMethodMode = String(process.env.ALIPAY_PAY_METHOD || 'page').toLowerCase();
 const alipayTradeMethod = alipayPayMethodMode === 'wap' ? 'alipay.trade.wap.pay' : 'alipay.trade.page.pay';
 const alipayProductCode = alipayPayMethodMode === 'wap' ? 'QUICK_WAP_WAY' : 'FAST_INSTANT_TRADE_PAY';
@@ -93,7 +94,6 @@ async function createAlipayPageLink({ outTradeNo, amount, userId, returnUrl, not
     return sanitizePaymentUrl(link);
   } catch (error) {
     const msg = String(error?.message || '');
-    // 兼容个别运行环境 pageExec 重载异常
     if (
       msg.includes('formData 参数不包含文件') ||
       (msg.includes('formData') && msg.includes('pageExec'))
@@ -111,7 +111,6 @@ async function creditUserIfNeeded({ outTradeNo, userId, totalAmount }) {
 
   let amountToAdd = 5000;
   if (totalAmount) {
-    // 默认 1 元 = 100 积分，可按业务再调整
     amountToAdd = Math.round(parseFloat(totalAmount) * 100);
   }
 
@@ -170,7 +169,6 @@ app.get('/api/pay/qrcode', async (req, res) => {
   }
 });
 
-// 兼容旧路径：直接 302 跳转收银台
 app.get('/api/pay', async (req, res) => {
   try {
     const { method, userId, amount } = req.query;

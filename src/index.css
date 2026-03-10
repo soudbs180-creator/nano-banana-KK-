@@ -579,24 +579,33 @@ body.dark-mode {
   }
 }
 
-/* 🚀 边框白光往中间靠拢 - 弥散动画 */
+/* 🚀 边框白光往中间靠拢 - 弥散动画 (优化版: 使用 opacity 避免重绘) */
 @keyframes shimmerInward {
   0% {
-    box-shadow:
-      inset 0 0 0 0 rgba(255, 255, 255, 0),
-      inset 0 0 0 0 rgba(255, 255, 255, 0);
+    opacity: 0.3;
   }
 
   50% {
-    box-shadow:
-      inset 0 0 60px 20px rgba(255, 255, 255, 0.15),
-      inset 0 0 100px 40px rgba(255, 255, 255, 0.08);
+    opacity: 0.6;
   }
 
   100% {
-    box-shadow:
-      inset 0 0 0 0 rgba(255, 255, 255, 0),
-      inset 0 0 0 0 rgba(255, 255, 255, 0);
+    opacity: 0.3;
+  }
+}
+
+/* 🚀 高性能加载 shimmer - 使用 transform 和 opacity */
+@keyframes shimmerInwardGPU {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
   }
 }
 
@@ -1140,6 +1149,9 @@ button:active {
   top: 0;
   left: 0;
   transform-origin: 0 0;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .canvas-grid {
@@ -2420,7 +2432,135 @@ body.dark-mode .input-bar {
   }
 }
 
-/* Light-mode overrides for settings panel readability */
+/* ============================================
+   Light-mode Global Overrides
+   ============================================ */
+
+/* Text colors - override hardcoded dark theme text */
+body:not(.dark-mode) .text-white:not(.preserve-white) {
+  color: var(--text-primary) !important;
+}
+
+body:not(.dark-mode) .text-zinc-100,
+body:not(.dark-mode) .text-zinc-200,
+body:not(.dark-mode) .text-gray-100,
+body:not(.dark-mode) .text-gray-200,
+body:not(.dark-mode) .text-slate-100,
+body:not(.dark-mode) .text-slate-200,
+body:not(.dark-mode) .text-neutral-100,
+body:not(.dark-mode) .text-neutral-200 {
+  color: var(--text-primary) !important;
+}
+
+body:not(.dark-mode) .text-zinc-300,
+body:not(.dark-mode) .text-zinc-400,
+body:not(.dark-mode) .text-gray-300,
+body:not(.dark-mode) .text-gray-400 {
+  color: var(--text-secondary) !important;
+}
+
+body:not(.dark-mode) .text-slate-300,
+body:not(.dark-mode) .text-slate-400,
+body:not(.dark-mode) .text-neutral-300,
+body:not(.dark-mode) .text-neutral-400,
+body:not(.dark-mode) .text-zinc-500,
+body:not(.dark-mode) .text-gray-500,
+body:not(.dark-mode) .text-slate-500,
+body:not(.dark-mode) .text-neutral-500 {
+  color: var(--text-secondary) !important;
+}
+
+/* Background colors - override hardcoded dark theme backgrounds */
+body:not(.dark-mode) .bg-black,
+body:not(.dark-mode) .bg-zinc-600,
+body:not(.dark-mode) .bg-zinc-700,
+body:not(.dark-mode) .bg-zinc-900,
+body:not(.dark-mode) .bg-zinc-800,
+body:not(.dark-mode) .bg-zinc-850,
+body:not(.dark-mode) .bg-gray-600,
+body:not(.dark-mode) .bg-gray-700,
+body:not(.dark-mode) .bg-gray-800,
+body:not(.dark-mode) .bg-gray-900,
+body:not(.dark-mode) .bg-slate-600,
+body:not(.dark-mode) .bg-slate-700,
+body:not(.dark-mode) .bg-slate-800,
+body:not(.dark-mode) .bg-slate-900,
+body:not(.dark-mode) .bg-slate-950,
+body:not(.dark-mode) .bg-neutral-600,
+body:not(.dark-mode) .bg-neutral-700,
+body:not(.dark-mode) .bg-neutral-800,
+body:not(.dark-mode) .bg-neutral-900,
+body:not(.dark-mode) .bg-neutral-950 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+body:not(.dark-mode) .bg-white\/5 {
+  background-color: rgba(15, 23, 42, 0.03) !important;
+}
+
+body:not(.dark-mode) .bg-white\/10 {
+  background-color: rgba(15, 23, 42, 0.05) !important;
+}
+
+body:not(.dark-mode) .bg-white\/20 {
+  background-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+body:not(.dark-mode) .bg-gray-100 {
+  background-color: var(--bg-hover) !important;
+}
+
+body:not(.dark-mode) .bg-gray-50,
+body:not(.dark-mode) .bg-slate-50,
+body:not(.dark-mode) .bg-neutral-50 {
+  background-color: var(--bg-elevated) !important;
+}
+
+body:not(.dark-mode) .bg-slate-100,
+body:not(.dark-mode) .bg-neutral-100 {
+  background-color: var(--bg-hover) !important;
+}
+
+/* Border colors */
+body:not(.dark-mode) .border-white\/10,
+body:not(.dark-mode) .border-white\/5,
+body:not(.dark-mode) .border-white\/20 {
+  border-color: var(--border-light) !important;
+}
+
+body:not(.dark-mode) .border-gray-600,
+body:not(.dark-mode) .border-gray-700,
+body:not(.dark-mode) .border-zinc-800,
+body:not(.dark-mode) .border-zinc-700,
+body:not(.dark-mode) .border-zinc-600,
+body:not(.dark-mode) .border-slate-600,
+body:not(.dark-mode) .border-slate-700,
+body:not(.dark-mode) .border-neutral-600,
+body:not(.dark-mode) .border-neutral-700 {
+  border-color: var(--border-default) !important;
+}
+
+body:not(.dark-mode) .border-gray-200,
+body:not(.dark-mode) .border-gray-300,
+body:not(.dark-mode) .border-slate-200,
+body:not(.dark-mode) .border-slate-300,
+body:not(.dark-mode) .border-neutral-200,
+body:not(.dark-mode) .border-neutral-300 {
+  border-color: var(--border-default) !important;
+}
+
+/* Placeholder colors */
+body:not(.dark-mode) .placeholder-gray-500::placeholder {
+  color: var(--text-muted) !important;
+}
+
+body:not(.dark-mode) .hover\:bg-white\/10:hover,
+body:not(.dark-mode) .hover\:bg-white\/5:hover,
+body:not(.dark-mode) .hover\:bg-black\/5:hover {
+  background-color: rgba(15, 23, 42, 0.05) !important;
+}
+
+/* Settings panel specific overrides */
 body:not(.dark-mode) .settings-panel .text-white {
   color: var(--text-primary) !important;
 }
@@ -2436,32 +2576,293 @@ body:not(.dark-mode) .settings-panel .bg-zinc-800 {
   background-color: var(--bg-tertiary) !important;
 }
 
+body:not(.dark-mode) .settings-panel .bg-black\/10 {
+  background-color: rgba(15, 23, 42, 0.04) !important;
+}
+
 body:not(.dark-mode) .settings-panel .border-white\/10,
 body:not(.dark-mode) .settings-panel .border-white\/5,
 body:not(.dark-mode) .settings-panel .border-zinc-800 {
   border-color: var(--border-light) !important;
 }
 
+body:not(.dark-mode) .settings-panel .text-gray-500,
+body:not(.dark-mode) .settings-panel .text-zinc-500 {
+  color: var(--text-secondary) !important;
+}
+
+body:not(.dark-mode) .settings-panel .text-gray-800,
+body:not(.dark-mode) .settings-panel .text-gray-900 {
+  color: var(--text-primary) !important;
+}
+
+body:not(.dark-mode) .settings-panel .hover\:bg-white\/10:hover,
+body:not(.dark-mode) .settings-panel .hover\:bg-white\/5:hover {
+  background-color: var(--toolbar-hover) !important;
+}
+
+/* Modal and overlay overrides for light mode */
+body:not(.dark-mode) [class*="modal"],
+body:not(.dark-mode) [class*="Modal"] {
+  --modal-bg: var(--bg-surface);
+  --modal-text: var(--text-primary);
+}
+
+/* Input fields in light mode */
+body:not(.dark-mode) input:not([type="color"]),
+body:not(.dark-mode) textarea {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+/* Dark mode scrollbar for light mode compatibility */
+body:not(.dark-mode) ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+body:not(.dark-mode) ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
 /* ============================================
-   Global Theme Transition Fallback
+   Dark Mode - Glass Card Adaptations
    ============================================ */
-div,
-span,
-p,
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-input,
-textarea,
-button,
-select,
-a {
-  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
-  transition-duration: 0.3s;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+body.dark-mode .apple-glass-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(42, 42, 46, 0.86) 0%, rgba(30, 30, 33, 0.92) 100%);
+  box-shadow:
+    0 16px 44px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+body.dark-mode .apple-soft-card {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(42, 42, 46, 0.72);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Dark mode - Pill Group & Button */
+body.dark-mode .apple-pill-group {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(30, 30, 33, 0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode .apple-pill-button {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .apple-pill-button:hover {
+  color: var(--text-primary);
+  background: rgba(99, 102, 241, 0.15);
+}
+
+body.dark-mode .apple-page-shell {
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.12), transparent 26%),
+    radial-gradient(circle at top right, rgba(167, 139, 250, 0.1), transparent 30%),
+    linear-gradient(180deg, #151517 0%, #101013 100%);
+}
+
+body.dark-mode .apple-topbar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(20, 20, 24, 0.78);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.24);
+}
+
+body.dark-mode .apple-button-secondary,
+body.dark-mode .apple-icon-button,
+body.dark-mode .apple-badge,
+body.dark-mode .apple-empty-state {
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  background: rgba(32, 32, 36, 0.88);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+body.dark-mode .apple-button-danger {
+  border-color: rgba(248, 113, 113, 0.24);
+  color: #fecaca;
+  background: rgba(69, 10, 10, 0.55);
+  box-shadow:
+    0 12px 28px rgba(127, 29, 29, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+body.dark-mode .apple-badge.success {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+body.dark-mode .apple-badge.info {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.24);
+  color: #c7d2fe;
+}
+
+body.dark-mode .apple-badge.warn {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: #fcd34d;
+}
+
+/* Dark mode - Table Card */
+body.dark-mode .apple-table-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(37, 37, 40, 0.9) 0%, rgba(30, 30, 33, 0.95) 100%);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Dark mode - Table */
+body.dark-mode .apple-table thead {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body.dark-mode .apple-table th {
+  color: var(--text-tertiary);
+}
+
+body.dark-mode .apple-table td {
+  border-top-color: rgba(255, 255, 255, 0.06);
+}
+
+body.dark-mode .apple-table tbody tr:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+/* Dark mode - override hardcoded light theme surfaces without dark:* fallback */
+body.dark-mode .bg-white:not([class*="dark:bg-"]),
+body.dark-mode .bg-gray-50:not([class*="dark:bg-"]),
+body.dark-mode .bg-slate-50:not([class*="dark:bg-"]),
+body.dark-mode .bg-neutral-50:not([class*="dark:bg-"]) {
+  background-color: var(--bg-secondary) !important;
+}
+
+body.dark-mode .bg-gray-100:not([class*="dark:bg-"]),
+body.dark-mode .bg-slate-100:not([class*="dark:bg-"]),
+body.dark-mode .bg-neutral-100:not([class*="dark:bg-"]),
+body.dark-mode .bg-gray-200:not([class*="dark:bg-"]),
+body.dark-mode .bg-gray-300:not([class*="dark:bg-"]) {
+  background-color: var(--bg-tertiary) !important;
+}
+
+body.dark-mode .bg-black\/5:not([class*="dark:bg-"]),
+body.dark-mode .bg-black\/10:not([class*="dark:bg-"]) {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+body.dark-mode .text-black:not(.preserve-black):not([class*="dark:text-"]),
+body.dark-mode .text-gray-900:not([class*="dark:text-"]),
+body.dark-mode .text-gray-800:not([class*="dark:text-"]),
+body.dark-mode .text-slate-900:not([class*="dark:text-"]),
+body.dark-mode .text-slate-800:not([class*="dark:text-"]),
+body.dark-mode .text-neutral-900:not([class*="dark:text-"]),
+body.dark-mode .text-neutral-800:not([class*="dark:text-"]) {
+  color: var(--text-primary) !important;
+}
+
+body.dark-mode .text-gray-700:not([class*="dark:text-"]),
+body.dark-mode .text-gray-600:not([class*="dark:text-"]),
+body.dark-mode .text-slate-700:not([class*="dark:text-"]),
+body.dark-mode .text-slate-600:not([class*="dark:text-"]),
+body.dark-mode .text-neutral-700:not([class*="dark:text-"]),
+body.dark-mode .text-neutral-600:not([class*="dark:text-"]),
+body.dark-mode .text-zinc-700:not([class*="dark:text-"]),
+body.dark-mode .text-zinc-600:not([class*="dark:text-"]) {
+  color: var(--text-secondary) !important;
+}
+
+body.dark-mode .text-gray-500:not([class*="dark:text-"]),
+body.dark-mode .text-slate-500:not([class*="dark:text-"]),
+body.dark-mode .text-neutral-500:not([class*="dark:text-"]),
+body.dark-mode .text-zinc-500:not([class*="dark:text-"]) {
+  color: var(--text-tertiary) !important;
+}
+
+body.dark-mode .border-gray-200:not([class*="dark:border-"]),
+body.dark-mode .border-gray-300:not([class*="dark:border-"]),
+body.dark-mode .border-slate-200:not([class*="dark:border-"]),
+body.dark-mode .border-slate-300:not([class*="dark:border-"]),
+body.dark-mode .border-neutral-200:not([class*="dark:border-"]),
+body.dark-mode .border-neutral-300:not([class*="dark:border-"]) {
+  border-color: var(--border-default) !important;
+}
+
+body.dark-mode .hover\:bg-gray-50:hover:not([class*="dark:hover:bg-"]),
+body.dark-mode .hover\:bg-gray-100:hover:not([class*="dark:hover:bg-"]),
+body.dark-mode .hover\:bg-black\/5:hover:not([class*="dark:hover:bg-"]),
+body.dark-mode .hover\:bg-black\/10:hover:not([class*="dark:hover:bg-"]) {
+  background-color: var(--toolbar-hover) !important;
+}
+
+body.dark-mode .placeholder-gray-400::placeholder,
+body.dark-mode .placeholder-gray-500::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* ============================================
+   Global Theme Transition - Optimized
+   ============================================ */
+
+/* Smooth theme transition for color-related properties */
+:root {
+  --theme-transition-duration: 0.25s;
+  --theme-transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Apply transitions only to theme-affected elements */
+body,
+body *,
+body *::before,
+body *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow, opacity;
+  transition-duration: var(--theme-transition-duration);
+  transition-timing-function: var(--theme-transition-timing);
+}
+
+/* Disable transitions for performance-critical elements */
+body.dragging *,
+body.dragging *::before,
+body.dragging *::after,
+canvas,
+svg,
+img,
+video,
+iframe,
+[data-no-transition],
+[data-no-transition] * {
+  transition: none !important;
+}
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Theme transition class for programmatic toggles */
+.theme-transitioning,
+.theme-transitioning * {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: 0.3s !important;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -2479,6 +2880,305 @@ a {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(161, 161, 170, 0.5);
+}
+
+/* ============================================
+   Apple-inspired UI Surfaces
+   ============================================ */
+.apple-page-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(167, 139, 250, 0.16), transparent 32%),
+    linear-gradient(180deg, #f7f8fc 0%, #eef2f7 100%);
+}
+
+.apple-shell {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.apple-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(28px) saturate(1.35);
+  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.06);
+}
+
+.apple-glass-card {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86) 0%, rgba(248, 250, 252, 0.92) 100%);
+  box-shadow:
+    0 16px 44px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+  backdrop-filter: blur(24px) saturate(1.35);
+}
+
+.apple-soft-card {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 10px 26px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+.apple-card-hover {
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms ease;
+}
+
+.apple-card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 18px 42px rgba(15, 23, 42, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.apple-pill-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+.apple-pill-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 14px;
+  color: var(--text-secondary);
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.apple-pill-button:hover {
+  color: var(--text-primary);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.apple-pill-button.active {
+  color: #fff;
+  background: linear-gradient(180deg, #6a7cff 0%, #4f46e5 100%);
+  box-shadow:
+    0 10px 24px rgba(79, 70, 229, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.apple-button-primary,
+.apple-button-secondary,
+.apple-button-danger,
+.apple-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.apple-button-primary:hover,
+.apple-button-secondary:hover,
+.apple-button-danger:hover,
+.apple-icon-button:hover {
+  transform: translateY(-1px);
+}
+
+.apple-button-primary {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(79, 70, 229, 0.16);
+  color: #fff;
+  background: linear-gradient(180deg, #6a7cff 0%, #4f46e5 100%);
+  box-shadow: 0 12px 28px rgba(79, 70, 229, 0.22);
+}
+
+.apple-button-primary:hover {
+  box-shadow: 0 16px 32px rgba(79, 70, 229, 0.28);
+}
+
+.apple-button-secondary {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow:
+    0 10px 22px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.apple-button-danger {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  color: #b91c1c;
+  background: rgba(254, 242, 242, 0.84);
+  box-shadow:
+    0 10px 22px rgba(239, 68, 68, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.apple-icon-button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow:
+    0 10px 22px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.apple-icon-button.danger {
+  color: #dc2626;
+}
+
+.apple-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 9999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text-secondary);
+}
+
+.apple-badge.success {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.18);
+  color: #059669;
+}
+
+.apple-badge.info {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.18);
+  color: #4f46e5;
+}
+
+.apple-badge.warn {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.18);
+  color: #d97706;
+}
+
+.apple-empty-state {
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.64);
+}
+
+.apple-table-card {
+  overflow: hidden;
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84) 0%, rgba(248, 250, 252, 0.92) 100%);
+  box-shadow:
+    0 16px 40px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+}
+
+.apple-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.apple-table thead {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.apple-table th {
+  padding: 12px 24px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.apple-table td {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.apple-table tbody tr:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.apple-note-card {
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.86), rgba(224, 242, 254, 0.72));
+  box-shadow:
+    0 12px 28px rgba(96, 165, 250, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.apple-input-surface {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 10px 20px rgba(15, 23, 42, 0.04);
+}
+
+.apple-input-surface:focus-within,
+.apple-input-surface:focus {
+  border-color: rgba(99, 102, 241, 0.32);
+  box-shadow:
+    0 0 0 4px rgba(99, 102, 241, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+@media (max-width: 767px) {
+  .apple-shell {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .apple-pill-group {
+    width: 100%;
+  }
+
+  .apple-pill-button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .apple-table th,
+  .apple-table td {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
 }
 
 /* Frosted Aurora Liquid Flow (Chaotic & Soft) */
@@ -2923,13 +3623,25 @@ body.dark-mode .placeholder-breathe {
 .is-dragging,
 .is-dragging * {
   transition: none !important;
-  will-change: transform !important;
 }
 
 /* 🚀 缩放状态优�?*/
 .is-zooming {
-  will-change: transform !important;
   transition: none !important;
+}
+
+.canvas-container.is-dragging,
+.canvas-container.is-dragging .canvas-viewport,
+.canvas-container.is-zooming,
+.canvas-container.is-zooming .canvas-viewport {
+  will-change: transform !important;
+}
+
+.canvas-container.is-dragging [data-canvas-surface],
+.canvas-container.is-zooming [data-canvas-surface] {
+  box-shadow: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
 }
 
 /* 🚀 降低动画复杂�?(省电模式/低性能设备) */
@@ -3006,8 +3718,9 @@ body.dark-mode .placeholder-breathe {
 }
 
 .animate-shimmer-inward {
-  /* Legacy fallback or alias to new optimized version if applied directly */
-  animation: pulse-opacity 2s ease-in-out infinite;
+  /* 使用 opacity 动画代替 box-shadow，性能更好 */
+  animation: shimmerInward 2s ease-in-out infinite;
+  will-change: opacity;
 }
 
 .animate-shimmer-sweep {
@@ -3039,6 +3752,7 @@ body.dark-mode .placeholder-breathe {
       rgba(99, 102, 241, 0.15));
 }
 
+
 .generation-connector-dot {
   width: 8px;
   height: 8px;
@@ -3046,4 +3760,43 @@ body.dark-mode .placeholder-breathe {
   background: radial-gradient(circle at 35% 35%, rgba(196, 181, 253, 0.95), rgba(99, 102, 241, 0.9));
   box-shadow: 0 0 10px rgba(99, 102, 241, 0.45);
   animation: connector-dot-pulse 1.6s ease-in-out infinite;
+}
+
+/* ============================================
+   Global Theme Transition Fallback
+   ============================================ */
+div,
+span,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+input,
+textarea,
+button,
+select,
+a {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+  transition-duration: 0.3s;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(161, 161, 170, 0.3);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(161, 161, 170, 0.5);
 }

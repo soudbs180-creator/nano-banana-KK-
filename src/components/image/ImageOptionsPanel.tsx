@@ -135,7 +135,7 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
         <div
             className="p-4 rounded-xl border max-w-[95vw] sm:max-w-[90vw]"
             style={{
-                width: '420px', // 🚀 [Fix] 拓宽面板宽度，防止刚好 10 个选项时高亮框被裁剪
+                width: 'min(420px, calc(100vw - 24px))',
                 backgroundColor: 'var(--bg-secondary)',
                 backdropFilter: 'blur(8px)',
                 borderColor: 'var(--border-light)',
@@ -246,7 +246,9 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
                             gridTemplateColumns: needsScroll ? `repeat(${columns}, minmax(50px, 1fr))` : `repeat(${columns}, minmax(0, 1fr))`,
                             gridTemplateRows: useDoubleRow ? 'repeat(2, 48px)' : '1fr',
                             gap: '4px',
-                            paddingBottom: needsScroll ? '4px' : '0'
+                            paddingBottom: needsScroll ? '4px' : '0',
+                            WebkitOverflowScrolling: 'touch',
+                            overscrollBehaviorX: 'contain'
                         }}
                     >
                         {/* 奇数模式：自适应按钮作为网格第一个小按钮 */}

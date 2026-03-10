@@ -1,28 +1,40 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
-if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('[Supabase] Missing credentials. Auth features will not work.');
-    console.error('[Supabase] Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
+export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
+export const supabaseConfigIssue = hasSupabaseConfig
+  ? null
+  : '缺少 VITE_SUPABASE_URL 或 VITE_SUPABASE_ANON_KEY，认证与云同步功能将自动降级';
+
+if (!hasSupabaseConfig) {
+  console.error('[Supabase] 配置缺失，已切换为安全降级模式');
+  console.error('[Supabase]', supabaseConfigIssue);
 }
 
+const fallbackSupabaseUrl = 'https://placeholder.invalid';
+const fallbackSupabaseAnonKey = 'placeholder-anon-key';
+
 export const supabase = createClient(
-    supabaseUrl || '', 
-    supabaseAnonKey || '', 
-    {
-        db: {
-            schema: 'public'
-        },
-        global: {
-            // 增加 fetch 超时时间到 30 秒
-            fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-                return fetch(input, {
-                    ...init,
-                    signal: init?.signal || undefined,
-                });
-            }
-        }
+  hasSupabaseConfig ? supabaseUrl : fallbackSupabaseUrl,
+  hasSupabaseConfig ? supabaseAnonKey : fallbackSupabaseAnonKey,
+  {
+    db: {
+      schema: 'public'
+    },
+    auth: {
+      persistSession: hasSupabaseConfig,
+      autoRefreshToken: hasSupabaseConfig,
+      detectSessionInUrl: hasSupabaseConfig
+    },
+    global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        return fetch(input, {
+          ...init,
+          signal: init?.signal || undefined
+        });
+      }
     }
+  }
 );

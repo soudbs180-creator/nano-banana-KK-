@@ -220,7 +220,7 @@ export const AddProviderModal: React.FC<AddProviderModalProps> = ({
                                     type="text"
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
-                                    placeholder="如：智谱 AI"
+                                    placeholder="例如：智跃 AI"
                                     className="w-full px-4 py-2.5 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)]"
                                 />
                             </div>
@@ -265,7 +265,7 @@ export const AddProviderModal: React.FC<AddProviderModalProps> = ({
                             {/* 模型列表 */}
                             <div>
                                 <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
-                                    支持的模型 (逗号分隔)
+                                    支持的模型（逗号分隔）
                                 </label>
                                 <textarea
                                     value={models}
@@ -283,7 +283,7 @@ export const AddProviderModal: React.FC<AddProviderModalProps> = ({
                                     disabled={!baseUrl || !apiKey || isTesting}
                                     className="px-4 py-2 rounded-lg border border-[var(--border-secondary)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 >
-                                    {isTesting ? '测试中...' : '🔍 测试连接'}
+                                    {isTesting ? '测试中...' : '测试连接'}
                                 </button>
 
                                 {testResult === 'success' && (
@@ -311,7 +311,7 @@ export const AddProviderModal: React.FC<AddProviderModalProps> = ({
                             disabled={!name || !baseUrl || !apiKey}
                             className="px-6 py-2 rounded-lg text-sm font-medium text-white bg-[var(--accent-primary)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
                         >
-                            {editingProvider ? '保存更改' : '添加服务商'}
+                            {editingProvider ? '保存修改' : '添加服务商'}
                         </button>
                     </div>
                 )}

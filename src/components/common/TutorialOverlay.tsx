@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ArrowRight, ArrowLeft, Check } from 'lucide-react';
 
@@ -120,89 +120,95 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
         }
     };
 
-    // Calculate position for the tooltip
-    const getTooltipStyle = (): React.CSSProperties => {
-        // Fallback to center if no rect or position is explicitly center
-        // NOTE: removed isMobile check to allow mobile elements to be targeted
+    // Use refs for smooth position updates without re-render
+    const tooltipRef = useRef<HTMLDivElement>(null);
+    const highlightRef = useRef<HTMLDivElement>(null);
+    
+    // Calculate position for the tooltip - use transform for GPU acceleration
+    const getTooltipTransform = (): React.CSSProperties => {
         if (!rect || step.position === 'center') {
             return {
-                top: '50%',
+                transform: 'translate3d(-50%, -50%, 0)',
                 left: '50%',
-                transform: 'translate(-50%, -50%)',
+                top: '50%',
                 position: 'fixed'
             };
         }
 
         const padding = 20;
-        let top = rect.top + rect.height / 2;
-        let left = rect.left + rect.width / 2;
-        let transform = 'translate(-50%, -50%)';
+        let x = rect.left + rect.width / 2;
+        let y = rect.top + rect.height / 2;
+        let translateX = -50;
+        let translateY = -50;
 
         if (step.position === 'top') {
-            top = rect.top - padding;
-            transform = 'translate(-50%, -100%)';
+            y = rect.top - padding;
+            translateY = -100;
         } else if (step.position === 'bottom') {
-            top = rect.bottom + padding;
-            transform = 'translate(-50%, 0)';
+            y = rect.bottom + padding;
+            translateY = 0;
         } else if (step.position === 'left') {
-            left = rect.left - padding;
-            transform = 'translate(-100%, -50%)';
+            x = rect.left - padding;
+            translateX = -100;
         } else if (step.position === 'right') {
-            left = rect.right + padding;
-            transform = 'translate(0, -50%)';
+            x = rect.right + padding;
+            translateX = 0;
         }
 
-        // [FIX] Clamp position to keep tooltip within viewport
-        // Assuming implicit max-height of ~300px and max-width of ~300px
-        const safeMarginY = 200; // Half height (150) + padding (50)
-        const safeMarginX = 200; // Half width (180) + padding (20)
-
-        // Only clamp if not explicitly 'top' or 'bottom' positioned (which naturally avoid vertical center issues mostly)
-        // But 'left'/'right' use vertical center, which causes the clip at bottom/top corners.
+        // Clamp to viewport
+        const safeMarginY = 200;
+        const safeMarginX = 200;
+        
         if (step.position === 'left' || step.position === 'right') {
-            top = Math.max(safeMarginY, Math.min(top, window.innerHeight - safeMarginY));
+            y = Math.max(safeMarginY, Math.min(y, window.innerHeight - safeMarginY));
         }
         if (step.position === 'top' || step.position === 'bottom') {
-            left = Math.max(safeMarginX, Math.min(left, window.innerWidth - safeMarginX));
+            x = Math.max(safeMarginX, Math.min(x, window.innerWidth - safeMarginX));
         }
 
-        return { top, left, transform, position: 'absolute' };
+        return { 
+            transform: `translate3d(calc(${translateX}% + ${x - (translateX === -50 ? x : 0)}px), calc(${translateY}% + ${y - (translateY === -50 ? y : 0)}px), 0)`,
+            left: 0,
+            top: 0,
+            position: 'fixed'
+        };
+    };
+
+    // Get highlight position using transform
+    const getHighlightTransform = (): React.CSSProperties => {
+        if (!rect) return { transform: 'scale(0)', opacity: 0 };
+        return {
+            transform: `translate3d(${rect.x - 8}px, ${rect.y - 8}px, 0)`,
+            width: rect.width + 16,
+            height: rect.height + 16,
+            opacity: 1
+        };
     };
 
     return createPortal(
         <div className="fixed inset-0 z-[99999] overflow-hidden">
-            {/* SVG Mask for Spotlight Effect */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none transition-all duration-500 ease-in-out">
-                <defs>
-                    <mask id="spotlight-mask">
-                        <rect x="0" y="0" width="100%" height="100%" fill="white" />
-                        {rect && (
-                            <rect
-                                x={rect.x - 8}
-                                y={rect.y - 8}
-                                width={rect.width + 16}
-                                height={rect.height + 16}
-                                rx="16"
-                                fill="black"
-                                className="transition-all duration-500 ease-in-out"
-                            />
-                        )}
-                    </mask>
-                </defs>
-                <rect
-                    x="0"
-                    y="0"
-                    width="100%"
-                    height="100%"
-                    fill="rgba(0,0,0,0.8)"
-                    mask="url(#spotlight-mask)"
+            {/* Optimized Spotlight using div with border instead of SVG mask */}
+            <div className="absolute inset-0 bg-black/80 will-change-auto" />
+            {rect && (
+                <div
+                    ref={highlightRef}
+                    className="absolute rounded-2xl pointer-events-none will-change-transform"
+                    style={{
+                        ...getHighlightTransform(),
+                        boxShadow: '0 0 0 9999px rgba(0,0,0,0.8), 0 0 20px rgba(99,102,241,0.3)',
+                        transition: 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.3s ease',
+                    }}
                 />
-            </svg>
+            )}
 
-            {/* Content Box */}
+            {/* Content Box - GPU accelerated */}
             <div
-                className="transition-all duration-500 ease-out p-4 w-full max-w-[min(360px,90vw)]"
-                style={getTooltipStyle()}
+                ref={tooltipRef}
+                className="p-4 w-full max-w-[min(360px,90vw)] will-change-transform"
+                style={{
+                    ...getTooltipTransform(),
+                    transition: 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+                }}
             >
                 <div className="bg-[var(--bg-secondary)]/90 backdrop-blur-2xl border border-[var(--border-light)] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] rounded-[28px] p-6 animate-in fade-in zoom-in-95 duration-300">
                     <div className="flex justify-between items-start mb-5">
@@ -214,14 +220,14 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
                         </div>
                         <button
                             onClick={onComplete}
-                            className="p-1.5 rounded-full hover:bg-white/5 dark:text-zinc-500 dark:hover:text-white transition-all"
+                            className="rounded-full p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--toolbar-hover)] hover:text-[var(--text-primary)]"
                         >
                             <X size={16} />
                         </button>
                     </div>
 
-                    <h3 className="text-xl font-bold text-white mb-2 tracking-tight">{step.title}</h3>
-                    <p className="text-[14px] dark:text-zinc-400 leading-relaxed mb-8">
+                    <h3 className="mb-2 text-xl font-bold tracking-tight text-[var(--text-primary)]">{step.title}</h3>
+                    <p className="mb-8 text-[14px] leading-relaxed text-[var(--text-secondary)]">
                         {step.description}
                     </p>
 
@@ -229,22 +235,28 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
                         <button
                             onClick={handlePrev}
                             disabled={currentStepIndex === 0}
-                            className={`flex items-center justify-center w-10 h-10 rounded-full border border-white/5 transition-all ${currentStepIndex === 0
+                            className={`flex items-center justify-center w-10 h-10 rounded-full border border-[var(--border-light)] leading-none transition-transform ${currentStepIndex === 0
                                 ? 'opacity-20 cursor-not-allowed'
-                                : 'bg-white/5 text-white hover:bg-white/10 active:scale-90'
+                                : 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)] active:scale-90'
                                 }`}
                         >
-                            <ArrowLeft size={18} />
+                            <ArrowLeft size={18} className="shrink-0" />
                         </button>
 
                         <button
                             onClick={handleNext}
-                            className="flex-1 flex items-center justify-center gap-2 bg-white text-black hover:dark:bg-zinc-200 active:scale-[0.98] h-11 rounded-full text-[14px] font-bold transition-all shadow-lg shadow-white/5"
+                            className="flex-1 flex items-center justify-center gap-2 h-11 rounded-full bg-[var(--text-primary)] text-[14px] font-bold leading-none text-[var(--bg-primary)] transition-transform shadow-lg active:scale-[0.98]"
                         >
                             {currentStepIndex === STEPS.length - 1 ? (
-                                <>开始探索 <Check size={18} /></>
+                                <>
+                                    <span className="leading-none">开始探索</span>
+                                    <Check size={18} className="shrink-0" />
+                                </>
                             ) : (
-                                <>下一步 <ArrowRight size={18} /></>
+                                <>
+                                    <span className="leading-none">下一步</span>
+                                    <ArrowRight size={18} className="shrink-0" />
+                                </>
                             )}
                         </button>
                     </div>

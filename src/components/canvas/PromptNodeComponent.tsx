@@ -13,8 +13,23 @@ const truncateByChars = (text: string, maxChars: number): string => {
     return text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
 };
 
+const getPromptStackZIndex = (node: PromptNode, isSelected: boolean) => {
+    const persistedOrder = (node.zIndex ?? 0) * 100;
+
+    if (node.isGenerating) return persistedOrder + 40;
+    if (node.isNew) return persistedOrder + 30;
+    if (isSelected) return persistedOrder + 20;
+    return persistedOrder + 10;
+};
+
+const snapCanvasCoordinate = (value: number, scale: number = 1) => {
+    if (!Number.isFinite(value) || !Number.isFinite(scale) || scale <= 0) return value;
+    return Math.round(value * scale) / scale;
+};
+
 interface PromptNodeProps {
     node: PromptNode;
+    actualChildImageCount?: number;
     onPositionChange: (id: string, newPos: { x: number; y: number }) => void;
     isSelected: boolean;
     onSelect: () => void;
@@ -140,7 +155,7 @@ const ReferenceThumbnail: React.FC<{
                     className="w-full h-full object-cover pointer-events-none"
                     style={{
                         imageRendering: 'auto',
-                        transform: 'translateZ(0)'
+                        display: 'block'
                     }}
                 />
             ) : (
@@ -223,6 +238,7 @@ const GenerationTimer: React.FC<{ start: number; onTimeout?: () => void }> = ({ 
 
 const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     node,
+    actualChildImageCount = 0,
 
     onPositionChange,
     isSelected,
@@ -259,7 +275,9 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     const [cardHeight, setCardHeight] = useState(200); // 默认高度??00px,会在渲染后更??
     const borderScale = zoomScale || 1;
     const adaptiveBorderWidth = Math.max(1, 1.5 / borderScale);
-    const cardWidth = 320; // 固定宽度，与CSS w-[320px] 保持一致
+    const baseCardWidth = 320;
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : baseCardWidth;
+    const cardWidth = isMobile ? Math.min(baseCardWidth, Math.max(248, viewportWidth - 24)) : baseCardWidth;
     const [previewImage, setPreviewImage] = useState<{ url: string; originRect: DOMRect } | null>(null);
     const dragStartPos = useRef({ x: 0, y: 0 });
     const lastMousePos = useRef({ x: 0, y: 0 });
@@ -315,77 +333,93 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         if (isFresh && canvasTransform && containerRef.current) {
             hasAnimatedRef.current = node.id;
             const el = containerRef.current;
-
-            // 🚀 立即隐藏元素，防止 GSAP 加载期间闪烁到目标位置
-            el.style.opacity = '0';
-            el.style.willChange = 'transform, opacity';
+            const restoreVisibility = () => {
+                if (!el || !el.isConnected) return;
+                el.style.opacity = '1';
+                el.style.willChange = '';
+                el.style.zIndex = '';
+            };
 
             import('gsap').then(({ default: gsap }) => {
                 if (!el || !el.isConnected) return;
 
-                // 1. 计算起始世界坐标（从输入框下沿外侧弹出，避免压在输入框上层）
-                const launchPoint = getPromptBarLaunchPoint(18, 'bottom');
-                const startScreenX = launchPoint.x;
-                const startScreenY = launchPoint.y;
-                const offsetX = (startScreenX - canvasTransform.x) / canvasTransform.scale - node.position.x;
-                const offsetY = (startScreenY - canvasTransform.y) / canvasTransform.scale - node.position.y;
-                const timelineConfig = getLaunchTimelineByOffset(offsetX, offsetY, canvasTransform.scale || 1);
+                try {
+                    // 仅在 GSAP 成功加载后再隐藏，避免卡片永久透明
+                    el.style.opacity = '0';
+                    el.style.willChange = 'transform, opacity';
 
-                // 2. 单一 fromTo 动画 —— 避免双重动画覆盖
-                const timeline = gsap.timeline({
-                    defaults: { force3D: true, overwrite: 'auto' },
-                    onStart: () => {
-                        document.body.classList.add('is-animating-card');
-                        el.style.zIndex = String(isSelected ? 30 : 20);
-                    },
-                    onComplete: () => {
-                        document.body.classList.remove('is-animating-card');
-                        el.style.willChange = '';
-                        el.style.zIndex = '';
-                    },
-                    onInterrupt: () => {
-                        document.body.classList.remove('is-animating-card');
-                        el.style.willChange = '';
-                        el.style.zIndex = '';
-                    },
-                });
+                    // 1. 计算起始世界坐标（从输入框下沿外侧弹出，避免压在输入框上层）
+                    const launchPoint = getPromptBarLaunchPoint(18, 'bottom');
+                    const startScreenX = launchPoint.x;
+                    const startScreenY = launchPoint.y;
+                    const offsetX = (startScreenX - canvasTransform.x) / canvasTransform.scale - node.position.x;
+                    const offsetY = (startScreenY - canvasTransform.y) / canvasTransform.scale - node.position.y;
+                    const timelineConfig = getLaunchTimelineByOffset(offsetX, offsetY, canvasTransform.scale || 1);
 
-                timeline
-                    .set(el, {
-                        x: timelineConfig.startX,
-                        y: timelineConfig.startY,
-                        scale: timelineConfig.startScale,
-                        opacity: 0,
-                        transformOrigin: '50% 100%',
-                    })
-                    .to(el, {
-                        opacity: 1,
-                        duration: timelineConfig.fadeInDuration,
-                        ease: 'sine.out',
-                    })
-                    .to(el, {
-                        x: timelineConfig.midX,
-                        y: timelineConfig.midY,
-                        scale: timelineConfig.midScale,
-                        duration: timelineConfig.travelDuration,
-                        ease: 'power2.out',
-                    }, '<')
-                    .to(el, {
-                        x: timelineConfig.nearX,
-                        y: timelineConfig.nearY,
-                        scale: timelineConfig.nearScale,
-                        duration: timelineConfig.nearDuration,
-                        ease: 'sine.out',
-                    })
-                    .to(el, {
-                        x: 0,
-                        y: 0,
-                        scale: 1,
-                        opacity: 1,
-                        duration: timelineConfig.settleDuration + 0.06,
-                        ease: 'expo.out',
-                        clearProps: 'transform,opacity,will-change',
+                    // 2. 单一 fromTo 动画 —— 避免双重动画覆盖
+                    const timeline = gsap.timeline({
+                        defaults: { force3D: true, overwrite: 'auto' },
+                        onStart: () => {
+                            document.body.classList.add('is-animating-card');
+                            el.style.zIndex = String(getPromptStackZIndex(node, isSelected) + 1);
+                        },
+                        onComplete: () => {
+                            document.body.classList.remove('is-animating-card');
+                            el.style.willChange = '';
+                            el.style.zIndex = '';
+                        },
+                        onInterrupt: () => {
+                            document.body.classList.remove('is-animating-card');
+                            el.style.willChange = '';
+                            el.style.zIndex = '';
+                        },
                     });
+
+                    timeline
+                        .set(el, {
+                            x: timelineConfig.startX,
+                            y: timelineConfig.startY,
+                            scale: timelineConfig.startScale,
+                            opacity: 0,
+                            transformOrigin: '50% 100%',
+                        })
+                        .to(el, {
+                            opacity: 1,
+                            duration: timelineConfig.fadeInDuration,
+                            ease: 'sine.out',
+                        })
+                        .to(el, {
+                            x: timelineConfig.midX,
+                            y: timelineConfig.midY,
+                            scale: timelineConfig.midScale,
+                            duration: timelineConfig.travelDuration,
+                            ease: 'power2.out',
+                        }, '<')
+                        .to(el, {
+                            x: timelineConfig.nearX,
+                            y: timelineConfig.nearY,
+                            scale: timelineConfig.nearScale,
+                            duration: timelineConfig.nearDuration,
+                            ease: 'sine.out',
+                        })
+                        .to(el, {
+                            x: 0,
+                            y: 0,
+                            scale: 1,
+                            opacity: 1,
+                            duration: timelineConfig.settleDuration + 0.06,
+                            ease: 'expo.out',
+                            clearProps: 'transform,opacity,will-change',
+                        });
+                } catch (error) {
+                    console.warn('[PromptNodeComponent] Entry animation failed, restored visibility.', error);
+                    document.body.classList.remove('is-animating-card');
+                    restoreVisibility();
+                }
+            }).catch((error) => {
+                console.warn('[PromptNodeComponent] Failed to load GSAP, restored visibility.', error);
+                document.body.classList.remove('is-animating-card');
+                restoreVisibility();
             });
         }
     }, [node.id, node.timestamp, node.isDraft, canvasTransform]);
@@ -532,21 +566,27 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         };
     }, [isDragging, zoomScale, onDragDelta, onPositionChange, node.id]);
 
-    const renderedSuccessCount = (node.childImageIds?.length || 0) > 0
-        ? (node.childImageIds?.length || 0)
+    const effectiveChildImageCount = Math.max(actualChildImageCount, node.childImageIds?.length || 0);
+    const renderedSuccessCount = effectiveChildImageCount > 0
+        ? effectiveChildImageCount
         : (node.lastGenerationSuccessCount || 0);
     const renderedFailCount = Math.max(0, Number(node.lastGenerationFailCount || 0));
+    const showError = Boolean(node.error) && renderedSuccessCount === 0;
+    const stackZIndex = getPromptStackZIndex(node, isSelected);
+    const renderLeft = snapCanvasCoordinate(node.position.x - cardWidth / 2, zoomScale || 1);
+    const renderTop = snapCanvasCoordinate(node.position.y - cardHeight, zoomScale || 1);
 
     return (
         <div
             ref={containerRef}
-            className={`absolute z-20 flex flex-col items-center group antialiased select-none ${isSelected ? 'z-30' : ''} ${node.isNew && !canvasTransform ? 'is-new' : ''}`}
+            className={`absolute flex flex-col items-center group antialiased select-none ${node.isNew && !canvasTransform ? 'is-new' : ''}`}
             style={{
-                left: Math.round(node.position.x - cardWidth / 2),
-                top: Math.round(node.position.y - cardHeight),
+                left: renderLeft,
+                top: renderTop,
+                zIndex: stackZIndex,
+                opacity: 1,
                 cursor: isDragging ? 'grabbing' : 'grab',
                 willChange: isDragging ? 'transform, left, top' : 'auto', // 🚀 [性能优化] 拖拽时启用GPU加速
-                transform: 'translateZ(0)', // 🚀 [GPU加速] 强制GPU渲染
                 transition: isDragging ? 'none' : 'box-shadow 0.2s ease',
                 pointerEvents: 'auto',
                 touchAction: 'none'
@@ -557,13 +597,16 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
             {/* Main Content Card */}
             <div
                 ref={cardRef}
-                className={`relative flex flex-col w-[320px] rounded-2xl border transition-all`}
+                data-canvas-surface="prompt"
+                className="relative flex flex-col rounded-2xl border transition-all"
                 style={{
+                    width: cardWidth,
+                    maxWidth: isMobile ? 'calc(100vw - 24px)' : undefined,
                     backgroundColor: 'var(--bg-overlay)',
-                    borderColor: node.error
+                    borderColor: showError
                         ? 'rgba(239, 68, 68, 0.5)'
                         : isSelected ? 'rgba(59, 130, 246, 0.6)' : 'var(--border-light)',
-                    boxShadow: node.error
+                    boxShadow: showError
                         ? '0 0 15px rgba(239, 68, 68, 0.15), 0 0 0 1px rgba(239, 68, 68, 0.5)'
                         : isSelected
                             ? '0 0 20px rgba(59, 130, 246, 0.4), 0 0 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.5)'
@@ -594,7 +637,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 <div className="flex items-center justify-between px-4 py-3 w-full" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                     {/* Left: Status Icon and Text */}
                     <div className="flex flex-1 items-center gap-2 min-w-0">
-                        {node.error ? (
+                        {showError ? (
                             <>
                                 <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 bg-red-500/15">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
@@ -942,7 +985,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
                     {/* Loading Placeholders - 2x2 Grid Layout with Shimmer */}
                     {/* 🚀 Generating Overlay - Simple & Focused */}
-                    {node.isGenerating && !node.error && (() => {
+                    {node.isGenerating && !showError && (() => {
                         // 🚀 [Fix] Force count to at least 1 if undefined, ensuring placeholders appear
                         const count = node.parallelCount || 1;
                         const COLS = node.mode === GenerationMode.PPT ? 1 : 2; // PPT副卡较长，默认单列
@@ -1223,6 +1266,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     if (prev.node.isGenerating !== next.node.isGenerating) return false;
     return (
         prev.node === next.node &&
+        prev.actualChildImageCount === next.actualChildImageCount &&
         prev.isSelected === next.isSelected &&
         prev.highlighted === next.highlighted &&
         prev.zoomScale === next.zoomScale &&

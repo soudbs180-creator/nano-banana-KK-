@@ -255,10 +255,18 @@ export const calculateCost = (
                 getSnapshotNumber(snap.groupModelRatios, normalizedId) ??
                 1;
 
+            const sRatioObj = snap.sizeRatios?.[modelId] || snap.sizeRatios?.[normalizedId];
+            const groupSizeMap = snap.groupSizeRatios?.[modelId] || snap.groupSizeRatios?.[normalizedId];
+            const groupSizeKey = getPreferredGroupKey(preferredGroup, groupSizeMap);
+            const groupSizeObj =
+                (groupSizeKey ? groupSizeMap?.[groupSizeKey] : undefined) ||
+                getDefaultGroupEntry(groupSizeMap);
+            const sRatio = Math.max(resolveSizeRatio(sRatioObj, size), resolveSizeRatio(groupSizeObj, size));
+
             // 濡傛灉鏄寜娆¤璐?
             if (mPrice !== undefined) {
-                cost = mPrice * gRatio * gmRatio * count;
-                details = `API按次: $${mPrice}/img | 组=${preferredGroup || groupRatioKey || 'default'} | 分组×${gRatio} | 模型组×${gmRatio}`;
+                cost = mPrice * gRatio * gmRatio * sRatio * count;
+                details = `API按次: $${mPrice}/img | 组=${preferredGroup || groupRatioKey || 'default'} | 尺寸×${sRatio} | 分组×${gRatio} | 模型组×${gmRatio}`;
                 return { cost, details, tokens: 0 };
             }
 
@@ -270,14 +278,6 @@ export const calculateCost = (
 
                 const outputTokensPerImage = getImageTokenEstimate(normalizedId, size);
                 const outputTokens = count * outputTokensPerImage;
-
-                const sRatioObj = snap.sizeRatios?.[modelId] || snap.sizeRatios?.[normalizedId];
-                const groupSizeMap = snap.groupSizeRatios?.[modelId] || snap.groupSizeRatios?.[normalizedId];
-                const groupSizeKey = getPreferredGroupKey(preferredGroup, groupSizeMap);
-                const groupSizeObj =
-                    (groupSizeKey ? groupSizeMap?.[groupSizeKey] : undefined) ||
-                    getDefaultGroupEntry(groupSizeMap);
-                const sRatio = Math.max(resolveSizeRatio(sRatioObj, size), resolveSizeRatio(groupSizeObj, size));
 
                 let cRatio =
                     getSnapshotNumber(snap.completionRatios, modelId) ??
@@ -295,8 +295,8 @@ export const calculateCost = (
                 const overrideCompletionRatio = getSnapshotNumber(groupPriceOverride as Record<string, any> | undefined, 'completionRatio');
 
                 if (overrideModelPrice !== undefined) {
-                    cost = overrideModelPrice * gRatio * count;
-                    details = `API按次(分组覆盖): $${overrideModelPrice}/img | 组=${preferredGroup || groupPriceKey || 'default'} | 分组×${gRatio}`;
+                    cost = overrideModelPrice * gRatio * sRatio * count;
+                    details = `API按次(分组覆盖): $${overrideModelPrice}/img | 组=${preferredGroup || groupPriceKey || 'default'} | 尺寸×${sRatio} | 分组×${gRatio}`;
                     return { cost, details, tokens: 0 };
                 }
 

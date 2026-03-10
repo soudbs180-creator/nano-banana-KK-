@@ -6,16 +6,43 @@ import { getCardDimensions } from '../../utils/styleUtils';
 import { getLaunchTimelineByOffset, getPromptBarLaunchPoint } from '../../utils/cardLaunch';
 import { generateTagColor } from '../../utils/colorUtils';
 import { useLazyImage } from '../../hooks/useLazyImage';
-import { getImage, getOriginalImage } from '../../services/storage/imageStorage';
+import { getImage, getStrictOriginalImage } from '../../services/storage/imageStorage';
 import { getModelBadgeInfo, getProviderBadgeColor, getProviderBadgeStyle } from '../../utils/modelBadge';
 import { loadImage, cancelImageLoad } from '../../services/image/imageLoader';
-import { ImageQuality } from '../../services/image/imageQuality';
+import { ImageQuality, getAppropriateQuality } from '../../services/image/imageQuality';
 import { getModelThemeBgColor } from '../../services/model/modelCapabilities';
 import { getModelCredits, isCreditBasedModel } from '../../services/model/modelPricing';
 
 const truncateByChars = (text: string, maxChars: number): string => {
     if (!text) return '';
     return text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
+};
+
+const QUALITY_RANK: Record<ImageQuality, number> = {
+    [ImageQuality.MICRO]: 0,
+    [ImageQuality.THUMBNAIL]: 1,
+    [ImageQuality.PREVIEW]: 2,
+    [ImageQuality.ORIGINAL]: 3
+};
+
+const getImageStackZIndex = (
+    image: GeneratedImage,
+    isSelected: boolean,
+    isNew: boolean,
+    isActive: boolean
+) => {
+    const persistedOrder = (image.zIndex ?? 0) * 100;
+
+    if (image.isGenerating) return persistedOrder + 40;
+    if (isNew) return persistedOrder + 30;
+    if (isSelected) return persistedOrder + 20;
+    if (isActive) return persistedOrder + 15;
+    return persistedOrder + 10;
+};
+
+const snapCanvasCoordinate = (value: number, scale: number = 1) => {
+    if (!Number.isFinite(value) || !Number.isFinite(scale) || scale <= 0) return value;
+    return Math.round(value * scale) / scale;
 };
 
 interface ImageNodeProps {
@@ -39,6 +66,7 @@ interface ImageNodeProps {
     onUpdate?: (id: string, updates: Partial<GeneratedImage>) => void; // 🚀 [New] 更新回调
     onDragDelta?: (delta: { x: number; y: number }, sourceNodeId?: string) => void; // 🚀 [New] Relative Drag
     isNew?: boolean; // 🚀 [New] 是否为刚生成的图片
+    isCanvasTransforming?: boolean;
 }
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
@@ -61,6 +89,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     onUpdate,
     onDragDelta,
     isNew = false, // 🚀 [New] 是否为新生成的图片
+    isCanvasTransforming = false,
     canvasTransform // 🚀 [New] 用于计算动画起始位置
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -73,6 +102,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
     // 🚀 [丝滑优化] 统一飞入动画：从输入框中心飞向画布目标位置
     useLayoutEffect(() => {
+        hasAnimatedRef.current = image.id;
+        const directRenderEl = containerRef.current;
+        if (directRenderEl) {
+            document.body.classList.remove('is-animating-card');
+            directRenderEl.style.opacity = '1';
+            directRenderEl.style.willChange = '';
+            directRenderEl.style.zIndex = '';
+            directRenderEl.style.transform = '';
+        }
+        return;
+
         if (hasAnimatedRef.current === image.id) return;
 
         const now = Date.now();
@@ -83,8 +123,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             const el = containerRef.current;
 
             // 🚀 立即隐藏元素，防止 GSAP 加载期间闪烁到目标位置
-            el.style.opacity = '0';
-            el.style.willChange = 'transform, opacity';
+            const restoreVisibility = () => {
+                if (!el || !el.isConnected) return;
+                el.style.opacity = '1';
+                el.style.willChange = '';
+                el.style.zIndex = '';
+            };
 
             import('gsap').then(({ default: gsap }) => {
                 if (!el || !el.isConnected) return;
@@ -93,16 +137,16 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 const launchPoint = getPromptBarLaunchPoint(18, 'bottom');
                 const startScreenX = launchPoint.x;
                 const startScreenY = launchPoint.y;
-                const offsetX = (startScreenX - canvasTransform.x) / canvasTransform.scale - position.x;
-                const offsetY = (startScreenY - canvasTransform.y) / canvasTransform.scale - position.y;
-                const timelineConfig = getLaunchTimelineByOffset(offsetX, offsetY, canvasTransform.scale || 1);
+                const offsetX = (startScreenX - canvasTransform!.x) / canvasTransform!.scale - position.x;
+                const offsetY = (startScreenY - canvasTransform!.y) / canvasTransform!.scale - position.y;
+                const timelineConfig = getLaunchTimelineByOffset(offsetX, offsetY, canvasTransform!.scale || 1);
 
                 // 2. 单一 fromTo 动画 —— 消除双重动画抖动
                 const timeline = gsap.timeline({
                     defaults: { force3D: true, overwrite: 'auto' },
                     onStart: () => {
                         document.body.classList.add('is-animating-card');
-                        el.style.zIndex = String(isSelected ? 30 : 20);
+                        el.style.zIndex = String(getImageStackZIndex(image, isSelected, isNew, isActive) + 1);
                     },
                     onComplete: () => {
                         document.body.classList.remove('is-animating-card');
@@ -152,6 +196,10 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                         ease: 'expo.out',
                         clearProps: 'transform,opacity,will-change',
                     });
+            }).catch((error) => {
+                console.warn('[ImageCard2] Failed to load GSAP, restored visibility.', error);
+                document.body.classList.remove('is-animating-card');
+                restoreVisibility();
             });
         }
     }, [image.id, image.timestamp, canvasTransform]);
@@ -225,7 +273,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const [imgError, setImgError] = useState(false);
 
     // 🚀 Robust Image Loading State - 优先使用image自带URL作为初始显示（防止刚生成的图片加载失败）
-    const initialUrl = (image.url && image.url.length > 0) ? image.url : (image.originalUrl || '');
+    const initialUrl = (image.originalUrl && image.originalUrl.length > 0) ? image.originalUrl : (image.url || '');
     const formatInitialUrl = (url: string) => {
         if (!url) return undefined;
         if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http')) {
@@ -243,11 +291,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }
     }, [displaySrc]);
 
+    useEffect(() => {
+        if (!displaySrc) return;
+        loadedRef.current = true;
+        setIsLoading(false);
+    }, [displaySrc]);
+
 
     // 🚀 [Critical Fix] 实时同步 GeneratedImage 对象的 URL
     // 当 executeGeneration 异步更新了 node.url (如 blob:) 时，ImageCard 需要立即反应
     useEffect(() => {
-        const currentUrl = image.url || image.originalUrl;
+        const currentUrl = image.originalUrl || image.url;
         if (currentUrl && (currentUrl.startsWith('blob:') || currentUrl.startsWith('http') || currentUrl.startsWith('data:'))) {
             const sanitized = formatInitialUrl(currentUrl);
             if (sanitized && sanitized !== displaySrc) {
@@ -260,7 +314,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }
     }, [image.url, image.originalUrl, image.id]);
 
-    const [currentQuality, setCurrentQuality] = useState<string>('original');
+    const [currentQuality, setCurrentQuality] = useState<ImageQuality>(ImageQuality.ORIGINAL);
     const qualityLoadingRef = useRef(false); // 防止重复加载
     const lastZoomRef = useRef(zoomScale || 1.0); // 防抖：只在显着变化时切换
     const loadedRef = useRef(false); // 🚀 标记是否已从队列加载
@@ -274,6 +328,29 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     // 使用稳定存储键：优先 storageId，其次 image.id
     const imageStorageKey = image.storageId || image.id;
     const failedSourcesRef = useRef<Set<string>>(new Set());
+
+    const preloadDisplaySource = useCallback((src: string): Promise<void> => {
+        if (!src) return Promise.resolve();
+        if (
+            image.mode === GenerationMode.VIDEO ||
+            image.mode === GenerationMode.AUDIO ||
+            src.startsWith('data:video') ||
+            src.endsWith('.mp4') ||
+            src.endsWith('.mp3') ||
+            src.endsWith('.wav')
+        ) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => {
+            const preloader = new window.Image();
+            preloader.decoding = 'async';
+            preloader.onload = () => resolve();
+            preloader.onerror = () => resolve();
+            preloader.src = src;
+            if (preloader.complete) resolve();
+        });
+    }, [image.mode]);
 
     const toProxyUrl = useCallback((url: string): string => {
         return `https://corsproxy.io/?${encodeURIComponent(url)}`;
@@ -304,15 +381,15 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         const keyCandidates = Array.from(new Set([image.storageId, image.id].filter(Boolean) as string[]));
         for (const key of keyCandidates) {
             try {
-                const cached = await getImage(key);
-                if (tryRecoverDisplaySrc(cached)) return;
+                const original = await getStrictOriginalImage(key);
+                if (tryRecoverDisplaySrc(original)) return;
             } catch {
                 // ignore and continue fallback chain
             }
 
             try {
-                const original = await getOriginalImage(key);
-                if (tryRecoverDisplaySrc(original)) return;
+                const cached = await getImage(key);
+                if (tryRecoverDisplaySrc(cached)) return;
             } catch {
                 // ignore and continue fallback chain
             }
@@ -384,10 +461,21 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         // 🚀 如果已加载过且有显示图，完全跳过质量切换（大幅提升性能）
         // 只在首次加载或缩放变化非常大(>50%)时才切换质量
         const currentZoom = zoomScale || 1.0;
-        const zoomChange = Math.abs(currentZoom - lastZoomRef.current) / lastZoomRef.current;
+        const targetQuality = getAppropriateQuality(currentZoom);
 
-        if (displaySrc && loadedRef.current && zoomChange < 0.5) {
-            // 🚀 已加载的图片，缩放变化<50%时完全跳过
+        if (image.isGenerating && displaySrc) {
+            return;
+        }
+
+        if (isCanvasTransforming) {
+            return;
+        }
+
+        if (displaySrc && loadedRef.current && currentQuality === targetQuality) {
+            return;
+        }
+
+        if (displaySrc && loadedRef.current && QUALITY_RANK[targetQuality] <= QUALITY_RANK[currentQuality]) {
             return;
         }
 
@@ -427,8 +515,6 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
             try {
                 lastZoomRef.current = currentZoom;
-                const { getAppropriateQuality } = await import('../../services/image/imageQuality');
-
                 const scale = currentZoom;
                 const quality = getAppropriateQuality(scale);
 
@@ -440,7 +526,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                 // 🚀 关键：只有成功获取新图后才替换，防止闪烁
                 if (url) {
-                    setDisplaySrc(sanitizeUrl(url));
+                    const nextSrc = sanitizeUrl(url);
+                    if (nextSrc && nextSrc !== displaySrc) {
+                        await preloadDisplaySource(nextSrc);
+                    }
+                    setDisplaySrc(nextSrc);
                     setCurrentQuality(quality);
                     loadedRef.current = true;
                     setIsLoading(false); // 🚀 加载成功
@@ -467,7 +557,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
                     // 策略1.5: 通过原图读取信道恢复（支持本地磁盘/OPFS回填到缓存）
                     try {
-                        const recoveredOriginal = await getOriginalImage(imageStorageKey);
+                        const recoveredOriginal = await getStrictOriginalImage(imageStorageKey);
                         if (recoveredOriginal && loadId === loadGenRef.current) {
                             console.debug(`[ImageCard] ✅ Recovered from original channel: ${imageStorageKey}`);
                             setDisplaySrc(sanitizeUrl(recoveredOriginal));
@@ -515,7 +605,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
         qualityDebounceRef.current = setTimeout(() => {
             loadQualityImage();
-        }, displaySrc ? 500 : 100); // 🚀 已有图片时延迟500ms，首次加载时100ms
+        }, displaySrc ? 700 : 100); // 已有图片时延后升级，优先保证缩放体感稳定
 
         return () => {
             // 🚀 [Fix] 只清除防抖定时器，不取消队列中的加载
@@ -524,7 +614,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 clearTimeout(qualityDebounceRef.current);
             }
         };
-    }, [zoomScale, image.id, image.storageId, isVisible, retryTick]); // 移除displaySrc依赖
+    }, [zoomScale, image.id, image.storageId, isVisible, retryTick, image.isGenerating, displaySrc, currentQuality, isCanvasTransforming, preloadDisplaySource]); // 仅在必要状态变化时重新评估
 
     const handleRetryLoad = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
@@ -545,12 +635,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
-            const { getOriginalImage } = await import('../../services/storage/imageStorage');
             const { base64ToBlob, triggerDownload } = await import('../../utils/downloadUtils');
             const { notify } = await import('../../services/system/notificationService');
 
             // 1. 优先从 IndexedDB (受保护层) 或 磁盘恢复 获取原始未压缩数据
-            const originalData = await getOriginalImage(image.id);
+            let originalData = await getStrictOriginalImage(image.id);
+            if (!originalData && image.storageId && image.storageId !== image.id) {
+                originalData = await getStrictOriginalImage(image.storageId);
+            }
 
             let blob: Blob;
 
@@ -573,7 +665,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 blob = await response.blob();
             } else {
                 // 3. 最后兜底：使用当前显示的图片数据
-                const fallbackUrl = displaySrc || image.url;
+                const fallbackUrl = image.originalUrl || displaySrc || image.url;
                 if (!fallbackUrl) throw new Error('No image data found');
 
                 if (fallbackUrl.startsWith('data:')) {
@@ -601,7 +693,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             console.error('Download failed:', err);
 
             // CORS Fallback for Remote Video URLs
-            const fallbackUrl = displaySrc || image.url;
+            const fallbackUrl = image.originalUrl || displaySrc || image.url;
             if (fallbackUrl && fallbackUrl.startsWith('http') && err.message === 'Failed to fetch') {
                 console.warn('[ImageCard2] CORS blocked download, opening in new tab instead.');
                 window.open(fallbackUrl, '_blank');
@@ -796,23 +888,28 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const adaptiveBorderWidth = Math.max(1, 1.5 / borderScale);
     const adaptiveSubBorderWidth = Math.max(1, 1.2 / borderScale);
     const renderPos = isDragging ? localPosRef.current : position;
+    const stackZIndex = getImageStackZIndex(image, isSelected, isNew, isActive);
+    const renderLeft = snapCanvasCoordinate(renderPos.x - nodeWidth / 2, zoomScale || 1);
+    const renderTop = snapCanvasCoordinate(renderPos.y - nodeHeight, zoomScale || 1);
 
     return (
         // ... (Wrapper Divs) ...
         <>
             <div
                 ref={containerRef}
-                className={`absolute flex flex-col items-center group select-none ${isActive ? 'z-15' : 'z-5'}`}
+                className="absolute flex flex-col items-center group select-none"
                 // ... (Style) ...
                 style={{
-                    left: Math.round(renderPos.x - nodeWidth / 2),
-                    top: Math.round(renderPos.y - nodeHeight),
+                    left: renderLeft,
+                    top: renderTop,
+                    zIndex: stackZIndex,
                     width: nodeWidth,
+                    opacity: 1,
                     cursor: isDragging ? 'grabbing' : 'grab',
                     transition: isDragging ? 'none' : 'box-shadow 0.2s ease',
                     willChange: isDragging ? 'left, top' : 'auto',
                     touchAction: 'none',
-                    backfaceVisibility: 'hidden'
+                    contain: 'layout style'
                 }}
                 onMouseDown={handleMouseDown}
                 onTouchStart={handleMouseDown}
@@ -823,6 +920,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
             >
                 {/* 🚀 统一容器 - 图片和信息模块在同一卡片内 */}
                 <div
+                    data-canvas-surface="image"
                     className={`
                         relative w-full overflow-hidden flex flex-col
                         border shadow-xl
@@ -974,7 +1072,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                     e.stopPropagation();
                                                     // 🚀 [添加] 触发自定义事件通知 ImagePreview 关闭
                                                     window.dispatchEvent(new CustomEvent('kk-drag-start'));
-                                                    const url = displaySrc || image.url;
+                                                    const url = image.originalUrl || displaySrc || image.url;
                                                     if (url) {
                                                         e.dataTransfer.setData('text/plain', url);
                                                         // [NEW] Pass structured data for efficient reuse (consistent with PromptNode)
@@ -1093,12 +1191,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                 {/* 🚀 全球加载遮罩 - 只有真正没有图且没有错误时才显示卡片级遮罩（在上模块内） */}
                                 {((isLoading && !displaySrc) || (!imgError && !displaySrc)) && !image.error && (
                                     <div
-                                        className="absolute inset-0 z-50 rounded-lg flex flex-col items-center justify-center bg-black/60"
-                                        style={{
-                                            animation: 'shimmerInward 2s ease-in-out infinite',
-                                            top: 0,
-                                            bottom: 0
-                                        }}
+                                        className="absolute inset-0 z-50 rounded-lg flex flex-col items-center justify-center bg-black/60 animate-shimmer-inward"
+                                        style={{ willChange: 'opacity' }}
                                     >
                                         <span className="text-xs text-white/70 mb-2">
                                             正在加载...
@@ -1327,6 +1421,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     );
 }, (prev, next) => {
     // 🚀 [Fix] Only compare state/data props to avoid rendering on inline function identity changes
+    // [Performance] Added isNew comparison to prevent re-render when isNew changes from stable source
     return (
         prev.image === next.image &&
         prev.position.x === next.position.x &&
@@ -1335,7 +1430,9 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         prev.zoomScale === next.zoomScale &&
         prev.isSelected === next.isSelected &&
         prev.highlighted === next.highlighted &&
-        prev.isVisible === next.isVisible
+        prev.isVisible === next.isVisible &&
+        prev.isCanvasTransforming === next.isCanvasTransforming &&
+        prev.isNew === next.isNew
     );
 });
 

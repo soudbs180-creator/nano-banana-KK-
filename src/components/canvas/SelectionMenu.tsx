@@ -86,16 +86,19 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
 
     return (
         <div
-            className="fixed z-[10000] flex items-center dark:bg-zinc-800 border border-white/10 rounded-lg shadow-xl p-1 animate-in zoom-in-95 duration-200 cursor-grab active:cursor-grabbing"
+            className="fixed z-[10000] flex items-center rounded-lg shadow-xl p-1 animate-in zoom-in-95 duration-200 cursor-grab active:cursor-grabbing"
             style={{
                 left: position.x + dragOffset.x,
                 top: position.y + dragOffset.y,
-                transform: 'translate(-50%, -100%) translateY(-12px)'
+                transform: 'translate(-50%, -100%) translateY(-12px)',
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border-default)',
+                borderWidth: '1px'
             }}
             onMouseDown={handleMouseDown}
         >
-            <div className="px-3 text-xs dark:text-zinc-400 border-r border-white/10 mr-1 font-medium flex items-center gap-2">
-                <GripHorizontal size={14} className="dark:text-zinc-600" />
+            <div className="px-3 text-xs border-r mr-1 font-medium flex items-center gap-2" style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-light)' }}>
+                <GripHorizontal size={14} style={{ color: 'var(--text-muted)' }} />
                 {getSelectionLabel()}
             </div>
 
@@ -137,24 +140,33 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
                         <LayoutGrid size={18} />
                     </button>
                     {showArrangeMenu && (
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 dark:bg-zinc-800 border border-white/10 rounded-lg shadow-xl p-1 flex flex-col gap-1 min-w-[100px]">
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 rounded-lg shadow-xl p-1 flex flex-col gap-1 min-w-[100px]" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)', borderWidth: '1px' }}>
                             <button
                                 onClick={() => { onArrange('grid'); setShowArrangeMenu(false); }}
-                                className="flex items-center gap-2 px-3 py-1.5 text-xs dark:text-zinc-300 hover:dark:bg-white/10 rounded transition-colors whitespace-nowrap"
+                                className="flex items-center gap-2 px-3 py-1.5 text-xs rounded transition-colors whitespace-nowrap"
+                                style={{ color: 'var(--text-secondary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             >
                                 <LayoutGrid size={14} />
                                 宫格(6列)
                             </button>
                             <button
                                 onClick={() => { onArrange('row'); setShowArrangeMenu(false); }}
-                                className="flex items-center gap-2 px-3 py-1.5 text-xs dark:text-zinc-300 hover:dark:bg-white/10 rounded transition-colors whitespace-nowrap"
+                                className="flex items-center gap-2 px-3 py-1.5 text-xs rounded transition-colors whitespace-nowrap"
+                                style={{ color: 'var(--text-secondary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             >
                                 <Rows size={14} />
                                 横向排列
                             </button>
                             <button
                                 onClick={() => { onArrange('column'); setShowArrangeMenu(false); }}
-                                className="flex items-center gap-2 px-3 py-1.5 text-xs dark:text-zinc-300 hover:dark:bg-white/10 rounded transition-colors whitespace-nowrap"
+                                className="flex items-center gap-2 px-3 py-1.5 text-xs rounded transition-colors whitespace-nowrap"
+                                style={{ color: 'var(--text-secondary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--toolbar-hover)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             >
                                 <Columns size={14} />
                                 纵向排列
@@ -164,7 +176,7 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
                 </div>
             )}
 
-            <div className="w-px h-5 bg-white/10 mx-1" />
+            <div className="w-px h-5 mx-1" style={{ backgroundColor: 'var(--border-light)' }} />
 
             <button
                 onClick={onDelete}

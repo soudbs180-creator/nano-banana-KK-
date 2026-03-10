@@ -1,0 +1,110 @@
+- generic [ref=e59]:
+  - generic [ref=e61]:
+    - generic [ref=e62]:
+      - img [ref=e63]
+      - generic [ref=e66]:
+        - generic [ref=e67]: "0"
+        - generic [ref=e68]: 积分
+    - button "充值" [ref=e70] [cursor=pointer]
+  - button "4" [ref=e73] [cursor=pointer]:
+    - generic [ref=e74]: "4"
+  - generic [ref=e76]:
+    - generic [ref=e77]:
+      - generic:
+        - img
+    - generic [ref=e78]:
+      - generic [ref=e79]:
+        - slider [ref=e80] [cursor=pointer]: "155"
+        - generic [ref=e81]: 155%
+      - generic [ref=e83]: v1.3.6
+  - generic [ref=e86]:
+    - generic [ref=e87]:
+      - generic [ref=e89]:
+        - button "图片" [ref=e92] [cursor=pointer]:
+          - generic [ref=e93]:
+            - img [ref=e94]
+            - generic [ref=e97]: 图片
+        - button "视频" [ref=e99] [cursor=pointer]:
+          - generic [ref=e100]:
+            - img [ref=e101]
+            - generic [ref=e104]: 视频
+        - button "音乐" [ref=e106] [cursor=pointer]:
+          - generic [ref=e107]:
+            - img [ref=e108]
+            - generic [ref=e111]: 音乐
+        - button "PPT" [ref=e113] [cursor=pointer]:
+          - generic [ref=e114]:
+            - img [ref=e115]
+            - generic [ref=e120]: PPT
+      - generic [ref=e121]:
+        - button "提示词库" [ref=e122] [cursor=pointer]:
+          - generic [ref=e123]: 提示词库
+        - button "优化提示词" [ref=e124] [cursor=pointer]:
+          - img [ref=e125]
+          - generic [ref=e128]: 优化提示词
+    - generic [ref=e129]:
+      - button "上传参考图" [ref=e131] [cursor=pointer]:
+        - img [ref=e132]
+      - textbox "描述你想要生成的图片..." [ref=e135]
+    - generic [ref=e137]:
+      - button "无可用模型" [ref=e139] [cursor=pointer]:
+        - generic "无可用模型" [ref=e140]
+      - button "自适应 · 1K" [ref=e142] [cursor=pointer]:
+        - img [ref=e143]
+        - generic [ref=e149]: 自适应 · 1K
+        - img [ref=e150]
+      - button "谷歌搜索" [ref=e154] [cursor=pointer]:
+        - img [ref=e155]
+        - generic [ref=e159]: 谷歌搜索
+      - button "1 张" [ref=e162] [cursor=pointer]:
+        - generic [ref=e163]: 1 张
+        - img [ref=e164]
+      - button "发送" [disabled] [ref=e166]:
+        - generic [ref=e168]: 发送
+        - img [ref=e170]
+  - generic [ref=e232]:
+    - generic [ref=e235]:
+      - button "新对话" [ref=e237]:
+        - img [ref=e238]
+        - generic [ref=e240]: 新对话
+      - generic [ref=e241]:
+        - button "新建对话" [ref=e242] [cursor=pointer]:
+          - img [ref=e243]
+        - button "历史记录与分支" [ref=e244] [cursor=pointer]:
+          - img [ref=e245]
+        - button "关闭侧边栏" [ref=e248] [cursor=pointer]:
+          - img [ref=e249]
+    - generic [ref=e253]:
+      - img [ref=e255]
+      - generic [ref=e260]: 你好！我是 KK Studio 数字助手。 有什么我可以帮您？ 试试输入 "/image 一只猫" 来生成图片！
+    - generic [ref=e261]:
+      - textbox "开启你的灵感之旅" [ref=e263]
+      - generic [ref=e264]:
+        - button "添加附件 (图片/视频/文档)" [ref=e265] [cursor=pointer]:
+          - img [ref=e266]
+        - button "Agent OFF" [ref=e267] [cursor=pointer]:
+          - img [ref=e268]
+          - generic [ref=e271]: Agent
+          - generic [ref=e272]: "OFF"
+        - button "⚙️ 配置模型" [ref=e274] [cursor=pointer]:
+          - generic [ref=e275]: ⚙️
+          - generic [ref=e276]: 配置模型
+        - button [ref=e277] [cursor=pointer]:
+          - img [ref=e278]
+  - generic [ref=e173]:
+    - button "项目1" [ref=e177] [cursor=pointer]:
+      - img [ref=e178]
+    - button "搜索提示词 (Ctrl+K)" [ref=e183] [cursor=pointer]:
+      - img [ref=e184]
+    - button "缩放到全览 (Fit All)" [ref=e188] [cursor=pointer]:
+      - img [ref=e189]
+    - button "定位卡组 (Locate Group)" [ref=e194] [cursor=pointer]:
+      - img [ref=e195]
+    - button "显示/隐藏网点" [ref=e201] [cursor=pointer]:
+      - img [ref=e202]
+    - button "自动整理 (Auto Arrange)" [ref=e204] [cursor=pointer]:
+      - img [ref=e205]
+    - button "切换到亮色模式" [ref=e211] [cursor=pointer]:
+      - img [ref=e212]
+  - button [ref=e215] [cursor=pointer]:
+    - img [ref=e230]

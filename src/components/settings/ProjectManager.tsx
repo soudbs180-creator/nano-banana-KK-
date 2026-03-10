@@ -5,7 +5,8 @@ import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import {
     Loader2, Menu, Layers, Search, Maximize2,
-    Focus, CircleDot, LayoutDashboard, GripVertical, Bot, Grid3x3, Square, Sun, Moon
+    Focus, CircleDot, LayoutDashboard, GripVertical, Bot, Grid3x3, Square, Sun, Moon,
+    User
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { notify } from '../../services/system/notificationService';
@@ -24,6 +25,7 @@ interface ProjectManagerProps {
     onToggleChat?: () => void;
     isChatOpen?: boolean;
     showGrid?: boolean;
+    onOpenProfile?: () => void;
 }
 
 const ProjectManager: React.FC<ProjectManagerProps> = ({
@@ -37,7 +39,8 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     onAutoArrange,
     onToggleChat,
     isChatOpen,
-    showGrid = true
+    showGrid = true,
+    onOpenProfile
 }) => {
     // ... existing state ...
     const { state, activeCanvas, createCanvas, switchCanvas, deleteCanvas, renameCanvas, clearAllData, canCreateCanvas } = useCanvas();
@@ -77,7 +80,8 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     // Dragging Logic
     const [topPosition, setTopPosition] = useState(() => {
         const saved = localStorage.getItem('kk_pm_pos');
-        return saved ? parseFloat(saved) : 80;
+        const parsed = saved ? parseFloat(saved) : 80;
+        return Number.isFinite(parsed) ? parsed : 80;
     });
 
     useEffect(() => {
@@ -130,6 +134,9 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
             document.removeEventListener('mouseup', handleEnd);
             document.removeEventListener('touchmove', handleMove);
             document.removeEventListener('touchend', handleEnd);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            document.body.style.touchAction = '';
         };
     }, [isDragging]);
 
@@ -159,7 +166,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     }, [showDropdown]);
 
     const handleClearAll = () => {
-        if (confirm('确定要清除所有项目数据吗？此操作无法撤销！')) {
+        if (confirm('确定要清除所有项目数据吗？此操作无法撤销。')) {
             clearAllData();
             setShowDropdown(false);
         }
@@ -213,7 +220,6 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
             const content = await zip.generateAsync({ type: "blob" });
             saveAs(content, `${activeCanvas.name}_images.zip`);
-
         } catch (err) {
             console.error("Download failed", err);
             notify.error('下载失败', '打包下载失败，请重试');
@@ -382,7 +388,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                                     backgroundColor: 'var(--bg-tertiary)'
                                 }}
                             >
-                                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>我的项目</h3>
+                                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>我的项目</h3>
                                 <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{activeProjectName}</span>
                             </div>
                             <div className="max-h-60 overflow-y-auto custom-scrollbar">
@@ -486,7 +492,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                                         e.currentTarget.style.backgroundColor = 'transparent';
                                     }}
                                 >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>{isDownloading ? '打包中...' : '下载项目原图'}
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>{isDownloading ? "打包中..." : "下载项目原图"}
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleClearAll(); }}
@@ -531,23 +537,23 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
 
                 {/* 4. Fit All - 缩放到全览 */}
                 {!isMobile && (
-                <button
-                    onClick={(e) => { e.stopPropagation(); onFitToAll(); }}
-                    className={iconButtonClass}
-                    style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';
-                        e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.color = theme === 'dark' ? '#a1a1aa' : '#000000';
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                    title="缩放到全览 (Fit All)"
-                    tabIndex={-1}
-                >
-                    <Maximize2 size={20} />
-                </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onFitToAll(); }}
+                        className={iconButtonClass}
+                        style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';
+                            e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.color = theme === 'dark' ? '#a1a1aa' : '#000000';
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
+                        title="缩放到全览 (Fit All)"
+                        tabIndex={-1}
+                    >
+                        <Maximize2 size={20} />
+                    </button>
                 )}
 
                 <button
@@ -587,23 +593,23 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 </button>
 
                 {!isMobile && (
-                <button
-                    onClick={(e) => { e.stopPropagation(); onAutoArrange(); }}
-                    className={iconButtonClass}
-                    style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';
-                        e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.color = theme === 'dark' ? '#a1a1aa' : '#000000';
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                    title="自动整理 (Auto Arrange)"
-                    tabIndex={-1}
-                >
-                    <LayoutDashboard size={20} />
-                </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onAutoArrange(); }}
+                        className={iconButtonClass}
+                        style={{ color: theme === 'dark' ? '#a1a1aa' : '#000000' }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.color = theme === 'dark' ? '#ffffff' : '#000000';
+                            e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.color = theme === 'dark' ? '#a1a1aa' : '#000000';
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
+                        title="自动整理 (Auto Arrange)"
+                        tabIndex={-1}
+                    >
+                        <LayoutDashboard size={20} />
+                    </button>
                 )}
 
                 <div className="w-full h-px my-1" style={{ backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
@@ -625,8 +631,6 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 >
                     {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
                 </button>
-
-
             </div>
 
             {/* Delete Confirmation Modal - 使用Portal渲染到body避免布局问题 */}
@@ -649,11 +653,11 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">确认删除项目？</h3>
-                                <p className="text-gray-500 dark:text-zinc-500 text-xs mt-1">本地文档夹不会被删除</p>
+                                <p className="text-gray-500 dark:text-zinc-500 text-xs mt-1">本地文件夹不会被删除</p>
                             </div>
                         </div>
                         <p className="text-gray-700 dark:text-zinc-300 text-sm mb-6 leading-relaxed bg-white/5 p-3 rounded-lg border border-white/5">
-                            删除后，该项目将从界面中移除。本地文档夹中的图片和视频仍会保留，您可以通过“刷新本地备份”按钮恢复。
+                            删除后，该项目将从界面中移除。本地文件夹中的图片和视频仍会保留，您可以通过“刷新本地备份”按钮恢复。
                         </p>
                         <div className="flex gap-3 justify-end">
                             <button

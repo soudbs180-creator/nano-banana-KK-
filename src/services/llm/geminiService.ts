@@ -470,6 +470,7 @@ export const generateImage = async (
     maskUrl: options?.maskUrl, // 🚀 Pass Edit Options
     editMode: options?.editMode,
     preferredKeyId: options?.preferredKeyId,
+    signal: controller?.signal,
     onTaskId: options?.onTaskId
   };
 
@@ -523,5 +524,9 @@ export const generateImage = async (
     if (error.name === 'AbortError' || error.message === 'Generation cancelled') throw error;
     console.error(`[GeminiService] LLMService Generation Failed:`, error);
     throw normalizeError(error);
+  } finally {
+    if (requestId) {
+      abortControllers.delete(requestId);
+    }
   }
 };

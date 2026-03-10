@@ -171,8 +171,8 @@ export const OnboardingOverlay: React.FC<OnboardingOverlayProps> = ({
             跳过引导
           </button>
           <button className="btn-next" onClick={handleNext}>
-            {isLastPhase ? '开始创作' : '下一步'}
-            <ChevronRight className="w-4 h-4" />
+            <span>{isLastPhase ? '开始创作' : '下一步'}</span>
+            <ChevronRight className="w-4 h-4 shrink-0" />
           </button>
         </div>
 

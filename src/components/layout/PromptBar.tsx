@@ -21,11 +21,13 @@ import { useBilling } from '../../context/BillingContext';
 import { useAuth } from '../../context/AuthContext';
 import { calculateCost } from '../../services/billing/costService';
 import { isCreditBasedModel, getModelCredits } from '../../services/model/modelPricing';
+import PromptBarTopRow from './prompt-bar/PromptBarTopRow';
+import PromptBarFooter from './prompt-bar/PromptBarFooter';
 
 
 // [FIX] Robust Image Component that self-heals from Storage if data is missing
 const ReferenceThumbnail: React.FC<{
-    image: { id: string, data?: string, mimeType?: string, storageId?: string };
+    image: { id: string, data?: string, mimeType?: string, storageId?: string, url?: string };
     onClick?: (e: React.MouseEvent<HTMLDivElement>, resolvedSrc: string) => void;
     onRecovered?: (payload: { id: string; data: string; mimeType?: string; storageId?: string }) => void;
 }> = ({ image, onClick, onRecovered }) => {
@@ -45,8 +47,8 @@ const ReferenceThumbnail: React.FC<{
 
         // If no storageId, try using data directly (even if blob) or mark as error
         if (!image.storageId) {
-            if (image.data) {
-                setData(image.data);
+            if (image.data || image.url) {
+                setData(image.data || image.url);
                 setLoading(false);
                 setError(false);
             } else {
@@ -66,15 +68,16 @@ const ReferenceThumbnail: React.FC<{
                 if (active) {
                     if (cached) {
                         setData(cached);
-                        onRecovered?.({
-                            id: image.id,
-                            data: cached,
-                            mimeType: image.mimeType,
-                            storageId: image.storageId,
-                        });
-                    } else if (image.data) {
-                        // Fallback to original data if IDB has nothing
-                        setData(image.data);
+                        if (!cached.startsWith('blob:') && cached !== image.data) {
+                            onRecovered?.({
+                                id: image.id,
+                                data: cached,
+                                mimeType: image.mimeType,
+                                storageId: image.storageId,
+                            });
+                        }
+                    } else if (image.data || image.url) {
+                        setData(image.data || image.url);
                     } else {
                         setError(true); // truly missing
                     }
@@ -83,8 +86,8 @@ const ReferenceThumbnail: React.FC<{
             })
             .catch(() => {
                 if (active) {
-                    if (image.data) {
-                        setData(image.data); // Fallback
+                    if (image.data || image.url) {
+                        setData(image.data || image.url);
                     } else {
                         setError(true);
                     }
@@ -93,7 +96,7 @@ const ReferenceThumbnail: React.FC<{
             });
 
         return () => { active = false; };
-    }, [image.data, image.storageId, image.id, image.mimeType, onRecovered]);
+    }, [image.data, image.url, image.storageId, image.id, image.mimeType, onRecovered]);
 
     if (error) {
         return (
@@ -127,7 +130,7 @@ const ReferenceThumbnail: React.FC<{
             <img
                 src={src}
                 className="w-full h-full object-cover"
-                alt="Reference"
+                alt="参考图"
             />
         </div>
     );
@@ -886,62 +889,105 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         const filesToProcess = fileArray.slice(0, remainingSlots);
         if (filesToProcess.length === 0) return;
 
+        const existingStorageIds = new Set(
+            config.referenceImages
+                .map((img) => img.storageId)
+                .filter((value): value is string => Boolean(value))
+        );
+        let duplicateCount = 0;
+
         setUploadingCount((prev) => prev + filesToProcess.length);
 
         try {
-            // Process all files in parallel
-            const newImages = await Promise.all(filesToProcess.map(async (file) => {
-                return new Promise<{ id: string, storageId: string, mimeType: string, data: string } | null>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = async () => {
-                        const result = reader.result as string;
-                        const matches = result.match(/^data:(.+);base64,(.+)$/);
-                        if (matches) {
-                            const mimeType = matches[1];
-                            const data = matches[2];
-                            const storageId = await calculateImageHash(data);
-
-                            // 🚀 [FIX] 立即保存到 IndexedDB（使用正确格式）
-                            // 🚀 [关键修复] 必须await等待保存完成，否则刷新时可能丢失
-                            const fullDataUrl = `data:${mimeType};base64,${data}`;
-                            try {
-                                await saveImage(storageId, fullDataUrl);
-                            } catch (err) {
-                                console.error("[PromptBar] Failed to save image to IndexedDB:", err);
-                            }
-
-                            // 🚀 [NEW] 同时保存到本地文档系统（如果已连接项目文档夹）
-                            const handle = fileSystemService.getGlobalHandle();
-                            if (handle) {
-                                fileSystemService.saveReferenceImage(handle, storageId, data, mimeType).catch(err =>
-                                    console.error("[PromptBar] Failed to save reference to file system:", err)
-                                );
-                            }
-
-                            resolve({
-                                id: Date.now() + Math.random().toString(),
-                                storageId,
-                                mimeType,
-                                data
-                            });
-                        } else {
-                            resolve(null);
-                        }
-                    };
-                    reader.readAsDataURL(file);
-                });
+            const placeholders = filesToProcess.map((file) => ({
+                id: crypto.randomUUID(),
+                mimeType: file.type || 'image/png',
+                data: '',
+                url: URL.createObjectURL(file)
             }));
 
-            const validImages = newImages.filter((img): img is NonNullable<typeof img> => img !== null);
+            setConfig(prev => ({
+                ...prev,
+                referenceImages: [...prev.referenceImages, ...placeholders]
+            }));
 
-            if (validImages.length > 0) {
-                setConfig(prev => ({
-                    ...prev,
-                    referenceImages: [...prev.referenceImages, ...validImages]
-                }));
+            const readAsDataUrl = (file: File) =>
+                new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = () => reject(reader.error);
+                    reader.readAsDataURL(file);
+                });
+
+            await Promise.allSettled(placeholders.map(async (placeholder, index) => {
+                const file = filesToProcess[index];
+                try {
+                    const result = await readAsDataUrl(file);
+                    const matches = result.match(/^data:(.+);base64,(.+)$/);
+                    if (!matches) {
+                        throw new Error('INVALID_IMAGE_DATA');
+                    }
+
+                    const mimeType = matches[1];
+                    const data = matches[2];
+                    const storageId = await calculateImageHash(data);
+                    const fullDataUrl = `data:${mimeType};base64,${data}`;
+
+                    if (existingStorageIds.has(storageId)) {
+                        duplicateCount += 1;
+                        if (placeholder.url.startsWith('blob:')) {
+                            URL.revokeObjectURL(placeholder.url);
+                        }
+                        setConfig(prev => ({
+                            ...prev,
+                            referenceImages: prev.referenceImages.filter((img) => img.id !== placeholder.id)
+                        }));
+                        return;
+                    }
+
+                    existingStorageIds.add(storageId);
+
+                    setConfig(prev => ({
+                        ...prev,
+                        referenceImages: prev.referenceImages.map((img) =>
+                            img.id === placeholder.id
+                                ? { ...img, storageId, mimeType, data }
+                                : img
+                        )
+                    }));
+
+                    if (placeholder.url.startsWith('blob:')) {
+                        URL.revokeObjectURL(placeholder.url);
+                    }
+
+                    saveImage(storageId, fullDataUrl).catch((err) => {
+                        console.error('[PromptBar] Failed to save image to IndexedDB:', err);
+                    });
+
+                    const handle = fileSystemService.getGlobalHandle();
+                    if (handle) {
+                        fileSystemService.saveReferenceImage(handle, storageId, data, mimeType).catch((err) =>
+                            console.error('[PromptBar] Failed to save reference to file system:', err)
+                        );
+                    }
+                } catch (err) {
+                    console.error('[PromptBar] Failed to process reference image:', err);
+                    if (placeholder.url.startsWith('blob:')) {
+                        URL.revokeObjectURL(placeholder.url);
+                    }
+                    setConfig(prev => ({
+                        ...prev,
+                        referenceImages: prev.referenceImages.filter((img) => img.id !== placeholder.id)
+                    }));
+                } finally {
+                    setUploadingCount((prev) => Math.max(0, prev - 1));
+                }
+            }));
+
+            if (duplicateCount > 0) {
+                notify.info('已跳过重复参考图', `检测到 ${duplicateCount} 张重复图片，未重复添加。`);
             }
         } finally {
-            setUploadingCount((prev) => Math.max(0, prev - filesToProcess.length));
         }
     }, [config.referenceImages, setConfig]);
 
@@ -953,7 +999,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const removeReferenceImage = useCallback((id: string) => {
         setConfig(prev => ({
             ...prev,
-            referenceImages: prev.referenceImages.filter(img => img.id !== id)
+            referenceImages: prev.referenceImages.filter(img => {
+                const shouldKeep = img.id !== id;
+                if (!shouldKeep && img.url?.startsWith('blob:')) {
+                    URL.revokeObjectURL(img.url);
+                }
+                return shouldKeep;
+            })
         }));
     }, [setConfig]);
 
@@ -1493,7 +1545,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         position: 'fixed',
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + var(--mobile-tabbar-height, 72px) + var(--mobile-tabbar-floating-offset, 12px) + var(--mobile-prompt-gap, 12px))',
         left: '50%',
-        transform: 'translateX(-50%)',
+        transform: 'translateX(-50%) translateZ(0)',
         width: 'calc(100vw - 20px)',
         maxWidth: 'min(960px, calc(100vw - 20px))',
         margin: 0,
@@ -1504,7 +1556,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         WebkitBackdropFilter: 'blur(26px) saturate(170%)',
         backdropFilter: 'blur(26px) saturate(170%)',
         background: 'var(--mobile-glass-bg, rgba(20, 20, 23, 0.84))',
-        boxShadow: '0 24px 56px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.15)'
+        boxShadow: '0 24px 56px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.15)',
+        willChange: 'transform',
+        contain: 'layout style paint'
     } : {
         // Desktop floating style handling...
     };
@@ -1601,7 +1655,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                         >
                             <img
                                 src={activeSourceImage.url}
-                                alt="Source"
+                                alt="源图"
                                 className="w-10 h-10 object-cover rounded-lg shadow-sm"
                             />
                             <div className="flex-1 min-w-0">
@@ -1612,16 +1666,16 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     )}
 
                     {/* Top Controls Row: Mode toggle on left, prompt optimizer on right */}
-                    <div className="flex items-center justify-between mb-2 gap-2">
-                        <div className="flex items-center gap-2">
+                    <PromptBarTopRow isMobile={isMobile}>
+                        <div className={isMobile ? 'w-full overflow-x-auto scrollbar-none pb-0.5' : 'flex items-center gap-2'}>
 
 
                             {(() => {
-                                const MODE_SLOT_WIDTH = 82;
-                                const sliderWidth = 74;
+                                const MODE_SLOT_WIDTH = isMobile ? 72 : 82;
+                                const sliderWidth = isMobile ? 64 : 74;
                                 const sliderLeft = 4 + activeModeIndex * MODE_SLOT_WIDTH + (MODE_SLOT_WIDTH - sliderWidth) / 2;
                                 return (
-                                    <div className="relative inline-flex items-center p-1 rounded-xl border"
+                                    <div className={`relative inline-flex items-center p-1 rounded-xl border ${isMobile ? 'min-w-max' : ''}`}
                                         style={{
                                             backgroundColor: 'var(--bg-tertiary)',
                                             borderColor: 'var(--border-light)'
@@ -1654,7 +1708,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             return (
                                                 <div key={item.mode} className="relative z-10">
                                                     <button
-                                                        className="w-[82px] px-2 py-1 rounded-md text-sm font-medium transition-all duration-200"
+                                                        className={`px-2 py-1 rounded-md font-medium transition-all duration-200 ${isMobile ? 'w-[72px] text-[12px]' : 'w-[82px] text-sm'}`}
                                                         style={{
                                                             color: isActive ? item.color : 'var(--text-secondary)'
                                                         }}
@@ -1673,7 +1727,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             })()}
                         </div>
 
-                        <div className="relative flex items-center gap-1">
+                        <div className={`relative flex items-center gap-1 ${isMobile ? 'flex-wrap' : ''}`}>
                             <button
                                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0"
                                 style={{
@@ -1729,8 +1783,15 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             </button>
 
                             {showPromptLibrary && (
-                                <div className="absolute bottom-full right-0 mb-2 z-40 w-[min(34rem,90vw)] rounded-2xl border shadow-xl p-2" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)' }}>
-                                    <div className="flex items-center gap-1 mb-2">
+                                <div
+                                    className="absolute bottom-full right-0 mb-2 z-40 rounded-2xl border shadow-xl p-2 max-w-[calc(100vw-24px)]"
+                                    style={{
+                                        width: 'min(34rem, calc(100vw - 24px))',
+                                        backgroundColor: 'var(--bg-secondary)',
+                                        borderColor: 'var(--border-medium)'
+                                    }}
+                                >
+                                    <div className={`mb-2 gap-1 ${isMobile ? 'flex flex-wrap items-center' : 'flex items-center'}`}>
                                         <button
                                             className={`px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === 'all' ? 'text-blue-400 border-blue-400/40 bg-blue-500/10' : 'text-[var(--text-secondary)] border-[var(--border-light)]'}`}
                                             onClick={() => setPromptLibraryCategory('all')}
@@ -1751,7 +1812,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             value={promptLibrarySearch}
                                             onChange={(e) => setPromptLibrarySearch(e.target.value)}
                                             placeholder="搜索标题/内容"
-                                            className="ml-auto w-40 bg-[var(--bg-tertiary)] text-[11px] rounded-md px-2 py-1 border border-[var(--border-light)] outline-none"
+                                            className={`bg-[var(--bg-tertiary)] text-[11px] rounded-md px-2 py-1 border border-[var(--border-light)] outline-none ${isMobile ? 'w-full basis-full mt-1' : 'ml-auto w-40'}`}
                                         />
                                     </div>
 
@@ -1929,7 +1990,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </PromptBarTopRow>
 
                     {/* Input Area Wrapper with hover detection */}
                     <div
@@ -1958,6 +2019,11 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             <div
                                 ref={refContainerRef}
                                 className="flex flex-nowrap items-center gap-2 transition-all p-2 px-3 mt-1 rounded-lg overflow-x-auto overflow-y-hidden scrollbar-thin"
+                                style={{
+                                    WebkitOverflowScrolling: 'touch',
+                                    overscrollBehaviorX: 'contain',
+                                    touchAction: 'pan-x'
+                                }}
                                 onDragOver={(e) => {
                                     e.preventDefault();
                                     e.dataTransfer.dropEffect = 'move';
@@ -2195,13 +2261,13 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     </div> {/* End of input area hover wrapper */}
 
                     {/* Footer - Modified to be a standard flex row, flowing or wrapping lightly on mobile */}
-                    <div className="input-bar-footer flex items-center gap-2 px-1 pb-1 pt-0.5 min-h-[44px] flex-nowrap justify-between">
-                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <PromptBarFooter isMobile={isMobile}>
+                        <div className={`flex items-center gap-1.5 min-w-0 ${isMobile ? 'w-full' : 'flex-1'}`}>
                             {/* Model Button */}
-                            <div className="relative inline-flex flex-shrink-0 min-w-0">
+                            <div className={`relative inline-flex min-w-0 ${isMobile ? 'flex-1' : 'flex-shrink-0'}`}>
                                 <button
                                     id="models-dropdown-trigger"
-                                    className={`input-bar-model flex items-center flex-nowrap justify-center gap-1.5 md:gap-2 px-2 md:px-3 h-10 rounded-lg border transition-all duration-300 min-w-0 ${isModelListEmpty
+                                    className={`input-bar-model flex w-full max-w-full items-center flex-nowrap justify-center gap-1.5 md:gap-2 px-2 md:px-3 h-10 rounded-lg border transition-all duration-300 min-w-0 overflow-hidden ${isModelListEmpty
                                         ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] cursor-not-allowed border-[var(--border-light)]'
                                         : (currentModel?.colorStart && currentModel?.colorEnd)
                                             ? 'border-white/20 !opacity-100 shadow-sm'
@@ -2226,7 +2292,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                         const badgeInfo = getModelBadgeInfo({ id: currentModel?.id ?? '', label: currentModel?.label ?? '', provider: currentModel?.provider });
                                         return (
                                             <span
-                                                className={`text-sm font-bold truncate flex items-center gap-1 min-w-0 ${(!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? '' : badgeInfo.colorClass}`}
+                                                className={`font-bold truncate flex items-center gap-1 min-w-0 ${isMobile ? 'text-[13px]' : 'text-sm'} ${(!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? '' : badgeInfo.colorClass}`}
                                                 style={(!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd) ? { color: currentModelTextColor } : undefined}
                                                 title={currentModelName}
                                             >
@@ -2236,7 +2302,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     })()}
 
                                     {/* 🚀 [Fix] 区分标识：积分模型显示淡蓝色 ✨积分，用户API显示Provider标签 */}
-                                    {!isModelListEmpty && (
+                                    {!isModelListEmpty && !isMobile && (
                                         currentModel?.isSystemInternal ? (
                                             // 积分模型：仅显示 ✨积分，不显示供应商
                                             <span
@@ -2261,10 +2327,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                 {/* Dropdown Menu */}
                                 {!isModelListEmpty && activeMenu === 'model' && (
-                                    <div ref={modelDropdownRef} className="absolute bottom-full mb-3 z-50 animate-scaleIn origin-bottom" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                    <div
+                                        ref={modelDropdownRef}
+                                        className="absolute bottom-full mb-3 z-50 animate-scaleIn origin-bottom"
+                                        style={isMobile ? { left: 0, transform: 'none' } : { left: '50%', transform: 'translateX(-50%)' }}
+                                    >
                                         {/* 🔍 Search Input Module - Above the list - 只在多个模型时显示 */}
                                         {sortedAvailableModels.length > 1 && (
-                                            <div className="mb-2 p-2.5 bg-[var(--bg-secondary)] border border-[var(--border-medium)] rounded-2xl shadow-xl animate-scaleIn origin-bottom" style={{ width: 'min(22rem,90vw)' }}>
+                                            <div className="mb-2 p-2.5 bg-[var(--bg-secondary)] border border-[var(--border-medium)] rounded-2xl shadow-xl animate-scaleIn origin-bottom max-w-[calc(100vw-24px)]" style={{ width: 'min(22rem, calc(100vw - 24px))' }}>
                                                 <div className="relative flex items-center">
                                                     <svg className="absolute left-2 w-3.5 h-3.5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -2294,7 +2364,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                         <div
                                             ref={modelListScrollRef}
-                                            className="dropdown static w-[min(22rem,90vw)] max-w-[90vw] max-h-[50vh] overflow-y-auto scrollbar-thin animate-scaleIn origin-bottom p-4 flex flex-col gap-2"
+                                            className="dropdown static w-[min(22rem,calc(100vw-24px))] max-w-[calc(100vw-24px)] max-h-[50vh] overflow-y-auto scrollbar-thin animate-scaleIn origin-bottom p-4 flex flex-col gap-2"
                                             style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-medium)', boxShadow: 'var(--shadow-xl)', borderRadius: '1rem' }}
                                             onScroll={(e) => {
                                                 // 保存滚动位置
@@ -2511,7 +2581,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             <div className="relative inline-flex flex-shrink-0">
                                 <button
                                     data-options-toggle
-                                    className="flex items-center gap-1.5 px-3 h-10 rounded-lg border transition-all text-xs font-medium whitespace-nowrap flex-shrink-0"
+                                    className={`flex items-center gap-1.5 h-10 rounded-lg border transition-all text-xs font-medium whitespace-nowrap flex-shrink-0 min-w-0 ${isMobile ? 'px-2 max-w-[9.5rem]' : 'px-3'}`}
                                     style={{
                                         backgroundColor: showOptionsPanel ? 'var(--bg-hover)' : 'var(--bg-tertiary)',
                                         color: 'var(--text-secondary)',
@@ -2546,7 +2616,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             ) : (
                                                 getRatioIcon(config.aspectRatio)
                                             )}
-                                            <span>{config.aspectRatio === AspectRatio.AUTO ? '自适应' : config.aspectRatio} · {config.imageSize}</span>
+                                            <span className="min-w-0 truncate">{config.aspectRatio === AspectRatio.AUTO ? '自适应' : config.aspectRatio} · {config.imageSize}</span>
                                         </>
                                     ) : (
                                         <>
@@ -2561,7 +2631,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             ) : (
                                                 getRatioIcon(config.aspectRatio)
                                             )}
-                                            <span>{config.aspectRatio === AspectRatio.AUTO ? '自适应' : config.aspectRatio} · {config.videoResolution || '720p'}</span>
+                                            <span className="min-w-0 truncate">{config.aspectRatio === AspectRatio.AUTO ? '自适应' : config.aspectRatio} · {config.videoResolution || '720p'}</span>
                                         </>
                                     )}
                                     <svg className={`w-3 h-3 transition-transform ${showOptionsPanel ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2571,7 +2641,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                                 {/* Options Panel - positioned relative to button */}
                                 {showOptionsPanel && (
-                                    <div className="absolute bottom-full mb-2 z-30" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                                    <div
+                                        className="absolute bottom-full mb-2 z-30"
+                                        style={isMobile ? { right: 0 } : { left: '50%', transform: 'translateX(-50%)' }}
+                                    >
                                         <div ref={optionsPanelRef}>
                                             {config.mode === GenerationMode.AUDIO ? (
                                                 /* 音频选项面板 - 时长选择 */
@@ -2828,7 +2901,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 }}
                             />
                         </div>
-                    </div>
+                    </PromptBarFooter>
                 </div>
 
                 <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={(e) => e.target.files && processFiles(e.target.files)} />

@@ -1,16 +1,17 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  Calculator,
   HardDrive,
   Key,
   LayoutDashboard,
-  Loader2,
   RefreshCw,
   ScrollText,
   Shield,
   Trash2,
   X,
 } from 'lucide-react';
+import { Suspense, lazy } from 'react';
 import keyManager from '../../services/auth/keyManager';
 import { getTodayCosts } from '../../services/billing/costService';
 import {
@@ -28,25 +29,27 @@ import {
   type StorageMode,
 } from '../../services/storage/storagePreference';
 import { cleanupOriginals, getAllImageIds, getStorageUsage } from '../../services/storage/imageStorage';
+import type { Supplier } from '../../services/billing/supplierService';
 import { useCanvas } from '../../context/CanvasContext';
 import { useBilling } from '../../context/BillingContext';
 import { notify } from '../../services/system/notificationService';
-import ApiSettingsView from './ApiSettingsView';
-import AdminSystem from './AdminSystem';
+const ApiSettingsView = lazy(() => import('./ApiSettingsView'));
+const AdminSystem = lazy(() => import('./AdminSystem'));
+const CostEstimation = lazy(() => import('../../pages/CostEstimation'));
 
-export type SettingsView = 'dashboard' | 'api-management' | 'storage-settings' | 'system-logs' | 'admin-system';
+export type SettingsView = 'dashboard' | 'api-management' | 'cost-estimation' | 'storage-settings' | 'system-logs' | 'admin-system';
 
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   initialView?: SettingsView;
-  onOpenSupplierManager?: () => void;
-  onOpenCostEstimation?: () => void;
+  initialSupplier?: Supplier | null;
 }
 
 const navItems: Array<{ id: SettingsView; label: string; icon: React.ComponentType<any> }> = [
   { id: 'dashboard', label: '仪表盘', icon: LayoutDashboard },
   { id: 'api-management', label: '接口管理', icon: Key },
+  { id: 'cost-estimation', label: '价格估算', icon: Calculator },
   { id: 'storage-settings', label: '存储设置', icon: HardDrive },
   { id: 'system-logs', label: '系统日志', icon: ScrollText },
   { id: 'admin-system', label: '管理员后台', icon: Shield },
@@ -122,7 +125,10 @@ const DashboardView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div>
+      <div
+        className="rounded-2xl border p-5"
+        style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}
+      >
         <h3 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
           仪表盘
         </h3>
@@ -311,7 +317,10 @@ const StorageSettingsView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div>
+      <div
+        className="rounded-2xl border p-5"
+        style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}
+      >
         <h3 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
           存储设置
         </h3>
@@ -405,7 +414,10 @@ const SystemLogsView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border p-5"
+        style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}
+      >
         <div>
           <h3 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
             系统日志
@@ -475,8 +487,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   isOpen,
   onClose,
   initialView = 'dashboard',
-  onOpenSupplierManager: _onOpenSupplierManager,
-  onOpenCostEstimation: _onOpenCostEstimation,
+  initialSupplier = null,
 }) => {
   const [activeView, setActiveView] = useState<SettingsView>(initialView);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
@@ -495,71 +506,135 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   if (!isOpen) return null;
 
+  const lazyFallback = (
+    <div className="flex min-h-[240px] items-center justify-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
+      正在加载设置内容...
+    </div>
+  );
+
   const renderBody = () => {
     if (activeView === 'dashboard') return <DashboardView />;
-    if (activeView === 'api-management') return <ApiSettingsView />;
+    if (activeView === 'api-management') {
+      return (
+        <Suspense fallback={lazyFallback}>
+          <ApiSettingsView initialSupplier={initialSupplier} />
+        </Suspense>
+      );
+    }
+    if (activeView === 'cost-estimation') {
+      return (
+        <Suspense fallback={lazyFallback}>
+          <CostEstimation embedded />
+        </Suspense>
+      );
+    }
     if (activeView === 'storage-settings') return <StorageSettingsView />;
     if (activeView === 'system-logs') return <SystemLogsView />;
-    return <AdminSystem />;
+    return (
+      <Suspense fallback={lazyFallback}>
+        <AdminSystem />
+      </Suspense>
+    );
   };
 
   return (
     <div 
-      className={`fixed inset-0 z-[10001] flex justify-center bg-black/55 backdrop-blur-sm ${isMobile ? 'items-end px-2 pb-0 pt-8' : 'items-center px-3 py-3'}`}
+      className={`settings-panel fixed inset-0 z-[10001] flex justify-center bg-black/38 backdrop-blur-md ${isMobile ? 'items-end px-2 pb-0 pt-8' : 'items-center px-3 py-3'}`}
       onClick={onClose}
     >
-      <div
-        className={`flex w-full overflow-hidden border shadow-2xl ${isMobile ? 'h-[88dvh] max-h-[88dvh] flex-col rounded-t-[26px] rounded-b-none ios-mobile-sheet' : 'h-[80vh] max-w-[1120px] flex-row rounded-2xl'}`}
-        style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-light)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <aside
-          className={`${isMobile ? 'border-b px-3 pt-2 pb-3 flex-shrink-0' : 'border-r p-3 w-[220px] flex-shrink-0 overflow-y-auto'}`}
-          style={{
-            borderColor: 'var(--border-light)',
-            backgroundColor: 'var(--bg-tertiary)',
-          }}
+      {isMobile ? (
+        <div
+          className="settings-panel apple-glass-card flex h-[88dvh] max-h-[88dvh] w-full flex-col overflow-hidden rounded-t-[26px] rounded-b-none ios-mobile-sheet shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className={`mb-2 flex items-center justify-between ${isMobile ? 'px-1 py-1.5' : 'px-2 py-1'}`}>
-            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-              系统设置
+          <aside
+            className="border-b px-3 pt-3 pb-3 flex-shrink-0"
+            style={{
+              borderColor: 'var(--border-light)',
+              backgroundColor: 'var(--bg-surface)',
+            }}
+          >
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const active = activeView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveView(item.id)}
+                    className={`apple-pill-button min-w-[92px] shrink-0 flex-col justify-center px-2 py-2.5 ${active ? 'active' : ''}`}
+                  >
+                    <Icon size={15} />
+                    <span className="text-[11px] leading-none">{item.label}</span>
+                  </button>
+                );
+              })}
             </div>
-            <button
-              onClick={onClose}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border"
-              style={{ borderColor: 'var(--border-light)', color: 'var(--text-secondary)' }}
+          </aside>
+
+          <section className="relative min-h-0 flex-1 overflow-hidden">
+            <div className="absolute top-3 right-3 z-10">
+              <button
+                onClick={onClose}
+                className="apple-icon-button h-8 w-8 rounded-xl"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <main className="h-full overflow-y-auto p-3 pt-14 pb-6">
+              {renderBody()}
+            </main>
+          </section>
+        </div>
+      ) : (
+        <div
+          className="flex h-[84vh] max-h-[920px] w-full max-w-[1480px] items-start gap-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <aside className="w-[232px] flex-shrink-0 self-start">
+            <div
+              className="settings-panel apple-glass-card flex max-h-[84vh] flex-col overflow-y-auto rounded-[28px] p-3 shadow-2xl"
+              style={{ backgroundColor: 'var(--bg-surface)' }}
             >
-              <X size={16} />
-            </button>
-          </div>
+              <div className="apple-pill-group flex flex-col items-stretch gap-1">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = activeView === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveView(item.id)}
+                      className={`apple-pill-button w-full justify-start px-4 py-3 text-left ${active ? 'active' : ''}`}
+                    >
+                      <Icon size={15} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </aside>
 
-          <div className={`${isMobile ? 'flex gap-2 overflow-x-auto pb-1 scrollbar-thin' : 'space-y-1'}`}>
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const active = activeView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveView(item.id)}
-                  className={`inline-flex items-center gap-2 rounded-xl text-sm ${isMobile ? 'min-w-[92px] shrink-0 flex-col justify-center px-2 py-2.5' : 'w-full justify-start px-3 py-2'}`}
-                  style={{
-                    backgroundColor: active ? 'rgba(99, 102, 241, 0.18)' : 'transparent',
-                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    border: active ? '1px solid rgba(99, 102, 241, 0.35)' : '1px solid transparent',
-                  }}
-                >
-                  <Icon size={15} />
-                  <span className={isMobile ? 'text-[11px] leading-none' : ''}>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+          <section
+            className="settings-panel apple-glass-card relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-[28px] shadow-2xl"
+            style={{ backgroundColor: 'var(--bg-surface)' }}
+          >
+            <div className="absolute top-4 right-4 z-10">
+              <button
+                onClick={onClose}
+                className="apple-icon-button h-9 w-9 rounded-xl"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
-        <main className={`min-h-0 flex-1 overflow-y-auto ${isMobile ? 'p-3 pb-6' : 'p-3 md:p-4'}`}>
-          {renderBody()}
-        </main>
-      </div>
+            <main className="h-full overflow-y-auto p-4 pt-16 md:p-5 md:pt-16">
+              {renderBody()}
+            </main>
+          </section>
+        </div>
+      )}
     </div>
   );
 };

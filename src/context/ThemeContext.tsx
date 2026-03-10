@@ -1,48 +1,120 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 
-type Theme = 'dark' | 'light' | 'system';
+export type Theme = 'dark' | 'light' | 'system';
+export type ResolvedTheme = 'dark' | 'light';
 
 interface ThemeContextType {
     theme: Theme;
+    resolvedTheme: ResolvedTheme;
+    isDarkMode: boolean;
+    isLightMode: boolean;
     toggleTheme: () => void;
     setTheme: (theme: Theme) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const getSystemTheme = (): ResolvedTheme => {
+    if (typeof window === 'undefined') return 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+};
+
+const getStoredTheme = (): Theme => {
+    if (typeof window === 'undefined') return 'dark';
+
+    const stored = localStorage.getItem('theme') || localStorage.getItem('kk_theme');
+    if (stored === 'dark' || stored === 'light' || stored === 'system') return stored;
+    return 'dark';
+};
+
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [theme, setThemeState] = useState<Theme>(() => {
-        const stored = localStorage.getItem('theme') || localStorage.getItem('kk_theme');
-        if (stored === 'dark' || stored === 'light' || stored === 'system') return stored;
-        return 'dark'; // 默认暗色主题
+    const [theme, setThemeState] = useState<Theme>(getStoredTheme);
+    const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => {
+        const initialTheme = getStoredTheme();
+        return initialTheme === 'system' ? getSystemTheme() : initialTheme;
     });
+    const hasMountedRef = useRef(false);
+    const transitionTimeoutRef = useRef<number | null>(null);
 
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+
         const body = document.body;
         const root = document.documentElement;
         const media = window.matchMedia('(prefers-color-scheme: dark)');
 
-        const applyMode = (mode: 'dark' | 'light') => {
+        const clearThemeTransition = () => {
+            body.classList.remove('theme-transitioning');
+            root.classList.remove('theme-transitioning');
+
+            if (transitionTimeoutRef.current !== null) {
+                window.clearTimeout(transitionTimeoutRef.current);
+                transitionTimeoutRef.current = null;
+            }
+        };
+
+        const startThemeTransition = () => {
+            if (!hasMountedRef.current) return;
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+            clearThemeTransition();
+            body.classList.add('theme-transitioning');
+            root.classList.add('theme-transitioning');
+            transitionTimeoutRef.current = window.setTimeout(clearThemeTransition, 320);
+        };
+
+        const applyMode = (mode: ResolvedTheme) => {
+            startThemeTransition();
+            setResolvedTheme((currentMode) => (currentMode === mode ? currentMode : mode));
             body.classList.toggle('dark-mode', mode === 'dark');
             root.classList.toggle('dark', mode === 'dark');
+            body.dataset.theme = mode;
+            root.dataset.theme = mode;
             root.style.colorScheme = mode;
         };
 
         if (theme === 'system') {
-            applyMode(media.matches ? 'dark' : 'light');
+            applyMode(getSystemTheme());
             localStorage.removeItem('theme');
             localStorage.removeItem('kk_theme');
-            const handleChange = (e: MediaQueryListEvent) => applyMode(e.matches ? 'dark' : 'light');
+
+            const handleChange = () => {
+                applyMode(getSystemTheme());
+            };
+
             media.addEventListener('change', handleChange);
-            return () => media.removeEventListener('change', handleChange);
+            hasMountedRef.current = true;
+
+            return () => {
+                media.removeEventListener('change', handleChange);
+                clearThemeTransition();
+            };
         }
 
         applyMode(theme);
         localStorage.setItem('theme', theme);
+        localStorage.setItem('kk_theme', theme);
+        hasMountedRef.current = true;
+
+        return () => {
+            clearThemeTransition();
+        };
     }, [theme]);
 
+    useEffect(() => {
+        return () => {
+            if (transitionTimeoutRef.current !== null) {
+                window.clearTimeout(transitionTimeoutRef.current);
+            }
+        };
+    }, []);
+
     const toggleTheme = () => {
-        setThemeState(prev => prev === 'dark' ? 'light' : 'dark');
+        setThemeState((previousTheme) => {
+            if (previousTheme === 'dark') return 'light';
+            if (previousTheme === 'light') return 'dark';
+            return resolvedTheme === 'dark' ? 'light' : 'dark';
+        });
     };
 
     const setTheme = (newTheme: Theme) => {
@@ -50,7 +122,16 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     return (
-        <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+        <ThemeContext.Provider
+            value={{
+                theme,
+                resolvedTheme,
+                isDarkMode: resolvedTheme === 'dark',
+                isLightMode: resolvedTheme === 'light',
+                toggleTheme,
+                setTheme,
+            }}
+        >
             {children}
         </ThemeContext.Provider>
     );

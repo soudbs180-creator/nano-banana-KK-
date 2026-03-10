@@ -4,9 +4,52 @@ export interface PromptLibraryItem {
     category: 'banana-pro' | 'banana' | 'general';
     source?: string;
     prompt: string;
+    useMode?: 'insert' | 'optimize' | 'both';
+    optimizerPrompt?: string;
+    shortHint?: string;
 }
 
 export const BUILTIN_PROMPT_LIBRARY: PromptLibraryItem[] = [
+    {
+        id: 'opt_auto_commercial',
+        title: '优化：商业质感',
+        category: 'general',
+        source: 'KK Optimizer',
+        prompt: '将用户原始需求重写为适合商业海报与品牌视觉的高质量图像提示词。',
+        useMode: 'optimize',
+        optimizerPrompt: 'Prioritize commercial appeal, premium art direction, polished campaign aesthetics, clean composition, and client-ready visual language while staying faithful to the user intent.',
+        shortHint: '更适合海报、KV、电商主视觉'
+    },
+    {
+        id: 'opt_auto_photoreal',
+        title: '优化：写实摄影',
+        category: 'general',
+        source: 'KK Optimizer',
+        prompt: '将提示词优化成更强真实感、摄影感、镜头感的方向。',
+        useMode: 'optimize',
+        optimizerPrompt: 'Optimize toward photorealism, realistic materials, natural lighting, believable lens language, cinematic camera details, and authentic spatial depth. Avoid over-stylization unless explicitly requested.',
+        shortHint: '更真实、更像摄影作品'
+    },
+    {
+        id: 'opt_auto_style_consistency',
+        title: '优化：风格统一',
+        category: 'general',
+        source: 'KK Optimizer',
+        prompt: '适合系列图、多图并行、需要统一风格的场景。',
+        useMode: 'optimize',
+        optimizerPrompt: 'Emphasize style consistency, repeatable visual language, stable palette, unified composition logic, and coherent subject description so multiple outputs stay in the same family.',
+        shortHint: '适合批量图、系列图'
+    },
+    {
+        id: 'opt_auto_reference_first',
+        title: '优化：参考图优先',
+        category: 'general',
+        source: 'KK Optimizer',
+        prompt: '优先吸收参考图中的主体、风格、配色和构图信息。',
+        useMode: 'optimize',
+        optimizerPrompt: 'When reference images are present, prioritize subject identity, color palette, composition, material cues, and style consistency from the references while still respecting the user prompt.',
+        shortHint: '更适合带参考图生成'
+    },
     {
         id: 'nbp_flyer_ukiyoe_v2',
         title: '浮世绘闪卡 (Pro)',

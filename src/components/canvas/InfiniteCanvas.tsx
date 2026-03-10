@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import UpdateNotification from '../common/UpdateNotification';
+import { APP_DISPLAY_VERSION } from '../../config/appInfo';
 
 export interface InfiniteCanvasHandle {
     zoomIn: () => void;
@@ -17,6 +18,7 @@ interface InfiniteCanvasProps {
     children: React.ReactNode;
     showGrid?: boolean;
     onTransformChange?: (transform: { x: number; y: number; scale: number }) => void;
+    onInteractionChange?: (state: { isDragging: boolean; isZooming: boolean }) => void;
     onCanvasClick?: () => void; // Called when clicking empty canvas area
     onCanvasDoubleClick?: () => void; // [NEW] Called when double clicking empty canvas area
     onAutoArrange?: () => void; // Called when arrange button is clicked
@@ -36,6 +38,18 @@ interface Transform {
     scale: number;
 }
 
+const isValidTransform = (value: any): value is Transform => {
+    if (!value || typeof value !== 'object') return false;
+    const { x, y, scale } = value;
+    return Number.isFinite(x)
+        && Number.isFinite(y)
+        && Number.isFinite(scale)
+        && Math.abs(x) <= 200000
+        && Math.abs(y) <= 200000
+        && scale >= 0.1
+        && scale <= 3;
+};
+
 const snapTransformForText = (t: Transform): Transform => {
     // Keep translate on whole CSS pixels to avoid corner clipping artifacts
     // on rounded cards when canvas is heavily zoomed/panned.
@@ -47,7 +61,11 @@ const snapTransformForText = (t: Transform): Transform => {
     };
 };
 
-const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onCanvasClick, onCanvasDoubleClick, onAutoArrange, onResetView, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, onImageDrop, id }, ref) => {
+const buildViewportTransform = (nextTransform: Transform, _preferGpu: boolean = false): string => {
+    return `translate(${nextTransform.x}px, ${nextTransform.y}px) scale(${nextTransform.scale})`;
+};
+
+const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ children, showGrid = true, onTransformChange, onInteractionChange, onCanvasClick, onCanvasDoubleClick, onAutoArrange, onResetView, cardPositions, onMouseDown, onMouseMove, onMouseUp, onContextMenu, onImageDrop, id }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewportRef = useRef<HTMLDivElement>(null); // 🚀 [性能优化] 直接操作DOM
     const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
@@ -56,12 +74,14 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     const lastTransform = useRef({ x: 0, y: 0 });
 
     const isDraggingRef = useRef(false);
+    const [isZooming, setIsZooming] = useState(false);
 
     // 🚀 实时坐标追踪 Ref (解决 React 状态异步延迟，确保 getCurrentTransform 永远返回物理最新值)
     const syncTransformRef = useRef<Transform>({ x: 0, y: 0, scale: 1 });
 
     // 🚀 性能优化：缩放防抖
     const zoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const zoomIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const [isImageDragOver, setIsImageDragOver] = useState(false); // 图片拖拽悬停状态
     const dragCounter = useRef(0); // 防止拖拽事件抖动
@@ -76,15 +96,18 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             const savedView = localStorage.getItem('kk_canvas_view');
             if (savedView) {
                 const parsed = JSON.parse(savedView);
-                if (parsed.x !== undefined && parsed.y !== undefined && parsed.scale !== undefined) {
+                if (isValidTransform(parsed)) {
                     setTransform(parsed);
                     syncTransformRef.current = parsed;
                     onTransformChange?.(parsed);
                     return;
                 }
+
+                localStorage.removeItem('kk_canvas_view');
             }
         } catch (e) {
             console.error("Failed to load canvas view", e);
+            localStorage.removeItem('kk_canvas_view');
         }
 
         // Fallback to center
@@ -107,6 +130,10 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         return () => clearTimeout(timer);
     }, [transform]);
 
+    useEffect(() => {
+        onInteractionChange?.({ isDragging, isZooming });
+    }, [isDragging, isZooming, onInteractionChange]);
+
     // Handle mouse wheel zoom
     // 🚀 优化：缩放时使用临时transform + 防抖 + 缓动曲线
     const handleWheel = useCallback((e: WheelEvent) => {
@@ -115,6 +142,13 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             return;
         }
         e.preventDefault();
+        setIsZooming(true);
+        if (zoomIndicatorTimeoutRef.current) {
+            clearTimeout(zoomIndicatorTimeoutRef.current);
+        }
+        zoomIndicatorTimeoutRef.current = setTimeout(() => {
+            setIsZooming(false);
+        }, 260);
 
         const container = containerRef.current;
         if (!container) return;
@@ -151,7 +185,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
         // 🚀 立即更新 Ref 和 DOM
         syncTransformRef.current = newTransform;
         if (viewportRef.current) {
-            viewportRef.current.style.transform = `translate(${newTransform.x}px, ${newTransform.y}px) scale(${newTransform.scale})`;
+            viewportRef.current.style.transform = buildViewportTransform(newTransform, true);
         }
 
         // 🚀 防抖：50ms后再提交最终transform到React状态树
@@ -262,7 +296,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
         // 🚀 直接操作DOM，不触发React重绘!
         if (viewportRef.current) {
-            viewportRef.current.style.transform = `translate(${newTransform.x}px, ${newTransform.y}px) scale(${newTransform.scale})`;
+            viewportRef.current.style.transform = buildViewportTransform(newTransform, true);
         }
     }, [transform.scale]);
 
@@ -454,6 +488,13 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
     const handleTouchMove = useCallback((e: TouchEvent) => {
         if (!isDraggingRef.current) return;
         if (e.touches.length === 1) {
+            setIsZooming(true);
+            if (zoomIndicatorTimeoutRef.current) {
+                clearTimeout(zoomIndicatorTimeoutRef.current);
+            }
+            zoomIndicatorTimeoutRef.current = setTimeout(() => {
+                setIsZooming(false);
+            }, 260);
             if (e.cancelable) e.preventDefault();
             const touch = e.touches[0];
             const dx = touch.clientX - dragStart.current.x;
@@ -470,13 +511,18 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
             // 🚀 直接操作 DOM 实现零延迟滑动
             if (viewportRef.current) {
-                viewportRef.current.style.transform = `translate(${newTransform.x}px, ${newTransform.y}px) scale(${newTransform.scale})`;
+                viewportRef.current.style.transform = buildViewportTransform(newTransform, true);
             }
         }
     }, [transform.scale]);
 
     // 🚀 [移动端优化] touchEnd 时才提交 React state 同步最终位置
     const handleTouchEnd = useCallback(() => {
+        if (zoomIndicatorTimeoutRef.current) {
+            clearTimeout(zoomIndicatorTimeoutRef.current);
+            zoomIndicatorTimeoutRef.current = null;
+        }
+        setIsZooming(false);
         if (isDraggingRef.current) {
             const finalTransform = syncTransformRef.current;
             if (finalTransform.x !== lastTransform.current.x || finalTransform.y !== lastTransform.current.y) {
@@ -513,6 +559,10 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
             window.removeEventListener('keydown', handleKeyDown);
+            if (zoomIndicatorTimeoutRef.current) {
+                clearTimeout(zoomIndicatorTimeoutRef.current);
+                zoomIndicatorTimeoutRef.current = null;
+            }
         };
     }, [handleWheel, handleMouseMove, handleMouseUp, handleKeyDown]);
 
@@ -521,7 +571,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
             {/* Canvas Container */}
             <div
                 ref={containerRef}
-                className={`canvas-container outline-none focus:outline-none gpu-accelerated ${isDragging ? 'is-dragging' : ''} ${isImageDragOver ? 'ring-4 ring-indigo-500' : ''}`}
+                className={`canvas-container outline-none focus:outline-none gpu-accelerated ${isDragging ? 'is-dragging' : ''} ${isZooming ? 'is-zooming' : ''} ${isImageDragOver ? 'ring-4 ring-indigo-500' : ''}`}
                 tabIndex={-1}
                 onMouseDown={handleMouseDown}
                 onMouseMove={onMouseMove}
@@ -557,8 +607,11 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
                     style={{
                         // 🚀 [Fix] 使用 2D translate 代替 translate3d，并移除 backfaceVisibility
                         // 这能防止浏览器将画布强制视为位图纹理，从而在缩放后重新渲染高清晰度的文本和矢量图标
-                        transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                        transform: buildViewportTransform(transform, isDragging || isZooming),
                         transformOrigin: '0 0', // Explicitly set origin
+                        willChange: isDragging || isZooming ? 'transform' : 'auto',
+                        // 避免 paint contain 造成卡片被裁剪，同时保留一定布局隔离能力
+                        contain: 'layout style',
                     }}
                 >
                     {children}
@@ -615,7 +668,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasProps>(({ 
 
                 {/* Version Badge */}
                 <div className="glass h-10 px-3 rounded-xl flex items-center">
-                    <span className="text-xs text-gray-400 dark:text-zinc-500 font-semibold">v1.3.5</span>
+                    <span className="text-xs text-gray-400 dark:text-zinc-500 font-semibold">{APP_DISPLAY_VERSION}</span>
                 </div>
 
                 {/* Update Notification */}

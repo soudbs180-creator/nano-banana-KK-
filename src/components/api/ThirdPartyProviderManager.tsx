@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Third-Party Provider Manager (Enhanced with Management API)
  * 
  * 支持完整的 NewAPI / OneAPI 管理接口功能：
@@ -17,7 +17,7 @@ import {
     Copy, ExternalLink, Lock, Wallet, TrendingUp,
     BarChart3, Search, Database, CreditCard,
     Activity, Zap, Layers, Key, Tag,
-    Info, AlertTriangle, X
+    Info, AlertTriangle, X, Cpu, Coins
 } from 'lucide-react';
 import { fetchProviderPricing, fetchProviderModels, ModelPricingInfo } from '../../services/billing/newApiPricingService';
 import { 
@@ -550,13 +550,16 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
         const data = provider.managementData;
         if (!data) {
             return (
-                <div className="text-center py-8 text-gray-500 dark:text-zinc-500">
-                    <Database size={48} className="mx-auto mb-3 opacity-30" />
-                    <p>暂无管理数据</p>
+                <div className="flex flex-col items-center justify-center py-12 text-white/40">
+                    <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
+                        <Database size={32} className="text-white/20" />
+                    </div>
+                    <p className="text-white/60 font-medium mb-1">暂无管理数据</p>
+                    <p className="text-sm text-white/40 mb-4">点击下方按钮获取最新数据</p>
                     <button
                         onClick={() => refreshManagementData(provider)}
                         disabled={isLoading}
-                        className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                        className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50"
                     >
                         {isLoading ? '获取中...' : '获取数据'}
                     </button>
@@ -565,45 +568,53 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
         }
 
         return (
-            <div className="space-y-4">
-                {/* 统计卡片 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-3">
-                        <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 mb-1">
-                            <Server size={16} />
+            <div className="space-y-5">
+                {/* 统计卡片 - 高端玻璃拟态 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-gradient-to-br from-indigo-500/10 to-indigo-500/5 border border-indigo-500/20 rounded-xl p-4 hover:border-indigo-500/40 transition-colors group">
+                        <div className="flex items-center gap-2 text-indigo-400 mb-2">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+                                <Server size={16} />
+                            </div>
                             <span className="text-xs font-medium">渠道</span>
                         </div>
-                        <div className="text-xl font-bold text-gray-900 dark:text-white">
+                        <div className="text-2xl font-bold text-white group-hover:scale-105 transition-transform origin-left">
                             {data.channels?.length || 0}
                         </div>
                     </div>
                     
-                    <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-3">
-                        <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-1">
-                            <Layers size={16} />
+                    <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 hover:border-emerald-500/40 transition-colors group">
+                        <div className="flex items-center gap-2 text-emerald-400 mb-2">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                                <Layers size={16} />
+                            </div>
                             <span className="text-xs font-medium">分组</span>
                         </div>
-                        <div className="text-xl font-bold text-gray-900 dark:text-white">
+                        <div className="text-2xl font-bold text-white group-hover:scale-105 transition-transform origin-left">
                             {data.groups?.length || 0}
                         </div>
                     </div>
                     
-                    <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-3">
-                        <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-1">
-                            <Key size={16} />
+                    <div className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-4 hover:border-amber-500/40 transition-colors group">
+                        <div className="flex items-center gap-2 text-amber-400 mb-2">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                                <Key size={16} />
+                            </div>
                             <span className="text-xs font-medium">令牌</span>
                         </div>
-                        <div className="text-xl font-bold text-gray-900 dark:text-white">
+                        <div className="text-2xl font-bold text-white group-hover:scale-105 transition-transform origin-left">
                             {data.tokens?.length || 0}
                         </div>
                     </div>
                     
-                    <div className="bg-purple-500/5 border border-purple-500/10 rounded-lg p-3">
-                        <div className="flex items-center gap-2 text-purple-600 dark:text-purple-400 mb-1">
-                            <Zap size={16} />
+                    <div className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border border-purple-500/20 rounded-xl p-4 hover:border-purple-500/40 transition-colors group">
+                        <div className="flex items-center gap-2 text-purple-400 mb-2">
+                            <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                                <Zap size={16} />
+                            </div>
                             <span className="text-xs font-medium">模型</span>
                         </div>
-                        <div className="text-xl font-bold text-gray-900 dark:text-white">
+                        <div className="text-2xl font-bold text-white group-hover:scale-105 transition-transform origin-left">
                             {data.modelMetadata?.length || 0}
                         </div>
                     </div>
@@ -611,12 +622,15 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
 
                 {/* 最后更新时间 */}
                 {data.lastUpdated && (
-                    <div className="flex items-center justify-between text-xs text-gray-500 dark:text-zinc-500 bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-2">
-                        <span>最后更新: {new Date(data.lastUpdated).toLocaleString()}</span>
+                    <div className="flex items-center justify-between text-xs text-white/50 bg-white/[0.03] border border-white/5 rounded-xl p-3">
+                        <span className="flex items-center gap-2">
+                            <Activity size={12} className="text-emerald-400" />
+                            最后更新: {new Date(data.lastUpdated).toLocaleString()}
+                        </span>
                         <button
                             onClick={() => refreshManagementData(provider)}
                             disabled={isLoading}
-                            className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 transition-colors text-xs font-medium"
                         >
                             <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
                             刷新
@@ -624,28 +638,32 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                     </div>
                 )}
 
-                {/* 快捷操作 */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* 快捷操作 - 高端卡片 */}
+                <div className="grid grid-cols-2 gap-4">
                     <button
                         onClick={() => updateChannelsBalance(provider)}
                         disabled={isLoading}
-                        className="flex items-center gap-2 p-3 rounded-lg border border-[var(--border-light)] hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-all text-left"
+                        className="group flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all text-left"
                     >
-                        <Wallet size={18} className="text-indigo-600 dark:text-indigo-400" />
+                        <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <Wallet size={20} className="text-indigo-400" />
+                        </div>
                         <div>
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">更新渠道余额</div>
-                            <div className="text-xs text-gray-500 dark:text-zinc-500">获取最新余额信息</div>
+                            <div className="text-sm font-semibold text-white group-hover:text-indigo-300 transition-colors">更新渠道余额</div>
+                            <div className="text-xs text-white/40">获取最新余额信息</div>
                         </div>
                     </button>
 
                     <button
                         onClick={() => setManagementTab('pricing')}
-                        className="flex items-center gap-2 p-3 rounded-lg border border-[var(--border-light)] hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-all text-left"
+                        className="group flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-all text-left"
                     >
-                        <DollarSign size={18} className="text-emerald-600 dark:text-emerald-400" />
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <DollarSign size={20} className="text-emerald-400" />
+                        </div>
                         <div>
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">查看定价信息</div>
-                            <div className="text-xs text-gray-500 dark:text-zinc-500">模型价格与倍率</div>
+                            <div className="text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors">查看定价信息</div>
+                            <div className="text-xs text-white/40">模型价格与倍率</div>
                         </div>
                     </button>
                 </div>
@@ -998,33 +1016,41 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
 
     return (
         <div className="space-y-4">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">
-                    第三方服务商
-                    {providers.length > 0 && (
-                        <span className="ml-2 text-sm font-normal text-gray-500 dark:text-zinc-500">
-                            ({providers.length} 个)
-                        </span>
-                    )}
-                </h3>
+            {/* Header - 高端玻璃拟态设计 */}
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20 flex items-center justify-center">
+                        <Server className="w-5 h-5 text-indigo-400" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-semibold text-white">
+                            第三方服务商
+                            {providers.length > 0 && (
+                                <span className="ml-2 text-sm font-normal text-white/50">
+                                    ({providers.length} 个)
+                                </span>
+                            )}
+                        </h3>
+                        <p className="text-xs text-white/40">管理和配置 API 服务商</p>
+                    </div>
+                </div>
                 <div className="flex items-center gap-2">
                     {providers.filter(p => p.managementConfig?.enabled).length > 0 && (
                         <button
                             onClick={refreshAllProviders}
                             disabled={isLoading}
-                            className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                            className="group flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white/80 transition-all duration-200 disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
                             title="刷新所有管理数据"
                         >
-                            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                            <RefreshCw size={16} className={`transition-transform ${isLoading ? 'animate-spin' : 'group-hover:rotate-180'}`} />
                             刷新全部
                         </button>
                     )}
                     <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors"
+                        className="group flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white rounded-xl text-sm font-medium transition-all duration-200 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98]"
                     >
-                        <Plus size={16} />
+                        <Plus size={16} className="transition-transform group-hover:rotate-90" />
                         添加服务商
                     </button>
                     {providers.length > 0 && (
@@ -1041,18 +1067,18 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                     URL.revokeObjectURL(url);
                                     notify.success('导出成功', `已导出 ${providers.length} 个厂商配置`);
                                 }}
-                                className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-300 rounded-lg text-sm font-medium transition-colors"
+                                className="group flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white/80 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                                 title="导出配置"
                             >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-hover:-translate-y-0.5">
                                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                     <polyline points="7 10 12 15 17 10"/>
                                     <line x1="12" y1="15" x2="12" y2="3"/>
                                 </svg>
                                 导出
                             </button>
-                            <label className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-300 rounded-lg text-sm font-medium transition-colors cursor-pointer" title="导入配置">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <label className="group flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white/80 transition-all duration-200 cursor-pointer hover:scale-[1.02] active:scale-[0.98]" title="导入配置">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-hover:translate-y-0.5">
                                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                     <polyline points="17 8 12 3 7 8"/>
                                     <line x1="12" y1="3" x2="12" y2="15"/>
@@ -1101,27 +1127,34 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                 </div>
             </div>
 
-            {/* Preset Providers Quick Add */}
-            <div className="bg-[var(--bg-secondary)] rounded-xl p-4 border border-[var(--border-light)]">
-                <h4 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">
-                    预设服务商
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                    {PRESET_PROVIDERS.map(preset => (
+            {/* Preset Providers Quick Add - 高端卡片设计 */}
+            <div className="bg-gradient-to-br from-white/[0.08] to-white/[0.02] backdrop-blur-xl rounded-2xl p-5 border border-white/10 shadow-xl">
+                <div className="flex items-center gap-2 mb-4">
+                    <Sparkles className="w-4 h-4 text-indigo-400" />
+                    <h4 className="text-sm font-medium text-white/90">
+                        预设服务商
+                    </h4>
+                    <span className="text-xs text-white/40 ml-1">快速添加常用服务商</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                    {PRESET_PROVIDERS.map((preset, idx) => (
                         <button
                             key={preset.id}
                             onClick={() => {
                                 selectPreset(preset.id);
                                 setIsAddModalOpen(true);
                             }}
-                            className="flex flex-col items-center gap-2 p-3 rounded-lg border border-[var(--border-light)] hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-all text-center"
+                            className="group relative flex flex-col items-center gap-2 p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-indigo-500/30 transition-all duration-300 text-center hover:-translate-y-0.5"
+                            style={{ animationDelay: `${idx * 50}ms` }}
                         >
-                            {preset.icon.startsWith('http') ? (
-                                <img src={preset.icon} alt={preset.name} className="w-6 h-6" />
-                            ) : (
-                                <span className="text-xl">{preset.icon}</span>
-                            )}
-                            <span className="text-xs font-medium text-gray-700 dark:text-zinc-300">
+                            <div className="relative">
+                                {preset.icon.startsWith('http') ? (
+                                    <img src={preset.icon} alt={preset.name} className="w-7 h-7 object-contain" />
+                                ) : (
+                                    <span className="text-2xl group-hover:scale-110 transition-transform duration-300">{preset.icon}</span>
+                                )}
+                            </div>
+                            <span className="text-xs font-medium text-white/80 group-hover:text-white transition-colors">
                                 {preset.name}
                             </span>
                         </button>
@@ -1129,126 +1162,146 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                 </div>
             </div>
 
-            {/* Provider List */}
-            <div className="space-y-2">
+            {/* Provider List - 高端列表设计 */}
+            <div className="space-y-3">
                 {providers.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500 dark:text-zinc-500">
-                        <Server size={48} className="mx-auto mb-3 opacity-30" />
-                        <p>暂无第三方服务商</p>
-                        <p className="text-sm mt-1">点击上方按钮添加</p>
+                    <div className="text-center py-12 bg-gradient-to-br from-white/[0.05] to-transparent backdrop-blur-sm rounded-2xl border border-white/5">
+                        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white/5 flex items-center justify-center">
+                            <Server size={32} className="text-white/20" />
+                        </div>
+                        <p className="text-white/60 font-medium mb-1">暂无第三方服务商</p>
+                        <p className="text-sm text-white/40 mb-4">点击上方按钮添加您的第一个服务商</p>
                         <button
                             onClick={() => {
                                 loadProviders();
                                 notify.info('已刷新', '尝试重新加载本地存储的厂商数据');
                             }}
-                            className="mt-3 text-xs text-indigo-500 hover:text-indigo-600 underline"
+                            className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
                         >
                             重新加载数据
                         </button>
                     </div>
                 ) : (
-                    providers.map(provider => (
+                    providers.map((provider, idx) => (
                         <div
                             key={provider.id}
-                            className={`bg-[var(--bg-secondary)] rounded-xl border transition-all ${
+                            className={`group bg-gradient-to-br from-white/[0.08] to-white/[0.02] backdrop-blur-xl rounded-2xl border transition-all duration-300 overflow-hidden ${
                                 provider.enabled 
-                                    ? 'border-[var(--border-light)]' 
-                                    : 'border-gray-200 dark:border-zinc-700 opacity-60'
+                                    ? 'border-white/10 hover:border-white/20 hover:shadow-lg hover:shadow-indigo-500/10' 
+                                    : 'border-white/5 opacity-60 hover:opacity-80'
                             }`}
+                            style={{ animationDelay: `${idx * 50}ms` }}
                         >
                             {/* Provider Header */}
                             <div 
-                                className="flex items-center justify-between p-4 cursor-pointer"
+                                className="flex items-center justify-between p-5 cursor-pointer"
                                 onClick={() => setExpandedId(expandedId === provider.id ? null : provider.id)}
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-2 h-2 rounded-full ${provider.enabled ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-3 h-3 rounded-full transition-all duration-300 ${provider.enabled ? 'bg-emerald-400 shadow-lg shadow-emerald-500/30' : 'bg-white/20'}`} />
                                     <div>
-                                        <h4 className="font-medium text-gray-900 dark:text-zinc-100">
-                                            {provider.name}
-                                        </h4>
-                                        <p className="text-xs text-gray-500 dark:text-zinc-500 font-mono">
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="font-semibold text-white group-hover:text-indigo-300 transition-colors">
+                                                {provider.name}
+                                            </h4>
+                                            {/* 管理 API 徽章 */}
+                                            {provider.managementConfig?.enabled && (
+                                                <span className="px-2.5 py-0.5 bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-xs rounded-full font-medium flex items-center gap-1">
+                                                    <Settings size={10} />
+                                                    管理API
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-white/40 font-mono mt-0.5 truncate max-w-[300px]">
                                             {provider.baseUrl}
                                         </p>
                                     </div>
-                                    
-                                    {/* 管理 API 徽章 */}
-                                    {provider.managementConfig?.enabled && (
-                                        <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs rounded">
-                                            管理API
-                                        </span>
-                                    )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500 dark:text-zinc-500">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xs px-3 py-1 rounded-full bg-white/5 text-white/60 border border-white/5">
                                         {provider.models.length} 个模型
                                     </span>
-                                    {expandedId === provider.id ? (
-                                        <ChevronUp size={18} className="text-gray-400" />
-                                    ) : (
-                                        <ChevronDown size={18} className="text-gray-400" />
-                                    )}
+                                    <div className={`w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center transition-all duration-300 ${expandedId === provider.id ? 'rotate-180 bg-indigo-500/20' : ''}`}>
+                                        <ChevronDown size={18} className="text-white/50" />
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Expanded Content */}
+                            {/* Expanded Content - 高端展开内容 */}
                             {expandedId === provider.id && (
-                                <div className="px-4 pb-4 border-t border-[var(--border-light)]">
+                                <div className="px-5 pb-5 border-t border-white/5">
                                     {/* Actions */}
-                                    <div className="flex items-center gap-2 py-3">
+                                    <div className="flex items-center gap-2 py-4">
                                         <button
-                                            onClick={() => handleToggleProvider(provider.id)}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleToggleProvider(provider.id);
+                                            }}
+                                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
                                                 provider.enabled
-                                                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                                                    : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-400'
+                                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+                                                    : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10'
                                             }`}
                                         >
-                                            {provider.enabled ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
+                                            {provider.enabled ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
                                             {provider.enabled ? '已启用' : '已禁用'}
                                         </button>
                                         
                                         {provider.managementConfig?.enabled && (
                                             <button
-                                                onClick={() => openManagementModal(provider)}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition-colors"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openManagementModal(provider);
+                                                }}
+                                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/25 transition-all duration-200"
                                             >
-                                                <Settings size={12} />
+                                                <Settings size={14} />
                                                 管理
                                             </button>
                                         )}
                                         
                                         <button
-                                            onClick={() => handleDeleteProvider(provider.id)}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteProvider(provider.id);
+                                            }}
+                                            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-all duration-200"
                                         >
-                                            <Trash2 size={12} />
+                                            <Trash2 size={14} />
                                             删除
                                         </button>
                                     </div>
 
                                     {/* Models List */}
                                     {provider.models.length > 0 && (
-                                        <div className="space-y-2 mt-2">
-                                            <h5 className="text-xs font-medium text-gray-600 dark:text-zinc-400">
-                                                模型列表
-                                            </h5>
+                                        <div className="space-y-3 mt-3">
+                                            <div className="flex items-center gap-2">
+                                                <Layers className="w-3.5 h-3.5 text-white/40" />
+                                                <h5 className="text-xs font-medium text-white/60">
+                                                    模型列表
+                                                </h5>
+                                            </div>
                                             <div className="grid gap-2">
                                                 {provider.models.map(model => (
                                                     <div
                                                         key={model.id}
-                                                        className="flex items-center justify-between p-2 rounded-lg bg-[var(--bg-tertiary)] text-sm"
+                                                        className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5 text-sm hover:bg-white/[0.05] transition-colors"
                                                     >
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-medium text-gray-800 dark:text-zinc-200">
-                                                                {model.name}
-                                                            </span>
-                                                            <span className="text-xs text-gray-500 dark:text-zinc-500 font-mono">
-                                                                {model.id}
-                                                            </span>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                                                                <Cpu size={14} className="text-indigo-400" />
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-medium text-white/90 block">
+                                                                    {model.name}
+                                                                </span>
+                                                                <span className="text-xs text-white/40 font-mono">
+                                                                    {model.id}
+                                                                </span>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500">
-                                                            <DollarSign size={12} />
+                                                        <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                            <Coins size={12} />
                                                             {model.creditCost} 积分
                                                             {model.isPerToken ? '/1M tokens' : '/次'}
                                                         </div>
@@ -1264,28 +1317,33 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                 )}
             </div>
 
-            {/* Add Modal */}
+            {/* Add Modal - 高端模态框 */}
             {isAddModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10003] p-4">
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10003] p-4">
+                    <div className="bg-gradient-to-br from-[#1a1f2e] to-[#0f1419] border border-white/10 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/50">
                         <div className="p-6">
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                                添加第三方服务商
-                            </h3>
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20 flex items-center justify-center">
+                                    <Plus className="w-5 h-5 text-indigo-400" />
+                                </div>
+                                <h3 className="text-lg font-bold text-white">
+                                    添加第三方服务商
+                                </h3>
+                            </div>
 
                             {/* Preset Selection */}
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
+                            <div className="mb-5">
+                                <label className="block text-sm font-medium text-white/80 mb-2">
                                     选择预设（可选）
                                 </label>
                                 <select
                                     value={selectedPreset}
                                     onChange={(e) => selectPreset(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm"
+                                    className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-white text-sm focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                                 >
-                                    <option value="">自定义服务商</option>
+                                    <option value="" className="bg-[#1a1f2e]">自定义服务商</option>
                                     {PRESET_PROVIDERS.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                        <option key={p.id} value={p.id} className="bg-[#1a1f2e]">{p.name}</option>
                                     ))}
                                 </select>
                             </div>
@@ -1293,68 +1351,69 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                             {/* Form Fields */}
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-                                        服务商名称 *
+                                    <label className="block text-sm font-medium text-white/80 mb-2">
+                                        服务商名称 <span className="text-indigo-400">*</span>
                                     </label>
                                     <input
                                         type="text"
                                         value={formName}
                                         onChange={(e) => setFormName(e.target.value)}
                                         placeholder="例如：我的 OpenAI 代理"
-                                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm"
+                                        className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-white text-sm placeholder:text-white/30 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-                                        API 地址 *
+                                    <label className="block text-sm font-medium text-white/80 mb-2">
+                                        API 地址 <span className="text-indigo-400">*</span>
                                     </label>
                                     <input
                                         type="text"
                                         value={formBaseUrl}
                                         onChange={(e) => setFormBaseUrl(e.target.value)}
                                         placeholder="https://api.example.com"
-                                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm"
+                                        className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-white text-sm placeholder:text-white/30 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-mono"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-                                        API 密钥 *
+                                    <label className="block text-sm font-medium text-white/80 mb-2">
+                                        API 密钥 <span className="text-indigo-400">*</span>
                                     </label>
                                     <input
                                         type="password"
                                         value={formApiKey}
                                         onChange={(e) => setFormApiKey(e.target.value)}
                                         placeholder="sk-..."
-                                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm font-mono"
+                                        className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-white text-sm placeholder:text-white/30 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-mono"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+                                    <label className="block text-sm font-medium text-white/80 mb-2">
                                         API 格式
-                                        <span className="ml-1 text-xs text-gray-500 dark:text-zinc-500 font-normal">(自动模式会根据模型自动选择)</span>
+                                        <span className="ml-2 text-xs text-white/40 font-normal">(自动模式会根据模型自动选择)</span>
                                     </label>
                                     <select
                                         value={formApiFormat}
                                         onChange={(e) => setFormApiFormat(e.target.value as ApiFormat)}
-                                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm"
+                                        className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-white text-sm focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                                     >
-                                        <option value="auto">🔄 自动模式 (推荐)</option>
-                                        <option value="openai">🤖 OpenAI 兼容格式</option>
-                                        <option value="gemini">✨ Google Gemini 格式</option>
-                                        <option value="claude">🧠 Claude 原生格式</option>
+                                        <option value="auto" className="bg-[#1a1f2e]">🔄 自动模式 (推荐)</option>
+                                        <option value="openai" className="bg-[#1a1f2e]">🤖 OpenAI 兼容格式</option>
+                                        <option value="gemini" className="bg-[#1a1f2e]">✨ Google Gemini 格式</option>
+                                        <option value="claude" className="bg-[#1a1f2e]">🧠 Claude 原生格式</option>
                                     </select>
                                 </div>
 
-                                {/* 流式模式切换 */}
-                                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50">
+                                {/* 流式模式切换 - 高端样式 */}
+                                <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.03]">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300">
+                                        <label className="block text-sm font-medium text-white/90 flex items-center gap-2">
+                                            <Zap size={14} className="text-amber-400" />
                                             流式输出模式
                                         </label>
-                                        <p className="text-xs text-gray-500 dark:text-zinc-500 mt-0.5">
+                                        <p className="text-xs text-white/40 mt-1">
                                             开启后使用流式传输，适合长文本生成
                                         </p>
                                     </div>
@@ -1365,16 +1424,18 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                             onChange={(e) => setFormStreamingMode(e.target.checked)}
                                             className="sr-only peer"
                                         />
-                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600">
+                                        <div className="w-11 h-6 bg-white/10 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white/20 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500">
                                         </div>
                                     </label>
                                 </div>
 
-                                {/* Management API Settings */}
-                                <div className="border-t border-gray-200 dark:border-zinc-700 pt-4 mt-4">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h4 className="text-sm font-medium text-gray-700 dark:text-zinc-300 flex items-center gap-1">
-                                            <Settings size={14} />
+                                {/* Management API Settings - 高端样式 */}
+                                <div className="border-t border-white/10 pt-4 mt-4">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="text-sm font-medium text-white/90 flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+                                                <Settings size={12} className="text-indigo-400" />
+                                            </div>
                                             管理 API 集成
                                         </h4>
                                         <label className="relative inline-flex items-center cursor-pointer">
@@ -1384,14 +1445,14 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                                 onChange={(e) => setFormEnableManagement(e.target.checked)}
                                                 className="sr-only peer"
                                             />
-                                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
+                                            <div className="w-9 h-5 bg-white/10 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white/20 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
                                         </label>
                                     </div>
 
                                     {formEnableManagement && (
-                                        <div className="space-y-3 p-3 bg-indigo-500/5 rounded-lg border border-indigo-500/10">
-                                            <div className="flex items-start gap-2 text-xs text-indigo-600 dark:text-indigo-400">
-                                                <Info size={14} className="mt-0.5 flex-shrink-0" />
+                                        <div className="space-y-4 p-4 bg-gradient-to-br from-indigo-500/10 to-purple-500/5 rounded-xl border border-indigo-500/20">
+                                            <div className="flex items-start gap-3 text-xs text-indigo-300 bg-indigo-500/10 p-3 rounded-lg">
+                                                <Info size={14} className="mt-0.5 flex-shrink-0 text-indigo-400" />
                                                 <span>
                                                     启用管理 API 后可自动同步渠道余额、分组倍率、模型定价等信息。
                                                     在服务商后台的「个人设置 - 安全设置 - 系统访问令牌」中生成 Access Token。
@@ -1399,20 +1460,20 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                             </div>
 
                                             <div>
-                                                <label className="block text-xs font-medium text-gray-600 dark:text-zinc-400 mb-1">
-                                                    Access Token *
+                                                <label className="block text-xs font-medium text-white/70 mb-2">
+                                                    Access Token <span className="text-indigo-400">*</span>
                                                 </label>
                                                 <input
                                                     type="password"
                                                     value={formAccessToken}
                                                     onChange={(e) => setFormAccessToken(e.target.value)}
                                                     placeholder="用于管理 API 的身份验证..."
-                                                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm font-mono"
+                                                    className="w-full px-4 py-2.5 rounded-xl border border-indigo-500/30 bg-white/5 text-white text-sm placeholder:text-white/30 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-mono"
                                                 />
                                             </div>
 
                                             <div>
-                                                <label className="block text-xs font-medium text-gray-600 dark:text-zinc-400 mb-1">
+                                                <label className="block text-xs font-medium text-white/70 mb-2">
                                                     管理 API 地址（可选）
                                                 </label>
                                                 <input
@@ -1420,30 +1481,22 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                                     value={formManagementUrl}
                                                     onChange={(e) => setFormManagementUrl(e.target.value)}
                                                     placeholder="留空则使用 Base URL"
-                                                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm"
+                                                    className="w-full px-4 py-2.5 rounded-xl border border-indigo-500/30 bg-white/5 text-white text-sm placeholder:text-white/30 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                                                 />
-                                                <p className="text-xs text-gray-500 dark:text-zinc-500 mt-1">
+                                                <p className="text-xs text-white/40 mt-2">
                                                     如果管理 API 地址与 API 地址不同，请单独配置
                                                 </p>
                                             </div>
 
-                                            <div className="space-y-1">
-                                                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-zinc-400">
-                                                    <CheckCircle size={12} className="text-emerald-500" />
-                                                    <span>渠道余额自动同步</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-zinc-400">
-                                                    <CheckCircle size={12} className="text-emerald-500" />
-                                                    <span>分组倍率信息获取</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-zinc-400">
-                                                    <CheckCircle size={12} className="text-emerald-500" />
-                                                    <span>Tokens 消耗校准</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-zinc-400">
-                                                    <CheckCircle size={12} className="text-emerald-500" />
-                                                    <span>消费记录查询</span>
-                                                </div>
+                                            <div className="space-y-2 pt-2">
+                                                {['渠道余额自动同步', '分组倍率信息获取', 'Tokens 消耗校准', '消费记录查询'].map((item, i) => (
+                                                    <div key={i} className="flex items-center gap-2 text-xs text-white/60">
+                                                        <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                                                            <CheckCircle size={10} className="text-emerald-400" />
+                                                        </div>
+                                                        <span>{item}</span>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     )}
@@ -1457,14 +1510,14 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                         setIsAddModalOpen(false);
                                         resetForm();
                                     }}
-                                    className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-zinc-600 text-gray-700 dark:text-zinc-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+                                    className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-white/70 text-sm font-medium hover:bg-white/5 transition-all duration-200"
                                 >
                                     取消
                                 </button>
                                 <button
                                     onClick={handleAddProvider}
                                     disabled={isLoading}
-                                    className="flex-1 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white text-sm font-medium transition-all duration-200 shadow-lg shadow-indigo-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
                                     {isLoading ? (
                                         <>
@@ -1481,38 +1534,43 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                 </div>
             )}
 
-            {/* Management Modal */}
+            {/* Management Modal - 高端管理模态框 */}
             {isManagementModalOpen && managingProvider && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10004] p-4"
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10004] p-4"
                 onClick={(e) => {
                     if (e.target === e.currentTarget) {
                         setIsManagementModalOpen(false);
                     }
                 }}
             >
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+                    <div className="bg-gradient-to-br from-[#1a1f2e] to-[#0f1419] border border-white/10 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl shadow-black/50">
                         {/* Header */}
-                        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-zinc-700">
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                                    管理 {managingProvider.name}
-                                </h3>
-                                <p className="text-sm text-gray-500 dark:text-zinc-500">
-                                    {managingProvider.baseUrl}
-                                </p>
+                        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/[0.02]">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20 flex items-center justify-center">
+                                    <Settings className="w-5 h-5 text-indigo-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-white">
+                                        管理 {managingProvider.name}
+                                    </h3>
+                                    <p className="text-sm text-white/40 font-mono">
+                                        {managingProvider.baseUrl}
+                                    </p>
+                                </div>
                             </div>
                             <button
                                 onClick={() => setIsManagementModalOpen(false)}
-                                className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                                className="p-2 hover:bg-white/10 rounded-xl transition-colors group"
                             >
-                                <X size={20} className="text-gray-500" />
+                                <X size={20} className="text-white/50 group-hover:text-white/80" />
                             </button>
                         </div>
 
                         <div className="flex h-[70vh]">
-                            {/* Sidebar */}
-                            <div className="w-48 border-r border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50">
-                                <nav className="p-2 space-y-1">
+                            {/* Sidebar - 高端导航 */}
+                            <div className="w-52 border-r border-white/10 bg-white/[0.02]">
+                                <nav className="p-3 space-y-1">
                                     {[
                                         { id: 'overview', label: '概览', icon: BarChart3 },
                                         { id: 'channels', label: '渠道', icon: Server },
@@ -1524,13 +1582,13 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                         <button
                                             key={tab.id}
                                             onClick={() => setManagementTab(tab.id as ManagementTab)}
-                                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
                                                 managementTab === tab.id
-                                                    ? 'bg-indigo-600 text-white'
-                                                    : 'text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                                    ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-white border border-indigo-500/30'
+                                                    : 'text-white/60 hover:bg-white/5 hover:text-white/90'
                                             }`}
                                         >
-                                            <tab.icon size={16} />
+                                            <tab.icon size={16} className={managementTab === tab.id ? 'text-indigo-400' : ''} />
                                             {tab.label}
                                         </button>
                                     ))}
@@ -1538,7 +1596,7 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                             </div>
 
                             {/* Content */}
-                            <div className="flex-1 overflow-y-auto p-6">
+                            <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-br from-white/[0.02] to-transparent">
                                 {managementTab === 'overview' && renderManagementOverview(managingProvider)}
                                 {managementTab === 'channels' && renderChannels(managingProvider)}
                                 {managementTab === 'suppliers' && renderSuppliers(managingProvider)}

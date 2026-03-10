@@ -174,14 +174,12 @@ const RechargeModal: React.FC = () => {
 
   return (
     <div
-      className={`fixed inset-0 z-[10020] flex justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 ${
-        isMobile ? 'items-end px-2 pb-0 pt-10' : 'items-center p-4'
-      }`}
+      className={`fixed inset-0 z-[10020] flex justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 ${isMobile ? 'items-end px-2 pb-0 pt-10' : 'items-center p-4'
+        }`}
     >
       <div
-        className={`w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-white/10 ${
-          isMobile ? 'ios-mobile-sheet max-h-[90dvh] rounded-t-[26px] rounded-b-none max-w-[760px]' : 'max-w-[440px] rounded-[32px]'
-        }`}
+        className={`w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-white/10 ${isMobile ? 'ios-mobile-sheet max-h-[90dvh] rounded-t-[26px] rounded-b-none max-w-[760px]' : 'max-w-[440px] rounded-[32px]'
+          }`}
         style={{ backgroundColor: 'var(--bg-surface, #ffffff)' }}
       >
         <div className={`relative ${isMobile ? 'p-4 pb-3' : 'p-6 pb-4'}`}>
@@ -192,7 +190,7 @@ const RechargeModal: React.FC = () => {
                 <Zap size={18} fill="currentColor" />
               </div>
               <h3 className="text-xl font-black text-gray-900 dark:text-white tracking-tight">
-                {isCny ? '积分充值' : 'Credits Top-up'}
+                {isCny ? '积分充值' : '积分充值'}
               </h3>
             </div>
             <button onClick={() => setShowRechargeModal(false)} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 dark:text-zinc-400">
@@ -200,7 +198,7 @@ const RechargeModal: React.FC = () => {
             </button>
           </div>
           <p className="text-gray-400 dark:text-zinc-500 text-[10px] font-bold uppercase tracking-widest pl-9">
-            {isCny ? '积分充值系统' : 'Credits Refill System'}
+            {isCny ? '积分充值系统' : '积分充值系统'}
           </p>
         </div>
 
@@ -266,14 +264,14 @@ const RechargeModal: React.FC = () => {
                 </div>
                 <div className="flex flex-col items-start gap-1 relative z-10 px-8">
                   <span className="text-[10px] font-black text-gray-500 dark:text-zinc-500 uppercase tracking-widest mb-1">
-                    {isCny ? '本次可获得积分' : 'Credits You Get'}
+                    {isCny ? '本次可获得积分' : '本次可获得积分'}
                   </span>
                   <div className="flex items-baseline gap-2">
                     <span className={`text-5xl font-black ${theme.text} tracking-tighter`}>{credits}</span>
-                    <span className="text-xs font-bold text-gray-500 dark:text-zinc-600">Credits</span>
+                    <span className="text-xs font-bold text-gray-500 dark:text-zinc-600">积分</span>
                   </div>
                   <div className="mt-3 text-sm font-bold text-gray-500 dark:text-zinc-400 flex items-center gap-1.5">
-                    <span className="opacity-50 font-medium">{isCny ? '支付金额:' : 'Amount:'}</span>
+                    <span className="opacity-50 font-medium">{isCny ? '支付金额:' : '支付金额:'}</span>
                     <span className="text-gray-900 dark:text-white text-base">{isCny ? '¥' : '$'}{amount}</span>
                   </div>
                 </div>
@@ -282,7 +280,7 @@ const RechargeModal: React.FC = () => {
               <div className="space-y-4 px-2">
                 <div className="flex justify-between items-center text-[10px] font-black text-gray-400 dark:text-zinc-500 uppercase tracking-widest">
                   <span>{isCny ? '充值汇率' : 'Exchange Rate'}</span>
-                  <span className={theme.text}>{isCny ? '¥1 = 5 积分' : '$1 = 30 Credits'}</span>
+                  <span className={theme.text}>{isCny ? '¥1 = 5 积分' : '$1 = 30 积分'}</span>
                 </div>
                 <div className="relative h-12 flex items-center">
                   <input
@@ -351,8 +349,8 @@ const RechargeModal: React.FC = () => {
             >
               {isProcessing ? <Loader2 size={24} className="animate-spin" /> : <ShieldCheck size={24} />}
               {isProcessing
-                ? (isCny ? '处理中...' : 'Processing...')
-                : (isCny ? `确认支付 ¥${amount}` : `Pay $${amount}`)}
+                ? (isCny ? '处理中...' : '处理中...')
+                : (isCny ? `确认支付 ¥${amount}` : `确认支付 $${amount}`)}
             </button>
             <div className="mt-4 flex items-center justify-center gap-1.5 opacity-40">
               <div className="w-1 h-1 rounded-full bg-gray-400 dark:bg-zinc-500" />

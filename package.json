@@ -10,8 +10,10 @@
     "scripts": {
         "dev": "vite",
         "build": "vite build",
+        "typecheck": "tsc --noEmit",
         "preview": "vite preview",
-        "clean": "node -e \"try{require('fs').rmSync('node_modules/.vite',{recursive:true})}catch(e){}\""
+        "clean": "node -e \"try{require('fs').rmSync('node_modules/.vite',{recursive:true})}catch(e){}\"",
+        "check:encoding": "node scripts/check-encoding.js"
     },
     "dependencies": {
         "@google/genai": "^1.35.0",

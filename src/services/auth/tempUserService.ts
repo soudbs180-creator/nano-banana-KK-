@@ -1,203 +1,174 @@
-/**
- * Temporary User Service
- * 
- * Creates temporary users that:
- * - Have a unique ID stored in Supabase
- * - Expire after 24 hours
- * - Are cached in browser localStorage
- * - Can receive credits from admin recharge
- */
-
-import { supabase } from '../../lib/supabase';
 import { User } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase';
 
 const TEMP_USER_STORAGE_KEY = 'temp_user_session_v1';
-const TEMP_USER_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+const TEMP_USER_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
 export interface TempUserSession {
-    user: User;
-    createdAt: number;
-    expiresAt: number;
-    isTempUser: true;
+  user: User;
+  createdAt: number;
+  expiresAt: number;
+  isTempUser: true;
+}
+
+function buildTempEmail(tempUserId: string): string {
+  return `${tempUserId}@temp.local`;
+}
+
+function buildTempNickname(tempUserId: string): string {
+  return `临时用户_${tempUserId.replace(/-/g, '').slice(0, 8)}`;
 }
 
 class TempUserService {
-    /**
-     * Generate a unique temporary user ID
-     */
-    private generateTempUserId(): string {
-        const timestamp = Date.now().toString(36);
-        const random = Math.random().toString(36).substring(2, 10);
-        return `temp_${timestamp}_${random}`;
+  private generateTempUserId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
     }
 
-    /**
-     * Check if there's a valid cached temp user
-     */
-    getCachedTempUser(): TempUserSession | null {
-        try {
-            const cached = localStorage.getItem(TEMP_USER_STORAGE_KEY);
-            if (!cached) return null;
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+      const randomValue = Math.floor(Math.random() * 16);
+      const value = char === 'x' ? randomValue : (randomValue & 0x3) | 0x8;
+      return value.toString(16);
+    });
+  }
 
-            const session: TempUserSession = JSON.parse(cached);
-            
-            // Check if expired
-            if (Date.now() > session.expiresAt) {
-                console.log('[TempUser] Cached session expired, clearing');
-                this.clearCachedTempUser();
-                return null;
-            }
+  getCachedTempUser(): TempUserSession | null {
+    try {
+      const raw = localStorage.getItem(TEMP_USER_STORAGE_KEY);
+      if (!raw) return null;
 
-            console.log('[TempUser] Found valid cached session, expires at:', new Date(session.expiresAt).toISOString());
-            return session;
-        } catch (error) {
-            console.error('[TempUser] Failed to parse cached session:', error);
-            this.clearCachedTempUser();
-            return null;
-        }
+      const session = JSON.parse(raw) as TempUserSession;
+      if (!session?.expiresAt || Date.now() > session.expiresAt) {
+        this.clearCachedTempUser();
+        return null;
+      }
+
+      return session;
+    } catch (error) {
+      console.error('[TempUser] 读取本地临时用户缓存失败:', error);
+      this.clearCachedTempUser();
+      return null;
+    }
+  }
+
+  private cacheTempUser(session: TempUserSession): void {
+    try {
+      localStorage.setItem(TEMP_USER_STORAGE_KEY, JSON.stringify(session));
+    } catch (error) {
+      console.error('[TempUser] 写入本地临时用户缓存失败:', error);
+    }
+  }
+
+  clearCachedTempUser(): void {
+    localStorage.removeItem(TEMP_USER_STORAGE_KEY);
+  }
+
+  async createTempUser(): Promise<TempUserSession> {
+    const now = Date.now();
+    const tempUserId = this.generateTempUserId();
+    const expiresAt = now + TEMP_USER_EXPIRY_MS;
+    const email = buildTempEmail(tempUserId);
+    const nickname = buildTempNickname(tempUserId);
+    const timestampIso = new Date(now).toISOString();
+
+    const payload = {
+      id: tempUserId,
+      email,
+      nickname,
+      created_at: timestampIso,
+      expires_at: new Date(expiresAt).toISOString(),
+      is_active: true,
+      last_seen_at: timestampIso,
+      updated_at: timestampIso,
+      metadata: {
+        createdAt: now,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+      },
+    };
+
+    let { error } = await supabase.from('temp_users').insert(payload);
+
+    const missingColumn =
+      String(error?.message || '').includes('column') &&
+      (String(error?.message || '').includes('email') ||
+        String(error?.message || '').includes('nickname') ||
+        String(error?.message || '').includes('last_seen_at') ||
+        String(error?.message || '').includes('updated_at'));
+
+    if (missingColumn) {
+      ({ error } = await supabase.from('temp_users').insert({
+        id: tempUserId,
+        created_at: timestampIso,
+        expires_at: new Date(expiresAt).toISOString(),
+        is_active: true,
+        metadata: payload.metadata,
+      }));
     }
 
-    /**
-     * Cache temp user session to localStorage
-     */
-    private cacheTempUser(session: TempUserSession): void {
-        try {
-            localStorage.setItem(TEMP_USER_STORAGE_KEY, JSON.stringify(session));
-            console.log('[TempUser] Session cached, expires at:', new Date(session.expiresAt).toISOString());
-        } catch (error) {
-            console.error('[TempUser] Failed to cache session:', error);
-        }
+    if (error) {
+      console.error('[TempUser] 创建 Supabase 临时用户记录失败:', error);
+      throw new Error(`创建临时用户失败：${error.message || '未知错误'}`);
     }
 
-    /**
-     * Clear cached temp user
-     */
-    clearCachedTempUser(): void {
-        localStorage.removeItem(TEMP_USER_STORAGE_KEY);
-    }
+    const fakeUser: User = {
+      id: tempUserId,
+      aud: 'authenticated',
+      role: 'authenticated',
+      email,
+      phone: '',
+      created_at: timestampIso,
+      updated_at: timestampIso,
+      confirmed_at: timestampIso,
+      last_sign_in_at: timestampIso,
+      app_metadata: {
+        isTempUser: true,
+        provider: 'temp',
+      },
+      user_metadata: {
+        avatar_url: null,
+        full_name: nickname,
+        isTempUser: true,
+      },
+    };
 
-    /**
-     * Create a new temporary user
-     * - Creates record in Supabase
-     * - Caches to localStorage
-     * - Returns user session
-     */
-    async createTempUser(): Promise<TempUserSession> {
-        const now = Date.now();
-        const tempUserId = this.generateTempUserId();
-        const expiresAt = now + TEMP_USER_EXPIRY_MS;
+    const session: TempUserSession = {
+      user: fakeUser,
+      createdAt: now,
+      expiresAt,
+      isTempUser: true,
+    };
 
-        console.log('[TempUser] Creating new temporary user:', tempUserId);
+    this.cacheTempUser(session);
+    return session;
+  }
 
-        // Create user record in Supabase
-        const { data, error } = await supabase
-            .from('temp_users')
-            .insert({
-                id: tempUserId,
-                created_at: new Date().toISOString(),
-                expires_at: new Date(expiresAt).toISOString(),
-                is_active: true,
-                metadata: {
-                    userAgent: navigator.userAgent,
-                    createdAt: now
-                }
-            })
-            .select()
-            .single();
+  async getOrCreateTempUser(): Promise<TempUserSession> {
+    const cached = this.getCachedTempUser();
+    if (cached) return cached;
+    return this.createTempUser();
+  }
 
-        if (error) {
-            console.error('[TempUser] Failed to create Supabase record:', error);
-            throw new Error('创建临时用户失败：' + (error.message || '未知错误'));
-        }
+  isTempUser(user: User | null): boolean {
+    if (!user) return false;
+    return user.user_metadata?.isTempUser === true || user.app_metadata?.isTempUser === true;
+  }
 
-        // Create fake User object
-        const fakeUser: User = {
-            id: tempUserId,
-            app_metadata: { 
-                provider: 'temp',
-                isTempUser: true
-            },
-            user_metadata: { 
-                full_name: `临时用户_${tempUserId.substring(5, 12)}`,
-                avatar_url: null,
-                isTempUser: true
-            },
-            aud: 'authenticated',
-            created_at: new Date().toISOString(),
-            email: `${tempUserId}@temp.local`,
-            phone: '',
-            confirmed_at: new Date().toISOString(),
-            last_sign_in_at: new Date().toISOString(),
-            role: 'authenticated',
-            updated_at: new Date().toISOString()
-        };
+  getTimeRemaining(session: TempUserSession | null): number {
+    if (!session) return 0;
+    return Math.max(0, session.expiresAt - Date.now());
+  }
 
-        const session: TempUserSession = {
-            user: fakeUser,
-            createdAt: now,
-            expiresAt: expiresAt,
-            isTempUser: true
-        };
+  formatTimeRemaining(session: TempUserSession | null): string {
+    const remaining = this.getTimeRemaining(session);
+    if (remaining <= 0) return '已过期';
 
-        // Cache to localStorage
-        this.cacheTempUser(session);
+    const hours = Math.floor(remaining / (1000 * 60 * 60));
+    const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
 
-        console.log('[TempUser] Temporary user created successfully');
-        return session;
-    }
-
-    /**
-     * Get or create temp user
-     * - Returns cached if valid
-     * - Creates new if not exists or expired
-     */
-    async getOrCreateTempUser(): Promise<TempUserSession> {
-        // Try to get cached session
-        const cached = this.getCachedTempUser();
-        if (cached) {
-            return cached;
-        }
-
-        // Create new temp user
-        return await this.createTempUser();
-    }
-
-    /**
-     * Check if user is a temporary user
-     */
-    isTempUser(user: User | null): boolean {
-        if (!user) return false;
-        return user.user_metadata?.isTempUser === true || 
-               user.app_metadata?.isTempUser === true ||
-               user.id.startsWith('temp_');
-    }
-
-    /**
-     * Get time remaining before expiry
-     */
-    getTimeRemaining(session: TempUserSession | null): number {
-        if (!session) return 0;
-        return Math.max(0, session.expiresAt - Date.now());
-    }
-
-    /**
-     * Format time remaining as human readable string
-     */
-    formatTimeRemaining(session: TempUserSession | null): string {
-        const remaining = this.getTimeRemaining(session);
-        if (remaining <= 0) return '已过期';
-
-        const hours = Math.floor(remaining / (1000 * 60 * 60));
-        const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-
-        if (hours >= 24) {
-            return '约 24 小时';
-        } else if (hours > 0) {
-            return `${hours}小时${minutes}分钟`;
-        } else {
-            return `${minutes}分钟`;
-        }
-    }
+    if (hours >= 24) return '约 24 小时';
+    if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
+    return `${minutes} 分钟`;
+  }
 }
 
 export const tempUserService = new TempUserService();
