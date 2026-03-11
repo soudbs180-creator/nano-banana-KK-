@@ -1,7 +1,9 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import * as React from 'react';
+import { createRoot } from 'react-dom/client';
 // import { SpeedInsights } from '@vercel/speed-insights/react';
 import './index.css';
+import App from './App';
+import { AuthProvider } from './context/AuthContext';
 
 type FatalError = {
   message: string;
@@ -14,7 +16,7 @@ if (!rootElement) {
   throw new Error('找不到根节点 #root，应用无法挂载');
 }
 
-const root = ReactDOM.createRoot(rootElement);
+const root = createRoot(rootElement);
 let hasMountedApp = false;
 
 function normalizeError(error: unknown): FatalError {
@@ -213,13 +215,8 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-async function bootstrap() {
+function bootstrap() {
   try {
-    const [{ default: App }, { AuthProvider }] = await Promise.all([
-      import('./App'),
-      import('./context/AuthContext')
-    ]);
-
     hasMountedApp = true;
 
     root.render(

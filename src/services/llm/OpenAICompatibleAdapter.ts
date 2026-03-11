@@ -17,7 +17,8 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
     private getTimeoutMs(keySlot: KeySlot, fallbackMs: number = 120000): number {
         const raw = keySlot.timeout;
         if (!raw || Number.isNaN(raw)) return fallbackMs;
-        return Math.max(15000, Math.min(raw, 240000));
+        const bounded = Math.max(15000, Math.min(raw, 240000));
+        return Math.max(fallbackMs, bounded);
     }
 
     private async fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, maxRetries: number = 3): Promise<Response> {
@@ -26,8 +27,10 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             const controller = new AbortController();
-            const abortFromParent = () => controller.abort();
-            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            const abortFromParent = () => controller.abort(init.signal?.reason || new Error('Request aborted by parent signal'));
+            const timeoutId = setTimeout(() => {
+                controller.abort(new Error(`Request timeout after ${timeoutMs}ms`));
+            }, timeoutMs);
 
             if (init.signal?.aborted) {
                 abortFromParent();
@@ -41,8 +44,12 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                     signal: controller.signal
                 });
 
-                // If successful or it's a non-retryable error (like 400, 401, 403, 404), return immediately
-                if (response.ok || ![429, 500, 502, 503, 504].includes(response.status)) {
+                // 🚀 [Fix] 401/403 鉴权错误立即返回，不重试
+                if (response.ok || [401, 403].includes(response.status)) {
+                    return response;
+                }
+                // 其他非重试错误也立即返回
+                if (![429, 500, 502, 503, 504].includes(response.status)) {
                     return response;
                 }
 
@@ -51,6 +58,13 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 throw new Error(`HTTP ${response.status} - Transient error`);
 
             } catch (err: any) {
+                if (
+                    (err?.name === 'AbortError' || controller.signal.aborted) &&
+                    !init.signal?.aborted &&
+                    !String(err?.message || '').includes('timeout')
+                ) {
+                    err = new Error(`Request timeout after ${timeoutMs}ms`);
+                }
                 lastError = err;
 
                 // If this is the last attempt, don't wait, just break and throw
@@ -293,6 +307,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
     private buildNewApiGoogleExtraBody(options: ImageGenerationOptions): Record<string, any> | undefined {
         const imageConfig: Record<string, any> = {};
+        const responseModalities = options.providerConfig?.google?.responseModalities || ['TEXT', 'IMAGE'];
         const aspectRatio = this.normalizeRequestedAspectRatio(
             options.providerConfig?.google?.imageConfig?.aspectRatio || options.aspectRatio
         );
@@ -306,6 +321,9 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
 
         const google: Record<string, any> = {};
+        if (responseModalities.length > 0) {
+            google.response_modalities = responseModalities;
+        }
         if (Object.keys(imageConfig).length > 0) {
             google.image_config = imageConfig;
         }
@@ -742,7 +760,6 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 console.warn(`[OpenAICompatibleAdapter] Chat API compatibility fallback disabled for billing safety -> ${keySlot.name}`);
                 throw this.buildImageCompatibilityModeError('chat', chatErr, keySlot);
                 console.warn(`[OpenAICompatibleAdapter] Chat API 不兼容，回退 Images API -> ${keySlot.name}`);
-                return this.generateImageStandard_OpenAI_Strict(options, keySlot);
             }
         }
 
@@ -764,7 +781,6 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 }
                 console.warn(`[OpenAICompatibleAdapter] suxi Chat compatibility fallback disabled for billing safety -> ${keySlot.name}`);
                 throw this.buildImageCompatibilityModeError('chat', chatErr, keySlot);
-                return this.generateImageStandard_OpenAI_Strict(options, keySlot);
             }
         }
 

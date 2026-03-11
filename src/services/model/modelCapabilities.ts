@@ -9,6 +9,32 @@
 
 import { AspectRatio, ImageSize } from '../../types';
 import { keyManager } from '../auth/keyManager';
+import { adminModelService } from './adminModelService';
+import { isAdminQualityEnabled } from './adminModelQuality';
+
+/**
+ * Audio generation capability
+ */
+export interface AudioCapability {
+    /** Supported audio durations in seconds */
+    supportedDurations: number[];
+    /** Maximum duration in seconds */
+    maxDuration: number;
+    /** Supported audio formats */
+    formats: ('mp3' | 'wav' | 'ogg' | 'm4a')[];
+    /** Whether the model supports custom lyrics */
+    supportsCustomLyrics: boolean;
+    /** Whether the model supports instrumental mode */
+    supportsInstrumental: boolean;
+    /** Whether the model supports audio continuation/extend */
+    supportsContinuation: boolean;
+    /** Whether the model supports style tags */
+    supportsStyleTags: boolean;
+    /** Whether the model supports voice selection (TTS) */
+    supportsVoiceSelection: boolean;
+    /** Whether the model supports speed control (TTS) */
+    supportsSpeedControl: boolean;
+}
 
 /**
  * Model capability definition
@@ -60,6 +86,9 @@ export interface ModelCapability {
 
     /** 🚀 Whether the model supports structured image search (Gemini 3.1+) */
     supportsImageSearch?: boolean;
+
+    /** 🚀 Audio generation specific capabilities */
+    audioCapability?: AudioCapability;
 }
 
 /**
@@ -292,6 +321,122 @@ export const BUILTIN_MODEL_CAPABILITIES: Record<string, ModelCapability> = {
         supportedRatios: [],
         supportedSizes: [],
         supportsGrounding: true
+    },
+
+    // ============================================
+    // 🚀 Audio/Music Generation Models
+    // ============================================
+    'suno-v4': {
+        supportedRatios: [],
+        supportedSizes: [],
+        supportsGrounding: false,
+        audioCapability: {
+            supportedDurations: [30, 60, 120, 180, 240],
+            maxDuration: 240,
+            formats: ['mp3', 'wav'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: true,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        }
+    },
+    'suno-v3.5': {
+        supportedRatios: [],
+        supportedSizes: [],
+        supportsGrounding: false,
+        audioCapability: {
+            supportedDurations: [30, 60, 120, 180],
+            maxDuration: 180,
+            formats: ['mp3', 'wav'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: true,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        }
+    },
+    'suno-v3': {
+        supportedRatios: [],
+        supportedSizes: [],
+        supportsGrounding: false,
+        audioCapability: {
+            supportedDurations: [30, 60, 120],
+            maxDuration: 120,
+            formats: ['mp3'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: true,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        }
+    },
+    'udio-v1': {
+        supportedRatios: [],
+        supportedSizes: [],
+        supportsGrounding: false,
+        audioCapability: {
+            supportedDurations: [30, 60, 120],
+            maxDuration: 120,
+            formats: ['mp3', 'wav'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: true,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        }
+    },
+    'riffusion': {
+        supportedRatios: [],
+        supportedSizes: [],
+        supportsGrounding: false,
+        audioCapability: {
+            supportedDurations: [10, 20, 30],
+            maxDuration: 30,
+            formats: ['mp3'],
+            supportsCustomLyrics: false,
+            supportsInstrumental: true,
+            supportsContinuation: false,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        }
+    },
+    'minimax-tts': {
+        supportedRatios: [],
+        supportedSizes: [],
+        supportsGrounding: false,
+        audioCapability: {
+            supportedDurations: [30, 60, 120, 300, 600],
+            maxDuration: 600,
+            formats: ['mp3', 'wav'],
+            supportsCustomLyrics: false,
+            supportsInstrumental: false,
+            supportsContinuation: false,
+            supportsStyleTags: false,
+            supportsVoiceSelection: true,
+            supportsSpeedControl: true
+        }
+    },
+    'minimax-music': {
+        supportedRatios: [],
+        supportedSizes: [],
+        supportsGrounding: false,
+        audioCapability: {
+            supportedDurations: [30, 60, 120],
+            maxDuration: 120,
+            formats: ['mp3'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: false,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        }
     },
 
     // ============================================
@@ -601,6 +746,40 @@ export function getAvailableSizes(
     modelId: string
 ): ImageSize[] {
     const caps = getModelCapabilities(modelId);
+    const baseModelId = modelId.split('@')[0];
+    const adminModels = adminModelService.getRouteCandidates(baseModelId);
+
+    if (adminModels.length > 0) {
+        const mixedModels = adminModels.filter((model) => model.mixWithSameModel);
+        const sourceModels = mixedModels.length > 1 ? mixedModels : [adminModels[0]];
+        const enabledSizes = new Set<ImageSize>();
+
+        sourceModels.forEach((model) => {
+            if (isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, '0.5K')) {
+                enabledSizes.add(ImageSize.SIZE_05K);
+            }
+            if (isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, '1K')) {
+                enabledSizes.add(ImageSize.SIZE_1K);
+            }
+            if (isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, '2K')) {
+                enabledSizes.add(ImageSize.SIZE_2K);
+            }
+            if (isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, '4K')) {
+                enabledSizes.add(ImageSize.SIZE_4K);
+            }
+        });
+
+        if (enabledSizes.size > 0) {
+            const supportedSizes = caps?.supportedSizes && caps.supportedSizes.length > 0
+                ? caps.supportedSizes
+                : Object.values(ImageSize);
+            const filteredSizes = supportedSizes.filter((size) => enabledSizes.has(size));
+            if (filteredSizes.length > 0) {
+                return filteredSizes;
+            }
+        }
+    }
+
     return caps?.supportedSizes && caps.supportedSizes.length > 0
         ? caps.supportedSizes
         : Object.values(ImageSize);
@@ -1281,10 +1460,40 @@ export const MODEL_DESCRIPTIONS: Record<string, { category: string; description:
         description: '高性价比流派音乐生成',
         rank: 'Suno V3.5'
     },
+    'suno-v3': {
+        category: '音频生成',
+        description: '入门级音乐生成',
+        rank: 'Suno V3'
+    },
+    'udio-v1': {
+        category: '音频生成',
+        description: '高保真音乐生成，支持多种风格',
+        rank: 'Udio V1'
+    },
+    'riffusion': {
+        category: '音频生成',
+        description: '基于扩散模型的音乐生成',
+        rank: 'Riffusion'
+    },
     'minimax-tts': {
         category: '音频生成',
         description: '多语种高质量人声配音',
         rank: 'MiniMax TTS'
+    },
+    'minimax-music': {
+        category: '音频生成',
+        description: 'MiniMax 音乐生成',
+        rank: 'MiniMax Music'
+    },
+    'gemini-2.0-flash-audio': {
+        category: '音频生成',
+        description: 'Google Gemini 多模态语音生成',
+        rank: 'Gemini 2.0 Audio'
+    },
+    'lyria-realtime-v1': {
+        category: '音频生成',
+        description: 'Google Lyria 实时音乐生成',
+        rank: 'Lyria Music'
     }
 };
 
@@ -1306,4 +1515,188 @@ export function getModelDescription(modelId: string): { category: string; descri
     }
 
     return undefined;
+}
+
+// ==================== 🚀 Audio Model Helpers ====================
+
+/**
+ * Get audio capabilities for a model
+ * @param modelId - The model ID to query
+ * @returns AudioCapability if the model supports audio generation, undefined otherwise
+ */
+export function getAudioCapability(modelId: string): AudioCapability | undefined {
+    const caps = getModelCapabilities(modelId);
+    if (caps?.audioCapability) {
+        return caps.audioCapability;
+    }
+    
+    // Fallback based on model name patterns
+    const lowerModelId = modelId.toLowerCase();
+    
+    if (lowerModelId.includes('suno-v4')) {
+        return {
+            supportedDurations: [30, 60, 120, 180, 240],
+            maxDuration: 240,
+            formats: ['mp3', 'wav'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: true,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        };
+    }
+    
+    if (lowerModelId.includes('suno-v3.5')) {
+        return {
+            supportedDurations: [30, 60, 120, 180],
+            maxDuration: 180,
+            formats: ['mp3', 'wav'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: true,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        };
+    }
+    
+    if (lowerModelId.includes('suno')) {
+        return {
+            supportedDurations: [30, 60, 120],
+            maxDuration: 120,
+            formats: ['mp3'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: true,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        };
+    }
+    
+    if (lowerModelId.includes('udio')) {
+        return {
+            supportedDurations: [30, 60, 120],
+            maxDuration: 120,
+            formats: ['mp3', 'wav'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: true,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        };
+    }
+    
+    if (lowerModelId.includes('riffusion')) {
+        return {
+            supportedDurations: [10, 20, 30],
+            maxDuration: 30,
+            formats: ['mp3'],
+            supportsCustomLyrics: false,
+            supportsInstrumental: true,
+            supportsContinuation: false,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        };
+    }
+    
+    if (lowerModelId.includes('minimax-tts')) {
+        return {
+            supportedDurations: [30, 60, 120, 300, 600],
+            maxDuration: 600,
+            formats: ['mp3', 'wav'],
+            supportsCustomLyrics: false,
+            supportsInstrumental: false,
+            supportsContinuation: false,
+            supportsStyleTags: false,
+            supportsVoiceSelection: true,
+            supportsSpeedControl: true
+        };
+    }
+    
+    if (lowerModelId.includes('minimax') && lowerModelId.includes('music')) {
+        return {
+            supportedDurations: [30, 60, 120],
+            maxDuration: 120,
+            formats: ['mp3'],
+            supportsCustomLyrics: true,
+            supportsInstrumental: true,
+            supportsContinuation: false,
+            supportsStyleTags: true,
+            supportsVoiceSelection: false,
+            supportsSpeedControl: false
+        };
+    }
+    
+    return undefined;
+}
+
+/**
+ * Check if a model is an audio/music generation model
+ * @param modelId - The model ID to check
+ * @returns true if the model supports audio generation
+ */
+export function isAudioModel(modelId: string): boolean {
+    const lowerModelId = modelId.toLowerCase();
+    return !!getAudioCapability(modelId) ||
+        lowerModelId.includes('suno') ||
+        lowerModelId.includes('udio') ||
+        lowerModelId.includes('riffusion') ||
+        lowerModelId.includes('minimax-tts') ||
+        lowerModelId.includes('minimax-music') ||
+        lowerModelId.includes('lyria') ||
+        (lowerModelId.includes('audio') && !lowerModelId.includes('video'));
+}
+
+/**
+ * Get available audio durations for a model
+ * @param modelId - The model ID
+ * @returns Array of supported durations in seconds
+ */
+export function getAvailableAudioDurations(modelId: string): number[] {
+    const caps = getAudioCapability(modelId);
+    return caps?.supportedDurations || [30, 60, 120];
+}
+
+/**
+ * Get maximum audio duration for a model
+ * @param modelId - The model ID
+ * @returns Maximum duration in seconds
+ */
+export function getMaxAudioDuration(modelId: string): number {
+    const caps = getAudioCapability(modelId);
+    return caps?.maxDuration || 120;
+}
+
+/**
+ * Check if a model supports custom lyrics input
+ * @param modelId - The model ID
+ * @returns true if custom lyrics are supported
+ */
+export function supportsCustomLyrics(modelId: string): boolean {
+    const caps = getAudioCapability(modelId);
+    return caps?.supportsCustomLyrics ?? false;
+}
+
+/**
+ * Check if a model supports instrumental mode (no vocals)
+ * @param modelId - The model ID
+ * @returns true if instrumental mode is supported
+ */
+export function supportsInstrumental(modelId: string): boolean {
+    const caps = getAudioCapability(modelId);
+    return caps?.supportsInstrumental ?? false;
+}
+
+/**
+ * Check if a model supports audio continuation/extend
+ * @param modelId - The model ID
+ * @returns true if continuation is supported
+ */
+export function supportsAudioContinuation(modelId: string): boolean {
+    const caps = getAudioCapability(modelId);
+    return caps?.supportsContinuation ?? false;
 }

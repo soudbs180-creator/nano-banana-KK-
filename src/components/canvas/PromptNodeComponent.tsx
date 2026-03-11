@@ -295,14 +295,23 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     const hasAnimatedRef = useRef<string | null>(null);
 
     // Sync ref when node.position updates externally (and not dragging)
+    // 🚀 [Fix] 使用更宽松的条件，避免拖动结束后位置回弹
     useEffect(() => {
         if (!isDragging) {
             localPosRef.current = node.position;
-            // Force update DOM to match new prop position if needed
+            // 🚀 [Fix] 只在位置差异较大时才强制更新 DOM，避免微小更新导致的抖动
             if (containerRef.current) {
-                containerRef.current.style.left = `${Math.round(node.position.x - cardWidth / 2)}px`;
-                containerRef.current.style.top = `${Math.round(node.position.y - cardHeight)}px`;
-                containerRef.current.style.transform = 'translate3d(0, 0, 0)';
+                const currentLeft = parseFloat(containerRef.current.style.left) || 0;
+                const currentTop = parseFloat(containerRef.current.style.top) || 0;
+                const targetLeft = Math.round(node.position.x - cardWidth / 2);
+                const targetTop = Math.round(node.position.y - cardHeight);
+                
+                // 只在差异超过 2px 时才更新，避免微小抖动
+                if (Math.abs(currentLeft - targetLeft) > 2 || Math.abs(currentTop - targetTop) > 2) {
+                    containerRef.current.style.left = `${targetLeft}px`;
+                    containerRef.current.style.top = `${targetTop}px`;
+                    containerRef.current.style.transform = 'translate3d(0, 0, 0)';
+                }
             }
         }
     }, [node.position.x, node.position.y, isDragging, cardWidth, cardHeight]);
@@ -1145,7 +1154,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                     left: `calc(50% + ${offsetX}px)`,
                                                     top: offsetY,
                                                     transform: 'translateX(-50%)',
-                                                    zIndex: 20,
+                                                    zIndex: stackZIndex + 100, // 🚀 [Fix] 使用更高的 z-index 确保置顶
                                                     background: 'var(--bg-surface)',
                                                     border: '1px solid var(--border-light)',
                                                     cursor: isDragging ? 'grabbing' : 'grab' // 🚀 Allow grab cursor to bubble

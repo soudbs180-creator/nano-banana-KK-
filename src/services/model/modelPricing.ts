@@ -401,14 +401,14 @@ export const getRefImageTokenEstimate = (modelId: string): number => {
  * 🚀 [新功能] 获取内置积分模型的积分消耗值
  * 优先从管理员配置的模型中获取
  */
-export const getModelCredits = (modelId: string): number => {
+export const getModelCredits = (modelId: string, imageSize?: ImageSize | string): number => {
   // 🚀 [Fix] 去掉 @后缀（如 @system, @SystemProxy）再查询，避免匹配失败
   const baseModelId = modelId.split('@')[0];
 
   // 1. 优先从管理员配置获取（getModel 内部也会做后缀剥离，双重保障）
-  const adminModel = adminModelService.getModel(baseModelId);
-  if (adminModel) {
-    return adminModel.creditCost;
+  const adminCreditCost = adminModelService.getModelCreditCost(baseModelId, typeof imageSize === 'string' ? imageSize : String(imageSize || ''));
+  if (adminCreditCost > 0) {
+    return adminCreditCost;
   }
 
   // 2. 兼容旧的 Nano Banana 模型

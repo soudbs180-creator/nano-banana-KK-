@@ -31,6 +31,15 @@ export const MODEL_REGISTRY: Record<string, ModelCapability> = {
     'veo-2.0-generate-001': { id: 'veo-2.0-generate-001', name: 'Veo 2.0', provider: 'Google', type: 'video' },
     'lyria-realtime-v1': { id: 'lyria-realtime-v1', name: 'Lyria Music', provider: 'Google', type: 'audio', isSystemInternal: true },
     'gemini-2.0-flash-audio': { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Audio', provider: 'Google', type: 'audio' },
+    
+    // --- Audio/Music Models ---
+    'suno-v4': { id: 'suno-v4', name: 'Suno V4', provider: 'Custom', type: 'audio' },
+    'suno-v3.5': { id: 'suno-v3.5', name: 'Suno v3.5', provider: 'Custom', type: 'audio' },
+    'suno-v3': { id: 'suno-v3', name: 'Suno v3', provider: 'Custom', type: 'audio' },
+    'udio-v1': { id: 'udio-v1', name: 'Udio V1', provider: 'Custom', type: 'audio' },
+    'riffusion': { id: 'riffusion', name: 'Riffusion', provider: 'Custom', type: 'audio' },
+    'minimax-tts': { id: 'minimax-tts', name: 'MiniMax TTS', provider: 'Custom', type: 'audio' },
+    'minimax-music': { id: 'minimax-music', name: 'MiniMax Music', provider: 'Custom', type: 'audio' },
 
     // --- OpenAI ---
     'gpt-4o': { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI', type: 'chat', contextWindow: 128000, isVision: true },
@@ -70,7 +79,6 @@ export const MODEL_REGISTRY: Record<string, ModelCapability> = {
     // --- Proxy / Common ---
     'midjourney': { id: 'midjourney', name: 'Midjourney V6', provider: 'Custom', type: 'image' },
     'mj-chat': { id: 'mj-chat', name: 'Midjourney Chat', provider: 'Custom', type: 'image' },
-    'suno-v3.5': { id: 'suno-v3.5', name: 'Suno v3.5', provider: 'Custom', type: 'audio' },
     'flux-pro': { id: 'flux-pro', name: 'FLUX Pro', provider: 'Custom', type: 'image' },
     'ideogram': { id: 'ideogram', name: 'Ideogram', provider: 'Custom', type: 'image' },
     'kling-v1': { id: 'kling-v1', name: 'Kling Video', provider: 'Custom', type: 'video' },

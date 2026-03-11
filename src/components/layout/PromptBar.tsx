@@ -6,7 +6,7 @@ import { keyManager, getModelMetadata } from '../../services/auth/keyManager'; /
 import { getModelCapabilities, modelSupportsGrounding, getModelDisplayInfo, getModelDescription, getModelThemeColor, getModelThemeBgColor, getModelDisplayName } from '../../services/model/modelCapabilities';
 import ModelLogo from '../common/ModelLogo';
 import { getModelBadgeInfo, getProviderBadgeColor, getProviderBadgeStyle } from '../../utils/modelBadge';
-import { calculateImageHash } from '../../utils/imageUtils';
+import { calculateImageHash, compressImageFile } from '../../utils/imageUtils';
 import { saveImage, getImage } from '../../services/storage/imageStorage'; // [NEW] Import getImage
 import { fileSystemService } from '../../services/storage/fileSystemService'; // 🚀 参考图持久化
 import { notify } from '../../services/system/notificationService';
@@ -35,12 +35,12 @@ const ModeSwitcherStyles = () => (
         .animate-pulse-once {
             animation: pulse-once 0.4s ease-out;
         }
-        
+
         @keyframes glow-pulse {
             0%, 100% { opacity: 0.4; }
             50% { opacity: 0.8; }
         }
-        
+
         .mode-slider-glow {
             animation: glow-pulse 2s ease-in-out infinite;
         }
@@ -600,6 +600,52 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         setPptOutlineDraft(fromPrompt.join('\n'));
     }, [config.mode, config.pptSlides, config.prompt]);
 
+    useEffect(() => {
+        if (config.mode !== GenerationMode.PPT) return;
+        if ((config.pptSlides || []).length > 0) return;
+
+        const desiredCount = Math.min(20, Math.max(1, Number(config.parallelCount) || 1));
+        if (desiredCount <= 1) return;
+
+        const currentDraftSlides = pptOutlineDraft
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean)
+            .slice(0, 20);
+        if (currentDraftSlides.length > 1) return;
+
+        const topic = String(config.prompt || '').trim() || '主题演示';
+        const basePool = [
+            `背景与问题定义：${topic}`,
+            `行业趋势与机会：${topic}`,
+            `目标用户与核心场景：${topic}`,
+            `解决方案概览：${topic}`,
+            `核心能力与差异化：${topic}`,
+            `关键数据与证据：${topic}`,
+            `典型案例与应用示例：${topic}`,
+            `落地路径与实施步骤：${topic}`,
+            `风险评估与应对策略：${topic}`,
+            `里程碑与路线图：${topic}`,
+            `资源需求与协同机制：${topic}`,
+            `预期收益与评估指标：${topic}`
+        ];
+        const nextSlides: string[] = [`封面：${topic}`];
+        if (desiredCount >= 3) {
+            nextSlides.push(`目录：${topic} 的核心章节`);
+        }
+        const remainForMiddle = Math.max(0, desiredCount - 1 - nextSlides.length);
+        for (let i = 0; i < remainForMiddle; i++) {
+            nextSlides.push(basePool[i % basePool.length]);
+        }
+        if (nextSlides.length < desiredCount) {
+            nextSlides.push(`总结与行动建议：${topic}`);
+        }
+        const nextDraft = nextSlides.join('\n');
+        if (nextDraft !== pptOutlineDraft) {
+            setPptOutlineDraft(nextDraft);
+        }
+    }, [config.mode, config.parallelCount, config.pptSlides, config.prompt, pptOutlineDraft]);
+
     // Cleanup hover timer on unmount
     useEffect(() => {
         return () => {
@@ -922,7 +968,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
         try {
             const placeholders = filesToProcess.map((file) => ({
-                id: crypto.randomUUID(),
+                id: (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2),
                 mimeType: file.type || 'image/png',
                 data: '',
                 url: URL.createObjectURL(file)
@@ -942,16 +988,29 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 });
 
             await Promise.allSettled(placeholders.map(async (placeholder, index) => {
-                const file = filesToProcess[index];
+                let file = filesToProcess[index];
                 try {
-                    const result = await readAsDataUrl(file);
-                    const matches = result.match(/^data:(.+);base64,(.+)$/);
-                    if (!matches) {
-                        throw new Error('INVALID_IMAGE_DATA');
+                    // Downscale image if it is too massive, avoiding memory or size limit issues
+                    if (file.type.startsWith('image/')) {
+                        file = await compressImageFile(file);
                     }
 
-                    const mimeType = matches[1];
-                    const data = matches[2];
+                    const result = await readAsDataUrl(file);
+
+                    // Robust Data URL parsing without greedy Regex to avoid Maximum Call Stack Size Exceeded
+                    const commaIdx = result.indexOf(',');
+                    if (commaIdx === -1) {
+                        throw new Error('INVALID_IMAGE_DATA_FORMAT');
+                    }
+
+                    const header = result.substring(0, commaIdx);
+                    const data = result.substring(commaIdx + 1);
+
+                    let mimeType = 'image/png';
+                    const mimeMatch = header.match(/^data:([^;]+);base64$/i);
+                    if (mimeMatch && mimeMatch[1]) {
+                        mimeType = mimeMatch[1];
+                    }
                     const storageId = await calculateImageHash(data);
                     const fullDataUrl = `data:${mimeType};base64,${data}`;
 
@@ -994,6 +1053,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     }
                 } catch (err) {
                     console.error('[PromptBar] Failed to process reference image:', err);
+                    notify.error('参考图处理失败', String(err));
                     if (placeholder.url.startsWith('blob:')) {
                         URL.revokeObjectURL(placeholder.url);
                     }
@@ -1040,54 +1100,60 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     }, [onGenerate]);
 
     const handlePaste = useCallback((e: React.ClipboardEvent) => {
-        const items = e.clipboardData?.items;
-        if (!items) return;
-
         const imageFiles: File[] = [];
         let hasImage = false;
 
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].type.startsWith('image/')) {
-                const file = items[i].getAsFile();
-                if (file) {
+        // 1. Prioritize native files collection (OS copied files)
+        if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
+            for (let i = 0; i < e.clipboardData.files.length; i++) {
+                const file = e.clipboardData.files[i];
+                if (file.type.startsWith('image/')) {
                     imageFiles.push(file);
                     hasImage = true;
                 }
-            } else if (items[i].type === 'text/plain') {
-                // 🚀 [NEW] Handle Image URL Paste
-                items[i].getAsString((text) => {
-                    const url = text.trim();
-                    if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) || url.startsWith('http')) {
-                        // Optimistic check: looks like an image URL?
-                        // Fetch it
-                        fetch(url)
-                            .then(res => {
-                                if (!res.ok) throw new Error('Fetch failed');
-                                const contentType = res.headers.get('content-type');
-                                if (contentType && contentType.startsWith('image/')) {
-                                    return res.blob();
-                                }
-                                throw new Error('Not an image');
-                            })
-                            .then(blob => {
-                                const file = new File([blob], "pasted_image.png", { type: blob.type });
-                                processFiles([file]);
-                            })
-                            .catch(err => {
-                                // Not an image URL, just normal text. 
-                                // We don't interfere with normal text paste if it fails.
-                            });
+            }
+        }
+
+        const items = e.clipboardData?.items;
+        if (items) {
+            for (let i = 0; i < items.length; i++) {
+                // If we already got the image from .files, avoid duplicates, but items have no direct names usually.
+                // However, items[i].getAsFile() returns the same file.
+                // We just rely on items for text/plain URL fetching if no native image files were found.
+                if (items[i].type.startsWith('image/')) {
+                    const file = items[i].getAsFile();
+                    if (file && !imageFiles.some(f => f.name === file.name && f.size === file.size)) {
+                        imageFiles.push(file);
+                        hasImage = true;
                     }
-                });
+                } else if (!hasImage && items[i].type === 'text/plain') {
+                    // Handle Image URL Paste if no image files were directly copied
+                    items[i].getAsString((text) => {
+                        const url = text.trim();
+                        if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) || url.startsWith('http')) {
+                            fetch(url)
+                                .then(res => {
+                                    if (!res.ok) throw new Error('Fetch failed');
+                                    const contentType = res.headers.get('content-type');
+                                    if (contentType && contentType.startsWith('image/')) {
+                                        return res.blob();
+                                    }
+                                    throw new Error('Not an image');
+                                })
+                                .then(blob => {
+                                    const file = new File([blob], "pasted_image.png", { type: blob.type });
+                                    processFiles([file]);
+                                })
+                                .catch(() => { });
+                        }
+                    });
+                }
             }
         }
 
         if (imageFiles.length > 0) {
             e.preventDefault();
-            // Convert to FileList-like object
-            const dt = new DataTransfer();
-            imageFiles.forEach(f => dt.items.add(f));
-            processFiles(dt.files);
+            processFiles(imageFiles);
         }
     }, [processFiles]);
 
@@ -1256,7 +1322,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         setConfig(prev => ({
             ...prev,
             pptSlides: slides,
-            parallelCount: Math.max(1, Math.min(20, slides.length || prev.parallelCount || 1))
+            parallelCount: slides.length > 0
+                ? Math.max(Math.max(1, prev.parallelCount || 1), Math.min(20, slides.length))
+                : Math.max(1, prev.parallelCount || 1)
         }));
     }, [config.mode, config.pptSlides, parsePptSlides, pptOutlineDraft, setConfig]);
 
@@ -1350,9 +1418,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         e.stopPropagation();
         dragCounter.current -= 1;
 
-        // Don't clear timer here immediately, allow slight buffer or let Over handle it? 
+        // Don't clear timer here immediately, allow slight buffer or let Over handle it?
         // Actually if we leave, we might want to kill it if count is 0.
-        // But if we leave to a child, Over will fire there (bubbling?). 
+        // But if we leave to a child, Over will fire there (bubbling?).
         // Safest is to rely on the counter logic + the fallback timer.
 
         if (dragCounter.current <= 0) {
@@ -1525,7 +1593,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     const isNanoBanana2 = !!currentModel?.isSystemInternal;
     // 🚀 优先使用模型自带的 creditCost，如果没有则通过 getModelCredits 查询
     const currentCreditCost = isModelListEmpty ? 0 :
-        (currentModel?.creditCost !== undefined ? currentModel.creditCost : getModelCredits((currentModel?.id || '').split('@')[0]));
+        (currentModel?.isSystemInternal
+            ? getModelCredits((currentModel?.id || '').split('@')[0], config.imageSize)
+            : (currentModel?.creditCost !== undefined ? currentModel.creditCost : getModelCredits((currentModel?.id || '').split('@')[0], config.imageSize)));
 
     // 🚀 [NEW] 计算总成本 (单价 * 数量)
     const totalCreditCost = currentCreditCost * (config.parallelCount || 1);
@@ -1662,7 +1732,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                     {/* Mode Toggle (Floating above on Desktop, or Integrated?)
                      Design choice: Put it inside "Tools" or main bar?
-                     Main bar is better for visibility. 
+                     Main bar is better for visibility.
                      Let's add a small toggle at the top left of the input bar or left side.
                   */}
 
@@ -1713,7 +1783,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 const sliderLeft = 4 + activeModeIndex * MODE_SLOT_WIDTH + (MODE_SLOT_WIDTH - sliderWidth) / 2;
                                 return (
                                     <div className={`
-                                        relative inline-flex items-center p-1 rounded-xl border 
+                                        relative inline-flex items-center p-1 rounded-xl border
                                         ${isMobile ? 'min-w-max' : ''}
                                         backdrop-blur-sm
                                     `}
@@ -1749,7 +1819,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             const maxDistance = MODE_SLOT_WIDTH;
                                             const opacity = Math.max(0.04, 0.12 - (distance / maxDistance) * 0.08);
                                             const scaleY = Math.max(0.5, 1 - (distance / maxDistance) * 0.5);
-                                            
+
                                             return (
                                                 <span
                                                     key={`split-${splitIndex}`}
@@ -1771,7 +1841,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 <div key={item.mode} className="relative z-10">
                                                     <button
                                                         className={`
-                                                            px-2 py-1.5 rounded-lg font-medium 
+                                                            px-2 py-1.5 rounded-lg font-medium
                                                             ${isMobile ? 'w-[72px] text-[12px]' : 'w-[82px] text-sm'}
                                                             transition-all duration-300 ease-out
                                                             hover:scale-105 active:scale-95
@@ -1784,8 +1854,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                         onClick={item.onSelect}
                                                     >
                                                         <span className="inline-flex items-center gap-1.5">
-                                                            <Icon 
-                                                                size={isActive ? 14 : 13} 
+                                                            <Icon
+                                                                size={isActive ? 14 : 13}
                                                                 className={`
                                                                     transition-all duration-300 ease-out
                                                                     ${isActive ? 'animate-pulse-once' : ''}
@@ -2174,7 +2244,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                     // 2. Pass to parent (handleDrop) for file processing
                                     // We need to re-fire the drop event on the parent or call logic.
                                     // Since we stopped prop, we must call it manually or refactor.
-                                    // Simplest: Call onFilesDrop if provided? 
+                                    // Simplest: Call onFilesDrop if provided?
                                     // But existing architecture uses the parent <div> onDrop={handleDrop}.
                                     // If we stopPropagation here, the parent sees it.
                                     // If we DON'T stopPropagation, the parent sees it.
@@ -2595,7 +2665,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                                             </div>
                                                                             <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
                                                                                 <span className="text-xs px-2.5 py-1 rounded-full bg-white/25 text-white border border-white/30 font-semibold flex items-center gap-1">
-                                                                                    ✨{model.creditCost !== undefined ? model.creditCost : getModelCredits((model.id || '').split('@')[0])}
+                                                                                    ✨{model.isSystemInternal
+                                                                                        ? getModelCredits((model.id || '').split('@')[0], config.imageSize)
+                                                                                        : (model.creditCost !== undefined ? model.creditCost : getModelCredits((model.id || '').split('@')[0], config.imageSize))}
                                                                                 </span>
                                                                             </div>
                                                                         </div>

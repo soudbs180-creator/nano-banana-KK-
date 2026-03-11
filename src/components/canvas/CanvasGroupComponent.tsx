@@ -29,6 +29,7 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
     const rafRef = useRef<number | null>(null);
     const pendingDelta = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
+    const stackZIndex = ((group.zIndex ?? 0) * 100) + (isDragging ? 30 : highlighted ? 20 : 10);
 
     // Direct DOM Refs
     const containerRef = useRef<HTMLDivElement>(null);
@@ -190,7 +191,7 @@ export const CanvasGroupComponent: React.FC<CanvasGroupProps> = ({
                     width: bounds.width,
                     height: bounds.height,
                     transform: `translate3d(${bounds.x}px, ${bounds.y}px, 0)`,
-                    zIndex: 5, // Below cards (z-10/20) but above lines
+                    zIndex: stackZIndex,
                     pointerEvents: 'auto',
                     willChange: isDragging ? 'transform' : 'auto', // GPU Optimization
                     // Disable transition during drag to prevent rubber-banding

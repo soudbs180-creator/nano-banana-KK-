@@ -125,7 +125,7 @@ const DEFAULT_STATE: CanvasState = {
 };
 
 // Helper to strip image URLs and Reference Image data for localStorage
-const stripImageUrls = (canvases: Canvas[]): Canvas[] => {
+const stripImageUrls = (canvases: Canvas[], aggressive: boolean = false): Canvas[] => {
     return canvases.map(c => ({
         ...c,
         imageNodes: c.imageNodes.map(img => ({
@@ -136,9 +136,9 @@ const stripImageUrls = (canvases: Canvas[]): Canvas[] => {
         promptNodes: c.promptNodes.map(pn => ({
             ...pn,
             referenceImages: pn.referenceImages?.map(ref => {
-                // [CRITICAL FIX] Keep small reference images in localStorage to prevent data loss on fast refresh
-                // 500KB limit (approx 375KB image). Larger images rely on IndexedDB.
-                const shouldKeep = ref.data && ref.data.length < 500000;
+                // [CRITICAL FIX] Keep small reference images in localStorage to prevent data loss on fast refresh.
+                // If storage quota is exceeded, we retry with aggressive mode that strips all ref data.
+                const shouldKeep = !aggressive && ref.data && ref.data.length < 500000;
                 return {
                     ...ref,
                     data: shouldKeep ? ref.data : ''
@@ -146,6 +146,38 @@ const stripImageUrls = (canvases: Canvas[]): Canvas[] => {
             })
         }))
     }));
+};
+
+const buildStorageState = (state: CanvasState, aggressive: boolean = false): CanvasState => ({
+    ...state,
+    canvases: stripImageUrls(state.canvases, aggressive),
+    history: {},
+    fileSystemHandle: null,
+    folderName: null
+});
+
+const persistCanvasStateToLocalStorage = (state: CanvasState, context: string = 'canvas-save') => {
+    const write = (aggressive: boolean) => {
+        const serialized = JSON.stringify(buildStorageState(state, aggressive));
+        if (!aggressive && serialized.length > 4500000) {
+            console.warn(`[CanvasContext] Canvas state approaching localStorage quota limit during ${context}.`);
+        }
+        localStorage.setItem(STORAGE_KEY, serialized);
+        return serialized.length;
+    };
+
+    try {
+        write(false);
+    } catch (error: any) {
+        if (error?.name !== 'QuotaExceededError') throw error;
+
+        try {
+            const fallbackLength = write(true);
+            console.warn(`[CanvasContext] localStorage quota exceeded during ${context}, retried with aggressive payload (${fallbackLength} chars).`);
+        } catch (fallbackError) {
+            throw fallbackError;
+        }
+    }
 };
 
 export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -200,7 +232,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 // 必须强制设为 null，依赖 useEffect + IndexedDB 恢复
                 parsed.fileSystemHandle = null;
                 // FolderName 可以保留用于 UI 显示，但如果不连接也没意义，不过保留着也没坏处
-                // parsed.folderName = null; 
+                // parsed.folderName = null;
 
                 return parsed;
             }
@@ -672,7 +704,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 🚀 Cloud Sync: Load & Merge on Init
     useEffect(() => {
         const loadCloud = async () => {
-            // Wait for auth? 
+            // Wait for auth?
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) return;
 
@@ -779,15 +811,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const saveState = async () => {
             try {
-                const stateToSave = {
-                    ...state,
-                    canvases: stripImageUrls(state.canvases),
-                    history: {}
-                };
-                const jsonStr = JSON.stringify(stateToSave);
-                if (jsonStr.length > 4500000) console.warn('Canvas state approaching localStorage quota limit.');
-                localStorage.setItem(STORAGE_KEY, jsonStr);
-
+                persistCanvasStateToLocalStorage(state, 'debounced-save');
             } catch (error: any) {
                 if (error.name === 'QuotaExceededError') console.error('localStorage quota exceeded.');
                 else console.error('Failed to save state:', error);
@@ -812,12 +836,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (isLoadingRef.current) return;
             try {
                 const currentState = stateRef.current;
-                const stateToSave = {
-                    ...currentState,
-                    canvases: stripImageUrls(currentState.canvases),
-                    history: {}
-                };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+                persistCanvasStateToLocalStorage(currentState, 'visibility-save');
             } catch (e) {
                 console.error('Failed to save state on unload:', e);
             }
@@ -1040,10 +1059,24 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         try {
             // 🚀 [防御性修复] 先添加节点到状态，保证UI立即显示
-            updateCanvas(c => ({
-                ...c,
-                promptNodes: c.promptNodes.some(n => n.id === node.id) ? (console.warn(`[CanvasContext] Skip duplicate promptNodeID: ${node.id}`), c.promptNodes) : [...c.promptNodes, node]
-            }));
+            updateCanvas(c => {
+                const allZIndices = [
+                    ...c.promptNodes.map(n => n.zIndex ?? 0),
+                    ...c.imageNodes.map(n => n.zIndex ?? 0),
+                    ...(c.groups || []).map(g => g.zIndex ?? 0)
+                ];
+                let maxZ = allZIndices.length > 0 ? Math.max(...allZIndices) : 0;
+
+                // 赋予新创建的 PromptNode 最高层级，确保不被旧卡片遮挡
+                const nodeWithZIndex = { ...node, zIndex: maxZ + 1 };
+
+                return {
+                    ...c,
+                    promptNodes: c.promptNodes.some(n => n.id === node.id) ?
+                        (console.warn(`[CanvasContext] Skip duplicate promptNodeID: ${node.id}`), c.promptNodes) :
+                        [...c.promptNodes, nodeWithZIndex]
+                };
+            });
             console.log('[CanvasContext.addPromptNode] ✅ 卡片已添加到画布');
 
             // 🚀 [关键修复] 异步保存参考图 - 即使失败也不影响卡片显示
@@ -1189,10 +1222,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
 
             const stateToSave = { ...recentState, canvases: updatedCanvases };
-            const stripped = { ...stateToSave, canvases: stripImageUrls(stateToSave.canvases) };
 
             try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(stripped));
+                persistCanvasStateToLocalStorage(stateToSave, 'urgent-node-save');
                 console.log(`[CanvasContext] 🚀 URGENT SAVE for Node ${node.id} to localStorage`);
             } catch (e) {
                 console.error('[CanvasContext] ❌ Urgent save failed', e);
@@ -1347,39 +1379,119 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         try {
             updateCanvas(c => {
                 let nextPromptNodes = [...c.promptNodes];
-                let nextImageNodes = [...c.imageNodes, ...stateNodes.filter(n => !c.imageNodes.some(existing => existing.id === n.id))];
+                const existingImageIds = new Set(c.imageNodes.map(existing => existing.id));
+                const appendedNodes = stateNodes.filter(node => !existingImageIds.has(node.id));
+                const parentIdsToPromote = new Set<string>();
+
+                appendedNodes.forEach(node => {
+                    if (node.parentPromptId) {
+                        parentIdsToPromote.add(node.parentPromptId);
+                    }
+                });
+
+                if (parentUpdates) {
+                    Object.keys(parentUpdates).forEach(promptId => {
+                        if (promptId) parentIdsToPromote.add(promptId);
+                    });
+                }
+
+                const allZIndices = [
+                    ...c.promptNodes.map(node => node.zIndex ?? 0),
+                    ...c.imageNodes.map(node => node.zIndex ?? 0),
+                    ...(c.groups || []).map(group => group.zIndex ?? 0)
+                ];
+                let maxZ = allZIndices.length > 0 ? Math.max(...allZIndices) : 0;
+
+                const nextPromptZById = new Map<string, number>();
+                const nextExistingImageZById = new Map<string, number>();
+                const nextAppendedImageZById = new Map<string, number>();
+
+                Array.from(parentIdsToPromote).forEach(promptId => {
+                    if (c.promptNodes.some(promptNode => promptNode.id === promptId)) {
+                        nextPromptZById.set(promptId, ++maxZ);
+                    }
+
+                    c.imageNodes
+                        .filter(imageNode => imageNode.parentPromptId === promptId)
+                        .sort((left, right) => (left.zIndex ?? 0) - (right.zIndex ?? 0) || left.timestamp - right.timestamp)
+                        .forEach(imageNode => {
+                            nextExistingImageZById.set(imageNode.id, ++maxZ);
+                        });
+                });
+
+                appendedNodes.forEach(node => {
+                    nextAppendedImageZById.set(node.id, node.zIndex ?? ++maxZ);
+                });
 
                 // 🚀 [Critical Fix] Atomic linking: update parent nodes in the same state transaction
                 if (parentUpdates) {
                     nextPromptNodes = nextPromptNodes.map(pn => {
                         const updates = parentUpdates[pn.id];
+                        const nextZIndex = nextPromptZById.get(pn.id);
                         if (updates) {
-                            return { ...pn, ...updates };
+                            return { ...pn, ...updates, ...(nextZIndex !== undefined ? { zIndex: nextZIndex } : {}) };
+                        }
+                        if (nextZIndex !== undefined) {
+                            return { ...pn, zIndex: nextZIndex };
                         }
                         return pn;
                     });
                 } else {
                     // Backward compatibility: If no explicit updates, auto-link based on parentPromptId
-                    const parentIds = Array.from(new Set(nodes.map(n => n.parentPromptId).filter(Boolean)));
+                    const parentIds = Array.from(new Set(appendedNodes.map(n => n.parentPromptId).filter(Boolean)));
                     if (parentIds.length > 0) {
                         nextPromptNodes = nextPromptNodes.map(pn => {
                             if (parentIds.includes(pn.id)) {
-                                const newChildIds = nodes.filter(n => n.parentPromptId === pn.id).map(n => n.id);
+                                const newChildIds = appendedNodes.filter(n => n.parentPromptId === pn.id).map(n => n.id);
                                 return {
                                     ...pn,
                                     childImageIds: [...new Set([...(pn.childImageIds || []), ...newChildIds])],
-                                    isGenerating: false
+                                    isGenerating: false,
+                                    ...(nextPromptZById.has(pn.id) ? { zIndex: nextPromptZById.get(pn.id)! } : {})
                                 };
+                            }
+                            const nextZIndex = nextPromptZById.get(pn.id);
+                            if (nextZIndex !== undefined) {
+                                return { ...pn, zIndex: nextZIndex };
                             }
                             return pn;
                         });
                     }
                 }
 
+                let nextImageNodes = c.imageNodes.map(imageNode => {
+                    const nextZIndex = nextExistingImageZById.get(imageNode.id);
+                    if (nextZIndex !== undefined) {
+                        return { ...imageNode, zIndex: nextZIndex };
+                    }
+                    return imageNode;
+                });
+
+                nextImageNodes = [
+                    ...nextImageNodes,
+                    ...appendedNodes.map(node => ({
+                        ...node,
+                        zIndex: nextAppendedImageZById.get(node.id) ?? node.zIndex
+                    }))
+                ];
+
+                const promotedNodeIds = new Set<string>([
+                    ...Array.from(parentIdsToPromote),
+                    ...Array.from(nextExistingImageZById.keys()),
+                    ...appendedNodes.map(node => node.id)
+                ]);
+
+                const nextGroups = (c.groups || []).map(group => (
+                    group.nodeIds.some(nodeId => promotedNodeIds.has(nodeId))
+                        ? { ...group, zIndex: ++maxZ }
+                        : group
+                ));
+
                 return {
                     ...c,
                     promptNodes: nextPromptNodes,
-                    imageNodes: nextImageNodes
+                    imageNodes: nextImageNodes,
+                    groups: nextGroups
                 };
             });
             console.log('[CanvasContext.addImageNodes] ✅ UI更新成功，卡片已显示');
@@ -2633,7 +2745,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
 
         // 3. 布局正常卡组 + 孤独卡组 (每行固定20组)
-        // ✅ 两遍处理: 
+        // ✅ 两遍处理:
         //   第一遍: 分配卡组到行,计算每行的最大主卡高度
         //   第二遍: 根据每行的最大主卡高度设置位置,实现副卡顶部对齐
 
@@ -2919,11 +3031,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Force Save - 使用更新后的状态
             if (!prev.fileSystemHandle) {
                 try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    persistCanvasStateToLocalStorage({
                         ...prev,
-                        canvases: stripImageUrls(updatedCanvases),
+                        canvases: updatedCanvases,
                         history: {}
-                    }));
+                    } as CanvasState, 'layout-save');
                 } catch (e) {
                     console.error('Failed to save layout:', e);
                 }
@@ -2956,159 +3068,176 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 await setLocalFolderHandle(handle);
             }
 
-            // [NEW] Migration: Save currently loaded images (Temp) to the new Local Folder
-            // This ensures work done in Temp mode is not lost/abandoned when switching
-            if (handle) {
-                // 🚀 不再调用getAllImages，只迁移当前状态需要的图片
-
-                // Helper to save base64/blob to disk
-                const saveToDisk = async (id: string, urlOrData: string, isVideo: boolean = false) => {
-                    try {
-                        let blob: Blob;
-                        if (urlOrData.startsWith('data:')) {
-                            const res = await fetch(urlOrData);
-                            blob = await res.blob();
-                        } else {
-                            // It's a blob URL
-                            const res = await fetch(urlOrData);
-                            blob = await res.blob();
-                        }
-
-                        // 🚀 使用新版 saveImageToHandle (支持视频和图片分离)
-                        await fileSystemService.saveImageToHandle(handle!, id, blob, isVideo);
-
-                        if (!isVideo) {
-                            const { generateThumbnailWithPreset } = await import('../workers/thumbnailService');
-                            const { blob: thumbnailBlob } = await generateThumbnailWithPreset(urlOrData, 'MICRO');
-                            await fileSystemService.saveThumbnailToHandle(handle!, id, thumbnailBlob);
-                        }
-                    } catch (e) {
-                        console.warn(`Failed to migrate image ${id} to local folder`, e);
-                    }
-                };
-
-                // 🚀 只迁移当前状态实际需要的图片
-                const promises: Promise<void>[] = [];
-                state.canvases.forEach(c => {
-                    c.imageNodes.forEach(img => {
-                        if (img.id && img.url) {
-                            // 检查是否是视频
-                            const isVideo = img.url.startsWith('data:video/') || img.model?.includes('veo') || false;
-                            const lookupId = img.storageId || img.id;
-                            promises.push(saveToDisk(lookupId, img.url, isVideo));
-                        }
-                    });
-                    c.promptNodes.forEach(pn => {
-                        pn.referenceImages?.forEach(ref => {
-                            // 🚀 使用专门的 saveReferenceImage 函数（保存到 refs/ 并压缩）
-                            if (ref.storageId && ref.data) {
-                                // saveReferenceImage expects base64 string without "data:mimeType;base64," prefix
-                                const base64Data = ref.data.startsWith('data:') ? ref.data.split(',')[1] : ref.data;
-                                promises.push(
-                                    fileSystemService.saveReferenceImage(handle!, ref.storageId, base64Data, ref.mimeType)
-                                );
-                            } else if (ref.id && ref.data) {
-                                // Fallback for old refs without storageId
-                                // saveReferenceImage expects base64 string without "data:mimeType;base64," prefix
-                                const base64Data = ref.data.startsWith('data:') ? ref.data.split(',')[1] : ref.data;
-                                promises.push(
-                                    fileSystemService.saveReferenceImage(handle!, ref.id, base64Data, ref.mimeType)
-                                );
-                            }
-                        });
-                    });
-                });
-
-                // 等待所有保存完成
-                try {
-                    await Promise.allSettled(promises);
-                } catch (e) {
-                    console.warn('Migration partial failure', e);
-                }
-
-                if (promises.length > 0) {
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires
-                    const { notify } = await import('../services/system/notificationService');
-                    notify.success('数据迁移', `已将 ${promises.length} 张临时图片保存到本地文档夹`);
-                }
+            if (!handle) {
+                return;
             }
 
-            const { canvases, images } = await fileSystemService.loadProjectWithThumbs(handle);
+            setState(prev => ({
+                ...prev,
+                fileSystemHandle: handle,
+                folderName: handle.name
+            }));
 
-            // Hydrate images map to IndexedDB for performance/caching
-            for (const [id, data] of images.entries()) {
-                // Determine what to cache: the display URL (thumbnail or original if small)
-                const blobUrl = data.url;
-                if (blobUrl) {
-                    try {
-                        const res = await fetch(blobUrl);
-                        const blob = await res.blob();
-                        const reader = new FileReader();
-                        reader.onloadend = async () => {
-                            const base64data = reader.result as string;
-                            if (base64data) {
-                                await saveImage(id, base64data);
+            void (async () => {
+                try {
+
+                    // [NEW] Migration: Save currently loaded images (Temp) to the new Local Folder
+                    // This ensures work done in Temp mode is not lost/abandoned when switching
+                    if (handle) {
+                        // 🚀 不再调用getAllImages，只迁移当前状态需要的图片
+
+                        // Helper to save base64/blob to disk
+                        const saveToDisk = async (id: string, urlOrData: string, isVideo: boolean = false) => {
+                            try {
+                                let blob: Blob;
+                                if (urlOrData.startsWith('data:')) {
+                                    const res = await fetch(urlOrData);
+                                    blob = await res.blob();
+                                } else {
+                                    // It's a blob URL
+                                    const res = await fetch(urlOrData);
+                                    blob = await res.blob();
+                                }
+
+                                // 🚀 使用新版 saveImageToHandle (支持视频和图片分离)
+                                await fileSystemService.saveImageToHandle(handle!, id, blob, isVideo);
+
+                                if (!isVideo) {
+                                    const { generateThumbnailWithPreset } = await import('../workers/thumbnailService');
+                                    const { blob: thumbnailBlob } = await generateThumbnailWithPreset(urlOrData, 'MICRO');
+                                    await fileSystemService.saveThumbnailToHandle(handle!, id, thumbnailBlob);
+                                }
+                            } catch (e) {
+                                console.warn(`Failed to migrate image ${id} to local folder`, e);
                             }
                         };
-                        reader.readAsDataURL(blob);
-                    } catch (e) {
-                        console.error(`Failed to cache image ${id}`, e);
+
+                        // 🚀 只迁移当前状态实际需要的图片
+                        const promises: Promise<void>[] = [];
+                        state.canvases.forEach(c => {
+                            c.imageNodes.forEach(img => {
+                                if (img.id && img.url) {
+                                    // 检查是否是视频
+                                    const isVideo = img.url.startsWith('data:video/') || img.model?.includes('veo') || false;
+                                    const lookupId = img.storageId || img.id;
+                                    promises.push(saveToDisk(lookupId, img.url, isVideo));
+                                }
+                            });
+                            c.promptNodes.forEach(pn => {
+                                pn.referenceImages?.forEach(ref => {
+                                    // 🚀 使用专门的 saveReferenceImage 函数（保存到 refs/ 并压缩）
+                                    if (ref.storageId && ref.data) {
+                                        // saveReferenceImage expects base64 string without "data:mimeType;base64," prefix
+                                        const base64Data = ref.data.startsWith('data:') ? ref.data.split(',')[1] : ref.data;
+                                        promises.push(
+                                            fileSystemService.saveReferenceImage(handle!, ref.storageId, base64Data, ref.mimeType)
+                                        );
+                                    } else if (ref.id && ref.data) {
+                                        // Fallback for old refs without storageId
+                                        // saveReferenceImage expects base64 string without "data:mimeType;base64," prefix
+                                        const base64Data = ref.data.startsWith('data:') ? ref.data.split(',')[1] : ref.data;
+                                        promises.push(
+                                            fileSystemService.saveReferenceImage(handle!, ref.id, base64Data, ref.mimeType)
+                                        );
+                                    }
+                                });
+                            });
+                        });
+
+                        // 等待所有保存完成
+                        try {
+                            await Promise.allSettled(promises);
+                        } catch (e) {
+                            console.warn('Migration partial failure', e);
+                        }
+
+                        if (promises.length > 0) {
+                            // eslint-disable-next-line @typescript-eslint/no-var-requires
+                            const { notify } = await import('../services/system/notificationService');
+                            notify.success('数据迁移', `已将 ${promises.length} 张临时图片保存到本地文档夹`);
+                        }
                     }
-                }
-            }
 
-            // If found existing project in the folder, MERGE instead of overwrite
-            if (canvases.length > 0) {
-                setState(prev => {
-                    const mergedCanvases = mergeCanvases(prev.canvases, canvases);
-                    const finalCanvases = mergedCanvases.map(canvas => ({
-                        ...canvas,
-                        imageNodes: (canvas.imageNodes || []).map(img => {
-                            const lookupId = img.storageId || img.id;
-                            const localData = images.get(lookupId) || images.get(img.id);
+                    const { canvases, images } = await fileSystemService.loadProjectWithThumbs(handle);
+
+                    // Hydrate images map to IndexedDB for performance/caching
+                    for (const [id, data] of images.entries()) {
+                        // Determine what to cache: the display URL (thumbnail or original if small)
+                        const blobUrl = data.url;
+                        if (blobUrl) {
+                            try {
+                                const res = await fetch(blobUrl);
+                                const blob = await res.blob();
+                                const reader = new FileReader();
+                                reader.onloadend = async () => {
+                                    const base64data = reader.result as string;
+                                    if (base64data) {
+                                        await saveImage(id, base64data);
+                                    }
+                                };
+                                reader.readAsDataURL(blob);
+                            } catch (e) {
+                                console.error(`Failed to cache image ${id}`, e);
+                            }
+                        }
+                    }
+
+                    // If found existing project in the folder, MERGE instead of overwrite
+                    if (canvases.length > 0) {
+                        setState(prev => {
+                            const mergedCanvases = mergeCanvases(prev.canvases, canvases);
+                            const finalCanvases = mergedCanvases.map(canvas => ({
+                                ...canvas,
+                                imageNodes: (canvas.imageNodes || []).map(img => {
+                                    const lookupId = img.storageId || img.id;
+                                    const localData = images.get(lookupId) || images.get(img.id);
+                                    return {
+                                        ...img,
+                                        url: localData?.url || img.url || '',
+                                        originalUrl: localData?.originalUrl || img.originalUrl,
+                                        filename: localData?.filename || img.fileName
+                                    };
+                                }),
+                                promptNodes: (canvas.promptNodes || []).map(pn => ({
+                                    ...pn,
+                                    referenceImages: pn.referenceImages?.map(ref => ({ ...ref })) || []
+                                }))
+                            }));
+
+                            const finalActiveId = resolvePreferredActiveCanvasId(
+                                prev.activeCanvasId,
+                                null,
+                                finalCanvases
+                            );
+
+                            console.log(`[CanvasContext] 🚀 Merged local folder canvases: ${prev.canvases.length} memory + ${canvases.length} disk -> ${finalCanvases.length}`);
+
                             return {
-                                ...img,
-                                url: localData?.url || img.url || '',
-                                originalUrl: localData?.originalUrl || img.originalUrl,
-                                filename: localData?.filename || img.fileName
+                                ...prev,
+                                canvases: finalCanvases,
+                                activeCanvasId: finalActiveId,
+                                fileSystemHandle: handle,
+                                folderName: handle.name,
+                                history: {}
                             };
-                        }),
-                        promptNodes: (canvas.promptNodes || []).map(pn => ({
-                            ...pn,
-                            referenceImages: pn.referenceImages?.map(ref => ({ ...ref })) || []
-                        }))
-                    }));
+                        });
+                    } else {
+                        // New folder (empty), just attach handle to current state (Save to Local)
+                        setState(prev => ({
+                            ...prev,
+                            fileSystemHandle: handle,
+                            folderName: handle.name
+                        }));
+                    }
 
-                    const finalActiveId = resolvePreferredActiveCanvasId(
-                        prev.activeCanvasId,
-                        null,
-                        finalCanvases
-                    );
-
-                    console.log(`[CanvasContext] 🚀 Merged local folder canvases: ${prev.canvases.length} memory + ${canvases.length} disk -> ${finalCanvases.length}`);
-
-                    return {
-                        ...prev,
-                        canvases: finalCanvases,
-                        activeCanvasId: finalActiveId,
-                        fileSystemHandle: handle,
-                        folderName: handle.name,
-                        history: {}
-                    };
-                });
-            } else {
-                // New folder (empty), just attach handle to current state (Save to Local)
-                setState(prev => ({
-                    ...prev,
-                    fileSystemHandle: handle,
-                    folderName: handle.name
-                }));
-            }
-
-            // 🚀 [Fix] Persist handle to IndexedDB so it can be restored on reload
-            import('../services/storage/storagePreference').then(({ setLocalFolderHandle }) => {
-                if (handle) setLocalFolderHandle(handle);
-            });
+                    // 🚀 [Fix] Persist handle to IndexedDB so it can be restored on reload
+                    import('../services/storage/storagePreference').then(({ setLocalFolderHandle }) => {
+                        if (handle) setLocalFolderHandle(handle);
+                    });
+                } catch (backgroundError) {
+                    console.error('[CanvasContext] Failed to hydrate local folder in background:', backgroundError);
+                }
+            })();
 
         } catch (error) {
             console.error('Failed to connect local folder:', error);
@@ -3288,7 +3417,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     const currentCanvas = prev.canvases.find(c => c.id === newCanvas.id);
 
                     // If timestamps are close (within 2s) and item counts match, skip update to prevent flash
-                    // Note: fileSystemService might not set exact lastModified from file stats, 
+                    // Note: fileSystemService might not set exact lastModified from file stats,
                     // dependent on how loadProject works.
                     // Let's implement a deeper equality check or just check node counts for now.
 
@@ -3296,7 +3425,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         const countMatch = currentCanvas.promptNodes.length === newCanvas.promptNodes.length &&
                             currentCanvas.imageNodes.length === newCanvas.imageNodes.length;
 
-                        // If counts match, assume no external change for now to stop flashing. 
+                        // If counts match, assume no external change for now to stop flashing.
                         // [FIX] Strict Timestamp Check: If local state is newer than disk, DO NOT OVERWRITE.
                         // allow 2s margin for FS precision issues.
                         if (currentCanvas) {
@@ -3371,16 +3500,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 // 1. Save to LocalStorage (Only if NOT using File System)
                 if (!state.fileSystemHandle) {
                     try {
-                        const stateToSave = {
-                            ...state,
-                            canvases: stripImageUrls(state.canvases),
-                            history: {},
-                            fileSystemHandle: undefined,
-                            folderName: undefined
-                        };
-                        const jsonStr = JSON.stringify(stateToSave);
-                        if (jsonStr.length > 4500000) console.warn('Canvas state approaching localStorage quota limit.');
-                        localStorage.setItem(STORAGE_KEY, jsonStr);
+                        persistCanvasStateToLocalStorage(state, 'periodic-save');
                     } catch (e: any) {
                         if (e.name === 'QuotaExceededError') console.error('localStorage quota exceeded.');
                         else console.error('Failed to save state:', e);
@@ -3433,7 +3553,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             console.error('[CanvasContext] 🚨 Aborting save: canvases array is empty! This would wipe project.json');
                             return;
                         }
-                        
+
                         const fsState = {
                             canvases: cleanCanvases,
                             activeCanvasId: state.activeCanvasId || cleanCanvases[0]?.id || 'default',
@@ -3516,7 +3636,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 🚀 [Layering] Bring nodes to front by assigning higher zIndex
     const bringNodesToFront = useCallback((nodeIds: string[]) => {
         if (nodeIds.length === 0) return;
-        
+
         setState(prev => {
             const currentCanvas = prev.canvases.find(c => c.id === prev.activeCanvasId);
             if (!currentCanvas) return prev;
@@ -3609,7 +3729,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
 
             const nodeIdSet = new Set(orderedNodeIds);
-            
+
             // Find current max zIndex
             const allZIndices = [
                 ...currentCanvas.promptNodes.map(n => n.zIndex ?? 0),
@@ -3651,8 +3771,8 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
 
             const newCanvases = prev.canvases.map(c =>
-                c.id === prev.activeCanvasId 
-                    ? { ...c, promptNodes: newPromptNodes, imageNodes: newImageNodes, groups: newGroups } 
+                c.id === prev.activeCanvasId
+                    ? { ...c, promptNodes: newPromptNodes, imageNodes: newImageNodes, groups: newGroups }
                     : c
             );
 
@@ -3665,12 +3785,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     useEffect(() => {
         const currentSelected = state.selectedNodeIds || [];
         const prevSelected = prevSelectedRef.current;
-        
+
         // Only bring to front if there are newly selected nodes (not just deselection)
-        const hasNewSelection = currentSelected.length > 0 && 
-            (currentSelected.length > prevSelected.length || 
-             currentSelected.some(id => !prevSelected.includes(id)));
-        
+        const hasNewSelection = currentSelected.length > 0 &&
+            (currentSelected.length > prevSelected.length ||
+                currentSelected.some(id => !prevSelected.includes(id)));
+
         if (hasNewSelection) {
             // Small delay to avoid state update during render
             const timer = setTimeout(() => {
@@ -3678,7 +3798,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }, 0);
             return () => clearTimeout(timer);
         }
-        
+
         prevSelectedRef.current = [...currentSelected];
     }, [state.selectedNodeIds, bringNodesToFront]);
 
@@ -3848,7 +3968,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Check prompts
             for (const p of currentCanvas.promptNodes) {
                 // Approximate prompt dimensions (default width 320, height ~160+)
-                // Origin is Bottom Center, but stored pos is card bottom center? 
+                // Origin is Bottom Center, but stored pos is card bottom center?
                 // Wait, in `layoutTree`: "nodeX = x + width/2", "positions[node.id] = {x, y}"
                 // And App.tsx `getCardDimensions` logic implies stored pos is bottom center?
                 // Let's assume standard card calc:
@@ -3928,7 +4048,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
      * 查找下一个卡组的网格位置
      * 规则：优先向右排列，每排30个卡组后换行
      * 返回主卡（提示词）的底部中心位置
-     * 
+     *
      * Card Group Layout Strategy:
      * - Each group consists of a Main Card (Prompt) and Sub Cards (Images)
      * - Groups are arranged in a grid: 30 per row, then wrap to next row
@@ -3999,7 +4119,20 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const addGroup = useCallback((group: CanvasGroup) => {
         updateCanvas((canvas) => ({
             ...canvas,
-            groups: [...(canvas.groups || []), group]
+            groups: [
+                ...(canvas.groups || []),
+                group.zIndex !== undefined
+                    ? group
+                    : {
+                        ...group,
+                        zIndex: Math.max(
+                            0,
+                            ...canvas.promptNodes.map(node => node.zIndex ?? 0),
+                            ...canvas.imageNodes.map(node => node.zIndex ?? 0),
+                            ...(canvas.groups || []).map(existingGroup => existingGroup.zIndex ?? 0)
+                        ) + 1
+                    }
+            ]
         }));
     }, [updateCanvas]);
 

@@ -1,6 +1,6 @@
 /**
  * Supplier Service
- * 
+ *
  * Manages third-party suppliers (URL + Key + Name)
  * Automatically fetches models and pricing from NewAPI
  * Syncs with Cost Estimation page
@@ -53,12 +53,25 @@ class SupplierService {
     return this.suppliers.find(s => s.id === id);
   }
 
+  clearLegacyStorage(): void {
+    this.suppliers = [];
+
+    try {
+      localStorage.removeItem(SUPPLIERS_STORAGE_KEY);
+      console.log('[SupplierService] Cleared legacy storage');
+    } catch (error) {
+      console.error('[SupplierService] Failed to clear legacy storage:', error);
+    }
+
+    this.notifyListeners();
+  }
+
   create(data: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt' | 'models'>): Supplier {
     console.log('[SupplierService] Creating supplier:', data.name);
-    
+
     const supplier: Supplier = {
       ...data,
-      id: crypto.randomUUID(),
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2),
       models: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -69,7 +82,7 @@ class SupplierService {
     this.notifyListeners();
 
     console.log('[SupplierService] Supplier created:', supplier.id);
-    
+
     // Fetch models asynchronously if system token provided
     if (data.systemToken) {
       this.fetchModelsAsync(supplier.id, data.baseUrl, data.systemToken);
@@ -80,14 +93,14 @@ class SupplierService {
 
   update(id: string, data: Partial<Omit<Supplier, 'id' | 'createdAt'>>): Supplier | null {
     console.log('[SupplierService] Updating supplier:', id);
-    
+
     const index = this.suppliers.findIndex(s => s.id === id);
     if (index === -1) return null;
 
     const supplier = this.suppliers[index];
-    
+
     // Check if we need to re-fetch models (URL or Token changed)
-    const shouldRefetch = 
+    const shouldRefetch =
       (data.baseUrl && data.baseUrl !== supplier.baseUrl) ||
       (data.systemToken && data.systemToken !== supplier.systemToken);
 
@@ -112,14 +125,14 @@ class SupplierService {
 
   delete(id: string): boolean {
     console.log('[SupplierService] Deleting supplier:', id);
-    
+
     const index = this.suppliers.findIndex(s => s.id === id);
     if (index === -1) return false;
 
     this.suppliers.splice(index, 1);
     this.saveToStorage();
     this.notifyListeners();
-    
+
     console.log('[SupplierService] Supplier deleted:', id);
     return true;
   }
@@ -130,7 +143,7 @@ class SupplierService {
     try {
       console.log('[SupplierService] Fetching models for:', supplierId);
       const models = await this.fetchModelsFromNewAPI(baseUrl, systemToken);
-      
+
       const index = this.suppliers.findIndex(s => s.id === supplierId);
       if (index !== -1) {
         this.suppliers[index].models = models;
@@ -147,7 +160,7 @@ class SupplierService {
   async fetchModelsFromNewAPI(baseUrl: string, systemToken: string): Promise<SupplierModel[]> {
     console.log('[SupplierService] Calling NewAPI for models:', baseUrl);
     const models = await newApiManagementService.fetchAdminModels(systemToken, baseUrl);
-    
+
     return models.map(m => ({
       id: m.id,
       name: m.displayName,
@@ -166,7 +179,7 @@ class SupplierService {
     if (!supplier.systemToken) throw new Error('未配置 System Access Token');
 
     const models = await this.fetchModelsFromNewAPI(supplier.baseUrl, supplier.systemToken);
-    
+
     const index = this.suppliers.findIndex(s => s.id === supplierId);
     if (index !== -1) {
       this.suppliers[index].models = models;

@@ -1,6 +1,6 @@
 /**
  * Storage Adapter - 双模存储适配器
- * 
+ *
  * 根据设备能力自动切换数据源：
  * - PC端 (引用模式): 使用FileSystemAccessAPI，直接读取用户硬盘
  * - 手机端 (托管模式): 使用OPFS，将文档复制到浏览器私有文档系统
@@ -96,7 +96,7 @@ export interface ImageItem {
 
 /**
  * 导入图片（自动适配存储模式）
- * 
+ *
  * PC端：返回文档句柄，不复制文档
  * 手机端：写入OPFS，生成缩略图
  */
@@ -111,7 +111,7 @@ export async function importImages(
     const results: ImageItem[] = [];
 
     for (const file of files) {
-        const id = crypto.randomUUID();
+        const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2);
 
         if (mode === 'native') {
             // PC端：不复制文档，直接使用
@@ -189,7 +189,7 @@ export async function importImages(
 
 /**
  * 获取图片的Blob URL（用于渲染）
- * 
+ *
  * @param item - 图片项
  * @param quality - 'preview' 返回缩略图, 'original' 返回原图
  */

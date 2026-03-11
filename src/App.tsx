@@ -3,6 +3,7 @@ import InfiniteCanvas, { InfiniteCanvasHandle } from './components/canvas/Infini
 
 import PromptBar from './components/layout/PromptBar';
 import ImageNode from './components/image/ImageCard';
+import PptStackPreviewModal from './components/image/PptStackPreviewModal';
 import PromptNodeComponent from './components/canvas/PromptNodeComponent';
 import PendingNode from './components/canvas/PendingNode';
 // KeyManagerModal removed - integrated into UserProfileModal
@@ -197,11 +198,19 @@ const AppContent: React.FC<AppContentProps> = () => {
   // [鏂板姛鑳絔 鍏ㄥ眬鐏鐘舵€?(閽堝鍥剧墖娴忚)
   const [previewImages, setPreviewImages] = useState<GeneratedImage[] | null>(null);
   const [previewInitialIndex, setPreviewInitialIndex] = useState(0);
+  const [pptStackPreview, setPptStackPreview] = useState<{ images: GeneratedImage[]; initialIndex: number } | null>(null);
   const [showMigrateModal, setShowMigrateModal] = useState(false); // 馃殌 杩佺Щ寮圭獥鐘舵€?
 
   const handleOpenPreview = useCallback((imageId: string) => {
     const canvas = activeCanvasRef.current;
     if (!canvas) return;
+
+    const pptBundle = getOrderedPptPreviewBundle(imageId);
+    if (pptBundle) {
+      setPreviewImages(pptBundle.images);
+      setPreviewInitialIndex(pptBundle.currentIndex);
+      return;
+    }
 
     // 1. 缂栫粍閫昏緫 (浼樺厛澶勭悊鐢诲竷缂栫粍)
     const group = canvas.groups.find(g => g.nodeIds.includes(imageId));
@@ -257,7 +266,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       setPreviewImages(list);
       setPreviewInitialIndex(idx >= 0 ? idx : 0);
     }
-  }, []);
+  }, [getOrderedPptPreviewBundle]);
 
   // Reactively track KeyManager state
   const [keyStats, setKeyStats] = useState(keyManager.getStats());
@@ -1758,6 +1767,217 @@ const AppContent: React.FC<AppContentProps> = () => {
     return { title: text, subtitle: '' };
   }, []);
 
+  const buildPptPageAlias = useCallback((raw: string | undefined, pageIndex: number) => {
+    const parsed = parsePptOutlineLine(raw);
+    const title = parsed.title || parsed.subtitle || String(raw || '').trim();
+    return title || `第 ${pageIndex + 1} 页`;
+  }, [parsePptOutlineLine]);
+
+  function getOrderedPptPreviewBundle(imageId: string) {
+    const canvas = activeCanvasRef.current;
+    if (!canvas) return null;
+
+    const target = canvas.imageNodes.find((img) => img.id === imageId);
+    if (!target || target.mode !== GenerationMode.PPT || !target.parentPromptId) {
+      return null;
+    }
+
+    const promptNode = canvas.promptNodes.find((node) => node.id === target.parentPromptId);
+    if (!promptNode) return null;
+
+    const orderedIds = (promptNode.childImageIds || []).filter(Boolean) as string[];
+    const fallbackOrder = canvas.imageNodes
+      .filter((img) => img.parentPromptId === promptNode.id)
+      .sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x) || (a.timestamp - b.timestamp))
+      .map((img) => img.id);
+    const finalOrder = orderedIds.length > 0 ? orderedIds : fallbackOrder;
+
+    const images = finalOrder
+      .map((id) => canvas.imageNodes.find((img) => img.id === id))
+      .filter((img): img is GeneratedImage => !!img);
+
+    if (images.length === 0) return null;
+
+    const currentIndex = Math.max(0, images.findIndex((img) => img.id === imageId));
+    return {
+      promptNode,
+      images,
+      currentIndex,
+    };
+  }
+
+  const resolvePptImageBlob = useCallback(async (image: GeneratedImage): Promise<Blob> => {
+    const { getStrictOriginalImage } = await import('./services/storage/imageStorage');
+    const { base64ToBlob } = await import('./utils/downloadUtils');
+
+    let source = await getStrictOriginalImage(image.id);
+    if (!source && image.storageId && image.storageId !== image.id) {
+      source = await getStrictOriginalImage(image.storageId);
+    }
+    if (!source) {
+      source = image.originalUrl || image.url;
+    }
+    if (!source) {
+      throw new Error('未找到可用的图片源');
+    }
+
+    if (source.startsWith('data:')) {
+      return base64ToBlob(source);
+    }
+    if (source.startsWith('blob:')) {
+      const response = await fetch(source);
+      if (!response.ok) throw new Error('无法读取本地图片数据');
+      return await response.blob();
+    }
+
+    const response = await fetch(source);
+    if (!response.ok) {
+      throw new Error(`下载图片失败：HTTP ${response.status}`);
+    }
+    return await response.blob();
+  }, []);
+
+  const stitchPptImagesToBlob = useCallback(async (images: GeneratedImage[]) => {
+    const loaded = await Promise.all(images.map(async (image) => {
+      const blob = await resolvePptImageBlob(image);
+      const objectUrl = URL.createObjectURL(blob);
+      try {
+        const element = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('图片加载失败'));
+          img.src = objectUrl;
+        });
+        return {
+          width: element.naturalWidth,
+          height: element.naturalHeight,
+          element,
+        };
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }));
+
+    const maxWidth = Math.max(...loaded.map((item) => item.width));
+    const scaledHeights = loaded.map((item) => Math.round(item.height * (maxWidth / item.width)));
+    const rawTotalHeight = scaledHeights.reduce((sum, value) => sum + value, 0);
+    const maxCanvasHeight = 32000;
+    const downscale = rawTotalHeight > maxCanvasHeight ? maxCanvasHeight / rawTotalHeight : 1;
+    const targetWidth = Math.max(1, Math.round(maxWidth * downscale));
+    const finalHeights = scaledHeights.map((value) => Math.max(1, Math.round(value * downscale)));
+    const totalHeight = finalHeights.reduce((sum, value) => sum + value, 0);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = totalHeight;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('无法创建整屏导出画布');
+    }
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    let offsetY = 0;
+    loaded.forEach((item, index) => {
+      const height = finalHeights[index];
+      context.drawImage(item.element, 0, offsetY, targetWidth, height);
+      offsetY += height;
+    });
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/png', 1);
+    });
+
+    if (!blob) {
+      throw new Error('整屏导出失败');
+    }
+
+    return blob;
+  }, [resolvePptImageBlob]);
+
+  const handleOpenPptStackPreview = useCallback((imageId: string) => {
+    const bundle = getOrderedPptPreviewBundle(imageId);
+    if (!bundle) return;
+
+    setPptStackPreview({
+      images: bundle.images,
+      initialIndex: bundle.currentIndex,
+    });
+  }, [getOrderedPptPreviewBundle]);
+
+  const handleDownloadPptComposite = useCallback(async (imageId: string) => {
+    const bundle = getOrderedPptPreviewBundle(imageId);
+    if (!bundle) return;
+
+    try {
+      const blob = await stitchPptImagesToBlob(bundle.images);
+      saveAs(blob, `ppt-full-screen-${Date.now()}.png`);
+      import('./services/system/notificationService').then(({ notify }) => {
+        notify.success('导出完成', `已导出 ${bundle.images.length} 页整屏长图`);
+      });
+    } catch (error: any) {
+      import('./services/system/notificationService').then(({ notify }) => {
+        notify.error('整屏导出失败', error?.message || '请稍后重试');
+      });
+    }
+  }, [getOrderedPptPreviewBundle, stitchPptImagesToBlob]);
+
+  const handleEditPptTextFromLightbox = useCallback((image: GeneratedImage) => {
+    const bundle = getOrderedPptPreviewBundle(image.id);
+    if (!bundle) return;
+
+    const currentText = bundle.promptNode.pptSlides?.[bundle.currentIndex]
+      || image.alias
+      || buildPptPageAlias(undefined, bundle.currentIndex);
+    const nextText = window.prompt(`编辑第 ${bundle.currentIndex + 1} 页文字`, currentText);
+    if (nextText === null) return;
+
+    const trimmed = nextText.trim();
+    if (!trimmed) {
+      import('./services/system/notificationService').then(({ notify }) => {
+        notify.warning('内容为空', '请输入当前页面的标题或描述');
+      });
+      return;
+    }
+
+    const nextSlides = [...(bundle.promptNode.pptSlides || [])];
+    while (nextSlides.length < bundle.images.length) {
+      nextSlides.push(buildPptPageAlias(undefined, nextSlides.length));
+    }
+    nextSlides[bundle.currentIndex] = trimmed;
+
+    updatePromptNode({
+      ...bundle.promptNode,
+      pptSlides: nextSlides,
+      parallelCount: Math.max(bundle.promptNode.parallelCount || 1, nextSlides.length),
+    });
+
+    updateImageNode(image.id, {
+      alias: buildPptPageAlias(trimmed, bundle.currentIndex),
+    });
+
+    setPreviewImages((prev) => prev?.map((item) => (
+      item.id === image.id
+        ? { ...item, alias: buildPptPageAlias(trimmed, bundle.currentIndex) }
+        : item
+    )) || prev);
+
+    setPptStackPreview((prev) => prev ? {
+      ...prev,
+      images: prev.images.map((item) => (
+        item.id === image.id
+          ? { ...item, alias: buildPptPageAlias(trimmed, bundle.currentIndex) }
+          : item
+      )),
+    } : prev);
+
+    import('./services/system/notificationService').then(({ notify }) => {
+      notify.success('页面文案已更新', `第 ${bundle.currentIndex + 1} 页已同步到主卡设置`);
+    });
+  }, [buildPptPageAlias, getOrderedPptPreviewBundle, updateImageNode, updatePromptNode]);
+
   const getNodeIoTrace = useCallback((nodeId: string) => {
     const node = activeCanvas?.promptNodes.find(n => n.id === nodeId);
     const inputStorageIds = (node?.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean) as string[];
@@ -1806,9 +2026,30 @@ const AppContent: React.FC<AppContentProps> = () => {
     return pages.slice(0, total);
   }, []);
 
+  const normalizePptSlidesForCount = useCallback((
+    rawSlides: string[] | undefined,
+    topicRaw: string,
+    totalRaw: number
+  ) => {
+    const total = Math.min(20, Math.max(1, Number(totalRaw) || 1));
+    const manualSlides = (rawSlides || [])
+      .map((line) => String(line || '').trim())
+      .filter(Boolean)
+      .slice(0, total);
+
+    if (manualSlides.length >= total) {
+      return manualSlides.slice(0, total);
+    }
+
+    const autoSlides = buildAutoPptSlides(topicRaw, total);
+    return Array.from({ length: total }, (_, index) => (
+      manualSlides[index] || autoSlides[index] || `第 ${index + 1} 页：${String(topicRaw || '').trim() || '主题演示'}`
+    ));
+  }, [buildAutoPptSlides]);
+
   // Extracted Execution Logic
   const executeGeneration = useCallback(async (node: PromptNode) => {
-    const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: initialModel, mode, referenceImages: files = [] } = node;
+    const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: initialModel, mode, referenceImages: initialFiles = [] } = node;
     const generationPrompt = (node.promptOptimizationEnabled && node.optimizedPromptEn?.trim())
       ? node.optimizedPromptEn.trim()
       : promptToUse;
@@ -1818,6 +2059,73 @@ const AppContent: React.FC<AppContentProps> = () => {
     let generationSuccessCount = 0;
     let generationFailCount = 0;
     let partialFailureDetails: PromptNode['errorDetails'] | undefined = undefined;
+
+    // 🚀 [Performance Fix] 异步加载参考图（如果在 handleGenerate 中没有加载完成）
+    const { getImage } = await import('./services/storage/imageStorage');
+    const { fileSystemService } = await import('./services/storage/fileSystemService');
+    const globalHandle = fileSystemService.getGlobalHandle();
+    
+    const hydratedFiles = await Promise.all(
+      initialFiles.map(async (img) => {
+        // 如果已经有 data，直接返回
+        if (img.data && img.data.length > 100) {
+          return img;
+        }
+        
+        // 尝试从 storageId 加载
+        if (img.storageId) {
+          try {
+            const dataUrl = await getImage(img.storageId);
+            if (dataUrl) {
+              const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
+              if (matches && matches[2]) {
+                return { ...img, data: matches[2], mimeType: matches[1] || img.mimeType || 'image/png' };
+              }
+              return { ...img, data: dataUrl };
+            }
+          } catch (e) {
+            console.warn('[executeGeneration] Failed to load ref from IDB:', img.storageId, e);
+          }
+          
+          // 尝试从本地文件系统加载
+          if (globalHandle) {
+            try {
+              const base64Data = await fileSystemService.loadReferenceImage(globalHandle, img.storageId);
+              if (base64Data) {
+                return { ...img, data: base64Data, mimeType: 'image/jpeg' };
+              }
+            } catch (e) {
+              console.warn('[executeGeneration] Failed to load ref from FS:', img.storageId, e);
+            }
+          }
+        }
+        
+        // 尝试从 url 加载（追询模式）
+        if ((img as any).url && !img.data) {
+          try {
+            const response = await fetch((img as any).url);
+            const blob = await response.blob();
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(blob);
+            });
+            const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
+            if (matches && matches[2]) {
+              return { ...img, data: matches[2], mimeType: matches[1] || img.mimeType || 'image/png' };
+            }
+          } catch (e) {
+            console.warn('[executeGeneration] Failed to load ref from url:', (img as any).url, e);
+          }
+        }
+        
+        return img;
+      })
+    );
+    
+    // 过滤掉没有 data 的图片
+    const files = hydratedFiles.filter(img => img.data && img.data.length > 100);
 
     // 馃殌 [Critical Fix] Define finalPos at a higher scope to ensure Error cards also land at latest center
     let finalPos = node.position;
@@ -1836,7 +2144,7 @@ const AppContent: React.FC<AppContentProps> = () => {
     const isAudio = mode === GenerationMode.AUDIO;
     const isPpt = mode === GenerationMode.PPT;
     const effectiveSlideLines = isPpt
-      ? ((node.pptSlides || []).map(line => String(line || '').trim()).filter(Boolean))
+      ? normalizePptSlidesForCount(node.pptSlides, node.prompt, count)
       : [];
 
     const buildPptPagePrompt = (basePrompt: string, index: number, total: number) => {
@@ -1856,8 +2164,8 @@ const AppContent: React.FC<AppContentProps> = () => {
       const slideLines = effectiveSlideLines.length > 0
         ? effectiveSlideLines
         : buildAutoPptSlides(basePrompt, total);
-      if (slideLines.length > 0) {
-        const picked = slideLines[Math.min(index, slideLines.length - 1)];
+      if (slideLines[index]) {
+        const picked = slideLines[index];
         return `PPT 第 ${pageNo} 页：${picked}。16:9 演示文稿风格，中文排版清晰，信息层次分明。${styleDirective}${getLayoutDirective(picked)}`;
       }
       const lines = basePrompt
@@ -2735,6 +3043,7 @@ const AppContent: React.FC<AppContentProps> = () => {
                 providerLabel: (result as any).providerName || node.providerLabel,
                 keySlotId: node.keySlotId,
                 generationTime: (result as any).generationTime || 0,
+                alias: node.mode === GenerationMode.PPT ? buildPptPageAlias(node.pptSlides?.[index], index) : undefined,
               };
             });
             addImageNodes(recoveredImages as any);
@@ -2890,7 +3199,7 @@ const AppContent: React.FC<AppContentProps> = () => {
     let requiredCredits = 0;
     const useServerSideCreditSettlement = isCreditModel && config.model.toLowerCase().includes('@system');
     if (isCreditModel) {
-      const perImageCost = getModelCredits(config.model);
+      const perImageCost = getModelCredits(config.model, config.imageSize);
       if (config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) {
         requiredCredits = (config.parallelCount || 1) * perImageCost;
       } else {
@@ -3045,123 +3354,28 @@ const AppContent: React.FC<AppContentProps> = () => {
       // Legacy calculation reference, but we used currentPos above.
       const promptHeight = getPromptHeight(config.prompt);
 
-      // [CRITICAL FIX] Hydrate reference images before sending
-      // When dragging from ImageCard, data might be empty (only storageId is passed)
-      const { getImage } = await import('./services/storage/imageStorage');
-      const { fileSystemService } = await import('./services/storage/fileSystemService');
-      const globalHandle = fileSystemService.getGlobalHandle();
+      // 🚀 [Performance Fix] 立即创建卡片，参考图异步加载
+      // 先使用现有的参考图数据（可能有 storageId 但没有 data），在 executeGeneration 中再加载
+      let finalReferenceImages = config.referenceImages.map(img => ({ ...img }));
 
-      let finalReferenceImages = await Promise.all(
-        config.referenceImages.map(async (img) => {
-          // If data is missing but storageId exists, try to load from IDB first
-          if (!img.data && img.storageId) {
-            try {
-              const dataUrl = await getImage(img.storageId);
-              if (dataUrl) {
-                // Extract base64 from data URL
-                const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
-                if (matches && matches[2]) {
-                  return {
-                    ...img,
-                    data: matches[2],
-                    mimeType: matches[1] || img.mimeType || 'image/png'
-                  };
-                }
-                // If not standard data URL format, use as-is
-                return { ...img, data: dataUrl };
-              }
-            } catch (e) {
-              console.warn('[handleGenerate] Failed to load from IDB:', img.id, e);
-            }
-
-            // If IDB failed, try to load from local file system (refs/ directory)
-            if (globalHandle) {
-              try {
-                const base64Data = await fileSystemService.loadReferenceImage(globalHandle, img.storageId);
-                if (base64Data) {
-                  console.log('[handleGenerate] Loaded ref image from local file system:', img.storageId);
-                  return {
-                    ...img,
-                    data: base64Data,
-                    mimeType: 'image/jpeg' // refs/ 鐩綍涓殑鍥剧墖閮芥槸 JPEG
-                  };
-                }
-              } catch (e) {
-                console.warn('[handleGenerate] Failed to load from local file system:', img.storageId, e);
-              }
-            }
-          }
-
-          if (!img.data && (img as any).url) {
-            try {
-              const response = await fetch((img as any).url);
-              const blob = await response.blob();
-              const dataUrl = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = () => reject(reader.error);
-                reader.readAsDataURL(blob);
-              });
-              const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
-              if (matches && matches[2]) {
-                return {
-                  ...img,
-                  data: matches[2],
-                  mimeType: matches[1] || img.mimeType || 'image/png'
-                };
-              }
-            } catch (e) {
-              console.warn('[handleGenerate] Failed to hydrate reference image from url:', (img as any).url, e);
-            }
-          }
-
-          return img;
-        })
-      );
-
-      // Filter out images that still don't have data
-      finalReferenceImages = finalReferenceImages.filter(img => img.data);
-
+      // 如果有源图片（追询模式），添加到参考图中
       if (activeSourceImage) {
         const sourceImage = activeCanvasRef.current?.imageNodes.find(img => img.id === activeSourceImage);
-        // [FIX] Prefer originalUrl (High Res) over url (Thumbnail) to prevent blurry reference images
-        const targetUrl = sourceImage?.originalUrl || sourceImage?.url;
-
-        if (sourceImage && targetUrl) {
-          try {
-            const response = await fetch(targetUrl);
-            const blob = await response.blob();
-            const base64 = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                const result = reader.result as string;
-                const matches = result.match(/^data:(.+);base64,(.+)$/);
-                resolve(matches ? matches[2] : '');
-              };
-              reader.readAsDataURL(blob);
-            });
-            if (base64) {
-              const alreadyAdded = finalReferenceImages.some(ref => ref.id === sourceImage.id);
-              if (!alreadyAdded) {
-                finalReferenceImages.push({
-                  id: sourceImage.id,
-                  data: base64, // @ts-ignore
-                  mimeType: blob.type || 'image/png'
-                });
-              }
-            }
-          } catch (filesErr) {
-            console.warn('Ref load error', filesErr);
-          }
+        const alreadyAdded = finalReferenceImages.some(ref => ref.id === sourceImage?.id);
+        if (sourceImage && !alreadyAdded) {
+          finalReferenceImages.push({
+            id: sourceImage.id,
+            data: '', // 在 executeGeneration 中异步加载
+            storageId: sourceImage.storageId || sourceImage.id,
+            mimeType: 'image/png'
+          });
         }
       }
 
-      // Ensure all reference images are saved to IDB for persistence
-      // (Large images might be stripped from localStorage)
+      // 🚀 异步保存参考图到 IDB（不阻塞）
       finalReferenceImages.forEach(ref => {
         if (ref.data) {
           import('./services/storage/imageStorage').then(({ saveImage }) => {
-            // IMPORTANT: store as full DataURL so CanvasContext can rehydrate mimeType/base64 reliably
             const mime = (ref as any).mimeType || 'image/png';
             const fullUrl = ref.data!.startsWith('data:') ? ref.data! : `data:${mime};base64,${ref.data!}`;
             saveImage(ref.id, fullUrl).catch(e => console.warn('Ref save failed', e));
@@ -3228,7 +3442,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         : Math.min(4, Math.max(1, config.parallelCount || 1));
       const normalizedSlides = (config.pptSlides || []).map(s => String(s || '').trim()).filter(Boolean);
       const effectivePptSlides = config.mode === GenerationMode.PPT
-        ? (normalizedSlides.length > 0 ? normalizedSlides.slice(0, pptCount) : buildAutoPptSlides(rawPrompt, pptCount))
+        ? normalizePptSlidesForCount(normalizedSlides, rawPrompt, pptCount)
         : [];
 
       const generatingNode: PromptNode = {
@@ -3387,7 +3601,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       // 馃殌 [Fix] 涓嶅湪姝ゅ setIsGenerating(false)锛屽洜涓?executeGeneration 鍐呴儴宸茬鐞嗘鐘舵€?
       // 鍙戦€佽妭娴佺敱 lastGenerateAtRef 鎺у埗锛屼笉鍐嶄緷璧栨暣杞敓鎴愮粨鏉熸墠瑙ｉ攣
     }
-  }, [config, draftNodeId, addPromptNode, updatePromptNode, updateImageNodePosition, updateImageNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth, buildAutoPptSlides, getPreferredKeyForMode, consumeCredits, balance, setShowRechargeModal]);
+  }, [config, draftNodeId, addPromptNode, updatePromptNode, updateImageNodePosition, updateImageNode, activeCanvas, activeSourceImage, canvasTransform, findNextGroupPosition, executeGeneration, getPromptHeight, isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth, normalizePptSlidesForCount, getPreferredKeyForMode, consumeCredits, balance, setShowRechargeModal]);
 
   // Handle reference images
   const handleFilesDrop = useCallback((files: File[]) => {
@@ -3736,7 +3950,7 @@ const AppContent: React.FC<AppContentProps> = () => {
             model: node.model,
             keySlotId: node.keySlotId,
             sourceReferenceStorageIds: (node.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean),
-            alias: currentMode === GenerationMode.PPT ? `图${index + 1}` : undefined,
+            alias: currentMode === GenerationMode.PPT ? buildPptPageAlias(node.pptSlides?.[index], index) : undefined,
             seed: -1,
             id: `${Date.now()}_${index}_${Math.random().toString(36).substr(2, 5)}`,
             storageId, // Content-Based ID
@@ -3891,7 +4105,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         notify.error('閲嶈瘯澶辫触', error.message);
       });
     }
-  }, [config.parallelCount, isMobile, updatePromptNode, addImageNodes, config.enableGrounding, extractErrorDetails]);
+  }, [config.parallelCount, isMobile, updatePromptNode, addImageNodes, config.enableGrounding, extractErrorDetails, normalizePptSlidesForCount, buildAutoPptSlides]);
 
   const handleExportPptPackage = useCallback(async (node: PromptNode) => {
     if (!activeCanvas) return;
@@ -4055,9 +4269,12 @@ const AppContent: React.FC<AppContentProps> = () => {
       return;
     }
 
-    const slides = (node.pptSlides || []).map(s => String(s || '').trim()).filter(Boolean);
+    const slides = normalizePptSlidesForCount(
+      node.pptSlides,
+      node.prompt,
+      Math.max(pageIndex + 1, node.parallelCount || 1, ordered.length)
+    );
     const slideText = slides[pageIndex]
-      || slides[slides.length - 1]
       || `主题：${node.prompt}。保持同一套视觉风格，页面内容独立不重复。`;
     const layoutDirective = (() => {
       const t = slideText.toLowerCase();
@@ -4128,7 +4345,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         dimensions: result.dimensions ? `${result.dimensions.width}x${result.dimensions.height}` : target.dimensions,
         exactDimensions: result.dimensions || target.exactDimensions,
         sourceReferenceStorageIds: (node.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean),
-        alias: `图${pageIndex + 1}`,
+        alias: buildPptPageAlias(slideText, pageIndex),
         storageId,
         isGenerating: false,
         error: undefined
@@ -4148,7 +4365,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         notify.error('单页重绘失败', error?.message || '请稍后重试');
       });
     }
-  }, [activeCanvas, updateImageNode, rememberPreferredKeyForMode]);
+  }, [activeCanvas, updateImageNode, rememberPreferredKeyForMode, normalizePptSlidesForCount]);
 
   const handleExportPptSinglePage = useCallback(async (node: PromptNode, pageIndex: number) => {
     if (!activeCanvas) return;
@@ -4661,6 +4878,21 @@ const AppContent: React.FC<AppContentProps> = () => {
     return childMap;
   }, [activeCanvas]);
 
+  const imageNodesById = React.useMemo(
+    () => new Map((activeCanvas?.imageNodes || []).map(node => [node.id, node])),
+    [activeCanvas]
+  );
+
+  const visibleImageNodesById = React.useMemo(
+    () => new Map(visibleImageNodes.map(node => [node.id, node])),
+    [visibleImageNodes]
+  );
+
+  const visibleImageNodeIds = React.useMemo(
+    () => new Set(visibleImageNodes.map(node => node.id)),
+    [visibleImageNodes]
+  );
+
   useEffect(() => {
     if (!isReady || !activeCanvas || !canvasRef.current) return;
 
@@ -5172,16 +5404,16 @@ const AppContent: React.FC<AppContentProps> = () => {
           )}
 
           {/* 1. Prompt -> Image Connections (Generation Flow) */}
-          {activeCanvas?.promptNodes.map(pn => {
+          {visiblePromptNodes.map(pn => {
             const actualChildNodes = actualChildImagesByPromptId.get(pn.id) || [];
             const childNodes = actualChildNodes.length > 0
               ? actualChildNodes
               : (pn.childImageIds || [])
-                .map(childId => activeCanvas.imageNodes.find(img => img.id === childId))
+                .map(childId => imageNodesById.get(childId))
                 .filter((img): img is GeneratedImage => Boolean(img));
 
             return childNodes.map((childNode) => {
-              if (!childNode) return null;
+              if (!childNode || !visibleImageNodeIds.has(childNode.id)) return null;
 
               // Flowith-style: Prompt Bottom 鈫?Image Top
               // Prompt Anchor: Bottom Center (pn.position)
@@ -5246,10 +5478,10 @@ const AppContent: React.FC<AppContentProps> = () => {
 
           {/* 2. Image -> Prompt/Pending Connections (Follow-up Flow) */}
           {/* A. Existing Prompts */}
-          {activeCanvas?.promptNodes.map(pn => {
+          {visiblePromptNodes.map(pn => {
             if (pn.isDraft) return null; // Draft/pending connection is rendered by pending-connection block below
             if (!pn.sourceImageId) return null;
-            const sourceNode = activeCanvas.imageNodes.find(img => img.id === pn.sourceImageId);
+            const sourceNode = visibleImageNodesById.get(pn.sourceImageId);
             if (!sourceNode) return null;
 
             // Source: Image Bottom Center (+5000 offset)
@@ -5342,7 +5574,8 @@ const AppContent: React.FC<AppContentProps> = () => {
           {activeSourceImage && (() => {
             const hasDraftFollowup = !!activeCanvas?.promptNodes.some(p => p.isDraft && p.sourceImageId === activeSourceImage);
             if (hasDraftFollowup) return null;
-            const sourceNode = activeCanvas?.imageNodes.find(img => img.id === activeSourceImage);
+            if (!visibleImageNodeIds.has(activeSourceImage)) return null;
+            const sourceNode = visibleImageNodesById.get(activeSourceImage);
             if (!sourceNode) return null;
 
             // Position + 5000 Offset
@@ -5564,6 +5797,8 @@ const AppContent: React.FC<AppContentProps> = () => {
             zoomScale={canvasTransform.scale}
             isMobile={isMobile}
             onPreview={handleOpenPreview}
+            onPreviewPptStack={handleOpenPptStackPreview}
+            onDownloadPptComposite={handleDownloadPptComposite}
             isCanvasTransforming={isCanvasTransforming}
             // 馃殌 [Optimization] Identify if the node was created in the last 10 seconds
             isNew={(nowTimestamp || Date.now()) - (node.timestamp || 0) < 10000}
@@ -5796,6 +6031,8 @@ const AppContent: React.FC<AppContentProps> = () => {
             images={previewImages}
             initialIndex={previewInitialIndex}
             onClose={() => setPreviewImages(null)}
+            onEditText={handleEditPptTextFromLightbox}
+            onDownloadPptComposite={handleDownloadPptComposite}
             onInpaint={(image, maskBase64, prompt) => {
               const userPrompt = (prompt || '局部重绘').trim();
               // 馃殌 [绠€鍖栧榻怾 杩欓噷鐨?prompt 灏嗕細杩涘叆浼樺寲鍣紝鍥犳涓嶉渶瑕佸甫鏈夊お閲嶇殑纭紪鐮佷腑鏂囨寚浠ゃ€?
@@ -5848,6 +6085,14 @@ const AppContent: React.FC<AppContentProps> = () => {
             }}
           />
         </Suspense>
+      )}
+
+      {pptStackPreview && (
+        <PptStackPreviewModal
+          images={pptStackPreview.images}
+          initialIndex={pptStackPreview.initialIndex}
+          onClose={() => setPptStackPreview(null)}
+        />
       )}
       {isSearchOpen && (
         <Suspense fallback={null}>

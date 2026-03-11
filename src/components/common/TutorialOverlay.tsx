@@ -17,6 +17,8 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [rect, setRect] = useState<DOMRect | null>(null);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [tooltipSize, setTooltipSize] = useState({ width: 360, height: 320 });
+    const overlayColor = 'rgba(0, 0, 0, 0.82)';
 
     const STEPS: TutorialStep[] = React.useMemo(() => [
         {
@@ -82,6 +84,7 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
 
         // Optimize: Use requestAnimationFrame for smoother tracking
         let rafId: number | null = null;
+        let mutationObserver: MutationObserver | null = null;
         const onFrame = () => {
             updateRect();
             rafId = null;
@@ -97,9 +100,20 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
         window.addEventListener('resize', throttledUpdate);
         window.addEventListener('scroll', throttledUpdate, true); // Listen to capture scroll
 
+        if (typeof MutationObserver !== 'undefined' && document.body) {
+            mutationObserver = new MutationObserver(throttledUpdate);
+            mutationObserver.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['id', 'class', 'style']
+            });
+        }
+
         return () => {
             clearTimeout(timer);
             if (rafId) cancelAnimationFrame(rafId);
+            mutationObserver?.disconnect();
             window.removeEventListener('resize', throttledUpdate);
             window.removeEventListener('scroll', throttledUpdate, true);
         };
@@ -123,82 +137,207 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
     // Use refs for smooth position updates without re-render
     const tooltipRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const updateTooltipSize = () => {
+            const element = tooltipRef.current;
+            if (!element) return;
+
+            const nextWidth = element.offsetWidth || 360;
+            const nextHeight = element.offsetHeight || 320;
+
+            setTooltipSize((prev) => {
+                if (prev.width === nextWidth && prev.height === nextHeight) {
+                    return prev;
+                }
+                return { width: nextWidth, height: nextHeight };
+            });
+        };
+
+        updateTooltipSize();
+        window.addEventListener('resize', updateTooltipSize);
+
+        let resizeObserver: ResizeObserver | null = null;
+        if (typeof ResizeObserver !== 'undefined' && tooltipRef.current) {
+            resizeObserver = new ResizeObserver(updateTooltipSize);
+            resizeObserver.observe(tooltipRef.current);
+        }
+
+        return () => {
+            window.removeEventListener('resize', updateTooltipSize);
+            resizeObserver?.disconnect();
+        };
+    }, [currentStepIndex, step.title, step.description, isMobile]);
     
     // Calculate position for the tooltip - use transform for GPU acceleration
     const getTooltipTransform = (): React.CSSProperties => {
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const viewportMargin = 16;
+        const targetGap = 20;
+        const tooltipWidth = Math.min(tooltipSize.width, viewportWidth - viewportMargin * 2);
+        const tooltipHeight = Math.min(tooltipSize.height, viewportHeight - viewportMargin * 2);
+
+        const clampX = (value: number) =>
+            Math.max(viewportMargin, Math.min(value, viewportWidth - tooltipWidth - viewportMargin));
+        const clampY = (value: number) =>
+            Math.max(viewportMargin, Math.min(value, viewportHeight - tooltipHeight - viewportMargin));
+
         if (!rect || step.position === 'center') {
             return {
-                transform: 'translate3d(-50%, -50%, 0)',
-                left: '50%',
-                top: '50%',
-                position: 'fixed'
+                position: 'fixed',
+                left: clampX((viewportWidth - tooltipWidth) / 2),
+                top: clampY((viewportHeight - tooltipHeight) / 2),
+                width: `min(360px, calc(100vw - ${viewportMargin * 2}px))`,
+                maxHeight: `calc(100vh - ${viewportMargin * 2}px)`
             };
         }
 
-        const padding = 20;
-        let x = rect.left + rect.width / 2;
-        let y = rect.top + rect.height / 2;
-        let translateX = -50;
-        let translateY = -50;
-
-        if (step.position === 'top') {
-            y = rect.top - padding;
-            translateY = -100;
-        } else if (step.position === 'bottom') {
-            y = rect.bottom + padding;
-            translateY = 0;
-        } else if (step.position === 'left') {
-            x = rect.left - padding;
-            translateX = -100;
-        } else if (step.position === 'right') {
-            x = rect.right + padding;
-            translateX = 0;
-        }
-
-        // Clamp to viewport
-        const safeMarginY = 200;
-        const safeMarginX = 200;
-        
-        if (step.position === 'left' || step.position === 'right') {
-            y = Math.max(safeMarginY, Math.min(y, window.innerHeight - safeMarginY));
-        }
-        if (step.position === 'top' || step.position === 'bottom') {
-            x = Math.max(safeMarginX, Math.min(x, window.innerWidth - safeMarginX));
-        }
-
-        return { 
-            transform: `translate3d(calc(${translateX}% + ${x - (translateX === -50 ? x : 0)}px), calc(${translateY}% + ${y - (translateY === -50 ? y : 0)}px), 0)`,
-            left: 0,
-            top: 0,
-            position: 'fixed'
+        const getPosition = (position: TutorialStep['position']) => {
+            switch (position) {
+                case 'top':
+                    return {
+                        left: rect.left + rect.width / 2 - tooltipWidth / 2,
+                        top: rect.top - tooltipHeight - targetGap
+                    };
+                case 'bottom':
+                    return {
+                        left: rect.left + rect.width / 2 - tooltipWidth / 2,
+                        top: rect.bottom + targetGap
+                    };
+                case 'left':
+                    return {
+                        left: rect.left - tooltipWidth - targetGap,
+                        top: rect.top + rect.height / 2 - tooltipHeight / 2
+                    };
+                case 'right':
+                    return {
+                        left: rect.right + targetGap,
+                        top: rect.top + rect.height / 2 - tooltipHeight / 2
+                    };
+                default:
+                    return {
+                        left: rect.left + rect.width / 2 - tooltipWidth / 2,
+                        top: rect.bottom + targetGap
+                    };
+            }
         };
-    };
 
-    // Get highlight position using transform
-    const getHighlightTransform = (): React.CSSProperties => {
-        if (!rect) return { transform: 'scale(0)', opacity: 0 };
+        const fitsViewport = (left: number, top: number) =>
+            left >= viewportMargin &&
+            top >= viewportMargin &&
+            left + tooltipWidth <= viewportWidth - viewportMargin &&
+            top + tooltipHeight <= viewportHeight - viewportMargin;
+
+        const preferredPosition = step.position || 'bottom';
+        const fallbackOrder: TutorialStep['position'][] = preferredPosition === 'top'
+            ? ['top', 'bottom', 'right', 'left']
+            : preferredPosition === 'bottom'
+                ? ['bottom', 'top', 'right', 'left']
+                : preferredPosition === 'left'
+                    ? ['left', 'right', 'bottom', 'top']
+                    : ['right', 'left', 'bottom', 'top'];
+
+        let resolved = getPosition(preferredPosition);
+        for (const position of fallbackOrder) {
+            const candidate = getPosition(position);
+            if (fitsViewport(candidate.left, candidate.top)) {
+                resolved = candidate;
+                break;
+            }
+        }
+
         return {
-            transform: `translate3d(${rect.x - 8}px, ${rect.y - 8}px, 0)`,
-            width: rect.width + 16,
-            height: rect.height + 16,
-            opacity: 1
+            position: 'fixed',
+            left: clampX(resolved.left),
+            top: clampY(resolved.top),
+            width: `min(360px, calc(100vw - ${viewportMargin * 2}px))`,
+            maxHeight: `calc(100vh - ${viewportMargin * 2}px)`
         };
     };
+
+    const spotlightBounds = React.useMemo(() => {
+        if (!rect) return null;
+
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const padding = isMobile ? 10 : 12;
+        const safeMargin = 8;
+
+        const left = Math.max(safeMargin, rect.left - padding);
+        const top = Math.max(safeMargin, rect.top - padding);
+        const right = Math.min(viewportWidth - safeMargin, rect.right + padding);
+        const bottom = Math.min(viewportHeight - safeMargin, rect.bottom + padding);
+
+        return {
+            left,
+            top,
+            right,
+            bottom,
+            width: Math.max(0, right - left),
+            height: Math.max(0, bottom - top)
+        };
+    }, [rect, isMobile]);
 
     return createPortal(
         <div className="fixed inset-0 z-[99999] overflow-hidden">
-            {/* Optimized Spotlight using div with border instead of SVG mask */}
-            <div className="absolute inset-0 bg-black/80 will-change-auto" />
-            {rect && (
-                <div
-                    ref={highlightRef}
-                    className="absolute rounded-2xl pointer-events-none will-change-transform"
-                    style={{
-                        ...getHighlightTransform(),
-                        boxShadow: '0 0 0 9999px rgba(0,0,0,0.8), 0 0 20px rgba(99,102,241,0.3)',
-                        transition: 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.3s ease',
-                    }}
-                />
+            {spotlightBounds ? (
+                <>
+                    <div
+                        className="absolute left-0 top-0 w-full"
+                        style={{
+                            height: spotlightBounds.top,
+                            backgroundColor: overlayColor,
+                            transition: 'height 0.35s ease'
+                        }}
+                    />
+                    <div
+                        className="absolute left-0"
+                        style={{
+                            top: spotlightBounds.top,
+                            width: spotlightBounds.left,
+                            height: spotlightBounds.height,
+                            backgroundColor: overlayColor,
+                            transition: 'top 0.35s ease, width 0.35s ease, height 0.35s ease'
+                        }}
+                    />
+                    <div
+                        className="absolute"
+                        style={{
+                            left: spotlightBounds.right,
+                            top: spotlightBounds.top,
+                            width: Math.max(0, window.innerWidth - spotlightBounds.right),
+                            height: spotlightBounds.height,
+                            backgroundColor: overlayColor,
+                            transition: 'left 0.35s ease, top 0.35s ease, width 0.35s ease, height 0.35s ease'
+                        }}
+                    />
+                    <div
+                        className="absolute left-0 w-full"
+                        style={{
+                            top: spotlightBounds.bottom,
+                            height: Math.max(0, window.innerHeight - spotlightBounds.bottom),
+                            backgroundColor: overlayColor,
+                            transition: 'top 0.35s ease, height 0.35s ease'
+                        }}
+                    />
+                    <div
+                        ref={highlightRef}
+                        className="absolute rounded-[24px] pointer-events-none"
+                        style={{
+                            left: spotlightBounds.left,
+                            top: spotlightBounds.top,
+                            width: spotlightBounds.width,
+                            height: spotlightBounds.height,
+                            border: '1px solid rgba(129, 140, 248, 0.9)',
+                            background: 'rgba(99, 102, 241, 0.05)',
+                            boxShadow: '0 0 0 1px rgba(99,102,241,0.25), 0 0 32px rgba(99,102,241,0.22), inset 0 0 0 1px rgba(255,255,255,0.04)',
+                            transition: 'left 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.3s ease'
+                        }}
+                    />
+                </>
+            ) : (
+                <div className="absolute inset-0 will-change-auto" style={{ backgroundColor: overlayColor }} />
             )}
 
             {/* Content Box - GPU accelerated */}
@@ -207,10 +346,10 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
                 className="p-4 w-full max-w-[min(360px,90vw)] will-change-transform"
                 style={{
                     ...getTooltipTransform(),
-                    transition: 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+                    transition: 'left 0.3s ease, top 0.3s ease'
                 }}
             >
-                <div className="bg-[var(--bg-secondary)]/90 backdrop-blur-2xl border border-[var(--border-light)] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] rounded-[28px] p-6 animate-in fade-in zoom-in-95 duration-300">
+                <div className="max-h-[calc(100vh-32px)] overflow-y-auto bg-[var(--bg-secondary)]/90 backdrop-blur-2xl border border-[var(--border-light)] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] rounded-[28px] p-6 animate-in fade-in zoom-in-95 duration-300">
                     <div className="flex justify-between items-start mb-5">
                         <div className="flex items-center gap-2">
                             <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />

@@ -1,5 +1,12 @@
 ﻿import { supabase } from '../../lib/supabase';
 
+import {
+  type AdminModelQualityPricing,
+  getAdminModelCreditCostForSize,
+  isAdminQualityEnabled,
+  normalizeAdminQualityPricing,
+} from './adminModelQuality';
+
 function darkenColor(hex: string, percent: number): string {
   const hslMatch = hex.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i);
   if (hslMatch) {
@@ -37,11 +44,18 @@ export interface AdminModelConfig {
   id: string;
   displayName: string;
   provider: string;
+  providerId?: string;
+  priority?: number;
+  weight?: number;
+  callCount?: number;
   colorStart: string;
   colorEnd: string;
   colorSecondary?: string;
   textColor?: 'white' | 'black';
   creditCost: number;
+  advancedEnabled?: boolean;
+  mixWithSameModel?: boolean;
+  qualityPricing?: AdminModelQualityPricing;
   billingType: 'token' | 'per_request' | 'multiplier';
   endpoint: string;
   advantages?: string;
@@ -68,7 +82,13 @@ interface FlatModelRow {
   text_color?: string | null;
   endpoint_type?: string | null;
   credit_cost?: number | null;
+  priority?: number | null;
+  weight?: number | null;
   is_active?: boolean | null;
+  call_count?: number | null;
+  advanced_enabled?: boolean | null;
+  mix_with_same_model?: boolean | null;
+  quality_pricing?: Record<string, any> | null;
 }
 
 class AdminModelService {
@@ -124,7 +144,13 @@ class AdminModelService {
         text_color: model.text_color,
         endpoint_type: model.endpoint_type,
         credit_cost: model.credit_cost,
+        priority: model.priority,
+        weight: model.weight,
+        call_count: model.call_count,
         is_active: true,
+        advanced_enabled: model.advanced_enabled,
+        mix_with_same_model: model.mix_with_same_model,
+        quality_pricing: model.quality_pricing,
       }))
     );
   }
@@ -184,11 +210,18 @@ class AdminModelService {
               id: modelId,
               displayName: (row.display_name || modelId).trim(),
               provider: providerId,
+              providerId,
+              priority: Number(row.priority || 0),
+              weight: Number(row.weight || 0),
+              callCount: Number(row.call_count || 0),
               colorStart: style.colorStart,
               colorEnd: style.colorEnd,
               colorSecondary: style.colorSecondary,
               textColor: this.normalizeTextColor(row.text_color),
               creditCost: Number(row.credit_cost || 0),
+              advancedEnabled: Boolean(row.advanced_enabled),
+              mixWithSameModel: Boolean(row.mix_with_same_model),
+              qualityPricing: normalizeAdminQualityPricing(row.quality_pricing, Number(row.credit_cost || 1)),
               billingType: 'token',
               endpoint: (row.endpoint_type || 'openai').trim(),
               advantages: row.description || '',
@@ -260,8 +293,132 @@ class AdminModelService {
     return !!this.getModel(modelId);
   }
 
-  getModelCreditCost(modelId: string): number {
-    return this.getModel(modelId)?.creditCost || 0;
+  private sortModelsByRoutePriority(models: AdminModelConfig[]): AdminModelConfig[] {
+    return [...models].sort((left, right) => {
+      const priorityDiff = Number(right.priority || 0) - Number(left.priority || 0);
+      if (priorityDiff !== 0) return priorityDiff;
+
+      const weightDiff = Number(right.weight || 0) - Number(left.weight || 0);
+      if (weightDiff !== 0) return weightDiff;
+
+      const providerDiff = String(left.provider || '').localeCompare(String(right.provider || ''));
+      if (providerDiff !== 0) return providerDiff;
+
+      return String(left.id || '').localeCompare(String(right.id || ''));
+    });
+  }
+
+  getRouteCandidates(modelId: string): AdminModelConfig[] {
+    const baseId = modelId.split('@')[0];
+    return this.sortModelsByRoutePriority(this.models.filter((model) => model.id === baseId));
+  }
+
+  /**
+   * 基于用量平衡的路由选择
+   * 优先选择调用次数最少的供应商，实现API用量均衡
+   */
+  private selectBalancedProvider(
+    candidates: AdminModelConfig[],
+    imageSize?: string | null
+  ): AdminModelConfig | null {
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
+
+    // 过滤出支持当前画质的候选
+    const eligibleCandidates = candidates.filter((model) =>
+      isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
+    );
+
+    if (eligibleCandidates.length === 0) return null;
+
+    // 按调用次数升序排序，优先选择用量最少的
+    const sorted = [...eligibleCandidates].sort((a, b) => {
+      const countA = a.callCount ?? 0;
+      const countB = b.callCount ?? 0;
+      if (countA !== countB) return countA - countB;
+
+      // 如果调用次数相同，按价格优先
+      const costA = getAdminModelCreditCostForSize(
+        a.creditCost,
+        Boolean(a.advancedEnabled),
+        a.qualityPricing,
+        imageSize
+      );
+      const costB = getAdminModelCreditCostForSize(
+        b.creditCost,
+        Boolean(b.advancedEnabled),
+        b.qualityPricing,
+        imageSize
+      );
+      if (costA !== costB) return costA - costB;
+
+      // 最后按权重
+      return (b.weight ?? 1) - (a.weight ?? 1);
+    });
+
+    return sorted[0];
+  }
+
+  getModelCreditCost(modelId: string, imageSize?: string | null): number {
+    const matchedModels = this.getRouteCandidates(modelId);
+    if (matchedModels.length === 0) return 0;
+
+    const mixedCandidates = matchedModels.filter(
+      (model) =>
+        model.mixWithSameModel &&
+        isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
+    );
+
+    // 混合模式：基于用量平衡选择
+    if (mixedCandidates.length > 1) {
+      const selected = this.selectBalancedProvider(mixedCandidates, imageSize);
+      if (selected) {
+        return getAdminModelCreditCostForSize(
+          selected.creditCost,
+          Boolean(selected.advancedEnabled),
+          selected.qualityPricing,
+          imageSize
+        );
+      }
+    }
+
+    const selectedModel =
+      matchedModels.find((model) =>
+        isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
+      ) || matchedModels[0];
+
+    return getAdminModelCreditCostForSize(
+      selectedModel.creditCost,
+      Boolean(selectedModel.advancedEnabled),
+      selectedModel.qualityPricing,
+      imageSize
+    );
+  }
+
+  /**
+   * 获取混合模式下选择的最佳供应商ID（用于调试和日志）
+   */
+  getSelectedProviderForModel(modelId: string, imageSize?: string | null): string | null {
+    const matchedModels = this.getRouteCandidates(modelId);
+    if (matchedModels.length === 0) return null;
+
+    const mixedCandidates = matchedModels.filter(
+      (model) =>
+        model.mixWithSameModel &&
+        isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
+    );
+
+    if (mixedCandidates.length > 1) {
+      const selected = this.selectBalancedProvider(mixedCandidates, imageSize);
+      return selected?.providerId ?? null;
+    }
+
+    const selectedModel =
+      matchedModels.find((model) =>
+        isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
+      ) || matchedModels[0];
+
+    return selectedModel?.providerId ?? null;
   }
 
   getModelDisplayInfo(modelId: string) {

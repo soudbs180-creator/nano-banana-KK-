@@ -9,7 +9,7 @@
 
 import { type ChatMessage } from '../api/AI12APIService';
 import { supplierService } from '../billing/supplierService';
-import { keyManager } from '../auth/keyManager';
+import { keyManager, type ThirdPartyProvider } from '../auth/keyManager';
 import { supabase } from '../../lib/supabase';
 import { callSecureSystemProxyChat } from './secureModelProxy';
 
@@ -34,6 +34,37 @@ export interface CallResult {
 }
 
 class ModelCaller {
+  private isModelMatch(modelId: string, candidate: string): boolean {
+    const normalizedModelId = String(modelId || '').trim().toLowerCase();
+    const normalizedCandidate = String(candidate || '').trim().toLowerCase();
+
+    if (!normalizedModelId || !normalizedCandidate) {
+      return false;
+    }
+
+    return normalizedCandidate === normalizedModelId
+      || normalizedCandidate.endsWith(`/${normalizedModelId}`)
+      || normalizedModelId.endsWith(`/${normalizedCandidate}`);
+  }
+
+  private findConfiguredProviderForModel(modelId: string): Pick<ThirdPartyProvider, 'baseUrl' | 'apiKey'> | null {
+    const providers = keyManager
+      .getProviders()
+      .filter((provider) => provider.isActive && provider.baseUrl && provider.apiKey);
+
+    for (const provider of providers) {
+      const hasModel = provider.models.some((candidate) => this.isModelMatch(modelId, candidate));
+      if (hasModel) {
+        return {
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+        };
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Main entry point for calling any model.
    */
@@ -240,10 +271,15 @@ class ModelCaller {
    * Find supplier that provides this model.
    */
   private findSupplierForModel(modelId: string): { baseUrl: string; apiKey: string } | null {
+    const configuredProvider = this.findConfiguredProviderForModel(modelId);
+    if (configuredProvider) {
+      return configuredProvider;
+    }
+
     const suppliers = supplierService.getAll();
 
     for (const supplier of suppliers) {
-      const hasModel = supplier.models.some((m) => m.id === modelId || m.id.endsWith(`/${modelId}`));
+      const hasModel = supplier.models.some((model) => this.isModelMatch(modelId, model.id));
       if (hasModel) {
         return {
           baseUrl: supplier.baseUrl,

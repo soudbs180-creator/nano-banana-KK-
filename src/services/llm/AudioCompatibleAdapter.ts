@@ -1,5 +1,13 @@
 import { KeySlot } from '../auth/keyManager';
 import { LLMAdapter, AudioGenerationOptions, AudioGenerationResult } from './LLMAdapter';
+import { 
+    getAudioCapability, 
+    isAudioModel, 
+    getMaxAudioDuration,
+    supportsCustomLyrics,
+    supportsInstrumental,
+    supportsAudioContinuation 
+} from '../model/modelCapabilities';
 
 /**
  * 音频生成适配器
@@ -44,41 +52,97 @@ export class AudioCompatibleAdapter implements LLMAdapter {
             headers[keySlot.headerName] = keySlot.key;
         }
 
+        // 获取模型音频能力
+        const audioCaps = getAudioCapability(options.modelId);
+        const maxDuration = getMaxAudioDuration(options.modelId);
+        
         // 构建请求体
         const body: any = {
             model: options.modelId,
             prompt: options.prompt,
         };
 
-        // Suno 特定参数
+        // 🚀 Duration 参数处理 - 确保在模型支持的范围内
         if (options.audioDuration) {
-            body.duration = options.audioDuration;
+            // 解析 duration（可能是字符串 "120s" 或数字）
+            let durationValue: number;
+            if (typeof options.audioDuration === 'string') {
+                const match = options.audioDuration.match(/^(\d+)/);
+                durationValue = match ? parseInt(match[1], 10) : 120;
+            } else {
+                durationValue = options.audioDuration;
+            }
+            
+            // 限制在最大值内
+            durationValue = Math.min(durationValue, maxDuration);
+            body.duration = durationValue;
         }
-        if (options.audioLyrics) {
+
+        // 🎵 Lyrics 参数 - 检查模型是否支持自定义歌词
+        if (options.audioLyrics && supportsCustomLyrics(options.modelId)) {
             body.lyrics = options.audioLyrics;
             body.custom_lyrics = options.audioLyrics; // 部分平台用此字段
+            body.prompt_lyrics = options.audioLyrics; // 备用字段
         }
+
+        // 🎨 Style/Tags 参数
         if (options.audioStyle) {
             body.style = options.audioStyle;
             body.tags = options.audioStyle; // Suno 用 tags 描述风格
+            body.genre = options.audioStyle; // 备用字段
         }
+
+        // 📝 Title 参数
         if (options.audioTitle) {
             body.title = options.audioTitle;
         }
-        // Suno 灵感模式 vs 自定义模式
+
+        // 🎸 Instrumental 模式（纯音乐）
+        if (options.providerConfig?.audio?.instrumental && supportsInstrumental(options.modelId)) {
+            body.instrumental = true;
+            body.make_instrumental = true; // 备用字段
+        }
+
+        // 🎤 Suno 灵感模式 vs 自定义模式
         if (options.audioMode) {
             body.mode = options.audioMode; // 'inspiration' | 'custom'
         }
-        // 续写参数
-        if (options.audioExtendFrom) {
-            body.extend_from = options.audioExtendFrom; // 续写的任务 ID
+
+        // ⏩ 续写/Extend 参数
+        if (options.audioExtendFrom && supportsAudioContinuation(options.modelId)) {
+            body.extend_from = options.audioExtendFrom;
+            body.continue_from = options.audioExtendFrom; // 备用字段
+            body.task_id = options.audioExtendFrom;
         }
-        // MiniMax TTS 参数
+
+        // 🔊 MiniMax TTS 参数
         if (options.voiceId) {
             body.voice_id = options.voiceId;
+            body.voice = options.voiceId; // 备用字段
         }
-        if (options.speed) {
+        if (options.speed !== undefined && options.speed !== null) {
             body.speed = options.speed;
+            body.speed_ratio = options.speed; // 备用字段
+        }
+
+        // 🌐 Language 参数（部分模型支持）
+        if (options.providerConfig?.audio?.language) {
+            body.language = options.providerConfig.audio.language;
+        }
+
+        // 🎚️ Quality 参数（部分模型支持）
+        if (options.providerConfig?.audio?.quality) {
+            body.quality = options.providerConfig.audio.quality;
+        }
+
+        // 📝 Callback URL（用于异步通知）
+        if (options.providerConfig?.audio?.callbackUrl) {
+            body.callback_url = options.providerConfig.audio.callbackUrl;
+        }
+
+        // 🔗 Reference Audio（风格参考）
+        if (options.providerConfig?.audio?.referenceAudioUrl) {
+            body.reference_audio = options.providerConfig.audio.referenceAudioUrl;
         }
 
         try {

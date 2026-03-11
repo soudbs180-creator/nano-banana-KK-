@@ -27,6 +27,29 @@ export const MODEL_PRESETS: ModelPreset[] = [
     { id: 'gemini-2.0-flash-audio', label: 'Gemini 2.0 Audio', provider: 'Google', type: 'audio', description: 'Gemini 2.0 多模态语音生成' },
 
     // ============================================
+    // Suno 音乐生成 (第三方代理)
+    // ============================================
+    { id: 'suno-v4', label: 'Suno V4', provider: 'Custom', type: 'audio', description: '最新版 Suno，支持片段续写、风格迁移等全场景，最长 4 分钟' },
+    { id: 'suno-v3.5', label: 'Suno V3.5', provider: 'Custom', type: 'audio', description: '高性价比流派音乐生成，最长 3 分钟' },
+    { id: 'suno-v3', label: 'Suno V3', provider: 'Custom', type: 'audio', description: '入门级音乐生成，最长 2 分钟' },
+
+    // ============================================
+    // Udio 音乐生成
+    // ============================================
+    { id: 'udio-v1', label: 'Udio V1', provider: 'Custom', type: 'audio', description: '高保真音乐生成，支持多种风格，音质优秀' },
+
+    // ============================================
+    // Riffusion 音乐生成
+    // ============================================
+    { id: 'riffusion', label: 'Riffusion', provider: 'Custom', type: 'audio', description: '基于扩散模型的音乐生成，适合短音频片段' },
+
+    // ============================================
+    // MiniMax 语音/音乐
+    // ============================================
+    { id: 'minimax-tts', label: 'MiniMax TTS', provider: 'Custom', type: 'audio', description: '多语种高质量人声配音，支持语速调节' },
+    { id: 'minimax-music', label: 'MiniMax Music', provider: 'Custom', type: 'audio', description: 'MiniMax 音乐生成模型' },
+
+    // ============================================
     // OpenAI (DALL-E) - 需通过第三方 API 代理
     // ============================================
     { id: 'dall-e-3', label: 'DALL-E 3', provider: 'OpenAI', type: 'image', description: 'OpenAI 最强绘图模型' },

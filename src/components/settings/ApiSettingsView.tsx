@@ -28,8 +28,9 @@ import {
 import { supplierService, type Supplier as LegacySupplier } from '../../services/billing/supplierService';
 import { notify } from '../../services/system/notificationService';
 import { mergeModelPricingOverrides } from '../../services/model/modelPricing';
+import { SecureApiKeyManager } from './SecureApiKeyManager';
 
-type Tab = 'official' | 'thirdparty';
+type Tab = 'official' | 'thirdparty' | 'mykeys';
 type CostMode = 'unlimited' | 'amount' | 'tokens';
 
 type OfficialForm = {
@@ -113,6 +114,14 @@ const defaultProviderForm: ProviderForm = {
   providerColor: '#3B82F6',
   isActive: true,
 };
+
+const LEGACY_API_SETTINGS_MIGRATION_KEY = 'kk_api_settings_legacy_migration_v1';
+
+const normalizeProviderSignaturePart = (value: string): string =>
+  value.trim().replace(/\/+$/, '').toLowerCase();
+
+const buildProviderSignature = (baseUrl: string, apiKey: string): string =>
+  `${normalizeProviderSignaturePart(baseUrl)}|${apiKey.trim()}`;
 
 const providerColorPalette = [
   '#3B82F6',
@@ -216,6 +225,43 @@ const toProviderForm = (provider?: ThirdPartyProvider): ProviderForm => {
 const formatDate = (ts?: number) => {
   if (!ts) return '-';
   return new Date(ts).toLocaleString('zh-CN', { hour12: false });
+};
+
+// Helper to format budget info for provider cards
+const formatBudgetInfo = (provider: ThirdPartyProvider) => {
+  const mode = provider.customCostMode || 'unlimited';
+  
+  if (mode === 'unlimited') {
+    return {
+      total: '∞',
+      used: provider.usage?.totalCost ? `¥${provider.usage.totalCost.toFixed(2)}` : '¥0.00',
+      remaining: '∞',
+      unit: '',
+    };
+  }
+  
+  if (mode === 'amount') {
+    const total = provider.budgetLimit || provider.customCostValue || 0;
+    const used = provider.usage?.totalCost || 0;
+    const remaining = Math.max(0, total - used);
+    return {
+      total: `¥${total.toFixed(2)}`,
+      used: `¥${used.toFixed(2)}`,
+      remaining: remaining > 0 ? `¥${remaining.toFixed(2)}` : '¥0.00',
+      unit: '元',
+    };
+  }
+  
+  // mode === 'tokens'
+  const total = provider.tokenLimit || provider.customCostValue || 0;
+  const used = provider.usage?.totalTokens || 0;
+  const remaining = Math.max(0, total - used);
+  return {
+    total: total.toLocaleString(),
+    used: used.toLocaleString(),
+    remaining: remaining > 0 ? remaining.toLocaleString() : '0',
+    unit: 'tokens',
+  };
 };
 
 interface ApiSettingsViewProps {
@@ -464,16 +510,56 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
   const [detectingProviderId, setDetectingProviderId] = useState<string | null>(null);
   const [syncingProviderId, setSyncingProviderId] = useState<string | null>(null);
+  const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
+  const [highlightedProviderId, setHighlightedProviderId] = useState<string | null>(null);
+  const providerListRef = useRef<HTMLDivElement | null>(null);
+
+  const dedupeProvidersIfNeeded = () => {
+    const seen = new Set<string>();
+    const duplicateIds: string[] = [];
+
+    keyManager.getProviders().forEach((provider) => {
+      if (!provider.baseUrl || !provider.apiKey) return;
+
+      const signature = buildProviderSignature(provider.baseUrl, provider.apiKey);
+      if (seen.has(signature)) {
+        duplicateIds.push(provider.id);
+        return;
+      }
+
+      seen.add(signature);
+    });
+
+    duplicateIds.forEach((id) => keyManager.removeProvider(id));
+
+    if (duplicateIds.length > 0) {
+      notify.success('已清理重复配置', `已移除 ${duplicateIds.length} 条旧版重复供应商。`);
+    }
+  };
 
   const migrateLegacyDataIfNeeded = () => {
+    const legacySuppliers = supplierService.getAll();
+
+    try {
+      if (localStorage.getItem(LEGACY_API_SETTINGS_MIGRATION_KEY) === 'done') {
+        if (legacySuppliers.length > 0) {
+          supplierService.clearLegacyStorage();
+        }
+        return;
+      }
+    } catch (error) {
+      console.warn('[ApiSettingsView] Failed to read migration flag:', error);
+    }
+
     const existingProviders = keyManager.getProviders();
-    const existingSignature = new Set(existingProviders.map((item) => `${item.name}|${item.baseUrl}`));
+    const existingSignature = new Set(
+      existingProviders.map((item) => buildProviderSignature(item.baseUrl, item.apiKey))
+    );
     let migratedCount = 0;
 
-    const legacySuppliers = supplierService.getAll();
     legacySuppliers.forEach((supplier) => {
       if (!supplier.name || !supplier.baseUrl || !supplier.apiKey) return;
-      const signature = `${supplier.name}|${supplier.baseUrl}`;
+      const signature = buildProviderSignature(supplier.baseUrl, supplier.apiKey);
       if (existingSignature.has(signature)) return;
 
       keyManager.addProvider({
@@ -506,7 +592,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
       const baseUrl = slot.baseUrl || '';
       if (!baseUrl) return;
 
-      const signature = `${name}|${baseUrl}`;
+      const signature = buildProviderSignature(baseUrl, slot.key);
       if (existingSignature.has(signature)) return;
 
       keyManager.addProvider({
@@ -525,6 +611,16 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
       migratedCount += 1;
     });
 
+    try {
+      localStorage.setItem(LEGACY_API_SETTINGS_MIGRATION_KEY, 'done');
+    } catch (error) {
+      console.warn('[ApiSettingsView] Failed to persist migration flag:', error);
+    }
+
+    if (legacySuppliers.length > 0) {
+      supplierService.clearLegacyStorage();
+    }
+
     if (migratedCount > 0) {
       notify.success('历史数据已恢复', `已自动迁移 ${migratedCount} 条旧接口配置。`);
     }
@@ -537,6 +633,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
   useEffect(() => {
     setTab('thirdparty');
+    dedupeProvidersIfNeeded();
     migrateLegacyDataIfNeeded();
     refresh();
     const unsubscribe = keyManager.subscribe(() => refresh());
@@ -630,24 +727,55 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
   };
   const editingProviderName = providerForm.name.trim() || currentEditingProvider?.name || '未命名供应商';
   const editingProviderBaseUrl = providerForm.baseUrl.trim() || currentEditingProvider?.baseUrl || '';
-  const filteredProviders = useMemo(() => {
+  // 🚀 [Fix] 改进搜索逻辑：优先搜索名字，然后是地址
+  const searchResult = useMemo(() => {
     const keyword = providerSearch.trim().toLowerCase();
-    if (!keyword) return providers;
+    if (!keyword) return { providers, highlightId: null as string | null };
 
-    return providers.filter((provider) => {
-      const haystack = [
-        provider.name,
-        provider.baseUrl,
-        provider.group,
-        ...(provider.models || []),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return haystack.includes(keyword);
-    });
+    // 首先按名字搜索
+    const nameMatches = providers.filter((provider) => 
+      provider.name?.toLowerCase().includes(keyword)
+    );
+    
+    // 然后按地址搜索（排除已匹配的）
+    const nameMatchIds = new Set(nameMatches.map(p => p.id));
+    const urlMatches = providers.filter((provider) => 
+      !nameMatchIds.has(provider.id) && 
+      provider.baseUrl?.toLowerCase().includes(keyword)
+    );
+    
+    // 合并结果：名字匹配优先
+    const result = [...nameMatches, ...urlMatches];
+    
+    // 第一个匹配项作为高亮目标
+    const highlightId = result.length > 0 ? result[0].id : null;
+    
+    return { providers: result, highlightId };
   }, [providerSearch, providers]);
+  
+  const filteredProviders = searchResult.providers;
+
+  // 🚀 [Fix] 搜索后自动滚动并高亮
+  useEffect(() => {
+    if (searchResult.highlightId && providerSearch.trim()) {
+      setHighlightedProviderId(searchResult.highlightId);
+      
+      // 延迟滚动，等待渲染完成
+      setTimeout(() => {
+        const element = document.querySelector(`[data-provider-id="${searchResult.highlightId}"]`);
+        if (element && providerListRef.current) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+      
+      // 3秒后取消高亮
+      const timer = setTimeout(() => {
+        setHighlightedProviderId(null);
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [searchResult.highlightId, providerSearch]);
   const advancedPricingRows = useMemo(() => {
     if (!advancedResult?.pricingData?.length) return [];
 
@@ -996,14 +1124,76 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     }
   };
 
-  const fetchPricingFromUrl = async (baseUrl: string): Promise<AdvancedResult | null> => {
+  const fetchPricingFromUrl = async (baseUrl: string, apiKey?: string): Promise<AdvancedResult | null> => {
     const cleanUrl = baseUrl.replace(/\/+$/, '');
 
+    // 🚀 [Fix] 尝试多个可能的价格接口路径
+    const endpoints = ['/api/pricing', '/pricing', '/v1/pricing', '/api/price', '/price'];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const headers: Record<string, string> = { 
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        };
+        
+        // 如果有 API Key，添加到请求头
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        
+        const response = await fetch(`${cleanUrl}${endpoint}`, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          console.warn(`[ApiSettings] pricing endpoint ${endpoint} returned ${response.status}`);
+          continue;
+        }
+        
+        const text = await response.text();
+        if (text.trimStart().startsWith('<!') || text.trimStart().startsWith('<html')) {
+          console.warn(`[ApiSettings] pricing endpoint ${endpoint} returned HTML`);
+          continue;
+        }
+
+        const data = JSON.parse(text);
+        
+        // 🚀 [Fix] 支持多种价格数据格式
+        const pricingList: any[] = Array.isArray(data.data) ? data.data : 
+                                  Array.isArray(data.prices) ? data.prices :
+                                  Array.isArray(data.models) ? data.models : [];
+        
+        const groupRatio = (data.group_ratio || data.groupRatio || {}) as Record<string, number>;
+        
+        if (!pricingList.length) {
+          console.warn(`[ApiSettings] pricing endpoint ${endpoint} returned empty list`);
+          continue;
+        }
+
+        console.log(`[ApiSettings] Successfully fetched pricing from ${endpoint}: ${pricingList.length} models`);
+
+        return {
+          models: pricingList.map((item: any) => item.model_name || item.model || item.id || '').filter(Boolean),
+          apiType: 'direct',
+          pricingHint: `已从供应商价格接口抓取 ${pricingList.length} 个模型的基础价与倍率。`,
+          fetchedAt: Date.now(),
+          pricingData: pricingList,
+          groupRatio,
+          availableGroups: extractAvailableGroups(pricingList, groupRatio),
+        };
+      } catch (error) {
+        console.warn(`[ApiSettings] pricing endpoint ${endpoint} failed:`, error);
+      }
+    }
+
+    // 如果所有端点都失败，尝试代理
     try {
       const proxyResponse = await fetch('/api/pricing-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl: cleanUrl }),
+        body: JSON.stringify({ baseUrl: cleanUrl, apiKey }),
       });
 
       if (proxyResponse.ok) {
@@ -1028,36 +1218,6 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
       console.warn('[ApiSettings] pricing proxy failed', error);
     }
 
-    try {
-      for (const endpoint of ['/api/pricing', '/pricing']) {
-        const response = await fetch(`${cleanUrl}${endpoint}`, {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-        });
-
-        if (!response.ok) continue;
-        const text = await response.text();
-        if (text.trimStart().startsWith('<!') || text.trimStart().startsWith('<html')) continue;
-
-        const data = JSON.parse(text);
-        const pricingList: any[] = Array.isArray(data.data) ? data.data : [];
-        const groupRatio = (data.group_ratio || {}) as Record<string, number>;
-        if (!pricingList.length) continue;
-
-        return {
-          models: pricingList.map((item: any) => item.model_name || item.model || '').filter(Boolean),
-          apiType: 'direct',
-          pricingHint: `已从供应商价格接口抓取 ${pricingList.length} 个模型的基础价与倍率。`,
-          fetchedAt: Date.now(),
-          pricingData: pricingList,
-          groupRatio,
-          availableGroups: extractAvailableGroups(pricingList, groupRatio),
-        };
-      }
-    } catch (error) {
-      console.warn('[ApiSettings] direct pricing fetch failed', error);
-    }
-
     return null;
   };
 
@@ -1070,7 +1230,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
     setAdvancedLoading(true);
     try {
-      const result = await fetchPricingFromUrl(baseUrl);
+      // 🚀 [Fix] 传递 API Key 以支持需要认证的接口
+      const result = await fetchPricingFromUrl(baseUrl, providerForm.apiKey);
       if (!result) {
         setAdvancedResult({
           models: [],
@@ -1118,6 +1279,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
       notify.error('保存失败', '请填写供应商名称、基础地址和 API Key。');
       return;
     }
+
+    setSavingProviderId(providerForm.id || 'new');
 
     const { budgetLimit, tokenLimit } = parseCost(providerForm.costMode, providerForm.costValue);
 
@@ -1207,8 +1370,12 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     }
 
     injectPricingOverrides(pricingSnapshot, sourcePricingData);
-    resetThirdPartyForm(true);
+    
+    // 🚀 [Fix] 保存后不清空表单，保持编辑状态
+    // 只刷新列表数据，不关闭编辑面板
     refresh();
+    
+    setSavingProviderId(null);
   };
 
   const handleDeleteOfficial = (id: string) => {
@@ -1279,9 +1446,10 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
   const handleSyncPricing = async (provider: ThirdPartyProvider) => {
     setSyncingProviderId(provider.id);
     try {
-      const result = await fetchPricingFromUrl(provider.baseUrl);
+      // 🚀 [Fix] 传递 API Key 以支持需要认证的接口
+      const result = await fetchPricingFromUrl(provider.baseUrl, provider.apiKey);
       if (!result?.pricingData?.length) {
-        notify.error('同步失败', '未从价格页获取到基础价和倍率。');
+        notify.error('同步失败', '未从价格页获取到基础价和倍率。请检查供应商地址和 API Key 是否正确。');
         return;
       }
 
@@ -1316,7 +1484,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     onModeChange: (mode: CostMode) => void,
     onValueChange: (value: number) => void
   ) => (
-    <div className="grid gap-3 md:grid-cols-[160px,1fr]">
+    <div className="grid gap-3 md:grid-cols-2">
       <div>
         <div className="mb-1 text-xs text-[var(--text-tertiary)]">计费模式</div>
         <FormSelect
@@ -1396,57 +1564,13 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
     return (
       <div className="grid gap-4">
-        <div className="rounded-2xl border p-4" style={overlayPanelStyle}>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-[var(--text-primary)]">
-                {mode === 'edit' ? '当前编辑对象已锁定' : '正在新增第三方供应商'}
-              </div>
-              <div className="mt-1 text-xs leading-5 text-[var(--text-tertiary)]">
-                {mode === 'edit'
-                  ? '右侧卡片始终显示当前供应商，保存时会保留已扫描的价格快照与分组配置。'
-                  : '先填写基础连接信息，再选择默认分组和额度，保存后即可直接用于生成与计费。'}
-              </div>
-            </div>
-            <span
-              className="inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-medium"
-              style={{ backgroundColor: `${providerForm.providerColor}1f`, color: providerForm.providerColor }}
-            >
-              {editingProviderName}
-            </span>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-full border px-2.5 py-1 text-[11px] text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-light)' }}>
-              状态 {providerStatusLabel}
-            </span>
-            <span className="rounded-full border px-2.5 py-1 text-[11px] text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-light)' }}>
-              {providerForm.group ? `默认分组 ${providerForm.group}` : '未设置默认分组'}
-            </span>
-            <span className="rounded-full border px-2.5 py-1 text-[11px] text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-light)' }}>
-              {providerScanTime ? `上次扫描 ${formatDate(providerScanTime)}` : '尚未扫描价格'}
-            </span>
-          </div>
-
-          {editingProviderBaseUrl ? (
-            <div
-              className="mt-3 rounded-xl border px-3 py-2 text-xs text-[var(--text-secondary)]"
-              style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)' }}
-              title={editingProviderBaseUrl}
-            >
-              {editingProviderBaseUrl}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           <div className="rounded-2xl border p-4" style={overlayPanelStyle}>
             <div className="mb-4">
               <div className="text-sm font-semibold text-[var(--text-primary)]">基础连接</div>
               <div className="mt-1 text-xs text-[var(--text-tertiary)]">名称、颜色、基础地址和 API Key 都在这里统一维护。</div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr),minmax(320px,0.95fr)]">
               <div>
                 <div className="mb-1 text-xs text-[var(--text-tertiary)]">供应商名称</div>
                 <input className="h-10 w-full rounded-xl border px-3 text-sm outline-none" style={formFieldStyle} value={providerForm.name} onChange={(event) => setProviderForm((prev) => ({ ...prev, name: event.target.value }))} placeholder="例如：12AI" />
@@ -1454,12 +1578,12 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
               <div>
                 <div className="mb-1 text-xs text-[var(--text-tertiary)]">供应商颜色</div>
-                <div className="flex items-center gap-3">
+                <div className="grid gap-3 sm:grid-cols-[72px,minmax(0,1fr),auto]">
                   <input className="h-10 w-16 rounded-xl border p-1" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)' }} type="color" value={providerForm.providerColor} onChange={(event) => setProviderForm((prev) => ({ ...prev, providerColor: event.target.value }))} />
                   <input className="h-10 flex-1 rounded-xl border px-3 text-sm outline-none" style={formFieldStyle} value={providerForm.providerColor} onChange={(event) => setProviderForm((prev) => ({ ...prev, providerColor: event.target.value }))} />
                   <button
                     type="button"
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm"
                     style={secondaryButtonStyle}
                     onClick={() => applyRandomProviderColor(providerForm.id)}
                     title="随机分配一个和其他供应商尽量不重复的颜色"
@@ -1470,14 +1594,16 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
               </div>
             </div>
 
-            <div className="mt-3">
-              <div className="mb-1 text-xs text-[var(--text-tertiary)]">基础地址</div>
-              <input className="h-10 w-full rounded-xl border px-3 text-sm outline-none" style={formFieldStyle} value={providerForm.baseUrl} onChange={(event) => setProviderForm((prev) => ({ ...prev, baseUrl: event.target.value }))} placeholder="https://example.com/v1" />
-            </div>
+            <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.2fr),minmax(0,1fr)]">
+              <div>
+                <div className="mb-1 text-xs text-[var(--text-tertiary)]">基础地址</div>
+                <input className="h-10 w-full rounded-xl border px-3 text-sm outline-none" style={formFieldStyle} value={providerForm.baseUrl} onChange={(event) => setProviderForm((prev) => ({ ...prev, baseUrl: event.target.value }))} placeholder="https://example.com/v1" />
+              </div>
 
-            <div className="mt-3">
-              <div className="mb-1 text-xs text-[var(--text-tertiary)]">API Key</div>
-              <input className="h-10 w-full rounded-xl border px-3 text-sm outline-none" style={formFieldStyle} value={providerForm.apiKey} onChange={(event) => setProviderForm((prev) => ({ ...prev, apiKey: event.target.value }))} placeholder="输入第三方供应商 API Key" />
+              <div>
+                <div className="mb-1 text-xs text-[var(--text-tertiary)]">API Key</div>
+                <input className="h-10 w-full rounded-xl border px-3 text-sm outline-none" style={formFieldStyle} value={providerForm.apiKey} onChange={(event) => setProviderForm((prev) => ({ ...prev, apiKey: event.target.value }))} placeholder="输入第三方供应商 API Key" />
+              </div>
             </div>
           </div>
 
@@ -1487,48 +1613,43 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
               <div className="mt-1 text-xs text-[var(--text-tertiary)]">默认分组、额度方式和启用状态都会直接影响生成时的调用与计费。</div>
             </div>
 
-            <div>
-              <div className="mb-1 text-xs text-[var(--text-tertiary)]">供应商分组</div>
-              <div className="grid gap-2 md:grid-cols-[200px,1fr]">
-                <FormSelect
-                  value={advancedResult?.availableGroups?.includes(providerForm.group) ? providerForm.group : ''}
-                  onChange={(value) => setProviderForm((prev) => ({ ...prev, group: value }))}
-                  options={[
-                    { value: '', label: '手动输入 / 未选择' },
-                    ...(advancedResult?.availableGroups || []).map((group) => ({ value: group, label: group })),
-                  ]}
-                />
-                <input className="h-10 w-full rounded-xl border px-3 text-sm outline-none" style={formFieldStyle} value={providerForm.group} onChange={(event) => setProviderForm((prev) => ({ ...prev, group: event.target.value }))} placeholder="例如：default / Standard / Mini / t1" />
+            <div className="space-y-3">
+              <div className="rounded-xl border p-3" style={elevatedPanelStyle}>
+                <div className="mb-2 text-xs text-[var(--text-tertiary)]">供应商分组</div>
+                {advancedResult?.availableGroups?.length ? (
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    {advancedResult.availableGroups.map((group) => (
+                      <button
+                        key={group}
+                        type="button"
+                        className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-left text-xs ${providerForm.group === group ? 'border-indigo-500 bg-indigo-500/10 text-indigo-500' : 'border-[var(--border-light)] text-[var(--text-secondary)] hover:border-indigo-400 hover:text-indigo-400'}`}
+                        onClick={() => setProviderForm((prev) => ({ ...prev, group }))}
+                      >
+                        {group}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed px-3 py-3 text-xs text-[var(--text-tertiary)]" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)' }}>
+                    暂无可用分组
+                  </div>
+                )}
               </div>
-              {advancedResult?.availableGroups?.length ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {advancedResult.availableGroups.map((group) => (
-                    <button
-                      key={group}
-                      type="button"
-                      className={`rounded-full border px-2 py-1 text-[11px] ${providerForm.group === group ? 'border-indigo-500 text-indigo-500' : 'border-[var(--border-light)] text-[var(--text-secondary)]'}`}
-                      onClick={() => setProviderForm((prev) => ({ ...prev, group }))}
-                    >
-                      {group}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
 
-            <div className="mt-3">
-              {renderCostEditor(providerForm.costMode, providerForm.costValue, (costMode) => setProviderForm((prev) => ({ ...prev, costMode })), (costValue) => setProviderForm((prev) => ({ ...prev, costValue })))}
-            </div>
+              <div className="rounded-xl border p-3" style={elevatedPanelStyle}>
+                <div className="mb-3 text-xs text-[var(--text-tertiary)]">额度与状态</div>
+                {renderCostEditor(providerForm.costMode, providerForm.costValue, (costMode) => setProviderForm((prev) => ({ ...prev, costMode })), (costValue) => setProviderForm((prev) => ({ ...prev, costValue })))}
 
-            <label className="mt-4 flex items-center justify-between rounded-xl border px-3 py-3 text-sm text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)' }}>
-              <span className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: providerForm.isActive ? '#10b981' : '#6b7280' }} />
-                启用该供应商
-              </span>
-              <input type="checkbox" checked={providerForm.isActive} onChange={(event) => setProviderForm((prev) => ({ ...prev, isActive: event.target.checked }))} />
-            </label>
+                <label className="mt-3 flex items-center justify-between rounded-xl border px-3 py-3 text-sm text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)' }}>
+                  <span className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: providerForm.isActive ? '#10b981' : '#6b7280' }} />
+                    启用该供应商
+                  </span>
+                  <input type="checkbox" checked={providerForm.isActive} onChange={(event) => setProviderForm((prev) => ({ ...prev, isActive: event.target.checked }))} />
+                </label>
+              </div>
+            </div>
           </div>
-        </div>
 
         <div className="rounded-2xl border p-4" style={overlayPanelStyle}>
             <button className="flex w-full items-center justify-between text-left" onClick={() => setShowAdvancedMode((prev) => !prev)}>
@@ -1694,6 +1815,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
       <div className="flex gap-2 rounded-2xl border p-1" style={overlayPanelStyle}>
         <button className={`flex h-10 flex-1 items-center justify-center rounded-xl px-3 py-2 text-sm ${tab === 'thirdparty' ? 'bg-indigo-600 text-white' : ''}`} style={tab === 'thirdparty' ? undefined : { color: 'var(--text-primary)', backgroundColor: 'var(--bg-elevated)' }} onClick={() => setTab('thirdparty')}>第三方供应商</button>
+        <button className={`flex h-10 flex-1 items-center justify-center rounded-xl px-3 py-2 text-sm ${tab === 'mykeys' ? 'bg-indigo-600 text-white' : ''}`} style={tab === 'mykeys' ? undefined : { color: 'var(--text-primary)', backgroundColor: 'var(--bg-elevated)' }} onClick={() => setTab('mykeys')}>我的密钥</button>
         <button className={`flex h-10 flex-1 items-center justify-center rounded-xl px-3 py-2 text-sm ${tab === 'official' ? 'bg-indigo-600 text-white' : ''}`} style={tab === 'official' ? undefined : { color: 'var(--text-primary)', backgroundColor: 'var(--bg-elevated)' }} onClick={() => setTab('official')}>官方接口</button>
       </div>
 
@@ -1726,20 +1848,20 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                   </div>
 
                   <div className="relative mt-3">
-                    <span className="pointer-events-none absolute left-3 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-[var(--text-tertiary)]">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center justify-center text-[var(--text-tertiary)]">
                       <Search size={15} />
                     </span>
                     <input
                       value={providerSearch}
                       onChange={(event) => setProviderSearch(event.target.value)}
-                      placeholder="搜索供应商 / 地址 / 分组"
+                      placeholder="搜索供应商名称或地址..."
                       className="h-10 w-full rounded-xl border pl-10 pr-3 text-sm text-[var(--text-primary)] outline-none"
                       style={formFieldStyle}
                     />
                   </div>
                 </div>
 
-                <div className={`api-settings-provider-list space-y-2 p-3 ${showProviderCreateForm ? 'lg:max-h-[calc(100vh-240px)]' : 'lg:max-h-[calc(100vh-300px)] min-h-[52vh]'} lg:overflow-y-auto`}>
+                <div ref={providerListRef} className={`api-settings-provider-list space-y-2 p-3 ${showProviderCreateForm ? 'lg:max-h-[calc(100vh-240px)]' : 'lg:max-h-[calc(100vh-300px)] min-h-[52vh]'} lg:overflow-y-auto`}>
                   {filteredProviders.length === 0 ? (
                     <div className="rounded-2xl border border-dashed p-6 text-left text-sm text-[var(--text-tertiary)]" style={{ borderColor: 'var(--border-light)' }}>
                       {providers.length === 0 ? '暂无第三方供应商配置，点击右上角“新增供应商”开始添加。' : '没有匹配到供应商，请换个关键词试试。'}
@@ -1747,24 +1869,32 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                   ) : (
                     filteredProviders.map((provider) => {
                       const isSelected = showProviderCreateForm && providerForm.id === provider.id;
+                      const isHighlighted = highlightedProviderId === provider.id;
                       const providerColor = provider.providerColor || provider.badgeColor || '#3B82F6';
 
                       return (
                         <article
                           key={provider.id}
+                          data-provider-id={provider.id}
                           role="button"
                           tabIndex={0}
-                          className="api-settings-provider-item w-full cursor-pointer overflow-hidden rounded-2xl border p-3 text-left transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5"
+                          className={`api-settings-provider-item w-full cursor-pointer overflow-hidden rounded-2xl border p-3 text-left transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 ${isHighlighted ? 'animate-pulse-highlight' : ''}`}
                           style={isSelected
                             ? {
                                 borderColor: 'rgba(99,102,241,0.55)',
                                 backgroundColor: 'rgba(99,102,241,0.08)',
                                 boxShadow: '0 0 0 1px rgba(99,102,241,0.16)',
                               }
-                            : {
-                                borderColor: 'var(--border-light)',
-                                backgroundColor: 'var(--bg-surface)',
-                              }}
+                            : isHighlighted
+                              ? {
+                                  borderColor: 'rgba(34,197,94,0.8)',
+                                  backgroundColor: 'rgba(34,197,94,0.15)',
+                                  boxShadow: '0 0 0 2px rgba(34,197,94,0.4), 0 0 20px rgba(34,197,94,0.2)',
+                                }
+                              : {
+                                  borderColor: 'var(--border-light)',
+                                  backgroundColor: 'var(--bg-surface)',
+                                }}
                           onClick={() => loadProviderToForm(provider)}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
@@ -1774,76 +1904,119 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                           }}
                           aria-label={`编辑供应商 ${provider.name}`}
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-                                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: providerColor }} />
-                                <span className="api-settings-provider-name truncate text-sm font-semibold text-[var(--text-primary)]">{provider.name}</span>
+                          {showProviderCreateForm ? (
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: providerColor }} />
+                                  <span className="api-settings-provider-name truncate text-sm font-semibold text-[var(--text-primary)]">{provider.name}</span>
+                                  {isSelected ? <span className="shrink-0 rounded-full bg-indigo-500/15 px-2 py-1 text-[10px] font-medium text-indigo-500">正在编辑</span> : null}
+                                </div>
+                                <div className="api-settings-provider-url mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[var(--text-tertiary)]">{provider.baseUrl}</div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                                  <span className="whitespace-nowrap">模型 {provider.models?.length || 0}</span>
+                                  {provider.group ? <span className="whitespace-nowrap">分组 {provider.group}</span> : null}
+                                </div>
                               </div>
-                              <div className="api-settings-provider-url mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[var(--text-tertiary)]">{provider.baseUrl}</div>
-                            </div>
-                            <span className={`shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-medium ${provider.isActive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-gray-500/15 text-gray-400'}`}>
-                              {provider.isActive ? '启用中' : '已停用'}
-                            </span>
-                          </div>
 
-                          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
-                            <span className="whitespace-nowrap">模型数 {provider.models?.length || 0}</span>
-                            {provider.group ? <span className="whitespace-nowrap">分组 {provider.group}</span> : null}
-                            <span className="whitespace-nowrap">上次扫描 {formatDate(provider.pricingSnapshot?.fetchedAt)}</span>
-                            {isSelected ? <span className="whitespace-nowrap rounded-full bg-indigo-500/15 px-2 py-1 font-medium text-indigo-500">正在编辑</span> : null}
-                          </div>
-
-                          {!showProviderCreateForm ? (
-                            <div className="api-settings-provider-actions mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                              <button
-                                type="button"
-                                className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border px-3 text-xs"
-                                style={secondaryButtonStyle}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  loadProviderToForm(provider);
-                                }}
-                              >
-                                <Edit3 size={12} />编辑
-                              </button>
-                              <button
-                                type="button"
-                                className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border px-3 text-xs"
-                                style={secondaryButtonStyle}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleToggleProvider(provider);
-                                }}
-                              >
-                                {provider.isActive ? <Pause size={12} /> : <Play size={12} />}{provider.isActive ? '暂停' : '启用'}
-                              </button>
-                              <button
-                                type="button"
-                                className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border px-3 text-xs"
-                                style={secondaryButtonStyle}
-                                disabled={detectingProviderId === provider.id}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleValidateProvider(provider);
-                                }}
-                              >
-                                <RefreshCw size={12} className={detectingProviderId === provider.id ? 'animate-spin' : ''} />{detectingProviderId === provider.id ? '刷新中...' : '刷新'}
-                              </button>
-                              <button
-                                type="button"
-                                className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border px-3 text-xs"
-                                style={secondaryButtonStyle}
-                                disabled={syncingProviderId === provider.id}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleSyncPricing(provider);
-                                }}
-                              >
-                                <Search size={12} />{syncingProviderId === provider.id ? '获取中...' : '获取价格'}
-                              </button>
+                              <span className={`shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-medium ${provider.isActive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-gray-500/15 text-gray-400'}`}>
+                                {provider.isActive ? '启用中' : '已停用'}
+                              </span>
                             </div>
-                          ) : null}
+                          ) : (
+                            <div className="flex items-start gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+                                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: providerColor }} />
+                                  <span className="api-settings-provider-name truncate text-sm font-semibold text-[var(--text-primary)]">{provider.name}</span>
+                                </div>
+                                <div className="api-settings-provider-url mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[var(--text-tertiary)]">{provider.baseUrl}</div>
+
+                                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                                  <span className="whitespace-nowrap">模型数 {provider.models?.length || 0}</span>
+                                  {provider.group ? <span className="whitespace-nowrap">分组 {provider.group}</span> : null}
+                                  <span className="whitespace-nowrap">上次扫描 {formatDate(provider.pricingSnapshot?.fetchedAt)}</span>
+                                  {isSelected ? <span className="whitespace-nowrap rounded-full bg-indigo-500/15 px-2 py-1 font-medium text-indigo-500">正在编辑</span> : null}
+                                </div>
+
+                                {(() => {
+                                  const budget = formatBudgetInfo(provider);
+                                  const isLimited = provider.customCostMode !== 'unlimited';
+                                  return (
+                                    <div className="mt-2 flex items-center justify-between rounded-lg bg-[var(--bg-overlay)] px-2 py-1">
+                                      <div className="flex items-center gap-1">
+                                        <span className="whitespace-nowrap text-[10px] text-[var(--text-tertiary)]">总额度</span>
+                                        <span className={`whitespace-nowrap text-xs font-semibold tabular-nums ${isLimited ? 'text-[var(--text-primary)]' : 'text-emerald-500'}`}>{budget.total}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="whitespace-nowrap text-[10px] text-[var(--text-tertiary)]">已使用</span>
+                                        <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-amber-500">{budget.used}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="whitespace-nowrap text-[10px] text-[var(--text-tertiary)]">剩余</span>
+                                        <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-emerald-500">{budget.remaining}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+
+                              <div className="flex shrink-0 flex-col items-end gap-2" style={{ minWidth: '140px' }}>
+                                <span className={`whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-medium ${provider.isActive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-gray-500/15 text-gray-400'}`}>
+                                  {provider.isActive ? '启用中' : '已停用'}
+                                </span>
+
+                                <div className="api-settings-provider-actions grid w-full grid-cols-2 gap-1.5">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border px-2 text-xs"
+                                    style={secondaryButtonStyle}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      loadProviderToForm(provider);
+                                    }}
+                                  >
+                                    <Edit3 size={12} />编辑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border px-2 text-xs"
+                                    style={secondaryButtonStyle}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleToggleProvider(provider);
+                                    }}
+                                  >
+                                    {provider.isActive ? <Pause size={12} /> : <Play size={12} />}{provider.isActive ? '暂停' : '启用'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border px-2 text-xs"
+                                    style={secondaryButtonStyle}
+                                    disabled={detectingProviderId === provider.id}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleValidateProvider(provider);
+                                    }}
+                                  >
+                                    <RefreshCw size={12} className={detectingProviderId === provider.id ? 'animate-spin' : ''} />{detectingProviderId === provider.id ? '刷新中...' : '刷新'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border px-2 text-xs"
+                                    style={secondaryButtonStyle}
+                                    disabled={syncingProviderId === provider.id}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleSyncPricing(provider);
+                                    }}
+                                  >
+                                    <Search size={12} />{syncingProviderId === provider.id ? '获取中...' : '获取价格'}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </article>
                       );
                     })
@@ -1858,8 +2031,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                 <>
                   <div className="border-b px-5 py-4" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-surface)' }}>
                     <div className="flex flex-col gap-4">
-                      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="min-w-0">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
                           <div className="text-base font-semibold text-[var(--text-primary)]">
                             {providerForm.id ? `正在编辑：${editingProviderName}` : '新增供应商'}
                           </div>
@@ -1869,32 +2042,36 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                               : '填写名称、基础地址和 API Key 后即可保存为新的第三方供应商。'}
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button className="inline-flex h-9 items-center justify-center gap-1 rounded-xl bg-indigo-600 px-4 text-sm text-white hover:bg-indigo-500" onClick={() => void handleSaveProvider()}>
-                            <Save size={14} />{providerForm.id ? '保存供应商' : '添加供应商'}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button 
+                            className="inline-flex h-9 items-center justify-center gap-1 rounded-xl bg-indigo-600 px-4 text-sm text-white transition-all active:scale-95 disabled:opacity-70 whitespace-nowrap" 
+                            onClick={() => void handleSaveProvider()}
+                            disabled={savingProviderId === (providerForm.id || 'new')}
+                          >
+                            <Save size={14} />
+                            {savingProviderId === (providerForm.id || 'new') ? '保存中...' : (providerForm.id ? '保存供应商' : '添加供应商')}
                           </button>
-                          <button className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border px-4 text-sm" style={secondaryButtonStyle} onClick={() => resetThirdPartyForm(true)}>
+                          <button className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border px-4 text-sm transition-all active:scale-95 whitespace-nowrap" style={secondaryButtonStyle} onClick={() => resetThirdPartyForm(true)}>
                             <XCircle size={14} />关闭
                           </button>
+                          {currentEditingProvider ? (
+                            <>
+                              <button className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border px-3 text-xs transition-all active:scale-95 whitespace-nowrap" style={secondaryButtonStyle} onClick={() => void handleValidateProvider(currentEditingProvider)} disabled={detectingProviderId === currentEditingProvider.id}>
+                                <CheckCircle2 size={12} />{detectingProviderId === currentEditingProvider.id ? '校验中...' : '校验模型'}
+                              </button>
+                              <button className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border px-3 text-xs transition-all active:scale-95 whitespace-nowrap" style={secondaryButtonStyle} onClick={() => void handleSyncPricing(currentEditingProvider)} disabled={syncingProviderId === currentEditingProvider.id}>
+                                <RefreshCw size={12} className={syncingProviderId === currentEditingProvider.id ? 'animate-spin' : ''} />{syncingProviderId === currentEditingProvider.id ? '同步中...' : '同步价格'}
+                              </button>
+                              <button className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border px-3 text-xs transition-all active:scale-95 whitespace-nowrap" style={secondaryButtonStyle} onClick={() => handleToggleProvider(currentEditingProvider)}>
+                                {currentEditingProvider.isActive ? <Pause size={12} /> : <Play size={12} />}{currentEditingProvider.isActive ? '停用' : '启用'}
+                              </button>
+                              <button className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-[var(--border-light)] px-3 text-xs text-red-500 transition-all active:scale-95 whitespace-nowrap" onClick={() => handleDeleteProvider(currentEditingProvider.id)}>
+                                <Trash2 size={12} />删除
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </div>
-
-                      {currentEditingProvider ? (
-                        <div className="flex flex-wrap gap-2">
-                          <button className="inline-flex h-8 items-center gap-1 rounded-lg border px-3 text-xs" style={secondaryButtonStyle} onClick={() => void handleValidateProvider(currentEditingProvider)} disabled={detectingProviderId === currentEditingProvider.id}>
-                            <CheckCircle2 size={12} />{detectingProviderId === currentEditingProvider.id ? '校验中...' : '校验模型'}
-                          </button>
-                          <button className="inline-flex h-8 items-center gap-1 rounded-lg border px-3 text-xs" style={secondaryButtonStyle} onClick={() => void handleSyncPricing(currentEditingProvider)} disabled={syncingProviderId === currentEditingProvider.id}>
-                            <RefreshCw size={12} className={syncingProviderId === currentEditingProvider.id ? 'animate-spin' : ''} />{syncingProviderId === currentEditingProvider.id ? '同步中...' : '同步价格'}
-                          </button>
-                          <button className="inline-flex h-8 items-center gap-1 rounded-lg border px-3 text-xs" style={secondaryButtonStyle} onClick={() => handleToggleProvider(currentEditingProvider)}>
-                            {currentEditingProvider.isActive ? <Pause size={12} /> : <Play size={12} />}{currentEditingProvider.isActive ? '停用' : '启用'}
-                          </button>
-                          <button className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--border-light)] px-3 text-xs text-red-500" onClick={() => handleDeleteProvider(currentEditingProvider.id)}>
-                            <Trash2 size={12} />删除
-                          </button>
-                        </div>
-                      ) : null}
                     </div>
                   </div>
 
@@ -1907,6 +2084,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
             ) : null}
           </div>
         </div>
+      ) : tab === 'mykeys' ? (
+        <SecureApiKeyManager />
       ) : (
         <div className="space-y-4">
           <div className="flex justify-end">
@@ -1925,6 +2104,38 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                     <div>
                       <div className="text-sm font-semibold text-[var(--text-primary)]">{slot.name}</div>
                       <div className="mt-1 text-xs text-[var(--text-tertiary)]">{slot.provider} · {costModeText[slot.tokenLimit && slot.tokenLimit > 0 ? 'tokens' : slot.budgetLimit && slot.budgetLimit > 0 ? 'amount' : 'unlimited']}</div>
+                      {/* Usage display for official key */}
+                      {(() => {
+                        const mode = slot.tokenLimit && slot.tokenLimit > 0 ? 'tokens' : slot.budgetLimit && slot.budgetLimit > 0 ? 'amount' : 'unlimited';
+                        const isUnlimited = mode === 'unlimited';
+                        const isTokenMode = mode === 'tokens';
+                        const total = isTokenMode ? (slot.tokenLimit || 0) : (slot.budgetLimit || 0);
+                        const used = isTokenMode ? (slot.usedTokens || 0) : (slot.totalCost || 0);
+                        const remaining = isUnlimited ? Infinity : Math.max(0, total - used);
+                        
+                        return (
+                          <div className="mt-2 space-y-1.5 rounded-lg bg-[var(--bg-overlay)] p-2">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="text-[10px] text-[var(--text-tertiary)]">{isTokenMode ? '总Token' : '总额度'}</div>
+                              <div className={`text-xs font-semibold tabular-nums ${isUnlimited ? 'text-emerald-500' : 'text-[var(--text-secondary)]'}`}>
+                                {isUnlimited ? '∞' : isTokenMode ? total.toLocaleString() : `¥${total.toFixed(2)}`}
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="text-[10px] text-[var(--text-tertiary)]">已使用</div>
+                              <div className="text-xs font-semibold tabular-nums text-amber-500">
+                                {isTokenMode ? used.toLocaleString() : `¥${used.toFixed(2)}`}
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="text-[10px] text-[var(--text-tertiary)]">剩余</div>
+                              <div className={`text-xs font-semibold tabular-nums ${remaining === 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                {isUnlimited ? '∞' : isTokenMode ? (remaining as number).toLocaleString() : `¥${(remaining as number).toFixed(2)}`}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button className="inline-flex h-8 items-center gap-1 rounded-lg border px-3 text-xs" style={secondaryButtonStyle} onClick={() => loadOfficialToForm(slot)}><Edit3 size={12} />编辑</button>

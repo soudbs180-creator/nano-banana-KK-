@@ -57,7 +57,111 @@ function normalizeImageSize(imageSize?: string): string {
   const raw = String(imageSize || '1K').toUpperCase();
   if (raw.includes('4K')) return '4K';
   if (raw.includes('2K')) return '2K';
+  if (raw.includes('0.5K') || raw.includes('512')) return '0.5K';
   return '1K';
+}
+
+type CreditModelRouteRow = {
+  base_url?: string | null;
+  api_keys?: string[] | null;
+  endpoint_type?: string | null;
+  model_id?: string | null;
+  credit_cost?: number | null;
+  display_name?: string | null;
+  provider_id?: string | null;
+  priority?: number | null;
+  weight?: number | null;
+  call_count?: number | null;
+  advanced_enabled?: boolean | null;
+  mix_with_same_model?: boolean | null;
+  quality_pricing?: Record<string, { enabled?: boolean; creditCost?: number; credit_cost?: number } | null> | null;
+};
+
+function normalizeQualityPricing(
+  pricing: CreditModelRouteRow['quality_pricing'],
+  fallbackCost: number
+): Record<string, { enabled: boolean; creditCost: number }> {
+  const safeCost = Math.max(1, Number(fallbackCost || 1));
+  const defaults = {
+    '0.5K': { enabled: true, creditCost: Math.max(1, Math.floor(safeCost * 0.5)) },
+    '1K': { enabled: true, creditCost: safeCost },
+    '2K': { enabled: true, creditCost: safeCost * 2 },
+    '4K': { enabled: true, creditCost: safeCost * 4 },
+  };
+
+  if (!pricing || typeof pricing !== 'object') {
+    return defaults;
+  }
+
+  for (const size of ['0.5K', '1K', '2K', '4K']) {
+    const item = pricing[size];
+    if (!item || typeof item !== 'object') continue;
+    defaults[size] = {
+      enabled: item.enabled !== false,
+      creditCost: Math.max(1, Number(item.creditCost || item.credit_cost || defaults[size].creditCost)),
+    };
+  }
+
+  return defaults;
+}
+
+function isRouteQualityEnabled(route: CreditModelRouteRow, requestedSize: string): boolean {
+  if (!route.advanced_enabled) return true;
+  const pricing = normalizeQualityPricing(route.quality_pricing, Number(route.credit_cost || 1));
+  return pricing[requestedSize]?.enabled !== false;
+}
+
+function getRouteCreditCost(route: CreditModelRouteRow, requestedSize: string): number {
+  if (!route.advanced_enabled) {
+    return Math.max(1, Number(route.credit_cost || 1));
+  }
+
+  const pricing = normalizeQualityPricing(route.quality_pricing, Number(route.credit_cost || 1));
+  return Math.max(1, Number(pricing[requestedSize]?.creditCost || route.credit_cost || 1));
+}
+
+/**
+ * 基于用量平衡的路由选择
+ * 优先选择调用次数最少的供应商，实现API用量均衡
+ */
+function pickCreditModelRoute(
+  routes: CreditModelRouteRow[],
+  requestedSize: string
+): { route: CreditModelRouteRow; requiredCredits: number } | null {
+  const eligibleRoutes = routes.filter((route) => isRouteQualityEnabled(route, requestedSize));
+  if (eligibleRoutes.length === 0) return null;
+
+  const mixedRoutes = eligibleRoutes.filter((route) => route.mix_with_same_model === true);
+  
+  // 混合模式：基于用量平衡选择
+  if (mixedRoutes.length > 1) {
+    // 按调用次数升序排序，优先选择用量最少的
+    const sortedByUsage = [...mixedRoutes].sort((a, b) => {
+      const countA = a.call_count ?? 0;
+      const countB = b.call_count ?? 0;
+      if (countA !== countB) return countA - countB;
+      
+      // 如果调用次数相同，按价格优先
+      const costA = getRouteCreditCost(a, requestedSize);
+      const costB = getRouteCreditCost(b, requestedSize);
+      if (costA !== costB) return costA - costB;
+      
+      // 最后按权重
+      return (b.weight ?? 1) - (a.weight ?? 1);
+    });
+    
+    const selectedRoute = sortedByUsage[0];
+    return {
+      route: selectedRoute,
+      requiredCredits: getRouteCreditCost(selectedRoute, requestedSize),
+    };
+  }
+
+  const selectedRoute = eligibleRoutes[0];
+  return {
+    route: selectedRoute,
+    requiredCredits: getRouteCreditCost(selectedRoute, requestedSize),
+  };
 }
 
 function mapAspectRatioToOpenAI(aspectRatio?: string): string {
@@ -642,25 +746,33 @@ Deno.serve(async (req) => {
       return json({ success: false, error: 'modelId is required' }, 400);
     }
 
-    const { data: creditModel, error: modelError } = await serviceClient
+    const requestedImageSize = normalizeImageSize(body.imageSize);
+
+    const { data: creditModels, error: modelError } = await serviceClient
       .from('admin_credit_models')
-      .select('base_url, api_keys, endpoint_type, model_id, credit_cost, display_name, provider_id')
+      .select('base_url, api_keys, endpoint_type, model_id, credit_cost, display_name, provider_id, priority, weight, advanced_enabled, mix_with_same_model, quality_pricing')
       .eq('model_id', modelId)
       .eq('is_active', true)
       .order('priority', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order('weight', { ascending: false });
 
-    if (modelError || !creditModel) {
+    if (modelError || !creditModels || creditModels.length === 0) {
       return json({ success: false, error: 'Model route not found' }, 404);
     }
+
+    const selectedRoute = pickCreditModelRoute((creditModels || []) as CreditModelRouteRow[], requestedImageSize);
+    if (!selectedRoute) {
+      return json({ success: false, error: `当前模型未启用 ${requestedImageSize} 画质` }, 409);
+    }
+
+    const creditModel = selectedRoute.route;
 
     const selectedKey = pickRandomKey(creditModel.api_keys || []);
     if (!selectedKey) {
       return json({ success: false, error: 'Provider key is not configured' }, 500);
     }
 
-    const requiredCredits = Math.max(1, Number(creditModel.credit_cost || 1));
+    const requiredCredits = Math.max(1, Number(selectedRoute.requiredCredits || creditModel.credit_cost || 1));
 
     const { data: balanceRow, error: balanceError } = await serviceClient
       .from('user_credits')
@@ -679,7 +791,7 @@ Deno.serve(async (req) => {
       p_model_id: modelId,
       p_model_name: String(creditModel.display_name || modelId),
       p_provider_id: String(creditModel.provider_id || 'system'),
-      p_description: `系统积分模型调用：${modelId}`,
+      p_description: `系统积分模型调用：${modelId} / ${requestedImageSize}`,
     });
 
     const consumeResult = Array.isArray(consumeRows) ? consumeRows[0] : consumeRows;

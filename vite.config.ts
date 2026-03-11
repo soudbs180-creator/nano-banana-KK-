@@ -1,6 +1,5 @@
 import path from 'path';
 import { defineConfig, loadEnv, Plugin } from 'vite';
-import react from '@vitejs/plugin-react';
 
 function resolveManualChunk(id: string): string | undefined {
     const normalizedId = id.replace(/\\/g, '/');
@@ -156,6 +155,9 @@ export default defineConfig(({ mode }) => {
             strictPort: true, // Fail if port 3000 is in use (don't auto-switch)
             host: '0.0.0.0',
             open: true, // Auto-open browser on start
+            headers: {
+                'Cache-Control': 'no-store',
+            },
             watch: {
                 // 🚀 [Critical Fix] 忽略应用自身生成的本地数据文档，防止 Vite HMR 触发强制刷新
                 ignored: [
@@ -172,16 +174,21 @@ export default defineConfig(({ mode }) => {
                 ]
             }
         },
-        plugins: [react(), pricingProxyPlugin()],
+        plugins: [pricingProxyPlugin()],
         resolve: {
+            dedupe: ['react', 'react-dom'],
             alias: {
                 '@': path.resolve(__dirname, 'src'),
             }
+        },
+        optimizeDeps: {
+            include: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom/client']
         },
 
         build: {
             // 确保构建时清理旧文件
             emptyOutDir: true,
+            chunkSizeWarningLimit: 1000,
             rollupOptions: {
                 output: {
                     manualChunks: resolveManualChunk,

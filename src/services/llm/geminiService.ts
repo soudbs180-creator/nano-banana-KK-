@@ -87,6 +87,8 @@ function normalizeError(error: any): Error {
 
   const rawMessage = error?.message || error?.toString?.() || '未知错误';
   const msg = rawMessage.toLowerCase();
+  const status = error?.status || error?.code;
+  
   const withMeta = (normalized: Error): Error => {
     const out: any = normalized;
     if (error?.code !== undefined) out.code = error.code;
@@ -97,7 +99,17 @@ function normalizeError(error: any): Error {
     if (error?.responseBody !== undefined) out.responseBody = error.responseBody;
     return out as Error;
   };
+  
   if (msg.includes('cancelled')) return withMeta(new Error("任务已取消"));
+
+  // 🚀 [Critical Fix] API 鉴权错误检测 - 优先检查状态码
+  if (status === 401 || msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid authentication') || msg.includes('invalid token')) {
+    return withMeta(new Error("API 令牌无效 (401)：检测到鉴权错误，请在'设置 - API管理'中检查密钥或令牌是否正确、是否过期，以及当前请求是否走到了您选中的供应商"));
+  }
+  
+  if (status === 403 || msg.includes('403') || msg.includes('permission') || msg.includes('api_key_invalid') || msg.includes('forbidden')) {
+    return withMeta(new Error("API Key 无效或权限不足 (403)：请检查设置中的 API 密钥是否正确，或联系供应商确认权限"));
+  }
 
   // 🚀 [12AI 对齐] 精准网关与状态码映射
   if (msg.includes('524') || msg.includes('timeout')) return withMeta(new Error(`网络超时 (524): ${rawMessage.slice(0, 180)}`));
@@ -113,7 +125,6 @@ function normalizeError(error: any): Error {
     return withMeta(new Error("请求太过频繁 (429)，正在尝试切换线路，请稍后..."));
   }
   if (msg.includes("503") || msg.includes("service unavailable") || msg.includes("too busy") || msg.includes("deadlock")) return withMeta(new Error(`服务器繁忙 (503): ${rawMessage.slice(0, 180)}`));
-  if (msg.includes("403") || msg.includes("permission") || msg.includes("api_key_invalid")) return withMeta(new Error("API Key 无效或余额不足 (403)，请检查设置或在 12AI 官网充值"));
   if (msg.includes("MISSING_API_KEY")) return withMeta(new Error("请先在设置中配置有效的 API Key"));
   if (msg.includes("safety") || msg.includes("blocked") || msg.includes("policy")) return withMeta(new Error("内容触发安全审查 (Safety Blocked)，请更换提示词或尝试非流式模式"));
   if (msg.includes("400") || msg.includes("invalid_argument")) return withMeta(new Error("请求参数无效：Token 数可能过大或模型不支持当前配置"));

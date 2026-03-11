@@ -8,7 +8,9 @@ interface GlobalLightboxProps {
     images: GeneratedImage[];
     initialIndex: number;
     onClose: () => void;
+    onEditText?: (image: GeneratedImage) => void;
     onInpaint?: (image: GeneratedImage, maskBase64: string, prompt?: string) => void;
+    onDownloadPptComposite?: (imageId: string) => void;
 }
 
 /**
@@ -18,12 +20,13 @@ interface GlobalLightboxProps {
  * @param initialIndex 𫔄𣸣鏄剧ず镄勫浘鐗囩储寮?
  * @param onClose 鍏抽棴浜嬩欢锲炶𤾀
  */
-export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialIndex, onClose, onInpaint }) => {
+export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialIndex, onClose, onEditText, onInpaint, onDownloadPptComposite }) => {
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [isPanning, setIsPanning] = useState(false);
     const [showInpaint, setShowInpaint] = useState(false);
+    const [showDownloadMenu, setShowDownloadMenu] = useState(false);
 
     // 锲剧墖锷犺浇钟舵€?
     const [displaySrc, setDisplaySrc] = useState<string | null>(null);
@@ -33,6 +36,8 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
     const recoveringRef = useRef(false);
 
     const image = images[currentIndex];
+    const isPptSubCard = image.mode === GenerationMode.PPT && Boolean(image.parentPromptId);
+    const downloadMenuRef = useRef<HTMLDivElement>(null);
     const panStartRef = useRef({ x: 0, y: 0 });
     const panStartPosRef = useRef({ x: 0, y: 0 });
 
@@ -259,8 +264,25 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
         }
     }, [isPanning, handleMouseMove, handleMouseUp]);
 
+    useEffect(() => {
+        setShowDownloadMenu(false);
+    }, [currentIndex]);
+
+    useEffect(() => {
+        if (!showDownloadMenu) return;
+
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (downloadMenuRef.current?.contains(target || null)) return;
+            setShowDownloadMenu(false);
+        };
+
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, [showDownloadMenu]);
+
     // 5. 涓嬭浇阃昏緫
-    const handleDownload = async (e: React.MouseEvent) => {
+    const handleSingleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
             const { getStrictOriginalImage } = await import('../../services/storage/imageStorage');
@@ -301,6 +323,16 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
             const fallback = image.originalUrl || displaySrc || image.url;
             if (fallback) window.open(fallback, '_blank', 'noopener,noreferrer');
         }
+    };
+
+    const handleDownload = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (isPptSubCard && onDownloadPptComposite) {
+            setShowDownloadMenu(prev => !prev);
+            return;
+        }
+
+        void handleSingleDownload(e);
     };
 
     // 6. 阒叉鍙屽向杩囧揩瀵艰𠰷镄勮瑙﹀叧闂?(600ms瀹夊叏链?- 鏀寔鎱㈤€熷弻鍑?
@@ -531,14 +563,53 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                         </button>
                     )}
 
-                    <button
-                        onClick={handleDownload}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition-colors"
-                        title="下载原图"
-                    >
-                        <Download size={16} />
-                        下载
-                    </button>
+                    {onEditText && image.mode === GenerationMode.PPT && !isVideo && !isAudio && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onEditText(image);
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-sky-600/80 border border-[var(--border-medium)] hover:border-sky-500 rounded-lg text-sm font-medium transition-all"
+                            title="编辑当前页文字"
+                        >
+                            <Pen size={16} />
+                            编辑文字
+                        </button>
+                    )}
+
+                    <div className="relative" ref={downloadMenuRef}>
+                        <button
+                            onClick={handleDownload}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition-colors"
+                            title={isPptSubCard && onDownloadPptComposite ? '下载选项' : '下载原图'}
+                        >
+                            <Download size={16} />
+                            下载
+                        </button>
+                        {showDownloadMenu && isPptSubCard && onDownloadPptComposite && (
+                            <div className="absolute right-0 top-full z-20 mt-2 w-36 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-secondary)] p-1.5 shadow-2xl">
+                                <button
+                                    onClick={(e) => {
+                                        setShowDownloadMenu(false);
+                                        void handleSingleDownload(e);
+                                    }}
+                                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                                >
+                                    <span>下载单图</span>
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowDownloadMenu(false);
+                                        onDownloadPptComposite(image.id);
+                                    }}
+                                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                                >
+                                    <span>下载整屏</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 

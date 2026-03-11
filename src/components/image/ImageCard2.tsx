@@ -61,6 +61,8 @@ interface ImageNodeProps {
     onSelect?: () => void;
     highlighted?: boolean;
     onPreview?: (imageId: string) => void;
+    onPreviewPptStack?: (imageId: string) => void;
+    onDownloadPptComposite?: (imageId: string) => void;
     onCancel?: (id: string) => void;
     isVisible?: boolean; // 🚀 视口可见性控制（从父组件传入）
     onUpdate?: (id: string, updates: Partial<GeneratedImage>) => void; // 🚀 [New] 更新回调
@@ -84,6 +86,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     onSelect,
     highlighted,
     onPreview,
+    onPreviewPptStack,
+    onDownloadPptComposite,
     onCancel,
     isVisible = true, // 🚀 默认可见（向后兼容）
     onUpdate,
@@ -93,12 +97,28 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     canvasTransform // 🚀 [New] 用于计算动画起始位置
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const downloadMenuRef = useRef<HTMLDivElement>(null);
     const dragCleanupRef = useRef<(() => void) | null>(null); // 🚀 [Fix] Drag Cleanup Ref
     const dragRafRef = useRef<number | null>(null);
     const latestPointerRef = useRef<{ x: number; y: number } | null>(null);
     const hasAnimatedRef = useRef<string | null>(null);
 
     const [isDragging, setIsDragging] = useState(false);
+    const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+    const isPptSubCard = image.mode === GenerationMode.PPT && Boolean(image.parentPromptId);
+
+    useEffect(() => {
+        if (!showDownloadMenu) return;
+
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (downloadMenuRef.current?.contains(target || null)) return;
+            setShowDownloadMenu(false);
+        };
+
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, [showDownloadMenu]);
 
     // 🚀 [丝滑优化] 统一飞入动画：从输入框中心飞向画布目标位置
     useLayoutEffect(() => {
@@ -632,7 +652,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         setRetryTick(prev => prev + 1);
     }, [imageStorageKey]);
 
-    const handleDownload = async (e: React.MouseEvent) => {
+    const handleSingleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
             const { base64ToBlob, triggerDownload } = await import('../../utils/downloadUtils');
@@ -710,6 +730,17 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     };
 
     // 🚀 [恢复] 拖拽逻辑所需的引用和处理函数
+    const handleDownload = (e: React.MouseEvent) => {
+        e.stopPropagation();
+
+        if (isPptSubCard && onDownloadPptComposite) {
+            setShowDownloadMenu(prev => !prev);
+            return;
+        }
+
+        void handleSingleDownload(e);
+    };
+
     const wasDraggingRef = useRef(false);
     const lastMousePos = useRef<{ x: number; y: number } | null>(null); // To track previous mouse position for delta
 
@@ -962,6 +993,18 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     <div className="w-full p-1 flex flex-col">
                         {/* 上模块：图片模块（完整圆角 + 边框） */}
                         <div className="relative w-full overflow-hidden rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)]">
+                            {isPptSubCard && onPreviewPptStack && !image.isGenerating && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onPreviewPptStack(image.id);
+                                    }}
+                                    className="absolute left-2 top-2 z-20 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-medium text-white shadow-lg hover:bg-indigo-600/90 transition-colors"
+                                    title="整屏查看"
+                                >
+                                    整屏
+                                </button>
+                            )}
                             {/* 图片视图，支持懒加载/虚拟化 - 单击打开灯箱 */}
                             <div
                                 className="relative w-full cursor-pointer"
@@ -1351,9 +1394,36 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border-light)] whitespace-nowrap">
                                                     {image.aspectRatio || '1:1'} · {(image.mode === GenerationMode.VIDEO || (image.imageSize as any) === 'Video') ? '720p' : (image.imageSize || '1K')}
                                                 </span>
-                                                <button onClick={handleDownload} className="hover:text-[var(--accent-blue)] transition-colors p-0.5" title="下载原图">
-                                                    <Download size={10} />
-                                                </button>
+                                                <div className="relative" ref={downloadMenuRef}>
+                                                    <button onClick={handleDownload} className="hover:text-[var(--accent-blue)] transition-colors p-0.5" title={isPptSubCard ? '下载选项' : '下载原图'}>
+                                                        <Download size={10} />
+                                                    </button>
+                                                    {showDownloadMenu && isPptSubCard && (
+                                                        <div className="absolute right-0 top-full z-30 mt-1 w-28 rounded-lg border border-[var(--border-light)] bg-[var(--bg-secondary)] p-1 shadow-xl">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    setShowDownloadMenu(false);
+                                                                    void handleSingleDownload(e);
+                                                                }}
+                                                                className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                                                            >
+                                                                <span>下载单图</span>
+                                                            </button>
+                                                            {onDownloadPptComposite && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setShowDownloadMenu(false);
+                                                                        onDownloadPptComposite(image.id);
+                                                                    }}
+                                                                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                                                                >
+                                                                    <span>下载整屏</span>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 <button onClick={(e) => { e.stopPropagation(); onDelete(image.id); }} className="hover:text-[var(--accent-red)] transition-colors p-0.5" title="删除">
                                                     <Trash2 size={10} />
                                                 </button>
@@ -1373,7 +1443,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                             {isCreditModel ? (
                                                 <>
                                                     <span className="text-[var(--border-medium)]">|</span>
-                                                    <span title="积分消耗" className="text-blue-400 font-medium">✨{getModelCredits((image.model || '').split('@')[0])}</span>
+                                                    <span title="积分消耗" className="text-blue-400 font-medium">✨{getModelCredits((image.model || '').split('@')[0], image.imageSize)}</span>
                                                 </>
                                             ) : (
                                                 <>

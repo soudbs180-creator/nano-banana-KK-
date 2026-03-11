@@ -16,7 +16,7 @@ interface CostEstimationProps {
   embedded?: boolean;
 }
 
-const formatUsd = (value: number) => `$${Number(value || 0).toFixed(6)}`;
+const formatUsd = (value: number) => `$${Number(value || 0).toFixed(2)}`;
 
 const formatDateTime = (value: number) =>
   new Date(value).toLocaleString('zh-CN', {

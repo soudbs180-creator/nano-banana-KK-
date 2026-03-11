@@ -100,8 +100,12 @@ export interface VideoGenerateOptions {
   model: string;
   prompt: string;
   image_url?: string;
-  duration?: number;
-  resolution?: string;
+  /** Video duration in seconds (supported: 5, 8, 10) */
+  duration?: 5 | 8 | 10;
+  /** Video resolution (supported: '480p', '720p', '1080p') */
+  resolution?: '480p' | '720p' | '1080p';
+  /** Aspect ratio (supported: '16:9', '9:16', '1:1') */
+  aspect_ratio?: '16:9' | '9:16' | '1:1';
 }
 
 class AI12APIService {
@@ -196,6 +200,146 @@ class AI12APIService {
             const data = line.slice(6);
             if (data === '[DONE]') return;
             yield data;
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  // ==================== Claude Native Endpoints ====================
+  // These endpoints follow Anthropic's Claude API format
+  // Base: /v1/messages
+
+  /**
+   * Claude Messages API (Native format)
+   * POST /v1/messages
+   * 
+   * For Claude models (claude-3-5-sonnet, claude-3-opus, etc.)
+   * Documentation: https://doc.12ai.org/api/
+   */
+  async claudeMessages(
+    options: {
+      model: string;
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      max_tokens?: number;
+      temperature?: number;
+      top_p?: number;
+      system?: string;
+      stream?: boolean;
+    },
+    apiKey: string
+  ): Promise<{
+    id: string;
+    content: string;
+    usage: {
+      input_tokens: number;
+      output_tokens: number;
+    };
+  }> {
+    const response = await fetch(`${this.baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages: options.messages,
+        max_tokens: options.max_tokens || 4096,
+        temperature: options.temperature ?? 0.7,
+        ...(options.top_p !== undefined && { top_p: options.top_p }),
+        ...(options.system && { system: options.system }),
+        stream: options.stream ?? false,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Claude messages failed: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json();
+    
+    // Extract text content from response
+    const textContent = data.content
+      ?.filter((block: any) => block.type === 'text')
+      ?.map((block: any) => block.text)
+      ?.join('') || '';
+
+    return {
+      id: data.id,
+      content: textContent,
+      usage: data.usage || { input_tokens: 0, output_tokens: 0 },
+    };
+  }
+
+  /**
+   * Streaming Claude Messages
+   * POST /v1/messages with stream: true
+   */
+  async *streamClaudeMessages(
+    options: Omit<{
+      model: string;
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      max_tokens?: number;
+      temperature?: number;
+      top_p?: number;
+      system?: string;
+      stream?: boolean;
+    }, 'stream'>,
+    apiKey: string
+  ): AsyncGenerator<string, void, unknown> {
+    const response = await fetch(`${this.baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages: options.messages,
+        max_tokens: options.max_tokens || 4096,
+        temperature: options.temperature ?? 0.7,
+        ...(options.top_p !== undefined && { top_p: options.top_p }),
+        ...(options.system && { system: options.system }),
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Claude stream failed: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter((line) => line.trim());
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') return;
+
+            try {
+              const json = JSON.parse(data);
+              // Claude streaming format: delta.text
+              const delta = json.delta?.text;
+              if (delta) yield delta;
+            } catch {
+              // Ignore malformed JSON
+            }
           }
         }
       }
@@ -334,6 +478,7 @@ class AI12APIService {
         ...(options.image_url && { image_url: options.image_url }),
         ...(options.duration && { duration: options.duration }),
         ...(options.resolution && { resolution: options.resolution }),
+        ...(options.aspect_ratio && { aspect_ratio: options.aspect_ratio }),
       }),
     });
 

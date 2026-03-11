@@ -2,6 +2,7 @@
 import {
   Activity,
   Calculator,
+  DollarSign,
   HardDrive,
   Key,
   LayoutDashboard,
@@ -131,12 +132,13 @@ const DashboardView: React.FC = () => {
   const latestUsage = usageLogs[0];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Header Card */}
       <div
         className="rounded-2xl border p-5"
         style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}
       >
-        <h3 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+        <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
           仪表盘
         </h3>
         <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
@@ -144,98 +146,182 @@ const DashboardView: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+      {/* Section 1: 今日总览 & 密钥健康度 */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* 今日总览 - 占2列 */}
         <div
-          className="relative overflow-hidden rounded-2xl border p-4 md:col-span-8"
-          style={{ borderColor: 'var(--border-light)', background: 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(16,185,129,0.10))' }}
+          className="relative overflow-hidden rounded-2xl border p-5 lg:col-span-2"
+          style={{ borderColor: 'var(--border-light)', background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(16,185,129,0.08))' }}
         >
-          <div className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-indigo-400/10 blur-2xl" />
-          <div className="absolute -bottom-12 left-24 h-32 w-32 rounded-full bg-emerald-400/10 blur-2xl" />
+          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-indigo-400/10 blur-2xl" />
+          <div className="absolute -bottom-12 left-20 h-28 w-28 rounded-full bg-emerald-400/10 blur-2xl" />
           <div className="relative">
-            <div className="text-xs tracking-wide text-[var(--text-tertiary)]">今日总览</div>
-            <div className="mt-2 grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+              <span className="text-sm font-medium text-[var(--text-secondary)]">今日总览</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-white/10 bg-black/10 p-3 text-center">
                 <div className="text-[11px] text-[var(--text-tertiary)]">积分余额</div>
-                <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{balance}</div>
+                <div className="mt-1.5 text-xl font-bold tabular-nums text-[var(--text-primary)]">{balance}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+              <div className="rounded-xl border border-white/10 bg-black/10 p-3 text-center">
                 <div className="text-[11px] text-[var(--text-tertiary)]">今日成本</div>
-                <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">${todayCostUsd.toFixed(4)}</div>
+                <div className="mt-1.5 text-xl font-bold tabular-nums text-[var(--text-primary)]">
+                  ${todayCostUsd.toFixed(2)}
+                </div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+              <div className="rounded-xl border border-white/10 bg-black/10 p-3 text-center">
                 <div className="text-[11px] text-[var(--text-tertiary)]">今日 Tokens</div>
-                <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{todayTokens.toLocaleString('zh-CN')}</div>
+                <div className="mt-1.5 text-xl font-bold tabular-nums text-[var(--text-primary)]">{todayTokens.toLocaleString('zh-CN')}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+              <div className="rounded-xl border border-white/10 bg-black/10 p-3 text-center">
                 <div className="text-[11px] text-[var(--text-tertiary)]">关键日志</div>
-                <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{importantLogCount}</div>
+                <div className="mt-1.5 text-xl font-bold tabular-nums text-[var(--text-primary)]">{importantLogCount}</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border p-4 md:col-span-4" style={{ borderColor: 'var(--border-light)' }}>
-          <div className="text-xs text-[var(--text-tertiary)]">密钥健康度</div>
-          <div className="mt-2 text-2xl font-bold text-[var(--text-primary)]">{keyHealthPercent}%</div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all"
-              style={{ width: `${keyHealthPercent}%` }}
-            />
+        {/* 密钥健康度 - 占1列 */}
+        <div className="flex flex-col justify-between rounded-2xl border p-5" style={{ borderColor: 'var(--border-light)' }}>
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span className="text-sm font-medium text-[var(--text-secondary)]">密钥健康度</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-bold text-[var(--text-primary)]">{keyHealthPercent}</span>
+              <span className="text-lg text-[var(--text-secondary)]">%</span>
+            </div>
           </div>
-          <div className="mt-2 text-xs text-[var(--text-tertiary)]">
-            有效 {stats.valid} / 总计 {stats.total} · 失效 {stats.invalid} · 禁用 {stats.disabled}
+          <div className="mt-4">
+            <div className="h-2 overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all"
+                style={{ width: `${keyHealthPercent}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--text-tertiary)]">
+              <span>有效 {stats.valid}</span>
+              <span>总计 {stats.total}</span>
+              <span>失效 {stats.invalid}</span>
+              <span>禁用 {stats.disabled}</span>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div className="rounded-2xl border p-4 md:col-span-3" style={{ borderColor: 'var(--border-light)' }}>
-          <div className="text-[11px] text-[var(--text-tertiary)]">官方接口</div>
-          <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{officialCount}</div>
-          <div className="mt-1 text-xs text-[var(--text-tertiary)]">仅当前用户可用</div>
-        </div>
-
-        <div className="rounded-2xl border p-4 md:col-span-3" style={{ borderColor: 'var(--border-light)' }}>
-          <div className="text-[11px] text-[var(--text-tertiary)]">第三方供应商</div>
-          <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{providerCount}</div>
-          <div className="mt-1 text-xs text-[var(--text-tertiary)]">启用 {activeProviderCount} 个</div>
-        </div>
-
-        <div className="rounded-2xl border p-4 md:col-span-3" style={{ borderColor: 'var(--border-light)' }}>
-          <div className="text-[11px] text-[var(--text-tertiary)]">今日生成记录</div>
-          <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{todayUsageCount}</div>
-          <div className="mt-1 text-xs text-[var(--text-tertiary)]">失败也会记录并走退回</div>
-        </div>
-
-        <div className="rounded-2xl border p-4 md:col-span-3" style={{ borderColor: 'var(--border-light)' }}>
-          <div className="text-[11px] text-[var(--text-tertiary)]">今日充值记录</div>
-          <div className="mt-1 text-2xl font-bold text-[var(--text-primary)]">{todayRechargeCount}</div>
-          <div className="mt-1 text-xs text-[var(--text-tertiary)]">人民币/美元分别记账</div>
-        </div>
-
-        <div className="rounded-2xl border p-4 md:col-span-8" style={{ borderColor: 'var(--border-light)' }}>
-          <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
-            <Activity size={15} /> 最新状态
+      {/* Section 2: 四个统计卡片 */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <Key size={14} className="text-[var(--text-secondary)]" />
+            </div>
+            <div>
+              <div className="text-[11px] text-[var(--text-tertiary)]">官方接口</div>
+              <div className="text-xl font-bold text-[var(--text-primary)]">{officialCount}</div>
+            </div>
           </div>
-          <div className="mt-2 text-xs text-[var(--text-tertiary)]">
+          <div className="mt-2 text-[10px] text-[var(--text-tertiary)]">仅当前用户可用</div>
+        </div>
+
+        <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <LayoutDashboard size={14} className="text-[var(--text-secondary)]" />
+            </div>
+            <div>
+              <div className="text-[11px] text-[var(--text-tertiary)]">第三方供应商</div>
+              <div className="text-xl font-bold text-[var(--text-primary)]">{providerCount}</div>
+            </div>
+          </div>
+          <div className="mt-2 text-[10px] text-[var(--text-tertiary)]">启用 {activeProviderCount} 个</div>
+        </div>
+
+        <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <RefreshCw size={14} className="text-[var(--text-secondary)]" />
+            </div>
+            <div>
+              <div className="text-[11px] text-[var(--text-tertiary)]">今日生成记录</div>
+              <div className="text-xl font-bold text-[var(--text-primary)]">{todayUsageCount}</div>
+            </div>
+          </div>
+          <div className="mt-2 text-[10px] text-[var(--text-tertiary)]">失败也会记录并退回</div>
+        </div>
+
+        <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <DollarSign size={14} className="text-[var(--text-secondary)]" />
+            </div>
+            <div>
+              <div className="text-[11px] text-[var(--text-tertiary)]">今日充值记录</div>
+              <div className="text-xl font-bold text-[var(--text-primary)]">{todayRechargeCount}</div>
+            </div>
+          </div>
+          <div className="mt-2 text-[10px] text-[var(--text-tertiary)]">人民币/美元分别记账</div>
+        </div>
+      </div>
+
+      {/* Section 3: 最新状态 & 快速巡检 */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* 最新状态 - 占2列 */}
+        <div className="rounded-2xl border p-5 lg:col-span-2" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="mb-3 flex items-center gap-2">
+            <Activity size={16} className="text-indigo-400" />
+            <span className="text-sm font-medium text-[var(--text-primary)]">最新状态</span>
+          </div>
+          <div className="rounded-lg border p-3 text-xs" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
             {latestUsage
-              ? `最近一条记录：${latestUsage.type} / ${latestUsage.model_name || latestUsage.model_id || '未命名模型'} / ${new Date(
+              ? `最近记录：${latestUsage.type} / ${latestUsage.model_name || latestUsage.model_id || '未命名模型'} / ${new Date(
                   latestUsage.created_at
                 ).toLocaleString('zh-CN', { hour12: false })}`
-              : '今日暂无使用记录。'}
+              : '今日暂无使用记录'}
           </div>
-          <ul className="mt-3 space-y-1 text-xs text-[var(--text-tertiary)]">
-            <li>用户 API 管理仅对当前用户生效，不影响其他用户。</li>
-            <li>管理员后台配置的积分模型会同步给全部用户并实时生效。</li>
-            <li>模型达到总调用上限后会自动暂停，用户端模型库将自动隐藏该模型。</li>
+          <ul className="mt-3 space-y-2 text-xs text-[var(--text-tertiary)]">
+            <li className="flex items-start gap-2">
+              <span className="mt-1 h-1 w-1 rounded-full bg-[var(--text-tertiary)]" />
+              <span>用户 API 管理仅对当前用户生效，不影响其他用户</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 h-1 w-1 rounded-full bg-[var(--text-tertiary)]" />
+              <span>管理员后台配置的积分模型会同步给全部用户并实时生效</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 h-1 w-1 rounded-full bg-[var(--text-tertiary)]" />
+              <span>模型达到总调用上限后会自动暂停，用户端模型库将自动隐藏</span>
+            </li>
           </ul>
         </div>
 
-        <div className="rounded-2xl border p-4 md:col-span-4" style={{ borderColor: 'var(--border-light)' }}>
-          <div className="text-sm font-medium text-[var(--text-primary)]">快速巡检</div>
-          <div className="mt-2 space-y-2 text-xs text-[var(--text-tertiary)]">
-            <div className="rounded-lg border border-[var(--border-light)] p-2">密钥状态：{stats.valid > 0 ? '正常' : '需配置'}</div>
-            <div className="rounded-lg border border-[var(--border-light)] p-2">供应商状态：{activeProviderCount > 0 ? '可用' : '未启用'}</div>
-            <div className="rounded-lg border border-[var(--border-light)] p-2">日志状态：{importantLogCount > 0 ? '有重点告警' : '无重点告警'}</div>
+        {/* 快速巡检 - 占1列 */}
+        <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-light)' }}>
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-sm font-medium text-[var(--text-primary)]">快速巡检</span>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-light)' }}>
+              <span className="text-xs text-[var(--text-tertiary)]">密钥状态</span>
+              <span className={`text-xs font-medium ${stats.valid > 0 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                {stats.valid > 0 ? '正常' : '需配置'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-light)' }}>
+              <span className="text-xs text-[var(--text-tertiary)]">供应商状态</span>
+              <span className={`text-xs font-medium ${activeProviderCount > 0 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                {activeProviderCount > 0 ? '可用' : '未启用'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-light)' }}>
+              <span className="text-xs text-[var(--text-tertiary)]">日志状态</span>
+              <span className={`text-xs font-medium ${importantLogCount > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                {importantLogCount > 0 ? '有告警' : '正常'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -589,22 +675,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 backgroundColor: 'var(--bg-surface)',
               }}
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{ borderColor: 'var(--border-light)', color: 'var(--text-secondary)' }}>
-                    <ActiveIcon size={13} />
-                    高级设置
-                  </div>
-                  <div className="mt-3 text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  <div className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
                     {activeNavItem.label}
                   </div>
-                  <div className="mt-1 text-xs leading-5" style={{ color: 'var(--text-tertiary)' }}>
+                  <div className="mt-0.5 text-xs leading-4" style={{ color: 'var(--text-tertiary)' }}>
                     {activeNavItem.description}
                   </div>
                 </div>
                 <button
                   onClick={onClose}
-                  className="apple-icon-button h-9 w-9 rounded-xl"
+                  className="apple-icon-button h-8 w-8 rounded-lg"
                 >
                   <X size={16} />
                 </button>
@@ -618,7 +700,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       ) : (
         <div
-          className="flex h-[86vh] max-h-[940px] w-full max-w-[1540px] items-stretch gap-5"
+          className="flex h-[86vh] max-h-[940px] w-full max-w-[1200px] items-stretch gap-5"
           onClick={(e) => e.stopPropagation()}
         >
           <aside className="w-[260px] flex-shrink-0">
@@ -666,35 +748,29 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ backgroundColor: 'var(--bg-surface)' }}
           >
             <div
-              className="settings-panel-header border-b px-6 py-5"
+              className="settings-panel-header border-b px-6 py-4"
               style={{
                 borderColor: 'var(--border-light)',
                 backgroundColor: 'var(--bg-surface)',
               }}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium" style={{ borderColor: 'var(--border-light)', color: 'var(--text-secondary)' }}>
-                    <ActiveIcon size={13} />
-                    高级设置
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
+                    <ActiveIcon size={18} />
                   </div>
-                  <div className="mt-3 flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl border" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
-                      <ActiveIcon size={18} />
+                  <div className="min-w-0">
+                    <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {activeNavItem.label}
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        {activeNavItem.label}
-                      </div>
-                      <div className="mt-1 text-sm leading-6" style={{ color: 'var(--text-tertiary)' }}>
-                        {activeNavItem.description}
-                      </div>
+                    <div className="mt-0.5 text-xs leading-4" style={{ color: 'var(--text-tertiary)' }}>
+                      {activeNavItem.description}
                     </div>
                   </div>
                 </div>
                 <button
                   onClick={onClose}
-                  className="apple-icon-button h-10 w-10 rounded-2xl"
+                  className="apple-icon-button h-9 w-9 rounded-xl"
                 >
                   <X size={16} />
                 </button>

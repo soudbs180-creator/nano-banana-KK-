@@ -186,15 +186,28 @@ export interface VideoGenerationResult {
 export interface AudioGenerationOptions {
     modelId: string;
     prompt: string;
-    audioDuration?: string; // 音频时长
+    audioDuration?: string | number; // 音频时长（秒）
     audioLyrics?: string; // Suno 歌词
     audioStyle?: string; // Suno 风格标签 (tags)
     audioTitle?: string; // Suno 歌曲标题
-    audioMode?: string; // 'inspiration' | 'custom' - Suno 模式
+    audioMode?: 'inspiration' | 'custom'; // Suno 模式
     audioExtendFrom?: string; // 续写的任务 ID
     voiceId?: string; // MiniMax TTS 声音 ID
-    speed?: number; // MiniMax TTS 语速
-    providerConfig?: ProviderConfig;
+    speed?: number; // MiniMax TTS 语速 (0.5 - 2.0)
+    providerConfig?: ProviderConfig & {
+        audio?: {
+            /** 纯音乐模式 */
+            instrumental?: boolean;
+            /** 语言代码 (e.g., 'zh', 'en', 'ja') */
+            language?: string;
+            /** 音质 ('standard' | 'high') */
+            quality?: 'standard' | 'high';
+            /** 回调 URL */
+            callbackUrl?: string;
+            /** 参考音频 URL（风格参考） */
+            referenceAudioUrl?: string;
+        };
+    };
     preferredKeyId?: string;
     signal?: AbortSignal; // 🚀 支持请求取消
 }

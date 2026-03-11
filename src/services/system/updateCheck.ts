@@ -4,11 +4,30 @@
  */
 
 const VERSION_CHECK_INTERVAL = 60000; // Check every 60 seconds
+const UPDATE_CHECK_QUERY_KEY = '__kk_update_check__';
+const FORCE_REFRESH_QUERY_KEY = '__kk_update__';
 let currentBuildHash: string | null = null;
 let updateAvailable = false;
 let updateListeners: ((available: boolean) => void)[] = [];
 let initPromise: Promise<void> | null = null;
 let intervalId: number | null = null;
+
+function buildNoCacheUrl(queryKey: string): string {
+    const url = new URL(window.location.href);
+    url.searchParams.set(queryKey, Date.now().toString());
+    return url.toString();
+}
+
+async function clearRuntimeCaches(): Promise<void> {
+    if (!('caches' in window)) return;
+
+    try {
+        const cacheKeys = await window.caches.keys();
+        await Promise.allSettled(cacheKeys.map((cacheKey) => window.caches.delete(cacheKey)));
+    } catch (e) {
+        console.warn('[UpdateCheck] Failed to clear runtime caches:', e);
+    }
+}
 
 /**
  * Get the current build fingerprint from index.html script tags
@@ -16,7 +35,13 @@ let intervalId: number | null = null;
  */
 async function fetchBuildHash(): Promise<string | null> {
     try {
-        const response = await fetch('/', { cache: 'no-cache' });
+        const response = await fetch(buildNoCacheUrl(UPDATE_CHECK_QUERY_KEY), {
+            cache: 'no-store',
+            headers: {
+                'Cache-Control': 'no-cache',
+                Pragma: 'no-cache'
+            }
+        });
         const html = await response.text();
 
         // Extract all script src values
@@ -92,8 +117,14 @@ export function isUpdateAvailable(): boolean {
  * Data is preserved because we save to IndexedDB/localStorage/Supabase
  */
 export function applyUpdate(): void {
-    // Force reload to get new assets
-    window.location.reload();
+    updateAvailable = false;
+    notifyListeners();
+
+    const targetUrl = buildNoCacheUrl(FORCE_REFRESH_QUERY_KEY);
+
+    void clearRuntimeCaches().finally(() => {
+        window.location.replace(targetUrl);
+    });
 }
 
 function notifyListeners(): void {

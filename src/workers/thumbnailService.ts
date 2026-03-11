@@ -1,6 +1,6 @@
 /**
  * Thumbnail Service
- * 
+ *
  * 管理Web Worker的缩略图生成服务
  * 提供简单的API供其他模块调用
  */
@@ -114,7 +114,7 @@ function handleWorkerMessage(event: MessageEvent) {
 
 /**
  * 生成缩略图
- * 
+ *
  * @param source - 图片源（File, Blob, 或 base64字符串）
  * @param options - 缩略图配置
  * @returns 缩略图Blob和尺寸
@@ -167,7 +167,7 @@ export async function generateThumbnail(
         }
 
         // 生成请求ID
-        const id = crypto.randomUUID();
+        const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2);
 
         // 发送请求
         return new Promise((resolve, reject) => {

@@ -105,6 +105,47 @@ function getClaudeHeaders(apiKey: string): Record<string, string> {
   };
 }
 
+// ==================== Claude Messages API Types ====================
+
+interface ClaudeMessage {
+  role: 'user' | 'assistant';
+  content: string | ClaudeContentBlock[];
+}
+
+interface ClaudeContentBlock {
+  type: 'text' | 'image';
+  text?: string;
+  source?: {
+    type: 'base64';
+    media_type: string;
+    data: string;
+  };
+}
+
+interface ClaudeMessagesOptions {
+  model: string;
+  messages: ClaudeMessage[];
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  stream?: boolean;
+  system?: string;
+  signal?: AbortSignal;
+}
+
+interface ClaudeMessagesResponse {
+  id: string;
+  type: string;
+  role: string;
+  content: ClaudeContentBlock[];
+  model: string;
+  stop_reason: string | null;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+}
+
 /**
  * Get headers for Gemini format
  */
@@ -206,6 +247,158 @@ export async function chatCompletions(
   
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
+}
+
+// ==================== Claude Messages API ====================
+
+/**
+ * Claude Messages API (Native Claude format)
+ * POST /v1/messages
+ * 
+ * For Claude models (claude-3-5-sonnet, claude-3-opus, etc.)
+ * Documentation: https://doc.12ai.org/api/
+ */
+export async function claudeMessages(
+  apiKey: string,
+  options: ClaudeMessagesOptions,
+  baseUrl: string = BASE_URL
+): Promise<string> {
+  const url = buildUrl(ENDPOINTS.claude.messages, baseUrl);
+  
+  const body: any = {
+    model: options.model,
+    messages: options.messages,
+    max_tokens: options.max_tokens ?? 4096,
+    temperature: options.temperature ?? 0.7,
+  };
+  
+  if (options.top_p !== undefined) body.top_p = options.top_p;
+  if (options.system) body.system = options.system;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: getClaudeHeaders(apiKey),
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`12AI Claude Error (${response.status}): ${error}`);
+  }
+  
+  // Handle streaming
+  if (options.stream) {
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    
+    if (!reader) throw new Error('No response body for stream');
+    
+    let fullContent = '';
+    
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          
+          const data = line.slice(5).trim();
+          if (data === '[DONE]') continue;
+          
+          try {
+            const json = JSON.parse(data);
+            // Claude streaming format
+            const delta = json.delta?.text;
+            if (delta) {
+              fullContent += delta;
+            }
+          } catch {
+            // Ignore malformed JSON
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    
+    return fullContent;
+  }
+  
+  const data: ClaudeMessagesResponse = await response.json();
+  
+  // Extract text content from response
+  const textBlocks = data.content?.filter((block) => block.type === 'text');
+  return textBlocks?.map((block) => block.text).join('') || '';
+}
+
+/**
+ * Streaming Claude Messages
+ * POST /v1/messages with stream: true
+ */
+export async function* streamClaudeMessages(
+  apiKey: string,
+  options: Omit<ClaudeMessagesOptions, 'stream'>,
+  baseUrl: string = BASE_URL
+): AsyncGenerator<string, void, unknown> {
+  const url = buildUrl(ENDPOINTS.claude.messages, baseUrl);
+  
+  const body = {
+    model: options.model,
+    messages: options.messages,
+    max_tokens: options.max_tokens ?? 4096,
+    temperature: options.temperature ?? 0.7,
+    top_p: options.top_p,
+    system: options.system,
+    stream: true,
+  };
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: getClaudeHeaders(apiKey),
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  
+  if (!response.ok) {
+    throw new Error(`12AI Claude Stream Error (${response.status})`);
+  }
+  
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body');
+  
+  const decoder = new TextDecoder();
+  
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n').filter((line) => line.trim());
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') return;
+          
+          try {
+            const json = JSON.parse(data);
+            const delta = json.delta?.text;
+            if (delta) yield delta;
+          } catch {
+            // Ignore malformed JSON
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 /**
@@ -385,31 +578,65 @@ export async function generateImage(
 }
 
 /**
+ * Video generation options
+ */
+export interface VideoGenerationOptions {
+  /** Prompt text for video generation */
+  prompt: string;
+  /** Optional image URL for image-to-video generation */
+  imageUrl?: string;
+  /** Video duration in seconds (supported: 5, 8, 10) */
+  duration?: 5 | 8 | 10;
+  /** Video resolution (supported: '480p', '720p', '1080p') */
+  resolution?: '480p' | '720p' | '1080p';
+  /** Aspect ratio (supported: '16:9', '9:16', '1:1') */
+  aspectRatio?: '16:9' | '9:16' | '1:1';
+  /** Abort signal for cancellation */
+  signal?: AbortSignal;
+}
+
+/**
  * Create Video (Veo)
  * POST /v1/videos
+ * 
+ * Supports extended parameters:
+ * - duration: Video length in seconds
+ * - resolution: Output resolution
+ * - aspectRatio: Video aspect ratio
  */
 export async function createVideo(
   apiKey: string,
-  prompt: string,
-  options?: {
-    imageUrl?: string;
-    signal?: AbortSignal;
-  },
+  options: VideoGenerationOptions,
   baseUrl: string = BASE_URL
 ): Promise<{ id: string; status: string }> {
   const url = buildUrl(ENDPOINTS.video.create, baseUrl);
   
-  const body: any = { prompt };
+  const body: any = { 
+    prompt: options.prompt 
+  };
   
-  if (options?.imageUrl) {
+  // Add optional parameters
+  if (options.imageUrl) {
     body.image_url = options.imageUrl;
+  }
+  
+  if (options.duration) {
+    body.duration = options.duration;
+  }
+  
+  if (options.resolution) {
+    body.resolution = options.resolution;
+  }
+  
+  if (options.aspectRatio) {
+    body.aspect_ratio = options.aspectRatio;
   }
   
   const response = await fetch(url, {
     method: 'POST',
     headers: getOpenAIHeaders(apiKey),
     body: JSON.stringify(body),
-    signal: options?.signal,
+    signal: options.signal,
   });
   
   if (!response.ok) {
@@ -418,6 +645,30 @@ export async function createVideo(
   }
   
   return response.json();
+}
+
+/**
+ * Legacy Create Video (backward compatibility)
+ * @deprecated Use the new createVideo with VideoGenerationOptions instead
+ */
+export async function createVideoLegacy(
+  apiKey: string,
+  prompt: string,
+  options?: {
+    imageUrl?: string;
+    signal?: AbortSignal;
+  },
+  baseUrl?: string
+): Promise<{ id: string; status: string }> {
+  return createVideo(
+    apiKey,
+    {
+      prompt,
+      imageUrl: options?.imageUrl,
+      signal: options?.signal,
+    },
+    baseUrl || BASE_URL
+  );
 }
 
 /**
@@ -477,10 +728,13 @@ export function getAvailableModels(): { id: string; name: string; type: string }
 
 export const api12AIService = {
   chatCompletions,
+  claudeMessages,
+  streamClaudeMessages,
   generateImage,
   generateImageOpenAI,
   generateImageGemini,
   createVideo,
+  createVideoLegacy,
   getVideoStatus,
   getAvailableModels,
   BASE_URL,

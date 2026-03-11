@@ -2,6 +2,15 @@
 import { Plus, ShieldAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { notify } from '../../services/system/notificationService';
+import {
+  ADMIN_MODEL_QUALITY_KEYS,
+  type AdminModelQualityKey,
+  type AdminModelQualityPricing,
+  createDefaultAdminQualityPricing,
+  normalizeAdminQualityPricing,
+} from '../../services/model/adminModelQuality';
+import { getModelCapabilities } from '../../services/model/modelCapabilities';
+import { ImageSize } from '../../types';
 
 type CreditModelRow = {
   provider_id: string;
@@ -19,20 +28,47 @@ type CreditModelRow = {
   color: string | null;
   color_secondary: string | null;
   text_color: 'white' | 'black' | null;
+  advanced_enabled?: boolean | null;
+  mix_with_same_model?: boolean | null;
+  quality_pricing?: Record<string, any> | null;
 };
 
 const CREDIT_MODEL_SELECT_BASE =
   'provider_id, provider_name, base_url, api_keys, model_id, display_name, description, endpoint_type, credit_cost, is_active, call_count, color, color_secondary, text_color';
-const CREDIT_MODEL_SELECT_WITH_LIMIT = `${CREDIT_MODEL_SELECT_BASE}, max_calls_limit`;
+const CREDIT_MODEL_SELECT_WITH_LIMIT = `${CREDIT_MODEL_SELECT_BASE}, max_calls_limit, advanced_enabled, mix_with_same_model, quality_pricing`;
 
-const isMissingMaxCallsLimitColumn = (error: any): boolean => {
-  const message = String(error?.message || '').toLowerCase();
-  const details = String(error?.details || '').toLowerCase();
-  const hint = String(error?.hint || '').toLowerCase();
-  return (
-    (message.includes('max_calls_limit') || details.includes('max_calls_limit') || hint.includes('max_calls_limit')) &&
-    (message.includes('does not exist') || details.includes('does not exist') || message.includes('column'))
-  );
+const CREDIT_MODEL_OPTIONAL_COLUMNS = ['max_calls_limit', 'advanced_enabled', 'mix_with_same_model', 'quality_pricing'] as const;
+type CreditModelOptionalColumn = typeof CREDIT_MODEL_OPTIONAL_COLUMNS[number];
+
+const getCreditModelSelect = (options: {
+  includeMaxCallsLimit: boolean;
+  includeAdvancedSettings: boolean;
+}): string => {
+  const parts = [CREDIT_MODEL_SELECT_BASE];
+  if (options.includeMaxCallsLimit) {
+    parts.push('max_calls_limit');
+  }
+  if (options.includeAdvancedSettings) {
+    parts.push('advanced_enabled', 'mix_with_same_model', 'quality_pricing');
+  }
+  return parts.join(', ');
+};
+
+const getMissingCreditModelColumns = (error: any): CreditModelOptionalColumn[] => {
+  const haystack = [error?.message, error?.details, error?.hint]
+    .map((item) => String(item || '').toLowerCase())
+    .join(' ');
+
+  const looksLikeMissingColumnError =
+    haystack.includes('does not exist') ||
+    haystack.includes('could not find') ||
+    haystack.includes('column');
+
+  if (!looksLikeMissingColumnError) {
+    return [];
+  }
+
+  return CREDIT_MODEL_OPTIONAL_COLUMNS.filter((column) => haystack.includes(column));
 };
 
 type EditableModel = {
@@ -46,6 +82,9 @@ type EditableModel = {
   color: string;
   colorSecondary: string;
   textColor: 'white' | 'black';
+  advancedEnabled: boolean;
+  mixWithSameModel: boolean;
+  qualityPricing: AdminModelQualityPricing;
 };
 
 type EditableProvider = {
@@ -88,12 +127,15 @@ const newModel = (): EditableModel => ({
   color: '#3B82F6',
   colorSecondary: '',
   textColor: 'white',
+  advancedEnabled: false,
+  mixWithSameModel: false,
+  qualityPricing: createDefaultAdminQualityPricing(1),
 });
 
 const emptyProvider = (): EditableProvider => ({
   providerId: '',
   providerName: '',
-  baseUrl: 'https://cdn.12ai.org',
+  baseUrl: '',
   apiKey: '',
   models: [newModel()],
 });
@@ -103,6 +145,7 @@ const CreditModelSettings: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [supportsMaxCallsLimit, setSupportsMaxCallsLimit] = useState(true);
+  const [supportsAdvancedSettings, setSupportsAdvancedSettings] = useState(true);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
   const [form, setForm] = useState<EditableProvider>(emptyProvider());
 
@@ -125,29 +168,63 @@ const CreditModelSettings: React.FC = () => {
         .order('provider_id', { ascending: true })
         .order('priority', { ascending: false });
 
-      if (error && isMissingMaxCallsLimitColumn(error)) {
+      const missingColumns = getMissingCreditModelColumns(error);
+      if (error && missingColumns.length > 0) {
+        const fallbackSelect = getCreditModelSelect({
+          includeMaxCallsLimit: !missingColumns.includes('max_calls_limit'),
+          includeAdvancedSettings: !missingColumns.some((column) =>
+            ['advanced_enabled', 'mix_with_same_model', 'quality_pricing'].includes(column)
+          ),
+        });
+
         const legacy = await supabase
           .from('admin_credit_models')
-          .select(CREDIT_MODEL_SELECT_BASE)
+          .select(fallbackSelect)
           .order('provider_id', { ascending: true })
           .order('priority', { ascending: false });
 
         if (legacy.error) throw legacy.error;
 
-        const normalized = ((legacy.data || []) as Array<Omit<CreditModelRow, 'max_calls_limit'>>).map((row) => ({
+        const normalized = ((legacy.data || []) as Array<Partial<CreditModelRow>>).map((row) => ({
           ...row,
-          max_calls_limit: null,
+          provider_id: row.provider_id || '',
+          provider_name: row.provider_name || '',
+          base_url: row.base_url || '',
+          api_keys: row.api_keys || [],
+          model_id: row.model_id || '',
+          display_name: row.display_name || '',
+          description: row.description || '',
+          endpoint_type: row.endpoint_type || 'openai',
+          credit_cost: Number(row.credit_cost || 1),
+          is_active: row.is_active !== false,
+          call_count: row.call_count ?? null,
+          max_calls_limit: !missingColumns.includes('max_calls_limit') ? row.max_calls_limit ?? null : null,
+          color: row.color || '#3B82F6',
+          color_secondary: row.color_secondary || null,
+          text_color: row.text_color === 'black' ? 'black' : 'white',
+          advanced_enabled: missingColumns.includes('advanced_enabled') ? false : Boolean(row.advanced_enabled),
+          mix_with_same_model: missingColumns.includes('mix_with_same_model') ? false : Boolean(row.mix_with_same_model),
+          quality_pricing: missingColumns.includes('quality_pricing') ? null : row.quality_pricing ?? null,
         }));
 
         setRows(normalized as CreditModelRow[]);
-        setSupportsMaxCallsLimit(false);
-        notify.warning('已启用兼容模式', '当前数据库缺少调用上限字段，模型已正常加载。运行最新迁移后可使用总调用上限。');
+        setSupportsMaxCallsLimit(!missingColumns.includes('max_calls_limit'));
+        setSupportsAdvancedSettings(
+          !missingColumns.includes('advanced_enabled') &&
+            !missingColumns.includes('mix_with_same_model') &&
+            !missingColumns.includes('quality_pricing')
+        );
+        notify.warning(
+          '已启用兼容模式',
+          `当前数据库缺少字段：${missingColumns.join('、')}。模型已正常加载，执行最新 Supabase 迁移后可启用对应能力。`
+        );
         return;
       }
 
       if (error) throw error;
       setRows((data || []) as CreditModelRow[]);
       setSupportsMaxCallsLimit(true);
+      setSupportsAdvancedSettings(true);
     } catch (error: any) {
       notify.error('加载失败', error.message || '无法加载积分模型配置');
     } finally {
@@ -295,6 +372,9 @@ const CreditModelSettings: React.FC = () => {
         color: row.color || '#3B82F6',
         colorSecondary: row.color_secondary || '',
         textColor: row.text_color === 'black' ? 'black' : 'white',
+        advancedEnabled: Boolean(row.advanced_enabled),
+        mixWithSameModel: Boolean(row.mix_with_same_model),
+        qualityPricing: normalizeAdminQualityPricing(row.quality_pricing, Number(row.credit_cost || 1)),
       })),
     });
   }, [providers, selectedProviderId]);
@@ -302,6 +382,36 @@ const CreditModelSettings: React.FC = () => {
   const resetForm = () => {
     setSelectedProviderId('');
     setForm(emptyProvider());
+  };
+
+  const updateModelAt = (index: number, patch: Partial<EditableModel>) => {
+    setForm((prev) => ({
+      ...prev,
+      models: prev.models.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    }));
+  };
+
+  const updateModelQualityAt = (
+    index: number,
+    quality: AdminModelQualityKey,
+    patch: Partial<AdminModelQualityPricing[AdminModelQualityKey]>
+  ) => {
+    setForm((prev) => ({
+      ...prev,
+      models: prev.models.map((item, i) => {
+        if (i !== index) return item;
+        return {
+          ...item,
+          qualityPricing: {
+            ...item.qualityPricing,
+            [quality]: {
+              ...item.qualityPricing[quality],
+              ...patch,
+            },
+          },
+        };
+      }),
+    }));
   };
 
   const addModel = () => {
@@ -342,6 +452,16 @@ const CreditModelSettings: React.FC = () => {
         description: item.description || '',
         endpoint_type: item.endpointType === 'auto' ? inferEndpointType(item.modelId) : item.endpointType,
         credit_cost: Number(item.creditCost || 1),
+        advanced_enabled: Boolean(item.advancedEnabled),
+        mix_with_same_model: Boolean(item.mixWithSameModel),
+        quality_pricing: ADMIN_MODEL_QUALITY_KEYS.reduce<Record<string, { enabled: boolean; creditCost: number }>>((acc, quality) => {
+          const rule = item.qualityPricing[quality];
+          acc[quality] = {
+            enabled: rule.enabled !== false,
+            creditCost: Math.max(1, Number(rule.creditCost || item.creditCost || 1)),
+          };
+          return acc;
+        }, {}),
         priority: 10 - index,
         weight: 1,
         is_active: Boolean(item.isActive),
@@ -487,7 +607,7 @@ const CreditModelSettings: React.FC = () => {
                 <input
                   value={form.baseUrl}
                   onChange={(e) => setForm((prev) => ({ ...prev, baseUrl: e.target.value }))}
-                  placeholder="例如：https://cdn.12ai.org"
+                  placeholder="例如：https://api.example.com/v1"
                   className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm"
                 />
               </label>
@@ -510,6 +630,12 @@ const CreditModelSettings: React.FC = () => {
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
                 当前数据库未包含总调用上限字段（`max_calls_limit`），已自动降级兼容。
                 执行最新 Supabase 迁移后，可启用“总调用上限/自动暂停”能力。
+              </div>
+            )}
+            {!supportsAdvancedSettings && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+                当前数据库未包含高级设置字段（`advanced_enabled / mix_with_same_model / quality_pricing`），
+                已自动隐藏画质定价与混合路由配置。执行最新 Supabase 迁移后即可启用。
               </div>
             )}
             {form.models.map((model, index) => {
@@ -569,7 +695,12 @@ const CreditModelSettings: React.FC = () => {
                       </select>
                     </label>
                     <label className="space-y-1">
-                      <span className="text-[11px] text-[var(--text-tertiary)]">积分消耗</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)]">
+                        积分消耗
+                        {model.advancedEnabled && (
+                          <span className="ml-1.5 text-[10px] text-indigo-400">(高级模式)</span>
+                        )}
+                      </span>
                       <input
                         type="number"
                         min={1}
@@ -578,11 +709,58 @@ const CreditModelSettings: React.FC = () => {
                           const value = Number(e.target.value || 1);
                           setForm((prev) => ({
                             ...prev,
-                            models: prev.models.map((item, i) => (i === index ? { ...item, creditCost: value } : item)),
+                            models: prev.models.map((item, i) => (
+                              i === index
+                                ? {
+                                    ...item,
+                                    creditCost: value,
+                                    qualityPricing: item.advancedEnabled ? item.qualityPricing : createDefaultAdminQualityPricing(value),
+                                  }
+                                : item
+                            )),
                           }));
                         }}
                         className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm"
                       />
+                      {model.advancedEnabled && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {(() => {
+                            const caps = getModelCapabilities(model.modelId);
+                            const supportedSizes = caps?.supportedSizes || [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
+                            const sizeToQuality: Record<string, AdminModelQualityKey> = {
+                              [ImageSize.SIZE_05K]: '0.5K',
+                              [ImageSize.SIZE_1K]: '1K',
+                              [ImageSize.SIZE_2K]: '2K',
+                              [ImageSize.SIZE_4K]: '4K',
+                            };
+                            const sizeLabel: Record<string, string> = {
+                              [ImageSize.SIZE_05K]: '512px',
+                              [ImageSize.SIZE_1K]: '1K',
+                              [ImageSize.SIZE_2K]: '2K',
+                              [ImageSize.SIZE_4K]: '4K',
+                            };
+                            return supportedSizes.map(size => {
+                              const quality = sizeToQuality[size];
+                              if (!quality) return null;
+                              const rule = model.qualityPricing[quality];
+                              const isEnabled = rule.enabled !== false;
+                              return (
+                                <span 
+                                  key={quality}
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${
+                                    isEnabled 
+                                      ? 'bg-indigo-500/20 text-indigo-300' 
+                                      : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] line-through'
+                                  }`}
+                                >
+                                  {sizeLabel[size]}: {rule.creditCost}
+                                  {!isEnabled && <span className="text-[8px]">(已禁用)</span>}
+                                </span>
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
                     </label>
                     <label className="space-y-1">
                       <span className="text-[11px] text-[var(--text-tertiary)]">主颜色</span>
@@ -669,6 +847,175 @@ const CreditModelSettings: React.FC = () => {
                       className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm"
                     />
                   </label>
+
+                  {supportsAdvancedSettings && (
+                    <div className="rounded-xl border border-[var(--border-light)] bg-[var(--bg-tertiary)]/40 overflow-hidden">
+                      {/* 高级设置头部 */}
+                      <div className="flex items-center justify-between gap-3 p-3 border-b border-[var(--border-light)]">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-md bg-indigo-500/20 flex items-center justify-center">
+                            <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-[var(--text-primary)]">高级设置</div>
+                            <div className="text-[11px] text-[var(--text-tertiary)]">
+                              自定义画质定价与多供应商混合策略
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={model.advancedEnabled}
+                          onClick={() => {
+                            const enabled = !model.advancedEnabled;
+                            updateModelAt(index, {
+                              advancedEnabled: enabled,
+                              qualityPricing: normalizeAdminQualityPricing(model.qualityPricing, model.creditCost),
+                            });
+                          }}
+                          className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
+                            model.advancedEnabled ? 'bg-indigo-500' : 'bg-gray-500'
+                          }`}
+                        >
+                          <span className="sr-only">启用高级设置</span>
+                          <span
+                            className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              model.advancedEnabled ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {model.advancedEnabled && (
+                        <div className="p-3 space-y-4">
+                          {/* 混合模式开关 */}
+                          <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-[var(--bg-elevated)]/50 border border-[var(--border-light)]">
+                            <div className="flex items-center gap-2">
+                              <div className="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center">
+                                <svg className="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                </svg>
+                              </div>
+                              <div>
+                                <div className="text-xs font-medium text-[var(--text-primary)]">多供应商混合</div>
+                                <div className="text-[10px] text-[var(--text-tertiary)]">自动均衡各API用量，优先使用调用次数少的供应商</div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={model.mixWithSameModel}
+                              onClick={() => updateModelAt(index, { mixWithSameModel: !model.mixWithSameModel })}
+                              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                model.mixWithSameModel ? 'bg-emerald-500' : 'bg-gray-500'
+                              }`}
+                            >
+                              <span className="sr-only">启用多供应商混合</span>
+                              <span
+                                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  model.mixWithSameModel ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          {/* 画质定价配置 */}
+                          <div>
+                            <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">画质定价配置</div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                              {(() => {
+                                // 获取模型支持的尺寸
+                                const caps = getModelCapabilities(model.modelId);
+                                const supportedSizes = caps?.supportedSizes || [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
+                                
+                                // 尺寸到 quality key 的映射
+                                const sizeToQuality: Record<string, AdminModelQualityKey> = {
+                                  [ImageSize.SIZE_05K]: '0.5K',
+                                  [ImageSize.SIZE_1K]: '1K',
+                                  [ImageSize.SIZE_2K]: '2K',
+                                  [ImageSize.SIZE_4K]: '4K',
+                                };
+                                
+                                // 过滤出支持的 quality keys
+                                const supportedQualities = supportedSizes
+                                  .map(size => sizeToQuality[size])
+                                  .filter((q): q is AdminModelQualityKey => !!q);
+                                
+                                // 如果没有支持的 sizes，默认显示所有
+                                const qualitiesToShow = supportedQualities.length > 0 ? supportedQualities : ADMIN_MODEL_QUALITY_KEYS;
+                                
+                                return qualitiesToShow.map((quality) => {
+                                  const rule = model.qualityPricing[quality];
+                                  const isEnabled = rule.enabled !== false;
+                                  return (
+                                    <div 
+                                      key={quality} 
+                                      className={`relative rounded-lg border p-2.5 transition-all ${
+                                        isEnabled 
+                                          ? 'bg-[var(--bg-surface)] border-indigo-500/30 shadow-sm' 
+                                          : 'bg-[var(--bg-elevated)]/30 border-[var(--border-light)] opacity-60'
+                                      }`}
+                                    >
+                                      {/* 启用开关 */}
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={isEnabled}
+                                        onClick={() => updateModelQualityAt(index, quality, { enabled: !isEnabled })}
+                                        className={`absolute top-2 right-2 inline-flex h-4 w-8 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                          isEnabled ? 'bg-indigo-500' : 'bg-gray-500'
+                                        }`}
+                                      >
+                                        <span className="sr-only">启用{quality}</span>
+                                        <span
+                                          className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
+                                            isEnabled ? 'translate-x-4' : 'translate-x-0'
+                                          }`}
+                                        />
+                                      </button>
+
+                                      <div className="pr-6">
+                                        <div className={`text-sm font-bold ${isEnabled ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'}`}>
+                                          {quality}
+                                        </div>
+                                        <div className="text-[10px] text-[var(--text-tertiary)] mb-1.5">
+                                          {quality === '0.5K' ? '512px' : quality === '1K' ? '1024px' : quality === '2K' ? '2048px' : '4096px'}
+                                        </div>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          disabled={!isEnabled}
+                                          value={rule.creditCost}
+                                          onChange={(e) => updateModelQualityAt(index, quality, { creditCost: Math.max(1, Number(e.target.value || model.creditCost || 1)) })}
+                                          className="w-full h-7 text-xs rounded-md border border-[var(--border-light)] bg-[var(--bg-elevated)] px-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* 路由规则说明 */}
+                          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                            <svg className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div className="text-[11px] leading-4 text-blue-300/90">
+                              <span className="font-medium">混合路由策略：</span>
+                              当同一模型有多个供应商开启混合时，系统会优先选择
+                              <span className="text-blue-200 font-medium">调用次数最少</span>
+                              的供应商，实现API用量均衡。若用量相同，则选择价格更低的。相同价格时会分散请求以均衡负载。
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-[11px] text-[var(--text-tertiary)]">

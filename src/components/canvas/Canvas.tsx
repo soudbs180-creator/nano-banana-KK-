@@ -302,7 +302,7 @@ const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({ children, onTransformCh
             </div>
 
             {/* Canvas Controls - Bottom Left (Desktop) / Top Left (Mobile) */}
-            <div id="canvas-toolbar" className="absolute md:bottom-4 md:left-4 top-24 left-4 z-[1001]">
+            <div id="canvas-toolbar" className="absolute md:bottom-4 md:left-4 top-4 left-4 z-[1001]">
                 <div className="toolbar !grid grid-cols-2 !gap-2 md:!flex md:!flex-col md:!gap-1">
                     {/* 1. Locate (Home) - Clean Target */}
                     <button className="toolbar-btn group" onClick={locateAllCards} title="定位 (Home)">

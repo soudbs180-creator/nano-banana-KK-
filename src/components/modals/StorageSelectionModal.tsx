@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle2, FolderOpen, Globe, HardDrive, Loader2, Shield, Zap } from 'lucide-react';
-import { isFileSystemAccessSupported, setStorageMode, type StorageMode } from '../../services/storage/storagePreference';
+import { getLocalFolderHandle, isFileSystemAccessSupported, setStorageMode, type StorageMode } from '../../services/storage/storagePreference';
 import { useCanvas } from '../../context/CanvasContext';
 
 interface StorageSelectionModalProps {
@@ -40,16 +40,6 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
 
     if (!supportsLocal) {
       setError('当前浏览器不支持本地文件夹授权，请继续使用浏览器缓存。');
-      return;
-    }
-
-    setSelectingLocal(true);
-    try {
-      await connectLocalFolder();
-    } catch {
-      setError('本地文件夹授权失败，请重新选择。');
-    } finally {
-      setSelectingLocal(false);
     }
   };
 
@@ -60,23 +50,31 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
   };
 
   const handleConfirm = async () => {
-    if (selectedMode === 'local' && !isConnectedToLocal) {
-      setError('本地文件夹尚未连接，请先完成文件夹授权。');
-      return;
-    }
-
     setSaving(true);
     setError('');
 
-    const ok = await setStorageMode(selectedMode);
-    if (!ok) {
-      setSaving(false);
-      setError('保存存储设置失败，请稍后重试。');
-      return;
-    }
+    try {
+      if (selectedMode === 'local' && !isConnectedToLocal) {
+        setSelectingLocal(true);
+        await connectLocalFolder();
+        const handle = await getLocalFolderHandle();
+        if (!handle) {
+          setError('本地文件夹尚未连接，请先完成文件夹授权。');
+          return;
+        }
+      }
 
-    setSaving(false);
-    onComplete();
+      const ok = await setStorageMode(selectedMode);
+      if (!ok) {
+        setError('保存存储设置失败，请稍后重试。');
+        return;
+      }
+
+      onComplete();
+    } finally {
+      setSelectingLocal(false);
+      setSaving(false);
+    }
   };
 
   return (
@@ -131,7 +129,7 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
 
           <button
             onClick={() => void chooseLocal()}
-            disabled={!supportsLocal || selectingLocal}
+            disabled={!supportsLocal}
             className={`rounded-2xl border p-4 text-left transition ${
               selectedMode === 'local' ? 'border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10' : 'border-[var(--border-light)]'
             } disabled:cursor-not-allowed disabled:opacity-60`}
@@ -202,7 +200,7 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 disabled:opacity-60"
           >
             {(selectingLocal || saving) && <Loader2 size={15} className="animate-spin" />}
-            保存设置
+            {selectedMode === 'local' && !isConnectedToLocal ? '选择文件夹并保存' : '保存设置'}
           </button>
         </div>
       </div>

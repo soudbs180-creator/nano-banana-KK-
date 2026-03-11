@@ -138,10 +138,23 @@ export const newApiAdminRequest = async <T = unknown>(
     ? (adminPath.startsWith('/') ? adminPath : `/${adminPath}`).replace(/\/$/, '')
     : '';
   if (normalizedAdminPath === '/') normalizedAdminPath = '';
-  const shouldPrefix = normalizedAdminPath
+  const shouldPrefix = Boolean(normalizedAdminPath
     && !normalizedPath.startsWith(normalizedAdminPath + '/')
-    && normalizedPath !== normalizedAdminPath;
-  const url = `${baseUrl}${shouldPrefix ? normalizedAdminPath : ''}${normalizedPath}`;
+    && normalizedPath !== normalizedAdminPath);
+  
+  // Fix: Ensure no double slashes when concatenating paths
+  const joinPaths = (base: string, admin: string, path: string, shouldAddAdmin: boolean): string => {
+    let result = base;
+    if (shouldAddAdmin && admin) {
+      result = result.endsWith('/') ? result.slice(0, -1) : result;
+      result = admin.startsWith('/') ? result + admin : result + '/' + admin;
+    }
+    result = result.endsWith('/') ? result.slice(0, -1) : result;
+    result = path.startsWith('/') ? result + path : result + '/' + path;
+    return result;
+  };
+  
+  const url = joinPaths(baseUrl, normalizedAdminPath, normalizedPath, shouldPrefix);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
