@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS temp_users (
     expires_at TIMESTAMPTZ NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     metadata JSONB DEFAULT '{}',
-    
+
     -- Auto-delete expired users
     CONSTRAINT check_expires_at CHECK (expires_at > created_at)
 );
@@ -31,7 +31,7 @@ BEGIN
         RETURNING *
     )
     SELECT COUNT(*)::INTEGER INTO deleted_count FROM deleted;
-    
+
     RETURN deleted_count;
 END;
 $$ LANGUAGE plpgsql;

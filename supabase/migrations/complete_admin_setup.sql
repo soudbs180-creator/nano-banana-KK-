@@ -20,10 +20,10 @@ CREATE TABLE IF NOT EXISTS admin_users (
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 
 -- 允许任何人读取（用于登录验证）
-CREATE POLICY "Allow public read for login" 
-    ON admin_users 
-    FOR SELECT 
-    TO PUBLIC 
+CREATE POLICY "Allow public read for login"
+    ON admin_users
+    FOR SELECT
+    TO PUBLIC
     USING (TRUE);
 
 COMMENT ON TABLE admin_users IS '管理员账号表';
@@ -43,30 +43,30 @@ DECLARE
     v_default_password TEXT := '123';
 BEGIN
     -- 检查是否为第一位管理员（硬编码ID和邮箱）
-    IF p_user_id = '359fe235-b407-4f53-ac8e-0960d354ddd7' 
+    IF p_user_id = '359fe235-b407-4f53-ac8e-0960d354ddd7'
        OR p_user_email = '977483863@qq.com' THEN
-        
+
         -- 检查是否已存在
-        SELECT * INTO v_admin_record 
-        FROM admin_users 
+        SELECT * INTO v_admin_record
+        FROM admin_users
         WHERE email = '977483863@qq.com';
-        
+
         IF NOT FOUND THEN
             -- 首次登录，自动创建管理员记录
             INSERT INTO admin_users (
-                email, 
-                password_hash, 
-                is_super_admin, 
+                email,
+                password_hash,
+                is_super_admin,
                 requires_password_change,
                 metadata
             ) VALUES (
-                '977483863@qq.com', 
-                v_default_password, 
-                TRUE, 
+                '977483863@qq.com',
+                v_default_password,
+                TRUE,
                 TRUE,
                 jsonb_build_object('user_id', '359fe235-b407-4f53-ac8e-0960d354ddd7')
             );
-            
+
             RETURN jsonb_build_object(
                 'success', TRUE,
                 'requires_password_change', TRUE,
@@ -79,7 +79,7 @@ BEGIN
         FROM admin_users
         WHERE email = p_user_email
            OR (metadata->>'user_id') = p_user_id;
-        
+
         IF NOT FOUND THEN
             RETURN jsonb_build_object(
                 'success', FALSE,
@@ -87,7 +87,7 @@ BEGIN
             );
         END IF;
     END IF;
-    
+
     -- 验证密码
     IF v_admin_record.password_hash != p_password THEN
         RETURN jsonb_build_object(
@@ -95,7 +95,7 @@ BEGIN
             'message', '密码错误'
         );
     END IF;
-    
+
     -- 检查是否需要修改密码
     IF v_admin_record.requires_password_change THEN
         RETURN jsonb_build_object(
@@ -104,12 +104,12 @@ BEGIN
             'message', '首次登录，请修改密码'
         );
     END IF;
-    
+
     -- 更新最后登录时间
-    UPDATE admin_users 
+    UPDATE admin_users
     SET last_login_at = NOW()
     WHERE id = v_admin_record.id;
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'requires_password_change', FALSE,
@@ -137,14 +137,14 @@ BEGIN
     SELECT * INTO v_admin_record
     FROM admin_users
     WHERE email = p_email;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '管理员不存在'
         );
     END IF;
-    
+
     -- 验证旧密码
     IF v_admin_record.password_hash != p_old_password THEN
         RETURN jsonb_build_object(
@@ -152,15 +152,15 @@ BEGIN
             'message', '原密码错误'
         );
     END IF;
-    
+
     -- 更新密码并清除需要修改密码标志
-    UPDATE admin_users 
-    SET 
+    UPDATE admin_users
+    SET
         password_hash = p_new_password,
         requires_password_change = FALSE,
         updated_at = NOW()
     WHERE id = v_admin_record.id;
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'message', '密码修改成功'
@@ -182,27 +182,27 @@ DECLARE
 BEGIN
     -- 检查邮箱是否已存在
     SELECT EXISTS(SELECT 1 FROM admin_users WHERE email = p_email) INTO v_exists;
-    
+
     IF v_exists THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '该邮箱已是管理员'
         );
     END IF;
-    
+
     -- 添加新管理员，默认密码为123，需要修改
     INSERT INTO admin_users (
-        email, 
-        password_hash, 
-        is_super_admin, 
+        email,
+        password_hash,
+        is_super_admin,
         requires_password_change
     ) VALUES (
-        p_email, 
-        '123', 
-        FALSE, 
+        p_email,
+        '123',
+        FALSE,
         TRUE
     );
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'message', '管理员添加成功，默认密码：123'
@@ -226,14 +226,14 @@ BEGIN
     SELECT * INTO v_target_admin
     FROM admin_users
     WHERE id = p_id;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '管理员不存在'
         );
     END IF;
-    
+
     -- 不能删除超级管理员
     IF v_target_admin.is_super_admin THEN
         RETURN jsonb_build_object(
@@ -241,10 +241,10 @@ BEGIN
             'message', '不能删除超级管理员'
         );
     END IF;
-    
+
     -- 删除管理员
     DELETE FROM admin_users WHERE id = p_id;
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'message', '管理员已删除'
@@ -268,7 +268,7 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
+    SELECT
         au.id,
         au.email,
         au.is_super_admin,
@@ -326,26 +326,26 @@ DECLARE
 BEGIN
     -- 检查是否为第一位管理员
     IF p_email = '977483863@qq.com' THEN
-        SELECT * INTO v_admin_record 
-        FROM admin_users 
+        SELECT * INTO v_admin_record
+        FROM admin_users
         WHERE email = '977483863@qq.com';
-        
+
         IF NOT FOUND THEN
             -- 首次登录
             INSERT INTO admin_users (
-                email, 
-                password_hash, 
-                is_super_admin, 
+                email,
+                password_hash,
+                is_super_admin,
                 requires_password_change,
                 metadata
             ) VALUES (
-                '977483863@qq.com', 
-                v_default_password, 
-                TRUE, 
+                '977483863@qq.com',
+                v_default_password,
+                TRUE,
                 TRUE,
                 jsonb_build_object('user_id', '359fe235-b407-4f53-ac8e-0960d354ddd7')
             );
-            
+
             RETURN jsonb_build_object(
                 'success', TRUE,
                 'requires_password_change', TRUE,
@@ -353,19 +353,19 @@ BEGIN
             );
         END IF;
     END IF;
-    
+
     -- 查找管理员
     SELECT * INTO v_admin_record
     FROM admin_users
     WHERE email = p_email;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '您没有管理员权限'
         );
     END IF;
-    
+
     -- 验证密码
     IF v_admin_record.password_hash != p_password THEN
         RETURN jsonb_build_object(
@@ -373,7 +373,7 @@ BEGIN
             'message', '密码错误'
         );
     END IF;
-    
+
     -- 检查是否需要修改密码
     IF v_admin_record.requires_password_change THEN
         RETURN jsonb_build_object(
@@ -382,12 +382,12 @@ BEGIN
             'message', '首次登录，请修改密码'
         );
     END IF;
-    
+
     -- 更新最后登录时间
-    UPDATE admin_users 
+    UPDATE admin_users
     SET last_login_at = NOW()
     WHERE id = v_admin_record.id;
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'requires_password_change', FALSE,

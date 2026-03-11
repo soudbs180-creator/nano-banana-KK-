@@ -16,14 +16,14 @@ BEGIN
     SELECT * INTO v_admin_record
     FROM admin_users
     WHERE email = p_email;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '管理员不存在'
         );
     END IF;
-    
+
     -- Verify old password
     IF v_admin_record.password_hash != p_old_password THEN
         RETURN jsonb_build_object(
@@ -31,15 +31,15 @@ BEGIN
             'message', '原密码错误'
         );
     END IF;
-    
+
     -- Update password and clear requires_password_change flag
-    UPDATE admin_users 
-    SET 
+    UPDATE admin_users
+    SET
         password_hash = p_new_password,
         requires_password_change = FALSE,
         updated_at = NOW()
     WHERE id = v_admin_record.id;
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'message', '密码修改成功'
@@ -66,28 +66,28 @@ BEGIN
     FROM admin_users
     WHERE email = current_setting('app.current_user_email', TRUE)
     AND is_super_admin = TRUE;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '只有超级管理员可以添加管理员'
         );
     END IF;
-    
+
     -- Check if email already exists
     SELECT EXISTS(SELECT 1 FROM admin_users WHERE email = p_email) INTO v_exists;
-    
+
     IF v_exists THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '该邮箱已是管理员'
         );
     END IF;
-    
+
     -- Add new admin with default password
     INSERT INTO admin_users (email, password_hash, is_super_admin, requires_password_change)
     VALUES (p_email, '123', FALSE, TRUE);
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'message', '管理员添加成功，默认密码：123'
@@ -113,36 +113,36 @@ BEGIN
     FROM admin_users
     WHERE email = current_setting('app.current_user_email', TRUE)
     AND is_super_admin = TRUE;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '只有超级管理员可以删除管理员'
         );
     END IF;
-    
+
     -- Check if target is super admin
     SELECT * INTO v_target_admin
     FROM admin_users
     WHERE id = p_admin_id;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '管理员不存在'
         );
     END IF;
-    
+
     IF v_target_admin.is_super_admin THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '不能删除超级管理员'
         );
     END IF;
-    
+
     -- Delete admin
     DELETE FROM admin_users WHERE id = p_admin_id;
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'message', '管理员已删除'
@@ -167,14 +167,14 @@ RETURNS TABLE (
 BEGIN
     -- Check if caller is admin
     IF NOT EXISTS (
-        SELECT 1 FROM admin_users 
+        SELECT 1 FROM admin_users
         WHERE email = current_setting('app.current_user_email', TRUE)
     ) THEN
         RAISE EXCEPTION '没有权限查看管理员列表';
     END IF;
-    
+
     RETURN QUERY
-    SELECT 
+    SELECT
         au.id,
         au.email,
         au.is_super_admin,

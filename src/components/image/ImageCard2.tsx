@@ -69,6 +69,7 @@ interface ImageNodeProps {
     onDragDelta?: (delta: { x: number; y: number }, sourceNodeId?: string) => void; // 🚀 [New] Relative Drag
     isNew?: boolean; // 🚀 [New] 是否为刚生成的图片
     isCanvasTransforming?: boolean;
+    isChatMode?: boolean; // 🚀 [New Prop] 渲染为垂直聊天流中的标准块
 }
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
@@ -94,7 +95,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     onDragDelta,
     isNew = false, // 🚀 [New] 是否为新生成的图片
     isCanvasTransforming = false,
-    canvasTransform // 🚀 [New] 用于计算动画起始位置
+    canvasTransform, // 🚀 [New] 用于计算动画起始位置
+    isChatMode = false // 🚀 [New] 垂直聊天流标识
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const downloadMenuRef = useRef<HTMLDivElement>(null);
@@ -133,7 +135,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }
         return;
 
-        if (hasAnimatedRef.current === image.id) return;
+        if (hasAnimatedRef.current === image.id || isChatMode) return;
 
         const now = Date.now();
         const isFresh = image.timestamp && (now - image.timestamp < 1500);
@@ -754,6 +756,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     }, []);
 
     const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+        if (isChatMode) return; // 🚀 聊天模式禁用拖拽
         const target = e.target as HTMLElement | null;
         if (target?.closest?.('[data-native-drag-source="true"]')) {
             e.stopPropagation();
@@ -928,9 +931,12 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         <>
             <div
                 ref={containerRef}
-                className="absolute flex flex-col items-center group select-none"
-                // ... (Style) ...
-                style={{
+                className={`${isChatMode ? 'relative w-full max-w-[420px] mx-auto my-3' : 'absolute'} flex flex-col items-center group select-none`}
+                style={isChatMode ? {
+                    zIndex: stackZIndex,
+                    width: isChatMode ? '100%' : nodeWidth,
+                    opacity: 1,
+                } : {
                     left: renderLeft,
                     top: renderTop,
                     zIndex: stackZIndex,

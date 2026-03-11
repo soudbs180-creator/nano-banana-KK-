@@ -16,7 +16,7 @@ paths:
       description: >-
         官方文档：
 
-        https://ai.google.dev/gemini-api/docs/image-generation?hl=zh-cn#aspect_ratios 
+        https://ai.google.dev/gemini-api/docs/image-generation?hl=zh-cn#aspect_ratios
       tags:
         - 绘图模型/OpenAI Dall-e 格式
       parameters:

@@ -28,9 +28,8 @@ import {
 import { supplierService, type Supplier as LegacySupplier } from '../../services/billing/supplierService';
 import { notify } from '../../services/system/notificationService';
 import { mergeModelPricingOverrides } from '../../services/model/modelPricing';
-import { SecureApiKeyManager } from './SecureApiKeyManager';
 
-type Tab = 'official' | 'thirdparty' | 'mykeys';
+type Tab = 'official' | 'thirdparty';
 type CostMode = 'unlimited' | 'amount' | 'tokens';
 
 type OfficialForm = {
@@ -1815,7 +1814,6 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
       <div className="flex gap-2 rounded-2xl border p-1" style={overlayPanelStyle}>
         <button className={`flex h-10 flex-1 items-center justify-center rounded-xl px-3 py-2 text-sm ${tab === 'thirdparty' ? 'bg-indigo-600 text-white' : ''}`} style={tab === 'thirdparty' ? undefined : { color: 'var(--text-primary)', backgroundColor: 'var(--bg-elevated)' }} onClick={() => setTab('thirdparty')}>第三方供应商</button>
-        <button className={`flex h-10 flex-1 items-center justify-center rounded-xl px-3 py-2 text-sm ${tab === 'mykeys' ? 'bg-indigo-600 text-white' : ''}`} style={tab === 'mykeys' ? undefined : { color: 'var(--text-primary)', backgroundColor: 'var(--bg-elevated)' }} onClick={() => setTab('mykeys')}>我的密钥</button>
         <button className={`flex h-10 flex-1 items-center justify-center rounded-xl px-3 py-2 text-sm ${tab === 'official' ? 'bg-indigo-600 text-white' : ''}`} style={tab === 'official' ? undefined : { color: 'var(--text-primary)', backgroundColor: 'var(--bg-elevated)' }} onClick={() => setTab('official')}>官方接口</button>
       </div>
 
@@ -2013,6 +2011,18 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                                   >
                                     <Search size={12} />{syncingProviderId === provider.id ? '获取中...' : '获取价格'}
                                   </button>
+                                  <button
+                                    type="button"
+                                    className="col-span-2 inline-flex h-8 items-center justify-center gap-1 rounded-lg border px-2 text-xs text-red-500 transition-all active:scale-95"
+                                    style={{ ...secondaryButtonStyle, borderColor: 'rgba(239, 68, 68, 0.22)', backgroundColor: 'rgba(239, 68, 68, 0.05)' }}
+                                    title={`删除供应商 ${provider.name}`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleDeleteProvider(provider.id);
+                                    }}
+                                  >
+                                    <Trash2 size={12} />删除
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -2084,8 +2094,6 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
             ) : null}
           </div>
         </div>
-      ) : tab === 'mykeys' ? (
-        <SecureApiKeyManager />
       ) : (
         <div className="space-y-4">
           <div className="flex justify-end">

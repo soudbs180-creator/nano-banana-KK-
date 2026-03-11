@@ -618,11 +618,11 @@ text-3xs     → 10px (0.625rem)
 
 /* 边框流光 (生成中) */
 @keyframes borderGlow {
-  0%, 100% { 
+  0%, 100% {
     border-color: rgba(59, 130, 246, 0.3);
     box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
   }
-  50% { 
+  50% {
     border-color: rgba(59, 130, 246, 0.6);
     box-shadow: 0 0 25px rgba(59, 130, 246, 0.4);
   }
@@ -1179,19 +1179,19 @@ export function calculateFitZoom(bounds: BoundingBox): number {
 ```typescript
 /**
  * 生成图片卡片组件
- * 
+ *
  * 功能说明：
  * - 显示生成的图片预览
  * - 支持点击查看原图
  * - 显示生成信息和操作按钮
- * 
+ *
  * @param imageUrl - 图片 URL
  * @param prompt - 生成提示词
  * @param model - 使用的模型名称
  * @param aspectRatio - 图片宽高比
  * @param onDelete - 删除回调
  * @param onDownload - 下载回调
- * 
+ *
  * @example
  * <ImageCard
  *   imageUrl="https://example.com/image.png"
@@ -1216,7 +1216,7 @@ export function calculateImageTokens(model: string, size: ImageSize): number {
   // 参考 Google 官方定价文档：https://ai.google.dev/pricing
   const baseTokens = MODEL_TOKEN_MAP[model] ?? 1000;
   const sizeMultiplier = SIZE_MULTIPLIER_MAP[size] ?? 1;
-  
+
   return Math.round(baseTokens * sizeMultiplier);
 }
 
@@ -1300,13 +1300,13 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  
+
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   }, []);
-  
+
   const value = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
-  
+
   return (
     <ThemeContext.Provider value={value}>
       {children}
@@ -1340,11 +1340,11 @@ function processImageUrl(url: string): string {
   if (!url || typeof url !== 'string') {
     throw new Error('图片 URL 无效');
   }
-  
+
   if (!url.startsWith('http') && !url.startsWith('data:')) {
     throw new Error('图片 URL 格式错误，必须以 http 或 data: 开头');
   }
-  
+
   return url;
 }
 
@@ -1361,11 +1361,11 @@ function handleApiResponse<T>(response: ApiResponse<T>): T {
   if (response.error) {
     throw new Error(response.error.message);
   }
-  
+
   if (!response.data) {
     throw new Error('API 返回数据为空');
   }
-  
+
   return response.data;
 }
 ```
@@ -1462,7 +1462,7 @@ const handleGenerate = async () => {
   // 取消之前的请求
   abortControllerRef.current?.abort();
   abortControllerRef.current = new AbortController();
-  
+
   try {
     await api.generateImage(params, {
       signal: abortControllerRef.current.signal
@@ -1594,7 +1594,7 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 
 async function compressImage(file: File): Promise<Blob> {
   if (file.size <= MAX_IMAGE_SIZE) return file;
-  
+
   // 使用 canvas 压缩
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -1633,7 +1633,7 @@ const ImagePreviewModal = lazy(() => import('./components/ImagePreviewModal'));
 
 function ImageCard() {
   const [showModal, setShowModal] = useState(false);
-  
+
   return (
     <>
       <div onClick={() => setShowModal(true)}>...</div>
@@ -1679,7 +1679,7 @@ useEffect(() => {
   const subscription = api.subscribe(data => {
     setData(data);
   });
-  
+
   return () => {
     subscription.unsubscribe();
   };
@@ -1689,7 +1689,7 @@ useEffect(() => {
 useEffect(() => {
   const objectUrl = URL.createObjectURL(file);
   setPreviewUrl(objectUrl);
-  
+
   return () => {
     URL.revokeObjectURL(objectUrl);
   };
@@ -1698,9 +1698,9 @@ useEffect(() => {
 // ✅ 取消进行中的请求
 useEffect(() => {
   const abortController = new AbortController();
-  
+
   fetchData({ signal: abortController.signal });
-  
+
   return () => {
     abortController.abort();
   };
@@ -1745,7 +1745,7 @@ describe('Button', () => {
   it('点击时应该触发 onClick 回调', () => {
     const handleClick = jest.fn();
     render(<Button onClick={handleClick}>点击</Button>);
-    
+
     fireEvent.click(screen.getByText('点击'));
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
@@ -1753,7 +1753,7 @@ describe('Button', () => {
   it('禁用时应该无法点击', () => {
     const handleClick = jest.fn();
     render(<Button disabled onClick={handleClick}>禁用</Button>);
-    
+
     fireEvent.click(screen.getByText('禁用'));
     expect(handleClick).not.toHaveBeenCalled();
   });
@@ -1769,7 +1769,7 @@ import { useImageLoader } from './useImageLoader';
 
 describe('useImageLoader', () => {
   it('应该返回加载状态和图片数据', async () => {
-    const { result, waitForNextUpdate } = renderHook(() => 
+    const { result, waitForNextUpdate } = renderHook(() =>
       useImageLoader('https://example.com/image.png')
     );
 
@@ -1783,7 +1783,7 @@ describe('useImageLoader', () => {
   });
 
   it('加载失败时应该返回错误', async () => {
-    const { result, waitForNextUpdate } = renderHook(() => 
+    const { result, waitForNextUpdate } = renderHook(() =>
       useImageLoader('invalid-url')
     );
 
@@ -1840,7 +1840,7 @@ describe('useImageLoader', () => {
 
 ---
 
-**KK Studio Design System v2.2**  
+**KK Studio Design System v2.2**
 Last updated: 2026-03-09
 
 ## 📋 变更日志

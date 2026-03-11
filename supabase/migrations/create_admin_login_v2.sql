@@ -20,19 +20,19 @@ DECLARE
     v_default_password TEXT := '123'; -- 默认密码
 BEGIN
     -- Check if this is the first admin (hardcoded)
-    IF p_user_id = '359fe235-b407-4f53-ac8e-0960d354ddd7' 
+    IF p_user_id = '359fe235-b407-4f53-ac8e-0960d354ddd7'
        OR p_user_email = '977483863@qq.com' THEN
-        
+
         -- Check if first admin exists in table
-        SELECT * INTO v_admin_record 
-        FROM admin_users 
+        SELECT * INTO v_admin_record
+        FROM admin_users
         WHERE email = '977483863@qq.com';
-        
+
         IF NOT FOUND THEN
             -- First time login, create admin record
             INSERT INTO admin_users (email, password_hash, is_super_admin, requires_password_change)
             VALUES ('977483863@qq.com', v_default_password, TRUE, TRUE);
-            
+
             v_is_first_admin := TRUE;
             v_admin_record.email := '977483863@qq.com';
             v_admin_record.password_hash := v_default_password;
@@ -46,7 +46,7 @@ BEGIN
         FROM admin_users
         WHERE email = p_user_email
            OR (metadata->>'user_id') = p_user_id;
-        
+
         IF NOT FOUND THEN
             RETURN jsonb_build_object(
                 'success', FALSE,
@@ -54,7 +54,7 @@ BEGIN
             );
         END IF;
     END IF;
-    
+
     -- Verify password
     IF v_admin_record.password_hash != p_password THEN
         RETURN jsonb_build_object(
@@ -62,7 +62,7 @@ BEGIN
             'message', '密码错误'
         );
     END IF;
-    
+
     -- Check if password change is required
     IF v_admin_record.requires_password_change THEN
         RETURN jsonb_build_object(
@@ -71,12 +71,12 @@ BEGIN
             'message', '首次登录，请修改密码'
         );
     END IF;
-    
+
     -- Update last login
-    UPDATE admin_users 
+    UPDATE admin_users
     SET last_login_at = NOW()
     WHERE id = v_admin_record.id;
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'requires_password_change', FALSE,
@@ -108,10 +108,10 @@ CREATE TABLE IF NOT EXISTS admin_users (
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 
 -- Allow public to call login function (it checks credentials)
-CREATE POLICY "Allow public to login" 
-    ON admin_users 
-    FOR SELECT 
-    TO PUBLIC 
+CREATE POLICY "Allow public to login"
+    ON admin_users
+    FOR SELECT
+    TO PUBLIC
     USING (TRUE);
 
 -- Only super admin can insert/update/delete
@@ -121,8 +121,8 @@ CREATE POLICY "Only super admin can manage admins"
     TO PUBLIC
     USING (
         EXISTS (
-            SELECT 1 FROM admin_users 
-            WHERE is_super_admin = TRUE 
+            SELECT 1 FROM admin_users
+            WHERE is_super_admin = TRUE
             AND email = current_setting('app.current_user_email', TRUE)
         )
     );

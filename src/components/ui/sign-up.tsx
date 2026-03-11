@@ -1,4 +1,4 @@
-﻿import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import React, {
   Children,
   createContext,
@@ -725,7 +725,7 @@ export const AuthComponent = ({
           </div>
         </div>
 
-        <div className="relative z-10 flex min-h-screen w-full items-center justify-end px-6 pt-24 sm:px-10 lg:px-16">
+        <div className="relative z-10 flex min-h-screen w-full items-center justify-center lg:justify-end px-4 sm:px-10 lg:px-16 pt-16 sm:pt-24 pb-8 sm:pb-0">
           <div className="hidden h-[420px] w-[420px] items-center justify-center lg:flex lg:absolute lg:left-12 lg:top-1/2 lg:-translate-y-1/2">
             <div className="relative h-[360px] w-[360px] rounded-2xl border-4 border-rose-400/90">
               <BubbleFace className="absolute left-4 top-24 h-40 w-40 bg-gradient-to-br from-amber-200 to-orange-400 shadow-2xl shadow-orange-500/35" />
@@ -736,7 +736,7 @@ export const AuthComponent = ({
 
           <fieldset
             disabled={isSubmitting}
-            className="w-full max-w-[420px] rounded-3xl border border-slate-600/50 bg-slate-950/70 p-8 shadow-[0_30px_80px_rgba(2,6,23,0.55)] backdrop-blur-xl"
+            className="w-full max-w-sm sm:max-w-[420px] rounded-3xl border border-slate-600/50 bg-slate-950/70 p-6 sm:p-8 shadow-[0_30px_80px_rgba(2,6,23,0.55)] backdrop-blur-xl"
           >
             <div className="mb-6 flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/70 p-1 text-sm">
               <button

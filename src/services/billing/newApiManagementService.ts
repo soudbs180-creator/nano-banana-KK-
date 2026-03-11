@@ -1,9 +1,9 @@
 /**
  * NewAPI Management Service
- * 
+ *
  * 完整的 NewAPI / OneAPI 管理接口封装
  * 支持渠道、供应商、分组、令牌、模型等管理功能
- * 
+ *
  * 文档参考: https://docs.newapi.pro/zh/docs/api/management/
  */
 
@@ -173,11 +173,11 @@ export class NewApiManagementService {
         timeoutMs: number = 10000 // 默认10秒超时
     ): Promise<T> {
         const url = `${this.getBaseUrl()}${endpoint}`;
-        
+
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-            
+
             const response = await fetch(url, {
                 ...options,
                 headers: {
@@ -186,7 +186,7 @@ export class NewApiManagementService {
                 },
                 signal: controller.signal,
             });
-            
+
             clearTimeout(timeoutId);
 
       if (!response.ok) {
@@ -197,7 +197,7 @@ export class NewApiManagementService {
         } catch {
           errorData = { message: errorText };
         }
-        
+
         throw new NewApiError(
           errorData.message || `HTTP ${response.status}: ${response.statusText}`,
           response.status,
@@ -252,7 +252,7 @@ export class NewApiManagementService {
     try {
       // 获取所有渠道
       const channels = await this.getAllChannels();
-      
+
       // 批量更新余额 (NewAPI 通常提供批量更新接口)
       const updatedChannels = await this.request<Channel[]>(
         '/api/channel/balance',
@@ -260,9 +260,9 @@ export class NewApiManagementService {
       );
 
       // 更新缓存
-      this.cache.set('channels', { 
-        data: updatedChannels, 
-        timestamp: Date.now() 
+      this.cache.set('channels', {
+        data: updatedChannels,
+        timestamp: Date.now()
       });
 
       return updatedChannels;
@@ -309,9 +309,9 @@ export class NewApiManagementService {
   async searchSuppliers(keyword: string): Promise<Supplier[]> {
     const suppliers = await this.getAllSuppliers();
     if (!keyword.trim()) return suppliers;
-    
+
     const lowerKeyword = keyword.toLowerCase();
-    return suppliers.filter(s => 
+    return suppliers.filter(s =>
       s.name.toLowerCase().includes(lowerKeyword) ||
       s.baseUrl.toLowerCase().includes(lowerKeyword)
     );
@@ -391,7 +391,7 @@ export class NewApiManagementService {
     totalRemain: number;
   }> {
     const tokens = await this.getAllTokens();
-    
+
     if (tokenId) {
       const token = tokens.find(t => t.id === tokenId);
       if (token) {
@@ -404,7 +404,7 @@ export class NewApiManagementService {
     }
 
     const totalUsed = tokens.reduce((sum, t) => sum + t.usedQuota, 0);
-    const totalRemain = tokens.reduce((sum, t) => 
+    const totalRemain = tokens.reduce((sum, t) =>
       sum + (t.unlimitedQuota ? 0 : t.remainQuota), 0
     );
 
@@ -421,7 +421,7 @@ export class NewApiManagementService {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
-    
+
     return this.request(`/api/token/stats?${params.toString()}`);
   }
 

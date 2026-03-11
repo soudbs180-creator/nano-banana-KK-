@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { PromptNode, AspectRatio, GenerationMode } from '../../types';
 import { Sparkles, Loader2, Video, Image, Pin, Music, Copy, Check, Languages, Info, ChevronRight } from 'lucide-react';
 import { getCardDimensions } from '../../utils/styleUtils';
@@ -58,6 +58,7 @@ interface PromptNodeProps {
     onRemoveTag?: (id: string, tag: string) => void; // 🚀 [New Prop] Remove Tag
     onDragDelta?: (delta: { x: number; y: number }, sourceNodeId?: string) => void; // 🚀 [New Prop] Relative Drag
     onUpdateNode?: (node: PromptNode) => void; // 🚀 [New Prop] Update node externally
+    isChatMode?: boolean; // 🚀 [New Prop] Render as standard block in chat feed
 }
 
 // [FIX] Self-healing thumbnail component that recovers data from IDB if missing
@@ -264,7 +265,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     onPin,
     onRemoveTag,
     onDragDelta,
-    onUpdateNode
+    onUpdateNode,
+    isChatMode = false
 }) => {
     // 🚀 [DEBUG] Trace PromptNode Rendering
     // if (node.isGenerating) {
@@ -297,7 +299,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     // Sync ref when node.position updates externally (and not dragging)
     // 🚀 [Fix] 使用更宽松的条件，避免拖动结束后位置回弹
     useEffect(() => {
-        if (!isDragging) {
+        if (!isDragging && !isChatMode) {
             localPosRef.current = node.position;
             // 🚀 [Fix] 只在位置差异较大时才强制更新 DOM，避免微小更新导致的抖动
             if (containerRef.current) {
@@ -314,7 +316,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 }
             }
         }
-    }, [node.position.x, node.position.y, isDragging, cardWidth, cardHeight]);
+    }, [node.position.x, node.position.y, isDragging, cardWidth, cardHeight, isChatMode]);
 
     useEffect(() => {
         // 🚀 默认展示优化后的结果 (若存在)
@@ -431,7 +433,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 restoreVisibility();
             });
         }
-    }, [node.id, node.timestamp, node.isDraft, canvasTransform]);
+    }, [node.id, node.timestamp, node.isDraft, canvasTransform, isChatMode]);
 
     // 🚀 [New] Entry Animation Cleanup: remove 'isNew' status after animation ends
     useEffect(() => {
@@ -489,6 +491,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+        if (isChatMode) return; // Disable drag/select logic in chat mode
         if ('button' in e && e.button === 2) return; // Right click
         // Only select if not already selected (Preserve Group)
         if (!isSelected) {
@@ -588,8 +591,11 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     return (
         <div
             ref={containerRef}
-            className={`absolute flex flex-col items-center group antialiased select-none ${node.isNew && !canvasTransform ? 'is-new' : ''}`}
-            style={{
+            className={`${isChatMode ? 'relative w-full max-w-[420px] mx-auto my-3' : 'absolute'} flex flex-col items-center group antialiased select-none ${node.isNew && !canvasTransform && !isChatMode ? 'is-new' : ''}`}
+            style={isChatMode ? {
+                zIndex: stackZIndex,
+                opacity: 1,
+            } : {
                 left: renderLeft,
                 top: renderTop,
                 zIndex: stackZIndex,
@@ -609,8 +615,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 data-canvas-surface="prompt"
                 className="relative flex flex-col rounded-2xl border transition-all"
                 style={{
-                    width: cardWidth,
-                    maxWidth: isMobile ? 'calc(100vw - 24px)' : undefined,
+                    width: isChatMode ? '100%' : cardWidth,
+                    maxWidth: isMobile && !isChatMode ? 'calc(100vw - 24px)' : undefined,
                     backgroundColor: 'var(--bg-overlay)',
                     borderColor: showError
                         ? 'rgba(239, 68, 68, 0.5)'
@@ -623,7 +629,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 }}
             >
                 {/* 🚀 [NEW] Connection Point - Bottom Center */}
-                {onConnectStart && (
+                {onConnectStart && !isChatMode && (
                     <div
                         className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-4 bg-transparent hover:bg-indigo-500/50 rounded-full z-50 cursor-crosshair transition-colors"
                         onMouseDown={(e) => {

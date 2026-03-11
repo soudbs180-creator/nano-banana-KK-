@@ -81,7 +81,7 @@ DECLARE
 BEGIN
     -- Generate a secure random token
     new_token := encode(gen_random_bytes(32), 'hex');
-    
+
     -- Insert new session
     INSERT INTO public.admin_sessions (
         user_id,
@@ -96,12 +96,12 @@ BEGIN
         p_ip_address,
         p_user_agent
     );
-    
+
     -- Clean up expired sessions for this user
     DELETE FROM public.admin_sessions
     WHERE user_id = p_user_id
     AND expires_at < NOW();
-    
+
     RETURN new_token;
 END;
 $$;
@@ -128,39 +128,39 @@ BEGIN
     SELECT * INTO session_record
     FROM public.admin_sessions
     WHERE session_token = p_session_token;
-    
+
     -- Check if session exists and is not expired
     IF session_record.id IS NULL THEN
         RETURN QUERY SELECT FALSE, NULL::UUID, NULL::TIMESTAMP WITH TIME ZONE;
         RETURN;
     END IF;
-    
+
     IF session_record.expires_at < NOW() THEN
         -- Session expired, delete it
         DELETE FROM public.admin_sessions
         WHERE id = session_record.id;
-        
+
         RETURN QUERY SELECT FALSE, NULL::UUID, NULL::TIMESTAMP WITH TIME ZONE;
         RETURN;
     END IF;
-    
+
     -- Update last used time
     UPDATE public.admin_sessions
     SET last_used_at = NOW()
     WHERE id = session_record.id;
-    
+
     -- Check if user is still an admin
     IF NOT public.is_admin_by_id(session_record.user_id) THEN
         -- User is no longer an admin, delete all their sessions
         DELETE FROM public.admin_sessions
         WHERE user_id = session_record.user_id;
-        
+
         RETURN QUERY SELECT FALSE, NULL::UUID, NULL::TIMESTAMP WITH TIME ZONE;
         RETURN;
     END IF;
-    
-    RETURN QUERY SELECT 
-        TRUE, 
+
+    RETURN QUERY SELECT
+        TRUE,
         session_record.user_id,
         session_record.expires_at;
 END;
@@ -189,7 +189,7 @@ BEGIN
         RETURN QUERY SELECT FALSE, NULL::TEXT;
         RETURN;
     END IF;
-    
+
     -- Check if user has a valid session
     SELECT session_token INTO token
     FROM public.admin_sessions
@@ -197,9 +197,9 @@ BEGIN
     AND expires_at > NOW()
     ORDER BY last_used_at DESC
     LIMIT 1;
-    
+
     has_valid_session := token IS NOT NULL;
-    
+
     RETURN QUERY SELECT has_valid_session, token;
 END;
 $$;
@@ -221,7 +221,7 @@ BEGIN
         SELECT 1 FROM public.profiles
         WHERE id = p_user_id AND role = 'admin'
     ) INTO is_admin_user;
-    
+
     -- Also check if user is in the predefined admin list
     IF NOT is_admin_user THEN
         SELECT EXISTS (
@@ -229,7 +229,7 @@ BEGIN
             WHERE user_id = p_user_id
         ) INTO is_admin_user;
     END IF;
-    
+
     RETURN is_admin_user;
 END;
 $$;
@@ -250,7 +250,7 @@ DECLARE
 BEGIN
     DELETE FROM public.admin_sessions
     WHERE user_id = p_user_id;
-    
+
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
     RETURN deleted_count;
 END;
@@ -270,7 +270,7 @@ DECLARE
 BEGIN
     DELETE FROM public.admin_sessions
     WHERE expires_at < NOW();
-    
+
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
     RETURN deleted_count;
 END;
@@ -302,36 +302,36 @@ DECLARE
 BEGIN
     -- Check if user is admin
     is_admin_user := public.is_admin_by_id(p_user_id);
-    
+
     IF NOT is_admin_user THEN
-        RETURN QUERY SELECT 
-            FALSE, 
-            NULL::TEXT, 
-            'User is not an admin'::TEXT, 
+        RETURN QUERY SELECT
+            FALSE,
+            NULL::TEXT,
+            'User is not an admin'::TEXT,
             FALSE;
         RETURN;
     END IF;
-    
+
     -- Verify password using the secure function
     is_valid_password := public.verify_admin_password(p_password);
-    
+
     IF NOT is_valid_password THEN
-        RETURN QUERY SELECT 
-            FALSE, 
-            NULL::TEXT, 
-            'Invalid password'::TEXT, 
+        RETURN QUERY SELECT
+            FALSE,
+            NULL::TEXT,
+            'Invalid password'::TEXT,
             FALSE;
         RETURN;
     END IF;
-    
+
     -- Check if password needs to be changed (still using MD5)
     SELECT password_hash_type = 'md5' INTO needs_password_change
     FROM public.admin_settings
     WHERE id = 1;
-    
+
     -- Create session token
     new_session_token := public.create_admin_session(p_user_id);
-    
+
     -- Log the login
     INSERT INTO public.admin_audit_log (action, details)
     VALUES ('admin_login', jsonb_build_object(
@@ -339,11 +339,11 @@ BEGIN
         'email', p_user_email,
         'requires_password_change', needs_password_change
     ));
-    
-    RETURN QUERY SELECT 
-        TRUE, 
-        new_session_token, 
-        'Login successful'::TEXT, 
+
+    RETURN QUERY SELECT
+        TRUE,
+        new_session_token,
+        'Login successful'::TEXT,
         COALESCE(needs_password_change, FALSE);
 END;
 $$;

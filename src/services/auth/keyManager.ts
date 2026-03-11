@@ -1,6 +1,6 @@
-﻿/**
+/**
  * API Key Manager Service
- * 
+ *
  * Provides multi-key rotation, status monitoring, and automatic failover.
  * Similar to Gemini Balance but runs entirely on frontend.
  * NOW SUPPORTS: Supabase Cloud Sync & Third-Party API Proxies
@@ -220,36 +220,36 @@ export interface ThirdPartyProvider {
 }
 
 /**
- * 棰勮镄勭涓夋柟 API 链嶅姟鍟嗘ā𨱒?
+ * Preset third-party API providers
  */
 export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'apiKey' | 'usage' | 'status' | 'createdAt' | 'updatedAt' | 'isActive'> & { defaultApiKey?: string }> = {
     'zhipu': {
-        name: '鏅鸿氨 AI',
+        name: '\u667A\u8C31 AI',
         baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
         models: ['glm-4', 'glm-4-flash', 'glm-4-plus', 'cogview-4'],
         format: 'openai',
-        icon: '馃'
+        icon: '\u{1F9E0}'
     },
     'wanqing': {
-        name: '涓囨竻 (蹇坠)',
+        name: '\u4E07\u9752 (\u5FEB\u624B)',
         baseUrl: 'https://wanqing.streamlakeapi.com/api/gateway/v1/endpoints',
         models: ['deepseek-reasoner', 'deepseek-v3', 'qwen-max'],
         format: 'openai',
-        icon: '馃帧'
+        icon: '\u{1F3AC}'
     },
     'sambanova': {
         name: 'SambaNova',
         baseUrl: 'https://api.sambanova.ai/v1',
         models: ['Meta-Llama-3.1-405B-Instruct', 'Meta-Llama-3.1-70B-Instruct', 'Meta-Llama-3.1-8B-Instruct', 'Meta-Llama-3.2-90B-Vision-Instruct', 'Meta-Llama-3.2-11B-Vision-Instruct', 'Meta-Llama-3.2-3B-Instruct', 'Meta-Llama-3.2-1B-Instruct', 'Qwen2.5-72B-Instruct', 'Qwen2.5-Coder-32B-Instruct'],
         format: 'openai',
-        icon: '馃殌'
+        icon: '\u{1F680}'
     },
     'openclaw': {
         name: 'OpenClaw (Zero Token)',
         baseUrl: 'http://127.0.0.1:3001/v1',
         models: ['claude-3-5-sonnet-20241022', 'doubao-pro-32k', 'doubao-pro-128k', 'deepseek-chat', 'deepseek-reasoner'],
         format: 'openai',
-        icon: '馃惥',
+        icon: '\u{1F43E}',
         defaultApiKey: 'sk-openclaw-zero-token'
     },
     't8star': {
@@ -258,35 +258,35 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
         // Conservative defaults; users can auto-detect or customize in UI
         models: ['gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
         format: 'openai',
-        icon: '⭐'
+        icon: '\u2B50'
     },
     'volcengine': {
-        name: '𨱔北寮曟搸',
+        name: '\u706B\u5C71\u5F15\u64CE',
         baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
         models: ['doubao-pro', 'doubao-lite'],
         format: 'openai',
-        icon: '馃寝'
+        icon: '\u{1F30B}'
     },
     'deepseek': {
         name: 'DeepSeek',
         baseUrl: 'https://api.deepseek.com',
         models: ['deepseek-chat', 'deepseek-reasoner'],
         format: 'openai',
-        icon: '馃敭'
+        icon: '\u{1F52E}'
     },
     'moonshot': {
-        name: 'Moonshot (链堜箣𨱌楅溃)',
+        name: 'Moonshot (Kimi)',
         baseUrl: 'https://api.moonshot.cn/v1',
         models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
         format: 'openai',
-        icon: '馃宠'
+        icon: '\u{1F319}'
     },
     'siliconflow': {
         name: 'SiliconFlow',
         baseUrl: 'https://api.siliconflow.cn/v1',
         models: ['Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3'],
         format: 'openai',
-        icon: '馃拵'
+        icon: '\u{1F48E}'
     },
     '12ai': {
         name: '12AI',
@@ -301,15 +301,15 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
             'claude-4-sonnet', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d',
             'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'
         ],
-        format: 'gemini', // 12AI 瀵?Gemini 鍗忚鏀寔链€濂斤纴鏀寔铡熺敚 4K 鍜屽弬钥冨浘
-        icon: '馃殌'
+        format: 'gemini', // Best for Gemini-compatible routes and reference images
+        icon: '\u{1F680}'
     },
     'antigravity': {
-        name: 'Antigravity (链湴)',
+        name: 'Antigravity (\u672C\u5730)',
         baseUrl: 'http://127.0.0.1:8045',
         models: ['gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview', 'gemini-3-flash', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'runway-gen3', 'luma-video', 'kling-v1', 'sv3d', 'vidu', 'minimax-video', 'flux-kontext-max', 'recraft-v3-svg', 'ideogram-v2', 'suno-v3.5', 'minimax-t2a-01'],
         format: 'openai',
-        icon: '馃寑'
+        icon: '\u{1F300}'
     },
     '12ai-nanobanana': {
         name: '12AI NanoBanana',
@@ -319,14 +319,14 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
             'gemini-3-pro-image-preview', 'gemini-3-pro-image-preview-c'
         ],
         format: 'gemini',
-        icon: '馃崒'
+        icon: '\u{1F34C}'
     },
     'custom': {
-        name: '自定义供应商',
+        name: '\u81EA\u5B9A\u4E49\u4F9B\u5E94\u5546',
         baseUrl: '',
         models: [],
         format: 'auto',
-        icon: '钿欙笍'
+        icon: '\u2699\uFE0F'
     }
 };
 
@@ -387,7 +387,7 @@ export const BLACKLIST_MODELS = [
     // Imagen 棰勮鐗?宁︽棩链熷悗缂€)
     /^imagen-[34]\.0-(ultra-)?generate-preview-\d{2}-\d{2}$/,
     /^imagen-[34]\.0-(fast-)?generate-preview-\d{2}-\d{2}$/,
-    // Imagen 镞х増(generate-001)  
+    // Imagen 镞х増(generate-001)
     /^imagen-[34]\.0-.*generate-001$/,
 ];
 
@@ -665,21 +665,21 @@ const isLegacyGoogleModelList = (models: string[]) => {
     return models.every(m => LEGACY_GOOGLE_MODELS.includes(m));
 };
 
-type GlobalModelType = 'chat' | 'image' | 'video' | 'image+chat' | 'audio';  // 𨱅?鏀寔澶𣱝ā镐?
+type GlobalModelType = 'chat' | 'image' | 'video' | 'image+chat' | 'audio'; // multimodal support
 
 const GOOGLE_CHAT_MODELS = [
-    // Gemini 2.5 绯诲垪 - 镐т环姣旀渶浣?
-    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', icon: '馃', description: '链€寮烘帹鐞嗘ā鍨嬶纴镎呴暱浠ｇ爜銆佹暟瀛︺€丼TEM 澶嶆潅浠诲姟' },
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', icon: '⚡', description: '速度优先，适合高并发与快速响应场景' },
-    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', icon: '🔹', description: '低成本快速模型，适合轻量任务' },
-    // Gemini 3 & 3.1 绯诲垪 - 链€寮烘櫤鑳?
-    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro 棰勮', icon: '馃拵', description: '链€阃傚悎暗€瑕佸箍娉涚殑涓栫晫鐭ヨ瘑鍜岃法妯℃€侀珮绾ф帹鐞嗙殑澶嶆潅浠诲姟' },
-    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro 预览', icon: '🚀', description: '更强推理与复杂任务能力，适合专业工作流' },
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash 预览', icon: '⚡', description: '新一代 Flash，平衡质量与速度' },
-    // 澶𣱝ā镐佹ā鍨?- 镞㈣兘锲惧儚鐢熸垚锛屽张鑳借亰澶?
-    { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image', icon: '🖼️', description: '图像生成模型，适合通用创作场景' },
-    { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image (Preview)', icon: '🎨', description: '高质量图像生成，适合专业创作' },
-    { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', icon: '🍌', description: '快速图像模型，适合高频出图场景' },
+    // Gemini 2.5 series - best value
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', icon: '\u{1F9E0}', description: '\u6700\u5F3A\u63A8\u7406\u6A21\u578B\uFF0C\u64C5\u957F\u4EE3\u7801\u3001\u6570\u5B66\u3001STEM \u590D\u6742\u4EFB\u52A1' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', icon: '\u26A1', description: '\u901F\u5EA6\u4F18\u5148\uFF0C\u9002\u5408\u9AD8\u5E76\u53D1\u4E0E\u5FEB\u901F\u54CD\u5E94\u573A\u666F' },
+    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', icon: '\u{1F539}', description: '\u4F4E\u6210\u672C\u5FEB\u901F\u6A21\u578B\uFF0C\u9002\u5408\u8F7B\u91CF\u4EFB\u52A1' },
+    // Gemini 3 / 3.1 series - advanced reasoning
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro \u9884\u89C8', icon: '\u{1F48E}', description: '\u9002\u5408\u9700\u8981\u5E7F\u6CDB\u4E16\u754C\u77E5\u8BC6\u4E0E\u8DE8\u6A21\u6001\u9AD8\u7EA7\u63A8\u7406\u7684\u590D\u6742\u4EFB\u52A1' },
+    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro \u9884\u89C8', icon: '\u{1F680}', description: '\u66F4\u5F3A\u63A8\u7406\u4E0E\u590D\u6742\u4EFB\u52A1\u80FD\u529B\uFF0C\u9002\u5408\u4E13\u4E1A\u5DE5\u4F5C\u6D41' },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash \u9884\u89C8', icon: '\u26A1', description: '\u65B0\u4E00\u4EE3 Flash\uFF0C\u5E73\u8861\u8D28\u91CF\u4E0E\u901F\u5EA6' },
+    // Multimodal models
+    { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image', icon: '\u{1F5BC}\uFE0F', description: '\u56FE\u50CF\u751F\u6210\u6A21\u578B\uFF0C\u9002\u5408\u901A\u7528\u521B\u4F5C\u573A\u666F' },
+    { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image (Preview)', icon: '\u{1F3A8}', description: '\u9AD8\u8D28\u91CF\u56FE\u50CF\u751F\u6210\uFF0C\u9002\u5408\u4E13\u4E1A\u521B\u4F5C' },
+    { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', icon: '\u{1F34C}', description: '\u5FEB\u901F\u56FE\u50CF\u6A21\u578B\uFF0C\u9002\u5408\u9AD8\u9891\u51FA\u56FE\u573A\u666F' },
 ];
 
 const GOOGLE_MODEL_METADATA = new Map<string, {
@@ -696,21 +696,19 @@ const MODEL_TYPE_MAP = new Map<string, GlobalModelType>();
 GOOGLE_CHAT_MODELS.forEach(model => MODEL_TYPE_MAP.set(model.id, 'chat'));
 MODEL_PRESETS.forEach(preset => MODEL_TYPE_MAP.set(preset.id, preset.type));
 
-// 𨱅?淇 Gemini 澶𣱝ā镐佸浘鐗囨ā鍨嬬殑绫诲瀷
+// Mark Gemini image models as multimodal
 MODEL_TYPE_MAP.set('gemini-2.5-flash-image', 'image+chat');
 MODEL_TYPE_MAP.set('gemini-3.1-flash-image-preview', 'image+chat');
 MODEL_TYPE_MAP.set('gemini-3-pro-image-preview', 'image+chat');
 
-// 𨱅?璁剧疆 Imagen 4.0 绯诲垪镄勭被鍨?
+// Set Imagen 4.0 model types
 MODEL_TYPE_MAP.set('imagen-4.0-generate-001', 'image');
 MODEL_TYPE_MAP.set('imagen-4.0-ultra-generate-001', 'image');
 MODEL_TYPE_MAP.set('imagen-4.0-fast-generate-001', 'image');
 
-// 𨱅?璁剧疆 Veo 3.1 绯诲垪镄勭被鍨?
+// Set Veo 3.1 model types
 MODEL_TYPE_MAP.set('veo-3.1-generate-preview', 'video');
 MODEL_TYPE_MAP.set('veo-3.1-fast-generate-preview', 'video');
-
-
 
 MODEL_PRESETS.filter(preset => preset.provider === 'Google').forEach(preset => {
     if (!GOOGLE_MODEL_METADATA.has(preset.id)) {
@@ -718,18 +716,17 @@ MODEL_PRESETS.filter(preset => preset.provider === 'Google').forEach(preset => {
     }
 });
 
-// 娣诲姞 Imagen 4.0 鍜?Veo 3.1 绯诲垪妯″瀷鍏冩暟鎹?
-GOOGLE_MODEL_METADATA.set('imagen-4.0-generate-001', { name: 'Imagen 4.0 标准版', icon: '🎨', description: 'Google 官方图像模型（标准版）' });
-GOOGLE_MODEL_METADATA.set('imagen-4.0-ultra-generate-001', { name: 'Imagen 4.0 Ultra', icon: '馃拵', description: 'Google 镄勯珮淇濈湡锲剧墖鐢熸垚妯″瀷 (Ultra)' });
-GOOGLE_MODEL_METADATA.set('imagen-4.0-fast-generate-001', { name: 'Imagen 4.0 快速版', icon: '⚡', description: 'Google 官方图像模型（快速版）' });
-GOOGLE_MODEL_METADATA.set('veo-3.1-generate-preview', { name: 'Veo 3.1', icon: '馃帧', description: '链€鏂拌棰戠敚鎴愭ā鍨嬶纸棰勮鐗堬级' });
-GOOGLE_MODEL_METADATA.set('veo-3.1-fast-generate-preview', { name: 'Veo 3.1 Fast', icon: '🎬', description: 'Veo 3.1 快速版' });
+// Add Imagen 4.0 / Veo 3.1 metadata
+GOOGLE_MODEL_METADATA.set('imagen-4.0-generate-001', { name: 'Imagen 4.0 \u6807\u51C6\u7248', icon: '\u{1F3A8}', description: 'Google \u5B98\u65B9\u56FE\u50CF\u6A21\u578B\uFF08\u6807\u51C6\u7248\uFF09' });
+GOOGLE_MODEL_METADATA.set('imagen-4.0-ultra-generate-001', { name: 'Imagen 4.0 Ultra', icon: '\u{1F48E}', description: 'Google \u7684\u9AD8\u4FDD\u771F\u56FE\u50CF\u6A21\u578B\uFF08Ultra\uFF09' });
+GOOGLE_MODEL_METADATA.set('imagen-4.0-fast-generate-001', { name: 'Imagen 4.0 \u5FEB\u901F\u7248', icon: '\u26A1', description: 'Google \u5B98\u65B9\u56FE\u50CF\u6A21\u578B\uFF08\u5FEB\u901F\u7248\uFF09' });
+GOOGLE_MODEL_METADATA.set('veo-3.1-generate-preview', { name: 'Veo 3.1', icon: '\u{1F3AC}', description: '\u6700\u65B0\u89C6\u9891\u751F\u6210\u6A21\u578B\uFF08\u9884\u89C8\u7248\uFF09' });
+GOOGLE_MODEL_METADATA.set('veo-3.1-fast-generate-preview', { name: 'Veo 3.1 Fast', icon: '\u{1F3AC}', description: 'Veo 3.1 \u5FEB\u901F\u7248' });
 
-// 𨱅?Custom Name Overrides for Whitelisted Models
-GOOGLE_MODEL_METADATA.set('gemini-2.5-flash-image', { name: 'Nano Banana', icon: '馃崒', description: 'Gemini 2.5 Flash Image (Custom)' });
-GOOGLE_MODEL_METADATA.set('gemini-3.1-flash-image-preview', { name: 'Nano Banana 2', icon: '馃崒', description: 'Gemini 3.1 Flash Image Preview (Custom)' });
-GOOGLE_MODEL_METADATA.set('gemini-3-pro-image-preview', { name: 'Nano Banana Pro', icon: '馃崒', description: 'Gemini 3 Pro Image (Custom)' });
-
+// Custom name overrides for whitelisted models
+GOOGLE_MODEL_METADATA.set('gemini-2.5-flash-image', { name: 'Nano Banana', icon: '\u{1F34C}', description: 'Gemini 2.5 Flash Image (Custom)' });
+GOOGLE_MODEL_METADATA.set('gemini-3.1-flash-image-preview', { name: 'Nano Banana 2', icon: '\u{1F34C}', description: 'Gemini 3.1 Flash Image Preview (Custom)' });
+GOOGLE_MODEL_METADATA.set('gemini-3-pro-image-preview', { name: 'Nano Banana Pro', icon: '\u{1F34C}', description: 'Gemini 3 Pro Image (Custom)' });
 
 export const getModelMetadata = (modelId: string) => {
     const baseId = (modelId || '').split('@')[0];
@@ -998,7 +995,7 @@ export class KeyManager {
         const key = this.getStorageKey();
 
         try {
-            // 馃敀 Security Update: 
+            // 馃敀 Security Update:
             // 濡傛灉鐢ㄦ埛宸茬橱褰曪纴涓嶅啀淇𣸣瓨𫔄版湰鍦?localStorage锛岄槻姝㈡硠暗层€?
             // 浠呬缭瀛桦湪鍐呭瓨涓纴骞跺悓姝ュ埌浜戠銆?
             if (this.userId) {
@@ -1011,13 +1008,13 @@ export class KeyManager {
                     await this.saveToCloud(toSave);
                 }
             } else {
-                // 鍖垮悕鐢ㄦ埛锛氩繀椤讳缭瀛桦埌链湴锛屽惁𫔄椤埛鏂板悗涓㈠け
+                // Anonymous users persist only to local storage.
                 localStorage.setItem(key, JSON.stringify(toSave));
-                console.log('[KeyManager] 𨱅?(鍖垮悕) localStorage淇𣸣瓨鎴愬姛!', key);
+                console.log('[KeyManager] Anonymous local state saved:', key);
             }
 
         } catch (e) {
-            console.error('[KeyManager] 鉂?Failed to save state:', e);
+            console.error('[KeyManager] Failed to save state:', e);
         }
     }
 
@@ -1032,33 +1029,29 @@ export class KeyManager {
      * Set user ID and sync with cloud
      */
     async setUserId(userId: string | null) {
-        if (this.userId === userId) return;
-
-        // Unsubscribe from previous user's channel if exists
         this.unsubscribeRealtime();
 
         this.userId = userId;
 
         if (userId) {
-            console.log('[KeyManager] 馃懁 鐢ㄦ埛锏诲綍:', userId);
+            console.log('[KeyManager] User login:', userId);
 
-            // 馃殌 浼桦寲锛氩厛绔嫔嵆锷犺浇链湴缂揿瓨锛岃鐢ㄦ埛绔嫔嵆𫓺嫔埌鏁版嵁
+            // Prime local cache first for responsive UI.
             const localState = this.loadState();
             if (localState.slots.length > 0) {
-                console.log('[KeyManager] 钿?鍏埚姞杞芥湰鍦扮紦瀛?', localState.slots.length, '涓?slots');
+                console.log('[KeyManager] Local cache loaded:', localState.slots.length, 'slots');
                 this.state = localState;
                 this.notifyListeners();
             }
 
-            // 铹跺悗寮傛锷犺浇浜戠鏁版嵁锛堜笉阒诲 UI锛?
+            // Then hydrate cloud state asynchronously.
             setTimeout(() => {
                 this.loadFromCloud().then(() => {
                     this.subscribeRealtime(userId);
                 });
             }, 100);
         } else {
-            // Logout: Load from global (anon) storage
-            console.log('[KeyManager] 馃懁 鐢ㄦ埛锏诲嚭');
+            console.log('[KeyManager] User logout');
             this.state = this.loadState();
             this.notifyListeners();
         }
@@ -1067,7 +1060,7 @@ export class KeyManager {
     private realtimeChannel: any = null;
 
     private subscribeRealtime(userId: string) {
-        console.log('[KeyManager] 馃攲 杩炴帴瀹炴椂旋存柊棰戦亾...');
+        console.log('[KeyManager] Connecting realtime sync channel...');
         this.realtimeChannel = supabase.channel(`profiles:${userId}`)
             .on(
                 'postgres_changes',
@@ -1078,10 +1071,7 @@ export class KeyManager {
                     filter: `id=eq.${userId}`
                 },
                 async (payload) => {
-                    console.log('[KeyManager] 钿?鏀跺埌浜戠瀹炴椂旋存柊!', payload);
-                    // Avoid infinite loop if this client caused the update
-                    // Ideally check a 'last_modified_by' field, but strict "Cloud is Truth" works too
-                    // as long as loadFromCloud doesn't trigger saveToCloud immediately.
+                    console.log('[KeyManager] Cloud update received:', payload);
                     if (!this.isSyncing) {
                         await this.loadFromCloud();
                     }
@@ -1092,7 +1082,7 @@ export class KeyManager {
 
     private unsubscribeRealtime() {
         if (this.realtimeChannel) {
-            console.log('[KeyManager] 馃攲 鏂紑瀹炴椂旋存柊棰戦亾');
+            console.log('[KeyManager] Disconnect realtime sync channel');
             supabase.removeChannel(this.realtimeChannel);
             this.realtimeChannel = null;
         }
@@ -1101,15 +1091,17 @@ export class KeyManager {
     /**
      * Load state from Supabase (Cloud is Source of Truth)
      */
-    private async loadFromCloud(localKeys: KeySlot[] = []) { // localKeys arg kept for compatibility but ignored for logged-in
+    /**
+     * Load state from Supabase (Cloud is Source of Truth)
+     */
+    private async loadFromCloud() {
         if (!this.userId) return;
 
-        // Skip cloud load for Dev User
         if (this.userId.startsWith('dev-user-')) return;
 
         try {
             this.isSyncing = true;
-            console.log('[KeyManager] 钚侊笍 姝ｅ湪浠庝簯绔媺鍙栨暟鎹?..');
+            console.log('[KeyManager] Loading cloud state...');
 
             const { data, error } = await supabase
                 .from('profiles')
@@ -1121,17 +1113,13 @@ export class KeyManager {
                 if (error.code !== 'PGRST116') {
                     console.warn('[KeyManager] Cloud fetch failed:', error);
                 }
-                // If not found, it means empty cloud state. 
-                // We do NOT merge local keys anymore strictly.
-                // Or maybe we treat first login as "Import"? 
-                // Let's stick to "Cloud is Truth". If cloud empty -> local empty.
+                // Empty cloud state: do not force-merge local keys.
                 return;
             }
 
             if (data && data.user_apis) {
                 let cloudSlots = data.user_apis as KeySlot[];
                 if (Array.isArray(cloudSlots)) {
-                    // Backfill new fields
                     cloudSlots = cloudSlots.map(s => ({
                         ...s,
                         name: s.name || 'Cloud Key',
@@ -1139,39 +1127,36 @@ export class KeyManager {
                         totalCost: s.totalCost || 0,
                         budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
                         tokenLimit: s.tokenLimit !== undefined ? s.tokenLimit : -1,
-                        supportedModels: s.supportedModels || [],
-                        type: s.type || determineKeyType(s.provider || 'Google', s.baseUrl),
-                        updatedAt: s.updatedAt || s.createdAt || Date.now()
+                        disabled: s.disabled || false,
+                        createdAt: s.createdAt || Date.now(),
+                        failCount: s.failCount || 0,
+                        successCount: s.successCount || 0,
+                        lastUsed: s.lastUsed || null,
+                        lastError: s.lastError || null,
+                        status: s.status || 'unknown',
+                        weight: s.weight || 50,
+                        timeout: s.timeout || 30000,
+                        maxRetries: s.maxRetries || 2,
+                        retryDelay: s.retryDelay || 1000,
+                        type: determineKeyType(s.provider || 'Google', s.baseUrl),
+                        compatibilityMode: s.compatibilityMode || 'standard',
                     }));
 
-                    // 馃敀 Security & Sync Update:
-                    // 瀹屽叏淇′换浜戠鏁版嵁 (Cloud Authoritative)
-                    // 涓嶅啀杩涜钖埚苟锛岀洿鎺ヨ𬭼栨湰鍦扮姸镐并€?
-
-                    // 馃敀 Security & Sync Update:
-                    // 瀹屽叏淇′换浜戠鏁版嵁 (Cloud Authoritative)
-                    // 涓嶅啀杩涜钖埚苟锛岀洿鎺ヨ𬭼栨湰鍦扮姸镐并€?
-
-                    // 𨱅?镊姩琛ュ叏: 濡傛灉鏄?Google Key (鎴栨棫鐗?Gemini),纭缭鍖呭惈瀹樻柟妯″瀷锛屽苟鍓旈櫎闱炲𪽈鏂规ā鍨?
                     cloudSlots = cloudSlots.map(s => {
                         const isGoogle = s.provider === 'Google' || (s.provider as string) === 'Gemini';
-
-                        // 𨱅?Force Migrate 'Gemini' -> 'Google'
                         let newProvider = s.provider;
-                        if ((s.provider as string) === 'Gemini') {
-                            newProvider = 'Google';
-                        }
+                        if ((s.provider as string) === 'Gemini' && !s.baseUrl) newProvider = 'Google' as Provider;
+                        if (s.provider === 'Google' && s.baseUrl && !s.baseUrl.includes('googleapis.com')) newProvider = 'Custom' as Provider;
 
                         if (isGoogle) {
                             const currentModels = (s.supportedModels || []).filter((m: string) => isGoogleOfficialModelId(parseModelString(m).id));
                             const missingDefaults = DEFAULT_GOOGLE_MODELS.filter(m => !currentModels.includes(m));
 
-                            // If missing defaults OR provider needs migration
                             if (missingDefaults.length > 0 || newProvider !== s.provider) {
                                 console.log(`[KeyManager] Cloud Sync: Auto-adding models/fixing provider for key ${s.name}`);
                                 return {
                                     ...s,
-                                    provider: 'Google', // Force correct provider
+                                    provider: 'Google',
                                     supportedModels: [...currentModels, ...missingDefaults]
                                 };
                             }
@@ -1180,8 +1165,7 @@ export class KeyManager {
                     });
 
                     this.state.slots = cloudSlots;
-
-                    console.log(`[KeyManager] 𨱅?浜戠鏁版嵁钖屾瀹屾垚 (瑕嗙洊妯″纺). Keys: ${this.state.slots.length}`);
+                    console.log('[KeyManager] Cloud sync completed (overwrite mode). Keys:', this.state.slots.length);
                     this.notifyListeners();
                 }
             }
@@ -1225,7 +1209,7 @@ export class KeyManager {
      */
     private async saveToCloud(state: KeyManagerState) {
         if (!this.userId || this.userId.startsWith('dev-user-')) {
-            console.log('[KeyManager] 钿狅笍 璺宠绷浜戠涓娄紶 (镞爑serId鎴杁ev鐢ㄦ埛)');
+            console.log('[KeyManager] Skip cloud upload (missing userId or dev user)');
             return;
         }
 
@@ -1234,43 +1218,39 @@ export class KeyManager {
         }
 
         try {
-            console.log('[KeyManager] 馃摛 寮€濮嬩笂浼犲埌Supabase...', {
+            console.log('[KeyManager] Uploading to Supabase...', {
                 userId: this.userId,
-                slots鏁伴噺: state.slots.length
+                slotCount: state.slots.length
             });
 
-            // 1. 鍏堥獙璇佸𫟄鍓岖敤鎴疯韩浠?
             const { data: { user }, error: authError } = await supabase.auth.getUser();
 
             if (authError || !user) {
-                console.error('[KeyManager] 鉂?鐢ㄦ埛链橱褰曟垨session杩囨湡!', authError);
+                console.error('[KeyManager] User auth invalid or session expired!', authError);
                 return;
             }
 
-            console.log('[KeyManager] 𨱅?鐢ㄦ埛楠岃瘉鎴愬姛:', user.id);
+            console.log('[KeyManager] User validation succeeded:', user.id);
 
-            // 2. 纭缭userId涓€镊?
             if (user.id !== this.userId) {
-                console.error('[KeyManager] 鉂?userId涓嶅尮閰?', {
+                console.error('[KeyManager] userId mismatch:', {
                     expected: this.userId,
                     actual: user.id
                 });
-                this.userId = user.id; // 旋存柊userId
+                this.userId = user.id;
             }
 
-            // 3. 鍑嗗涓娄紶鏁版嵁
             const uploadData = {
-                id: user.id, // 浣跨敤楠岃瘉钖庣殑user.id
+                id: user.id,
                 user_apis: state.slots,
                 updated_at: new Date().toISOString()
             };
 
-            console.log('[KeyManager] 馃捑 镓цupdate...', {
+            console.log('[KeyManager] Running update...', {
                 id: uploadData.id,
                 model_count: state.slots[0]?.supportedModels?.length
             });
 
-            // 4. 镓ц旋存柊锛埚吋瀹逛粎寮€鏀?SELECT/UPDATE 镄?RLS锛?
             const { error } = await supabase
                 .from('profiles')
                 .update({
@@ -1282,38 +1262,34 @@ export class KeyManager {
             if (error) {
                 const isNetworkError = error.message?.includes('fetch') || error.message?.includes('Network');
                 if (isNetworkError) {
-                    console.warn('[KeyManager] 网络异常，跳过本次 Supabase 更新，稍后重试');
+                    console.warn('[KeyManager] \u7F51\u7EDC\u5F02\u5E38\uFF0C\u8DF3\u8FC7\u672C\u6B21 Supabase \u66F4\u65B0\uFF0C\u7A0D\u540E\u91CD\u8BD5');
                     this.cloudSyncBackoffUntil = Date.now() + 30_000;
                     return;
-                } else {
-                    console.error('[KeyManager] 鉂?Supabase update澶辫触!', {
-                        code: error.code,
-                        message: error.message,
-                        details: error.details,
-                        hint: error.hint
-                    });
-                    if (error.code === '42501' || error.message.includes('policy')) {
-                        console.error('[KeyManager] 钿狅笍 RLS绛栫𬀩阒绘! 璇锋镆upabase RLS璁剧疆');
-                        this.cloudSyncBackoffUntil = Date.now() + 5 * 60_000;
-                        return;
-                    }
+                }
+
+                console.error('[KeyManager] Supabase update failed!', {
+                    code: error.code,
+                    message: error.message,
+                    details: error.details,
+                    hint: error.hint
+                });
+                if (error.code === '42501' || error.message.includes('policy')) {
+                    console.error('[KeyManager] RLS policy blocked update. Check Supabase RLS settings.');
+                    this.cloudSyncBackoffUntil = Date.now() + 5 * 60_000;
+                    return;
                 }
                 throw error;
             }
 
-            console.log('[KeyManager] 𨱅?Supabase涓娄紶鎴愬姛!');
+            console.log('[KeyManager] Supabase upload succeeded!');
             this.cloudSyncBackoffUntil = 0;
 
-            // 5. 瑙﹀彂costService钖屾
             const { forceSync } = await import('../billing/costService');
             forceSync().catch(console.error);
-
         } catch (e: any) {
             const isNetworkError = e.message?.includes('fetch') || e.message?.includes('Network');
-            if (isNetworkError) {
-                // 闱𣗋粯澶勭悊缃戠粶阌栾
-            } else {
-                console.error('[KeyManager] 鉂?saveToCloud寮傚父:', e);
+            if (!isNetworkError) {
+                console.error('[KeyManager] saveToCloud failed:', e);
             }
         }
     }
@@ -1362,9 +1338,9 @@ export class KeyManager {
         headerName?: string
     ): Promise<{ success: boolean, message?: string }> {
         try {
-            // 𨱅?Sanitize input key for test
+            // Sanitize input key before connectivity test
             const cleanKey = key.replace(/[^\x00-\x7F]/g, "").trim();
-            if (!cleanKey) return { success: false, message: 'API Key 镞犳晥 (暗€涓虹函鑻辨枃瀛楃)' };
+            if (!cleanKey) return { success: false, message: 'API Key \u65E0\u6548\uFF08\u4EC5\u652F\u6301 ASCII / \u82F1\u6587\u5B57\u7B26\uFF09' };
 
             let targetUrl = url;
             const headers: Record<string, string> = {};
@@ -1956,7 +1932,7 @@ export class KeyManager {
      */
     getAvailableProxyModels(): { id: string; supportedAspectRatios: any[]; supportedSizes: any[]; supportsGrounding: boolean }[] {
         const models = new Map<string, any>();
-        // Import enums to avoid circular dependency if possible, or just use strings if suitable. 
+        // Import enums to avoid circular dependency if possible, or just use strings if suitable.
         // Actually we can access AspectRatio/ImageSize from imports if available, but to avoid circular deps with types.ts if this file imports it...
         // KeyManager imports types from apiConfig? No.
         // Let's assume defaults.
@@ -2292,7 +2268,7 @@ export class KeyManager {
  * Update an existing API key
  */
     async updateKey(id: string, updates: Partial<KeySlot>): Promise<void> {
-        console.log('[KeyManager] 馃敡 updateKey琚𤾀鐢?', {
+        console.log('[KeyManager] updateKey invoked:', {
             id,
             updates,
             supportedModelsBefore: this.state.slots.find(s => s.id === id)?.supportedModels
@@ -2300,79 +2276,49 @@ export class KeyManager {
         const slot = this.state.slots.find(s => s.id === id);
         if (slot) {
             Object.assign(slot, updates);
-            // 𨱅?Recalculate type if provider or baseUrl changed (AND type wasn't explicitly provided)
             if ((updates.provider || updates.baseUrl !== undefined) && !updates.type) {
                 slot.type = determineKeyType(slot.provider, slot.baseUrl);
             }
-            // Ensure supportedModels is always an array
             if (updates.supportedModels) {
-                // 𨱅?𬭼存帴浣跨敤鐢ㄦ埛鎻愪緵镄勬ā鍨?涓𡺃嚜锷ㄨ绷婊ゆ垨淇敼
                 slot.supportedModels = normalizeModelList(updates.supportedModels, slot.provider);
             }
-            slot.updatedAt = Date.now(); // Update timestamp
+            slot.updatedAt = Date.now();
             await this.saveState();
             this.notifyListeners();
         }
     }
 
 
-
     /**
      * Validate an API key by making a test request
      */
     /**
-     * Validate an API key by making a test request
-     * @param syncModels If true, also fetches and returns the latest model list from the API
+     * Validate an API key by making a test request.
+     * @param syncModels If true, also fetches and returns the latest model list from the API.
      */
     async validateKey(key: string, provider: string = 'Gemini', syncModels: boolean = false): Promise<{ valid: boolean; error?: string; models?: string[] }> {
         if (provider !== 'Gemini' && provider !== 'Google' && provider !== 'Custom' && provider !== 'OpenAI') {
-            // For other providers, we might skip validation or implement specific logic later
-            // But if syncModels is true, we should try to fetch models if possible or return empty
-            if (syncModels && (provider === 'Zhipu' || provider === 'DeepSeek' || provider === 'SiliconFlow' || provider === 'Moonshot')) {
-                // Try to fetch models for known 3rd parties using OpenAI compat
-                try {
-                    // We need baseUrl from the slot... but validateKey doesn't have it passed in simply.
-                    // Optimization: validateKey usually called with just key/provider.
-                    // Let's rely on refreshKey passing the correct context or just fetching models if we can.
-                    // Actually, fetching models requires BaseURL for non-Google.
-                    // We can't easily fetch models here without BaseURL.
-                    // Let's modify refreshKey to handle the fetching separately or pass BaseURL to validateKey.
-                    // To keep validateKey signature simple, we might just return valid:true for others.
-                } catch (e) {
-                    // 楠岃瘉杩囩▼涓嚭阌欙纴缁х画杩斿洖榛椫缁撴灉
-                    console.warn('[KeyManager] Validation error:', e);
-                }
-            }
+            // Other OpenAI-compatible providers are validated in refreshKey with baseUrl context.
             return { valid: true };
         }
 
         try {
-            // 1. Basic Validation (Connectivity)
             let isValid = false;
             let errorMsg = undefined;
             let fetchedModels: string[] | undefined = undefined;
 
-            // Define BaseURL for validation
-            // Ideally validateKey should take baseUrl, but refactoring that might break other calls.
-            // Let's look at how it's called. 
-            // It's called by refreshKey (has slot), revalidateAll (has slot).
-            // Let's assume for standard Google we use default URL.
-
-            // Standard Google Validation
             if (provider === 'Gemini' || provider === 'Google') {
                 const response = await fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
                     { method: 'GET' }
                 );
 
-                // Capture Quota
                 const limitRequests = response.headers.get('x-ratelimit-limit-requests');
                 const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
                 const resetRequests = response.headers.get('x-ratelimit-reset-requests');
 
                 const existingSlot = this.state.slots.find(s => s.key === key);
                 if (existingSlot && (limitRequests || remainingRequests)) {
-                    // ... (quota update logic) ...
                     const resetSeconds = resetRequests ? (parseInt(resetRequests) || 0) : 0;
                     this.updateQuota(existingSlot.id, {
                         limitRequests: parseInt(limitRequests || '0'),
@@ -2387,47 +2333,25 @@ export class KeyManager {
                     isValid = true;
                 } else if (response.status === 429) {
                     isValid = true;
-                    errorMsg = '链夋晥浣嗗凡闄愭祦';
+                    errorMsg = '\u6709\u6548\u4F46\u5DF2\u9650\u6D41';
                 } else if (response.status === 401 || response.status === 403) {
                     isValid = false;
-                    errorMsg = 'API Key 镞犳晥';
+                    errorMsg = 'API Key \u65E0\u6548';
                 } else {
                     isValid = false;
                     errorMsg = `HTTP ${response.status}`;
                 }
 
-                // Sync Models if requested and valid
                 if (isValid && syncModels) {
-                    // We can actually use the response we just got!
-                    const data = await response.json(); // Wait, we consumed body? No, we checked status.
-                    // Response body can be read once. strict checks might prevent reading if not ok.
-                    // If response.ok, we can clone or just read.
-                    // fetchGoogleModels helper parses logic. Let's just call that to be consistent with whitelist logic.
                     fetchedModels = await fetchGoogleModels(key);
                 }
             } else {
-                // OpenAI / Custom / Proxy
-                // We need BaseURL. validateKey signature upgrade required?
-                // For now, let's assume if we are here, we might not be able to validate without BaseURL.
-                // But wait, refreshKey accesses slot, so it knows BaseURL.
-                // Let's update `refreshKey` to handle the model fetching separately, 
-                // OR update `validateKey` signature. 
-                // Updating `validateKey` signature to `(key, provider, baseUrl?, syncModels?)` seems best for future.
-                // BUT `fetchRemoteModels` (lines 1201-1227) already exists and does similar things?
-                // Let's assume validateKey just checks validity. 
-                // And refreshKey orchestrates both.
-
-                // ... Wait, the plan said update validateKey.
-                // Let's stick to the plan but be smart.
-                // Check if `refreshKey` has access to `baseUrl`. Yes `slot.baseUrl`.
-                // So checking `validateKey` again.
-                return { valid: true }; // Fallback for now without baseurl changes
+                return { valid: true };
             }
 
             return { valid: isValid, error: errorMsg, models: fetchedModels };
-
         } catch (e: any) {
-            return { valid: false, error: e.message || '缃戠粶阌栾' };
+            return { valid: false, error: e.message || '\u7F51\u7EDC\u9519\u8BEF' };
         }
     }
 
@@ -2461,7 +2385,7 @@ export class KeyManager {
             console.log(`[KeyManager] Refreshing key ${id} (Syncing models: YES)`);
 
             // 1. Validation phase
-            // We pass syncModels=true for Google. 
+            // We pass syncModels=true for Google.
             // For Proxy/OpenAI, validateKey lacks baseUrl, so we handle model fetching manually here if valid.
             const result = await this.validateKey(slot.key, slot.provider, true);
 
@@ -2493,7 +2417,7 @@ export class KeyManager {
                         new: newModels.length
                     });
 
-                    // Helper to merge if strictly required (e.g. Google defaults), 
+                    // Helper to merge if strictly required (e.g. Google defaults),
                     // but fetchGoogleModels already handles whitelisting/defaults.
                     // fetchOpenAICompatModels returns raw list.
                     // normalizeModelList handles deduplication.
@@ -2523,7 +2447,7 @@ export class KeyManager {
         for (const slot of this.state.slots) {
             // We do NOT sync models during background revalidateAll to save bandwidth/latency,
             // unless we want to? Users requested "Reflects API capabilities", usually implies explicit action.
-            // Let's keep revalidateAll light (connections only). 
+            // Let's keep revalidateAll light (connections only).
             // Only manual "refreshKey" does full sync.
             const result = await this.validateKey(slot.key, slot.provider, false);
             slot.status = result.valid ? 'valid' : 'invalid';
@@ -2788,14 +2712,14 @@ export class KeyManager {
 
         const result = Array.from(uniqueModels.values());
 
-        // 馃殌 旋存柊缂揿瓨
+        // Refresh cache
         this.globalModelListCache = {
             models: result,
             slotsHash: combinedHash,
             timestamp: Date.now()
         };
 
-        console.log('[keyManager.getGlobalModelList] 链€缁堣繑锲炴ā鍨嬫暟阅?', result.length);
+        console.log('[keyManager.getGlobalModelList] Final model count:', result.length);
         return result;
     }
 
@@ -3245,7 +3169,7 @@ export async function fetchGoogleModels(apiKey: string): Promise<string[]> {
                 return allowedPatterns.some(pattern => pattern.test(m));
             }) || [];
 
-        console.log(`[KeyManager] 𨱅?锏藉悕鍗曡绷婊ゅ悗鍓╀捆 ${models.length} 涓ā鍨?`, models);
+        console.log(`[KeyManager] Strict whitelist kept ${models.length} models:`, models);
 
         // 馃殌 [Strict Mode] Ensure DEFAULT models (especially strict whitelist) are ALWAYS present
         // Even if API doesn't list them (e.g. Imagen 4 might be hidden), we force them in.
@@ -3344,7 +3268,7 @@ export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): 
         });
 
         const result = Array.from(new Set(deduped.values()));
-        console.log(`[KeyManager] 𨱅?铡婚吨钖?${result.length} 涓敮涓€妯″瀷:`, result);
+        console.log(`[KeyManager] Deduplicated down to ${result.length} unique models:`, result);
         return result;
     } catch (error) {
         console.error('[KeyManager] Error fetching proxy models:', error);
@@ -3451,4 +3375,3 @@ export async function autoDetectAndConfigureModels(apiKey: string, baseUrl?: str
 }
 
 // Re-export ProxyModelConfig for convenience
-

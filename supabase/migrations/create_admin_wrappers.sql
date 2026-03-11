@@ -39,15 +39,15 @@ DECLARE
 BEGIN
     -- Check if this is the first admin
     IF p_email = '977483863@qq.com' THEN
-        SELECT * INTO v_admin_record 
-        FROM admin_users 
+        SELECT * INTO v_admin_record
+        FROM admin_users
         WHERE email = '977483863@qq.com';
-        
+
         IF NOT FOUND THEN
             -- First time login
             INSERT INTO admin_users (email, password_hash, is_super_admin, requires_password_change)
             VALUES ('977483863@qq.com', v_default_password, TRUE, TRUE);
-            
+
             RETURN jsonb_build_object(
                 'success', TRUE,
                 'requires_password_change', TRUE,
@@ -55,19 +55,19 @@ BEGIN
             );
         END IF;
     END IF;
-    
+
     -- Find admin
     SELECT * INTO v_admin_record
     FROM admin_users
     WHERE email = p_email;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', FALSE,
             'message', '您没有管理员权限'
         );
     END IF;
-    
+
     -- Verify password
     IF v_admin_record.password_hash != p_password THEN
         RETURN jsonb_build_object(
@@ -75,7 +75,7 @@ BEGIN
             'message', '密码错误'
         );
     END IF;
-    
+
     -- Check if password change required
     IF v_admin_record.requires_password_change THEN
         RETURN jsonb_build_object(
@@ -84,12 +84,12 @@ BEGIN
             'message', '首次登录，请修改密码'
         );
     END IF;
-    
+
     -- Update last login
-    UPDATE admin_users 
+    UPDATE admin_users
     SET last_login_at = NOW()
     WHERE id = v_admin_record.id;
-    
+
     RETURN jsonb_build_object(
         'success', TRUE,
         'requires_password_change', FALSE,

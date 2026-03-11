@@ -168,7 +168,7 @@ const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onComplete }) => {
             resizeObserver?.disconnect();
         };
     }, [currentStepIndex, step.title, step.description, isMobile]);
-    
+
     // Calculate position for the tooltip - use transform for GPU acceleration
     const getTooltipTransform = (): React.CSSProperties => {
         const viewportWidth = window.innerWidth;

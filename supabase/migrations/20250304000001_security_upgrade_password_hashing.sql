@@ -11,11 +11,11 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- 1. Add new column for bcrypt hash (keeping old column for migration)
 -- ============================================
 
-ALTER TABLE public.admin_settings 
+ALTER TABLE public.admin_settings
 ADD COLUMN IF NOT EXISTS password_hash_bcrypt TEXT;
 
 -- Add column to track password hash type (md5 or bcrypt)
-ALTER TABLE public.admin_settings 
+ALTER TABLE public.admin_settings
 ADD COLUMN IF NOT EXISTS password_hash_type VARCHAR(10) DEFAULT 'md5';
 
 -- ============================================
@@ -36,19 +36,19 @@ DECLARE
     is_valid BOOLEAN := FALSE;
 BEGIN
     -- Get stored password hashes
-    SELECT 
+    SELECT
         password_hash,
         password_hash_bcrypt,
         COALESCE(password_hash_type, 'md5')
     INTO stored_hash, stored_hash_bcrypt, hash_type
     FROM public.admin_settings
     WHERE id = 1;
-    
+
     -- If no password set, deny access
     IF stored_hash IS NULL AND stored_hash_bcrypt IS NULL THEN
         RETURN FALSE;
     END IF;
-    
+
     -- Check based on hash type
     IF hash_type = 'bcrypt' AND stored_hash_bcrypt IS NOT NULL THEN
         -- Verify using bcrypt
@@ -57,23 +57,23 @@ BEGIN
         -- Legacy MD5 verification (for backward compatibility)
         input_hash_md5 := md5(input_password);
         is_valid := stored_hash = input_hash_md5;
-        
+
         -- If MD5 password is valid, automatically upgrade to bcrypt
         -- This ensures passwords are migrated on next successful login
         IF is_valid THEN
             UPDATE public.admin_settings
-            SET 
+            SET
                 password_hash_bcrypt = crypt(input_password, gen_salt('bf', 10)),
                 password_hash_type = 'bcrypt',
                 password_hash = NULL,  -- Clear old MD5 hash
                 updated_at = NOW()
             WHERE id = 1;
-            
+
             -- Log the migration (optional, for audit)
             RAISE NOTICE 'Password automatically upgraded from MD5 to bcrypt';
         END IF;
     END IF;
-    
+
     RETURN is_valid;
 END;
 $$;
@@ -92,17 +92,17 @@ BEGIN
     IF LENGTH(input_password) < 6 THEN
         RAISE EXCEPTION 'Password must be at least 6 characters long';
     END IF;
-    
+
     -- Store password using bcrypt (no need to store MD5 anymore)
     INSERT INTO public.admin_settings (id, password_hash_bcrypt, password_hash_type, updated_at)
     VALUES (1, crypt(input_password, gen_salt('bf', 10)), 'bcrypt', NOW())
     ON CONFLICT (id) DO UPDATE
-    SET 
+    SET
         password_hash_bcrypt = crypt(input_password, gen_salt('bf', 10)),
         password_hash_type = 'bcrypt',
         password_hash = NULL,  -- Clear any old MD5 hash
         updated_at = NOW();
-    
+
     RETURN TRUE;
 EXCEPTION
     WHEN OTHERS THEN
@@ -127,11 +127,11 @@ BEGIN
     SELECT password_hash INTO current_hash
     FROM public.admin_settings
     WHERE id = 1 AND password_hash_type = 'md5';
-    
+
     IF current_hash IS NULL THEN
         RETURN 'No MD5 password found to upgrade, or already using bcrypt';
     END IF;
-    
+
     -- Note: We cannot upgrade without knowing the plaintext password
     -- The upgrade happens automatically on next successful login
     RETURN 'Password will be upgraded on next successful login';
@@ -156,25 +156,25 @@ BEGIN
         RETURN QUERY SELECT FALSE, 'Password must be at least 8 characters long'::TEXT;
         RETURN;
     END IF;
-    
+
     -- Check for at least one number
     IF NOT (password ~ '[0-9]') THEN
         RETURN QUERY SELECT FALSE, 'Password must contain at least one number'::TEXT;
         RETURN;
     END IF;
-    
+
     -- Check for at least one letter
     IF NOT (password ~ '[a-zA-Z]') THEN
         RETURN QUERY SELECT FALSE, 'Password must contain at least one letter'::TEXT;
         RETURN;
     END IF;
-    
+
     -- Check for complexity (optional - uncomment if needed)
     -- IF NOT (password ~ '[!@#$%^&*(),.?":{}|<>]') THEN
     --     RETURN QUERY SELECT FALSE, 'Password must contain at least one special character'::TEXT;
     --     RETURN;
     -- END IF;
-    
+
     RETURN QUERY SELECT TRUE, 'Password meets requirements'::TEXT;
 END;
 $$;
@@ -199,23 +199,23 @@ DECLARE
 BEGIN
     -- Verify password
     is_valid := public.verify_admin_password(input_password);
-    
+
     IF NOT is_valid THEN
-        RETURN QUERY SELECT 
-            FALSE, 
-            NULL::TEXT, 
+        RETURN QUERY SELECT
+            FALSE,
+            NULL::TEXT,
             'Invalid password'::TEXT,
             FALSE;
         RETURN;
     END IF;
-    
+
     -- Check if still using MD5 (requires password change)
     SELECT password_hash_type INTO hash_type
     FROM public.admin_settings
     WHERE id = 1;
-    
+
     -- Generate a simple session token (in production, use JWT or similar)
-    RETURN QUERY SELECT 
+    RETURN QUERY SELECT
         TRUE,
         encode(gen_random_bytes(32), 'hex')::TEXT,
         'Authentication successful'::TEXT,

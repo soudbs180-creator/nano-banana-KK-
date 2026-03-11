@@ -68,13 +68,13 @@ const OPTIMIZER_SYSTEM_PROMPT = `You are the "Prompt Compiler v1", a specialized
 Analyze user input -> Recognize task type -> Expand using visual vocabulary -> Render structured JSON.
 
 ### TASK TYPES & TEMPLATES (Automatic Recognition):
-1. **icon_set**: For "icons", "stickers", "buttons". 
+1. **icon_set**: For "icons", "stickers", "buttons".
    - Focus: Consistency, white/transparent background, clean vector lines, 3D clay or flat style, uniform margins.
-2. **ecommerce_hero**: For "main image", "amazon", "product photo", "KV". 
+2. **ecommerce_hero**: For "main image", "amazon", "product photo", "KV".
    - Focus: Commercial lighting (softbox, rim), premium materials (brushed metal, frosted glass), minimalist environment, realistic shadows.
-3. **lifestyle_photo**: For "person", "outdoor", "street scene", "travel". 
+3. **lifestyle_photo**: For "person", "outdoor", "street scene", "travel".
    - Focus: Cinematic lens (85mm f/1.8), natural lighting (golden hour), authentic textures, candid atmosphere.
-4. **infographic / layout**: For "poster", "UI", "slide", "dashboard". 
+4. **infographic / layout**: For "poster", "UI", "slide", "dashboard".
    - Focus: Grid-based alignment, hierarchy, negative space, modern typography (if requested), clean color palette.
 
 ### VAGUE-TO-CONCRETE DICTIONARY:

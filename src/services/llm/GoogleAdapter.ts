@@ -182,12 +182,12 @@ function extractGroundingInfo(data: any, candidate: any): {
 
 /**
  * Google Adapter - Official Google API Protocol Only
- * 
+ *
  * Handles:
  * - Gemini (Chat & Image via :generateContent)
  * - Imagen (Image via :predict)
  * - Veo (Video via :predictLongRunning)
- * 
+ *
  * STRICTLY ignores OpenAI/Antigravity protocols.
  */
 export class GoogleAdapter implements LLMAdapter {
@@ -647,7 +647,7 @@ export class GoogleAdapter implements LLMAdapter {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         // if (!keySlot.key) ... throw
 
-        // Actually, for Imagen, let's stick to the URL key pattern unless it fails, 
+        // Actually, for Imagen, let's stick to the URL key pattern unless it fails,
         // to be consistent with Gemini. Docs say :predict accepts key param.
 
         const response = await fetch(url, {

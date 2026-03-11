@@ -54,7 +54,14 @@ export const getPromptBarFrontPosition = (
   const tx = Number.isFinite(currentTransform?.x) ? currentTransform.x : 0;
   const ty = Number.isFinite(currentTransform?.y) ? currentTransform.y : 0;
 
-  const screenX = rect.left + rect.width / 2;
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+  const viewportLeft = viewportRect?.left ?? 0;
+
+  // on mobile, strictly use center of viewport to avoid side-shifted input boxes throwing off the layout
+  const screenX = isMobile && viewportRect
+    ? viewportLeft + (viewportRect.width / 2)
+    : rect.left + rect.width / 2;
+
   const viewportTop = viewportRect?.top ?? 0;
   const promptTop = rect.top;
   const availableHeight = Math.max(promptTop - viewportTop, cardHeight + gap);

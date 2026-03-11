@@ -16,9 +16,9 @@ SECURITY DEFINER -- 以函数所有者的权限执行，绕过RLS
 AS $$
 BEGIN
     -- 删除该供应商的所有现有模型
-    DELETE FROM public.admin_credit_models 
+    DELETE FROM public.admin_credit_models
     WHERE provider_id = p_provider_id;
-    
+
     -- 插入新配置
     FOR i IN 0..jsonb_array_length(p_models) - 1 LOOP
         INSERT INTO public.admin_credit_models (
@@ -64,7 +64,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-    DELETE FROM public.admin_credit_models 
+    DELETE FROM public.admin_credit_models
     WHERE provider_id = p_provider_id;
 END;
 $$;
@@ -83,10 +83,10 @@ ON public.admin_credit_models FOR ALL
 USING (
     -- 允许 authenticated 用户（已通过密码验证）
     auth.role() = 'authenticated'
-    OR 
+    OR
     -- 或者 profiles 表中标记为 admin 的用户
     EXISTS (
-        SELECT 1 FROM public.profiles 
+        SELECT 1 FROM public.profiles
         WHERE id = auth.uid() AND role = 'admin'
     )
 );

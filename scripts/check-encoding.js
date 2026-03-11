@@ -15,21 +15,25 @@ const roots = [
 ];
 
 const extensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.html', '.css']);
-const suspiciousPatterns = [
-  /�/,
-  /锟/,
-  /馃/,
-  /鍏抽棴/,
-  /阅岖粯/,
-  /缃戠粶阌栾/,
-  /API Key 镞犳晥/,
-  /链夋晥浣嗗凡闄愭祦/,
-  /缂哄皯/,
-  /鏀粯/,
-  /绉垎鍏呭€/,
-  /鐢ㄦ埛/,
-  /涓嬭浇/,
-  /棰勮/,
+const suspiciousTokens = [
+  '锟?',
+  '閿?',
+  '棣?',
+  '閸忔娊妫?',
+  '闃呭矕绮?',
+  '缂冩垹绮堕槍鏍绢嚖',
+  'API Key 闀炵姵鏅?',
+  '閾惧鏅ユ担鍡楀嚒闂勬劖绁?',
+  '缂傚搫鐨?',
+  '閺€顖欑帛',
+  '缁夘垰鍨庨崗鍛偓',
+  '閻劍鍩?',
+  '娑撳娴?',
+  '妫板嫯顫?',
+  '馃',
+  '𨱅?',
+  '鉂?',
+  '钿狅笍',
 ];
 
 const issues = [];
@@ -107,7 +111,7 @@ function walk(targetPath) {
     const trimmed = current.trim();
     if (!trimmed) return;
 
-    if (suspiciousPatterns.some((pattern) => pattern.test(trimmed))) {
+    if (suspiciousTokens.some((token) => trimmed.includes(token))) {
       issues.push(`${targetPath}:${index + 1}: ${trimmed}`);
     }
   });

@@ -1,5 +1,6 @@
-﻿import React, { Suspense, lazy, useState, useCallback, useRef, useEffect, startTransition } from 'react';
+import React, { Suspense, lazy, useState, useCallback, useRef, useEffect, startTransition } from 'react';
 import InfiniteCanvas, { InfiniteCanvasHandle } from './components/canvas/InfiniteCanvas';
+import MobileChatFeed from './components/MobileChatFeed';
 
 import PromptBar from './components/layout/PromptBar';
 import ImageNode from './components/image/ImageCard';
@@ -1172,7 +1173,7 @@ const AppContent: React.FC<AppContentProps> = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const lastGenerateAtRef = useRef(0);
   const lastGenerateSignatureRef = useRef<{ value: string; at: number } | null>(null);
-  const pollTaskStatusRef = useRef<((node: PromptNode) => Promise<void>) | null>(null);
+  const pollTaskStatusRef = useRef<((node: PromptNode, taskIdOverride?: string) => Promise<void>) | null>(null);
   // error state removed, using notify service
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -2048,6 +2049,89 @@ const AppContent: React.FC<AppContentProps> = () => {
     ));
   }, [buildAutoPptSlides]);
 
+  const getPendingTaskIds = useCallback((node?: PromptNode | null): string[] => {
+    const rawPendingTaskIds = (node?.generationMetadata as { pendingTaskIds?: unknown } | undefined)?.pendingTaskIds;
+    const fallbackTaskIds = node?.jobId ? [node.jobId] : [];
+    const normalizedTaskIds = Array.isArray(rawPendingTaskIds) ? rawPendingTaskIds : fallbackTaskIds;
+    return Array.from(new Set(
+      normalizedTaskIds.filter((taskId): taskId is string => typeof taskId === 'string' && taskId.trim().length > 0)
+    ));
+  }, []);
+
+  const buildPendingTaskMetadata = useCallback((node: PromptNode | null | undefined, pendingTaskIds: string[]) => ({
+    ...(node?.generationMetadata || {}),
+    pendingTaskIds,
+  }), []);
+
+  const registerPendingTaskId = useCallback((node: PromptNode, taskId: string): PromptNode => {
+    const nextPendingTaskIds = Array.from(new Set([...getPendingTaskIds(node), taskId]));
+    return {
+      ...node,
+      jobId: nextPendingTaskIds[0],
+      generationMetadata: buildPendingTaskMetadata(node, nextPendingTaskIds),
+    };
+  }, [buildPendingTaskMetadata, getPendingTaskIds]);
+
+  const resolvePendingTaskState = useCallback((node: PromptNode, completedTaskId?: string) => {
+    const currentPendingTaskIds = getPendingTaskIds(node);
+    const nextPendingTaskIds = completedTaskId
+      ? currentPendingTaskIds.filter(taskId => taskId !== completedTaskId)
+      : [];
+    return {
+      nextPendingTaskIds,
+      nextJobId: nextPendingTaskIds[0],
+      nextGenerationMetadata: buildPendingTaskMetadata(node, nextPendingTaskIds),
+    };
+  }, [buildPendingTaskMetadata, getPendingTaskIds]);
+
+  const getExpectedGenerationCount = useCallback((node?: PromptNode | null) => (
+    Math.max(1, Number(node?.lastGenerationTotalCount || node?.parallelCount || 1) || 1)
+  ), []);
+
+  const getGeneratedImagePosition = useCallback((
+    basePosition: { x: number; y: number },
+    aspectRatio: AspectRatio,
+    mode: GenerationMode | undefined,
+    index: number,
+    totalCount: number
+  ) => {
+    const safeTotalCount = Math.max(1, totalCount);
+    const gapToImages = 80;
+    const gap = 20;
+    const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(aspectRatio, true);
+    const columns = 2;
+    const col = index % columns;
+    const row = Math.floor(index / columns);
+    const cardsInCurrentRow = Math.min(columns, Math.max(1, safeTotalCount - row * columns));
+
+    if (mode === GenerationMode.PPT) {
+      const pptGap = 28;
+      return {
+        x: basePosition.x,
+        y: basePosition.y + gapToImages + cardHeight + index * (cardHeight + pptGap),
+      };
+    }
+
+    if (isMobile) {
+      const mobileCardWidth = 170;
+      const mobileCardHeight = 260;
+      const mobileGap = 10;
+      const rowWidth = cardsInCurrentRow * mobileCardWidth + (cardsInCurrentRow - 1) * mobileGap;
+      const startX = -rowWidth / 2;
+      return {
+        x: basePosition.x + startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2,
+        y: basePosition.y + gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap),
+      };
+    }
+
+    const rowWidth = cardsInCurrentRow * cardWidth + (cardsInCurrentRow - 1) * gap;
+    const startX = -rowWidth / 2;
+    return {
+      x: basePosition.x + startX + col * (cardWidth + gap) + cardWidth / 2,
+      y: basePosition.y + gapToImages + cardHeight + row * (cardHeight + gap),
+    };
+  }, [isMobile]);
+
   // Extracted Execution Logic
   const executeGeneration = useCallback(async (node: PromptNode) => {
     const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: initialModel, mode, referenceImages: initialFiles = [] } = node;
@@ -2190,6 +2274,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       const buildTask = (index: number) => async () => {
         const startTime = Date.now();
         const currentRequestId = `${promptNodeId}-${index}`;
+        let taskIdForRecovery: string | undefined = undefined;
 
         // Timeout Check (4 minutes)
         let isFinished = false;
@@ -2285,14 +2370,15 @@ const AppContent: React.FC<AppContentProps> = () => {
               },
               onTaskId: (taskId: string) => {
                 console.log(`[executeGeneration] Received Video TaskID: ${taskId} for node ${promptNodeId}`);
+                taskIdForRecovery = taskId;
                 const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
                 if (fresh) {
-                  const patchedNode = { ...fresh, jobId: taskId };
+                  const patchedNode = registerPendingTaskId(fresh, taskId);
                   urgentUpdatePromptNode(patchedNode);
                   window.setTimeout(() => {
                     const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-                    if (latest?.jobId && latest.isGenerating) {
-                      pollTaskStatusRef.current?.(latest);
+                    if (latest?.isGenerating) {
+                      pollTaskStatusRef.current?.(latest, taskId);
                     }
                   }, 2000);
                 }
@@ -2335,14 +2421,15 @@ const AppContent: React.FC<AppContentProps> = () => {
 
                 onTaskId: (taskId) => {
                   console.log(`[executeGeneration] Received TaskID: ${taskId} for node ${promptNodeId}`);
+                  taskIdForRecovery = taskId;
                   const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
                   if (fresh) {
-                    const patchedNode = { ...fresh, jobId: taskId };
+                    const patchedNode = registerPendingTaskId(fresh, taskId);
                     urgentUpdatePromptNode(patchedNode);
                     window.setTimeout(() => {
                       const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-                      if (latest?.jobId && latest.isGenerating) {
-                        pollTaskStatusRef.current?.(latest);
+                      if (latest?.isGenerating) {
+                        pollTaskStatusRef.current?.(latest, taskId);
                       }
                     }, 2000);
                   }
@@ -2428,6 +2515,7 @@ const AppContent: React.FC<AppContentProps> = () => {
             providerLabel: providerLabel, // 馃殌 Pass Display Provider Name
             modelName: modelLabel, // 馃殌 Pass Display Model Name
             keySlotId,
+            taskId: taskIdForRecovery,
             taskPrompt,
             requestPath,
             requestBodyPreview,
@@ -2439,7 +2527,8 @@ const AppContent: React.FC<AppContentProps> = () => {
           console.error(`Generation ${index} failed:`, error);
           return {
             error: error.message || 'Unknown error',
-            errorDetails: extractErrorDetails(error, node.model)
+            errorDetails: extractErrorDetails(error, node.model),
+            taskId: taskIdForRecovery
           };
         }
       };
@@ -2468,6 +2557,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       const failedImageData = imageData.filter(d => !!d && 'error' in d) as Array<{
         error: string;
         errorDetails?: PromptNode['errorDetails'];
+        taskId?: string;
       }>;
 
       // 杩囨护鎴愬姛鐨勭粨鏋?
@@ -2488,6 +2578,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         providerLabel?: string; // 馃殌 Pass through
         modelName?: string; // 馃殌 Pass through
         keySlotId?: string;
+        taskId?: string;
         taskPrompt?: string;
         requestPath?: string;
         requestBodyPreview?: string;
@@ -2497,6 +2588,13 @@ const AppContent: React.FC<AppContentProps> = () => {
       generationSuccessCount = validImageData.length;
       generationFailCount = Math.max(0, generationTotalCount - generationSuccessCount);
       partialFailureDetails = failedImageData[0]?.errorDetails;
+      const latestNodeForRecovery = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId) || node;
+      const successfulTaskIds = validImageData
+        .map(item => item.taskId)
+        .filter((taskId): taskId is string => !!taskId);
+      const pendingRecoveryTaskIds = Array.from(new Set(
+        getPendingTaskIds(latestNodeForRecovery).filter(taskId => !successfulTaskIds.includes(taskId))
+      ));
 
       if (validImageData.length === 0) {
         const firstError = imageData.find(d => d && 'error' in d);
@@ -2662,20 +2760,24 @@ const AppContent: React.FC<AppContentProps> = () => {
         throw mapErr;
       }
 
+      const displayFailCount = pendingRecoveryTaskIds.length > 0
+        ? Math.max(0, generationFailCount - pendingRecoveryTaskIds.length)
+        : generationFailCount;
       const updatedNode = {
         ...effectiveNode, // 馃殌 Use effectiveNode (latest or fallback)
         position: finalPos,
-        isGenerating: false,
-        jobId: undefined,
+        isGenerating: pendingRecoveryTaskIds.length > 0,
+        jobId: pendingRecoveryTaskIds[0],
         childImageIds: successResults.map(r => r.id), // Use successResults
         lastGenerationSuccessCount: generationSuccessCount,
-        lastGenerationFailCount: generationFailCount,
+        lastGenerationFailCount: displayFailCount,
         lastGenerationTotalCount: generationTotalCount,
         keySlotId: successResults[0]?.keySlotId || effectiveNode.keySlotId,
         error: undefined,
-        errorDetails: generationFailCount > 0 ? partialFailureDetails : undefined,
+        errorDetails: displayFailCount > 0 ? partialFailureDetails : undefined,
         refundStatus: undefined,
         isDraft: false,
+        generationMetadata: buildPendingTaskMetadata(effectiveNode, pendingRecoveryTaskIds),
       };
 
       rememberPreferredKeyForMode(updatedNode.mode, updatedNode.keySlotId);
@@ -2728,6 +2830,16 @@ const AppContent: React.FC<AppContentProps> = () => {
       // 馃帹 Atomic update: Use the new parentUpdates feature of addImageNodes
       console.log('[executeGeneration] Adding new image nodes:', validSuccessResults.length);
       addImageNodes(validSuccessResults, { [updatedNode.id]: updatedNode });
+      if (pendingRecoveryTaskIds.length > 0) {
+        window.setTimeout(() => {
+          const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === updatedNode.id);
+          if (latest?.isGenerating) {
+            pendingRecoveryTaskIds.forEach(taskId => {
+              pollTaskStatusRef.current?.(latest, taskId);
+            });
+          }
+        }, 3000);
+      }
 
       import('./services/billing/costService').then(({ recordCost }) => {
         const usedModel = successResults[0]?.model || effectiveModel;
@@ -2760,22 +2872,25 @@ const AppContent: React.FC<AppContentProps> = () => {
 
       const currentNodeSnapshot = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id) || node;
       const errorMessage = String(err?.message || '');
-      const hasRecoverableTask = !!currentNodeSnapshot?.jobId;
+      const pendingTaskIds = getPendingTaskIds(currentNodeSnapshot);
+      const hasRecoverableTask = pendingTaskIds.length > 0;
       const isRecoverableTaskError = hasRecoverableTask && /timeout|timed out|network|fetch|abort|socket|econn|etimedout|503|504/i.test(errorMessage);
 
       if (isRecoverableTaskError) {
         console.warn('[executeGeneration] Task switched to polling recovery mode:', {
           nodeId: node.id,
-          jobId: currentNodeSnapshot.jobId,
+          jobIds: pendingTaskIds,
           errorMessage,
         });
         urgentUpdatePromptNode({
           ...currentNodeSnapshot,
           isGenerating: true,
+          jobId: pendingTaskIds[0],
           error: undefined,
           errorDetails: undefined,
           generationMetadata: {
             ...(currentNodeSnapshot.generationMetadata || {}),
+            pendingTaskIds,
             recoveryMode: 'polling',
             lastRecoverableErrorAt: Date.now(),
             lastRecoverableErrorMessage: errorMessage,
@@ -2783,8 +2898,10 @@ const AppContent: React.FC<AppContentProps> = () => {
         });
         window.setTimeout(() => {
           const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-          if (latest?.jobId && latest.isGenerating) {
-            pollTaskStatusRef.current?.(latest);
+          if (latest?.isGenerating) {
+            pendingTaskIds.forEach(taskId => {
+              pollTaskStatusRef.current?.(latest, taskId);
+            });
           }
         }, 3000);
         import('./services/system/notificationService').then(({ notify }) => {
@@ -2973,33 +3090,34 @@ const AppContent: React.FC<AppContentProps> = () => {
   }, [isMobile, updatePromptNode, urgentUpdatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions, extractErrorDetails, buildAutoPptSlides, rememberPreferredKeyForMode, openSettingsPanel]);
 
   // [New] Poll for task status
-  const pollTaskStatus = useCallback(async (node: PromptNode) => {
-    if (!node.jobId) return;
+  const pollTaskStatus = useCallback(async (node: PromptNode, taskIdOverride?: string) => {
+    const targetTaskId = taskIdOverride || node.jobId;
+    if (!targetTaskId) return;
 
-    console.log(`[Auto-Resume] Polling task status for node ${node.id}, jobId: ${node.jobId}`);
+    console.log(`[Auto-Resume] Polling task status for node ${node.id}, jobId: ${targetTaskId}`);
 
     try {
       // Create a temporary "pending" state visualization if needed, 
       // but usually the node is already in isGenerating state.
 
-      const result = await llmService.checkTaskStatus(node.jobId, node.mode || GenerationMode.IMAGE, node.keySlotId ? { id: node.keySlotId } as any : undefined);
+      const result = await llmService.checkTaskStatus(targetTaskId, node.mode || GenerationMode.IMAGE, node.keySlotId ? { id: node.keySlotId } as any : undefined);
 
       if (result && 'status' in result && (result.status === 'success' || result.status === 'failed')) {
-        const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-        const hasRecoveredImages = !!activeCanvasRef.current?.imageNodes.some(img => img.parentPromptId === node.id);
-        const alreadyCompleted = !!latestNode && (
-          !latestNode.isGenerating ||
-          (latestNode.childImageIds?.length || 0) > 0 ||
-          hasRecoveredImages
-        );
+        const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id) || node;
+        const pendingTaskIds = getPendingTaskIds(latestNode);
+        const { nextPendingTaskIds, nextJobId, nextGenerationMetadata } = resolvePendingTaskState(latestNode, targetTaskId);
+        const expectedCount = getExpectedGenerationCount(latestNode);
+        const currentChildIds = Array.from(new Set((latestNode.childImageIds || []).filter(Boolean)));
+        const isTrackedTask = pendingTaskIds.includes(targetTaskId) || latestNode.jobId === targetTaskId;
+        const isAlreadyComplete = !latestNode.isGenerating && nextPendingTaskIds.length === 0 && currentChildIds.length >= expectedCount;
 
-        if (alreadyCompleted) {
+        if (!isTrackedTask && isAlreadyComplete) {
           console.warn('[Auto-Resume] Ignoring stale poll result for completed node:', {
             nodeId: node.id,
             status: result.status,
-            hasRecoveredImages,
-            childImageIds: latestNode?.childImageIds?.length || 0,
-            isGenerating: latestNode?.isGenerating
+            childImageIds: latestNode.childImageIds?.length || 0,
+            isGenerating: latestNode.isGenerating,
+            targetTaskId,
           });
           return;
         }
@@ -3021,6 +3139,90 @@ const AppContent: React.FC<AppContentProps> = () => {
           // If result has urls/url, we can finish it.
           const imageUrls = (result as any).urls || [(result as any).url].filter(Boolean);
           if (imageUrls.length > 0) {
+            const existingImageNodes = currentChildIds
+              .map(id => activeCanvasRef.current?.imageNodes.find(img => img.id === id))
+              .filter((imageNode): imageNode is GeneratedImage => !!imageNode);
+            const totalLayoutCount = existingImageNodes.length + imageUrls.length;
+
+            existingImageNodes.forEach((imageNode, index) => {
+              const nextPosition = getGeneratedImagePosition(
+                latestNode.position,
+                imageNode.aspectRatio || latestNode.aspectRatio,
+                latestNode.mode,
+                index,
+                totalLayoutCount
+              );
+              updateImageNodePosition(imageNode.id, nextPosition, { ignoreSelection: true });
+            });
+
+            const recoveredImageNodes = imageUrls.map((url: string, index: number) => {
+              const imageId = `${node.id}_recovered_${Date.now()}_${index}`;
+              const layoutIndex = existingImageNodes.length + index;
+              const pageIndex = currentChildIds.length + index;
+              const resolvedAspectRatio = (result as any).aspectRatio || latestNode.aspectRatio;
+              const resolvedImageSize = (result as any).imageSize || latestNode.imageSize;
+              return {
+                id: imageId,
+                storageId: imageId,
+                url,
+                originalUrl: url,
+                prompt: latestNode.prompt,
+                model: (result as any).model || latestNode.model,
+                aspectRatio: resolvedAspectRatio,
+                imageSize: resolvedImageSize,
+                timestamp: Date.now(),
+                canvasId: activeCanvasRef.current?.id || 'default',
+                parentPromptId: node.id,
+                position: getGeneratedImagePosition(
+                  latestNode.position,
+                  resolvedAspectRatio,
+                  latestNode.mode,
+                  layoutIndex,
+                  totalLayoutCount
+                ),
+                dimensions: `${resolvedAspectRatio} 路 ${resolvedImageSize || '1K'}`,
+                provider: (result as any).provider || latestNode.provider,
+                providerLabel: (result as any).providerName || latestNode.providerLabel,
+                keySlotId: (result as any).keySlotId || latestNode.keySlotId,
+                generationTime: (result as any).generationTime || 0,
+                alias: latestNode.mode === GenerationMode.PPT ? buildPptPageAlias(latestNode.pptSlides?.[pageIndex], pageIndex) : undefined,
+              };
+            });
+            const mergedChildIds = Array.from(new Set([
+              ...currentChildIds,
+              ...recoveredImageNodes.map((img: { id: string }) => img.id),
+            ]));
+            const nextSuccessCount = mergedChildIds.length;
+            const nextFailCount = nextPendingTaskIds.length > 0
+              ? Math.max(0, expectedCount - nextSuccessCount - nextPendingTaskIds.length)
+              : Math.max(0, expectedCount - nextSuccessCount);
+
+            addImageNodes(recoveredImageNodes as any, {
+              [latestNode.id]: {
+                isGenerating: nextPendingTaskIds.length > 0,
+                jobId: nextJobId,
+                childImageIds: mergedChildIds,
+                error: undefined,
+                errorDetails: nextFailCount > 0 ? latestNode.errorDetails : undefined,
+                refundStatus: undefined,
+                lastGenerationSuccessCount: nextSuccessCount,
+                lastGenerationFailCount: nextFailCount,
+                lastGenerationTotalCount: Math.max(expectedCount, nextSuccessCount),
+                generationMetadata: nextGenerationMetadata,
+              }
+            });
+
+            if (nextPendingTaskIds.length > 0) {
+              window.setTimeout(() => {
+                const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
+                if (freshNode?.isGenerating) {
+                  nextPendingTaskIds.forEach(taskId => {
+                    pollTaskStatusRef.current?.(freshNode, taskId);
+                  });
+                }
+              }, 3000);
+            }
+            return;
             const recoveredImages = imageUrls.map((url: string, index: number) => {
               const imageId = `${node.id}_recovered_${Date.now()}_${index}`;
               return {
@@ -3062,6 +3264,32 @@ const AppContent: React.FC<AppContentProps> = () => {
         } else {
           // Failed
           const failureTarget = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id) || node;
+          const completedCount = failureTarget.childImageIds?.length || 0;
+          if (nextPendingTaskIds.length > 0) {
+            updatePromptNode({
+              ...failureTarget,
+              isGenerating: true,
+              jobId: nextJobId,
+              generationMetadata: nextGenerationMetadata,
+              error: undefined,
+            });
+            return;
+          }
+          if (completedCount > 0) {
+            updatePromptNode({
+              ...failureTarget,
+              isGenerating: false,
+              jobId: undefined,
+              generationMetadata: nextGenerationMetadata,
+              error: undefined,
+              errorDetails: undefined,
+              refundStatus: undefined,
+              lastGenerationSuccessCount: completedCount,
+              lastGenerationFailCount: Math.max(1, expectedCount - completedCount),
+              lastGenerationTotalCount: Math.max(expectedCount, completedCount),
+            });
+            return;
+          }
           const hasRecoveredImages = !!activeCanvasRef.current?.imageNodes.some(img => img.parentPromptId === node.id);
           if (hasRecoveredImages || !failureTarget.isGenerating || (failureTarget.childImageIds?.length || 0) > 0) {
             console.warn('[Auto-Resume] Skip stale failed poll result because node already completed:', {
@@ -3082,7 +3310,10 @@ const AppContent: React.FC<AppContentProps> = () => {
         // Refresh node from state to check if it's still generating
         const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
         if (freshNode && freshNode.isGenerating) {
-          pollTaskStatus(freshNode);
+          const freshPendingTaskIds = getPendingTaskIds(freshNode);
+          if (freshPendingTaskIds.includes(targetTaskId) || freshNode.jobId === targetTaskId) {
+            pollTaskStatus(freshNode, targetTaskId);
+          }
         }
       }, 10000);
 
@@ -3090,10 +3321,13 @@ const AppContent: React.FC<AppContentProps> = () => {
       console.error(`[Auto-Resume] Polling failed for node ${node.id}:`, err);
       const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
       if (freshNode?.isGenerating) {
-        setTimeout(() => pollTaskStatus(freshNode), 15000);
+        const freshPendingTaskIds = getPendingTaskIds(freshNode);
+        if (freshPendingTaskIds.includes(targetTaskId) || freshNode.jobId === targetTaskId) {
+          setTimeout(() => pollTaskStatus(freshNode, targetTaskId), 15000);
+        }
       }
     }
-  }, [llmService, updatePromptNode, addImageNodes]);
+  }, [llmService, updatePromptNode, addImageNodes, getPendingTaskIds, resolvePendingTaskState, getExpectedGenerationCount, getGeneratedImagePosition, updateImageNodePosition]);
 
   useEffect(() => {
     pollTaskStatusRef.current = pollTaskStatus;
@@ -3109,9 +3343,13 @@ const AppContent: React.FC<AppContentProps> = () => {
     if (interruptedNodes.length > 0) {
       console.log(`[Auto-Resume] Found ${interruptedNodes.length} interrupted tasks. Resuming...`);
       interruptedNodes.forEach(node => {
-        if (node.jobId) {
+        const pendingTaskIds = getPendingTaskIds(node);
+        if (pendingTaskIds.length > 0 || node.jobId) {
           // Delay to ensure services are ready
-          setTimeout(() => pollTaskStatus(node), 1000);
+          setTimeout(() => {
+            const taskIdsToResume = pendingTaskIds.length > 0 ? pendingTaskIds : (node.jobId ? [node.jobId] : []);
+            taskIdsToResume.forEach(taskId => pollTaskStatus(node, taskId));
+          }, 1000);
         } else {
           urgentUpdatePromptNode({
             ...node,
@@ -3137,7 +3375,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       });
     }
     hasResumedRef.current = true;
-  }, [activeCanvas, isReady, pollTaskStatus, urgentUpdatePromptNode]);
+  }, [activeCanvas, isReady, pollTaskStatus, urgentUpdatePromptNode, getPendingTaskIds]);
 
 
   const handleGenerate = useCallback(async () => {
@@ -3487,6 +3725,9 @@ const AppContent: React.FC<AppContentProps> = () => {
         pptStyleLocked: config.pptStyleLocked !== false,
         cost: requiredCredits,
         isPaymentProcessed: requiredCredits > 0 && !useServerSideCreditSettlement,
+        generationMetadata: {
+          pendingTaskIds: [],
+        },
       };
 
       // 馃殌 [Fix Duplicate Placeholders]
@@ -5309,7 +5550,51 @@ const AppContent: React.FC<AppContentProps> = () => {
 
 
 
-      {/* Main Infinite Canvas */}
+      {/* 🚀 [Mobile] 手机端聊天流式界面 - 替代无限画布 */}
+      {isMobile && (
+        <MobileChatFeed
+          promptNodes={activeCanvas?.promptNodes || []}
+          imageNodes={activeCanvas?.imageNodes || []}
+          onPromptPositionChange={updatePromptNodePosition}
+          onPromptSelect={(nodeId) => selectNodes([nodeId], 'replace')}
+          onPromptClick={handlePromptClick}
+          onPromptCancel={handleCancelGeneration}
+          onPromptRetry={handleRetryNode}
+          onPromptDelete={deletePromptNode}
+          onPromptDisconnect={handleDisconnectPrompt}
+          onPromptUpdate={updatePromptNode}
+          onPromptHeightChange={(id, height) => {
+            const node = activeCanvas?.promptNodes.find(n => n.id === id);
+            if (node && node.height !== height) updatePromptNode({ ...node, height });
+          }}
+          onPromptPin={handlePinDraft}
+          onPromptRemoveTag={(id, tag) => {
+            const node = activeCanvas?.promptNodes.find(n => n.id === id);
+            if (node && node.tags) updatePromptNode({ ...node, tags: node.tags.filter(t => t !== tag) });
+          }}
+          onPromptExportPpt={handleExportPptPackage}
+          onPromptExportPptx={handleExportPptx}
+          onPromptRetryPptPage={handleRetryPptSinglePage}
+          onPromptExportPptPage={handleExportPptSinglePage}
+          onOpenStorageSettings={() => { setShowSettingsPanel(true); setSettingsInitialView('storage-settings'); }}
+          selectedNodeIds={selectedNodeIds}
+          actualChildImagesByPromptId={actualChildImagesByPromptId}
+          getNodeIoTrace={getNodeIoTrace}
+          onImagePositionChange={updateImageNodePosition}
+          onImageDelete={deleteImageNode}
+          onImageClick={handleImageClick}
+          onImageSelect={(id) => selectNodes([id], 'replace')}
+          onImageUpdate={updateImageNode}
+          onImageDimensionsUpdate={updateImageNodeDisplayMeta}
+          onImagePreview={handleOpenPreview}
+          activeSourceImage={activeSourceImage}
+          highlightedId={highlightedId}
+          nowTimestamp={nowTimestamp || Date.now()}
+        />
+      )}
+
+      {/* Main Infinite Canvas - 仅在非手机端显示 */}
+      {!isMobile && (
       <InfiniteCanvas
         id="canvas-container"
         ref={canvasRef}
@@ -5836,6 +6121,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         {/* 4. Pending / Typing Node - Removed (Now handled by Persistent Draft DraftNode) */}
         {/* <PendingNode ... /> removed */}
       </InfiniteCanvas>
+      )}
 
 
 

@@ -105,7 +105,7 @@ A: 看 KeySlot 的 provider 字段:
 - Antigravity/第三方代理 → Provider = "Custom" 或 "OpenAI"
 
 ### Q: 图片生成应该用 Chat API 还是 Images API?
-A: 
+A:
 - Antigravity: **必须用 Images API** (`/v1/images/generations`)
 - OpenAI DALL-E: Images API
 - 某些代理可能支持 Chat API 生成图片 (通过特定参数)
