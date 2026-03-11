@@ -42,6 +42,7 @@ import { CanvasProvider, useCanvas } from './context/CanvasContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ConnectionDot from './components/canvas/ConnectionDot';
 import LoginScreen from './components/auth/LoginScreen';
+import AuthCallback from './pages/AuthCallback';
 import type { UserProfileView } from './components/modals/UserProfileModal';
 import { useAuth } from './context/AuthContext';
 import { Loader2 } from 'lucide-react';
@@ -6249,6 +6250,15 @@ const App: React.FC = () => {
       <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: 'var(--bg-base)' }}>
         <Loader2 className="animate-spin text-indigo-500" size={32} />
       </div>
+    );
+  }
+
+  // OAuth 回调页面（无需登录状态）
+  if (window.location.pathname === '/auth/callback') {
+    return (
+      <ThemeProvider>
+        <AuthCallback />
+      </ThemeProvider>
     );
   }
 

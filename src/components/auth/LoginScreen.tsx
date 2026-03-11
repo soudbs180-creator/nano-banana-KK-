@@ -12,6 +12,7 @@ import {
   Mail,
   Sparkles,
 } from 'lucide-react';
+import { Chrome } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import AnoAI from '@/components/ui/animated-shader-background';
@@ -489,9 +490,38 @@ const LoginScreen: React.FC = () => {
             </button>
 
             {view === 'login' && (
-              <button type="button" className="auth-btn auth-btn-ghost" onClick={() => setShowTempUserWarning(true)} disabled={loading}>
-                临时用户登录
-              </button>
+              <>
+                <div className="auth-divider">
+                  <span>或使用以下方式登录</span>
+                </div>
+                <button
+                  type="button"
+                  className="auth-btn auth-btn-google"
+                  onClick={async () => {
+                    setLoading(true);
+                    setError(null);
+                    try {
+                      const { error } = await supabase.auth.signInWithOAuth({
+                        provider: 'google',
+                        options: {
+                          redirectTo: `${window.location.origin}/auth/callback`,
+                        },
+                      });
+                      if (error) throw error;
+                    } catch (err) {
+                      setError(mapAuthError(err, 'login'));
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  <Chrome size={18} />
+                  使用 Google 登录
+                </button>
+                <button type="button" className="auth-btn auth-btn-ghost" onClick={() => setShowTempUserWarning(true)} disabled={loading}>
+                  临时用户登录
+                </button>
+              </>
             )}
 
             <div className="auth-footer-actions">
