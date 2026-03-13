@@ -64,9 +64,23 @@ export const SupplierPricing: React.FC<SupplierPricingProps> = ({
     return null;
   };
 
-  const formatPrice = (price?: number) => {
+  const formatPrice = (price?: number, currency: string = 'USD') => {
     if (price === undefined || price === null) return '-';
+    if (currency === 'CNY') return `¥${price.toFixed(price >= 1 ? 2 : 3)}`;
     return `$${price.toFixed(6)}`;
+  };
+
+  const renderPrimaryPrice = (model: SupplierModel) => {
+    if (model.billingType === 'token') {
+      return `${formatPrice(model.inputPrice, model.currency)}/M`;
+    }
+    if (model.displayPrice) {
+      return model.displayPrice;
+    }
+    if (model.billingType === 'per_request' && model.perRequestPrice !== undefined) {
+      return `${formatPrice(model.perRequestPrice, model.currency)}/${model.billingUnit || '次'}`;
+    }
+    return '-';
   };
 
   return (
@@ -195,7 +209,7 @@ export const SupplierPricing: React.FC<SupplierPricingProps> = ({
                         <div>
                           <p className="text-sm font-medium text-white">{model.name}</p>
                           <p className="text-xs text-gray-500">{model.id}</p>
-                          {model.group && (
+                          {model.group && model.supportsGroups !== false && (
                             <span className="inline-block mt-1 px-2 py-0.5 bg-gray-700 text-gray-400 text-xs rounded">
                               {model.group}
                             </span>
@@ -215,19 +229,17 @@ export const SupplierPricing: React.FC<SupplierPricingProps> = ({
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right text-sm text-gray-300">
-                        {model.billingType === 'token' 
-                          ? formatPrice(model.inputPrice) + '/M'
-                          : '-'}
+                        {renderPrimaryPrice(model)}
                       </td>
                       <td className="px-4 py-3 text-right text-sm text-gray-300">
                         {model.billingType === 'token' 
-                          ? formatPrice(model.outputPrice) + '/M'
+                          ? formatPrice(model.outputPrice, model.currency) + '/M'
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {estimatedCost !== null ? (
                           <span className="text-sm font-medium text-green-400">
-                            ${estimatedCost.toFixed(6)}
+                            {formatPrice(estimatedCost, model.currency)}
                           </span>
                         ) : (
                           <span className="text-sm text-gray-500">-</span>

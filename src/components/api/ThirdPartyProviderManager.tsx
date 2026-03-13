@@ -173,6 +173,8 @@ interface Props {
 
 type ManagementTab = 'overview' | 'channels' | 'suppliers' | 'groups' | 'tokens' | 'models' | 'pricing';
 
+type ProviderPricingItem = PricingConfig | ModelPricingInfo;
+
 const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
     const [providers, setProviders] = useState<ThirdPartyProvider[]>([]);
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -388,6 +390,25 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
         // 只在没有缓存数据且启用了管理 API 时提示用户手动刷新
         if (provider.managementConfig?.enabled && !provider.managementData) {
             notify.info('提示', '点击"刷新数据"按钮获取最新管理数据');
+        }
+    };
+
+    const openPricingModal = async (provider: ThirdPartyProvider) => {
+        setManagingProvider(provider);
+        setManagementTab('pricing');
+        setIsManagementModalOpen(true);
+
+        if (provider.managementConfig?.enabled && !provider.managementData?.pricing?.length) {
+            try {
+                await refreshManagementData(provider, { silent: true, timeout: 10000 });
+            } catch {
+                notify.warning('价格查询失败', '暂时无法获取最新定价，已为你打开当前页面');
+            }
+            return;
+        }
+
+        if (!provider.managementConfig?.enabled && !provider.pricing?.length) {
+            notify.info('暂无价格数据', '当前供应商未配置管理 API，且本地没有缓存的定价信息');
         }
     };
 
@@ -931,7 +952,7 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
 
     // 渲染定价信息
     const renderPricing = (provider: ThirdPartyProvider) => {
-        const pricing = provider.managementData?.pricing;
+        const pricing = (provider.managementData?.pricing || provider.pricing || []) as ProviderPricingItem[];
         if (!pricing?.length) {
             return (
                 <div className="text-center py-8 text-gray-500 dark:text-zinc-500">
@@ -940,6 +961,21 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                 </div>
             );
         }
+
+        const renderPricingValue = (item: ProviderPricingItem) => {
+            const isPerToken = 'isPerToken' in item ? item.isPerToken : item.type === 'tokens';
+            if (!isPerToken) {
+                if ('displayPrice' in item && item.displayPrice) return item.displayPrice;
+                const unit = 'billingUnit' in item && item.billingUnit ? item.billingUnit : '次';
+                const amount = item.inputPrice || 0;
+                if (item.currency === 'CNY') {
+                    return `¥${amount.toFixed(amount >= 1 ? 2 : 3)}/${unit}`;
+                }
+                return `$${amount.toFixed(4)}/${unit}`;
+            }
+
+            return formatPrice(item.inputPrice, item.currency);
+        };
 
         return (
             <div className="space-y-2">
@@ -963,14 +999,14 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
 
                         <div className="text-right">
                             <div className="text-sm text-gray-900 dark:text-zinc-100">
-                                {formatPrice(p.inputPrice, p.currency)}
+                                {renderPricingValue(p)}
                             </div>
-                            {p.outputPrice > 0 && (
+                            {('isPerToken' in p ? p.isPerToken : p.type === 'tokens') && p.outputPrice > 0 && (
                                 <div className="text-xs text-gray-500 dark:text-zinc-500">
                                     输出: {formatPrice(p.outputPrice, p.currency)}
                                 </div>
                             )}
-                            {p.groupRatio !== 1 && (
+                            {(!('supportsGroups' in p) || p.supportsGroups !== false) && p.groupRatio !== 1 && (
                                 <div className="text-xs text-indigo-600 dark:text-indigo-400">
                                     分组倍率: {p.groupRatio}x
                                 </div>
@@ -1224,6 +1260,47 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                                     <div className={`w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center transition-all duration-300 ${expandedId === provider.id ? 'rotate-180 bg-indigo-500/20' : ''}`}>
                                         <ChevronDown size={18} className="text-white/50" />
                                     </div>
+                                </div>
+                            </div>
+
+                            <div className="px-5 pb-4">
+                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleToggleProvider(provider.id);
+                                        }}
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
+                                            provider.enabled
+                                                ? 'bg-amber-500/10 text-amber-300 border-amber-500/20 hover:bg-amber-500/20'
+                                                : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20 hover:bg-emerald-500/20'
+                                        }`}
+                                    >
+                                        <RefreshCw size={13} />
+                                        {provider.enabled ? '暂停刷新' : '恢复刷新'}
+                                    </button>
+
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            void openPricingModal(provider);
+                                        }}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all duration-200"
+                                    >
+                                        <DollarSign size={13} />
+                                        价格查询
+                                    </button>
+
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteProvider(provider.id);
+                                        }}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-red-300 border border-red-500/20 hover:bg-red-500/10 transition-all duration-200"
+                                    >
+                                        <Trash2 size={13} />
+                                        删除
+                                    </button>
                                 </div>
                             </div>
 
@@ -1571,14 +1648,19 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                             {/* Sidebar - 高端导航 */}
                             <div className="w-52 border-r border-white/10 bg-white/[0.02]">
                                 <nav className="p-3 space-y-1">
-                                    {[
-                                        { id: 'overview', label: '概览', icon: BarChart3 },
-                                        { id: 'channels', label: '渠道', icon: Server },
-                                        { id: 'suppliers', label: '供应商', icon: Globe },
-                                        { id: 'groups', label: '分组', icon: Layers },
-                                        { id: 'tokens', label: '令牌', icon: Key },
-                                        { id: 'pricing', label: '定价', icon: DollarSign },
-                                    ].map(tab => (
+                                    {(managingProvider.managementConfig?.enabled
+                                        ? [
+                                            { id: 'overview', label: '概览', icon: BarChart3 },
+                                            { id: 'channels', label: '渠道', icon: Server },
+                                            { id: 'suppliers', label: '供应商', icon: Globe },
+                                            { id: 'groups', label: '分组', icon: Layers },
+                                            { id: 'tokens', label: '令牌', icon: Key },
+                                            { id: 'pricing', label: '定价', icon: DollarSign },
+                                        ]
+                                        : [
+                                            { id: 'pricing', label: '定价', icon: DollarSign },
+                                        ]
+                                    ).map(tab => (
                                         <button
                                             key={tab.id}
                                             onClick={() => setManagementTab(tab.id as ManagementTab)}

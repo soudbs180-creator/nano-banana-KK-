@@ -106,7 +106,7 @@ async function runGeminiGenerateContentTest(
 
   return fetch(apiUrl, {
     method: 'POST',
-    headers: buildGeminiHeaders(authMethod, config.apiKey, runtime.headerName),
+    headers: buildGeminiHeaders(authMethod, config.apiKey, runtime.headerName, runtime.authorizationValueFormat),
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: 'Test connection' }] }],
     }),
@@ -121,7 +121,7 @@ async function runOpenAIChatTest(cleanBase: string, config: ConnectionConfig): P
 
   return fetch(apiUrl, {
     method: 'POST',
-    headers: buildProxyHeaders(runtime.authMethod as AuthMethod, config.apiKey, runtime.headerName),
+    headers: buildProxyHeaders(runtime.authMethod as AuthMethod, config.apiKey, runtime.headerName, undefined, runtime.authorizationValueFormat),
     body: JSON.stringify({
       model: getModelId(config),
       stream: false,
@@ -281,8 +281,8 @@ export async function testModelsList(config: ConnectionConfig): Promise<TestResu
       ? buildGeminiModelsEndpoint(cleanBase, config.apiKey, runtime.authMethod as AuthMethod, config.provider)
       : buildOpenAIEndpoint(cleanBase || 'https://api.openai.com', '/models');
     const headers = nativeGemini
-      ? buildGeminiHeaders(runtime.authMethod as AuthMethod, config.apiKey, runtime.headerName)
-      : buildProxyHeaders(runtime.authMethod as AuthMethod, config.apiKey, runtime.headerName);
+      ? buildGeminiHeaders(runtime.authMethod as AuthMethod, config.apiKey, runtime.headerName, runtime.authorizationValueFormat)
+      : buildProxyHeaders(runtime.authMethod as AuthMethod, config.apiKey, runtime.headerName, undefined, runtime.authorizationValueFormat);
 
     const response = await fetch(listUrl, {
       method: 'GET',

@@ -15,8 +15,8 @@ const truncateByChars = (text: string, maxChars: number): string => {
     return text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
 };
 
-const getPromptStackZIndex = (node: PromptNode, isSelected: boolean) => {
-    const persistedOrder = (node.zIndex ?? 0) * 100;
+const getPromptStackZIndex = (node: PromptNode, isSelected: boolean, groupLayerZIndex?: number) => {
+    const persistedOrder = (groupLayerZIndex ?? node.zIndex ?? 0) * 100;
 
     if (node.isGenerating) return persistedOrder + 40;
     if (node.isNew) return persistedOrder + 30;
@@ -31,6 +31,8 @@ const snapCanvasCoordinate = (value: number, scale: number = 1) => {
 
 interface PromptNodeProps {
     node: PromptNode;
+    groupLayerZIndex?: number;
+    stackZIndexOverride?: number;
     actualChildImageCount?: number;
     onPositionChange: (id: string, newPos: { x: number; y: number }) => void;
     isSelected: boolean;
@@ -242,6 +244,8 @@ const GenerationTimer: React.FC<{ start: number; onTimeout?: () => void }> = ({ 
 
 const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     node,
+    groupLayerZIndex,
+    stackZIndexOverride,
     actualChildImageCount = 0,
 
     onPositionChange,
@@ -376,7 +380,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                         defaults: { force3D: true, overwrite: 'auto' },
                         onStart: () => {
                             document.body.classList.add('is-animating-card');
-                            el.style.zIndex = String(getPromptStackZIndex(node, isSelected) + 1);
+                            el.style.zIndex = String((stackZIndexOverride ?? getPromptStackZIndex(node, isSelected, groupLayerZIndex)) + 1);
                         },
                         onComplete: () => {
                             document.body.classList.remove('is-animating-card');
@@ -437,7 +441,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                 restoreVisibility();
             });
         }
-    }, [node.id, node.timestamp, node.isDraft, canvasTransform, isChatMode]);
+    }, [node.id, node.timestamp, node.isDraft, canvasTransform, isChatMode, isSelected, node.zIndex, groupLayerZIndex, stackZIndexOverride]);
 
     // 🚀 [New] Entry Animation Cleanup: remove 'isNew' status after animation ends
     useEffect(() => {
@@ -588,7 +592,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
         : (node.lastGenerationSuccessCount || 0);
     const renderedFailCount = Math.max(0, Number(node.lastGenerationFailCount || 0));
     const showError = Boolean(node.error) && renderedSuccessCount === 0;
-    const stackZIndex = getPromptStackZIndex(node, isSelected);
+    const stackZIndex = stackZIndexOverride ?? getPromptStackZIndex(node, isSelected, groupLayerZIndex);
     const renderLeft = snapCanvasCoordinate(node.position.x - cardWidth / 2, zoomScale || 1);
     const renderTop = snapCanvasCoordinate(node.position.y - cardHeight, zoomScale || 1);
 

@@ -12,6 +12,8 @@ import {
     buildGeminiHeaders,
     buildGeminiModelsEndpoint,
     buildOpenAIEndpoint,
+    buildProxyHeaders,
+    formatAuthorizationHeaderValue,
     GOOGLE_API_BASE,
     getDefaultAuthMethod,
     normalizeApiProtocolFormat,
@@ -25,6 +27,7 @@ import { Provider } from '../../types';
 import { MODEL_REGISTRY } from '../model/modelRegistry';
 import { adminModelService } from '../model/adminModelService'; // 棣冩畬 [閺傛澘顤僝 缁狅紕鎮婇敾姗€鍘嗙純顔芥箛閿?
 import { buildProviderPricingSnapshot, mergeProviderPricingSnapshot, type ProviderPricingSnapshot } from './providerPricingSnapshot';
+import { fetchRawPricingCatalog } from '../billing/newApiPricingService';
 
 /**
  * Helper: Parse "id(name, description)" format
@@ -90,6 +93,70 @@ export function parseModelString(input: string): { id: string; name?: string; de
  */
 export function determineKeyType(provider: string | Provider, baseUrl?: string): 'official' | 'proxy' | 'third-party' {
     return resolveProviderKeyType(provider, baseUrl);
+}
+
+function extractSlotRouteTarget(suffix: string | null | undefined): string | null {
+    const decodedSuffix = (() => {
+        try {
+            return decodeURIComponent(String(suffix || '').trim().toLowerCase());
+        } catch {
+            return String(suffix || '').trim().toLowerCase();
+        }
+    })();
+
+    if (!decodedSuffix) return null;
+    if (decodedSuffix.startsWith('slot_key_')) return decodedSuffix.slice(5);
+    if (decodedSuffix.startsWith('slot_')) return decodedSuffix.slice(5);
+    if (decodedSuffix.startsWith('provider_')) return decodedSuffix.slice(9);
+    return null;
+}
+
+function decodeRouteSuffix(suffix: string | null | undefined): string {
+    try {
+        return decodeURIComponent(String(suffix || '').trim().toLowerCase());
+    } catch {
+        return String(suffix || '').trim().toLowerCase();
+    }
+}
+
+function matchesSlotRouteSuffix(slot: Pick<KeySlot, 'id' | 'name' | 'provider' | 'proxyConfig'>, suffix: string | null | undefined): boolean {
+    const decodedSuffix = decodeRouteSuffix(suffix);
+    if (!decodedSuffix) return false;
+
+    const routeTarget = extractSlotRouteTarget(decodedSuffix);
+    const slotIdLower = String(slot.id || '').trim().toLowerCase();
+    const slotNameLower = String(slot.name || '').trim().toLowerCase();
+    const slotSuffixLower = String(slot.proxyConfig?.serverName || slot.provider || 'Custom').trim().toLowerCase();
+    const providerLower = String(slot.provider || '').trim().toLowerCase();
+
+    if (routeTarget) {
+        return slotIdLower === routeTarget;
+    }
+
+    return (
+        slotIdLower === decodedSuffix ||
+        slotNameLower === decodedSuffix ||
+        slotSuffixLower === decodedSuffix ||
+        providerLower === decodedSuffix
+    );
+}
+
+function matchesProviderRouteSuffix(
+    provider: Pick<ThirdPartyProvider, 'id' | 'name'>,
+    suffix: string | null | undefined
+): boolean {
+    const decodedSuffix = decodeRouteSuffix(suffix);
+    if (!decodedSuffix) return false;
+
+    const routeTarget = extractSlotRouteTarget(decodedSuffix);
+    const providerIdLower = String(provider.id || '').trim().toLowerCase();
+    const providerNameLower = String(provider.name || '').trim().toLowerCase();
+
+    if (routeTarget) {
+        return providerIdLower === routeTarget;
+    }
+
+    return providerIdLower === decodedSuffix || providerNameLower === decodedSuffix;
 }
 
 const RATE_LIMIT_COOLDOWN_MS = 30 * 1000;
@@ -225,6 +292,10 @@ export interface ThirdPartyProvider {
     // 鍏冩暟鎹?
     createdAt: number;
     updatedAt: number;
+}
+
+function normalizeProviderLinkValue(value: string | undefined | null): string {
+    return String(value || '').trim().replace(/\/+$/, '').toLowerCase();
 }
 
 /**
@@ -761,6 +832,18 @@ function buildStableSystemRouteId(baseModelId: string, providerId?: string, fall
     return `${normalizedBaseId}@system_${encodeURIComponent(normalizedProviderId)}`;
 }
 
+function buildUserSlotRouteId(baseModelId: string, slotId: string): string {
+    return `${String(baseModelId || '').trim()}@slot_${encodeURIComponent(String(slotId || '').trim())}`;
+}
+
+function buildProviderRouteId(baseModelId: string, providerId: string): string {
+    const normalizedProviderId = String(providerId || '').trim();
+    const routeProviderId = normalizedProviderId.startsWith('provider_')
+        ? normalizedProviderId
+        : `provider_${normalizedProviderId}`;
+    return `${String(baseModelId || '').trim()}@${encodeURIComponent(routeProviderId)}`;
+}
+
 const inferModelType = (modelId: string): GlobalModelType => {
     const id = modelId.toLowerCase();
 
@@ -839,6 +922,11 @@ export class KeyManager {
             disabled: s.disabled ?? false,
             status: s.status || 'valid'
         }));
+
+        this.loadProviders();
+        this.providers.forEach((provider) => {
+            this.syncLegacySlotsWithProvider(provider);
+        });
 
         // 棣冩畬 Subscribe to admin model changes
         adminModelService.subscribe(() => {
@@ -1446,7 +1534,7 @@ export class KeyManager {
                 const cleanBaseUrl = cleanUrl.replace(/\/v1$/, '').replace(/\/v1\/models$/, '').replace(/\/models$/, '');
                 targetUrl = `${cleanBaseUrl}/v1/models`;
                 const headerValue = resolvedHeader.toLowerCase() === 'authorization'
-                    ? (cleanKey.toLowerCase().startsWith('bearer ') ? cleanKey : `Bearer ${cleanKey}`)
+                    ? formatAuthorizationHeaderValue(cleanKey, runtime.authorizationValueFormat)
                     : cleanKey;
                 headers[resolvedHeader] = headerValue;
             }
@@ -1523,7 +1611,7 @@ export class KeyManager {
 
             if (resolvedAuthMethod !== 'query') {
                 headers[resolvedHeader] = resolvedHeader.toLowerCase() === 'authorization'
-                    ? (key.toLowerCase().startsWith('bearer ') ? key : `Bearer ${key}`)
+                    ? formatAuthorizationHeaderValue(key, runtime.authorizationValueFormat)
                     : key;
             }
 
@@ -1538,7 +1626,7 @@ export class KeyManager {
                     buildGeminiModelsEndpoint(cleanUrl, key, resolvedAuthMethod, typeof provider === 'string' ? provider : undefined),
                     {
                         method: 'GET',
-                        headers: buildGeminiHeaders(resolvedAuthMethod, key, resolvedHeader),
+                        headers: buildGeminiHeaders(resolvedAuthMethod, key, resolvedHeader, runtime.authorizationValueFormat),
                     }
                 );
 
@@ -1789,7 +1877,20 @@ export class KeyManager {
             };
         });
 
-        const allSlots = [...this.state.slots, ...providerSlots];
+        const effectiveUserSlots = this.state.slots.map((slot) => {
+            const linkedProvider = this.findLinkedProviderForSlot(slot);
+            if (!linkedProvider) return slot;
+
+            const effectiveSlot = this.buildEffectiveSlotFromProvider(slot, linkedProvider);
+            if (String(effectiveSlot.key || '').trim() !== String(slot.key || '').trim()) {
+                console.log(
+                    `[KeyManager] Overriding legacy slot at runtime from provider ${linkedProvider.name}: ${slot.name}[${slot.id}] -> ${linkedProvider.id}`
+                );
+            }
+            return effectiveSlot;
+        });
+
+        const allSlots = [...effectiveUserSlots, ...providerSlots];
 
         const modelSupportedBySlot = (slot: KeySlot) => {
             const supported = slot.supportedModels || [];
@@ -1813,29 +1914,24 @@ export class KeyManager {
                 return slot.provider === 'Google';
             }
 
-            // 鏈夊悗缂€ = 蹇呴』鍛戒腑璇ュ悗缂€娓犻亾
-            const normalizedSuffix = String(suffix || '').trim().toLowerCase();
-            const slotNameLower = String(slot.name || '').trim().toLowerCase();
-            const slotSuffix = String(slot.proxyConfig?.serverName || slot.provider || 'Custom').trim();
-            const slotSuffixLower = slotSuffix.toLowerCase();
-            const providerLower = String(slot.provider || '').toLowerCase();
-
-            if (slotNameLower === normalizedSuffix) return true;
-            if (slotSuffixLower === normalizedSuffix) return true;
-            if (providerLower === normalizedSuffix) return true;
-            if (slotNameLower.includes(normalizedSuffix) || slotSuffixLower.includes(normalizedSuffix)) return true;
-
-            return false;
+            return matchesSlotRouteSuffix(slot, suffix);
         };
 
         // [Note] 绉垎妯″瀷寮哄埗璺敱宸茬Щ闄?
 
         if (preferredKeyId) {
-            const preferred = allSlots.find(s => s.id === preferredKeyId);
+            const normalizedPreferredKeyId = String(preferredKeyId).trim().toLowerCase();
+            const preferredRouteTarget = extractSlotRouteTarget(normalizedPreferredKeyId);
+            const preferred = allSlots.find(s => {
+                const slotIdLower = String(s.id || '').trim().toLowerCase();
+                return slotIdLower === normalizedPreferredKeyId || (!!preferredRouteTarget && slotIdLower === preferredRouteTarget);
+            });
             if (preferred && isSlotHealthy(preferred) && modelSupportedBySlot(preferred) && matchesRequestedRoute(preferred)) {
                 return this.prepareKeyResult(preferred);
             }
-            console.warn(`[KeyManager] Preferred key unavailable for model=${normalizedModelId}, fallback to normal routing. preferredKeyId=${preferredKeyId}`);
+            if (!suffix) {
+                console.warn(`[KeyManager] Preferred key unavailable for model=${normalizedModelId}, fallback to normal routing. preferredKeyId=${preferredKeyId}`);
+            }
         }
 
         let candidates: KeySlot[] = [];
@@ -1886,21 +1982,13 @@ export class KeyManager {
             } else {
 
                 // Step 1: 缁墽鈥橀挅宀栃為崠褰掑巻
+                const routeTarget = extractSlotRouteTarget(normalizedSuffix);
                 const nameMatchedCandidates = allSlots.filter(s => {
-                    const slotNameLower = String(s.name || '').trim().toLowerCase();
-                    const slotSuffix = String(s.proxyConfig?.serverName || s.provider || 'Custom').trim();
-                    const slotSuffixLower = slotSuffix.toLowerCase();
-                    const providerLower = String(s.provider || '').toLowerCase();
+                    if (routeTarget) {
+                        return String(s.id || '').trim().toLowerCase() === routeTarget;
+                    }
 
-                    // 缁墽鈥橀崠褰掑巻
-                    if (slotNameLower === normalizedSuffix) return true;
-                    if (slotSuffixLower === normalizedSuffix) return true;
-                    if (providerLower === normalizedSuffix) return true;
-
-                    // 鏉烆垱膩缁﹤灏柊?(鐎甸€涚艾闃呭秴鎳￠挅宀栨畱妫版垿浜?
-                    if (slotNameLower.includes(normalizedSuffix) || slotSuffixLower.includes(normalizedSuffix)) return true;
-
-                    return false;
+                    return matchesSlotRouteSuffix(s, normalizedSuffix);
                 });
 
                 // Step 2: 鐎电懓鎮曠粔鏉垮爱闁板矕娈戠偧穑棆鈧绻樼悰灞灸侀崹瀣环濠?
@@ -1928,7 +2016,12 @@ export class KeyManager {
 
                 // [Note] system/builtin 閽栧海绱戞径鍕倞瀹歌尙些闂?
 
-                console.log(`[KeyManager] Suffix='${normalizedSuffix}', NameMatched=${nameMatchedCandidates.length}, ModelFiltered=${modelFilteredCandidates.length}, FinalCandidates=${candidates.length}${candidates.length > 0 ? ' -> ' + candidates.map(c => c.name).join(', ') : ''}`);
+                console.log(
+                    `[KeyManager] Suffix='${normalizedSuffix}', routeTarget='${routeTarget || ''}', NameMatched=${nameMatchedCandidates.length}, ModelFiltered=${modelFilteredCandidates.length}, FinalCandidates=${candidates.length}` +
+                    (candidates.length > 0
+                        ? ` -> ${candidates.map(c => `${c.name}[${c.id}]@${String(c.baseUrl || '').trim() || 'no-base-url'}`).join(', ')}`
+                        : '')
+                );
             }
         }
 
@@ -2749,18 +2842,23 @@ export class KeyManager {
             creditCost?: number; // 棣冩畬 [閺傛澘顤僝 缁夘垰鍨庡☉鍫ｂ偓?
         }>();
         const chatModelIds = new Set(GOOGLE_CHAT_MODELS.map(model => model.id));
-
-        const providerSignatureSet = new Set(
-            this.providers.map((provider) => `${String(provider.name || '').trim().toLowerCase()}|${String(provider.baseUrl || '').trim().toLowerCase()}`)
+        const normalizeUserSourceSignaturePart = (value?: string) =>
+            String(value || '').trim().replace(/\/+$/, '').toLowerCase();
+        const userSlotSourceSignatures = new Set(
+            this.state.slots
+                .filter(slot => !slot.disabled && slot.status !== 'invalid' && !!slot.key)
+                .map(slot => [
+                    normalizeUserSourceSignaturePart(slot.name || slot.proxyConfig?.serverName || slot.provider),
+                    normalizeUserSourceSignaturePart(slot.baseUrl),
+                    String(slot.key || '').trim(),
+                ].join('|'))
+                .filter(signature => signature !== '||')
         );
 
         // 1. Add models from all active keys (Proxies/Custom) - THESE GO FIRST
         this.state.slots.forEach(slot => {
             // 棣冩畬 [Strict Mode] Skip disabled, invalid OR empty key slots
             if (slot.disabled || slot.status === 'invalid' || !slot.key) return;
-            const slotSignature = `${String(slot.name || slot.provider || '').trim().toLowerCase()}|${String(slot.baseUrl || '').trim().toLowerCase()}`;
-            const isLegacyThirdPartySlot = !!slot.baseUrl && providerSignatureSet.has(slotSignature);
-            if (isLegacyThirdPartySlot) return;
 
             if (slot.supportedModels && slot.supportedModels.length > 0) {
                 let cleanModels = normalizeModelList(slot.supportedModels, slot.provider);
@@ -2774,7 +2872,7 @@ export class KeyManager {
                     const suffix = slot.name || slot.proxyConfig?.serverName || slot.provider || 'Custom';
                     // 婵″倹鐏夋稉宥嗘Ц鐎规ɑ鏌熼摗鐔烘暁濞撶娀浜鹃敍灞藉繁皤攧璺虹敨閽栧海绱戦梾鏃楊瀲
                     if (slot.provider !== 'Google') {
-                        distinctId = `${id}@${suffix}`;
+                        distinctId = buildUserSlotRouteId(id, slot.id || suffix);
                     }
 
                     if (!uniqueModels.has(distinctId)) {
@@ -2786,6 +2884,7 @@ export class KeyManager {
                             id: distinctId,
                             name: name || registryInfo?.name || (meta ? meta.name : id),
                             provider: displayProvider,
+                            providerLabel: slot.name || displayProvider,
                             isCustom: false,
                             isSystemInternal: false,
                             type: MODEL_TYPE_MAP.get(id) || inferModelType(id),
@@ -2801,13 +2900,23 @@ export class KeyManager {
         this.providers
             .filter(provider => provider.isActive && provider.apiKey && provider.baseUrl)
             .forEach(provider => {
+                const providerSourceSignature = [
+                    normalizeUserSourceSignaturePart(provider.name),
+                    normalizeUserSourceSignaturePart(provider.baseUrl),
+                    String(provider.apiKey || '').trim(),
+                ].join('|');
+
+                if (userSlotSourceSignatures.has(providerSourceSignature)) {
+                    return;
+                }
+
                 const cleanModels = normalizeModelList(provider.models || [], 'Custom');
 
                 cleanModels.forEach(rawModelStr => {
                     const { id, name, description } = parseModelString(rawModelStr);
                     if (!id || id === 'nano-banana' || id === 'nano-banana-pro') return;
 
-                    const distinctId = `${id}@${provider.name}`;
+                    const distinctId = buildProviderRouteId(id, provider.id || provider.name);
                     if (uniqueModels.has(distinctId)) return;
 
                     const meta = GOOGLE_MODEL_METADATA.get(id);
@@ -2867,18 +2976,28 @@ export class KeyManager {
 
         adminModelsByBaseId.forEach((routes, baseId) => {
             const hasMultipleRoutes = routes.length > 1;
-            const primaryRoute = routes[0];
+            const mixedRoutes = routes.filter((route) => route.mixWithSameModel);
+            const shouldExposeMixedOnly = mixedRoutes.length > 1;
+            const primaryRoute = shouldExposeMixedOnly
+                ? mixedRoutes[mixedRoutes.length - 1]
+                : routes[0];
             const modelType = MODEL_TYPE_MAP.get(baseId) || (() => {
                 const inferred = inferModelType(baseId);
                 return (inferred === 'video' || inferred === 'audio') ? inferred : 'image';
             })();
 
-            if (hasMultipleRoutes) {
+            if (shouldExposeMixedOnly) {
                 const mixedRouteId = `${baseId}@system`;
                 if (!uniqueModels.has(mixedRouteId)) {
+                    // 使用同组混合路由的统一名称和颜色，优先采用当前组最后一条混合配置。
+                    const mixedColorStart = primaryRoute.colorStart || '#475569';
+                    const mixedColorEnd = primaryRoute.colorEnd || '#334155';
+                    const mixedColorSecondary = primaryRoute.colorSecondary || mixedColorEnd;
+                    const mixedTextColor = primaryRoute.textColor || 'white';
+
                     uniqueModels.set(mixedRouteId, {
                         id: mixedRouteId,
-                        name: `${primaryRoute.displayName || baseId} Mixed`,
+                        name: primaryRoute.displayName || baseId,
                         provider: 'SystemProxy',
                         providerLogo: undefined,
                         providerLabel: 'Mixed Route',
@@ -2886,14 +3005,27 @@ export class KeyManager {
                         isSystemInternal: true,
                         type: modelType,
                         icon: undefined,
-                        description: primaryRoute.advantages || `Mixed routing enabled across ${routes.length} matching routes`,
-                        colorStart: '#475569',
-                        colorEnd: '#334155',
-                        colorSecondary: '#1E293B',
-                        textColor: 'white',
+                        description: primaryRoute.advantages || `Mixed routing enabled across ${mixedRoutes.length} matching routes`,
+                        colorStart: mixedColorStart,
+                        colorEnd: mixedColorEnd,
+                        colorSecondary: mixedColorSecondary,
+                        textColor: mixedTextColor,
                         creditCost: primaryRoute.creditCost,
                     });
                 }
+
+                // 🚀 [Fix] 只移除系统内部的同 baseId 路由，保留用户/供应商自定义条目
+                for (const [modelId, modelData] of uniqueModels.entries()) {
+                    const modelBaseId = String(modelData.id || '').split('@')[0];
+                    const isSameBaseModel = modelBaseId === baseId;
+                    const isOtherSystemRoute = modelData.isSystemInternal === true && modelData.id !== mixedRouteId;
+
+                    if (isSameBaseModel && isOtherSystemRoute) {
+                        uniqueModels.delete(modelId);
+                    }
+                }
+
+                return;
             }
 
             routes.forEach((adminModel, index) => {
@@ -2935,9 +3067,13 @@ export class KeyManager {
 
             return {
                 ...model,
-                name: `${relatedAdminRoutes[0]?.displayName || baseId} Mixed`,
+                name: (relatedAdminRoutes.filter((route) => route.mixWithSameModel).slice(-1)[0]?.displayName)
+                    || relatedAdminRoutes[0]?.displayName
+                    || baseId,
                 providerLabel: 'Mixed Route',
-                description: relatedAdminRoutes[0]?.advantages || `Mixed routing enabled across ${relatedAdminRoutes.length} matching routes`,
+                description: (relatedAdminRoutes.filter((route) => route.mixWithSameModel).slice(-1)[0]?.advantages)
+                    || relatedAdminRoutes[0]?.advantages
+                    || `Mixed routing enabled across ${relatedAdminRoutes.length} matching routes`,
             };
         });
 
@@ -3012,11 +3148,7 @@ export class KeyManager {
 
             // Scenario 2: If model was selected with a provider suffix (e.g. @MyChannel)
             if (suffix) {
-                const slotNameLower = String(s.name || '').trim().toLowerCase();
-                const slotSuffixLower = String(s.proxyConfig?.serverName || s.provider || 'Custom').trim().toLowerCase();
-                const providerLower = String(s.provider || '').toLowerCase();
-
-                if (slotNameLower === suffix || slotSuffixLower === suffix || providerLower === suffix) {
+                if (matchesSlotRouteSuffix(s, suffix)) {
                     return true;
                 }
             }
@@ -3036,9 +3168,7 @@ export class KeyManager {
 
             // Check if suffix matches provider name
             if (suffix) {
-                const providerNameLower = String(p.name || '').trim().toLowerCase();
-                if (providerNameLower === suffix) return true;
-                if (providerNameLower.includes(suffix)) return true;
+                if (matchesProviderRouteSuffix(p, suffix)) return true;
             }
 
             return false;
@@ -3100,6 +3230,7 @@ export class KeyManager {
 
         this.providers.push(provider);
         this.saveProviders();
+        this.syncLegacySlotsWithProvider(provider);
         this.globalModelListCache = null; // 馃殌 [Fix] 娓呴櫎妯″瀷缂撳瓨锛屼娇涓嬫媺妗嗙珛鍗冲埛鏂?
         this.notifyListeners();
 
@@ -3119,6 +3250,8 @@ export class KeyManager {
         const index = this.providers.findIndex(p => p.id === id);
         if (index === -1) return false;
 
+        const previousProvider = { ...this.providers[index] };
+
         this.providers[index] = {
             ...this.providers[index],
             ...updates,
@@ -3127,14 +3260,142 @@ export class KeyManager {
         };
 
         this.saveProviders();
+        this.syncLegacySlotsWithProvider(this.providers[index], previousProvider);
         this.globalModelListCache = null; // 馃殌 [Fix] 娓呴櫎妯″瀷缂撳瓨锛屼娇涓嬫媺妗嗙珛鍗冲埛鏂?
         this.notifyListeners();
 
-        if (updates.baseUrl !== undefined && !updates.pricingSnapshot) {
+        if ((updates.baseUrl !== undefined || updates.apiKey !== undefined || updates.format !== undefined) && !updates.pricingSnapshot) {
             this.syncProviderPricing(id);
         }
 
         return true;
+    }
+
+    private syncLegacySlotsWithProvider(
+        provider: ThirdPartyProvider,
+        previousProvider?: Partial<ThirdPartyProvider>
+    ): void {
+        const candidateProviders = [provider, previousProvider]
+            .filter((item): item is Partial<ThirdPartyProvider> => !!item && !!item.baseUrl)
+            .map((item) => ({
+                baseUrl: normalizeProviderLinkValue(item.baseUrl),
+                apiKey: String(item.apiKey || '').trim(),
+                name: normalizeProviderLinkValue(item.name),
+            }))
+            .filter((item) => !!item.baseUrl);
+
+        if (candidateProviders.length === 0) return;
+
+        const matchedSlots = this.state.slots.filter((slot) => {
+            const slotBaseUrl = normalizeProviderLinkValue(slot.baseUrl);
+            if (!slotBaseUrl) return false;
+
+            return candidateProviders.some((candidate) => {
+                if (slotBaseUrl !== candidate.baseUrl) return false;
+
+                const slotKey = String(slot.key || '').trim();
+                const slotName = normalizeProviderLinkValue(slot.name);
+
+                if (candidate.apiKey && slotKey && slotKey === candidate.apiKey) return true;
+                if (candidate.name && slotName && slotName === candidate.name) return true;
+                return false;
+            });
+        });
+
+        if (matchedSlots.length === 0) {
+            const currentBaseUrl = normalizeProviderLinkValue(provider.baseUrl);
+            if (currentBaseUrl) {
+                const sameBaseUrlSlots = this.state.slots.filter((slot) => normalizeProviderLinkValue(slot.baseUrl) === currentBaseUrl);
+                if (sameBaseUrlSlots.length === 1) {
+                    matchedSlots.push(sameBaseUrlSlots[0]);
+                }
+            }
+        }
+
+        if (matchedSlots.length === 0) return;
+
+        matchedSlots.forEach((slot) => {
+            slot.key = String(provider.apiKey || '').trim();
+            slot.name = provider.name;
+            slot.baseUrl = provider.baseUrl;
+            slot.group = provider.group;
+            slot.disabled = !provider.isActive;
+            slot.format = normalizeApiProtocolFormat(provider.format, slot.format || 'auto');
+            if (provider.models?.length) {
+                slot.supportedModels = normalizeModelList(provider.models, slot.provider);
+            }
+            slot.type = determineKeyType(slot.provider, slot.baseUrl);
+
+            const runtime = resolveProviderRuntime({
+                provider: slot.provider,
+                baseUrl: slot.baseUrl,
+                format: slot.format,
+                authMethod: slot.authMethod,
+                headerName: slot.headerName,
+                compatibilityMode: slot.compatibilityMode,
+            });
+
+            slot.authMethod = runtime.authMethod as AuthMethod;
+            slot.headerName = runtime.headerName;
+            slot.compatibilityMode = runtime.compatibilityMode;
+            slot.updatedAt = Date.now();
+        });
+
+        this.saveState();
+        console.log(
+            `[KeyManager] Synced ${matchedSlots.length} legacy slot(s) from provider ${provider.name}: ${matchedSlots.map((slot) => `${slot.name}[${slot.id}]`).join(', ')}`
+        );
+    }
+
+    private findLinkedProviderForSlot(slot: KeySlot): ThirdPartyProvider | null {
+        const slotBaseUrl = normalizeProviderLinkValue(slot.baseUrl);
+        if (!slotBaseUrl) return null;
+
+        const sameBaseProviders = this.providers.filter((provider) => {
+            if (!provider.isActive) return false;
+            return normalizeProviderLinkValue(provider.baseUrl) === slotBaseUrl;
+        });
+
+        if (sameBaseProviders.length === 0) return null;
+        if (sameBaseProviders.length === 1) return sameBaseProviders[0];
+
+        const slotName = normalizeProviderLinkValue(slot.name);
+        const slotKey = String(slot.key || '').trim();
+
+        return sameBaseProviders.find((provider) => {
+            const providerName = normalizeProviderLinkValue(provider.name);
+            const providerKey = String(provider.apiKey || '').trim();
+            return (slotName && slotName === providerName) || (slotKey && slotKey === providerKey);
+        }) || null;
+    }
+
+    private buildEffectiveSlotFromProvider(slot: KeySlot, provider: ThirdPartyProvider): KeySlot {
+        const format = normalizeApiProtocolFormat(provider.format, slot.format || 'auto');
+        const runtime = resolveProviderRuntime({
+            provider: slot.provider,
+            baseUrl: provider.baseUrl,
+            format,
+            authMethod: slot.authMethod,
+            headerName: slot.headerName,
+            compatibilityMode: slot.compatibilityMode,
+        });
+
+        return {
+            ...slot,
+            key: String(provider.apiKey || '').trim(),
+            name: provider.name || slot.name,
+            baseUrl: provider.baseUrl || slot.baseUrl,
+            group: provider.group,
+            disabled: !provider.isActive,
+            format,
+            supportedModels: provider.models?.length
+                ? normalizeModelList(provider.models, slot.provider)
+                : slot.supportedModels,
+            type: determineKeyType(slot.provider, provider.baseUrl || slot.baseUrl),
+            authMethod: runtime.authMethod as AuthMethod,
+            headerName: runtime.headerName,
+            compatibilityMode: runtime.compatibilityMode,
+        };
     }
 
     /**
@@ -3233,51 +3494,29 @@ export class KeyManager {
         if (!provider || !provider.baseUrl) return false;
 
         try {
-            // 瑙ｆ瀽 BaseURL锛屽鏋滄槸 /v1 缁撳熬鍒欓€€鍥炲埌鏍圭洰褰曞姞涓?/api/pricing
-            let url = provider.baseUrl;
-            if (url.endsWith('/v1')) {
-                url = url.replace(/\/v1$/, '');
-            } else if (url.endsWith('/v1/')) {
-                url = url.replace(/\/v1\/$/, '');
-            }
-            if (url.endsWith('/')) {
-                url = url.slice(0, -1);
-            }
-            url = `${url}/api/pricing`;
+            const result = await fetchRawPricingCatalog(
+                provider.baseUrl,
+                provider.apiKey,
+                normalizeApiProtocolFormat(provider.format, 'auto')
+            );
 
-            console.log(`[KeyManager] Syncing pricing for ${provider.name} from ${url}...`);
-
-            // Use AbortSignal to prevent hanging if the API doesn't exist
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-            const response = await fetch(url, {
-                method: 'GET',
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                console.warn(`[KeyManager] Pricing API not available for ${provider.name} (${response.status})`);
+            if (!result?.pricingData?.length) {
+                console.warn(`[KeyManager] Pricing API not available for ${provider.name}`);
                 return false;
             }
 
-            const json = await response.json();
-            if (!json || !json.data || !Array.isArray(json.data)) {
-                console.warn(`[KeyManager] Invalid pricing JSON format for ${provider.name}`);
-                return false;
-            }
+            console.log(`[KeyManager] Syncing pricing for ${provider.name} from ${result.endpointUrl}...`);
 
-            const fetchedSnapshot = buildProviderPricingSnapshot(json.data, json.group_ratio, {
+            const fetchedSnapshot = buildProviderPricingSnapshot(result.pricingData, result.groupRatio, {
                 fetchedAt: Date.now(),
-                note: `Synced from ${url}`,
+                note: `Synced from ${result.endpointUrl}`,
             });
 
             provider.pricingSnapshot = mergeProviderPricingSnapshot(fetchedSnapshot, provider.pricingSnapshot);
 
             this.saveProviders();
             this.notifyListeners();
-            console.log(`[KeyManager] Successfully synced pricing for ${provider.name}. Models found: ${json.data.length}`);
+            console.log(`[KeyManager] Successfully synced pricing for ${provider.name}. Models found: ${result.pricingData.length}`);
             return true;
         } catch (e) {
             console.warn(`[KeyManager] Failed or timed out syncing pricing for ${provider.name}:`, e);
@@ -3431,9 +3670,13 @@ export async function fetchGeminiCompatModels(apiKey: string, baseUrl?: string):
     }
 
     try {
-        const authMethod = getDefaultAuthMethod(baseUrl, { format: 'gemini' });
+        const runtime = resolveProviderRuntime({
+            baseUrl,
+            format: 'gemini',
+        });
+        const authMethod = runtime.authMethod as AuthMethod;
         const response = await fetch(buildGeminiModelsEndpoint(baseUrl, apiKey, authMethod), {
-            headers: buildGeminiHeaders(authMethod, apiKey)
+            headers: buildGeminiHeaders(authMethod, apiKey, runtime.headerName, runtime.authorizationValueFormat)
         });
 
         if (!response.ok) {
@@ -3474,11 +3717,12 @@ export async function fetchGeminiCompatModels(apiKey: string, baseUrl?: string):
  */
 export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): Promise<string[]> {
     try {
+        const runtime = resolveProviderRuntime({
+            baseUrl,
+            format: 'openai',
+        });
         const response = await fetch(buildOpenAIEndpoint(baseUrl, 'models'), {
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            }
+            headers: buildProxyHeaders(runtime.authMethod as AuthMethod, apiKey, runtime.headerName, undefined, runtime.authorizationValueFormat)
         });
 
         if (!response.ok) {

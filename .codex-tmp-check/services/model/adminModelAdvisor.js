@@ -13538,7 +13538,7 @@ function findStrategyByProvider(provider) {
   return PROVIDER_STRATEGIES.find((strategy) => matchesAny(strategy.providerPatterns, normalizedProvider));
 }
 function isGeminiFamilyModel(modelId) {
-  const lower = String(modelId || "").trim().toLowerCase();
+  const lower = String(modelId || "").trim().split("@")[0].toLowerCase();
   return lower.startsWith("gemini-") || lower.startsWith("imagen-") || lower.startsWith("veo-");
 }
 function resolveProviderStrategy(provider, baseUrl) {
@@ -13579,6 +13579,7 @@ function resolveProviderRuntime(input) {
   const geminiNative = requestedFormat === "gemini" || requestedFormat !== "openai" && !!strategy.autoGeminiNativeForGeminiModels && isGeminiFamilyModel(input.modelId);
   const authMethod = normalizeAuthMethod(input.authMethod) || (geminiNative ? strategy.geminiAuthMethod || strategy.defaultAuthMethod || "header" : strategy.defaultAuthMethod || "header");
   const headerName = String(input.headerName || "").trim() || (geminiNative && strategy.id === "google" ? GOOGLE_API_HEADER : strategy.defaultHeaderName || AUTHORIZATION_HEADER);
+  const authorizationValueFormat = strategy.authorizationValueFormat || "bearer";
   const compatibilityMode = normalizeCompatibilityMode(input.compatibilityMode) || strategy.defaultCompatibilityMode || "standard";
   return {
     strategy,
@@ -13590,6 +13591,7 @@ function resolveProviderRuntime(input) {
     resolvedFormat,
     authMethod,
     headerName,
+    authorizationValueFormat,
     compatibilityMode,
     geminiNative,
     imageProfile: strategy.imageProfile || "openai-strict",
@@ -13612,6 +13614,7 @@ var init_providerStrategy = __esm({
       defaultAuthMethod: "header",
       geminiAuthMethod: "header",
       defaultHeaderName: AUTHORIZATION_HEADER,
+      authorizationValueFormat: "bearer",
       defaultCompatibilityMode: "standard",
       imageProfile: "openai-strict",
       videoApiStyle: "openai-v1-videos",
@@ -13631,6 +13634,7 @@ var init_providerStrategy = __esm({
         defaultAuthMethod: "query",
         geminiAuthMethod: "query",
         defaultHeaderName: GOOGLE_API_HEADER,
+        authorizationValueFormat: "raw",
         defaultCompatibilityMode: "standard",
         imageProfile: "openai-strict",
         videoApiStyle: "openai-v1-videos",
@@ -13649,6 +13653,7 @@ var init_providerStrategy = __esm({
         defaultAuthMethod: "header",
         geminiAuthMethod: "query",
         defaultHeaderName: AUTHORIZATION_HEADER,
+        authorizationValueFormat: "bearer",
         defaultCompatibilityMode: "standard",
         imageProfile: "openai-strict",
         videoApiStyle: "openai-v1-videos",
@@ -13657,16 +13662,34 @@ var init_providerStrategy = __esm({
         uiProvider: "12AI"
       },
       {
+        id: "wuyinkeji",
+        label: "Wuyin Keji",
+        known: true,
+        basePatterns: [/api\.wuyinkeji\.com/i, /wuyinkeji/i],
+        defaultFormat: "openai",
+        defaultAuthMethod: "header",
+        geminiAuthMethod: "query",
+        defaultHeaderName: AUTHORIZATION_HEADER,
+        authorizationValueFormat: "raw",
+        defaultCompatibilityMode: "standard",
+        imageProfile: "openai-strict",
+        videoApiStyle: "openai-v1-videos",
+        autoGeminiNativeForGeminiModels: false,
+        respectProviderOnCustomHost: true,
+        uiProvider: "OpenAI"
+      },
+      {
         id: "newapi",
         label: "NewAPI / OneAPI",
         known: true,
         providerPatterns: [/^newapi$/i, /^oneapi$/i, /^cherry(\s+studio)?$/i],
         hostPatterns: [/^ai\.newapi\.pro$/i, /^docs\.newapi\.pro$/i, /(^|\.)newapi\./i, /(^|\.)oneapi\./i],
-        basePatterns: [/newapi/i, /oneapi/i, /vodeshop/i, /future-api/i, /wuyinkeji/i],
+        basePatterns: [/newapi/i, /oneapi/i, /vodeshop/i, /future-api/i],
         defaultFormat: "openai",
         defaultAuthMethod: "header",
         geminiAuthMethod: "header",
         defaultHeaderName: AUTHORIZATION_HEADER,
+        authorizationValueFormat: "bearer",
         defaultCompatibilityMode: "standard",
         imageProfile: "openai-strict",
         videoApiStyle: "openai-v1-videos",
@@ -13886,6 +13909,13 @@ function resolveApiProtocolFormat(format, baseUrl, fallback = "openai", provider
 function getApiKeyToken(apiKey) {
   return String(apiKey || "").trim().replace(/^Bearer\s+/i, "").trim();
 }
+function formatAuthorizationHeaderValue(apiKey, valueFormat = "bearer") {
+  const token = getApiKeyToken(apiKey);
+  if (valueFormat === "raw") {
+    return token;
+  }
+  return /^Bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${token}`;
+}
 function normalizeOpenAIBaseUrl(url) {
   if (!url) return "";
   let clean = url.trim().replace(/\/+$/, "");
@@ -13940,7 +13970,7 @@ function buildGeminiModelsEndpoint(baseUrl, apiKey, authMethod, provider) {
   }
   return endpoint;
 }
-function buildGeminiHeaders(authMethod, apiKey, headerName) {
+function buildGeminiHeaders(authMethod, apiKey, headerName, authorizationValueFormat = "bearer") {
   const headers = {
     Accept: "application/json",
     "Content-Type": "application/json"
@@ -13949,7 +13979,29 @@ function buildGeminiHeaders(authMethod, apiKey, headerName) {
     return headers;
   }
   const effectiveHeaderName = headerName || "Authorization";
-  headers[effectiveHeaderName] = effectiveHeaderName === "Authorization" ? /^Bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${getApiKeyToken(apiKey)}` : getApiKeyToken(apiKey);
+  headers[effectiveHeaderName] = effectiveHeaderName === "Authorization" ? formatAuthorizationHeaderValue(apiKey, authorizationValueFormat) : getApiKeyToken(apiKey);
+  return headers;
+}
+function buildProxyHeaders(authMethod, apiKey, headerName = "Authorization", group, authorizationValueFormat = "bearer") {
+  const headers = {
+    "Content-Type": "application/json"
+  };
+  if (authMethod === "header" && apiKey) {
+    if (headerName === "Authorization" && !/^Bearer\s+/i.test(apiKey)) {
+      headers[headerName] = formatAuthorizationHeaderValue(apiKey, authorizationValueFormat);
+    } else {
+      headers[headerName] = headerName === "Authorization" ? formatAuthorizationHeaderValue(apiKey, authorizationValueFormat) : apiKey;
+    }
+  }
+  if (apiKey.startsWith("sk-or-") || headerName.toLowerCase() === "authorization") {
+    if (typeof window !== "undefined") {
+      headers["HTTP-Referer"] = window.location.origin;
+      headers["X-Title"] = "KK Studio";
+    }
+  }
+  if (group) {
+    headers["X-Group"] = group;
+  }
   return headers;
 }
 function getDefaultAuthMethod(baseUrl, options) {
@@ -14612,90 +14664,104 @@ var init_adminModelService = __esm({
         const baseId = modelId.split("@")[0];
         return this.sortModelsByRoutePriority(this.models.filter((model) => model.id === baseId));
       }
-      /**
-       * 基于用量平衡的路由选择
-       * 优先选择调用次数最少的供应商，实现API用量均衡
-       */
-      selectBalancedProvider(candidates, imageSize) {
+      pickRandomCandidate(candidates) {
         if (candidates.length === 0) return null;
         if (candidates.length === 1) return candidates[0];
-        const eligibleCandidates = candidates.filter(
-          (model) => isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
-        );
-        if (eligibleCandidates.length === 0) return null;
-        const sorted = [...eligibleCandidates].sort((a, b) => {
-          const countA = a.callCount ?? 0;
-          const countB = b.callCount ?? 0;
-          if (countA !== countB) return countA - countB;
-          const costA = getAdminModelCreditCostForSize(
-            a.creditCost,
-            Boolean(a.advancedEnabled),
-            a.qualityPricing,
-            imageSize
-          );
-          const costB = getAdminModelCreditCostForSize(
-            b.creditCost,
-            Boolean(b.advancedEnabled),
-            b.qualityPricing,
-            imageSize
-          );
-          if (costA !== costB) return costA - costB;
-          return (b.weight ?? 1) - (a.weight ?? 1);
-        });
-        return sorted[0];
+        const index = Math.floor(Math.random() * candidates.length);
+        return candidates[index] ?? candidates[0] ?? null;
       }
-      getModelCreditCost(modelId, imageSize) {
+      selectCheapestCandidate(candidates, imageSize, options) {
+        if (candidates.length === 0) return null;
+        const onlyEnabledForRequestedSize = options?.onlyEnabledForRequestedSize !== false;
+        const useBaseCreditCost = options?.useBaseCreditCost === true;
+        const scopedCandidates = onlyEnabledForRequestedSize ? candidates.filter(
+          (model) => isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
+        ) : candidates;
+        if (scopedCandidates.length === 0) return null;
+        const pricedCandidates = scopedCandidates.map((model) => ({
+          model,
+          creditCost: useBaseCreditCost ? Math.max(1, Number(model.creditCost || 1)) : getAdminModelCreditCostForSize(
+            model.creditCost,
+            Boolean(model.advancedEnabled),
+            model.qualityPricing,
+            imageSize
+          ),
+          usedQualityPricing: !useBaseCreditCost
+        }));
+        const lowestCost = Math.min(...pricedCandidates.map((item) => item.creditCost));
+        const cheapestCandidates = pricedCandidates.filter((item) => item.creditCost === lowestCost);
+        return this.pickRandomCandidate(cheapestCandidates);
+      }
+      getResolvedRoute(modelId, imageSize) {
         const context = this.getRouteSelectionContext(modelId, imageSize);
-        if (context.matchedModels.length === 0) return 0;
-        if (context.useMixedRouting) {
-          const selected = this.selectBalancedProvider(context.mixedModels, imageSize);
-          if (selected) {
-            return getAdminModelCreditCostForSize(
+        if (context.matchedModels.length === 0) return null;
+        if (context.routeKey) {
+          const selected = context.exactModel;
+          if (!selected) return null;
+          if (!isAdminQualityEnabled(Boolean(selected.advancedEnabled), selected.qualityPricing, imageSize)) {
+            return null;
+          }
+          return {
+            model: selected,
+            creditCost: getAdminModelCreditCostForSize(
               selected.creditCost,
               Boolean(selected.advancedEnabled),
               selected.qualityPricing,
               imageSize
-            );
-          }
-          return 0;
+            ),
+            usedQualityPricing: Boolean(selected.advancedEnabled)
+          };
+        }
+        if (context.useMixedRouting) {
+          const fromRequestedSize = this.selectCheapestCandidate(context.mixedModels, imageSize, {
+            onlyEnabledForRequestedSize: true,
+            useBaseCreditCost: false
+          });
+          if (fromRequestedSize) return fromRequestedSize;
+          return this.selectCheapestCandidate(context.mixedModels, imageSize, {
+            onlyEnabledForRequestedSize: false,
+            useBaseCreditCost: true
+          });
         }
         const selectedModel = context.exactModel || context.matchedModels.find(
           (model) => isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
         ) || context.matchedModels[0];
-        return getAdminModelCreditCostForSize(
-          selectedModel.creditCost,
-          Boolean(selectedModel.advancedEnabled),
-          selectedModel.qualityPricing,
-          imageSize
-        );
+        return {
+          model: selectedModel,
+          creditCost: getAdminModelCreditCostForSize(
+            selectedModel.creditCost,
+            Boolean(selectedModel.advancedEnabled),
+            selectedModel.qualityPricing,
+            imageSize
+          ),
+          usedQualityPricing: Boolean(selectedModel.advancedEnabled)
+        };
+      }
+      getModelCreditCost(modelId, imageSize) {
+        return this.getResolvedRoute(modelId, imageSize)?.creditCost ?? 0;
       }
       /**
        * 获取混合模式下选择的最佳供应商ID（用于调试和日志）
        */
       getSelectedProviderForModel(modelId, imageSize) {
-        const context = this.getRouteSelectionContext(modelId, imageSize);
-        if (context.matchedModels.length === 0) return null;
-        if (context.useMixedRouting) {
-          const selected = this.selectBalancedProvider(context.mixedModels, imageSize);
-          return selected?.providerId ?? null;
-        }
-        const selectedModel = context.exactModel || context.matchedModels.find(
-          (model) => isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
-        ) || context.matchedModels[0];
-        return selectedModel?.providerId ?? null;
+        return this.getResolvedRoute(modelId, imageSize)?.model.providerId ?? null;
       }
-      getModelDisplayInfo(modelId) {
-        const model = this.getModel(modelId);
+      getModelDisplayInfo(modelId, imageSize) {
+        const resolved = this.getResolvedRoute(modelId, imageSize);
+        const model = resolved?.model || this.getModel(modelId);
         if (!model) return null;
         return {
           id: model.id,
           name: model.displayName,
+          displayName: model.displayName,
           provider: model.provider,
+          providerId: model.providerId,
+          providerName: model.providerName,
           colorStart: model.colorStart,
           colorEnd: model.colorEnd,
           colorSecondary: model.colorSecondary,
           textColor: model.textColor,
-          creditCost: model.creditCost,
+          creditCost: resolved?.creditCost ?? model.creditCost,
           billingType: model.billingType,
           advantages: model.advantages,
           isSystemModel: true
@@ -15870,9 +15936,13 @@ async function fetchGeminiCompatModels(apiKey, baseUrl) {
     return fetchGoogleModels(apiKey);
   }
   try {
-    const authMethod = getDefaultAuthMethod(baseUrl, { format: "gemini" });
+    const runtime = resolveProviderRuntime({
+      baseUrl,
+      format: "gemini"
+    });
+    const authMethod = runtime.authMethod;
     const response = await fetch(buildGeminiModelsEndpoint(baseUrl, apiKey, authMethod), {
-      headers: buildGeminiHeaders(authMethod, apiKey)
+      headers: buildGeminiHeaders(authMethod, apiKey, runtime.headerName, runtime.authorizationValueFormat)
     });
     if (!response.ok) {
       console.error("[KeyManager] Failed to fetch Gemini-compatible models:", response.status, response.statusText);
@@ -15905,11 +15975,12 @@ async function fetchGeminiCompatModels(apiKey, baseUrl) {
 }
 async function fetchOpenAICompatModels(apiKey, baseUrl) {
   try {
+    const runtime = resolveProviderRuntime({
+      baseUrl,
+      format: "openai"
+    });
     const response = await fetch(buildOpenAIEndpoint(baseUrl, "models"), {
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      }
+      headers: buildProxyHeaders(runtime.authMethod, apiKey, runtime.headerName, void 0, runtime.authorizationValueFormat)
     });
     if (!response.ok) {
       console.error("[KeyManager] Failed to fetch proxy models:", response.status, response.statusText);
@@ -16817,7 +16888,7 @@ var init_keyManager = __esm({
           } else {
             const cleanBaseUrl = cleanUrl.replace(/\/v1$/, "").replace(/\/v1\/models$/, "").replace(/\/models$/, "");
             targetUrl = `${cleanBaseUrl}/v1/models`;
-            const headerValue = resolvedHeader.toLowerCase() === "authorization" ? cleanKey.toLowerCase().startsWith("bearer ") ? cleanKey : `Bearer ${cleanKey}` : cleanKey;
+            const headerValue = resolvedHeader.toLowerCase() === "authorization" ? formatAuthorizationHeaderValue(cleanKey, runtime.authorizationValueFormat) : cleanKey;
             headers[resolvedHeader] = headerValue;
           }
           const controller = new AbortController();
@@ -16874,7 +16945,7 @@ var init_keyManager = __esm({
             "Content-Type": "application/json"
           };
           if (resolvedAuthMethod !== "query") {
-            headers[resolvedHeader] = resolvedHeader.toLowerCase() === "authorization" ? key.toLowerCase().startsWith("bearer ") ? key : `Bearer ${key}` : key;
+            headers[resolvedHeader] = resolvedHeader.toLowerCase() === "authorization" ? formatAuthorizationHeaderValue(key, runtime.authorizationValueFormat) : key;
           }
           if (cleanUrl.includes("openrouter.ai")) {
             headers["HTTP-Referer"] = window.location.origin;
@@ -16885,7 +16956,7 @@ var init_keyManager = __esm({
               buildGeminiModelsEndpoint(cleanUrl, key, resolvedAuthMethod, typeof provider === "string" ? provider : void 0),
               {
                 method: "GET",
-                headers: buildGeminiHeaders(resolvedAuthMethod, key, resolvedHeader)
+                headers: buildGeminiHeaders(resolvedAuthMethod, key, resolvedHeader, runtime.authorizationValueFormat)
               }
             );
             if (!response.ok) {
@@ -17837,17 +17908,23 @@ var init_keyManager = __esm({
         });
         adminModelsByBaseId.forEach((routes, baseId) => {
           const hasMultipleRoutes = routes.length > 1;
-          const primaryRoute = routes[0];
+          const mixedRoutes = routes.filter((route) => route.mixWithSameModel);
+          const shouldExposeMixedOnly = mixedRoutes.length > 1;
+          const primaryRoute = shouldExposeMixedOnly ? mixedRoutes[mixedRoutes.length - 1] : routes[0];
           const modelType = MODEL_TYPE_MAP.get(baseId) || (() => {
             const inferred = inferModelType(baseId);
             return inferred === "video" || inferred === "audio" ? inferred : "image";
           })();
-          if (hasMultipleRoutes) {
+          if (shouldExposeMixedOnly) {
             const mixedRouteId = `${baseId}@system`;
             if (!uniqueModels.has(mixedRouteId)) {
+              const mixedColorStart = primaryRoute.colorStart || "#475569";
+              const mixedColorEnd = primaryRoute.colorEnd || "#334155";
+              const mixedColorSecondary = primaryRoute.colorSecondary || mixedColorEnd;
+              const mixedTextColor = primaryRoute.textColor || "white";
               uniqueModels.set(mixedRouteId, {
                 id: mixedRouteId,
-                name: `${primaryRoute.displayName || baseId} Mixed`,
+                name: primaryRoute.displayName || baseId,
                 provider: "SystemProxy",
                 providerLogo: void 0,
                 providerLabel: "Mixed Route",
@@ -17855,14 +17932,21 @@ var init_keyManager = __esm({
                 isSystemInternal: true,
                 type: modelType,
                 icon: void 0,
-                description: primaryRoute.advantages || `Mixed routing enabled across ${routes.length} matching routes`,
-                colorStart: "#475569",
-                colorEnd: "#334155",
-                colorSecondary: "#1E293B",
-                textColor: "white",
+                description: primaryRoute.advantages || `Mixed routing enabled across ${mixedRoutes.length} matching routes`,
+                colorStart: mixedColorStart,
+                colorEnd: mixedColorEnd,
+                colorSecondary: mixedColorSecondary,
+                textColor: mixedTextColor,
                 creditCost: primaryRoute.creditCost
               });
             }
+            for (const [modelId, modelData] of uniqueModels.entries()) {
+              const modelBaseId = String(modelData.id || "").split("@")[0];
+              if (modelBaseId === baseId && modelData.id !== mixedRouteId) {
+                uniqueModels.delete(modelId);
+              }
+            }
+            return;
           }
           routes.forEach((adminModel, index) => {
             const systemId = hasMultipleRoutes ? buildStableSystemRouteId(baseId, adminModel.providerId, index + 1) : `${baseId}@system`;
@@ -17896,9 +17980,9 @@ var init_keyManager = __esm({
           }
           return {
             ...model,
-            name: `${relatedAdminRoutes[0]?.displayName || baseId} Mixed`,
+            name: relatedAdminRoutes.filter((route) => route.mixWithSameModel).slice(-1)[0]?.displayName || relatedAdminRoutes[0]?.displayName || baseId,
             providerLabel: "Mixed Route",
-            description: relatedAdminRoutes[0]?.advantages || `Mixed routing enabled across ${relatedAdminRoutes.length} matching routes`
+            description: relatedAdminRoutes.filter((route) => route.mixWithSameModel).slice(-1)[0]?.advantages || relatedAdminRoutes[0]?.advantages || `Mixed routing enabled across ${relatedAdminRoutes.length} matching routes`
           };
         });
         this.globalModelListCache = {

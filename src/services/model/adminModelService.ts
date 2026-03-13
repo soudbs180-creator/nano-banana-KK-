@@ -112,6 +112,12 @@ export type AdminModelRouteSelectionContext = {
   useMixedRouting: boolean;
 };
 
+type ResolvedAdminModelRoute = {
+  model: AdminModelConfig;
+  creditCost: number;
+  usedQualityPricing: boolean;
+};
+
 class AdminModelService {
   private providers: AdminProvider[] = [];
   private models: AdminModelConfig[] = [];
@@ -419,68 +425,92 @@ class AdminModelService {
     return this.sortModelsByRoutePriority(this.models.filter((model) => model.id === baseId));
   }
 
-  /**
-   * 基于用量平衡的路由选择
-   * 优先选择调用次数最少的供应商，实现API用量均衡
-   */
-  private selectBalancedProvider(
-    candidates: AdminModelConfig[],
-    imageSize?: string | null
-  ): AdminModelConfig | null {
+  private pickRandomCandidate<T>(candidates: T[]): T | null {
     if (candidates.length === 0) return null;
     if (candidates.length === 1) return candidates[0];
 
-    // 过滤出支持当前画质的候选
-    const eligibleCandidates = candidates.filter((model) =>
-      isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
-    );
-
-    if (eligibleCandidates.length === 0) return null;
-
-    // 按调用次数升序排序，优先选择用量最少的
-    const sorted = [...eligibleCandidates].sort((a, b) => {
-      const countA = a.callCount ?? 0;
-      const countB = b.callCount ?? 0;
-      if (countA !== countB) return countA - countB;
-
-      // 如果调用次数相同，按价格优先
-      const costA = getAdminModelCreditCostForSize(
-        a.creditCost,
-        Boolean(a.advancedEnabled),
-        a.qualityPricing,
-        imageSize
-      );
-      const costB = getAdminModelCreditCostForSize(
-        b.creditCost,
-        Boolean(b.advancedEnabled),
-        b.qualityPricing,
-        imageSize
-      );
-      if (costA !== costB) return costA - costB;
-
-      // 最后按权重
-      return (b.weight ?? 1) - (a.weight ?? 1);
-    });
-
-    return sorted[0];
+    const index = Math.floor(Math.random() * candidates.length);
+    return candidates[index] ?? candidates[0] ?? null;
   }
 
-  getModelCreditCost(modelId: string, imageSize?: string | null): number {
-    const context = this.getRouteSelectionContext(modelId, imageSize);
-    if (context.matchedModels.length === 0) return 0;
+  private selectCheapestCandidate(
+    candidates: AdminModelConfig[],
+    imageSize?: string | null,
+    options?: {
+      onlyEnabledForRequestedSize?: boolean;
+      useBaseCreditCost?: boolean;
+    }
+  ): ResolvedAdminModelRoute | null {
+    if (candidates.length === 0) return null;
 
-    if (context.useMixedRouting) {
-      const selected = this.selectBalancedProvider(context.mixedModels, imageSize);
-      if (selected) {
-        return getAdminModelCreditCostForSize(
+    const onlyEnabledForRequestedSize = options?.onlyEnabledForRequestedSize !== false;
+    const useBaseCreditCost = options?.useBaseCreditCost === true;
+
+    const scopedCandidates = onlyEnabledForRequestedSize
+      ? candidates.filter((model) =>
+          isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
+        )
+      : candidates;
+
+    if (scopedCandidates.length === 0) return null;
+
+    const pricedCandidates = scopedCandidates.map((model) => ({
+      model,
+      creditCost: useBaseCreditCost
+        ? Math.max(1, Number(model.creditCost || 1))
+        : getAdminModelCreditCostForSize(
+            model.creditCost,
+            Boolean(model.advancedEnabled),
+            model.qualityPricing,
+            imageSize
+          ),
+      usedQualityPricing: !useBaseCreditCost,
+    }));
+
+    const lowestCost = Math.min(...pricedCandidates.map((item) => item.creditCost));
+    const cheapestCandidates = pricedCandidates.filter((item) => item.creditCost === lowestCost);
+    return this.pickRandomCandidate(cheapestCandidates);
+  }
+
+  private getResolvedRoute(
+    modelId: string,
+    imageSize?: string | null
+  ): ResolvedAdminModelRoute | null {
+    const context = this.getRouteSelectionContext(modelId, imageSize);
+    if (context.matchedModels.length === 0) return null;
+
+    if (context.routeKey) {
+      const selected = context.exactModel;
+      if (!selected) return null;
+      if (
+        !isAdminQualityEnabled(Boolean(selected.advancedEnabled), selected.qualityPricing, imageSize)
+      ) {
+        return null;
+      }
+
+      return {
+        model: selected,
+        creditCost: getAdminModelCreditCostForSize(
           selected.creditCost,
           Boolean(selected.advancedEnabled),
           selected.qualityPricing,
           imageSize
-        );
-      }
+        ),
+        usedQualityPricing: Boolean(selected.advancedEnabled),
+      };
+    }
 
-      return 0;
+    if (context.useMixedRouting) {
+      const fromRequestedSize = this.selectCheapestCandidate(context.mixedModels, imageSize, {
+        onlyEnabledForRequestedSize: true,
+        useBaseCreditCost: false,
+      });
+      if (fromRequestedSize) return fromRequestedSize;
+
+      return this.selectCheapestCandidate(context.mixedModels, imageSize, {
+        onlyEnabledForRequestedSize: false,
+        useBaseCreditCost: true,
+      });
     }
 
     const selectedModel =
@@ -490,49 +520,46 @@ class AdminModelService {
       ) ||
       context.matchedModels[0];
 
-    return getAdminModelCreditCostForSize(
-      selectedModel.creditCost,
-      Boolean(selectedModel.advancedEnabled),
-      selectedModel.qualityPricing,
-      imageSize
-    );
+    return {
+      model: selectedModel,
+      creditCost: getAdminModelCreditCostForSize(
+        selectedModel.creditCost,
+        Boolean(selectedModel.advancedEnabled),
+        selectedModel.qualityPricing,
+        imageSize
+      ),
+      usedQualityPricing: Boolean(selectedModel.advancedEnabled),
+    };
+  }
+
+  getModelCreditCost(modelId: string, imageSize?: string | null): number {
+    return this.getResolvedRoute(modelId, imageSize)?.creditCost ?? 0;
   }
 
   /**
    * 获取混合模式下选择的最佳供应商ID（用于调试和日志）
    */
   getSelectedProviderForModel(modelId: string, imageSize?: string | null): string | null {
-    const context = this.getRouteSelectionContext(modelId, imageSize);
-    if (context.matchedModels.length === 0) return null;
-
-    if (context.useMixedRouting) {
-      const selected = this.selectBalancedProvider(context.mixedModels, imageSize);
-      return selected?.providerId ?? null;
-    }
-
-    const selectedModel =
-      context.exactModel ||
-      context.matchedModels.find((model) =>
-        isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
-      ) ||
-      context.matchedModels[0];
-
-    return selectedModel?.providerId ?? null;
+    return this.getResolvedRoute(modelId, imageSize)?.model.providerId ?? null;
   }
 
-  getModelDisplayInfo(modelId: string) {
-    const model = this.getModel(modelId);
+  getModelDisplayInfo(modelId: string, imageSize?: string | null) {
+    const resolved = this.getResolvedRoute(modelId, imageSize);
+    const model = resolved?.model || this.getModel(modelId);
     if (!model) return null;
 
     return {
       id: model.id,
       name: model.displayName,
+      displayName: model.displayName,
       provider: model.provider,
+      providerId: model.providerId,
+      providerName: model.providerName,
       colorStart: model.colorStart,
       colorEnd: model.colorEnd,
       colorSecondary: model.colorSecondary,
       textColor: model.textColor,
-      creditCost: model.creditCost,
+      creditCost: resolved?.creditCost ?? model.creditCost,
       billingType: model.billingType,
       advantages: model.advantages,
       isSystemModel: true,

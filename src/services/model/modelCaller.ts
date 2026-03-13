@@ -203,7 +203,7 @@ class ModelCaller {
       });
       const response = await fetch(buildOpenAIEndpoint(config.baseUrl, 'chat/completions'), {
         method: 'POST',
-        headers: buildProxyHeaders(runtime.authMethod as 'header' | 'query', config.apiKey, runtime.headerName),
+        headers: buildProxyHeaders(runtime.authMethod as 'header' | 'query', config.apiKey, runtime.headerName, undefined, runtime.authorizationValueFormat),
         body: JSON.stringify({
           model: options.modelId,
           messages: options.messages,
@@ -287,7 +287,7 @@ class ModelCaller {
         buildGeminiEndpoint(config.baseUrl, options.modelId, 'generateContent', config.apiKey, authMethod, config.provider),
         {
           method: 'POST',
-          headers: buildGeminiHeaders(authMethod, config.apiKey, runtime.headerName),
+          headers: buildGeminiHeaders(authMethod, config.apiKey, runtime.headerName, runtime.authorizationValueFormat),
           body: JSON.stringify(this.buildGeminiPayload(options)),
         },
       );

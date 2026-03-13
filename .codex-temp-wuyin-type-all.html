@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+	<meta name="theme-color" content="#1E78FF">
+	<link rel="dns-prefetch" href="//api.wuyinkeji.com">
+	<link rel="preconnect" href="//api.wuyinkeji.com" crossorigin>
+	<title>所有产品-速创API</title>
+	<meta name="keywords" content="所有产品-速创API,sora2API,数字人API,veo3API,seedance2API,grokAPI,nanobananaAPI">
+	<meta name="description" content="为广大用户提供涵盖生活服务API、人工智能API、企业工商API等相关的API接口服务。免费API接口可安全、合规地连接上下游，为数据API应用能力赋能。">
+	<meta name="robots" content="all">
+	<meta property="og:type" content="website">
+	<meta property="og:site_name" content="所有产品-速创API">
+	<meta property="og:title" content="所有产品-速创API">
+	<meta property="og:description" content="为广大用户提供涵盖生活服务API、人工智能API、企业工商API等相关的API接口服务。免费API接口可安全、合规地连接上下游，为数据API应用能力赋能。">
+	<meta property="og:url" content="https://api.wuyinkeji.com">
+	<meta property="og:image" content="/assets/img/未命名-2.png">
+	<meta name="apple-mobile-web-app-title" content="所有产品-速创API">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+	<meta name="msapplication-TileColor" content="#1E78FF">
+	<link rel="icon" href="/assets/img/未命名-2.png">
+	<link rel="apple-touch-icon" href="/assets/img/未命名-2.png">
+	<link href="/themes/DigitalBlue/assets/css/all.min.css" rel="stylesheet">
+	<link href="/themes/DigitalBlue/assets/css/bootstrap.min.css" rel="stylesheet">
+	<link href="/themes/DigitalBlue/assets/css/style.css" rel="stylesheet">
+	<link href="/themes/DigitalBlue/theme_color_css" rel="stylesheet">
+	<script src="/themes/DigitalBlue/assets/js/jquery.min.js"></script>
+	<!--[if lt IE 9]>
+    <script src="/themes/DigitalBlue/assets/js/html5.min.js"></script>
+    <script src="/themes/DigitalBlue/assets/js/respond.js"></script>
+    <![endif]-->
+	<style>/*自定义css*/</style></head>
+
+<body>
+	<nav class="navbar navbar-expand-lg">
+		<div class="container">
+			<a class="navbar-brand" href="/">
+				<div class="logo">
+					<img src="/assets/img/未命名-3.png" alt="速创API" title="所有产品-速创API">
+				</div>
+			</a>
+			<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+				aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+				<i class="fas fa-bars text-theme"></i>
+			</button>
+			<div class="collapse navbar-collapse" id="navbarNav">
+				<ul class="navbar-nav mx-auto">
+					<li class="nav-item">
+						<a class="nav-link " aria-current="page" href="/">首页</a>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle active" href="/type/" role="button" data-bs-toggle="dropdown" aria-expanded="false" tabindex="0">API<i class="fas fa-angle-down"></i>
+						</a>
+						<ul class="dropdown-menu neuro">
+							<li><a class="dropdown-item active" id="menu" href="/type/all"><span>所有产品</span></a></li><li><a class="dropdown-item" id="menu" href="/type/10"><span>结果查询</span></a></li><li><a class="dropdown-item" id="menu" href="/type/11"><span>视频模型</span></a></li><li><a class="dropdown-item" id="menu" href="/type/1"><span>文本模型</span></a></li><li><a class="dropdown-item" id="menu" href="/type/2"><span>图片模型</span></a></li><li><a class="dropdown-item" id="menu" href="/type/7"><span>音频模型</span></a></li><li><a class="dropdown-item" id="menu" href="/type/9"><span>备用接口</span></a></li>						</ul>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="/blog/" role="button" data-bs-toggle="dropdown" aria-expanded="false" tabindex="0">
+							动态<i class="fa fa-angle-down"></i>
+						</a>
+						<ul class="dropdown-menu neuro">
+							<li><a class="dropdown-item" id="menu" href="/blog/all"><span>全部文章</span></a></li><li><a class="dropdown-item" id="menu" href="/blog/top"><span>平台公告</span></a></li><li><a class="dropdown-item" id="menu" href="/blog/news"><span>行业资讯</span></a></li><li><a class="dropdown-item" id="menu" href="/blog/help"><span>更新日志</span></a></li>						</ul>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="/doc/" role="button" data-bs-toggle="dropdown" aria-expanded="false">文档中心<i class="fa fa-angle-down"></i></a>
+						<ul class="dropdown-menu neuro">
+							<a class="dropdown-item" href="/doc/" id="menu"><span>产品文档</span></a>
+							<a class="dropdown-item" href="/help/" id="menu"><span>帮助文档</span></a>
+						</ul>
+					</li>
+										<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="about" role="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">关于 <i class="fa fa-angle-down"></i></a>
+						<ul class="dropdown-menu neuro">
+							<a class="dropdown-item" href="/about/" id="menu"><span>关于速创API</span></a>
+							<a class="dropdown-item" href="/contact/" id="menu"><span>联系我们</span></a>
+							<a class="dropdown-item" href="/demand/" id="menu"><span>提交需求</span></a>
+						</ul>
+					</li>
+										<li class="nav-item dropdown">
+							        	<a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">更多 <i class="fa fa-angle-down"></i></a>
+							        	<ul class="dropdown-menu">
+							                <li><a class="dropdown-item" href="https://yunhong.yinwukeji.com/" target="_blank">智媒体SaaS</a></li>
+							                <li><a class="dropdown-item" href="https://jianji.zhanacun.com" target="_blank" rel="nofollow">速创圈</a></li>
+						                </ul>
+						            </li>				</ul>
+				<div class="navbar-nav">
+											<a class="nav-link" href="/user/login">登录</a>
+						<a class="btn btn-tech ms-2" href="/user/register">注册</a>
+									</div>
+			</div>
+		</div>
+	</nav>    <section class="hero api-list-hero">
+    	<div class="container">
+    		<div class="api-list-hero-content" data-aos="fade-down">
+    			<div class="d-flex flex-column flex-md-row align-items-center text-center text-md-start mb-3">
+    				<div class="section-icon mb-4 mb-md-0 me-md-4 p-4">
+    					<i class="fas fa-layer-group"></i>
+    				</div>
+    				<div>
+    					<h2 class="mb-1 fs-2">所有产品</h2>
+    					<p class="mb-0 text-truncate-2 fs-6">为广大用户提供涵盖生活服务API、人工智能API、企业工商API等相关的API接口服务。免费API接口可安全、合规地连接上下游，为数据API应用能力赋能。</p>
+    				</div>
+    			</div>
+    		</div>
+    	</div>
+    </section>
+    <!-- API列表区域 -->
+    <section class="api-list-section">
+    	<div class="container">
+    		<!-- 筛选和搜索区域 -->
+    		<div class="api-filter-container neuro" data-aos="fade-up">
+    			<div class="search-box">
+    				<i class="fas fa-search"></i>
+    				<input type="text" class="form-control" id="searchInput" placeholder="搜索API接口...">
+    				<i class="fas fa-times clear-btn" id="clearSearch"></i>
+    			</div>
+
+    			<div class="category-filter">
+
+    			</div>
+    		</div>
+    		<!-- 无结果提示 -->
+    		<div class="no-results neuro" id="noResults" style="display: none;">
+    			<i class="fas fa-box-open"></i>
+    			<h3>没有找到合适的API</h3>
+    			<p>我们正在不断扩展我们的API库，如果您有特定的API需求，请告诉我们。</p>
+    			<a href="/demand/" class="btn btn-tech">点击提交需求</a>
+    		</div>
+    		<!-- API产品卡片网格 -->
+    		<div class="api-grid" id="apiGrid" data-aos="fade-up" data-aos-delay="100">
+    			<!-- API卡片将通过JavaScript动态生成 -->
+    		</div>
+
+    		<!-- 分页控件 -->
+    		<div class="pagination-container pt-4" data-aos="fade-up" data-aos-delay="200">
+    			<ul class="pagination" id="pagination">
+    				<!-- 分页将通过JavaScript动态生成 -->
+    			</ul>
+    		</div>
+    	</div>
+    </section><footer class="footer">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="footer-brand logo">
+                    <a href="/"><img src="/themes/DigitalBlue/assets/image/logo/_________-20260131183004.png" alt="速创API" title="汇聚全球大模型API接口--稳定全面的API聚合平台"></a>
+                </div>
+                <p class="footer-about">
+                    为众多开发者提供专业的 API 服务，让您轻松实现应用上线                </p>
+            </div>
+            <div class="col-md-2">
+                <h4 class="footer-title">产品服务</h4>
+                <ul class="footer-links">
+                    <li><a href="/type/all">产品分类</a></li>
+                    <li><a href="/doc/">接口文档</a></li>
+                    <li><a href="/vip/">会员服务</a></li>
+                    <li><a href="/help/" target="_blank">常见问题</a></li>
+                </ul>
+            </div>
+            <div class="col-md-2">
+                <h4 class="footer-title">法律法规</h4>
+                <ul class="footer-links">
+                    <li><a href="/agreement/legal" target="_blank">服务条款</a></li>
+                    <li><a href="/agreement/privacy" target="_blank">隐私政策</a></li>
+                    <li><a href="/agreement/disclaimers" target="_blank">免责声明</a></li>
+                    <li><a href="/agreement/copyright" target="_blank">侵权投诉</a></li>
+                </ul>
+            </div>
+            <div class="col-md-2">
+                <h4 class="footer-title">关于我们</h4>
+                <ul class="footer-links">
+                    <li><a href="/about/">关于我们</a></li>
+                    <li><a href="/blog/all">最新动态</a></li>
+                    <li><a href="/contact/">反馈建议</a></li>
+                    <li><a href="/contact/">联系我们</a></li>
+                </ul>
+            </div>
+                            <div class="col-md-2">
+                    <h4 class="footer-title">联系我们</h4>
+                    <ul class="footer-links">
+                                                <li class="footer-contact">
+                            <div class="wechat-qr-container">
+                                <i class="fab fa-weixin"></i>
+                                <span>微信客服</span>
+                                <div class="wechat-qr-popup">
+                                    <img src="/assets/img/IMG_9517-2.jpg" alt="客服微信二维码" />
+                                    <p class="mt-2">扫码添加客服微信</p>
+                                </div>
+                            </div>
+                        </li>
+                                                                                                                        <li class="footer-contact">
+                            <a href="mailto:action@wuyinkeji.net" class="footer-contact-link">
+                                <i class="fas fa-envelope"></i>
+                                <span>action@wuyinkeji.net</span>
+                            </a>
+                        </li>
+                                                                        <li class="footer-contact">
+                            <a href="tel:16228033939" class="footer-contact-link">
+                                <i class="fas fa-phone"></i>
+                                <span>16228033939</span>
+                            </a>
+                        </li>
+                                            </ul>
+                </div>
+                    </div>
+        <div class="copyright">
+            <!-- 友情链接 -->
+            <div class="footer-links-section">
+                <span>友情链接：</span>
+                <a class="text-muted me-2" href="https://jianji.zhanacun.com" target="_blank" rel="nofollow">&#36895;&#21019;&#22280;</a>
+            </div>
+
+            <!-- 版权信息和备案信息 -->
+            <div class="footer-bottom-info d-md-flex text-center">
+                <span class="copyright-text">Copyright ? 2026 <a href="/" target="_blank">速创API</a> All Rights Reserved.</span>
+                <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow" class="align-items-center d-md-flex"><img src="/themes/DigitalBlue/assets/image/icp.png">蜀ICP备2021012456号-5</a>                                                <a href="/sitemap.xml" target="_blank">Sitemap</a>
+                                <a href="/status" target="_blank" class="align-items-center d-md-flex"><span class="spinner-grow spinner-grow-sm text-success me-2" role="status" aria-hidden="true"></span> 系统状态</a>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!-- 返回顶部按钮 -->
+<button class="back-to-top" id="backToTop" aria-label="返回顶部">
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+<script src="/themes/DigitalBlue/assets/js/bootstrap.bundle.min.js"></script>
+<script src="/themes/DigitalBlue/assets/js/theme.js"></script>
+</body>
+
+</html>

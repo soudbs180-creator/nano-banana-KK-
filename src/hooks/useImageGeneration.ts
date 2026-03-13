@@ -235,17 +235,31 @@ export const useImageGeneration = (options: {
       }
     } catch (err) {
       console.error(`[useImageGeneration] Polling failed:`, err);
+      const message = err instanceof Error ? err.message : String(err || 'Task polling failed');
+      if (/credit rollback failed/i.test(message)) {
+        const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id) || node;
+        const { nextPendingTaskIds, nextJobId, nextGenerationMetadata } = resolvePendingTaskState(latestNode, targetTaskId);
+        urgentUpdatePromptNode({
+          ...latestNode,
+          isGenerating: nextPendingTaskIds.length > 0,
+          jobId: nextJobId,
+          generationMetadata: nextGenerationMetadata,
+          error: message,
+          errorDetails: extractErrorDetails(err, latestNode.model)
+        });
+        return;
+      }
       setTimeout(() => {
         const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
         if (freshNode?.isGenerating) pollTaskStatus(freshNode, targetTaskId);
       }, 15000);
     }
-  }, [llmService, addImageNodes, urgentUpdatePromptNode, resolvePendingTaskState, getExpectedGenerationCount, getGeneratedImagePosition, buildPptPageAlias, getPendingTaskIds]);
+  }, [llmService, addImageNodes, urgentUpdatePromptNode, resolvePendingTaskState, getExpectedGenerationCount, getGeneratedImagePosition, buildPptPageAlias, getPendingTaskIds, extractErrorDetails]);
 
   // --- Execution Logic ---
 
   const executeGeneration = useCallback(async (node: PromptNode) => {
-    const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: initialModel, mode, referenceImages: initialFiles = [] } = node;
+    const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, mode, referenceImages: initialFiles = [] } = node;
     setIsGenerating(true);
     
     try {
@@ -275,10 +289,36 @@ export const useImageGeneration = (options: {
       }));
       
       const files = hydratedFiles.filter(img => img.data && img.data.length > 100);
+      const resolvedKey = keyManager.getNextKey(node.model, node.keySlotId);
+      const effectiveKeySlotId = resolvedKey?.id || node.keySlotId;
+      const resolvedProviderDisplay = effectiveKeySlotId
+        ? resolveProviderDisplay(effectiveKeySlotId)
+        : resolveProviderDisplay(undefined, node.providerLabel, node.provider);
+      const executionNode: PromptNode = {
+        ...node,
+        keySlotId: effectiveKeySlotId,
+        provider: resolvedProviderDisplay.provider || node.provider,
+        providerLabel: resolvedProviderDisplay.providerLabel || node.providerLabel,
+      };
+
+      if (
+        executionNode.keySlotId !== node.keySlotId ||
+        executionNode.provider !== node.provider ||
+        executionNode.providerLabel !== node.providerLabel
+      ) {
+        const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId) || node;
+        urgentUpdatePromptNode({
+          ...latestNode,
+          keySlotId: executionNode.keySlotId,
+          provider: executionNode.provider,
+          providerLabel: executionNode.providerLabel,
+        });
+      }
+
       const isVideo = mode === GenerationMode.VIDEO;
       const isAudio = mode === GenerationMode.AUDIO;
       const isPpt = mode === GenerationMode.PPT;
-      const effectiveSlideLines = isPpt ? normalizePptSlidesForCount(node.pptSlides, node.prompt, count) : [];
+      const effectiveSlideLines = isPpt ? normalizePptSlidesForCount(executionNode.pptSlides, executionNode.prompt, count) : [];
       
       const buildPptPagePrompt = (basePrompt: string, index: number, total: number) => {
         const pageNo = index + 1;
@@ -299,14 +339,24 @@ export const useImageGeneration = (options: {
           let generatedBase64 = '';
           let videoUrl = '';
           const taskPrompt = isPpt ? buildPptPagePrompt(promptToUse, index, actualCount) : promptToUse;
+          let resolvedResultKeySlotId: string | undefined = executionNode.keySlotId;
+          let resolvedProvider = executionNode.provider;
+          let resolvedProviderName = executionNode.providerLabel;
+          let resolvedModelName = executionNode.modelLabel;
+          let resolvedModelId = executionNode.model;
           
           if (isAudio) {
-            const audioResult = await llmService.generateAudio({ modelId: node.model, prompt: taskPrompt, audioDuration: node.audioDuration, audioLyrics: node.audioLyrics, preferredKeyId: node.keySlotId, providerConfig: {} });
+            const audioResult = await llmService.generateAudio({ modelId: executionNode.model, prompt: taskPrompt, audioDuration: executionNode.audioDuration, audioLyrics: executionNode.audioLyrics, preferredKeyId: executionNode.keySlotId, providerConfig: {} });
             videoUrl = audioResult.url;
+            resolvedResultKeySlotId = audioResult.keySlotId || resolvedResultKeySlotId;
+            resolvedProvider = audioResult.provider || resolvedProvider;
+            resolvedProviderName = audioResult.providerName || resolvedProviderName;
+            resolvedModelName = audioResult.modelName || resolvedModelName;
+            resolvedModelId = audioResult.model || resolvedModelId;
           } else if (isVideo) {
             const videoResult = await llmService.generateVideo({ 
-              modelId: node.model, prompt: taskPrompt, aspectRatio: node.aspectRatio === '9:16' ? '9:16' : '16:9', 
-              imageUrl: files[0]?.data, videoDuration: node.videoDuration, preferredKeyId: node.keySlotId, 
+              modelId: executionNode.model, prompt: taskPrompt, aspectRatio: executionNode.aspectRatio === '9:16' ? '9:16' : '16:9', 
+              imageUrl: files[0]?.data, videoDuration: executionNode.videoDuration, preferredKeyId: executionNode.keySlotId, 
               providerConfig: {}, 
               onTaskId: (taskId) => {
                 taskIdForRecovery = taskId;
@@ -315,10 +365,15 @@ export const useImageGeneration = (options: {
               }
             });
             videoUrl = videoResult.url;
+            resolvedResultKeySlotId = videoResult.keySlotId || resolvedResultKeySlotId;
+            resolvedProvider = videoResult.provider || resolvedProvider;
+            resolvedProviderName = videoResult.providerName || resolvedProviderName;
+            resolvedModelName = videoResult.modelName || resolvedModelName;
+            resolvedModelId = videoResult.model || resolvedModelId;
           } else {
-            const result = await generateImage(taskPrompt, node.aspectRatio, node.imageSize, files, node.model, '', currentRequestId, !!node.enableGrounding || !!node.enableImageSearch, {
-              maskUrl: node.maskUrl, editMode: node.mode === GenerationMode.INPAINT ? 'inpaint' : (node.mode === GenerationMode.EDIT ? 'edit' : undefined),
-              preferredKeyId: node.keySlotId, 
+            const result = await generateImage(taskPrompt, executionNode.aspectRatio, executionNode.imageSize, files, executionNode.model, '', currentRequestId, !!executionNode.enableGrounding || !!executionNode.enableImageSearch, {
+              maskUrl: executionNode.maskUrl, editMode: executionNode.mode === GenerationMode.INPAINT ? 'inpaint' : (executionNode.mode === GenerationMode.EDIT ? 'edit' : undefined),
+              preferredKeyId: executionNode.keySlotId, 
               onTaskId: (taskId) => {
                 taskIdForRecovery = taskId;
                 const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
@@ -326,15 +381,21 @@ export const useImageGeneration = (options: {
               }
             });
             generatedBase64 = result.url;
+            resolvedResultKeySlotId = result.keySlotId || resolvedResultKeySlotId;
+            resolvedProvider = result.provider || resolvedProvider;
+            resolvedProviderName = result.providerName || resolvedProviderName;
+            resolvedModelName = result.modelName || resolvedModelName;
+            resolvedModelId = result.effectiveModel || resolvedModelId;
           }
 
           return { 
             index, url: isVideo || isAudio ? videoUrl : generatedBase64, originalUrl: isVideo || isAudio ? videoUrl : generatedBase64, 
             generationTime: Date.now() - startTime, base64: generatedBase64, mode, 
-            taskId: taskIdForRecovery, taskPrompt, keySlotId: node.keySlotId 
+            taskId: taskIdForRecovery, taskPrompt, keySlotId: resolvedResultKeySlotId,
+            provider: resolvedProvider, providerName: resolvedProviderName, modelName: resolvedModelName, model: resolvedModelId 
           };
         } catch (error: any) {
-          return { error: error.message || 'Unknown error', errorDetails: extractErrorDetails(error, node.model), taskId: taskIdForRecovery };
+          return { error: error.message || 'Unknown error', errorDetails: extractErrorDetails(error, executionNode.model), taskId: taskIdForRecovery };
         }
       };
 
@@ -352,28 +413,36 @@ export const useImageGeneration = (options: {
           
           return {
             id: uniqueId, storageId: uniqueId, url: item.url, originalUrl: item.originalUrl,
-            prompt: item.taskPrompt || promptToUse, aspectRatio: node.aspectRatio, imageSize: node.imageSize,
-            timestamp: Date.now(), model: node.model, canvasId: activeCanvasRef.current?.id || 'default',
-            modelLabel: item.modelName || node.modelLabel,
-            modelColorStart: node.modelColorStart,
-            modelColorEnd: node.modelColorEnd,
-            modelColorSecondary: node.modelColorSecondary,
-            modelTextColor: node.modelTextColor,
-            provider: node.provider || item.provider,
-            providerLabel: node.providerLabel || item.providerName,
-            parentPromptId: promptNodeId, position: getGeneratedImagePosition(node.position, node.aspectRatio, node.mode, idx, actualCount),
+            prompt: item.taskPrompt || promptToUse, aspectRatio: executionNode.aspectRatio, imageSize: executionNode.imageSize,
+            timestamp: Date.now(), model: item.model || executionNode.model, canvasId: activeCanvasRef.current?.id || 'default',
+            modelLabel: item.modelName || executionNode.modelLabel,
+            modelColorStart: executionNode.modelColorStart,
+            modelColorEnd: executionNode.modelColorEnd,
+            modelColorSecondary: executionNode.modelColorSecondary,
+            modelTextColor: executionNode.modelTextColor,
+            provider: item.provider || executionNode.provider,
+            providerLabel: item.providerName || executionNode.providerLabel,
+            parentPromptId: promptNodeId, position: getGeneratedImagePosition(executionNode.position, executionNode.aspectRatio, executionNode.mode, idx, actualCount),
             generationTime: item.generationTime, keySlotId: item.keySlotId, mode
           };
         });
 
         const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId) || node;
         const pendingIds = getPendingTaskIds(latestNode).filter(tid => !validImageData.some(v => v.taskId === tid));
+        const firstSuccess = validImageData[0];
+        const resolvedSuccessDisplay = firstSuccess?.keySlotId
+          ? resolveProviderDisplay(firstSuccess.keySlotId)
+          : resolveProviderDisplay(undefined, executionNode.providerLabel, executionNode.provider);
         
         const updatedNode = {
           ...latestNode, isGenerating: pendingIds.length > 0, jobId: pendingIds[0],
           childImageIds: results.map(r => r.id), lastGenerationSuccessCount: validImageData.length,
           lastGenerationFailCount: failedImageData.length, lastGenerationTotalCount: actualCount,
-          generationMetadata: buildPendingTaskMetadata(latestNode, pendingIds)
+          generationMetadata: buildPendingTaskMetadata(latestNode, pendingIds),
+          keySlotId: firstSuccess?.keySlotId || executionNode.keySlotId,
+          provider: resolvedSuccessDisplay.provider || executionNode.provider,
+          providerLabel: resolvedSuccessDisplay.providerLabel || executionNode.providerLabel,
+          modelLabel: firstSuccess?.modelName || executionNode.modelLabel
         };
         
         addImageNodes(results as any, { [updatedNode.id]: updatedNode });
@@ -397,7 +466,7 @@ export const useImageGeneration = (options: {
     } finally {
       setIsGenerating(false);
     }
-  }, [activeCanvasRef, addImageNodes, updatePromptNode, urgentUpdatePromptNode, getGeneratedImagePosition, registerPendingTaskId, getPendingTaskIds, buildPendingTaskMetadata, pollTaskStatus, extractErrorDetails, normalizePptSlidesForCount, buildAutoPptSlides, rememberPreferredKeyForMode, refundCredits]);
+  }, [activeCanvasRef, addImageNodes, updatePromptNode, urgentUpdatePromptNode, getGeneratedImagePosition, registerPendingTaskId, getPendingTaskIds, buildPendingTaskMetadata, pollTaskStatus, extractErrorDetails, normalizePptSlidesForCount, buildAutoPptSlides, rememberPreferredKeyForMode, refundCredits, resolveProviderDisplay]);
 
   const hookCancelGeneration = useCallback((nodeId?: string) => {
     if (!nodeId) return;

@@ -1,0 +1,3842 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+	<meta name="theme-color" content="#1E78FF">
+	<link rel="dns-prefetch" href="//api.wuyinkeji.com">
+	<link rel="preconnect" href="//api.wuyinkeji.com" crossorigin>
+	<title>NanoBanana2-速创API</title>
+	<meta name="keywords" content="NanoBanana2,NanoBanana2接口文档,sora2API,数字人API,veo3API,seedance2API,grokAPI,nanobananaAPI">
+	<meta name="description" content="NanoBanana2 生成图片API接口，支持2k、4k高清图片生成，支持一句话ps图片（最高支持一次14张参考图），是谷歌最新图像生成模型，生成速度更快、质量更好。">
+	<meta name="robots" content="all">
+	<meta property="og:type" content="website">
+	<meta property="og:site_name" content="NanoBanana2-速创API">
+	<meta property="og:title" content="NanoBanana2-速创API">
+	<meta property="og:description" content="NanoBanana2 生成图片API接口，支持2k、4k高清图片生成，支持一句话ps图片（最高支持一次14张参考图），是谷歌最新图像生成模型，生成速度更快、质量更好。">
+	<meta property="og:url" content="https://api.wuyinkeji.com">
+	<meta property="og:image" content="/assets/img/未命名-2.png">
+	<meta name="apple-mobile-web-app-title" content="NanoBanana2-速创API">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+	<meta name="msapplication-TileColor" content="#1E78FF">
+	<link rel="icon" href="/assets/img/未命名-2.png">
+	<link rel="apple-touch-icon" href="/assets/img/未命名-2.png">
+	<link href="/themes/DigitalBlue/assets/css/all.min.css" rel="stylesheet">
+	<link href="/themes/DigitalBlue/assets/css/bootstrap.min.css" rel="stylesheet">
+	<link href="/themes/DigitalBlue/assets/css/style.css" rel="stylesheet">
+	<link href="/themes/DigitalBlue/theme_color_css" rel="stylesheet">
+	<script src="/themes/DigitalBlue/assets/js/jquery.min.js"></script>
+	<!--[if lt IE 9]>
+    <script src="/themes/DigitalBlue/assets/js/html5.min.js"></script>
+    <script src="/themes/DigitalBlue/assets/js/respond.js"></script>
+    <![endif]-->
+	<style>/*自定义css*/</style></head>
+
+<body>
+	<nav class="navbar navbar-expand-lg">
+		<div class="container">
+			<a class="navbar-brand" href="/">
+				<div class="logo">
+					<img src="/assets/img/未命名-3.png" alt="速创API" title="NanoBanana2-速创API">
+				</div>
+			</a>
+			<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+				aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+				<i class="fas fa-bars text-theme"></i>
+			</button>
+			<div class="collapse navbar-collapse" id="navbarNav">
+				<ul class="navbar-nav mx-auto">
+					<li class="nav-item">
+						<a class="nav-link " aria-current="page" href="/">首页</a>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="/type/" role="button" data-bs-toggle="dropdown" aria-expanded="false" tabindex="0">API<i class="fas fa-angle-down"></i>
+						</a>
+						<ul class="dropdown-menu neuro">
+							<li><a class="dropdown-item" id="menu" href="/type/all"><span>所有产品</span></a></li><li><a class="dropdown-item" id="menu" href="/type/10"><span>结果查询</span></a></li><li><a class="dropdown-item" id="menu" href="/type/11"><span>视频模型</span></a></li><li><a class="dropdown-item" id="menu" href="/type/1"><span>文本模型</span></a></li><li><a class="dropdown-item" id="menu" href="/type/2"><span>图片模型</span></a></li><li><a class="dropdown-item" id="menu" href="/type/7"><span>音频模型</span></a></li><li><a class="dropdown-item" id="menu" href="/type/9"><span>备用接口</span></a></li>						</ul>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="/blog/" role="button" data-bs-toggle="dropdown" aria-expanded="false" tabindex="0">
+							动态<i class="fa fa-angle-down"></i>
+						</a>
+						<ul class="dropdown-menu neuro">
+							<li><a class="dropdown-item" id="menu" href="/blog/all"><span>全部文章</span></a></li><li><a class="dropdown-item" id="menu" href="/blog/top"><span>平台公告</span></a></li><li><a class="dropdown-item" id="menu" href="/blog/news"><span>行业资讯</span></a></li><li><a class="dropdown-item" id="menu" href="/blog/help"><span>更新日志</span></a></li>						</ul>
+					</li>
+					<li class="nav-item dropdown active">
+						<a class="nav-link dropdown-toggle active" href="/doc/" role="button" data-bs-toggle="dropdown" aria-expanded="false">文档中心<i class="fa fa-angle-down"></i></a>
+						<ul class="dropdown-menu neuro">
+							<a class="dropdown-item active" href="/doc/" id="menu"><span>产品文档</span></a>
+							<a class="dropdown-item" href="/help/" id="menu"><span>帮助文档</span></a>
+						</ul>
+					</li>
+										<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="about" role="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">关于 <i class="fa fa-angle-down"></i></a>
+						<ul class="dropdown-menu neuro">
+							<a class="dropdown-item" href="/about/" id="menu"><span>关于速创API</span></a>
+							<a class="dropdown-item" href="/contact/" id="menu"><span>联系我们</span></a>
+							<a class="dropdown-item" href="/demand/" id="menu"><span>提交需求</span></a>
+						</ul>
+					</li>
+										<li class="nav-item dropdown">
+							        	<a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">更多 <i class="fa fa-angle-down"></i></a>
+							        	<ul class="dropdown-menu">
+							                <li><a class="dropdown-item" href="https://yunhong.yinwukeji.com/" target="_blank">智媒体SaaS</a></li>
+							                <li><a class="dropdown-item" href="https://jianji.zhanacun.com" target="_blank" rel="nofollow">速创圈</a></li>
+						                </ul>
+						            </li>				</ul>
+				<div class="navbar-nav">
+											<a class="nav-link" href="/user/login">登录</a>
+						<a class="btn btn-tech ms-2" href="/user/register">注册</a>
+									</div>
+			</div>
+		</div>
+	</nav><!-- 文档中心英雄区域 -->
+<section class="hero docs-hero">
+    <div class="container">
+        <div class="row">
+            <div class="" data-aos="fade-down">
+                <h1>文档中心</h1>
+                <p>基于OpenAPI规范的标准化技术文档枢纽，提供版本化、交互式、机器可读的API全生命周期管理解决方案。</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 文档中心内容区域 -->
+<section class="blog-article-list-section">
+    <div class="container">
+        <div class="docs-container">
+            <!-- 左侧侧边栏 -->
+            <div class="docs-sidebar">
+                <!-- 搜索框 -->
+                <div class="docs-sidebar-section" data-aos="fade-up" data-aos-delay="100">
+                    <div class="docs-search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" class="form-control" id="apidocs-search" placeholder="搜索API文档...">
+                        <i class="fas fa-times clear-btn" id="clearSearch"></i>
+                    </div>
+                    <div id="search-message" class="search-no-results">
+                        未找到包含 "<strong></strong>" 的相关产品
+                    </div>
+                </div>
+
+                <!-- 产品目录 -->
+                <div class="docs-sidebar-section" data-aos="fade-up" data-aos-delay="200">
+                    <h3 class="docs-sidebar-title">产品目录</h3>
+                    <ul class="docs-category-list" id="apidocs-category-list">
+                        <li class="docs-category-item">
+            <a href="javascript:void(0);" class="docs-category-link" data-typeid="10">
+                <span>结果查询<i class="fa fa-angle-right ms-2"></i></span>
+                <span class="docs-apidocs-count">1</span>
+            </a><ul class="docs-apidocs-list" style="display: none;"><li class="docs-apidocs-item">
+                    <a href="/doc/47" class="docs-apidocs-link" title="结果查询接口 支持全模型生成结果查询">
+                       结果详情
+                    </a>
+                </li></ul></li><li class="docs-category-item">
+            <a href="javascript:void(0);" class="docs-category-link" data-typeid="11">
+                <span>视频模型<i class="fa fa-angle-right ms-2"></i></span>
+                <span class="docs-apidocs-count">8</span>
+            </a><ul class="docs-apidocs-list" style="display: none;"><li class="docs-apidocs-item">
+                    <a href="/doc/66" class="docs-apidocs-link" title="数字人 API 接口，上传人物正面视频 + 音频，即可一键驱动数字人精准对口型。">
+                       Digital_Humans
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/57" class="docs-apidocs-link" title="视频包装 API 接口，支持智能包装口播视频，可通过 AI 一键添加标题、字幕、音效，并提供丰富的模板，满足各类口播场景需求，让剪辑更简单高效。">
+                       Package_1.0
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/48" class="docs-apidocs-link" title="veo3.1-fast 生成视频API接口，支持一句话生成带有声音的视频，生成效果强，支持4k">
+                       veo3.1_fast
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/49" class="docs-apidocs-link" title="veo3.1-pro 生成视频API接口，支持一句话生成带有声音的视频，生成效果强，支持4k">
+                       veo3.1_pro
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/62" class="docs-apidocs-link" title="Grok Imagine生成视频API接口，是目前 xAI 最强大的视频生成模型。无论是让一张图片“动起来”（图生视频），从简单的文本提示开始创作（文生视频），还是对复杂的电影级镜头进行精细化打磨，Grok Imagine 都能够胜任。">
+                       grok_imagine
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/59" class="docs-apidocs-link" title="Wan2.6 生成视频API接口，支持角色扮演、音画同步、多镜头生成及声音驱动等功能">
+                       Wan2.6
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/58" class="docs-apidocs-link" title="sora2 生成角色API接口，支持上传视频创建角色">
+                       sora2_character
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/50" class="docs-apidocs-link" title="sora2 生成视频API接口，OpenAI发布的视频生成模型，支持与画面匹配的AI音频生成，支持10秒、15秒标清无水印视频生成，支持@角色。">
+                       Sora2
+                    </a>
+                </li></ul></li><li class="docs-category-item">
+            <a href="javascript:void(0);" class="docs-category-link" data-typeid="1">
+                <span>文本模型<i class="fa fa-angle-right ms-2"></i></span>
+                <span class="docs-apidocs-count">1</span>
+            </a><ul class="docs-apidocs-list" style="display: none;"><li class="docs-apidocs-item">
+                    <a href="/doc/44" class="docs-apidocs-link" title="谷歌最新模型Gemini3.0-pro 多模态对话API接口，Gemini3.0最智能的模型，具有SOTA推理和多模态理解，以及强大的代理和氛围编码功能，支持识别图像等">
+                       Gemini3.0-pro
+                    </a>
+                </li></ul></li><li class="docs-category-item">
+            <a href="javascript:void(0);" class="docs-category-link active" data-typeid="2">
+                <span>图片模型<i class="fa fa-angle-right ms-2"></i></span>
+                <span class="docs-apidocs-count">7</span>
+            </a><ul class="docs-apidocs-list" style="display: block;"><li class="docs-apidocs-item">
+                    <a href="/doc/65" class="docs-apidocs-link active" title="NanoBanana2 生成图片API接口，支持2k、4k高清图片生成，支持一句话ps图片（最高支持一次14张参考图），是谷歌最新图像生成模型，生成速度更快、质量更好。">
+                       NanoBanana2
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/63" class="docs-apidocs-link" title="Grok Imagine 生成图片API接口，是目前 xAI 最强大的图片生成模型，生成速度极快，可在数秒内生成高质量图像，无论是艺术插图、现实场景还是抽象设计，均展现出强大的生成能力。">
+                       grok_imagine
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/55" class="docs-apidocs-link" title="NanoBanana-pro 生成图片API接口，支持2k、4k高清图片生成，支持一句话ps图片（最高支持一次14张参考图），生成效果一致性极强">
+                       NanoBanana_pro
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/54" class="docs-apidocs-link" title="NanoBanana 生成图片API接口，支持高清图片生成，支持一句话ps图片（最高支持一次14张参考图），生成效果一致性极强">
+                       NanoBanana
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/52" class="docs-apidocs-link" title="Sora 生成图片API接口，图像生成、文本渲染和保持属性对象关系方面有显著提升，能够理解复杂提示并生成高质量图像。还具备去除照片水印功能">
+                       sora
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/56" class="docs-apidocs-link" title="Wan2.6 生成图片API接口，支持高清图片生成，支持一句话ps图片（最高支持4张参考图），生成效果一致性极强">
+                       Wan2.6
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/53" class="docs-apidocs-link" title="GPT-Image 1.5图片生成API接口，OpenAI发布的图像生成模型，支持图片编辑和文生图，支持多张参考图，生成速度快">
+                       gpt_1.5
+                    </a>
+                </li></ul></li><li class="docs-category-item">
+            <a href="javascript:void(0);" class="docs-category-link" data-typeid="7">
+                <span>音频模型<i class="fa fa-angle-right ms-2"></i></span>
+                <span class="docs-apidocs-count">3</span>
+            </a><ul class="docs-apidocs-list" style="display: none;"><li class="docs-apidocs-item">
+                    <a href="/doc/67" class="docs-apidocs-link" title="语音合成 API 接口，文本一键转高保真真人语音，支持40种国家语言，自动判断文字语言进行合成">
+                       语音合成
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/13" class="docs-apidocs-link" title="语音合成 API 接口，文本一键转高保真真人语音，支持40种国家语言，自动判断文字语言进行合成">
+                       语音合成（同步）
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/12" class="docs-apidocs-link" title="语音克隆 API 接口，上传音频一键克隆真人专属声线，极速复刻原声、支持合成40国语言。">
+                       语音克隆（同步）
+                    </a>
+                </li></ul></li><li class="docs-category-item">
+            <a href="javascript:void(0);" class="docs-category-link" data-typeid="9">
+                <span>备用接口<i class="fa fa-angle-right ms-2"></i></span>
+                <span class="docs-apidocs-count">2</span>
+            </a><ul class="docs-apidocs-list" style="display: none;"><li class="docs-apidocs-item">
+                    <a href="/doc/60" class="docs-apidocs-link" title="sora2临时应急接口，价格较高（采用pro账号），如有应急需要可以请求使用 ，非应急客户等sora2接口恢复后使用。">
+                       sora2-new
+                    </a>
+                </li><li class="docs-apidocs-item">
+                    <a href="/doc/36" class="docs-apidocs-link" title="sora-2视频生成结果查询接口，支持Sora2new生成结果查询 目前有失败率是正常情况">
+                       sora2视频生成详情
+                    </a>
+                </li></ul></li>                    </ul>
+                </div>
+
+                <!-- 快速链接 -->
+                <div class="docs-sidebar-section" data-aos="fade-up">
+                    <h3 class="docs-sidebar-title">快速链接</h3>
+                    <ul class="docs-apidocs-list-help">
+                        <li class="docs-apidocs-item-help">
+                            <a href="/help/" class="docs-apidocs-link-help">帮助文档</a>
+                        </li>
+                        <li class="docs-apidocs-item-help">
+                            <a href="/user/key" class="docs-apidocs-link-help">密钥管理</a>
+                        </li>
+                        <li class="docs-apidocs-item-help">
+                            <a href="/help/" class="docs-apidocs-link-help">常见问题</a>
+                        </li>
+                        <li class="docs-apidocs-item-help">
+                            <a href="/contact/" class="docs-apidocs-link-help">联系我们</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- 右侧主内容 -->
+            <div class="docs-main-content" data-aos="fade-up">
+                <!-- API详情视图 -->
+                <div id="apidocs-detail-view">
+                    <!-- 文档详情页内容 -->
+                    <div class="docs-detail-content">
+                        <!-- API基本信息区域 -->
+                        <div class="apidocs-basic-info">
+                            <div class="apidocs-icon-title">
+                                <div class="docs-apidocs-icon bg-transparent" style="background: transparent !important;">
+                                    <svg t="1756280061526" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="8922" width="200" height="200"><path d="M1024 513.024A545.408 545.408 0 0 0 512.96 1024h-1.92A545.408 545.408 0 0 0 0 513.024v-2.048A545.344 545.344 0 0 0 510.976 0h1.984A545.344 545.344 0 0 0 1024 510.976v2.048z" fill="#000000" p-id="8923" data-spm-anchor-id="a313x.search_index.0.i4.60ab3a81O0CSpu" class="selected"></path></svg>                                </div>
+                                <div class="apidocs-title-section">
+                                    <h1 id="detail-apidocs-title">NanoBanana2</h1>
+                                    <div class="apidocs-status-tags">
+                                        <span class="badge badge-success"><i class="fas fa-check-circle me-1"></i>服务正常</span>                                                                                <span class="badge badge-warning"><i class="fas fa-calculator me-1"></i>按量计费</span>                                        <span class="badge badge-secondary"><i
+                                                class="far fa-folder me-1"></i><a href="/type/2" class="text-decoration-none text-secondary">图片模型</a></span>
+                                        <span class="badge badge-secondary" data-bs-toggle="tooltip"
+                                            data-bs-placement="top" data-bs-title="更新日期"><i
+                                                class="far fa-clock me-1"></i>2026-02-27</span>
+                                                                                    <span class="badge badge-secondary" data-bs-toggle="tooltip"
+                                                data-bs-placement="top" data-bs-title="调用次数"><i
+                                                    class="fas fa-arrow-trend-up me-1"></i>35.24 万次</span>
+                                                                            </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 功能描述 -->
+                        <p class="apidocs-description" id="detail-apidocs-description">
+                            NanoBanana2 生成图片API接口，支持2k、4k高清图片生成，支持一句话ps图片（最高支持一次14张参考图），是谷歌最新图像生成模型，生成速度更快、质量更好。</p>
+
+
+                        <!-- 关键信息卡片 -->
+                        <div class="info-cards-grid">
+                            <div class="info-card">
+                                <div class="info-title">
+                                    <i class="fas fa-id-card"></i>
+                                    调用权限
+                                </div>
+                                <div class="info-value">正常</div>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-title">
+                                    <i class="fas fa-tachometer-alt"></i>
+                                    请求频率限制
+                                </div>
+                                <div class="info-value">
+                                    100次/秒 <span class="text-muted text-xs">(100 QPS)</span>                                </div>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-title">
+                                    <i class="fas fa-gift"></i>
+                                    免费额度
+                                </div>
+                                <div class="info-value">无</div>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-title">
+                                    <i class="fas fa-calculator"></i>
+                                    参考价格
+                                </div>
+                                <div class="info-value">0.1元/张</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="btn-icon-group">
+                                                    <button type="button" class="btn btn-sm btn-tech" id="shop"><i class="fas fa-shopping-cart fa-sm fa-fw"></i> 充值使用</button>
+                                                                                            </div>
+                    <!-- 标签页导航系统 -->
+                    <div class="docs-tab-navigation">
+                        <ul class="nav nav-tabs">
+                            <li class="nav-item">
+                                <a class="nav-link active" data-bs-toggle="tab" data-bs-target="#paydoc"
+                                    aria-controls="paydoc" aria-selected="true" href="#paydoc">计费说明</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" data-bs-target="#doc" aria-controls="doc"
+                                    aria-selected="false" href="#doc">API文档</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" data-bs-target="#errcode"
+                                    aria-controls="errcode" aria-selected="false" href="#errcode">错误码参照</a>
+                            </li>
+                            <!--<li class="nav-item">-->
+                            <!--    <a class="nav-link" data-bs-toggle="tab" data-bs-target="#demo" aria-controls="demo"-->
+                            <!--        aria-selected="false" href="#demo">示例代码</a>-->
+                            <!--</li>-->
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" data-bs-target="#debug"
+                                    aria-controls="debug" aria-selected="false" href="#debug">在线调试</a>
+                            </li>
+                                                        <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" data-bs-target="#result"
+                                    aria-controls="result" aria-selected="false" href="#result">获取结果</a>
+                            </li>
+                                                    </ul>
+
+                        <div class="tab-content">
+                            <!-- 计费说明 -->
+                            <div class="tab-pane fade show active" id="paydoc">
+                                                                    <h3>计费优先级（按已开通的计费类型依次校验）：</h3>
+                                    <p class="mb-4">vip专属->单独包月->次数包->点数计费->账户余额->免费额度</p>
+                                                                                                                                                                                                                                <h2>按量计费：</h2>
+                                            <p class="mb-4">该产品支持点数余额抵扣，计费单价：<span class="fw-normal text-theme">10 点<span class="text-muted text-xs">/张</span></span> <span class="badge badge-secondary me-2">取整，不满1点按1点计费</span></span> 按张计费</p>
+                                                                                                                                                                <h2>账户余额：</h2>
+                                            <p class="mb-4">该产品支持账户余额抵扣，计费单价：<span class="fw-normal text-theme">0.1 元<span class="text-muted text-xs">/张</span></span>; 按张计费</p>
+                                                                                                                                                                                                                                                                                                                    <h2>请求限制：</h2>
+                                <div class="table-responsive">
+                                    <table>
+                                        <tbody>
+                                            <tr class="table-light">
+                                                <th>免费/测试用户请求频率限制</th>
+                                                <th>请求频率总限制</th>
+                                                                                                <th>每日请求次数总限制</th>
+                                            </tr>
+                                            <tr>
+                                                <td>0秒0次 <span class="badge badge-warning me-2">每个免费用户的QPS总限制</span></td>
+                                                <td>1秒100次 <span class="badge badge-warning me-2">每个用户QPS总限制</span></td>
+                                                                                                <td>100000000 (次) <span class="badge badge-warning me-2">每个用户每日请求总次数</span></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <h2>其他准入要求：</h2>
+                                                                                                    <li class="mb-2"><span class="badge badge-success me-2">账户余额/点数</span>计费的用户，不限制每日请求次数和QPS
+                                    </li>
+                                                                                                    <li class="mb-2"><span class="badge badge-info me-2">次数包</span>计费的用户，不限制每日请求次数和QPS
+                                    </li>
+                                                                                                                            </div>
+                            <!-- API文档 -->
+                            <div class="tab-pane fade" id="doc">
+                                <p class="mb-3">
+                                    <strong>接口地址：</strong>
+                                    <a href="https://api.wuyinkeji.com/api/async/image_nanoBanana2" class="text-primary text-decoration-none" target="_blank">https://api.wuyinkeji.com/api/async/image_nanoBanana2</a> <button class="btn btn-tech-outline text-xs btn-copy py-0 px-2 ms-2" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="复制" data-copy="https://api.wuyinkeji.com/api/async/image_nanoBanana2">复制</button>
+                                </p>
+                                <p class="mb-3">
+                                    <strong>返回格式：</strong> application/json                                </p>
+                                <p class="mb-3">
+                                    <strong>请求方式：</strong>
+                                    <span class="badge badge-info me-2">HTTP</span><span class="badge badge-danger">POST</span></span>
+                                </p>
+                                <p class="mb-3">
+                                    <strong>请求示例：</strong>
+                                    <code>https://api.wuyinkeji.com/api/async/image_nanoBanana2?key=你的密钥</code>
+                                </p>
+                                <h2 class="fs-6 fw-bold my-3 border-start border-4 border-info ps-2">请求HEADER：</h2><table class="table table-bordered table-responsive table-sm"><tbody><tr class="table-light firstRow"><th>名称</th><th>值</th></tr><tr><td colspan="1" rowspan="1">Authorization</td><td colspan="1" rowspan="1">接口密钥,在控制台-&gt;密钥管理查看</td></tr><tr><td>Content-Type</td><td>application/json</td></tr></tbody></table><h2 class="fs-6 fw-bold my-3 border-start border-4 border-info ps-2">请求参数说明：</h2><table class="table table-bordered table-responsive table-sm table-hover"><tbody><tr class="table-light firstRow"><th>名称</th><th>必填</th><th>类型</th><th>示例值</th><th>说明</th></tr><tr><td>prompt</td><td>是</td><td>string</td><td><br/></td><td>提示词</td></tr><tr><td>size</td><td>否</td><td>string</td><td>1K</td><td><p data-first="true">输出图像大小,支持的大小:<br/>1K<br/>2K<br/>4K<br/>默认 1K</p><p>注意：分辨率越高，生成时间越长</p></td></tr><tr><td colspan="1" rowspan="1">aspectRatio</td><td colspan="1" rowspan="1">否</td><td colspan="1" rowspan="1">string</td><td colspan="1" rowspan="1">auto</td><td colspan="1" rowspan="1">输出图像比例,支持的比例:<br/>auto<br/>1:1<br/>16:9<br/>9:16<br/>4:3<br/>3:4<br/>3:2<br/>2:3<br/>5:4<br/>4:5<br/>21:9<br/>默认 auto</td></tr><tr><td colspan="1" rowspan="1">urls</td><td colspan="1" rowspan="1">否</td><td colspan="1" rowspan="1">array</td><td colspan="1" rowspan="1">[&quot;xxx.jpg&quot;,&quot;xxx.jpg&quot;]</td><td colspan="1" rowspan="1">参考图URL or Base64</td></tr></tbody></table><h2 class="fs-6 fw-bold my-3 border-start border-4 border-info ps-2">返回参数说明：</h2><table class="table table-bordered table-responsive table-sm table-hover"><tbody><tr class="table-light firstRow"><th>名称</th><th>类型</th><th>说明</th></tr><tr><td>code</td><td>int</td><td>状态码</td></tr><tr><td>msg</td><td>string</td><td>状态信息</td></tr><tr><td>data</td><td>string</td><td>请求结果数据集</td></tr><tr><td colspan="1" rowspan="1">data.id</td><td colspan="1" rowspan="1">string</td><td colspan="1" rowspan="1">请求结果id</td></tr><tr><td>exec_time</td><td>float</td><td>执行耗时</td></tr><tr><td>user_ip</td><td>string</td><td>客户端IP</td></tr></tbody></table>                                                                    <h4>返回示例：</h4>
+                                    <div class="" id="resjson-demo">
+                                        {  "code": 200,  "msg": "成功",  "data": {    "id": "image_4d39239e-776a-4cbd-a8eb-e2d9b4816829",    "count": 10  },  "exec_time": 0.290186,  "ip": "119.6.176.239"}                                    </div>
+                                                            </div>
+
+                            <!-- 错误码参照 -->
+                            <div class="tab-pane fade" id="errcode">
+                                                            </div>
+                            <!-- 示例代码 -->
+
+                            <div class="tab-pane fade" id="demo">
+                                <div class="alert alert-info">
+                                    本示例代码演示了接口的基础调用流程，开发者需自行将代码中的默认值替换为实际的API接口认证信息。
+                                </div>
+                                <ul class="nav nav-tabs">
+                                    <li class="nav-item">
+                                        <a class="nav-link active" data-bs-toggle="tab" data-bs-target="#php"
+                                            role="tab" href="#php">PHP</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#js" role="tab"
+                                            href="#js">JavaScript</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#java" role="tab"
+                                            href="#java">JAVA</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#go" role="tab"
+                                            href="#go">GO</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#Python" role="tab"
+                                            href="#Python">Python</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#Nodejs" role="tab"
+                                            href="#Nodejs">Nodejs</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#c1" role="tab"
+                                            href="#c1">C</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#c2" role="tab"
+                                            href="#c2">C++</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#c3" role="tab"
+                                            href="#c3">C#</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#vb" role="tab"
+                                            href="#vb">VB</a>
+                                    </li>
+                                </ul>
+                                <div class="tab-content">
+                                    <div class="tab-pane show fade active" id="php">
+                                        <pre class="pre-scrollable"><code id="phpcode" class="language-php line-numbers" style="white-space: pre-wrap">
+&lt;?php
+/**
+ * API请求DEMO
+ * 
+ * 本demo支持常见的HTTP请求方法(GET/POST/PUT/DELETE等)
+ */
+
+ //基本配置
+$api_key = '你的接口密钥，登录控制台后在密钥管理页面申请';
+$secret_key = '';
+
+// API请求示例：
+try {
+    $client = new ApiClient($api_key, $secret_key);
+    $client->setTimeout(10);
+    $client->setVerifySSL(false); // 关闭SSL验证
+
+    // GET请求示例
+    echo "=== 开始GET请求 ===\n";
+    $response = $client->get('https://api.wuyinkeji.com/api/async/image_nanoBanana2', [
+        'key' => $api_key,
+        'key2' => '其他参数'
+    ]);
+    print_r($response);
+    //print_r($client->getLastRequestInfo());
+    /* 
+    // POST表单示例
+    echo "\n=== 开始POST请求 ===\n";
+    $response = $client->post('接口地址', [
+        'key' => $api_key,
+        'key2' => '其他参数'
+    ]);
+    print_r($response);
+    print_r($client->getLastRequestInfo());
+
+    // POST JSON示例
+    echo "\n=== 开始POST JSON请求 ===\n";
+    $response = $client->postJson('接口地址', [
+        'key' => $api_key,
+        'key2' => '其他参数'
+    ]);
+    print_r($response);
+    print_r($client->getLastRequestInfo());
+     */
+} catch (ApiClientException $e) {
+    echo "API请求错误: " . $e->getMessage();
+    if ($e->getCode() > 0) {
+        echo " (HTTP状态码: " . $e->getCode() . ")";
+    }
+    print_r($client->getLastRequestInfo() ?? []);
+}
+
+/**
+ * API客户端类
+ * 
+ * 提供了一个简单的HTTP API客户端实现,支持常见的HTTP请求方法(GET/POST/PUT/DELETE等)
+ * 具有以下主要功能:
+ * - 支持 API 密钥和签名认证
+ * - 可配置请求超时和SSL验证
+ * - 支持自定义请求头
+ * - 支持表单和JSON格式的请求体
+ * - 自动解析响应结果
+ * - 提供详细的请求信息记录
+ * 
+ * 使用示例:
+ * ```
+ * $client = new ApiClient('https://api.example.com', 'api_key', 'secret_key');
+ * $response = $client->get('/users', ['page' => 1]);
+ * ```
+ * 
+ * @throws ApiClientException 当API请求失败时抛出异常
+ */
+class ApiClient
+{
+    private $apiKey;
+    private $secretKey;
+    private $timeout = 30;
+    private $verifySSL = true;
+    private $lastRequestInfo = [];
+    private $defaultHeaders = [];
+
+    /**
+     * 构造函数
+     * 
+     * @param string $apiKey  API密钥（可选）
+     * @param string $secretKey 签名密钥（可选）
+     */
+    public function __construct(string $apiKey = '', string $secretKey = '')
+    {
+        $this->apiKey = $apiKey;
+        $this->secretKey = $secretKey;
+    }
+
+    /**
+     * 设置请求超时时间（秒）
+     */
+    public function setTimeout(int $seconds): self
+    {
+        $this->timeout = $seconds;
+        return $this;
+    }
+
+    /**
+     * 设置是否验证SSL证书
+     */
+    public function setVerifySSL(bool $verify): self
+    {
+        $this->verifySSL = $verify;
+        return $this;
+    }
+
+    /**
+     * 添加默认请求头
+     */
+    public function addDefaultHeader(string $name, string $value): self
+    {
+        $this->defaultHeaders[$name] = $value;
+        return $this;
+    }
+
+    /**
+     * 发送GET请求
+     * 
+     * @param string $endpoint 接口端点
+     * @param array  $query    查询参数
+     * @param array  $headers  额外请求头
+     */
+    public function get(string $endpoint, array $query = [], array $headers = []): array
+    {
+        return $this->request('GET', $endpoint, [
+            'query' => $query,
+            'headers' => $headers
+        ]);
+    }
+
+    /**
+     * 发送POST请求（表单格式）
+     * 
+     * @param string $endpoint 接口端点
+     * @param array  $data     POST数据
+     * @param array  $headers  额外请求头
+     */
+    public function post(string $endpoint, array $data = [], array $headers = []): array
+    {
+        return $this->request('POST', $endpoint, [
+            'form_data' => $data,
+            'headers' => $headers
+        ]);
+    }
+
+    /**
+     * 发送POST请求（JSON格式）
+     * 
+     * @param string $endpoint 接口端点
+     * @param array  $data     POST数据
+     * @param array  $headers  额外请求头
+     */
+    public function postJson(string $endpoint, array $data = [], array $headers = []): array
+    {
+        return $this->request('POST', $endpoint, [
+            'json' => $data,
+            'headers' => array_merge(['Content-Type' => 'application/json'], $headers)
+        ]);
+    }
+
+    /**
+     * 发送PUT请求
+     */
+    public function put(string $endpoint, array $data = [], array $headers = []): array
+    {
+        return $this->request('PUT', $endpoint, [
+            'json' => $data,
+            'headers' => $headers
+        ]);
+    }
+
+    /**
+     * 发送DELETE请求
+     */
+    public function delete(string $endpoint, array $data = [], array $headers = []): array
+    {
+        return $this->request('DELETE', $endpoint, [
+            'json' => $data,
+            'headers' => $headers
+        ]);
+    }
+
+    /**
+     * 获取最后一次请求的详细信息
+     */
+    public function getLastRequestInfo(): array
+    {
+        return $this->lastRequestInfo;
+    }
+
+    /**
+     * 基础请求方法
+     */
+    private function request(string $method, string $endpoint, array $options = []): array
+    {
+        // 初始化cURL
+        $ch = curl_init();
+        $url = ltrim($endpoint, '/');
+
+        // 准备请求头
+        $headers = $this->prepareHeaders($options['headers'] ?? []);
+
+        // 处理查询参数
+        if (!empty($options['query'])) {
+            $url .= '?' . http_build_query($options['query']);
+        }
+
+        // 处理请求体
+        $postData = null;
+        if (isset($options['form_data'])) {
+            $postData = http_build_query($options['form_data']);
+            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+        } elseif (isset($options['json'])) {
+            $postData = json_encode($options['json']);
+            $headers[] = 'Content-Type: application/json';
+        }
+
+        // 设置cURL选项
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_TIMEOUT => $this->timeout,
+            CURLOPT_SSL_VERIFYPEER => $this->verifySSL,
+            CURLOPT_SSL_VERIFYHOST => $this->verifySSL,
+            CURLOPT_HEADER => true,
+        ]);
+
+        if ($method !== 'GET' && $postData !== null) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
+        }
+
+        // 执行请求
+        $response = curl_exec($ch);
+        $error = curl_error($ch);
+        $info = $this->lastRequestInfo = curl_getinfo($ch);
+        curl_close($ch);
+
+        // 处理错误
+        if ($error) {
+            throw new ApiClientException("cURL请求失败: " . $error);
+        }
+
+        // 分离响应头和响应体
+        $headerSize = $info['header_size'];
+        $responseHeaders = substr($response, 0, $headerSize);
+        $responseBody = substr($response, $headerSize);
+
+        // 解析响应
+        $result = json_decode($responseBody, true) ?? $responseBody;
+
+        // 检查HTTP状态码
+        if ($info['http_code'] >= 400) {
+            $errorMsg = is_array($result) ? ($result['message'] ?? $responseBody) : $responseBody;
+            throw new ApiClientException("API请求失败: " . $errorMsg, $info['http_code']);
+        }
+
+        return [
+            'status' => $info['http_code'],
+            'headers' => $this->parseHeaders($responseHeaders),
+            'data' => $result
+        ];
+    }
+
+    /**
+     * 准备请求头（自动添加签名）
+     */
+    private function prepareHeaders(array $headers): array
+    {
+        // 合并默认头
+        $headers = array_merge($this->defaultHeaders, $headers);
+
+        // 添加签名头
+        if ($this->apiKey && $this->secretKey) {
+            $timestamp = time();
+            $signString = "key={$this->apiKey}&amp;timestamp={$timestamp}";
+            $signature = hash_hmac('sha256', $signString, $this->secretKey);
+
+            $headers['X-Api-Key'] = $this->apiKey;
+            $headers['X-Api-Timestamp'] = $timestamp;
+            $headers['X-Api-Sign'] = $signature;
+        }
+
+        // 转换为cURL格式
+        $curlHeaders = [];
+        foreach ($headers as $name => $value) {
+            $curlHeaders[] = "$name: $value";
+        }
+
+        return $curlHeaders;
+    }
+
+    /**
+     * 解析响应头
+     */
+    private function parseHeaders(string $headers): array
+    {
+        $parsed = [];
+        foreach (explode("\r\n", $headers) as $i => $line) {
+            if ($i === 0) {
+                $parsed['HTTP_CODE'] = $line;
+            } else {
+                $parts = explode(': ', $line, 2);
+                if (count($parts) === 2) {
+                    $parsed[$parts[0]] = $parts[1];
+                }
+            }
+        }
+        return $parsed;
+    }
+}
+
+class ApiClientException extends \Exception
+{
+    // 自定义异常类
+}
+
+
+
+
+</code></pre>
+                                    </div>
+                                    <div class="tab-pane fade fade" id="js">
+                                        <pre class="pre-scrollable"><code id="jscode" class="language-js line-numbers" style="white-space: pre-wrap">
+/**
+ * 原生JS通用API请求函数（支持GET/POST，JSON格式）
+ * @param {string} url - API接口完整地址
+ * @param {string} method - 请求方法，仅支持GET/POST
+ * @param {object} [data={}] - 请求参数（GET拼接到URL，POST作为JSON请求体）
+ * @returns {Promise<any>} - 返回接口响应的JSON数据
+ */
+async function requestApi(url, method, data = {}) {
+  try {
+    // 处理GET请求：拼接参数到URL
+    let requestUrl = url;
+    if (method.toUpperCase() === 'GET' && Object.keys(data).length > 0) {
+      const params = new URLSearchParams(data).toString();
+      requestUrl = `${requestUrl}${requestUrl.includes('?') ? '&' : '?'}${params}`;
+    }
+
+    // 配置请求选项
+    const requestOptions = {
+      method: method.toUpperCase(),
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include' // 跨域时携带Cookie，不需要可改为omit
+    };
+
+    // 处理POST请求：设置JSON请求体
+    if (method.toUpperCase() === 'POST') {
+      requestOptions.body = JSON.stringify(data);
+    }
+
+    // 发送请求并处理响应
+    const response = await fetch(requestUrl, requestOptions);
+    if (!response.ok) throw new Error(`请求失败：${response.status} ${response.statusText}`);
+    const result = await response.json(); // 自动解析JSON响应
+    return result;
+
+  } catch (error) {
+    console.error('API请求错误：', error.message);
+    throw error; // 抛出错误供调用方处理
+  }
+}
+
+// -------------------------- 使用示例 --------------------------
+// 1. GET请求示例（查询数据）
+async function testGet() {
+  try {
+    const data = await requestApi(
+      'https://api.example.com/user/list', // 替换为实际接口地址
+      'GET',
+      { page: 1, size: 10, keyword: 'test' } // GET请求参数
+    );
+    console.log('GET请求成功：', data);
+    // 业务逻辑处理...
+  } catch (err) {
+    alert('GET请求失败：' + err.message);
+  }
+}
+
+// 2. POST请求示例（提交数据）
+async function testPost() {
+  try {
+    const data = await requestApi(
+      'https://api.example.com/user/login', // 替换为实际接口地址
+      'POST',
+      { username: 'admin', password: '123456' } // POST请求体数据
+    );
+    console.log('POST请求成功：', data);
+    // 业务逻辑处理...
+  } catch (err) {
+    alert('POST请求失败：' + err.message);
+  }
+}
+
+// 执行请求（按需调用）
+// testGet();
+// testPost();
+</code></pre>
+                                    </div>
+
+                                    <div class="tab-pane fade fade" id="java">
+                                        <pre class="pre-scrollable"><code class="language-java line-numbers" style="white-space: pre-wrap">
+import okhttp3.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Java 单文件实现GET/POST(JSON) API请求
+ * 基于OkHttp和Jackson，复制后直接使用（需添加Maven/Gradle依赖）
+ */
+public class ApiRequest {
+    // 全局OkHttpClient实例（复用连接池）
+    private static final OkHttpClient OK_HTTP_CLIENT = new OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .build();
+
+    // Jackson JSON解析工具
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * GET请求方法
+     * @param url 接口地址
+     * @param params URL参数键值对
+     * @return 接口响应字符串
+     * @throws IOException 网络异常
+     */
+    public static String doGet(String url, Map<String, String> params) throws IOException {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(url).newBuilder();
+        if (params != null && !params.isEmpty()) {
+            for (Map.Entry<String, String> entry : params.entrySet()) {
+                urlBuilder.addQueryParameter(entry.getKey(), entry.getValue());
+            }
+        }
+        Request request = new Request.Builder().url(urlBuilder.build()).get().build();
+        try (Response response = OK_HTTP_CLIENT.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("GET请求失败：" + response.code() + " " + response.message());
+            }
+            return response.body() != null ? response.body().string() : "";
+        }
+    }
+
+    /**
+     * POST(JSON)请求方法
+     * @param url 接口地址
+     * @param jsonStr JSON请求体字符串
+     * @return 接口响应字符串
+     * @throws IOException 网络异常
+     */
+    public static String doPostJson(String url, String jsonStr) throws IOException {
+        MediaType mediaType = MediaType.parse("application/json; charset=utf-8");
+        RequestBody requestBody = RequestBody.create(mediaType, jsonStr);
+        Request request = new Request.Builder().url(url).post(requestBody).build();
+        try (Response response = OK_HTTP_CLIENT.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("POST请求失败：" + response.code() + " " + response.message());
+            }
+            return response.body() != null ? response.body().string() : "";
+        }
+    }
+
+    /**
+     * 格式化JSON字符串（便于阅读）
+     * @param jsonStr 原始JSON字符串
+     * @return 格式化后的JSON
+     * @throws IOException 解析异常
+     */
+    public static String formatJson(String jsonStr) throws IOException {
+        if (jsonStr == null || jsonStr.isEmpty()) {
+            return "";
+        }
+        Object jsonObj = OBJECT_MAPPER.readValue(jsonStr, Object.class);
+        return OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(jsonObj);
+    }
+
+    // 主方法：测试GET/POST请求
+    public static void main(String[] args) {
+        try {
+            // ------------------- 测试GET请求 -------------------
+            String getUrl = "https://api.example.com/user/list"; // 替换为实际接口地址
+            Map<String, String> getParams = new HashMap<>();
+            getParams.put("page", "1");
+            getParams.put("size", "10");
+            getParams.put("keyword", "test");
+            String getResponse = doGet(getUrl, getParams);
+            System.out.println("=== GET请求响应结果 ===");
+            System.out.println(formatJson(getResponse));
+
+            System.out.println("------------------------");
+
+            // ------------------- 测试POST请求 -------------------
+            String postUrl = "https://api.example.com/user/login"; // 替换为实际接口地址
+            Map<String, String> postData = new HashMap<>();
+            postData.put("username", "admin");
+            postData.put("password", "123456");
+            String jsonStr = OBJECT_MAPPER.writeValueAsString(postData);
+            String postResponse = doPostJson(postUrl, jsonStr);
+            System.out.println("=== POST请求响应结果 ===");
+            System.out.println(formatJson(postResponse));
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+</code></pre>
+                                    </div>
+                                    <div class="tab-pane fade fade" id="go">
+                                        <pre class="pre-scrollable"><code class="language-go line-numbers" style="white-space: pre-wrap">
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"time"
+)
+
+// 全局HTTP客户端，设置超时时间
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second, // 请求超时时间10秒
+}
+
+// DoGet 发送GET请求，自动拼接URL参数
+// urlStr: 接口地址
+// params: URL查询参数（键值对）
+// 返回：响应体字符串、错误信息
+func DoGet(urlStr string, params map[string]string) (string, error) {
+	// 解析基础URL
+	parsedUrl, err := url.Parse(urlStr)
+	if err != nil {
+		return "", fmt.Errorf("URL解析失败: %v", err)
+	}
+
+	// 拼接查询参数
+	query := parsedUrl.Query()
+	for key, value := range params {
+		query.Add(key, value)
+	}
+	parsedUrl.RawQuery = query.Encode()
+
+	// 发送GET请求
+	resp, err := httpClient.Get(parsedUrl.String())
+	if err != nil {
+		return "", fmt.Errorf("GET请求失败: %v", err)
+	}
+	defer resp.Body.Close() // 确保响应体关闭
+
+	// 检查响应状态码
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("请求返回异常状态码: %d", resp.StatusCode)
+	}
+
+	// 读取响应体
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取响应体失败: %v", err)
+	}
+
+	return string(body), nil
+}
+
+// DoPostJson 发送POST请求，JSON格式请求体
+// urlStr: 接口地址
+// data: 请求体数据（任意可序列化为JSON的结构体/Map）
+// 返回：响应体字符串、错误信息
+func DoPostJson(urlStr string, data interface{}) (string, error) {
+	// 将数据序列化为JSON字节流
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("JSON序列化失败: %v", err)
+	}
+
+	// 发送POST请求
+	resp, err := httpClient.Post(urlStr, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("POST请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态码
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("请求返回异常状态码: %d", resp.StatusCode)
+	}
+
+	// 读取响应体
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取响应体失败: %v", err)
+	}
+
+	return string(body), nil
+}
+
+// FormatJson 格式化JSON字符串（便于控制台阅读）
+func FormatJson(jsonStr string) string {
+	var prettyJson bytes.Buffer
+	err := json.Indent(&prettyJson, []byte(jsonStr), "", "  ")
+	if err != nil {
+		return jsonStr // 格式化失败则返回原字符串
+	}
+	return prettyJson.String()
+}
+
+func main() {
+	// ------------------- 测试GET请求 -------------------
+	fmt.Println("=== 开始测试GET请求 ===")
+	getUrl := "https://api.example.com/user/list" // 替换为实际接口地址
+	getParams := map[string]string{
+		"page":    "1",
+		"size":    "10",
+		"keyword": "test",
+	}
+	getResp, err := DoGet(getUrl, getParams)
+	if err != nil {
+		fmt.Printf("GET请求出错: %v\n", err)
+	} else {
+		fmt.Println("GET请求响应结果:\n", FormatJson(getResp))
+	}
+
+	fmt.Println("------------------------")
+
+	// ------------------- 测试POST请求 -------------------
+	fmt.Println("=== 开始测试POST请求 ===")
+	postUrl := "https://api.example.com/user/login" // 替换为实际接口地址
+	// 定义POST请求体（可替换为自定义结构体）
+	postData := map[string]string{
+		"username": "admin",
+		"password": "123456",
+	}
+	postResp, err := DoPostJson(postUrl, postData)
+	if err != nil {
+		fmt.Printf("POST请求出错: %v\n", err)
+	} else {
+		fmt.Println("POST请求响应结果:\n", FormatJson(postResp))
+	}
+}
+</code></pre>
+                                    </div>
+                                    <div class="tab-pane fade fade" id="Python">
+                                        <pre class="pre-scrollable"><code class="language-python line-numbers" style="white-space: pre-wrap">
+import requests
+import json
+
+# 配置全局请求超时时间（单位：秒）
+TIMEOUT = 10
+
+def do_get(url: str, params: dict = None) -> str:
+    """
+    发送GET请求
+    :param url: 接口地址
+    :param params: URL查询参数（字典）
+    :return: 响应体字符串（格式化后的JSON）
+    :raises Exception: 请求失败时抛出异常
+    """
+    try:
+        # 发送GET请求
+        response = requests.get(url, params=params, timeout=TIMEOUT)
+        # 检查响应状态码
+        response.raise_for_status()
+        # 返回格式化后的JSON字符串
+        return json.dumps(response.json(), indent=2, ensure_ascii=False)
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"GET请求失败: {str(e)}")
+
+def do_post_json(url: str, data: dict = None) -> str:
+    """
+    发送POST请求（JSON格式请求体）
+    :param url: 接口地址
+    :param data: JSON请求体（字典）
+    :return: 响应体字符串（格式化后的JSON）
+    :raises Exception: 请求失败时抛出异常
+    """
+    try:
+        # 发送POST请求，自动设置Content-Type为application/json
+        response = requests.post(url, json=data, timeout=TIMEOUT)
+        # 检查响应状态码
+        response.raise_for_status()
+        # 返回格式化后的JSON字符串
+        return json.dumps(response.json(), indent=2, ensure_ascii=False)
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"POST请求失败: {str(e)}")
+
+if __name__ == "__main__":
+    # ------------------- 测试GET请求 -------------------
+    print("=== 开始测试GET请求 ===")
+    get_url = "https://api.example.com/user/list"  # 替换为实际接口地址
+    get_params = {
+        "page": 1,
+        "size": 10,
+        "keyword": "test"
+    }
+    try:
+        get_resp = do_get(get_url, get_params)
+        print("GET请求响应结果:\n", get_resp)
+    except Exception as e:
+        print(e)
+
+    print("-" * 40)
+
+    # ------------------- 测试POST请求 -------------------
+    print("=== 开始测试POST请求 ===")
+    post_url = "https://api.example.com/user/login"  # 替换为实际接口地址
+    post_data = {
+        "username": "admin",
+        "password": "123456"
+    }
+    try:
+        post_resp = do_post_json(post_url, post_data)
+        print("POST请求响应结果:\n", post_resp)
+    except Exception as e:
+        print(e)
+
+</code></pre>
+                                    </div>
+                                    <div class="tab-pane fade fade" id="Nodejs">
+                                        <pre class="pre-scrollable"><code class="language-js line-numbers" style="white-space: pre-wrap">
+const http = require('http');
+const https = require('https');
+const querystring = require('querystring');
+
+/**
+ * 通用请求函数（支持GET/POST，JSON格式）
+ * @param {string} url - 接口完整地址
+ * @param {string} method - GET/POST
+ * @param {object} [data={}] - 请求参数（GET拼URL，POST为JSON体）
+ * @returns {Promise<any>} - 响应JSON数据
+ */
+function requestApi(url, method, data = {}) {
+  return new Promise((resolve, reject) => {
+    // 解析URL
+    const urlObj = new URL(url);
+    const isHttps = urlObj.protocol === 'https:';
+    const client = isHttps ? https : http;
+
+    // 处理GET参数
+    let path = urlObj.pathname;
+    if (method.toUpperCase() === 'GET' && Object.keys(data).length > 0) {
+      const params = querystring.stringify(data);
+      path += (urlObj.search ? '&' : '?') + params;
+    }
+
+    // 处理POST请求体
+    let postData = '';
+    if (method.toUpperCase() === 'POST') {
+      postData = JSON.stringify(data);
+    }
+
+    // 配置请求选项
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (isHttps ? 443 : 80),
+      path: path + urlObj.search,
+      method: method.toUpperCase(),
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    // 发送请求
+    const req = client.request(options, (res) => {
+      let rawData = '';
+      res.on('data', (chunk) => { rawData += chunk; });
+      res.on('end', () => {
+        try {
+          // 解析JSON响应
+          const result = JSON.parse(rawData);
+          resolve(result);
+        } catch (err) {
+          reject(new Error(`响应解析失败: ${err.message}`));
+        }
+      });
+    });
+
+    // 错误处理
+    req.on('error', (err) => {
+      reject(new Error(`请求失败: ${err.message}`));
+    });
+
+    // 写入POST请求体
+    if (method.toUpperCase() === 'POST') {
+      req.write(postData);
+    }
+    req.end();
+  });
+}
+
+// 测试主函数
+async function main() {
+  try {
+    // ------------------- 测试GET请求 -------------------
+    console.log('=== 开始测试GET请求 ===');
+    const getUrl = 'https://api.example.com/user/list'; // 替换为实际接口
+    const getParams = { page: 1, size: 10, keyword: 'test' };
+    const getResult = await requestApi(getUrl, 'GET', getParams);
+    console.log('GET请求响应:', JSON.stringify(getResult, null, 2));
+
+    console.log('------------------------');
+
+    // ------------------- 测试POST请求 -------------------
+    console.log('=== 开始测试POST请求 ===');
+    const postUrl = 'https://api.example.com/user/login'; // 替换为实际接口
+    const postData = { username: 'admin', password: '123456' };
+    const postResult = await requestApi(postUrl, 'POST', postData);
+    console.log('POST请求响应:', JSON.stringify(postResult, null, 2));
+  } catch (err) {
+    console.error('请求出错:', err.message);
+  }
+}
+
+// 执行测试
+main();
+
+</code></pre>
+                                    </div>
+                                    <div class="tab-pane fade fade" id="c1">
+                                        <pre class="pre-scrollable"><code class="language-c line-numbers" style="white-space: pre-wrap">
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <curl/curl.h>
+
+// 定义缓冲区结构体，用于存储响应数据
+typedef struct {
+    char* data;
+    size_t size;
+} ResponseBuffer;
+
+// libcurl的写回调函数，将响应数据写入缓冲区
+static size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp) {
+    size_t realsize = size * nmemb;
+    ResponseBuffer* buffer = (ResponseBuffer*)userp;
+
+    // 重新分配内存存储响应数据
+    char* temp = realloc(buffer->data, buffer->size + realsize + 1);
+    if (temp == NULL) {
+        fprintf(stderr, "内存分配失败！\n");
+        return 0;
+    }
+    buffer->data = temp;
+    memcpy(&(buffer->data[buffer->size]), contents, realsize);
+    buffer->size += realsize;
+    buffer->data[buffer->size] = '\0'; // 字符串结束符
+
+    return realsize;
+}
+
+// 初始化响应缓冲区
+void init_buffer(ResponseBuffer* buffer) {
+    buffer->data = malloc(1);
+    buffer->size = 0;
+}
+
+// 释放响应缓冲区内存
+void free_buffer(ResponseBuffer* buffer) {
+    free(buffer->data);
+    buffer->data = NULL;
+    buffer->size = 0;
+}
+
+/**
+ * 发送GET请求
+ * @param url 接口地址
+ * @param params URL参数（格式："key1=value1&key2=value2"，传NULL则无参数）
+ * @return 响应字符串（需手动free释放），失败返回NULL
+ */
+char* http_get(const char* url, const char* params) {
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        fprintf(stderr, "CURL初始化失败！\n");
+        return NULL;
+    }
+
+    ResponseBuffer buffer;
+    init_buffer(&buffer);
+
+    // 拼接GET请求的URL和参数
+    char* full_url = NULL;
+    if (params && strlen(params) > 0) {
+        full_url = (char*)malloc(strlen(url) + strlen(params) + 2);
+        sprintf(full_url, "%s?%s", url, params);
+    } else {
+        full_url = (char*)malloc(strlen(url) + 1);
+        strcpy(full_url, url);
+    }
+
+    // 设置CURL选项
+    curl_easy_setopt(curl, CURLOPT_URL, full_url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); // 超时时间10秒
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L); // 跟随重定向
+
+    // 执行GET请求
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "GET请求失败: %s\n", curl_easy_strerror(res));
+        free_buffer(&buffer);
+        free(full_url);
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
+
+    // 检查响应状态码
+    long response_code;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+    if (response_code < 200 || response_code >= 300) {
+        fprintf(stderr, "GET请求返回异常状态码: %ld\n", response_code);
+        free_buffer(&buffer);
+        free(full_url);
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
+
+    // 释放资源
+    free(full_url);
+    curl_easy_cleanup(curl);
+
+    // 返回响应数据（需调用者手动free）
+    return buffer.data;
+}
+
+/**
+ * 发送POST请求（JSON格式请求体）
+ * @param url 接口地址
+ * @param json_data JSON请求体字符串
+ * @return 响应字符串（需手动free释放），失败返回NULL
+ */
+char* http_post_json(const char* url, const char* json_data) {
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        fprintf(stderr, "CURL初始化失败！\n");
+        return NULL;
+    }
+
+    ResponseBuffer buffer;
+    init_buffer(&buffer);
+
+    // 设置CURL选项
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); // 超时时间10秒
+    curl_easy_setopt(curl, CURLOPT_POST, 1L); // 启用POST请求
+
+    // 设置JSON请求体和请求头
+    struct curl_slist* headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json; charset=utf-8");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_data);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, strlen(json_data));
+
+    // 执行POST请求
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "POST请求失败: %s\n", curl_easy_strerror(res));
+        free_buffer(&buffer);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
+
+    // 检查响应状态码
+    long response_code;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+    if (response_code < 200 || response_code >= 300) {
+        fprintf(stderr, "POST请求返回异常状态码: %ld\n", response_code);
+        free_buffer(&buffer);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
+
+    // 释放资源
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    // 返回响应数据（需调用者手动free）
+    return buffer.data;
+}
+
+int main(void) {
+    // 初始化libcurl
+    curl_global_init(CURL_GLOBAL_ALL);
+
+    // ------------------- 测试GET请求 -------------------
+    printf("=== 开始测试GET请求 ===\n");
+    const char* get_url = "https://api.example.com/user/list"; // 替换为实际接口
+    const char* get_params = "page=1&size=10&keyword=test";   // GET参数
+    char* get_resp = http_get(get_url, get_params);
+    if (get_resp) {
+        printf("GET请求响应结果:\n%s\n", get_resp);
+        free(get_resp); // 释放响应内存
+    }
+
+    printf("------------------------\n");
+
+    // ------------------- 测试POST请求 -------------------
+    printf("=== 开始测试POST请求 ===\n");
+    const char* post_url = "https://api.example.com/user/login"; // 替换为实际接口
+    const char* post_json = "{\"username\":\"admin\",\"password\":\"123456\"}"; // JSON请求体
+    char* post_resp = http_post_json(post_url, post_json);
+    if (post_resp) {
+        printf("POST请求响应结果:\n%s\n", post_resp);
+        free(post_resp); // 释放响应内存
+    }
+
+    // 清理libcurl全局资源
+    curl_global_cleanup();
+    return 0;
+}
+
+</code></pre>
+                                    </div>
+                                    <div class="tab-pane fade fade" id="c2">
+                                        <pre class="pre-scrollable"><code class="language-cpp line-numbers" style="white-space: pre-wrap">
+#include <iostream>
+#include <string>
+#include <memory>
+#include <curl/curl.h>
+
+// 响应数据缓冲区类，封装内存管理
+class ResponseBuffer {
+public:
+    std::string data; // 存储响应数据的字符串，自动管理内存
+
+    // libcurl写回调函数，将响应数据写入缓冲区
+    static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+        size_t realSize = size * nmemb;
+        ResponseBuffer* buffer = static_cast<ResponseBuffer*>(userp);
+        buffer->data.append(static_cast<char*>(contents), realSize);
+        return realSize;
+    }
+};
+
+// HTTP请求工具类，封装GET/POST(JSON)方法
+class HttpRequester {
+private:
+    CURL* curl; // CURL句柄
+    long timeout; // 请求超时时间（秒）
+
+public:
+    // 构造函数：初始化CURL
+    HttpRequester(long timeout = 10) : timeout(timeout) {
+        curl_global_init(CURL_GLOBAL_ALL);
+        curl = curl_easy_init();
+        if (!curl) {
+            throw std::runtime_error("CURL初始化失败！");
+        }
+        // 设置全局超时
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout);
+        // 跟随HTTP重定向
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    }
+
+    // 析构函数：释放CURL资源
+    ~HttpRequester() {
+        if (curl) {
+            curl_easy_cleanup(curl);
+        }
+        curl_global_cleanup();
+    }
+
+    // 禁用拷贝构造和赋值，避免资源重复释放
+    HttpRequester(const HttpRequester&) = delete;
+    HttpRequester& operator=(const HttpRequester&) = delete;
+
+    /**
+     * 发送GET请求
+     * @param url 接口地址
+     * @param params URL参数（格式："key1=value1&key2=value2"）
+     * @return 响应字符串
+     * @throws std::runtime_error 请求失败时抛出异常
+     */
+    std::string Get(const std::string& url, const std::string& params = "") {
+        if (!curl) {
+            throw std::runtime_error("CURL句柄未初始化");
+        }
+
+        // 拼接完整URL（带参数）
+        std::string fullUrl = url;
+        if (!params.empty()) {
+            fullUrl += "?" + params;
+        }
+
+        ResponseBuffer buffer;
+        // 设置CURL选项
+        curl_easy_setopt(curl, CURLOPT_URL, fullUrl.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, ResponseBuffer::WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+
+        // 执行GET请求
+        CURLcode res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            throw std::runtime_error("GET请求失败: " + std::string(curl_easy_strerror(res)));
+        }
+
+        // 检查响应状态码
+        long responseCode;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &responseCode);
+        if (responseCode < 200 || responseCode >= 300) {
+            throw std::runtime_error("GET请求返回异常状态码: " + std::to_string(responseCode));
+        }
+
+        return buffer.data;
+    }
+
+    /**
+     * 发送POST请求（JSON格式请求体）
+     * @param url 接口地址
+     * @param jsonData JSON请求体字符串
+     * @return 响应字符串
+     * @throws std::runtime_error 请求失败时抛出异常
+     */
+    std::string PostJson(const std::string& url, const std::string& jsonData) {
+        if (!curl) {
+            throw std::runtime_error("CURL句柄未初始化");
+        }
+
+        ResponseBuffer buffer;
+        // 设置POST请求基础选项
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_POST, 1L); // 启用POST方法
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonData.c_str()); // 设置请求体
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, jsonData.length()); // 设置请求体长度
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, ResponseBuffer::WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+
+        // 设置JSON请求头
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, "Content-Type: application/json; charset=utf-8");
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+        // 执行POST请求
+        CURLcode res = curl_easy_perform(curl);
+        // 释放请求头链表（无论请求成功与否都要释放）
+        curl_slist_free_all(headers);
+
+        if (res != CURLE_OK) {
+            throw std::runtime_error("POST请求失败: " + std::string(curl_easy_strerror(res)));
+        }
+
+        // 检查响应状态码
+        long responseCode;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &responseCode);
+        if (responseCode < 200 || responseCode >= 300) {
+            throw std::runtime_error("POST请求返回异常状态码: " + std::to_string(responseCode));
+        }
+
+        return buffer.data;
+    }
+};
+
+// 主函数：测试GET/POST请求
+int main() {
+    try {
+        // 创建HTTP请求器实例
+        HttpRequester requester;
+
+        // ------------------- 测试GET请求 -------------------
+        std::cout << "=== 开始测试GET请求 ===" << std::endl;
+        std::string getUrl = "https://api.example.com/user/list"; // 替换为实际接口
+        std::string getParams = "page=1&size=10&keyword=test";   // GET参数
+        std::string getResp = requester.Get(getUrl, getParams);
+        std::cout << "GET请求响应结果:\n" << getResp << std::endl;
+
+        std::cout << "------------------------" << std::endl;
+
+        // ------------------- 测试POST请求 -------------------
+        std::cout << "=== 开始测试POST请求 ===" << std::endl;
+        std::string postUrl = "https://api.example.com/user/login"; // 替换为实际接口
+        std::string postJson = R"({"username":"admin","password":"123456"})"; // JSON请求体（原生字符串避免转义）
+        std::string postResp = requester.PostJson(postUrl, postJson);
+        std::cout << "POST请求响应结果:\n" << postResp << std::endl;
+
+    } catch (const std::exception& e) {
+        // 捕获所有异常并打印
+        std::cerr << "请求出错: " << e.what() << std::endl;
+        return 1;
+    }
+
+    return 0;
+}
+
+</code></pre>
+                                    </div>
+                                    <div class="tab-pane fade fade" id="c3">
+                                        <pre class="pre-scrollable"><code class="language-cs line-numbers" style="white-space: pre-wrap">
+using System;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+using System.Text.Json;
+
+/// <summary>
+/// HTTP请求工具类，封装GET/POST(JSON)请求
+/// </summary>
+public class HttpRequester
+{
+    // 静态HttpClient实例（推荐单例使用，避免频繁创建释放连接）
+    private static readonly HttpClient _httpClient = new HttpClient
+    {
+        Timeout = TimeSpan.FromSeconds(10) // 设置10秒超时
+    };
+
+    /// <summary>
+    /// 发送GET请求
+    /// </summary>
+    /// <param name="url">接口完整地址</param>
+    /// <param name="paramsDict">URL查询参数（键值对）</param>
+    /// <returns>格式化后的JSON响应字符串</returns>
+    /// <exception cref="HttpRequestException">请求失败时抛出异常</exception>
+    public static async Task<string> GetAsync(string url, System.Collections.Generic.Dictionary<string, string> paramsDict = null)
+    {
+        // 拼接查询参数
+        if (paramsDict != null && paramsDict.Count > 0)
+        {
+            var queryBuilder = new System.Text.StringBuilder();
+            foreach (var pair in paramsDict)
+            {
+                queryBuilder.Append($"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}&");
+            }
+            string query = queryBuilder.ToString().TrimEnd('&');
+            url += $"{(url.Contains("?") ? "&" : "?")}{query}";
+        }
+
+        // 发送GET请求
+        using var response = await _httpClient.GetAsync(url);
+        // 检查响应状态码，非2xx则抛出异常
+        response.EnsureSuccessStatusCode();
+
+        // 读取响应并格式化JSON
+        string jsonResponse = await response.Content.ReadAsStringAsync();
+        return FormatJson(jsonResponse);
+    }
+
+    /// <summary>
+    /// 发送POST请求（JSON格式请求体）
+    /// </summary>
+    /// <param name="url">接口完整地址</param>
+    /// <param name="data">请求体数据（任意可序列化的对象）</param>
+    /// <returns>格式化后的JSON响应字符串</returns>
+    /// <exception cref="HttpRequestException">请求失败时抛出异常</exception>
+    public static async Task<string> PostJsonAsync<T>(string url, T data)
+    {
+        // 将对象序列化为JSON字符串
+        string jsonData = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = false });
+        // 构造JSON请求体
+        using var content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+        // 发送POST请求
+        using var response = await _httpClient.PostAsync(url, content);
+        // 检查响应状态码
+        response.EnsureSuccessStatusCode();
+
+        // 读取响应并格式化JSON
+        string jsonResponse = await response.Content.ReadAsStringAsync();
+        return FormatJson(jsonResponse);
+    }
+
+    /// <summary>
+    /// 格式化JSON字符串（便于阅读）
+    /// </summary>
+    private static string FormatJson(string json)
+    {
+        if (string.IsNullOrEmpty(json)) return json;
+        var jsonDoc = JsonDocument.Parse(json);
+        return JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = true });
+    }
+}
+
+/// <summary>
+/// 测试类，包含主函数
+/// </summary>
+class Program
+{
+    // C# 7.1+支持Main方法为async
+    static async Task Main(string[] args)
+    {
+        try
+        {
+            // ------------------- 测试GET请求 -------------------
+            Console.WriteLine("=== 开始测试GET请求 ===");
+            string getUrl = "https://api.example.com/user/list"; // 替换为实际接口
+            var getParams = new System.Collections.Generic.Dictionary<string, string>
+            {
+                { "page", "1" },
+                { "size", "10" },
+                { "keyword", "test" }
+            };
+            string getResponse = await HttpRequester.GetAsync(getUrl, getParams);
+            Console.WriteLine("GET请求响应结果:\n" + getResponse);
+
+            Console.WriteLine("------------------------");
+
+            // ------------------- 测试POST请求 -------------------
+            Console.WriteLine("=== 开始测试POST请求 ===");
+            string postUrl = "https://api.example.com/user/login"; // 替换为实际接口
+            // 定义请求体对象（可替换为自定义类）
+            var postData = new
+            {
+                username = "admin",
+                password = "123456"
+            };
+            string postResponse = await HttpRequester.PostJsonAsync(postUrl, postData);
+            Console.WriteLine("POST请求响应结果:\n" + postResponse);
+        }
+        catch (HttpRequestException ex)
+        {
+            Console.WriteLine($"请求失败: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"内部异常: {ex.InnerException.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"程序异常: {ex.Message}");
+        }
+
+        // 防止控制台立即关闭
+        Console.WriteLine("\n按任意键退出...");
+        Console.ReadKey();
+    }
+}
+
+</code></pre>
+                                    </div>
+                                    <div class="tab-pane fade fade" id="vb">
+                                        <pre class="pre-scrollable"><code class="language-vbnet line-numbers" style="white-space: pre-wrap">
+' 引入必要的命名空间
+Imports System
+Imports System.Net.Http
+Imports System.Text
+Imports System.Threading.Tasks
+Imports System.Collections.Generic
+Imports System.Text.Json
+Imports System.Net.Http.Headers
+
+''' <summary>
+''' HTTP请求工具类，封装GET/POST(JSON)核心逻辑
+''' 基于.NET内置HttpClient，支持异步请求、JSON序列化/反序列化
+''' </summary>
+Public Class HttpHelper
+    ' 静态HttpClient单例（推荐单例使用，避免端口耗尽）
+    Private Shared ReadOnly _httpClient As New HttpClient With {
+        .Timeout = TimeSpan.FromSeconds(10) ' 设置10秒请求超时
+    }
+
+    ''' <summary>
+    ''' 发送GET请求，自动拼接URL参数
+    ''' </summary>
+    ''' <param name="baseUrl">接口基础地址</param>
+    ''' <param name="parameters">URL查询参数（键值对）</param>
+    ''' <returns>格式化后的JSON响应字符串</returns>
+    Public Shared Async Function SendGetRequestAsync(baseUrl As String, Optional parameters As Dictionary(Of String, String) = Nothing) As Task(Of String)
+        Try
+            ' 拼接查询参数
+            Dim requestUrl As String = baseUrl
+            If parameters IsNot Nothing AndAlso parameters.Count > 0 Then
+                Dim queryBuilder As New StringBuilder()
+                For Each pair In parameters
+                    queryBuilder.Append($"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}&")
+                Next
+                Dim query As String = queryBuilder.ToString().TrimEnd("&"c)
+                requestUrl &= If(requestUrl.Contains("?"), "&", "?") & query
+            End If
+
+            ' 发送GET请求并验证状态码
+            Dim response As HttpResponseMessage = Await _httpClient.GetAsync(requestUrl)
+            response.EnsureSuccessStatusCode()
+
+            ' 读取响应并格式化JSON
+            Dim responseJson As String = Await response.Content.ReadAsStringAsync()
+            Return FormatJsonString(responseJson)
+        Catch ex As HttpRequestException
+            Throw New Exception($"GET请求失败：{ex.Message}", ex)
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' 发送POST请求（JSON格式请求体）
+    ''' </summary>
+    ''' <typeparam name="T">请求体数据类型</typeparam>
+    ''' <param name="apiUrl">接口完整地址</param>
+    ''' <param name="requestData">请求体数据（任意可序列化对象）</param>
+    ''' <returns>格式化后的JSON响应字符串</returns>
+    Public Shared Async Function SendPostJsonRequestAsync(Of T)(apiUrl As String, requestData As T) As Task(Of String)
+        Try
+            ' 将对象序列化为JSON字符串
+            Dim jsonBody As String = JsonSerializer.Serialize(requestData, New JsonSerializerOptions With {.WriteIndented = False})
+            ' 构造JSON请求体
+            Dim content As New StringContent(jsonBody, Encoding.UTF8, "application/json")
+
+            ' 发送POST请求并验证状态码
+            Dim response As HttpResponseMessage = Await _httpClient.PostAsync(apiUrl, content)
+            response.EnsureSuccessStatusCode()
+
+            ' 读取响应并格式化JSON
+            Dim responseJson As String = Await response.Content.ReadAsStringAsync()
+            Return FormatJsonString(responseJson)
+        Catch ex As HttpRequestException
+            Throw New Exception($"POST请求失败：{ex.Message}", ex)
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' 添加全局请求头（如Token、API Key）
+    ''' </summary>
+    ''' <param name="headerName">请求头名称</param>
+    ''' <param name="headerValue">请求头值</param>
+    Public Shared Sub AddGlobalHeader(headerName As String, headerValue As String)
+        If Not _httpClient.DefaultRequestHeaders.Contains(headerName) Then
+            _httpClient.DefaultRequestHeaders.Add(headerName, headerValue)
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' 格式化JSON字符串，提升可读性
+    ''' </summary>
+    ''' <param name="rawJson">原始JSON字符串</param>
+    ''' <returns>格式化后的JSON</returns>
+    Private Shared Function FormatJsonString(rawJson As String) As String
+        If String.IsNullOrEmpty(rawJson) Then Return rawJson
+        Dim jsonDoc As JsonDocument = JsonDocument.Parse(rawJson)
+        Return JsonSerializer.Serialize(jsonDoc, New JsonSerializerOptions With {.WriteIndented = True})
+    End Function
+End Class
+
+''' <summary>
+''' 测试程序入口，演示GET/POST请求的使用
+''' </summary>
+Module Program
+    ' VB.NET主函数，异步执行测试逻辑
+    Sub Main()
+        ' 同步等待异步方法执行（控制台程序专用）
+        TestApiRequestsAsync().GetAwaiter().GetResult()
+        ' 防止控制台立即关闭
+        Console.WriteLine(vbCrLf & "按任意键退出程序...")
+        Console.ReadKey()
+    End Sub
+
+    ''' <summary>
+    ''' 测试GET和POST API请求
+    ''' </summary>
+    Private Async Function TestApiRequestsAsync() As Task
+        Try
+            ' 可选：添加全局请求头（如Token认证）
+            ' HttpHelper.AddGlobalHeader("Authorization", "Bearer your_token_here")
+            ' HttpHelper.AddGlobalHeader("X-API-Key", "your_api_key_here")
+
+            ' ------------------- 测试GET请求 -------------------
+            Console.WriteLine("=== 开始执行GET请求 ===")
+            Dim getUrl As String = "https://api.example.com/user/list" ' 替换为实际接口地址
+            Dim getParams As New Dictionary(Of String, String) From {
+                {"page", "1"},
+                {"size", "10"},
+                {"keyword", "vb.net_test"}
+            }
+            Dim getResponse As String = Await HttpHelper.SendGetRequestAsync(getUrl, getParams)
+            Console.WriteLine("GET请求响应结果：" & vbCrLf & getResponse)
+
+            Console.WriteLine("------------------------")
+
+            ' ------------------- 测试POST请求 -------------------
+            Console.WriteLine("=== 开始执行POST请求 ===")
+            Dim postUrl As String = "https://api.example.com/user/login" ' 替换为实际接口地址
+            ' 匿名类型请求体（也可替换为自定义实体类）
+            Dim postData = New With {
+                .username = "vbnet_admin",
+                .password = "123456_test",
+                .rememberMe = True
+            }
+            Dim postResponse As String = Await HttpHelper.SendPostJsonRequestAsync(postUrl, postData)
+            Console.WriteLine("POST请求响应结果：" & vbCrLf & postResponse)
+
+        Catch ex As Exception
+            Console.WriteLine($"请求异常：{ex.Message}")
+            If ex.InnerException IsNot Nothing Then
+                Console.WriteLine($"内部异常详情：{ex.InnerException.Message}")
+            End If
+        End Try
+    End Function
+End Module
+
+</code></pre>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 在线调试 -->
+                            <div class="tab-pane fade" id="debug">
+                                <div class="alert alert-info">
+                                    本工具支持 API 接口的实时请求测试，实时返回接口响应结果，助力开发者快速排查接口问题。<br>
+                                    ?? 本工具为真实请求，将消耗额度 / 产生计费，请勿填写私密信息。<br>
+                                    ?? 本页面工具将自动添加请求头，无需手动添加。
+                                </div>
+                                <div class="apidocs-debug-tool">
+                                    <div class="debug-controls">
+                                        <select class="form-select method-select">
+                                                                                            <option value="POST" selected>POST</option>
+                                                                                    </select>
+                                        <input type="text" class="form-control apidocs-url" value="https://api.wuyinkeji.com/api/async/image_nanoBanana2" disabled>
+                                        <button class="btn btn-tech" id="send-request"><i class="fas fa-location-arrow"></i> 发送请求</button>
+                                    </div>
+
+                                    <!-- JSON提交选项 -->
+                                                                            <div class="json-submit-options">
+                                            <input type="checkbox" class="form-check-input" id="json-submit">
+                                            <label class="form-check-label" for="json-submit">使用JSON格式提交</label>
+                                        </div>
+                                                                        <!-- 参数提交表格 -->
+                                    <div class="request-params" id="params-table-container">
+                                        <h5>请求参数</h5>
+                                        <table class="table table-bordered">
+                                            <thead>
+                                                <tr>
+                                                    <th>参数名</th>
+                                                    <th>参数值</th>
+                                                    <th class="text-center">操作</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="params-table">
+                                                <tr>
+                                                    <td><input class="form-control param-key" placeholder="请求密钥" value="key" type="text"></td>
+                                                    <td><input class="form-control param-value" placeholder="请求密钥" value="你的接口密钥，登录控制台后在密钥管理页面申请" type="text"></td>
+                                                    <td class="text-center">
+                                                        <button type="button" class="btn btn-sm btn-danger delete-param" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="密钥字段必传">
+                                                            <i class="fas fa-trash-alt"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                        <td><input class="form-control param-key" placeholder="参数名" value="prompt" type="text"></td>
+                                                        <td><input class="form-control param-value" placeholder="提示词" value="" type="text"></td>
+                                                        <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-danger delete-param">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+                                                    </tr><tr>
+                                                        <td><input class="form-control param-key" placeholder="参数名" value="size" type="text"></td>
+                                                        <td><input class="form-control param-value" placeholder="输出图像大小,支持的大小: 1K 2K 4K 默认 1K - 注意：分辨率越高，生成时间越长" value="" type="text"></td>
+                                                        <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-danger delete-param">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+                                                    </tr><tr>
+                                                        <td><input class="form-control param-key" placeholder="参数名" value="aspectRatio" type="text"></td>
+                                                        <td><input class="form-control param-value" placeholder="输出图像比例,支持的比例: auto 1:1 16:9 9:16 4:3 3:4 3:2 2:3 5:4 4:5 21:9 默认 auto" value="" type="text"></td>
+                                                        <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-danger delete-param">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+                                                    </tr><tr>
+                                                        <td><input class="form-control param-key" placeholder="参数名" value="urls" type="text"></td>
+                                                        <td><input class="form-control param-value" placeholder="参考图URL or Base64" value="" type="text"></td>
+                                                        <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-danger delete-param">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+                                                    </tr>                                            </tbody>
+                                        </table>
+                                        <div class="btn-icon-group">
+                                            <button class="btn btn-tech btn-sm" id="add-param"><i class="fa fa-plus"></i> 添加参数</button>
+                                            <button class="btn btn-tech-outline btn-sm" id="reset-param">恢复参数</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- JSON编辑器 -->
+                                    <div class="json-editor-container" id="json-editor-container" style="display: none;">
+                                        <h5>JSON请求体</h5>
+                                        <textarea class="form-control" id="json-editor" style="min-height: 200px;"></textarea>
+                                    </div>
+                                    <!-- 请求状态信息 -->
+                                    <div class="alert alert-success" id="request-status" style="display: none;">
+                                    </div>
+
+                                    <!-- 请求详情 -->
+                                    <div class="request-details" style="display: none;">
+                                        <ul class="nav nav-tabs">
+                                            <li class="nav-item">
+                                                <a class="nav-link active" data-bs-toggle="tab"
+                                                    href="#response-result">响应结果</a>
+                                            </li>
+                                            <li class="nav-item">
+                                                <a class="nav-link" data-bs-toggle="tab"
+                                                    href="#request-headers">请求头</a>
+                                            </li>
+                                            <li class="nav-item">
+                                                <a class="nav-link" data-bs-toggle="tab"
+                                                    href="#response-headers">响应头</a>
+                                            </li>
+                                            <li class="nav-item">
+                                                <a class="nav-link" data-bs-toggle="tab" href="#full-url">完整URL</a>
+                                            </li>
+                                        </ul>
+
+                                        <div class="tab-content p-0">
+                                            <div class="tab-pane active" id="response-result">
+                                            </div>
+                                            <div class="tab-pane" id="request-headers">
+                                                <div class="code-container">
+                                                    <pre class="pre-scrollable">
+<code id="request-headers-content" class="language-http line-numbers" style="white-space: pre-wrap">
+无数据
+</code>
+</pre>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane" id="response-headers">
+                                                <div class="code-container">
+                                                    <pre class="pre-scrollable">
+<code id="response-headers-content" class="language-http line-numbers" style="white-space: pre-wrap">
+无数据
+</code>
+</pre>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane" id="full-url">
+                                                <div class="code-container">
+                                                    <pre class="pre-scrollable text-wrap">
+<code id="full-url-content" class="language-url line-numbers text-break" style="white-space: pre-wrap">
+无数据
+</code>
+</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 在线结果 -->
+                            <div class="tab-pane fade" id="result">
+                                <div class="apidocs-debug-tool">
+                                    <div class="debug-controls">
+                                        <select class="form-select method-select">
+                                            <option value="GET">GET</option>
+                                        </select>
+                                        <input type="text" class="form-control apidocs-url" value="https://api.wuyinkeji.com/api/async/detail" disabled>
+                                        <button class="btn btn-tech" id="send-request-result"><i class="fas fa-location-arrow"></i> 发送请求</button>
+                                    </div>
+
+                                    <!-- 参数提交表格 -->
+                                    <div class="request-params">
+                                        <h5>请求参数</h5>
+                                        <table class="table table-bordered">
+                                            <thead>
+                                            <tr>
+                                                <th>参数名</th>
+                                                <th>参数值</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody id="params-table-result">
+                                            <tr>
+                                                <td><input class="form-control param-key" placeholder="请求密钥" value="key" type="text"></td>
+                                                <td><input class="form-control param-value" placeholder="请求密钥" value="你的接口密钥，登录控制台后在密钥管理页面申请" type="text"></td>
+                                            </tr>
+                                            <tr>
+                                                <td><input class="form-control param-key" placeholder="参数名" value="id" type="text"></td>
+                                                <td><input id="result_id" class="form-control param-value" placeholder="接口返回ID" value="" type="text"></td>
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <!-- 请求状态信息 -->
+                                    <div class="alert alert-success" id="request-status-result" style="display: none;">
+                                    </div>
+
+                                    <!-- 请求详情 -->
+                                    <div class="request-details-result" style="display: none;">
+                                        <ul class="nav nav-tabs">
+                                            <li class="nav-item">
+                                                <a class="nav-link active" data-bs-toggle="tab"
+                                                   href="#response-result-result">响应结果</a>
+                                            </li>
+                                            <li class="nav-item">
+                                                <a class="nav-link" data-bs-toggle="tab"
+                                                   href="#request-headers-result">请求头</a>
+                                            </li>
+                                            <li class="nav-item">
+                                                <a class="nav-link" data-bs-toggle="tab"
+                                                   href="#response-headers-result">响应头</a>
+                                            </li>
+                                            <li class="nav-item">
+                                                <a class="nav-link" data-bs-toggle="tab" href="#full-url-result">完整URL</a>
+                                            </li>
+                                        </ul>
+
+                                        <div class="tab-content p-0">
+                                            <div class="tab-pane active" id="response-result-result">
+                                            </div>
+                                            <div class="tab-pane" id="request-headers-result">
+                                                <div class="code-container">
+                                                    <pre class="pre-scrollable">
+<code id="request-headers-content-result" class="language-http line-numbers" style="white-space: pre-wrap">
+无数据
+</code>
+</pre>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane" id="response-headers-result">
+                                                <div class="code-container">
+                                                    <pre class="pre-scrollable">
+<code id="response-headers-content-result" class="language-http line-numbers" style="white-space: pre-wrap">
+无数据
+</code>
+</pre>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane" id="full-url-result">
+                                                <div class="code-container">
+                                                    <pre class="pre-scrollable text-wrap">
+<code id="full-url-content-result" class="language-url line-numbers text-break" style="white-space: pre-wrap">
+无数据
+</code>
+</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 反馈系统 -->
+                                    </div>
+            </div>
+        </div>
+    </div>
+</section>
+<!-- 使用流程指引：API接口平台接入三步流程 -->
+<div class="integration-steps article-detail-hero hero py-5">
+    <div class="container">
+        <h2 class="text-center mb-5" data-aos="fade-down">仅需三步即可快速接入</h2>
+        <div class="steps-grid" data-aos="fade-up">
+            <div class="step-item">
+                <div class="step-number">1</div>
+                <h5>注册认证 · 获取密钥</h5>
+                <p>注册开发者账号并完成实名认证，在 <a href="/user/key"><span class="text-primary">控制台</span></a>
+                    申请专属API密钥（支持多种安全认证策略）。</p>
+            </div>
+            <div class="step-item">
+                <div class="step-number">2</div>
+                <h5>接口调试 · 开发集成</h5>
+                <p>使用平台 <a href="javascript:void(0);" onclick="debug_tabElement();"><span class="text-primary">在线调试工具</span></a>
+                    快速验证接口，通过官方API文档完成业务系统的接口集成与联调。</p>
+            </div>
+            <div class="step-item">
+                <div class="step-number">3</div>
+                <h5>生产上线 · 监控运维</h5>
+                <p>在生产环境调用接口，然后在 <a href="/user/loages"><span class="text-primary">个人中心</span></a>
+                    查看调用日志、平台提供弹性配额与故障排查支持。</p>
+            </div>
+        </div>
+    </div>
+</div>
+<link rel="stylesheet" href="/themes/DigitalBlue/assets/css/prism.css">
+<script src="/themes/DigitalBlue/assets/js/prism.js"></script>
+<script src="/user/js/cookie.min.js"></script>
+<script src="/user/js/api.admin.js"></script>
+<script>
+        $("#shop").click(function() {
+                    window.location.href = '/user/login?url=/doc/65';
+            });
+    $("#pay_get").click(function() {
+        window.open('/user/pay?type=' + $(this).attr('paytype') + '&payint=' + $(this).attr('payint') + "&api_id=65");
+    });
+    $('#amount').bind('input propertychange', function() {
+        if ($(this).val() < 10) {
+            $("#payinfo").html('充值金额必须大于10元');
+            $("#payinfo").css({
+                "display": "block"
+            });
+
+        } else {
+            $("#point_price_text").val($(this).val() / 0.01);
+            $("#amount-text").html('<i class="fas fa-yen-sign"></i> ' + $(this).val());
+            $("#payinfo").css({
+                "display": "none"
+            });
+                            set_point_cps();
+                        $("#pay_get").attr('payint', $(this).val());
+        }
+    });
+    $('#point_price_text').bind('input propertychange', function() {
+        if ($(this).val() * 0.01 < 10) {
+            $("#payinfo").html('充值金额必须大于10元');
+            $("#payinfo").css({
+                "display": "block"
+            });
+
+        } else {
+            $("#amount").val(parseFloat(($(this).val() * 0.01).toFixed(2)).toString());
+            $("#amount-text").html('<i class="fas fa-yen-sign"></i> ' + $("#amount").val());
+            $("#payinfo").css({
+                "display": "none"
+            });
+                            set_point_cps();
+                        $("#pay_get").attr('payint', $('#amount').val());
+        }
+
+    });
+
+    function set_point_cps() {
+        var json = [[10000,29900,0.1],[30000,59900,0.2],[60000,99900,0.3],[100000,299900,0.4],[300000,599900,0.5],[600000,999000,0.6],[1000000,2990000,0.7],[3000000,5990000,0.8],[6000000,9990000,0.9]];
+        var point = $("#point_price_text").val();
+        var cps_arr = [];
+        $.each(json, function(index, val) {
+            //console.log(val);
+            if (point >= val[0] && point <= val[1]) {
+                cps_arr = val;
+                return true;
+            }
+        });
+        console.log(cps_arr);
+        if (cps_arr.length > 0) {
+            $("#payinfo").html('充值已满 ' + (cps_arr[0] * 0.01) + '元，赠送 ' + parseInt(point * cps_arr[2]) + ' 点');
+            $("#payinfo").css({
+                "display": "block"
+            });
+        }
+    }
+
+    $(function() {
+                    set_point_cps();
+            });
+    $('table').removeClass().addClass('table table-bordered');
+    $('table thead').removeClass().addClass('table-light');
+    $('#doc table,#errcode table').wrap('<div class="table-responsive"></div>');
+    $('.docs-tab-navigation h2, .docs-tab-navigation h3, .docs-tab-navigation h4').removeClass().addClass('mb-3');
+
+    function debug_tabElement() {
+        // 显示Tab
+        const tabElement = document.querySelector('#apidocs-detail-view > div.docs-tab-navigation > ul > li:nth-child(5) > a');
+        const tab = new bootstrap.Tab(tabElement);
+        tab.show();
+
+        // 滚动到Tab导航位置
+        tabElement.scrollIntoView({
+            behavior: 'smooth', // 平滑滚动
+            block: 'start' // 对齐到顶部
+        });
+    }
+    $(document).ready(function() {
+        // 格式化函数
+        function formatCode(code, language) {
+            code = code.trim();
+
+            switch (language) {
+                case 'json':
+                    try {
+                        return JSON.stringify(JSON.parse(code), null, 2);
+                    } catch (e) {
+                        return code;
+                    }
+                case 'javascript':
+                    // 简单格式化：添加换行
+                    return code
+                        .replace(/{/g, '{\n  ')
+                        .replace(/}/g, '\n}')
+                        .replace(/;/g, ';\n')
+                        .replace(/,/g, ',\n  ')
+                        .replace(/\n\s*\n/g, '\n');
+                default:
+                    return code;
+            }
+        }
+
+        // 检测语言
+        function detectLanguage(code) {
+            code = code.trim();
+
+            if (code.startsWith('{') || code.startsWith('[')) {
+                try {
+                    JSON.parse(code);
+                    return 'json';
+                } catch (e) {
+                    return 'javascript';
+                }
+            }
+
+            if (code.includes('function') || code.includes('=>')) {
+                return 'javascript';
+            }
+
+            return 'json'; // 默认
+        }
+
+        // 处理 pre 元素
+        $('#doc pre').each(function() {
+            var $pre = $(this);
+            var content = $pre.text().trim();
+
+            if (!content) return;
+
+            // 检测语言
+            var language = detectLanguage(content);
+
+            // 格式化内容
+            var formattedContent = formatCode(content, language);
+
+            // 创建带行号的 code 标签
+            var $code = $('<code>', {
+                'class': `language-${language} line-numbers`,
+                'text': formattedContent
+            });
+
+            // 更新 pre
+            $pre
+                .empty()
+                .addClass('line-numbers pre-scrollable mb-4 w-100') // 必须给 pre 也添加这个类
+                .attr('data-start', '1') // 行号起始值
+                .append($code);
+        });
+        // 检查是否为可格式化的 JSON
+        function isFormattableJSON(str) {
+            if (!str || typeof str !== 'string') return false;
+            str = str.trim();
+            if (str.charAt(0) !== '{' && str.charAt(0) !== '[') return false;
+            try {
+                JSON.parse(str);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // 处理 #resjson-demo
+        var $resjson = $('#resjson-demo');
+        if ($resjson.length) {
+            var content = $resjson.text().trim();
+
+            if (isFormattableJSON(content)) {
+                // 格式化 JSON
+                try {
+                    var formatted = JSON.stringify(JSON.parse(content), null, 2);
+                    var $pre = $('<pre>', {
+                        'class': 'pre-scrollable mb-4 w-100'
+                    });
+                    var $code = $('<code>', {
+                        'class': 'language-json line-numbers',
+                        'text': formatted
+                    });
+                    $pre.append($code);
+                    $resjson.empty().append($pre);
+                } catch (e) {
+                    $resjson.addClass('mb-4 w-100 p-3 bg-light border rounded m-auto').text(content);
+                }
+            } else {
+                // 直接显示内容
+                $resjson.addClass('mb-4 w-100 p-3 bg-light border rounded m-auto');
+            }
+        }
+        // 高亮代码
+        applyPrismHighlighting();
+
+        // 搜索功能
+        const $categoryList = $('#apidocs-category-list');
+        const $searchInput = $('#apidocs-search');
+        const $clearBtn = $('#clearSearch');
+        const $searchMessage = $('#search-message');
+
+        if (!$categoryList.length || !$searchInput.length) return;
+
+        // 记录每个API项的原始显示状态
+        let originalApiStates = [];
+        // 记录当前选中的API ID
+        let currentSelectedApiId = '';
+
+        // 保存原始状态
+        function saveOriginalStates() {
+            originalApiStates = [];
+            $categoryList.find('.docs-category-item').each(function(index) {
+                const $item = $(this);
+                const $categoryLink = $item.find('.docs-category-link');
+                const $apiList = $categoryLink.next('.docs-apidocs-list');
+                const $apiItems = $apiList.find('.docs-apidocs-item');
+
+                originalApiStates[index] = {
+                    isCategoryActive: $categoryLink.hasClass('active'),
+                    apiItems: []
+                };
+
+                // 保存每个API项的显示状态和高亮状态
+                $apiItems.each(function() {
+                    const $link = $(this).find('.docs-apidocs-link');
+                    originalApiStates[index].apiItems.push({
+                        isVisible: $(this).css('display') !== 'none',
+                        isActive: $link.hasClass('active')
+                    });
+                });
+            });
+        }
+
+        // 清空搜索并恢复状态
+        function clearSearch() {
+            $searchInput.val('');
+            $searchMessage.hide();
+
+            // 恢复所有API项的显示
+            $categoryList.find('.docs-apidocs-item').show();
+
+            // 恢复分类和API列表的原始状态
+            $categoryList.find('.docs-category-item').each(function(index) {
+                const $item = $(this);
+                const $categoryLink = $item.find('.docs-category-link');
+                const $apiList = $categoryLink.next('.docs-apidocs-list');
+
+                if (originalApiStates[index]) {
+                    // 恢复分类状态
+                    if (originalApiStates[index].isCategoryActive) {
+                        $categoryLink.addClass('active');
+                        $apiList.show();
+                    } else {
+                        $categoryLink.removeClass('active');
+                        $apiList.hide();
+                    }
+
+                    // 恢复API项状态和高亮状态
+                    const $apiItems = $apiList.find('.docs-apidocs-item');
+                    $apiItems.each(function(itemIndex) {
+                        if (originalApiStates[index].apiItems[itemIndex]) {
+                            const $item = $(this);
+                            const $link = $item.find('.docs-apidocs-link');
+
+                            // 恢复显示状态
+                            $item.css('display', originalApiStates[index].apiItems[itemIndex].isVisible ? '' : 'none');
+
+                            // 恢复高亮状态
+                            if (originalApiStates[index].apiItems[itemIndex].isActive) {
+                                $link.addClass('active');
+                            } else {
+                                $link.removeClass('active');
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+
+        // 搜索功能
+        $searchInput.on('input', function() {
+            const searchTerm = $(this).val().toLowerCase().trim();
+
+            // 显示/隐藏清空按钮
+            $clearBtn.css('display', searchTerm ? 'block' : 'none');
+
+            if (!searchTerm) {
+                clearSearch();
+                return;
+            }
+
+            let foundApi = false;
+
+            // 隐藏所有API项，但不清除高亮状态
+            $categoryList.find('.docs-apidocs-item').hide();
+            $categoryList.find('.docs-category-link').removeClass('active');
+            $categoryList.find('.docs-apidocs-list').hide();
+
+            // 搜索匹配的API
+            $categoryList.find('.docs-apidocs-link').each(function() {
+                const $link = $(this);
+                const apiTitle = $link.text().toLowerCase();
+                const apiDesc = $link.attr('title') ? $link.attr('title').toLowerCase() : '';
+
+                // 在标题或描述中搜索关键词
+                if (apiTitle.includes(searchTerm) || apiDesc.includes(searchTerm)) {
+                    foundApi = true;
+
+                    // 显示API项
+                    $link.parent().show();
+
+                    // 搜索时只给搜索结果的第一个添加高亮
+                    if (!foundApi) {
+                        $link.addClass('active');
+                    }
+
+                    // 展开父分类
+                    const $categoryLink = $link.closest('.docs-category-item').find('.docs-category-link');
+                    $categoryLink.addClass('active');
+                    $categoryLink.next('.docs-apidocs-list').show();
+                }
+            });
+
+            // 显示搜索结果信息
+            if (foundApi) {
+                $searchMessage.hide();
+            } else {
+                $searchMessage.find('strong').text(searchTerm);
+                $searchMessage.show();
+            }
+        });
+
+        // 清空按钮点击事件
+        $clearBtn.on('click', function() {
+            clearSearch();
+            $searchInput.focus();
+            $(this).hide();
+        });
+
+        // 分类折叠/展开（带缓动效果）
+        $categoryList.on('click', '.docs-category-link', function(e) {
+            e.preventDefault();
+
+            // 如果有搜索词，不允许操作
+            if ($searchInput.val().trim()) {
+                return;
+            }
+
+            const $categoryLink = $(this);
+            const $apiList = $categoryLink.next('.docs-apidocs-list');
+
+            if ($categoryLink.hasClass('active')) {
+                // 收起分类 - 向上滑动消失
+                $categoryLink.removeClass('active');
+                $apiList.slideUp(200, function() {
+                    // 动画完成后的回调
+                    $(this).css('display', 'none');
+                });
+            } else {
+                // 展开分类 - 向下滑动显示
+                $categoryLink.addClass('active');
+                $apiList.slideDown(200);
+            }
+
+            // 保存状态
+            saveOriginalStates();
+        });
+
+        // API链接点击
+        $categoryList.on('click', '.docs-apidocs-link', function(e) {
+            const $clickedLink = $(this);
+
+            // 获取点击的API ID
+            const href = $clickedLink.attr('href');
+            const apiIdMatch = href.match(/id=(\d+)/);
+            const clickedApiId = apiIdMatch ? apiIdMatch[1] : '';
+
+            // 移除所有API的高亮
+            $categoryList.find('.docs-apidocs-link').removeClass('active');
+
+            // 高亮当前API
+            $clickedLink.addClass('active');
+            currentSelectedApiId = clickedApiId;
+
+            // 确保父分类展开
+            const $categoryLink = $clickedLink.closest('.docs-category-item').find('.docs-category-link');
+            if (!$categoryLink.hasClass('active')) {
+                $categoryLink.addClass('active');
+                $categoryLink.next('.docs-apidocs-list').show();
+            }
+
+            // 清空搜索
+            $searchInput.val('');
+            $searchMessage.hide();
+            $clearBtn.hide();
+
+            // 保存状态
+            saveOriginalStates();
+        });
+
+        // 页面加载时初始化
+        function init() {
+            // 保存原始状态
+            saveOriginalStates();
+
+            // 隐藏搜索消息和清空按钮
+            $searchMessage.hide();
+            $clearBtn.hide();
+        }
+
+        // 初始化
+        init();
+
+        // ESC键清空搜索
+        $(document).on('keyup', function(e) {
+            if (e.key === 'Escape' && $searchInput.is(':focus')) {
+                clearSearch();
+                $searchInput.blur();
+                $clearBtn.hide();
+            }
+        });
+    });
+    // 存储已删除的参数历史
+    let deletedParamsHistory = [];
+    let tableMutationObserver = null;
+    initTableMutationObserver();
+    // 初始化表格变化监听
+    function initTableMutationObserver() {
+        const $tableBody = $('#params-table');
+        if (!$tableBody.length) return;
+
+        // 如果已有观察器，先断开
+        if (tableMutationObserver) {
+            tableMutationObserver.disconnect();
+        }
+
+        // 创建 MutationObserver
+        tableMutationObserver = new MutationObserver(function(mutations) {
+            let hasRowChanges = false;
+
+            // 检查是否有行被添加或删除
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'childList') {
+                    // 检查添加的节点
+                    if (mutation.addedNodes.length > 0) {
+                        for (let i = 0; i < mutation.addedNodes.length; i++) {
+                            const node = mutation.addedNodes[i];
+                            if (node.nodeType === 1 && node.tagName === 'TR') {
+                                hasRowChanges = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // 检查删除的节点
+                    if (mutation.removedNodes.length > 0) {
+                        for (let i = 0; i < mutation.removedNodes.length; i++) {
+                            const node = mutation.removedNodes[i];
+                            if (node.nodeType === 1 && node.tagName === 'TR') {
+                                hasRowChanges = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (hasRowChanges && $('#json-submit').is(':checked')) {
+                clearTimeout(updateTimeout);
+                updateTimeout = setTimeout(() => {
+                    convertParamsToJson();
+                }, 300);
+            }
+        });
+
+        // 开始观察
+        tableMutationObserver.observe($tableBody[0], {
+            childList: true, // 监听子节点变化
+            subtree: true // 监听所有后代节点
+        });
+    }
+    // 在线调试 - 添加参数
+    $('#add-param').on('click', function() {
+        const $paramsTable = $('#params-table');
+        const newRow = `
+        <tr>
+            <td><input type="text" class="form-control param-key" placeholder="参数名"></td>
+            <td><input type="text" class="form-control param-value" placeholder="参数值"></td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-danger delete-param">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </td>
+        </tr>
+    `;
+        $paramsTable.append(newRow);
+
+        // 可选：自动聚焦到新添加的参数名输入框
+        $paramsTable.find('tr:last input[placeholder="参数名"]').focus();
+    });
+
+    // 使用事件委托处理删除按钮（绑定一次，处理所有现有和未来的按钮）
+    $(document).on('click', '.delete-param', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const $row = $(this).closest('tr');
+        const $firstInput = $row.find('input').eq(0);
+        const inputValue = $firstInput.val().trim();
+
+        // 检查输入值是否为 "key"
+        if (inputValue === 'key') {
+            swal('key 参数不能删除', 'key 参数是必需的，请勿删除', 'error');
+            return;
+        }
+
+        // 可选：添加确认对话框
+        if ($('#params-table tr').length > 1) { // 至少保留一行
+            // 在删除前保存参数信息
+            saveDeletedParam($row);
+
+            $row.fadeOut(300, function() {
+                $(this).remove();
+                updateResetButtonState();
+            });
+        } else {
+            // 如果是最后一行，可以清空内容而不是删除
+            $row.find('input').val('');
+            $row.find('input').eq(0).attr('placeholder', '参数名');
+            $row.find('input').eq(1).attr('placeholder', '参数值');
+            $row.find('input[placeholder="参数名"]').focus();
+        }
+    });
+
+    // 保存删除的参数信息
+    function saveDeletedParam($row) {
+        const paramData = {
+            key: $row.find('input').eq(0).val(),
+            value: $row.find('input').eq(1).val(),
+            keyPlaceholder: $row.find('input').eq(0).attr('placeholder') || '参数名',
+            valuePlaceholder: $row.find('input').eq(1).attr('placeholder') || '参数值',
+            timestamp: new Date().getTime()
+        };
+
+        // 添加到历史记录
+        deletedParamsHistory.push(paramData);
+
+        // 限制历史记录数量（可选）
+        if (deletedParamsHistory.length > 10) {
+            deletedParamsHistory.shift(); // 移除最旧的记录
+        }
+
+        console.log('保存删除记录:', paramData);
+    }
+
+    // 恢复删除的参数
+    $('#reset-param').on('click', function(e) {
+        e.preventDefault();
+
+        if (deletedParamsHistory.length === 0) {
+            swal('没有可恢复的参数', '没有可恢复的参数', 'info');
+            return;
+        }
+
+        // 取出最后一个删除的记录
+        const lastDeleted = deletedParamsHistory.pop();
+
+        if (lastDeleted) {
+            // 创建新行
+            const newRow = `
+            <tr>
+                <td>
+                    <input type="text" 
+                           class="form-control param-key" 
+                           placeholder="${lastDeleted.keyPlaceholder}"
+                           value="${lastDeleted.key}">
+                </td>
+                <td>
+                    <input type="text" 
+                           class="form-control param-value" 
+                           placeholder="${lastDeleted.valuePlaceholder}"
+                           value="${lastDeleted.value}">
+                </td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-danger delete-param">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+
+            // 添加到表格
+            $('#params-table').append(newRow);
+
+            // 添加恢复动画
+            const $newRow = $('#params-table tr:last');
+            $newRow.hide().fadeIn(300);
+
+            // 可选：聚焦到恢复的参数名输入框
+            $newRow.find('input').eq(0).focus();
+
+            // 更新按钮状态
+            updateResetButtonState();
+        }
+    });
+
+    // 更新恢复按钮状态
+    function updateResetButtonState() {
+        const $resetBtn = $('#reset-param');
+        const hasHistory = deletedParamsHistory.length > 0;
+
+        if (hasHistory) {
+            $resetBtn
+                .prop('disabled', false)
+                .removeClass('btn-secondary d-none')
+                .html(`<i class="fas fa-check-circle"></i> 恢复 (${deletedParamsHistory.length})`);
+        } else {
+            $resetBtn
+                .prop('disabled', true)
+                .addClass('btn-secondary d-none')
+                .html('<i class="fas fa-check-circle"></i> 恢复');
+        }
+    }
+    updateResetButtonState();
+
+
+    // JSON 提交选项切换
+    $('#json-submit').on('change', function() {
+        const useJson = $(this).is(':checked');
+
+        if (useJson) {
+            // 将参数表转换为 JSON
+            convertParamsToJson();
+            // 隐藏参数表，显示 JSON 编辑器
+            $('#params-table-container').hide();
+            $('#json-editor-container').show();
+        } else {
+            // 将 JSON 转换回参数表
+            convertJsonToParams();
+            // 显示参数表，隐藏 JSON 编辑器
+            $('#params-table-container').show();
+            $('#json-editor-container').hide();
+        }
+    });
+
+    // 将参数表转换为 JSON
+    function convertParamsToJson() {
+        const params = {};
+
+        // 收集所有参数
+        $('#params-table tr').each(function() {
+            const $row = $(this);
+            const key = $row.find('input').eq(0).val().trim();
+            const value = $row.find('input').eq(1).val().trim();
+
+            // 跳过空键名的参数
+            if (key) {
+                // 尝试将值转换为适当类型
+                params[key] = convertValueType(value);
+            }
+        });
+
+        // 格式化为美化的 JSON
+        const formattedJson = JSON.stringify(params, null, 2);
+
+        // 更新 JSON 编辑器内容
+        $('#json-editor').val(formattedJson);
+
+        // 如果有 Prism，高亮 JSON
+        applyPrismHighlighting();
+
+        console.log('参数转换为 JSON:', params);
+        return params;
+    }
+
+    // 将 JSON 转换回参数表
+    function convertJsonToParams() {
+        const jsonText = $('#json-editor').val().trim();
+
+        if (!jsonText) {
+            // 如果 JSON 编辑器为空，保持现有参数表不变
+            return;
+        }
+
+        try {
+            const jsonObj = JSON.parse(jsonText);
+
+            // 清空现有参数表（除了第一行）
+            const $tbody = $('#params-table');
+            $tbody.find('tr').remove();
+
+            // 添加新的参数行
+            Object.entries(jsonObj).forEach(([key, value], index) => {
+                const rowHtml = `
+                <tr>
+                    <td>
+                        <input type="text" 
+                               class="form-control param-key" 
+                               placeholder="参数名"
+                               value="${key}">
+                    </td>
+                    <td>
+                        <input type="text" 
+                               class="form-control param-value" 
+                               placeholder="参数值"
+                               value="${convertJsonValueToString(value)}">
+                    </td>
+                    <td class="text-center">
+                        <button type="button" class="btn btn-sm btn-danger delete-param">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+                $tbody.append(rowHtml);
+            });
+
+            // 至少保留一行空行
+            if ($tbody.find('tr').length === 0) {
+                $('#add-param').trigger('click');
+            }
+
+            console.log('JSON 转换为参数:', jsonObj);
+
+        } catch (error) {
+            console.error('JSON 解析错误:', error);
+            swal('JSON 格式错误: ', 'JSON 格式错误: ' + error.message, 'error');
+
+            // 如果 JSON 解析失败，取消勾选
+            $('#json-submit').prop('checked', false);
+            $('#params-table-container').show();
+            $('#json-editor-container').hide();
+        }
+    }
+
+    // 转换参数值为适当类型
+    function convertValueType(value) {
+        if (value === '') return '';
+
+        // 尝试转换为数字
+        if (!isNaN(value) && value.trim() !== '') {
+            const num = Number(value);
+            if (!isNaN(num)) {
+                // 如果是整数就返回整数，否则返回浮点数
+                return Number.isInteger(num) ? num : parseFloat(value);
+            }
+        }
+
+        // 尝试转换为布尔值
+        const lowerValue = value.toLowerCase();
+        if (lowerValue === 'true') return true;
+        if (lowerValue === 'false') return false;
+
+        // 尝试转换为 null
+        if (lowerValue === 'null') return null;
+
+        // 尝试解析为 JSON（如果是嵌套对象或数组）
+        if (value.startsWith('{') || value.startsWith('[')) {
+            try {
+                return JSON.parse(value);
+            } catch (e) {
+                // 如果不是有效的 JSON，保持为字符串
+            }
+        }
+
+        // 默认返回字符串
+        return value;
+    }
+
+    // 将 JSON 值转换为字符串
+    function convertJsonValueToString(value) {
+        if (value === null) return 'null';
+        if (typeof value === 'boolean') return value.toString();
+        if (typeof value === 'number') return value.toString();
+        if (typeof value === 'object') return JSON.stringify(value);
+        return value;
+    }
+
+    // 监听参数表变化，实时更新 JSON（可选）
+    function setupRealTimeJsonUpdate() {
+        // 使用防抖函数防止频繁更新
+        let updateTimeout;
+
+        $('#params-table').on('input', 'input', function() {
+            clearTimeout(updateTimeout);
+
+            updateTimeout = setTimeout(() => {
+                // 只有在 JSON 模式启用时才更新
+                if ($('#json-submit').is(':checked')) {
+                    convertParamsToJson();
+                }
+            }, 500); // 500ms 防抖延迟
+        });
+    }
+    setupRealTimeJsonUpdate();
+
+    // 如果 JSON 提交选项默认被选中，执行转换
+    if ($('#json-submit').is(':checked')) {
+        convertParamsToJson();
+    }
+
+    // 初始检查
+    checkMethodAndToggle();
+
+    // 监听 select 变化
+    $('.method-select').on('change', function() {
+        checkMethodAndToggle();
+    });
+
+    function checkMethodAndToggle() {
+        const selectedMethod = $('.method-select').val();
+
+        if (selectedMethod === 'POST') {
+            $('.json-submit-options').show();
+            if ($('#json-submit').is(':checked')) {
+                $('#params-table-container').hide();
+                $('.json-editor-container').show();
+            } else {
+                $('#params-table-container').show();
+                $('.json-editor-container').hide();
+            }
+        } else {
+            $('.json-submit-options').hide();
+            $('#params-table-container').show();
+            $('.json-editor-container').hide();
+        }
+    }
+
+    $("#send-request").click(function() {
+        const $sendbtn = $(this);
+        const originalBtnText = $sendbtn.html(); // 保存原始按钮文本
+
+        // 禁用按钮并显示加载状态
+        $sendbtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 请求中...');
+
+        // 显示请求状态区域
+        $("#request-status, .request-details").show();
+
+        // 获取请求方法
+        const reqtype = $(".method-select").val();
+
+        // 准备请求数据
+        let reqParams = {};
+        let reqFormData = new FormData();
+        let hasData = false;
+
+        // 收集参数数据 - 修复选择器
+        $('#params-table tr').each(function() {
+            const $row = $(this);
+            const key = $row.find('.param-key').val().trim();
+            const value = $row.find('.param-value').val().trim();
+
+            if (key) {
+                reqParams[key] = value;
+                reqFormData.append(key, value);
+                hasData = true;
+            }
+        });
+
+        // 如果没有有效参数，提示用户
+        if (!hasData && reqtype !== 'GET') {
+            /* alert('请至少填写一个参数！');
+            resetButton($sendbtn, originalBtnText);
+            return; */
+        }
+
+        // 根据提交类型准备数据
+        let ajaxdata;
+        let contentType;
+        let processData = true;
+
+        if ($('#json-submit').is(':checked')) {
+            // JSON 格式
+            ajaxdata = $('#json-editor').val();
+            contentType = 'application/json; charset=utf-8';
+        } else {
+            ajaxdata = new URLSearchParams(reqParams).toString();
+            contentType = 'application/x-www-form-urlencoded';
+            processData = false; // 不要处理 FormData
+        }
+
+        // 更新请求头显示
+        updateRequestHeaders(contentType);
+
+        // 构建完整 URL（用于显示）
+        const fullUrl = buildFullUrl($(".apidocs-url").val(), reqParams);
+        $("#full-url-content").html(`<a target="_blank" href="${fullUrl}">${escapeHtml(fullUrl)}</a>`);
+
+        // 记录请求开始时间
+        const startTime = Date.now();
+
+        // 准备请求头
+        let headers = {
+            'User-Agent': navigator.userAgent
+        };
+
+        
+        // 发起 AJAX 请求
+        $.ajax({
+            url: $(".apidocs-url").val(),
+            data: ajaxdata,
+            type: reqtype,
+            contentType: contentType,
+            processData: processData,
+                        timeout: 60000, // 60秒超时
+
+            beforeSend: function() {
+                // 清空之前的响应
+                $("#response-result").empty();
+                $("#response-headers-content").empty();
+            },
+
+            success: function(data, status, xhr) {
+                handleSuccessResponse(xhr, data, startTime, $sendbtn, originalBtnText, fullUrl);
+                if ($(".apidocs-url").val().substring(0,35) == 'https://api.wuyinkeji.com/api/async' && $("#result_id").val() == ''){
+                    $("#result_id").attr("value",data.data.id)
+                }
+            },
+
+            error: function(xhr, textStatus, errorThrown) {
+                handleErrorResponse(xhr, textStatus, errorThrown, startTime, $sendbtn, originalBtnText, fullUrl);
+            },
+
+            complete: function() {
+                // 确保按钮最终被重置
+                setTimeout(() => {
+                    resetButton($sendbtn, originalBtnText);
+                    applyPrismHighlighting();
+                }, 100);
+            }
+        });
+    });
+    
+    $("#send-request-result").click(function() {
+        const $sendbtn = $(this);
+        const originalBtnText = $sendbtn.html(); // 保存原始按钮文本
+
+        // 禁用按钮并显示加载状态
+        $sendbtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 请求中...');
+
+        // 显示请求状态区域
+        $("#request-status-result, .request-details-result").show();
+
+        // 获取请求方法
+        const reqtype = 'GET';
+
+        // 准备请求数据
+        let reqParams = {};
+        let reqFormData = new FormData();
+        let hasData = false;
+
+        // 收集参数数据 - 修复选择器
+        $('#params-table-result tr').each(function() {
+            const $row = $(this);
+            const key = $row.find('.param-key').val().trim();
+            const value = $row.find('.param-value').val().trim();
+
+            if (key) {
+                reqParams[key] = value;
+                reqFormData.append(key, value);
+                hasData = true;
+            }
+        });
+
+        // 根据提交类型准备数据
+        let ajaxdata;
+        let contentType;
+        let processData = true;
+
+        ajaxdata = new URLSearchParams(reqParams).toString();
+        contentType = 'application/x-www-form-urlencoded';
+        processData = false; // 不要处理 FormData
+
+        // 更新请求头显示
+        updateRequestHeaders(contentType);
+        let url = 'https://api.wuyinkeji.com/api/async/detail'
+        // 构建完整 URL（用于显示）
+        const fullUrl = buildFullUrl(url, reqParams);
+        $("#full-url-content-result").html(`<a target="_blank" href="${fullUrl}">${escapeHtml(fullUrl)}</a>`);
+
+        // 记录请求开始时间
+        const startTime = Date.now();
+
+        // 准备请求头
+        let headers = {
+            'User-Agent': navigator.userAgent
+        };
+
+        
+        // 发起 AJAX 请求
+        $.ajax({
+            url: url,
+            data: ajaxdata,
+            type: reqtype,
+            contentType: contentType,
+            processData: processData,
+                        timeout: 60000, // 60秒超时
+
+            beforeSend: function() {
+                // 清空之前的响应
+                $("#response-result-result").empty();
+                $("#response-headers-content-result").empty();
+            },
+
+            success: function(data, status, xhr) {
+                handleSuccessResponseResult(xhr, data, startTime, $sendbtn, originalBtnText, fullUrl);
+            },
+
+            error: function(xhr, textStatus, errorThrown) {
+                handleErrorResponseResult(xhr, textStatus, errorThrown, startTime, $sendbtn, originalBtnText, fullUrl);
+            },
+
+            complete: function() {
+                // 确保按钮最终被重置
+                setTimeout(() => {
+                    resetButton($sendbtn, originalBtnText);
+                    applyPrismHighlighting();
+                }, 100);
+            }
+        });
+    });
+
+    // ==================== 辅助函数 ====================
+
+    /**
+     * 构建完整的 URL（用于显示）
+     */
+    function buildFullUrl(baseUrl, params) {
+        const url = new URL(baseUrl);
+
+        if (Object.keys(params).length > 0) {
+            Object.entries(params).forEach(([key, value]) => {
+                url.searchParams.append(key, value);
+            });
+        }
+
+        return url.toString();
+    }
+
+    /**
+     * 更新请求头显示
+     */
+    function updateRequestHeaders(contentType) {
+        let headersHtml = `Content-Type: ${contentType || 'multipart/form-data'}\nUser-Agent: ${navigator.userAgent}`;
+        $("#request-headers-content").html(headersHtml);
+    }
+    function updateRequestHeadersResult(contentType) {
+        let headersHtml = `Content-Type: ${contentType || 'multipart/form-data'}\nUser-Agent: ${navigator.userAgent}`;
+        $("#request-headers-content-result").html(headersHtml);
+    }
+
+    /**
+     * 处理成功响应
+     */
+    function handleSuccessResponse(xhr, data, startTime, $sendbtn, originalBtnText, fullUrl) {
+        const duration = Date.now() - startTime;
+        const statusClass = xhr.status >= 400 ? 'alert-warning' : 'alert-success';
+
+        // 更新状态显示
+        $("#request-status")
+            .removeClass()
+            .addClass(`alert ${statusClass} mt-4 p-2 mb-4`)
+            .html(`<i class="fas fa-check-circle"></i> 请求成功：${xhr.status} ${xhr.statusText}  耗时：${duration} 毫秒`);
+
+        // 显示响应头
+        displayResponseHeaders(xhr);
+
+        // 处理响应内容
+        processResponseContent(xhr, data, fullUrl);
+
+        // 重置按钮
+        resetButton($sendbtn, originalBtnText);
+    }
+    function handleSuccessResponseResult(xhr, data, startTime, $sendbtn, originalBtnText, fullUrl) {
+        const duration = Date.now() - startTime;
+        const statusClass = xhr.status >= 400 ? 'alert-warning' : 'alert-success';
+
+        // 更新状态显示
+        $("#request-status-result")
+            .removeClass()
+            .addClass(`alert ${statusClass} mt-4 p-2 mb-4`)
+            .html(`<i class="fas fa-check-circle"></i> 请求成功：${xhr.status} ${xhr.statusText}  耗时：${duration} 毫秒`);
+
+        // 显示响应头
+        displayResponseHeadersResult(xhr);
+
+        // 处理响应内容
+        processResponseContentResult(xhr, data, fullUrl);
+
+        // 重置按钮
+        resetButton($sendbtn, originalBtnText);
+    }
+
+    /**
+     * 处理错误响应
+     */
+    function handleErrorResponse(xhr, textStatus, errorThrown, startTime, $sendbtn, originalBtnText, fullUrl) {
+        const duration = Date.now() - startTime;
+
+        // 更新状态显示
+        $("#request-status")
+            .removeClass()
+            .addClass('alert alert-danger mt-4 p-2 mb-4')
+            .html(`<i class="fas fa-exclamation-circle"></i> 请求失败：${xhr.status || '0'} ${textStatus}  耗时：${duration} 毫秒`);
+
+        // 特殊错误处理
+        if (xhr.status === 0) {
+            $("#request-status").append('<br>请求失败：网络连接异常或请求被阻止');
+            $(".request-details").hide();
+        } else if (xhr.status === 404) {
+            $("#request-status").append('<br>接口不存在（404）');
+        } else if (xhr.status === 500) {
+            $("#request-status").append('<br>服务器内部错误（500）');
+        }
+
+        // 显示响应头（如果有）
+        if (xhr.getAllResponseHeaders) {
+            displayResponseHeaders(xhr);
+        }
+
+        // 处理错误响应内容
+        if (xhr.responseJSON) {
+            try {
+                $("#response-result").html(`<div class="code-container">
+<pre class="pre-scrollable language-json line-numbers">
+<code id="debug-response" class="language-json line-numbers" style="white-space: pre-wrap">
+${JSON.stringify(data, null, 2)}
+</code>
+</pre>
+</div>`);
+            } catch (e) {
+                $("#response-result").text(xhr.responseText || '无响应内容');
+            }
+        } else if (xhr.responseText) {
+            processResponseContent(xhr, xhr.responseText)
+        }
+
+        // 重置按钮
+        resetButton($sendbtn, originalBtnText);
+    }
+    function handleErrorResponseResult(xhr, textStatus, errorThrown, startTime, $sendbtn, originalBtnText, fullUrl) {
+        const duration = Date.now() - startTime;
+
+        // 更新状态显示
+        $("#request-status-result")
+            .removeClass()
+            .addClass('alert alert-danger mt-4 p-2 mb-4')
+            .html(`<i class="fas fa-exclamation-circle"></i> 请求失败：${xhr.status || '0'} ${textStatus}  耗时：${duration} 毫秒`);
+
+        // 特殊错误处理
+        if (xhr.status === 0) {
+            $("#request-status-result").append('<br>请求失败：网络连接异常或请求被阻止');
+            $(".request-details-result").hide();
+        } else if (xhr.status === 404) {
+            $("#request-status-result").append('<br>接口不存在（404）');
+        } else if (xhr.status === 500) {
+            $("#request-status-result").append('<br>服务器内部错误（500）');
+        }
+
+        // 显示响应头（如果有）
+        if (xhr.getAllResponseHeaders) {
+            displayResponseHeadersResult(xhr);
+        }
+
+        // 处理错误响应内容
+        if (xhr.responseJSON) {
+            try {
+                $("#response-result-result").html(`<div class="code-container">
+<pre class="pre-scrollable language-json line-numbers">
+<code id="result-response" class="language-json line-numbers" style="white-space: pre-wrap">
+${JSON.stringify(data, null, 2)}
+</code>
+</pre>
+</div>`);
+            } catch (e) {
+                $("#response-result-result").text(xhr.responseText || '无响应内容');
+            }
+        } else if (xhr.responseText) {
+            processResponseContentResult(xhr, xhr.responseText)
+        }
+
+        // 重置按钮
+        resetButton($sendbtn, originalBtnText);
+    }
+
+    /**
+     * 显示响应头
+     */
+    function displayResponseHeaders(xhr) {
+        try {
+            const headers = xhr.getAllResponseHeaders();
+            if (headers) {
+                $("#response-headers-content").html(headers.replace(/\n/g, "\n"));
+            }
+        } catch (e) {
+            console.warn('无法获取响应头:', e);
+            $("#response-headers-content").html('无法获取响应头信息');
+        }
+    }
+    function displayResponseHeadersResult(xhr) {
+        try {
+            const headers = xhr.getAllResponseHeaders();
+            if (headers) {
+                $("#response-headers-content-result").html(headers.replace(/\n/g, "\n"));
+            }
+        } catch (e) {
+            console.warn('无法获取响应头:', e);
+            $("#response-headers-content-result").html('无法获取响应头信息');
+        }
+    }
+
+    /**
+     * 处理响应内容
+     */
+    function processResponseContent(xhr, data, fullUrl) {
+        const contentType = xhr.getResponseHeader("Content-Type") || 'content-type';
+        console.log(contentType);
+        const $result = $("#response-result");
+
+        try {
+            if (contentType.includes('application/json') || typeof data === 'object') {
+                // JSON 数据
+                $result.html(`<div class="code-container">
+<pre class="pre-scrollable language-json line-numbers">
+<code id="debug-response" class="language-json line-numbers" style="white-space: pre-wrap">
+${JSON.stringify(data, null, 2)}
+</code>
+</pre>
+</div>`);
+            } else if (contentType.includes('text/')) {
+                // 文本数据
+                $result.html(`<div class="code-container">
+<pre class="pre-scrollable language-html line-numbers">
+<code id="debug-response" class="language-html line-numbers" style="white-space: pre-wrap">
+${escapeHtml(data)}
+</code>
+</pre>
+</div>`);
+            } else if (contentType.includes('image/')) {
+                // 图片数据
+                const imageUrl = URL.createObjectURL(new Blob([data]));
+                $result.html(`<img src="${fullUrl}" class="img-fluid" alt="响应图片">`);
+            } else if (contentType.includes('video/')) {
+                // 视频数据
+                const videoUrl = URL.createObjectURL(new Blob([data]));
+                $result.html(`<video controls class="w-100"><source src="${fullUrl}" type="${contentType}"></video>`);
+            } else if (contentType.includes('audio/')) {
+                // 音频数据
+                const audioUrl = URL.createObjectURL(new Blob([data]));
+                $result.html(`<audio controls class="w-100"><source src="${fullUrl}" type="${contentType}"></audio>`);
+            } else {
+                // 其他类型
+                $result.text(`无法显示的数据类型：${contentType}`);
+            }
+        } catch (e) {
+            console.error('处理响应内容失败:', e);
+            $result.text('处理响应内容时发生错误: ' + e.message);
+        }
+    }
+    function processResponseContentResult(xhr, data, fullUrl) {
+        const contentType = xhr.getResponseHeader("Content-Type") || 'content-type';
+        console.log(contentType);
+        const $result = $("#response-result-result");
+
+        try {
+            if (contentType.includes('application/json') || typeof data === 'object') {
+                // JSON 数据
+                $result.html(`<div class="code-container">
+<pre class="pre-scrollable language-json line-numbers">
+<code id="result-response" class="language-json line-numbers" style="white-space: pre-wrap">
+${JSON.stringify(data, null, 2)}
+</code>
+</pre>
+</div>`);
+            } else if (contentType.includes('text/')) {
+                // 文本数据
+                $result.html(`<div class="code-container">
+<pre class="pre-scrollable language-html line-numbers">
+<code id="result-response" class="language-html line-numbers" style="white-space: pre-wrap">
+${escapeHtml(data)}
+</code>
+</pre>
+</div>`);
+            } else if (contentType.includes('image/')) {
+                // 图片数据
+                const imageUrl = URL.createObjectURL(new Blob([data]));
+                $result.html(`<img src="${fullUrl}" class="img-fluid" alt="响应图片">`);
+            } else if (contentType.includes('video/')) {
+                // 视频数据
+                const videoUrl = URL.createObjectURL(new Blob([data]));
+                $result.html(`<video controls class="w-100"><source src="${fullUrl}" type="${contentType}"></video>`);
+            } else if (contentType.includes('audio/')) {
+                // 音频数据
+                const audioUrl = URL.createObjectURL(new Blob([data]));
+                $result.html(`<audio controls class="w-100"><source src="${fullUrl}" type="${contentType}"></audio>`);
+            } else {
+                // 其他类型
+                $result.text(`无法显示的数据类型：${contentType}`);
+            }
+        } catch (e) {
+            console.error('处理响应内容失败:', e);
+            $result.text('处理响应内容时发生错误: ' + e.message);
+        }
+    }
+
+    /**
+     * 重置按钮状态
+     */
+    function resetButton($btn, originalText) {
+        $btn.prop('disabled', false).html(originalText);
+    }
+
+    /**
+     * HTML 转义
+     */
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
+     * 应用 Prism 高亮
+     */
+    function applyPrismHighlighting() {
+        if (window.Prism) {
+            try {
+                Prism.highlightAll();
+            } catch (e) {
+                console.error('Prism 高亮失败:', e);
+            }
+        }
+    }
+
+    // 页面加载完成后初始化
+    $(document).ready(function() {
+        // 确保按钮状态正确
+        const originalBtnText = $("#send-request").html();
+
+        // 监听表单变化，重置按钮状态
+        $('form').on('input change', function() {
+            $("#send-request").prop('disabled', false).html(originalBtnText);
+        });
+
+        // 监听请求按钮点击，防止重复提交
+        $("#send-request").on('click', function(e) {
+            if ($(this).prop('disabled')) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
+    });
+
+    function eommcheck(comment_id, comment_type) {
+        if (comment_type == 'reply') {
+            var strVar = "";
+            strVar += "<div class=\"comt-box mb-3 ms-25\" style=\"display: none;\" id=\"body_comment_form_reply_" + comment_id + "\">";
+            strVar += "    <form id=\"comment_form_reply_" + comment_id + "\">";
+            strVar += "        <textarea placeholder=\"回复内容...\" class=\"input-block-level comt-area\" name=\"content\" id=\"content\" cols=\"100%\"><\/textarea>";
+            strVar += "    <div class=\"comt-ctrl\">";
+            strVar += "        <div class=\"d-flex justify-content-between flex-row\">";
+            strVar += "            <div class=\"form-check float-left d-flex align-items-center ms-2\">";
+                            strVar += "                <input type=\"checkbox\" class=\"form-check-input mt-0\" id=\"comment_form_reply_" + comment_id + "_email\">";
+                strVar += "                <label class=\"form-check-label small ms-2\" for=\"reply-email\">有人回复时邮件通知我<\/label>";
+                        strVar += "            <\/div>";
+            strVar += "            <input type=\"text\" class=\"d-none\" name=\"parent\" value=\"" + comment_id + "\">";
+            strVar += "            <button class=\"btn btn-primary float-right d-flex align-items-center px-3 py-1 border-0 rounded-0\" type=\"button\" id=\"comment_post\" post_type=\"comment_form_reply_" + comment_id + "\">提交回复<\/button>";
+            strVar += "        <\/div>";
+            strVar += "    <\/div>";
+            strVar += "    <\/form>";
+            strVar += "<\/div>";
+            if ($("#body_comment_form_reply_" + comment_id).length == 0) {
+                $("#comment_" + comment_id).append(strVar);
+            }
+
+            $("#body_comment_form_reply_" + comment_id).slideToggle(100);
+        }
+        if (comment_type == 'likes') {
+            var cookiename = 'comment_id_' + comment_id;
+            if (cookie.get(cookiename) != 1) {
+                $.post("/user/comment", {
+                    type: 'likes',
+                    id: comment_id
+                }, function(data) {
+                    if (data.code !== 200) {
+                        swal("出错啦", data.msg, "error");
+                    } else {
+                        cookie.set("comment_id_" + comment_id, 1);
+                        swal("点赞成功！", data.msg, "success");
+                        get_comment_html();
+                    }
+                });
+            } else {
+                swal("你已赞！", '', "error");
+            }
+        }
+        if (comment_type == 'del') {
+            $.post("/user/comment", {
+                type: 'del',
+                id: comment_id
+            }, function(data) {
+                if (data.code !== 200) {
+                    swal("出错啦", data.msg, "error");
+                } else {
+                    swal("删除成功！", data.msg, "success");
+                    get_comment_html();
+                }
+            });
+        }
+        comment_post_chick();
+    }
+
+    function comment_post_chick() {
+        $("[id='comment_post'").unbind('click');
+        $("[id='comment_post'").click(function() {
+            var type = $(this).attr("post_type");
+            var api_id = 65;
+            if ($("#" + type + ">textarea").val().length < 10) {
+                swal({
+                    text: "请输入不少于10个字符的评论！",
+                    title: "出错啦",
+                    type: "error",
+                    confirmButtonText: "确定"
+
+                });
+                throw SyntaxError();
+            }
+                                                swal({
+                        title: '请填写下图验证码：',
+                        html: '<img src="/user/captcha_img" class="w-100 my-3 rounded" id="captcha_img"><br><input id="swal-input1" placeholder="请填写验证码" class="swal2-input my-0" autofocus>',
+                        preConfirm: function() {
+                            return new Promise(function(resolve) {
+                                resolve([
+                                    $('#swal-input1').val(),
+                                ]);
+                            });
+                        }
+                    }).then(function(result) {
+                        if (result[0].length == 6) {
+                            comment_post([result[0]], type);
+                        } else {
+                            swal('验证码输入错误！', '', 'error');
+                        }
+                    });
+                    $("#captcha_img").click(function() {
+                        $(this).attr("src", "/user/captcha_img");
+                    });
+                            
+            function comment_post(res = [], type) {
+                //console.log(res);
+                var codearr = {
+                                                                        captcha: res[0],
+                                                            };
+                $("#" + type + ">div>div>button").attr('disabled', true);
+                $("#" + type + ">div>div>button").html("正在提交");
+                var ifemail = $("#" + type + "_email").prop('checked') ? '1' : '0';
+                var from = $("#" + type).serialize() + "&api_id=" + api_id + "&ifemail=" + ifemail + "&type=comment_post&" + $.param(codearr);
+                $.post(
+                    "/user/comment", from,
+                    function(data) {
+                        if (data.code !== 200) {
+                            swal("评论失败！", data.msg, "error");
+                            $("#" + type + ">div>div>button").removeAttr("disabled");
+                            $("#" + type + ">div>div>button").html("提交评论");
+                        } else {
+                            swal("评论成功！", data.msg, "success");
+                            $("#" + type + ">div>div>button").removeAttr("disabled");
+                            $("#" + type + ">div>div>button").html("提交评论");
+                            get_comment_html();
+                        }
+                    }
+                );
+            }
+        });
+    }
+
+    function get_comment_html() {
+        $.get("/user/comment.list?id=65", function(data) {
+            $(".commentlist").html(data);
+        });
+    }
+    $(function() {
+        get_comment_html();
+        comment_post_chick();
+    });
+    $("#btn-beta").click(function() {
+        $.post('api.post', 'type=post_num&id=65', function(res) {
+            if (res.code == 200) {
+                $("#btn-beta").attr('disabled', true);
+                $("#btn-beta").text('已申请试用');
+                //$(".api-pp").html('申请次数：' + res.data);
+                swal("提示", res.msg, "success");
+            } else {
+                swal("提示", res.msg, "error");
+            }
+        });
+    });
+</script>
+<script src="/user/js/sweetalert2.3.3.8.pro.min.js"></script><footer class="footer">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="footer-brand logo">
+                    <a href="/"><img src="/themes/DigitalBlue/assets/image/logo/_________-20260131183004.png" alt="速创API" title="汇聚全球大模型API接口--稳定全面的API聚合平台"></a>
+                </div>
+                <p class="footer-about">
+                    为众多开发者提供专业的 API 服务，让您轻松实现应用上线                </p>
+            </div>
+            <div class="col-md-2">
+                <h4 class="footer-title">产品服务</h4>
+                <ul class="footer-links">
+                    <li><a href="/type/all">产品分类</a></li>
+                    <li><a href="/doc/">接口文档</a></li>
+                    <li><a href="/vip/">会员服务</a></li>
+                    <li><a href="/help/" target="_blank">常见问题</a></li>
+                </ul>
+            </div>
+            <div class="col-md-2">
+                <h4 class="footer-title">法律法规</h4>
+                <ul class="footer-links">
+                    <li><a href="/agreement/legal" target="_blank">服务条款</a></li>
+                    <li><a href="/agreement/privacy" target="_blank">隐私政策</a></li>
+                    <li><a href="/agreement/disclaimers" target="_blank">免责声明</a></li>
+                    <li><a href="/agreement/copyright" target="_blank">侵权投诉</a></li>
+                </ul>
+            </div>
+            <div class="col-md-2">
+                <h4 class="footer-title">关于我们</h4>
+                <ul class="footer-links">
+                    <li><a href="/about/">关于我们</a></li>
+                    <li><a href="/blog/all">最新动态</a></li>
+                    <li><a href="/contact/">反馈建议</a></li>
+                    <li><a href="/contact/">联系我们</a></li>
+                </ul>
+            </div>
+                            <div class="col-md-2">
+                    <h4 class="footer-title">联系我们</h4>
+                    <ul class="footer-links">
+                                                <li class="footer-contact">
+                            <div class="wechat-qr-container">
+                                <i class="fab fa-weixin"></i>
+                                <span>微信客服</span>
+                                <div class="wechat-qr-popup">
+                                    <img src="/assets/img/IMG_9517-2.jpg" alt="客服微信二维码" />
+                                    <p class="mt-2">扫码添加客服微信</p>
+                                </div>
+                            </div>
+                        </li>
+                                                                                                                        <li class="footer-contact">
+                            <a href="mailto:action@wuyinkeji.net" class="footer-contact-link">
+                                <i class="fas fa-envelope"></i>
+                                <span>action@wuyinkeji.net</span>
+                            </a>
+                        </li>
+                                                                        <li class="footer-contact">
+                            <a href="tel:16228033939" class="footer-contact-link">
+                                <i class="fas fa-phone"></i>
+                                <span>16228033939</span>
+                            </a>
+                        </li>
+                                            </ul>
+                </div>
+                    </div>
+        <div class="copyright">
+            <!-- 友情链接 -->
+            <div class="footer-links-section">
+                <span>友情链接：</span>
+                <a class="text-muted me-2" href="https://jianji.zhanacun.com" target="_blank" rel="nofollow">&#36895;&#21019;&#22280;</a>
+            </div>
+
+            <!-- 版权信息和备案信息 -->
+            <div class="footer-bottom-info d-md-flex text-center">
+                <span class="copyright-text">Copyright ? 2026 <a href="/" target="_blank">速创API</a> All Rights Reserved.</span>
+                <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow" class="align-items-center d-md-flex"><img src="/themes/DigitalBlue/assets/image/icp.png">蜀ICP备2021012456号-5</a>                                                <a href="/sitemap.xml" target="_blank">Sitemap</a>
+                                <a href="/status" target="_blank" class="align-items-center d-md-flex"><span class="spinner-grow spinner-grow-sm text-success me-2" role="status" aria-hidden="true"></span> 系统状态</a>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!-- 返回顶部按钮 -->
+<button class="back-to-top" id="backToTop" aria-label="返回顶部">
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+<script src="/themes/DigitalBlue/assets/js/bootstrap.bundle.min.js"></script>
+<script src="/themes/DigitalBlue/assets/js/theme.js"></script>
+</body>
+
+</html>

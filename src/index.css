@@ -3311,10 +3311,6 @@ body:not(.dark-mode) .settings-panel .text-white {
 
 body:not(.dark-mode) .settings-panel .apple-button-primary,
 body:not(.dark-mode) .settings-panel .apple-button-primary *,
-body:not(.dark-mode) .settings-panel .apple-pill-button.active,
-body:not(.dark-mode) .settings-panel .apple-pill-button.active *,
-body:not(.dark-mode) .settings-panel .settings-sidebar-item.active,
-body:not(.dark-mode) .settings-panel .settings-sidebar-item.active *,
 body:not(.dark-mode) .settings-panel button[class*="bg-indigo-600"],
 body:not(.dark-mode) .settings-panel button[class*="bg-indigo-600"] *,
 body:not(.dark-mode) .settings-panel button[class*="bg-emerald-600"],
@@ -4121,91 +4117,133 @@ iframe,
    Simplified Advanced Settings Refresh
    ============================================ */
 .settings-panel {
-  --settings-accent-rgb: 10 132 255;
-  --settings-accent-soft-rgb: 91 188 255;
-  --settings-surface-start: #ffffff;
-  --settings-surface-end: #f8f8fa;
-  --settings-soft-start: #ffffff;
-  --settings-soft-end: #f4f5f7;
-  --settings-muted-surface: rgba(255, 255, 255, 0.76);
-  --settings-muted-surface-strong: rgba(255, 255, 255, 0.92);
-  --settings-panel-shadow: 0 20px 48px rgba(15, 23, 42, 0.1);
-  --settings-card-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
-  --settings-inset-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
-  --settings-backdrop: rgba(15, 23, 42, 0.56);
-  --bg-base: #ffffff;
-  --bg-surface: #ffffff;
-  --bg-elevated: #ffffff;
-  --bg-tertiary: #fbfbfc;
-  --bg-overlay: #f6f7f8;
-  --bg-input: #f5f6f8;
-  --bg-hover: #eef2f6;
-  --toolbar-bg: rgba(255, 255, 255, 0.96);
-  --toolbar-hover: rgba(15, 23, 42, 0.05);
-  --toolbar-active: rgba(15, 23, 42, 0.08);
-  --toolbar-divider: rgba(15, 23, 42, 0.08);
-  --border-subtle: rgba(15, 23, 42, 0.08);
-  --border-default: rgba(15, 23, 42, 0.12);
-  --border-strong: rgba(15, 23, 42, 0.18);
+  --settings-accent-rgb: 124 92 255;
+  --settings-accent-soft-rgb: 233 126 255;
+  --settings-layer-base: #f6f2fb;
+  --settings-layer-surface: rgba(255, 255, 255, 0.88);
+  --settings-layer-emphasis: #f1eafe;
+  --settings-layer-strong: #e7dbfb;
+  --settings-layer-input: rgba(255, 255, 255, 0.74);
+  --settings-layer-hover: #ece2ff;
+  --settings-text-main: #1f1633;
+  --settings-text-sub: rgba(31, 22, 51, 0.7);
+  --settings-text-muted: rgba(31, 22, 51, 0.46);
+  --settings-icon-main: #6e5a97;
+  --settings-icon-accent: rgb(var(--settings-accent-rgb));
+  --settings-button-primary-bg: linear-gradient(135deg, rgb(var(--settings-accent-rgb)) 0%, rgb(var(--settings-accent-soft-rgb)) 100%);
+  --settings-button-primary-bg-hover: linear-gradient(135deg, rgb(111 79 242) 0%, rgb(222 112 247) 100%);
+  --settings-button-primary-text: #ffffff;
+  --settings-button-secondary-bg: rgba(255, 255, 255, 0.68);
+  --settings-button-secondary-bg-hover: rgba(255, 255, 255, 0.82);
+  --settings-button-secondary-text: #4b3d71;
+  --settings-button-secondary-border: rgba(124, 92, 255, 0.14);
+  --settings-button-icon-bg: rgba(255, 255, 255, 0.62);
+  --settings-button-icon-bg-hover: rgba(255, 255, 255, 0.82);
+  --settings-button-icon-text: #755ca7;
+  --settings-surface-start: var(--settings-layer-surface);
+  --settings-surface-end: rgba(255, 255, 255, 0.74);
+  --settings-soft-start: var(--settings-layer-emphasis);
+  --settings-soft-end: rgba(236, 226, 255, 0.92);
+  --settings-muted-surface: rgba(255, 255, 255, 0.58);
+  --settings-muted-surface-strong: rgba(255, 255, 255, 0.8);
+  --settings-panel-shadow: 0 28px 80px rgba(88, 58, 168, 0.18);
+  --settings-card-shadow: 0 18px 44px rgba(88, 58, 168, 0.12);
+  --settings-inset-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --settings-backdrop: rgba(20, 16, 36, 0.36);
+  --bg-base: var(--settings-layer-base);
+  --bg-surface: var(--settings-layer-surface);
+  --bg-elevated: var(--settings-layer-emphasis);
+  --bg-tertiary: var(--settings-layer-strong);
+  --bg-overlay: var(--settings-layer-emphasis);
+  --bg-input: var(--settings-layer-input);
+  --bg-hover: var(--settings-layer-hover);
+  --toolbar-bg: rgba(255, 255, 255, 0.76);
+  --toolbar-hover: rgba(124, 92, 255, 0.08);
+  --toolbar-active: rgba(124, 92, 255, 0.12);
+  --toolbar-divider: rgba(124, 92, 255, 0.1);
+  --border-subtle: rgba(124, 92, 255, 0.08);
+  --border-default: rgba(124, 92, 255, 0.12);
+  --border-strong: rgba(124, 92, 255, 0.2);
   --border-light: var(--border-default);
   --border-medium: var(--border-strong);
-  --text-primary: #121212;
-  --text-secondary: rgba(18, 18, 18, 0.74);
-  --text-tertiary: rgba(18, 18, 18, 0.54);
-  --text-muted: rgba(18, 18, 18, 0.36);
-  --state-success-bg: rgba(16, 185, 129, 0.1);
-  --state-success-border: rgba(16, 185, 129, 0.24);
-  --state-success-text: #0f8a61;
-  --state-success-muted: rgba(15, 138, 97, 0.86);
-  --state-warning-bg: rgba(245, 158, 11, 0.12);
-  --state-warning-border: rgba(245, 158, 11, 0.26);
-  --state-warning-text: #b76a00;
-  --state-warning-muted: rgba(183, 106, 0, 0.86);
-  --state-danger-bg: rgba(239, 68, 68, 0.08);
-  --state-danger-border: rgba(239, 68, 68, 0.24);
-  --state-danger-text: #d14343;
-  --state-danger-muted: rgba(209, 67, 67, 0.84);
-  --state-info-bg: rgba(59, 130, 246, 0.08);
-  --state-info-border: rgba(59, 130, 246, 0.24);
-  --state-info-text: #0a84ff;
-  --state-info-muted: rgba(10, 132, 255, 0.84);
+  --text-primary: var(--settings-text-main);
+  --text-secondary: var(--settings-text-sub);
+  --text-tertiary: var(--settings-text-muted);
+  --text-muted: rgba(21, 32, 51, 0.34);
+  --state-success-bg: rgba(16, 185, 129, 0.12);
+  --state-success-border: rgba(16, 185, 129, 0.22);
+  --state-success-text: #11895f;
+  --state-success-muted: rgba(17, 137, 95, 0.82);
+  --state-warning-bg: rgba(245, 158, 11, 0.14);
+  --state-warning-border: rgba(251, 191, 36, 0.26);
+  --state-warning-text: #ad6a02;
+  --state-warning-muted: rgba(173, 106, 2, 0.82);
+  --state-danger-bg: rgba(239, 68, 68, 0.1);
+  --state-danger-border: rgba(239, 68, 68, 0.2);
+  --state-danger-text: #c44444;
+  --state-danger-muted: rgba(196, 68, 68, 0.78);
+  --state-info-bg: rgba(59, 130, 246, 0.1);
+  --state-info-border: rgba(59, 130, 246, 0.2);
+  --state-info-text: #2563eb;
+  --state-info-muted: rgba(37, 99, 235, 0.82);
   color: var(--text-primary);
   color-scheme: light;
 }
 
 body.dark-mode .settings-panel {
-  --settings-accent-rgb: 76 170 255;
-  --settings-accent-soft-rgb: 121 196 255;
-  --settings-surface-start: #111214;
-  --settings-surface-end: #18191c;
-  --settings-soft-start: #17181b;
-  --settings-soft-end: #1f2024;
-  --settings-muted-surface: rgba(255, 255, 255, 0.04);
-  --settings-muted-surface-strong: rgba(255, 255, 255, 0.06);
-  --settings-panel-shadow: 0 22px 54px rgba(0, 0, 0, 0.4);
-  --settings-card-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
-  --settings-inset-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --settings-backdrop: rgba(3, 3, 4, 0.78);
-  --bg-base: #0b0b0c;
-  --bg-surface: #111214;
-  --bg-elevated: #17181b;
-  --bg-tertiary: #1d1e22;
-  --bg-overlay: #23242a;
-  --bg-input: #282930;
-  --bg-hover: #2f3138;
-  --toolbar-bg: rgba(16, 17, 19, 0.94);
-  --toolbar-hover: rgba(255, 255, 255, 0.08);
-  --toolbar-active: rgba(255, 255, 255, 0.12);
-  --toolbar-divider: rgba(255, 255, 255, 0.1);
+  --settings-accent-rgb: 198 92 255;
+  --settings-accent-soft-rgb: 91 163 255;
+  --settings-layer-base: #12141b;
+  --settings-layer-surface: rgba(29, 32, 44, 0.92);
+  --settings-layer-emphasis: #232838;
+  --settings-layer-strong: #2d3448;
+  --settings-layer-input: rgba(39, 44, 60, 0.96);
+  --settings-layer-hover: #343c52;
+  --settings-text-main: rgba(255, 255, 255, 0.96);
+  --settings-text-sub: rgba(255, 255, 255, 0.8);
+  --settings-text-muted: rgba(255, 255, 255, 0.62);
+  --settings-icon-main: #d0c0f1;
+  --settings-icon-accent: rgb(var(--settings-accent-rgb));
+  --settings-button-primary-bg: linear-gradient(135deg, rgb(var(--settings-accent-rgb)) 0%, rgb(var(--settings-accent-soft-rgb)) 100%);
+  --settings-button-primary-bg-hover: linear-gradient(135deg, rgb(183 77 241) 0%, rgb(77 148 240) 100%);
+  --settings-button-primary-text: #ffffff;
+  --settings-button-secondary-bg: rgba(255, 255, 255, 0.08);
+  --settings-button-secondary-bg-hover: rgba(255, 255, 255, 0.14);
+  --settings-button-secondary-text: #ebe4ff;
+  --settings-button-secondary-border: rgba(198, 92, 255, 0.18);
+  --settings-button-icon-bg: rgba(255, 255, 255, 0.08);
+  --settings-button-icon-bg-hover: rgba(255, 255, 255, 0.15);
+  --settings-button-icon-text: #cbb9f7;
+  --settings-surface-start: var(--settings-layer-surface);
+  --settings-surface-end: rgba(34, 37, 50, 0.96);
+  --settings-soft-start: var(--settings-layer-emphasis);
+  --settings-soft-end: rgba(39, 44, 60, 0.96);
+  --settings-muted-surface: rgba(255, 255, 255, 0.08);
+  --settings-muted-surface-strong: rgba(255, 255, 255, 0.12);
+  --settings-panel-shadow: 0 28px 76px rgba(0, 0, 0, 0.34);
+  --settings-card-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+  --settings-inset-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --settings-backdrop: rgba(18, 21, 31, 0.72);
+  --bg-base: var(--settings-layer-base);
+  --bg-surface: var(--settings-layer-surface);
+  --bg-elevated: var(--settings-layer-emphasis);
+  --bg-tertiary: var(--settings-layer-strong);
+  --bg-overlay: var(--settings-layer-emphasis);
+  --bg-input: var(--settings-layer-input);
+  --bg-hover: var(--settings-layer-hover);
+  --toolbar-bg: rgba(31, 35, 49, 0.88);
+  --toolbar-hover: rgba(198, 92, 255, 0.1);
+  --toolbar-active: rgba(198, 92, 255, 0.14);
+  --toolbar-divider: rgba(198, 92, 255, 0.12);
   --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-default: rgba(255, 255, 255, 0.12);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-default: rgba(198, 92, 255, 0.14);
+  --border-strong: rgba(198, 92, 255, 0.22);
   --border-light: var(--border-default);
   --border-medium: var(--border-strong);
-  --text-primary: rgba(255, 255, 255, 0.96);
-  --text-secondary: rgba(255, 255, 255, 0.76);
-  --text-tertiary: rgba(255, 255, 255, 0.56);
-  --text-muted: rgba(255, 255, 255, 0.38);
+  --text-primary: var(--settings-text-main);
+  --text-secondary: var(--settings-text-sub);
+  --text-tertiary: var(--settings-text-muted);
+  --text-muted: rgba(255, 255, 255, 0.44);
   --state-success-bg: rgba(16, 185, 129, 0.14);
   --state-success-border: rgba(52, 211, 153, 0.32);
   --state-success-text: #6ee7b7;
@@ -4227,8 +4265,9 @@ body.dark-mode .settings-panel {
 
 .settings-shell-backdrop {
   background:
-    radial-gradient(circle at top left, rgb(var(--settings-accent-rgb) / 0.1), transparent 24%),
-    radial-gradient(circle at top right, rgb(var(--settings-accent-soft-rgb) / 0.08), transparent 28%),
+    radial-gradient(circle at 18% 12%, rgb(var(--settings-accent-rgb) / 0.16), transparent 24%),
+    radial-gradient(circle at 82% 18%, rgb(var(--settings-accent-soft-rgb) / 0.14), transparent 26%),
+    radial-gradient(circle at 70% 72%, rgb(var(--settings-accent-soft-rgb) / 0.1), transparent 22%),
     var(--settings-backdrop);
   backdrop-filter: blur(24px);
 }
@@ -4238,7 +4277,7 @@ body.dark-mode .settings-panel {
   border: 1px solid var(--border-light);
   background: linear-gradient(180deg, var(--settings-surface-start) 0%, var(--settings-surface-end) 100%);
   box-shadow: var(--settings-panel-shadow), var(--settings-inset-shadow);
-  backdrop-filter: blur(24px) saturate(1.35);
+  backdrop-filter: blur(28px) saturate(1.4);
 }
 
 .settings-panel .apple-soft-card {
@@ -4613,22 +4652,20 @@ body:not(.dark-mode) .settings-panel .settings-sidebar-item.active .settings-sid
   display: grid;
   gap: 16px;
   width: 100%;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (min-width: 1024px) {
   .api-settings-layout {
     align-items: start;
-    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-    transition:
-      grid-template-columns 320ms cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: grid-template-columns;
   }
 
-  .api-settings-editor-panel {
-    min-width: 0;
-    flex: 1;
-    animation: api-settings-editor-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
+.api-settings-editor-panel {
+  min-width: 0;
+  flex: 1;
+  animation: api-settings-editor-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  display: none;
+}
 
   .api-settings-editor-card {
     animation: api-settings-editor-card-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -6246,7 +6283,7 @@ body.dark-mode .credit-advanced-note svg {
 
 body.dark-mode .settings-panel.apple-glass-card,
 body.dark-mode .settings-panel .apple-glass-card {
-  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 20px 42px rgba(6, 10, 16, 0.28);
 }
 
 .settings-panel .apple-soft-card,
@@ -6283,6 +6320,8 @@ body.dark-mode .settings-panel .apple-glass-card {
   min-height: 42px;
   border-radius: 14px;
   background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   box-shadow: none;
 }
 
@@ -6299,28 +6338,32 @@ body.dark-mode .settings-panel .apple-glass-card {
   gap: 10px;
   padding: 12px;
   border-radius: 16px;
-  border-color: transparent;
-  background: transparent;
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   box-shadow: none;
 }
 
 .settings-sidebar-item:hover {
   border-color: var(--border-light);
-  background: var(--bg-overlay);
+  background: var(--bg-hover);
   box-shadow: none;
   transform: none;
 }
 
 .settings-sidebar-item.active {
-  border-color: rgb(var(--settings-accent-rgb) / 0.16);
-  background: rgb(var(--settings-accent-rgb) / 0.1);
-  box-shadow: none;
+  border-color: rgb(var(--settings-accent-rgb) / 0.2);
+  background:
+    linear-gradient(135deg, rgb(var(--settings-accent-rgb) / 0.1) 0%, rgb(var(--settings-accent-soft-rgb) / 0.08) 100%),
+    var(--bg-elevated);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
 }
 
 .settings-sidebar-item__icon,
 .settings-shell-toolbar__icon {
   border-radius: 12px;
-  background: var(--bg-overlay);
+  background: var(--settings-button-icon-bg);
+  color: var(--settings-icon-main);
   box-shadow: none;
 }
 
@@ -6336,7 +6379,9 @@ body.dark-mode .settings-panel .apple-glass-card {
 .settings-shell-main__topbar,
 .settings-shell-mobile__topbar {
   gap: 12px;
-  background: var(--bg-base);
+  background:
+    linear-gradient(180deg, rgb(var(--settings-accent-rgb) / 0.04) 0%, transparent 100%),
+    var(--bg-surface);
 }
 
 .settings-shell-main__topbar {
@@ -6368,15 +6413,27 @@ body.dark-mode .settings-panel .apple-glass-card {
 }
 
 .settings-panel .apple-button-primary {
-  background: rgb(var(--settings-accent-rgb) / 0.1);
-  border-color: rgb(var(--settings-accent-rgb) / 0.16);
-  color: rgb(var(--settings-accent-rgb));
+  background: var(--settings-button-primary-bg);
+  border-color: transparent;
+  color: var(--settings-button-primary-text);
+  box-shadow:
+    0 14px 28px rgb(var(--settings-accent-rgb) / 0.24),
+    inset 0 1px 0 rgb(255 255 255 / 0.18);
+}
+
+.settings-panel .apple-button-primary:hover {
+  background: var(--settings-button-primary-bg-hover);
 }
 
 .settings-panel .apple-button-secondary {
-  background: var(--bg-base);
-  border-color: var(--border-light);
-  color: var(--text-primary);
+  background: var(--settings-button-secondary-bg);
+  border-color: var(--settings-button-secondary-border);
+  color: var(--settings-button-secondary-text);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
+}
+
+.settings-panel .apple-button-secondary:hover {
+  background: var(--settings-button-secondary-bg-hover);
 }
 
 .settings-panel .apple-button-danger {
@@ -6386,28 +6443,37 @@ body.dark-mode .settings-panel .apple-glass-card {
 }
 
 .settings-panel .apple-icon-button {
-  background: var(--bg-overlay);
-  border-color: var(--border-light);
-  color: var(--text-secondary);
+  background: var(--settings-button-icon-bg);
+  border-color: var(--settings-button-secondary-border);
+  color: var(--settings-button-icon-text);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+.settings-panel .apple-icon-button:hover,
+.settings-panel .apple-pill-button:hover {
+  background: var(--settings-button-icon-bg-hover);
+  color: var(--settings-icon-main);
 }
 
 .settings-panel .apple-pill-button {
-  background: var(--bg-overlay);
+  background: var(--settings-button-icon-bg);
   border-color: var(--border-light);
-  color: var(--text-secondary);
-  box-shadow: none;
+  color: var(--settings-button-icon-text);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
 }
 
 .settings-panel .apple-pill-button.active {
-  background: rgb(var(--settings-accent-rgb) / 0.1);
-  border-color: rgb(var(--settings-accent-rgb) / 0.16);
-  color: rgb(var(--settings-accent-rgb));
+  background:
+    linear-gradient(135deg, rgb(var(--settings-accent-rgb) / 0.1) 0%, rgb(var(--settings-accent-soft-rgb) / 0.08) 100%),
+    var(--bg-elevated);
+  border-color: rgb(var(--settings-accent-rgb) / 0.2);
+  color: var(--settings-icon-accent);
   box-shadow: none;
 }
 
 .settings-panel .settings-intent-card {
   border-radius: 16px;
-  background: var(--bg-overlay);
+  background: var(--bg-elevated);
 }
 
 .settings-dashboard-list {
@@ -6703,12 +6769,12 @@ body.dark-mode .settings-panel .apple-glass-card {
 
 @media (min-width: 1024px) {
   .settings-panel .api-settings-layout.is-editing {
-    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
 
   .settings-panel .api-settings-layout.is-editing .api-settings-list-panel {
-    max-width: 340px;
+    max-width: none;
   }
 }
 
@@ -7532,6 +7598,8 @@ body.dark-mode .settings-panel .apple-glass-card {
   }
 
   .mobile-card-main__title {
+    overflow-wrap: anywhere;
+    word-break: break-word;
     color: #f8fafc;
     font-size: 18px;
     font-weight: 700;
@@ -7573,14 +7641,21 @@ body.dark-mode .settings-panel .apple-glass-card {
     right: 16px;
     bottom: 16px;
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 8px;
+    max-width: calc(100% - 32px);
   }
 
   .mobile-card-main__action-pill {
+    min-height: 40px;
+    max-width: 100%;
     padding: 10px 14px;
+    border-radius: 999px;
     color: #f8fafc;
     background: rgba(15, 23, 42, 0.88);
     border: 1px solid rgba(148, 163, 184, 0.18);
+    white-space: nowrap;
   }
 
   .mobile-card-sublist {
@@ -7671,6 +7746,7 @@ body.dark-mode .settings-panel .apple-glass-card {
     letter-spacing: -0.02em;
     display: -webkit-box;
     overflow: hidden;
+    overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
@@ -7702,6 +7778,7 @@ body.dark-mode .settings-panel .apple-glass-card {
     font-size: 10px;
     font-weight: 700;
     line-height: 1;
+    max-width: 100%;
     background: rgba(255, 255, 255, 0.06);
   }
 
@@ -7903,9 +7980,28 @@ body.dark-mode .settings-panel .apple-glass-card {
 
   .mobile-card-main__topline,
   .mobile-card-main__meta,
+  .mobile-card-main__footer,
   .mobile-card-sub__info-row,
   .mobile-card-sub__tags {
     flex-wrap: wrap;
+  }
+
+  .mobile-card-main__footer-note {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-card-main__actions {
+    position: static;
+    margin-top: 4px;
+    max-width: 100%;
+  }
+
+  .mobile-card-main__action-pill {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 
   .mobile-card-sub {

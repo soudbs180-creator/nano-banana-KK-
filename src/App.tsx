@@ -212,6 +212,20 @@ const AppContent: React.FC<AppContentProps> = () => {
     };
   }, []);
 
+  const resolveNodeRouteState = useCallback((node: Pick<PromptNode, 'model' | 'keySlotId' | 'provider' | 'providerLabel'>) => {
+    const resolvedKey = keyManager.getNextKey(node.model, node.keySlotId);
+    const resolvedKeySlotId = resolvedKey?.id || node.keySlotId;
+    const resolvedDisplay = resolvedKeySlotId
+      ? resolveProviderDisplay(resolvedKeySlotId)
+      : resolveProviderDisplay(undefined, node.providerLabel, node.provider);
+
+    return {
+      keySlotId: resolvedKeySlotId,
+      provider: resolvedDisplay.provider || node.provider,
+      providerLabel: resolvedDisplay.providerLabel || node.providerLabel,
+    };
+  }, [resolveProviderDisplay]);
+
   // Track reserved regions for rapid-fire generation to prevent overlaps (before React update reflects)
   const reservedRegionsRef = useRef<{ bounds: { x: number; y: number; width: number; height: number }; timestamp: number; }[]>([]);
 
@@ -3002,9 +3016,15 @@ const AppContent: React.FC<AppContentProps> = () => {
 
   // Retry Logic (In-Place Regeneration)
   const handleRetryNode = useCallback(async (node: PromptNode) => {
+    const resolvedRoute = resolveNodeRouteState(node);
+    const executionNode: PromptNode = {
+      ...node,
+      ...resolvedRoute,
+    };
+
     // 1. Reset state to generating
     updatePromptNode({
-      ...node,
+      ...executionNode,
       isGenerating: true,
       error: undefined,
       errorDetails: undefined,
@@ -3026,14 +3046,14 @@ const AppContent: React.FC<AppContentProps> = () => {
           if (!isFinished) {
             cancelGeneration(requestId);
             updatePromptNode({
-              ...node,
+              ...executionNode,
               isGenerating: false,
               isDraft: false, // 馃殌 [Fix] Prevent disappearance on timeout
               error: '生成超时',
               errorDetails: {
                 code: 'TIMEOUT',
                 responseBody: 'Retry request exceeded 600000ms timeout',
-                model: node.model,
+                model: executionNode.model,
                 timestamp: Date.now()
               }
             });
@@ -3046,11 +3066,16 @@ const AppContent: React.FC<AppContentProps> = () => {
           let requestBodyPreview: string | undefined = undefined;
           let pythonSnippet: string | undefined = undefined;
           let apiDurationMs: number | undefined = undefined;
-          const currentMode: GenerationMode = node.mode || GenerationMode.IMAGE;
+          let actualKeySlotId = executionNode.keySlotId;
+          let actualProvider = executionNode.provider;
+          let actualProviderLabel = executionNode.providerLabel;
+          let actualModelLabel = executionNode.modelLabel;
+          let actualModel = executionNode.model;
+          const currentMode: GenerationMode = executionNode.mode || GenerationMode.IMAGE;
           const taskPrompt = currentMode === GenerationMode.PPT
             ? (() => {
-              const slideLines = (node.pptSlides || []).map(line => String(line || '').trim()).filter(Boolean);
-              const styleDirective = node.pptStyleLocked !== false
+              const slideLines = (executionNode.pptSlides || []).map(line => String(line || '').trim()).filter(Boolean);
+              const styleDirective = executionNode.pptStyleLocked !== false
                 ? '与整套 PPT 保持完全统一的视觉语言'
                 : '保持整体风格统一，但允许当前页面有适度变化';
               const picked = slideLines.length > 0
@@ -3058,25 +3083,25 @@ const AppContent: React.FC<AppContentProps> = () => {
                 : `主题：${node.prompt}。保持同一套视觉风格，页面内容独立不重复。`;
               return `PPT 第 ${index + 1}/${count} 页。${picked}。16:9。${styleDirective}。`;
             })()
-            : node.prompt;
+            : executionNode.prompt;
 
           if (currentMode === GenerationMode.VIDEO) {
             const videoResolution = (() => {
-              if (node.videoResolution) return node.videoResolution;
-              const size = node.imageSize?.toLowerCase() || '';
+              if (executionNode.videoResolution) return executionNode.videoResolution;
+              const size = executionNode.imageSize?.toLowerCase() || '';
               if (size.includes('4k') || size.includes('ultra')) return '4k';
               if (size.includes('1080') || size.includes('hd')) return '1080p';
               return '720p'; // 榛樿720p
             })();
-            const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
+            const videoAspect = executionNode.aspectRatio === '9:16' ? '9:16' : '16:9';
             const videoResult = await llmService.generateVideo({
-              modelId: node.model,
+              modelId: executionNode.model,
               prompt: taskPrompt,
               aspectRatio: videoAspect,
-              imageUrl: node.referenceImages?.[0]?.data,
-              imageTailUrl: node.referenceImages?.[1]?.data,
-              videoDuration: node.videoDuration,
-              preferredKeyId: node.keySlotId,
+              imageUrl: executionNode.referenceImages?.[0]?.data,
+              imageTailUrl: executionNode.referenceImages?.[1]?.data,
+              videoDuration: executionNode.videoDuration,
+              preferredKeyId: executionNode.keySlotId,
               providerConfig: {
                 google: {
                   imageConfig: { imageSize: videoResolution }
@@ -3084,21 +3109,26 @@ const AppContent: React.FC<AppContentProps> = () => {
               }
             });
             b64 = videoResult.url;
+            actualKeySlotId = videoResult.keySlotId || actualKeySlotId;
+            actualProvider = videoResult.provider || actualProvider;
+            actualProviderLabel = videoResult.providerName || actualProviderLabel;
+            actualModelLabel = videoResult.modelName || actualModelLabel;
+            actualModel = videoResult.model || actualModel;
           } else {
             const result = await generateImage(
               taskPrompt,
-              node.aspectRatio,
-              node.imageSize,
-              node.referenceImages || [],
-              node.model,
+              executionNode.aspectRatio,
+              executionNode.imageSize,
+              executionNode.referenceImages || [],
+              executionNode.model,
               '', // managed key
               requestId,
-              !!node.enableGrounding || !!node.enableImageSearch
+              !!executionNode.enableGrounding || !!executionNode.enableImageSearch
               , {
-                preferredKeyId: node.keySlotId,
-                enableWebSearch: !!node.enableGrounding,
-                enableImageSearch: !!node.enableImageSearch,
-                thinkingMode: node.thinkingMode || 'minimal'
+                preferredKeyId: executionNode.keySlotId,
+                enableWebSearch: !!executionNode.enableGrounding,
+                enableImageSearch: !!executionNode.enableImageSearch,
+                thinkingMode: executionNode.thinkingMode || 'minimal'
               }
             );
             b64 = result.url;
@@ -3106,6 +3136,11 @@ const AppContent: React.FC<AppContentProps> = () => {
             requestBodyPreview = result.requestBodyPreview;
             pythonSnippet = result.pythonSnippet;
             apiDurationMs = result.apiDurationMs;
+            actualKeySlotId = result.keySlotId || actualKeySlotId;
+            actualProvider = result.provider || actualProvider;
+            actualProviderLabel = result.providerName || actualProviderLabel;
+            actualModelLabel = result.modelName || actualModelLabel;
+            actualModel = result.effectiveModel || actualModel;
           }
 
           isFinished = true;
@@ -3149,6 +3184,8 @@ const AppContent: React.FC<AppContentProps> = () => {
           let actualHeight = 1024;
           let displayDimensions = `${node.aspectRatio} 路 ${node.imageSize || '1K'}`;
           let computedImageSize = node.imageSize || 'SIZE_1K'; // Default fallback
+          displayDimensions = `${executionNode.aspectRatio} 璺?${executionNode.imageSize || '1K'}`;
+          computedImageSize = executionNode.imageSize || 'SIZE_1K';
 
           try {
             if (typeof createImageBitmap !== 'undefined' && b64.startsWith('blob:')) {
@@ -3186,7 +3223,7 @@ const AppContent: React.FC<AppContentProps> = () => {
             } else {
               computedImageSize = ImageSize.SIZE_1K;
             }
-            console.log(`[Fair Billing] Requested: ${node.imageSize}, Received: ${actualWidth}x${actualHeight}, Billed As: ${computedImageSize}`);
+            console.log(`[Fair Billing] Requested: ${executionNode.imageSize}, Received: ${actualWidth}x${actualHeight}, Billed As: ${computedImageSize}`);
 
           } catch (e) {
             console.warn('[App] Failed to detect actual dimensions, falling back to requested', e);
@@ -3194,7 +3231,7 @@ const AppContent: React.FC<AppContentProps> = () => {
 
           return {
             canvasId: activeCanvas?.id || 'default',
-            parentPromptId: node.id,
+            parentPromptId: executionNode.id,
             dimensions: displayDimensions, // 馃殌 Use Real Dimensions
             generationTime,
             index,
@@ -3203,12 +3240,15 @@ const AppContent: React.FC<AppContentProps> = () => {
             prompt: taskPrompt,
             width: actualWidth,
             height: actualHeight,
-            aspectRatio: node.aspectRatio,
+            aspectRatio: executionNode.aspectRatio,
             imageSize: computedImageSize, // 馃殌 Use Computed Cost Tier
-            model: node.model,
-            keySlotId: node.keySlotId,
-            sourceReferenceStorageIds: (node.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean),
-            alias: currentMode === GenerationMode.PPT ? buildPptPageAlias(node.pptSlides?.[index], index) : undefined,
+            model: actualModel,
+            modelLabel: actualModelLabel,
+            provider: actualProvider,
+            providerLabel: actualProviderLabel,
+            keySlotId: actualKeySlotId,
+            sourceReferenceStorageIds: (executionNode.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean),
+            alias: currentMode === GenerationMode.PPT ? buildPptPageAlias(executionNode.pptSlides?.[index], index) : undefined,
             seed: -1,
             id: `${Date.now()}_${index}_${Math.random().toString(36).substr(2, 5)}`,
             storageId, // Content-Based ID
@@ -3230,7 +3270,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       const gapToImages = 20; // Reduced to minimum for tight layout
       const gap = 16;
 
-      const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(node.aspectRatio, true);
+      const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(executionNode.aspectRatio, true);
 
       const newImageNodes = results.map((img, i) => {
         let x, y;
@@ -3252,7 +3292,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         } else {
           // Fallback
           // Use shared utility
-          const { totalHeight } = getCardDimensions(node.aspectRatio, true);
+          const { totalHeight } = getCardDimensions(executionNode.aspectRatio, true);
           exactImageHeight = totalHeight;
         }
 
@@ -3261,13 +3301,13 @@ const AppContent: React.FC<AppContentProps> = () => {
         // Note: node.position.y is Prompt Bottom.
         // So Image Y = node.position.y + gapToImages + exactImageHeight.
 
-        const isPptMode = (node.mode || GenerationMode.IMAGE) === GenerationMode.PPT;
+        const isPptMode = (executionNode.mode || GenerationMode.IMAGE) === GenerationMode.PPT;
 
         if (isPptMode) {
           const pptGap = 28;
           const offsetY = gapToImages + exactImageHeight + i * (exactImageHeight + pptGap);
-          x = node.position.x;
-          y = node.position.y + offsetY;
+          x = executionNode.position.x;
+          y = executionNode.position.y + offsetY;
         } else if (isMobile) {
           // Mobile: Maintain Desktop Size but Single Column
           const cols = 1; // Force single column to fit screen
@@ -3282,8 +3322,8 @@ const AppContent: React.FC<AppContentProps> = () => {
           // 馃殌 [Fix] Image Y should be exactly below Prompt Y, without adding promptCardHeight
           // Because Prompt Y is already its bottom edge.
           const offsetY = gapToImages + exactImageHeight + row * (exactImageHeight + mobileGap);
-          x = node.position.x + offsetX;
-          y = node.position.y + offsetY;
+          x = executionNode.position.x + offsetX;
+          y = executionNode.position.y + offsetY;
         } else {
           // DESKTOP LOGIC
           const cols = Math.min(count, 2);
@@ -3306,8 +3346,8 @@ const AppContent: React.FC<AppContentProps> = () => {
           // Final Y (Bottom Anchor) = PromptBottom + Gap + ImageHeight + RowOffset
           const offsetY = gapToImages + exactImageHeight + rowOffsetY;
 
-          x = node.position.x + offsetX;
-          y = node.position.y + offsetY;
+          x = executionNode.position.x + offsetX;
+          y = executionNode.position.y + offsetY;
         }
         return {
           ...img,
@@ -3322,29 +3362,33 @@ const AppContent: React.FC<AppContentProps> = () => {
           isDraft: false, // 馃殌 [Fix] Ensure persistence
           childImageIds: newImageNodes.map(n => n.id),
           error: undefined,
-          errorDetails: undefined
+          errorDetails: undefined,
+          keySlotId: newImageNodes[0]?.keySlotId || executionNode.keySlotId,
+          provider: newImageNodes[0]?.provider || executionNode.provider,
+          providerLabel: newImageNodes[0]?.providerLabel || executionNode.providerLabel,
+          modelLabel: newImageNodes[0]?.modelLabel || executionNode.modelLabel
         }
       });
 
       // Record cost
       // 馃殌 [Fair Billing] Use the computed/effective size from the first result (assuming all in batch are same)
-      const effectiveSize = newImageNodes[0]?.imageSize || node.imageSize; // fallback
+      const effectiveSize = newImageNodes[0]?.imageSize || executionNode.imageSize; // fallback
 
       import('./services/billing/costService').then(({ recordCost }) => {
         const firstDebug = (results as any[])[0] || {};
         recordCost(
-          node.model,
+          executionNode.model,
           effectiveSize as any, // Cast to ImageSize
           newImageNodes.length,
-          node.prompt,
-          node.referenceImages?.length || 0,
+          executionNode.prompt,
+          executionNode.referenceImages?.length || 0,
           undefined,
           {
             requestPath: firstDebug.requestPath,
             requestBodyPreview: firstDebug.requestBodyPreview,
             pythonSnippet: firstDebug.pythonSnippet
           },
-          newImageNodes[0]?.keySlotId || node.keySlotId
+          newImageNodes[0]?.keySlotId || executionNode.keySlotId
         );
       });
       import('./services/system/notificationService').then(({ notify }) => {
@@ -3353,17 +3397,17 @@ const AppContent: React.FC<AppContentProps> = () => {
 
     } catch (error: any) {
       updatePromptNode({
-        ...node,
+        ...executionNode,
         isGenerating: false,
         isDraft: false, // 馃殌 [Fix] Prevent disappearance on error
         error: error.message || 'Retry failed',
-        errorDetails: extractErrorDetails(error, node.model)
+        errorDetails: extractErrorDetails(error, executionNode.model)
       });
       import('./services/system/notificationService').then(({ notify }) => {
         notify.error('閲嶈瘯澶辫触', error.message);
       });
     }
-  }, [config.parallelCount, isMobile, updatePromptNode, addImageNodes, config.enableGrounding, extractErrorDetails, normalizePptSlidesForCount, buildAutoPptSlides]);
+  }, [config.parallelCount, isMobile, updatePromptNode, addImageNodes, config.enableGrounding, extractErrorDetails, normalizePptSlidesForCount, buildAutoPptSlides, resolveNodeRouteState]);
 
   const handleExportPptPackage = useCallback(async (node: PromptNode) => {
     if (!activeCanvas) return;
@@ -3505,6 +3549,11 @@ const AppContent: React.FC<AppContentProps> = () => {
   const handleRetryPptSinglePage = useCallback(async (node: PromptNode, pageIndex: number) => {
     if (!activeCanvas) return;
     if (node.mode !== GenerationMode.PPT) return;
+    const resolvedRoute = resolveNodeRouteState(node);
+    const executionNode: PromptNode = {
+      ...node,
+      ...resolvedRoute,
+    };
 
     const ordered = activeCanvas.imageNodes
       .filter(img => img.parentPromptId === node.id)
@@ -3528,9 +3577,9 @@ const AppContent: React.FC<AppContentProps> = () => {
     }
 
     const slides = normalizePptSlidesForCount(
-      node.pptSlides,
-      node.prompt,
-      Math.max(pageIndex + 1, node.parallelCount || 1, ordered.length)
+      executionNode.pptSlides,
+      executionNode.prompt,
+      Math.max(pageIndex + 1, executionNode.parallelCount || 1, ordered.length)
     );
     const slideText = slides[pageIndex]
       || `主题：${node.prompt}。保持同一套视觉风格，页面内容独立不重复。`;
@@ -3542,7 +3591,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       if (/章节|section|transition/.test(t)) return '采用章节过渡页版式：突出章节标题，并配合关键词。';
       return '采用内容页版式：标题 + 3-5 个信息块，层次清晰。';
     })();
-    const styleDirective = node.pptStyleLocked !== false
+    const styleDirective = executionNode.pptStyleLocked !== false
       ? '与整套 PPT 保持完全统一的视觉语言'
       : '保持整体风格统一，但允许当前页面有适度变化';
     const previousVisualHint = (() => {
@@ -3562,18 +3611,18 @@ const AppContent: React.FC<AppContentProps> = () => {
     try {
       const result = await generateImage(
         taskPrompt,
-        node.aspectRatio,
-        node.imageSize,
-        node.referenceImages || [],
-        node.model,
+        executionNode.aspectRatio,
+        executionNode.imageSize,
+        executionNode.referenceImages || [],
+        executionNode.model,
         '',
         `${node.id}-ppt-single-${pageIndex}`,
-        !!node.enableGrounding || !!node.enableImageSearch,
+        !!executionNode.enableGrounding || !!executionNode.enableImageSearch,
         {
-          preferredKeyId: node.keySlotId,
-          enableWebSearch: !!node.enableGrounding,
-          enableImageSearch: !!node.enableImageSearch,
-          thinkingMode: node.thinkingMode || 'minimal'
+          preferredKeyId: executionNode.keySlotId,
+          enableWebSearch: !!executionNode.enableGrounding,
+          enableImageSearch: !!executionNode.enableImageSearch,
+          thinkingMode: executionNode.thinkingMode || 'minimal'
         }
       );
 
@@ -3589,31 +3638,31 @@ const AppContent: React.FC<AppContentProps> = () => {
       }
 
       updateImageNode(target.id, {
-        ...resolveProviderDisplay(result.keySlotId || node.keySlotId, target.providerLabel || result.providerName, target.provider || result.provider),
+        ...resolveProviderDisplay(result.keySlotId || executionNode.keySlotId, target.providerLabel || result.providerName, target.provider || result.provider),
         url: result.url,
         originalUrl: result.url,
         prompt: taskPrompt,
         timestamp: Date.now(),
         generationTime: Date.now() - startTime,
-        model: result.model || node.model,
+        model: result.model || executionNode.model,
         modelLabel: result.modelName || target.modelLabel,
         modelColorStart: target.modelColorStart,
         modelColorEnd: target.modelColorEnd,
         modelColorSecondary: target.modelColorSecondary,
         modelTextColor: target.modelTextColor,
-        keySlotId: result.keySlotId || node.keySlotId,
-        imageSize: result.imageSize || node.imageSize,
-        aspectRatio: result.aspectRatio || node.aspectRatio,
+        keySlotId: result.keySlotId || executionNode.keySlotId,
+        imageSize: result.imageSize || executionNode.imageSize,
+        aspectRatio: result.aspectRatio || executionNode.aspectRatio,
         dimensions: result.dimensions ? `${result.dimensions.width}x${result.dimensions.height}` : target.dimensions,
         exactDimensions: result.dimensions || target.exactDimensions,
-        sourceReferenceStorageIds: (node.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean),
+        sourceReferenceStorageIds: (executionNode.referenceImages || []).map(ref => ref.storageId || ref.id).filter(Boolean),
         alias: buildPptPageAlias(slideText, pageIndex),
         storageId,
         isGenerating: false,
         error: undefined
       });
 
-      rememberPreferredKeyForMode(node.mode, result.keySlotId || node.keySlotId);
+      rememberPreferredKeyForMode(executionNode.mode, result.keySlotId || executionNode.keySlotId);
 
       import('./services/system/notificationService').then(({ notify }) => {
         notify.success('单页重绘完成', `已更新图${pageIndex + 1}`);
@@ -3627,7 +3676,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         notify.error('单页重绘失败', error?.message || '请稍后重试');
       });
     }
-  }, [activeCanvas, updateImageNode, rememberPreferredKeyForMode, normalizePptSlidesForCount]);
+  }, [activeCanvas, updateImageNode, rememberPreferredKeyForMode, normalizePptSlidesForCount, resolveNodeRouteState, resolveProviderDisplay]);
 
   const handleExportPptSinglePage = useCallback(async (node: PromptNode, pageIndex: number) => {
     if (!activeCanvas) return;
@@ -4543,6 +4592,113 @@ ${slideLayerXml.join('\n')}
     };
   }, [activeCanvas]);
 
+  const promptGroupLayerById = React.useMemo(() => {
+    const groupLayerMap = new Map<string, number>();
+    if (!activeCanvas) return groupLayerMap;
+
+    activeCanvas.promptNodes.forEach((promptNode) => {
+      groupLayerMap.set(promptNode.id, promptNode.zIndex ?? 0);
+    });
+
+    activeCanvas.imageNodes.forEach((imageNode) => {
+      if (!imageNode.parentPromptId) return;
+      const currentLayer = groupLayerMap.get(imageNode.parentPromptId) ?? 0;
+      const imageLayer = imageNode.zIndex ?? 0;
+      if (imageLayer > currentLayer) {
+        groupLayerMap.set(imageNode.parentPromptId, imageLayer);
+      }
+    });
+
+    return groupLayerMap;
+  }, [activeCanvas]);
+
+  const selectedPromptGroupIds = React.useMemo(() => {
+    const groupIds = new Set<string>();
+    if (!activeCanvas) return groupIds;
+
+    activeCanvas.promptNodes.forEach((promptNode) => {
+      if (selectedNodeIds.includes(promptNode.id)) {
+        groupIds.add(promptNode.id);
+      }
+    });
+
+    activeCanvas.imageNodes.forEach((imageNode) => {
+      if (selectedNodeIds.includes(imageNode.id) && imageNode.parentPromptId) {
+        groupIds.add(imageNode.parentPromptId);
+      }
+    });
+
+    return groupIds;
+  }, [activeCanvas, selectedNodeIds]);
+
+  const promptGroupStackZIndexById = React.useMemo(() => {
+    const stackMap = new Map<string, number>();
+    if (!activeCanvas) return stackMap;
+
+    const activePromptGroupId = activeSourceImage
+      ? activeCanvas.imageNodes.find((imageNode) => imageNode.id === activeSourceImage)?.parentPromptId
+      : undefined;
+    const now = Date.now();
+
+    activeCanvas.promptNodes.forEach((promptNode) => {
+      const baseLayer = promptGroupLayerById.get(promptNode.id) ?? promptNode.zIndex ?? 0;
+      const childImages = activeCanvas.imageNodes.filter((imageNode) => imageNode.parentPromptId === promptNode.id);
+      const isGeneratingGroup = Boolean(promptNode.isGenerating) || childImages.some((imageNode) => imageNode.isGenerating);
+      const isNewGroup = Boolean(promptNode.isNew) || childImages.some((imageNode) => now - (imageNode.timestamp || 0) < 10000);
+      const isSelectedGroup = selectedPromptGroupIds.has(promptNode.id);
+      const isActiveGroup = activePromptGroupId === promptNode.id;
+
+      let stackZIndex = baseLayer * 100;
+      if (isGeneratingGroup) {
+        stackZIndex += 40;
+      } else if (isNewGroup) {
+        stackZIndex += 30;
+      } else if (isSelectedGroup) {
+        stackZIndex += 20;
+      } else if (isActiveGroup) {
+        stackZIndex += 15;
+      } else {
+        stackZIndex += 10;
+      }
+
+      stackMap.set(promptNode.id, stackZIndex);
+    });
+
+    return stackMap;
+  }, [activeCanvas, activeSourceImage, promptGroupLayerById, selectedPromptGroupIds]);
+
+  const standaloneImageStackZIndexById = React.useMemo(() => {
+    const stackMap = new Map<string, number>();
+    if (!activeCanvas) return stackMap;
+
+    const now = Date.now();
+    activeCanvas.imageNodes.forEach((imageNode) => {
+      if (imageNode.parentPromptId) return;
+
+      const baseLayer = imageNode.zIndex ?? 0;
+      const isSelectedImage = selectedNodeIds.includes(imageNode.id);
+      const isNewImage = now - (imageNode.timestamp || 0) < 10000;
+      const isActiveImage = imageNode.id === activeSourceImage;
+
+      let stackZIndex = baseLayer * 100;
+      if (imageNode.isGenerating) {
+        stackZIndex += 40;
+      } else if (isNewImage) {
+        stackZIndex += 30;
+      } else if (isSelectedImage) {
+        stackZIndex += 20;
+      } else if (isActiveImage) {
+        stackZIndex += 15;
+      } else {
+        stackZIndex += 10;
+      }
+
+      stackMap.set(imageNode.id, stackZIndex);
+    });
+
+    return stackMap;
+  }, [activeCanvas, activeSourceImage, selectedNodeIds]);
+
   // Viewport Culling (Virtualization) Logic
   // Optimization: Only render nodes overlapping with the current viewport (+buffer)
   const { visiblePromptNodes, visibleImageNodes, visibleGroups, nowTimestamp } = React.useMemo(() => {
@@ -4558,6 +4714,21 @@ ${slideLayerXml.join('\n')}
     const vTop = -canvasTransform.y / canvasTransform.scale - BUFFER;
     const vRight = (window.innerWidth - canvasTransform.x) / canvasTransform.scale + BUFFER;
     const vBottom = (window.innerHeight - canvasTransform.y) / canvasTransform.scale + BUFFER;
+    const getPromptGroupStackZIndex = (promptNode: PromptNode) => (
+      promptGroupStackZIndexById.get(promptNode.id)
+      ?? ((promptGroupLayerById.get(promptNode.id) ?? promptNode.zIndex ?? 0) * 100 + 10)
+    );
+    const getImageGroupStackZIndex = (imageNode: GeneratedImage) => (
+      imageNode.parentPromptId
+        ? (
+          promptGroupStackZIndexById.get(imageNode.parentPromptId)
+          ?? ((promptGroupLayerById.get(imageNode.parentPromptId) ?? imageNode.zIndex ?? 0) * 100 + 10)
+        )
+        : (
+          standaloneImageStackZIndexById.get(imageNode.id)
+          ?? ((imageNode.zIndex ?? 0) * 100 + 10)
+        )
+    );
 
     // 1. Filter Groups
     const visibleGroups = activeCanvas.groups
@@ -4584,7 +4755,11 @@ ${slideLayerXml.join('\n')}
 
         return !(x > vRight || x + w < vLeft || y > vBottom || y + h < vTop);
       })
-      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+      .sort((a, b) => {
+        const zDiff = getPromptGroupStackZIndex(a) - getPromptGroupStackZIndex(b);
+        if (zDiff !== 0) return zDiff;
+        return a.timestamp - b.timestamp;
+      });
 
     // 3. Filter Image Nodes
     const visibleImageNodes = activeCanvas.imageNodes
@@ -4595,13 +4770,17 @@ ${slideLayerXml.join('\n')}
         const y = n.position.y - h;
         return !(x > vRight || x + w < vLeft || y > vBottom || y + h < vTop);
       })
-      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+      .sort((a, b) => {
+        const zDiff = getImageGroupStackZIndex(a) - getImageGroupStackZIndex(b);
+        if (zDiff !== 0) return zDiff;
+        return a.timestamp - b.timestamp;
+      });
 
     // 馃殌 Cache timestamp
     const nowTimestamp = Date.now();
 
     return { visiblePromptNodes, visibleImageNodes, visibleGroups, nowTimestamp };
-  }, [activeCanvas, canvasTransform]);
+  }, [activeCanvas, canvasTransform, promptGroupLayerById, promptGroupStackZIndexById, standaloneImageStackZIndexById]);
 
   const actualChildImagesByPromptId = React.useMemo(() => {
     const childMap = new Map<string, GeneratedImage[]>();
@@ -4630,6 +4809,45 @@ ${slideLayerXml.join('\n')}
   const visibleImageNodeIds = React.useMemo(
     () => new Set(visibleImageNodes.map(node => node.id)),
     [visibleImageNodes]
+  );
+
+  const visiblePromptNodeIds = React.useMemo(
+    () => new Set(visiblePromptNodes.map(node => node.id)),
+    [visiblePromptNodes]
+  );
+
+  const visibleChildImagesByPromptId = React.useMemo(() => {
+    const childMap = new Map<string, GeneratedImage[]>();
+    if (!activeCanvas) return childMap;
+
+    visibleImageNodes.forEach((imageNode) => {
+      if (!imageNode.parentPromptId || !visiblePromptNodeIds.has(imageNode.parentPromptId)) {
+        return;
+      }
+
+      const bucket = childMap.get(imageNode.parentPromptId) || [];
+      bucket.push(imageNode);
+      childMap.set(imageNode.parentPromptId, bucket);
+    });
+
+    childMap.forEach((images, promptId) => {
+      const promptNode = activeCanvas.promptNodes.find((node) => node.id === promptId);
+      const childOrder = new Map((promptNode?.childImageIds || []).map((id, index) => [id, index]));
+      images.sort((left, right) => {
+        const leftOrder = childOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = childOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        if ((left.zIndex ?? 0) !== (right.zIndex ?? 0)) return (left.zIndex ?? 0) - (right.zIndex ?? 0);
+        return left.timestamp - right.timestamp;
+      });
+    });
+
+    return childMap;
+  }, [activeCanvas, visibleImageNodes, visiblePromptNodeIds]);
+
+  const standaloneVisibleImageNodes = React.useMemo(
+    () => visibleImageNodes.filter((imageNode) => !imageNode.parentPromptId || !visiblePromptNodeIds.has(imageNode.parentPromptId)),
+    [visibleImageNodes, visiblePromptNodeIds]
   );
 
   useEffect(() => {
@@ -5583,6 +5801,8 @@ ${slideLayerXml.join('\n')}
           <PromptNodeComponent
             key={node.id}
             node={node}
+            groupLayerZIndex={promptGroupLayerById.get(node.id) ?? node.zIndex ?? 0}
+            stackZIndexOverride={promptGroupStackZIndexById.get(node.id)}
             actualChildImageCount={(actualChildImagesByPromptId.get(node.id) || []).length}
             onPositionChange={updatePromptNodePosition}
             isSelected={selectedNodeIds.includes(node.id)}
@@ -5664,10 +5884,78 @@ ${slideLayerXml.join('\n')}
         ))}
 
         {/* 3. 鍥剧墖鑺傜偣 */}
-        {visibleImageNodes.map(node => (
+        {visiblePromptNodes.map(node => (
+          <React.Fragment key={`${node.id}-children`}>
+            {(visibleChildImagesByPromptId.get(node.id) || []).map(childNode => (
+              <ImageNode
+                key={childNode.id}
+                image={childNode}
+                groupLayerZIndex={promptGroupLayerById.get(node.id) ?? childNode.zIndex ?? 0}
+                stackZIndexOverride={promptGroupStackZIndexById.get(node.id)}
+                position={childNode.position}
+                onPositionChange={updateImageNodePosition}
+                highlighted={highlightedId === childNode.id}
+                onDimensionsUpdate={updateImageNodeDisplayMeta}
+                onUpdate={updateImageNode}
+                onDelete={deleteImageNode}
+                onConnectEnd={handleConnectEnd}
+                onClick={handleImageClick}
+                isActive={childNode.id === activeSourceImage}
+                isSelected={selectedNodeIds.includes(childNode.id)}
+                onSelect={() => {
+                  selectNodes([childNode.id], (window.event as any)?.shiftKey ? 'toggle' : 'replace');
+                  if ((window.event as any)?.button === 2) {
+                    const pos = getSelectionScreenCenter([childNode.id]);
+                    if (pos) setSelectionMenuPosition(pos);
+                  }
+                }}
+                zoomScale={canvasTransform.scale}
+                isMobile={isMobile}
+                onPreview={handleOpenPreview}
+                onPreviewPptStack={handleOpenPptStackPreview}
+                onDownloadPptComposite={handleDownloadPptComposite}
+                isCanvasTransforming={isCanvasTransforming}
+                isNew={(nowTimestamp || Date.now()) - (childNode.timestamp || 0) < 10000}
+                canvasTransform={canvasTransform}
+                onDragDelta={(delta, sourceNodeId) => {
+                  if (!sourceNodeId) return;
+
+                  const isSubCard = childNode.parentPromptId && activeCanvas?.promptNodes.some(p => p.id === childNode.parentPromptId);
+                  const expandedSelectedIds = Array.from(new Set(
+                    selectedNodeIds.flatMap((selectedId) => {
+                      const selectedPrompt = activeCanvas?.promptNodes.find(p => p.id === selectedId);
+                      if (!selectedPrompt) return [selectedId];
+
+                      return [
+                        selectedId,
+                        ...(selectedPrompt.childImageIds || []).filter((id): id is string => !!id),
+                      ];
+                    })
+                  ));
+
+                  if (selectedNodeIds.includes(sourceNodeId) && expandedSelectedIds.length > 0) {
+                    moveSelectedNodes(delta, expandedSelectedIds);
+                  } else if (isSubCard) {
+                    moveSelectedNodes(delta, sourceNodeId);
+                  } else {
+                    moveSelectedNodes(delta, sourceNodeId);
+                  }
+                }}
+              />
+            ))}
+          </React.Fragment>
+        ))}
+
+        {standaloneVisibleImageNodes.map(node => (
           <ImageNode
             key={node.id}
             image={node}
+            groupLayerZIndex={node.parentPromptId
+              ? (promptGroupLayerById.get(node.parentPromptId) ?? node.zIndex ?? 0)
+              : (node.zIndex ?? 0)}
+            stackZIndexOverride={node.parentPromptId
+              ? promptGroupStackZIndexById.get(node.parentPromptId)
+              : standaloneImageStackZIndexById.get(node.id)}
             position={node.position}
             onPositionChange={updateImageNodePosition}
             highlighted={highlightedId === node.id}

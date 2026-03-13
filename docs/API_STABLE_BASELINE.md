@@ -56,12 +56,14 @@ Gemini-native routing is not one single auth style.
 - 12AI Gemini-native docs use `?key=...`
 - Google official Gemini docs are compatible with query-style key auth
 - NewAPI Gemini relay docs use `Authorization: Bearer <token>`
+- Wuyin API doc shows `Authorization: <token>` and its request example also accepts `?key=...`
 
 Rules:
 
 - Do not hardcode all Gemini-native channels to query auth
 - Default auth should follow the provider base URL and the authoritative doc
 - If the channel is explicitly configured as Gemini format on a non-Google, non-12AI gateway, prefer Bearer auth unless the provider doc says otherwise
+- Do not automatically prepend `Bearer ` when a provider doc requires a raw `Authorization` token value
 
 ### 3. OpenAI-compatible image edits
 

@@ -8,6 +8,8 @@
 
 import { type ApiProtocolFormat, normalizeApiProtocolFormat } from '../api/apiConfig';
 import { newApiManagementService } from '../api/newApiManagementService';
+import { fetchWuyinPricingCatalog } from './newApiPricingService';
+import { resolveProviderRuntime } from '../api/providerStrategy';
 
 export interface Supplier {
   id: string;
@@ -32,6 +34,10 @@ export interface SupplierModel {
   multiplier?: number;
   billingType: 'token' | 'per_request' | 'multiplier';
   isActive: boolean;
+  currency?: string;
+  billingUnit?: string;
+  displayPrice?: string;
+  supportsGroups?: boolean;
 }
 
 const SUPPLIERS_STORAGE_KEY = 'kk_suppliers_v1';
@@ -156,6 +162,22 @@ class SupplierService {
   }
 
   async fetchModelsFromNewAPI(baseUrl: string, systemToken: string): Promise<SupplierModel[]> {
+    const runtime = resolveProviderRuntime({ baseUrl, format: 'openai' });
+    if (runtime.strategyId === 'wuyinkeji') {
+      const pricing = await fetchWuyinPricingCatalog(baseUrl);
+      return pricing.map((model) => ({
+        id: model.modelId,
+        name: model.modelName,
+        billingType: 'per_request',
+        perRequestPrice: model.inputPrice,
+        isActive: true,
+        currency: model.currency,
+        billingUnit: model.billingUnit,
+        displayPrice: model.displayPrice,
+        supportsGroups: false,
+      }));
+    }
+
     console.log('[SupplierService] Calling NewAPI for models:', baseUrl);
     const models = await newApiManagementService.fetchAdminModels(systemToken, baseUrl);
 
@@ -168,6 +190,7 @@ class SupplierService {
       perRequestPrice: model.perRequestPrice,
       multiplier: model.multiplier,
       isActive: true,
+      supportsGroups: true,
     }));
   }
 

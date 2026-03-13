@@ -3,9 +3,10 @@ import { KeySlot, keyManager } from '../auth/keyManager';
 import {
     buildGeminiEndpoint,
     buildGeminiHeaders,
+    formatAuthorizationHeaderValue,
     normalizeApiProtocolFormat,
     normalizeGeminiBaseUrl,
-    resolveGeminiAuthMethod,
+    normalizeGeminiModelId,
 } from '../api/apiConfig';
 import { resolveProviderRuntime } from '../api/providerStrategy';
 import { ImageSize, AspectRatio } from '../../types';
@@ -123,10 +124,13 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         return { ...base, ...custom };
     }
 
-    private getAuthorizationHeaderValue(rawKey: string): string {
+    private getAuthorizationHeaderValue(rawKey: string, keySlot?: KeySlot): string {
         const token = String(rawKey || '').trim();
         if (!token) return 'Bearer ';
-        return /^Bearer\s+/i.test(token) ? token : `Bearer ${token}`;
+        const runtime = keySlot
+            ? this.resolveChannelRuntime(keySlot.baseUrl || '', keySlot)
+            : null;
+        return formatAuthorizationHeaderValue(token, runtime?.authorizationValueFormat);
     }
 
     private getQueryApiKey(rawKey: string): string {
@@ -348,13 +352,24 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
     }
 
     private isLegacyGeminiChatGateway(baseUrl: string): boolean {
-        const lower = (baseUrl || '').toLowerCase();
-        return lower.includes('127.0.0.1:8045') || lower.includes('antigravity');
+        return resolveProviderRuntime({ baseUrl }).strategyId === 'antigravity';
+    }
+
+    private resolveChannelRuntime(baseUrl: string, keySlot: KeySlot, modelId?: string, format?: string) {
+        return resolveProviderRuntime({
+            provider: keySlot.provider,
+            baseUrl,
+            format: format ?? keySlot.format,
+            authMethod: keySlot.authMethod,
+            headerName: keySlot.headerName,
+            compatibilityMode: keySlot.compatibilityMode,
+            modelId,
+        });
     }
 
     private normalize12AIBaseUrl(baseUrl: string): string {
         let clean = (baseUrl || '').trim().replace(/\/+$/, '');
-        if (!clean) return clean;
+        if (!clean) return RegionService.get12AIBaseUrl();
 
         const suffixes = [
             '/v1/chat/completions',
@@ -386,6 +401,15 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         // If the URL doesn't start with http, it's considered relative/invalid by fetch()
         if (clean && !clean.startsWith('http')) {
             clean = `https://${clean}`;
+        }
+
+        try {
+            const parsed = new URL(clean);
+            if (/(^|\.)12ai\.(org|xyz|io|net)$/i.test(parsed.hostname)) {
+                return `${parsed.protocol}//${parsed.host}`;
+            }
+        } catch {
+            return RegionService.get12AIBaseUrl();
         }
 
         return clean;
@@ -461,7 +485,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
     private buildImageRequestHeaders(keySlot: KeySlot, includeJsonContentType: boolean): Record<string, string> {
         let headers: Record<string, string> = {
             'Accept': 'application/json',
-            'Authorization': this.getAuthorizationHeaderValue(keySlot.key)
+            'Authorization': this.getAuthorizationHeaderValue(keySlot.key, keySlot)
         };
 
         if (includeJsonContentType) {
@@ -712,7 +736,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         let headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            'Authorization': this.getAuthorizationHeaderValue(keySlot.key)
+            'Authorization': this.getAuthorizationHeaderValue(keySlot.key, keySlot)
         };
 
         // Custom Header Support
@@ -804,7 +828,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         let headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            'Authorization': this.getAuthorizationHeaderValue(keySlot.key)
+            'Authorization': this.getAuthorizationHeaderValue(keySlot.key, keySlot)
         };
 
         if (keySlot.headerName && keySlot.headerName !== 'Authorization') {
@@ -927,16 +951,8 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         // 🚀 [Protocol Routing]
         // 12AI + Gemini 图片模型：强制走 Gemini Native（严格对齐 12AI 文档），
         // 忽略 compatibilityMode='chat'，避免命中 Chat-to-Image 信道导致 503。
-        const forceGeminiNativeOn12AI = this.is12AIGateway(baseUrl, keySlot, options.modelId) && isGeminiImage;
-        const channelRuntime = resolveProviderRuntime({
-            provider: keySlot.provider,
-            baseUrl,
-            format: keySlot.format,
-            authMethod: keySlot.authMethod,
-            headerName: keySlot.headerName,
-            compatibilityMode: keySlot.compatibilityMode,
-            modelId: options.modelId,
-        });
+        const channelRuntime = this.resolveChannelRuntime(baseUrl, keySlot, options.modelId);
+        const forceGeminiNativeOn12AI = channelRuntime.strategyId === '12ai' && channelRuntime.geminiNative && isGeminiImage;
 
         if (keySlot.compatibilityMode === 'chat' && !forceGeminiNativeOn12AI) {
             console.log(`[OpenAICompatibleAdapter] 使用 Chat API (显式 compatibilityMode='chat') -> ${keySlot.name}`);
@@ -980,8 +996,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
 
         // 🚀 [Fix] 12AI 网关使用 OpenAI 格式 key (sk-开头) 时，不应使用 Gemini Native 格式
-        const isOpenAIFormatKey = keySlot.key?.startsWith('sk-');
-        if ((configuredFormat === 'gemini' && isGeminiImage) || (is12AI && isGeminiImage && !isOpenAIFormatKey)) {
+        if ((configuredFormat === 'gemini' && isGeminiImage) || (is12AI && isGeminiImage)) {
             console.log(`[OpenAICompatibleAdapter] 使用 12AI 原生 Gemini 协议 (Native) -> ${keySlot.name}`);
             return this.generateImageGeminiNative(options, keySlot);
         }
@@ -1141,7 +1156,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         let headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            'Authorization': this.getAuthorizationHeaderValue(keySlot.key)
+            'Authorization': this.getAuthorizationHeaderValue(keySlot.key, keySlot)
         };
         if (keySlot.headerName && keySlot.headerName !== 'Authorization') {
             headers[keySlot.headerName] = keySlot.key;
@@ -1333,7 +1348,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         let headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            'Authorization': this.getAuthorizationHeaderValue(keySlot.key)
+            'Authorization': this.getAuthorizationHeaderValue(keySlot.key, keySlot)
         };
         if (keySlot.headerName && keySlot.headerName !== 'Authorization') {
             headers[keySlot.headerName] = keySlot.key;
@@ -1646,7 +1661,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         //   gemini-3-pro-image-preview -> gemini-3-pro-image-preview-4k
         //   gemini-3.1-flash-image-preview -> gemini-3.1-flash-image-preview-4k
         // 适应此代理商广泛使用的分辨率命名规则
-        const effectiveModelId = options.modelId;
+        const effectiveModelId = is12AIChannel ? options.modelId : normalizeGeminiModelId(options.modelId);
 
         let baseDim = 1024;
         if (is4K) baseDim = 4096; else if (is2K) baseDim = 2048;
@@ -1736,7 +1751,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const is2K = options.imageSize === '2K' || options.imageSize === 'SIZE_2K';
 
         // 🚀 [关键修复] 模型 ID 分辨率后缀自动映射
-        const effectiveModelId = options.modelId;
+        const effectiveModelId = normalizeGeminiModelId(options.modelId);
 
         // 计算基准尺寸
         let baseDim = 1024;
@@ -1799,23 +1814,16 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         options: ImageGenerationOptions,
         keySlot: KeySlot
     ): Promise<ImageGenerationResult> {
-        const is12AIChannel = this.is12AIGateway(keySlot.baseUrl || '', keySlot, options.modelId);
+        const initialRuntime = this.resolveChannelRuntime(keySlot.baseUrl || '', keySlot, options.modelId, 'gemini');
+        const is12AIChannel = initialRuntime.strategyId === '12ai';
         const rawBase = keySlot.baseUrl || (is12AIChannel ? RegionService.get12AIBaseUrl() : '');
         const cleanBase = is12AIChannel
             ? this.normalize12AIBaseUrl(rawBase).replace(/\/+$/, '')
             : normalizeGeminiBaseUrl(rawBase).replace(/\/+$/, '');
-        const runtime = resolveProviderRuntime({
-            provider: keySlot.provider,
-            baseUrl: cleanBase,
-            format: 'gemini',
-            authMethod: keySlot.authMethod,
-            headerName: keySlot.headerName,
-            compatibilityMode: keySlot.compatibilityMode,
-            modelId: options.modelId,
-        });
-        const authMethod = resolveGeminiAuthMethod(cleanBase, keySlot.authMethod, keySlot.provider);
+        const runtime = this.resolveChannelRuntime(cleanBase, keySlot, options.modelId, 'gemini');
+        const authMethod = runtime.authMethod;
 
-        const effectiveModelId = options.modelId;
+        const effectiveModelId = normalizeGeminiModelId(options.modelId);
         const requestedImageSize = this.normalizeGeminiImageSize(
             options.providerConfig?.google?.imageConfig?.imageSize || options.imageSize
         );
@@ -1824,7 +1832,13 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         if (!normalizedKey) {
             throw new Error('Gemini API Key / Token 不能为空');
         }
-        const url = buildGeminiEndpoint(cleanBase, effectiveModelId, 'generateContent', normalizedKey, authMethod, keySlot.provider);
+        const queryKey = this.getQueryApiKey(normalizedKey);
+        if (!queryKey) {
+            throw new Error('12AI API Key is empty or invalid');
+        }
+        const url = is12AIChannel
+            ? `${cleanBase}/v1beta/models/${effectiveModelId}:generateContent?key=${encodeURIComponent(queryKey)}`
+            : buildGeminiEndpoint(cleanBase, effectiveModelId, 'generateContent', normalizedKey, authMethod, keySlot.provider);
 
         const parts: any[] = [];
 
@@ -1886,11 +1900,15 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
 
         const payloadStr = JSON.stringify(payload);
-        let headers: Record<string, string> = buildGeminiHeaders(authMethod, normalizedKey, runtime.headerName);
+        let headers: Record<string, string> = is12AIChannel
+            ? {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+            : buildGeminiHeaders(authMethod, normalizedKey, runtime.headerName, runtime.authorizationValueFormat);
 
-        // Query auth 的 Gemini 原生链路避免叠加认证头，降低 12AI/Google 预检失败概率。
         headers = this.applyCustomHeaders(headers, keySlot);
-        if (authMethod === 'query') {
+        if (is12AIChannel || authMethod === 'query') {
             delete headers['x-goog-api-key'];
             delete headers['Authorization'];
             delete headers['authorization'];
@@ -1898,7 +1916,10 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         const startTime = Date.now();
         const safeUrl = url.replace(/key=[^&]+/, 'key=***'); // 用于日志的安全 URL
-        console.log(`[OpenAICompatibleAdapter] Gemini Native Request -> ${safeUrl}`);
+        const maskedKey = queryKey.length > 8
+            ? `${queryKey.slice(0, 4)}***${queryKey.slice(-4)}`
+            : '***';
+        console.log(`[OpenAICompatibleAdapter] ${is12AIChannel ? '12AI Native' : 'Gemini Native'} Request -> ${safeUrl} | slot=${keySlot.id} | channel=${keySlot.name} | auth=${is12AIChannel ? 'query' : authMethod} | key=${maskedKey}`);
 
         const response = await this.fetchWithTimeout(url, {
             method: 'POST',
@@ -1911,7 +1932,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         if (!response.ok) {
             const raw = await response.text().catch(() => '');
-            let detail = `Gemini Native Error: ${response.status}`;
+            let detail = `${is12AIChannel ? '12AI Native' : 'Gemini Native'} Error: ${response.status}`;
             try {
                 const err = JSON.parse(raw || '{}');
                 detail = err.error?.message || err.message || detail;
@@ -1925,7 +1946,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const data = await response.json();
         keyManager.reportCallResult(keySlot.id, true);
         const candidate = data.candidates?.[0];
-        if (!candidate) throw new Error('Gemini native API returned no candidate content');
+        if (!candidate) throw new Error(is12AIChannel ? '12AI API returned no candidate content' : 'Gemini native API returned no candidate content');
 
         const candidateParts = candidate.content?.parts || [];
         const imagePart = candidateParts.find((p: any) => p.inlineData || p.inline_data);
@@ -1943,10 +1964,10 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         return {
             urls: [`data:${mime};base64,${b64}`],
             provider: is12AIChannel ? '12AI-Native' : 'Gemini-Native',
-            model: options.modelId,
+            model: is12AIChannel ? options.modelId : effectiveModelId,
             imageSize: requestedImageSize,
             metadata: {
-                requestPath: `/v1beta/models/${options.modelId}:generateContent`,
+                requestPath: `/v1beta/models/${is12AIChannel ? options.modelId : effectiveModelId}:generateContent`,
                 apiDurationMs: duration,
                 requestBodyPreview: this.buildSafeRequestBodyPreview(payload)
             }

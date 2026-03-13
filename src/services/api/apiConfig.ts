@@ -7,6 +7,7 @@
 import {
     resolveProviderRuntime,
     type ProviderStrategyAuthMethod,
+    type ProviderStrategyAuthorizationValueFormat,
 } from './providerStrategy';
 
 /**
@@ -79,7 +80,24 @@ export function resolveApiProtocolFormat(
 }
 
 export function getApiKeyToken(apiKey: string): string {
-    return String(apiKey || '').trim().replace(/^Bearer\s+/i, '').trim();
+    return String(apiKey || '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\r?\n|\r|\t/g, '')
+        .trim()
+        .replace(/^Bearer\s+/i, '')
+        .replace(/\s+/g, '')
+        .trim();
+}
+
+export function formatAuthorizationHeaderValue(
+    apiKey: string,
+    valueFormat: ProviderStrategyAuthorizationValueFormat = 'bearer'
+): string {
+    const token = getApiKeyToken(apiKey);
+    if (valueFormat === 'raw') {
+        return token;
+    }
+    return /^Bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${token}`;
 }
 
 /**
@@ -111,7 +129,8 @@ export function buildApiUrl(
 export function buildHeaders(
     authMethod: AuthMethod,
     apiKey: string,
-    headerName?: string
+    headerName?: string,
+    authorizationValueFormat: ProviderStrategyAuthorizationValueFormat = 'bearer'
 ): Record<string, string> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -120,7 +139,7 @@ export function buildHeaders(
     if (authMethod === 'header') {
         const effectiveHeaderName = headerName || 'x-goog-api-key';
         headers[effectiveHeaderName] = effectiveHeaderName === 'Authorization'
-            ? (/^Bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${getApiKeyToken(apiKey)}`)
+            ? formatAuthorizationHeaderValue(apiKey, authorizationValueFormat)
             : getApiKeyToken(apiKey);
     }
 
@@ -188,7 +207,11 @@ export function normalizeGeminiBaseUrl(url: string | undefined): string {
 }
 
 export function normalizeGeminiModelId(model: string): string {
-    return String(model || '').trim().replace(/^models\//i, '');
+    return String(model || '')
+        .trim()
+        .replace(/^models\//i, '')
+        .split('@')[0]
+        .trim();
 }
 
 export function usesGeminiQueryAuth(baseUrl: string | undefined, provider?: string): boolean {
@@ -248,7 +271,8 @@ export function buildGeminiModelsEndpoint(
 export function buildGeminiHeaders(
     authMethod: AuthMethod,
     apiKey: string,
-    headerName?: string
+    headerName?: string,
+    authorizationValueFormat: ProviderStrategyAuthorizationValueFormat = 'bearer'
 ): Record<string, string> {
     const headers: Record<string, string> = {
         Accept: 'application/json',
@@ -261,7 +285,7 @@ export function buildGeminiHeaders(
 
     const effectiveHeaderName = headerName || 'Authorization';
     headers[effectiveHeaderName] = effectiveHeaderName === 'Authorization'
-        ? (/^Bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${getApiKeyToken(apiKey)}`)
+        ? formatAuthorizationHeaderValue(apiKey, authorizationValueFormat)
         : getApiKeyToken(apiKey);
 
     return headers;
@@ -274,7 +298,8 @@ export function buildProxyHeaders(
     authMethod: AuthMethod,
     apiKey: string,
     headerName: string = 'Authorization',
-    group?: string
+    group?: string,
+    authorizationValueFormat: ProviderStrategyAuthorizationValueFormat = 'bearer'
 ): Record<string, string> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -282,9 +307,11 @@ export function buildProxyHeaders(
 
     if (authMethod === 'header' && apiKey) {
         if (headerName === 'Authorization' && !/^Bearer\s+/i.test(apiKey)) {
-            headers[headerName] = `Bearer ${apiKey}`;
+            headers[headerName] = formatAuthorizationHeaderValue(apiKey, authorizationValueFormat);
         } else {
-            headers[headerName] = apiKey;
+            headers[headerName] = headerName === 'Authorization'
+                ? formatAuthorizationHeaderValue(apiKey, authorizationValueFormat)
+                : apiKey;
         }
     }
 

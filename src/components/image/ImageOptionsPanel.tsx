@@ -21,11 +21,33 @@ interface ImageOptionsPanelProps {
 }
 
 const SECTION_STYLE: React.CSSProperties = {
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%)',
-  borderColor: 'rgba(148, 163, 184, 0.18)',
+  background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg-tertiary) 92%, transparent) 0%, color-mix(in srgb, var(--bg-secondary) 88%, transparent) 100%)',
+  borderColor: 'var(--border-default)',
 };
 
 const TITLE_STYLE: React.CSSProperties = {
+  color: 'var(--text-secondary)',
+};
+
+const PANEL_STYLE: React.CSSProperties = {
+  background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg-overlay) 94%, transparent) 0%, color-mix(in srgb, var(--bg-base) 96%, transparent) 100%)',
+  borderColor: 'var(--border-default)',
+  boxShadow: 'var(--shadow-lg), inset 0 1px 0 color-mix(in srgb, var(--text-primary) 8%, transparent)',
+};
+
+const SEGMENT_STYLE: React.CSSProperties = {
+  backgroundColor: 'color-mix(in srgb, var(--bg-input) 76%, transparent)',
+};
+
+const ACTIVE_BUTTON_STYLE: React.CSSProperties = {
+  borderColor: 'var(--border-strong)',
+  backgroundColor: 'color-mix(in srgb, var(--bg-hover) 88%, transparent)',
+  color: 'var(--text-primary)',
+};
+
+const INACTIVE_BUTTON_STYLE: React.CSSProperties = {
+  borderColor: 'var(--border-subtle)',
+  backgroundColor: 'color-mix(in srgb, var(--bg-secondary) 72%, transparent)',
   color: 'var(--text-secondary)',
 };
 
@@ -137,9 +159,7 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
       style={{
         width: 'min(420px, calc(100vw - 24px))',
         maxHeight: 'min(60vh, 520px)',
-        background: 'linear-gradient(180deg, rgba(20, 24, 36, 0.96) 0%, rgba(10, 13, 22, 0.98) 100%)',
-        borderColor: 'rgba(148, 163, 184, 0.18)',
-        boxShadow: '0 24px 52px rgba(2, 6, 23, 0.36), inset 0 1px 0 rgba(255,255,255,0.08)',
+        ...PANEL_STYLE,
       }}
     >
       {networkOptions.length > 0 ? (
@@ -154,11 +174,7 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
                 type="button"
                 onClick={option.onToggle}
                 className="flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition-colors"
-                style={{
-                  borderColor: option.active ? 'rgba(96,165,250,0.4)' : 'rgba(148, 163, 184, 0.16)',
-                  backgroundColor: option.active ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)',
-                  color: option.active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                }}
+                style={option.active ? ACTIVE_BUTTON_STYLE : INACTIVE_BUTTON_STYLE}
               >
                 <span>{option.label}</span>
                 <span className="text-xs">{option.active ? '\u5df2\u5f00\u542f' : '\u672a\u5f00\u542f'}</span>
@@ -178,10 +194,9 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
               type="button"
               onClick={() => onThinkingModeChange?.('minimal')}
               className="rounded-xl border px-3 py-2 text-sm transition-colors"
-              style={{
-                borderColor: thinkingMode === 'minimal' ? 'rgba(99,102,241,0.65)' : 'rgba(148, 163, 184, 0.16)',
-                backgroundColor: thinkingMode === 'minimal' ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
-                color: thinkingMode === 'minimal' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              style={thinkingMode === 'minimal' ? ACTIVE_BUTTON_STYLE : {
+                ...INACTIVE_BUTTON_STYLE,
+                color: 'var(--text-tertiary)',
               }}
             >
               {'\u5feb\u901f (minimal)'}
@@ -190,10 +205,9 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
               type="button"
               onClick={() => onThinkingModeChange?.('high')}
               className="rounded-xl border px-3 py-2 text-sm transition-colors"
-              style={{
-                borderColor: thinkingMode === 'high' ? 'rgba(99,102,241,0.65)' : 'rgba(148, 163, 184, 0.16)',
-                backgroundColor: thinkingMode === 'high' ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
-                color: thinkingMode === 'high' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              style={thinkingMode === 'high' ? ACTIVE_BUTTON_STYLE : {
+                ...INACTIVE_BUTTON_STYLE,
+                color: 'var(--text-tertiary)',
               }}
             >
               {'\u6df1\u5165 (high)'}
@@ -207,11 +221,11 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
           <div className="mb-2 text-sm font-medium" style={TITLE_STYLE}>
             {'\u753b\u8d28'}
           </div>
-          <div className="relative flex rounded-xl p-0.5" style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}>
+          <div className="relative flex rounded-xl p-0.5" style={SEGMENT_STYLE}>
             <div
               className="absolute bottom-0.5 top-0.5 rounded-[10px] transition-all duration-200 ease-out"
               style={{
-                backgroundColor: 'rgba(255,255,255,0.08)',
+                backgroundColor: 'color-mix(in srgb, var(--bg-hover) 92%, transparent)',
                 left: sizeSlide.left,
                 width: sizeSlide.width,
               }}
@@ -240,7 +254,7 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
         </div>
         <div
           className="flex gap-1.5 overflow-hidden rounded-xl p-1.5"
-          style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}
+          style={SEGMENT_STYLE}
         >
           {hasAuto && !autoInGrid ? (
             <button
@@ -251,7 +265,7 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
                 width: '58px',
                 height: useDoubleRow ? '100px' : '48px',
                 color: aspectRatio === AspectRatio.AUTO ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                backgroundColor: aspectRatio === AspectRatio.AUTO ? 'rgba(255,255,255,0.08)' : 'transparent',
+                backgroundColor: aspectRatio === AspectRatio.AUTO ? 'color-mix(in srgb, var(--bg-hover) 92%, transparent)' : 'transparent',
               }}
             >
               <Fullscreen size={18} />
@@ -281,7 +295,7 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
                   height: '46px',
                   padding: '4px',
                   color: aspectRatio === AspectRatio.AUTO ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                  backgroundColor: aspectRatio === AspectRatio.AUTO ? 'rgba(255,255,255,0.08)' : 'transparent',
+                  backgroundColor: aspectRatio === AspectRatio.AUTO ? 'color-mix(in srgb, var(--bg-hover) 92%, transparent)' : 'transparent',
                 }}
               >
                 <Fullscreen size={14} />
@@ -299,7 +313,7 @@ const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
                   height: '46px',
                   padding: '4px',
                   color: aspectRatio === ratio ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                  backgroundColor: aspectRatio === ratio ? 'rgba(255,255,255,0.08)' : 'transparent',
+                  backgroundColor: aspectRatio === ratio ? 'color-mix(in srgb, var(--bg-hover) 92%, transparent)' : 'transparent',
                 }}
               >
                 {getRatioIcon(ratio)}

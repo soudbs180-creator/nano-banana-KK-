@@ -230,7 +230,7 @@ export default defineConfig(({ mode }) => {
             port: 3000,
             strictPort: true, // Fail if port 3000 is in use (don't auto-switch)
             host: '0.0.0.0',
-            open: true, // Auto-open browser on start
+            open: false, // Keep the browser stable and avoid repeated auto-open on dev server restarts
             headers: {
                 'Cache-Control': 'no-store',
             },

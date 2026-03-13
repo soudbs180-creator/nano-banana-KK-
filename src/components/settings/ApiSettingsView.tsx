@@ -1,4 +1,4 @@
-﻿
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -26,6 +26,8 @@ import {
   type ProviderPricingSnapshot,
 } from '../../services/auth/providerPricingSnapshot';
 import { type ApiProtocolFormat } from '../../services/api/apiConfig';
+import { resolveProviderRuntime } from '../../services/api/providerStrategy';
+import { fetchRawPricingCatalog, fetchWuyinPricingCatalog } from '../../services/billing/newApiPricingService';
 import { supplierService, type Supplier as LegacySupplier } from '../../services/billing/supplierService';
 import { notify } from '../../services/system/notificationService';
 import { mergeModelPricingOverrides } from '../../services/model/modelPricing';
@@ -87,6 +89,8 @@ type AdvancedPricingRow = {
   perRequestPrice?: number;
   groupRatio?: number;
   currency?: string;
+  billingUnit?: string;
+  displayPrice?: string;
   sizeRatioMap: Record<string, number>;
   groupModelRatioMap: Record<string, number>;
   groupSizeRatioMap: Record<string, Record<string, number>>;
@@ -366,8 +370,13 @@ const toFiniteNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-const formatMultiplier = (value: unknown) => {
+const formatMultiplier = (value: unknown, currency = '', suffix = '') => {
   const num = toFiniteNumber(value);
+  if (num === undefined) return null;
+  if (currency === 'CNY') {
+    return `¥${num.toFixed(num >= 1 ? 2 : 3)}${suffix}`;
+  }
+  return `$${num.toFixed(4)}${suffix}`;
   return num === undefined ? '-' : `×${num}`;
 };
 
@@ -410,9 +419,23 @@ const normalizeGroupPriceMap = (value: unknown): Record<string, GroupPriceValue>
   }, {});
 };
 
-const formatPricingAmount = (value: unknown, suffix = '') => {
+const formatPricingAmount = (value: unknown, suffix = '', currency = 'USD') => {
   const num = toFiniteNumber(value);
   return num === undefined ? null : `¥${num.toFixed(4)}${suffix}`;
+};
+
+const formatMoneyDisplay = (value: unknown, suffix = '', currency = 'USD') => {
+  const num = toFiniteNumber(value);
+  if (num === undefined) return null;
+  if (currency === 'CNY') {
+    return `¥${num.toFixed(num >= 1 ? 2 : 3)}${suffix}`;
+  }
+  return `$${num.toFixed(4)}${suffix}`;
+};
+
+const formatRatioDisplay = (value: unknown) => {
+  const num = toFiniteNumber(value);
+  return num === undefined ? '-' : `×${num}`;
 };
 
 const resolveBillingLabel = (billingType?: string, quotaType?: number | string, perRequestPrice?: number) => {
@@ -493,7 +516,10 @@ const getDefaultGroupRatio = (groupRatio?: Record<string, number>) => {
   );
 };
 
-const extractAvailableGroups = (pricingData?: any[], groupRatio?: Record<string, number>) => {
+const isNoGroupProvider = (baseUrl?: string) => resolveProviderRuntime({ baseUrl, format: 'openai' }).strategyId === 'wuyinkeji';
+
+const extractAvailableGroups = (pricingData?: any[], groupRatio?: Record<string, number>, baseUrl?: string) => {
+  if (isNoGroupProvider(baseUrl)) return [];
   const groups = new Set<string>();
 
   Object.keys(groupRatio || {}).forEach((group) => {
@@ -829,8 +855,9 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     advancedResult?.pricingData?.length || currentEditingProvider?.pricingSnapshot?.rows?.length || 0;
   const currentProviderModelCount =
     currentEditingProvider?.models?.length || advancedResult?.models?.length || 0;
+  const currentProviderSupportsGroups = !isNoGroupProvider(providerForm.baseUrl);
   const currentProviderGroupCount =
-    advancedResult?.availableGroups?.length || (providerForm.group.trim() ? 1 : 0);
+    currentProviderSupportsGroups ? (advancedResult?.availableGroups?.length || (providerForm.group.trim() ? 1 : 0)) : 0;
   const currentProviderLastSync = advancedResult?.fetchedAt || currentEditingProvider?.pricingSnapshot?.fetchedAt;
   const currentProviderStatus = useMemo(
     () => getProviderStatusMeta(currentEditingProvider, { hasPricingSnapshot: currentProviderSnapshotCount > 0 }),
@@ -1000,6 +1027,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
           perRequestPrice: toFiniteNumber(item.per_request_price ?? item.perRequestPrice ?? item.price_per_image ?? item.pricePerImage),
           groupRatio: toFiniteNumber(item.group_ratio ?? item.groupMultiplier),
           currency: typeof item.currency === 'string' ? item.currency.trim() : undefined,
+          billingUnit: typeof item.pay_unit === 'string' ? item.pay_unit.trim() : undefined,
+          displayPrice: typeof item.display_price === 'string' ? item.display_price.trim() : undefined,
           sizeRatioMap: normalizeRatioMap(item.size_ratio ?? item.sizeRatio),
           groupModelRatioMap: normalizeRatioMap(item.group_model_ratio ?? item.groupModelRatio),
           groupSizeRatioMap: normalizeNestedRatioMap(item.group_size_ratio ?? item.groupSizeRatio),
@@ -1040,10 +1069,10 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
     if (billingLabel === '按量') {
       const directPriceBadges = [
-        row.inputPrice ? { label: '输入', value: formatPricingAmount(row.inputPrice, '/1M Tokens') } : null,
-        row.outputPrice ? { label: '补全', value: formatPricingAmount(row.outputPrice, '/1M Tokens') } : null,
-        row.cacheReadPrice ? { label: '缓存读取', value: formatPricingAmount(row.cacheReadPrice, '/1M Tokens') } : null,
-        row.cacheCreationPrice ? { label: '缓存创建', value: formatPricingAmount(row.cacheCreationPrice, '/1M Tokens') } : null,
+        row.inputPrice ? { label: '输入', value: formatMoneyDisplay(row.inputPrice, '/1M Tokens', row.currency) } : null,
+        row.outputPrice ? { label: '补全', value: formatMoneyDisplay(row.outputPrice, '/1M Tokens', row.currency) } : null,
+        row.cacheReadPrice ? { label: '缓存读取', value: formatMoneyDisplay(row.cacheReadPrice, '/1M Tokens', row.currency) } : null,
+        row.cacheCreationPrice ? { label: '缓存创建', value: formatMoneyDisplay(row.cacheCreationPrice, '/1M Tokens', row.currency) } : null,
       ].filter(Boolean) as Array<{ label: string; value: string | null }>;
 
       if (directPriceBadges.length > 0) {
@@ -1069,15 +1098,15 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
       if (fallbackGroupRatio !== undefined) {
         detailBadges.push({
           label: '分组倍率',
-          value: `${activeGroup} ${formatMultiplier(fallbackGroupRatio)}`,
+          value: `${activeGroup} ${formatRatioDisplay(fallbackGroupRatio)}`,
           accent: true,
         });
       }
       if (effectiveModelRatio !== undefined) {
-        detailBadges.push({ label: '模型倍率', value: formatMultiplier(effectiveModelRatio) });
+        detailBadges.push({ label: '模型倍率', value: formatRatioDisplay(effectiveModelRatio) });
       }
       if (effectiveCompletionRatio !== undefined) {
-        detailBadges.push({ label: '补全倍率', value: formatMultiplier(effectiveCompletionRatio) });
+        detailBadges.push({ label: '补全倍率', value: formatRatioDisplay(effectiveCompletionRatio) });
       }
 
       return detailBadges;
@@ -1099,7 +1128,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     if (basePrice !== undefined) {
       detailBadges.push({
         label: '基础单价',
-        value: formatPricingAmount(basePrice, '/次') || '-',
+        value: row.displayPrice || formatMoneyDisplay(basePrice, `/${row.billingUnit || '次'}`, row.currency) || '-',
         accent: true,
       });
     }
@@ -1109,7 +1138,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
       if (basePrice === undefined) {
         detailBadges.push({
           label: size,
-          value: formatMultiplier(ratio),
+          value: formatRatioDisplay(ratio),
           accent: size === activeGroup,
         });
         return;
@@ -1117,7 +1146,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
       detailBadges.push({
         label: size,
-        value: `${formatMultiplier(ratio)} = ${formatPricingAmount(basePrice * ratio, '/次')}`,
+        value: `${formatRatioDisplay(ratio)} = ${formatMoneyDisplay(basePrice * ratio, `/${row.billingUnit || '次'}`, row.currency)}`,
         accent: size === activeGroup,
       });
     });
@@ -1125,7 +1154,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     if (!ratioEntries.length && activeSizeRatio !== undefined && basePrice !== undefined) {
       detailBadges.push({
         label: activeGroup,
-        value: `${formatMultiplier(activeSizeRatio)} = ${formatPricingAmount(basePrice * activeSizeRatio, '/次')}`,
+        value: `${formatRatioDisplay(activeSizeRatio)} = ${formatMoneyDisplay(basePrice * activeSizeRatio, `/${row.billingUnit || '次'}`, row.currency)}`,
         accent: true,
       });
     }
@@ -1133,7 +1162,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     if (!detailBadges.length && row.groupRatio !== undefined) {
       detailBadges.push({
         label: '分组倍率',
-        value: `${activeGroup} ${formatMultiplier(row.groupRatio)}`,
+        value: `${activeGroup} ${formatRatioDisplay(row.groupRatio)}`,
         accent: true,
       });
     }
@@ -1215,7 +1244,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
         fetchedAt: snapshot.fetchedAt || Date.now(),
         pricingData: restoredPricingData,
         groupRatio: restoredGroupRatio,
-        availableGroups: extractAvailableGroups(restoredPricingData, restoredGroupRatio),
+        availableGroups: extractAvailableGroups(restoredPricingData, restoredGroupRatio, provider.baseUrl),
       });
       setShowAdvancedMode(true);
     } else {
@@ -1322,7 +1351,66 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
   const fetchPricingFromUrl = async (baseUrl: string, apiKey?: string): Promise<AdvancedResult | null> => {
     const cleanUrl = baseUrl.replace(/\/+$/, '');
 
+    try {
+      const directPricing = await fetchRawPricingCatalog(cleanUrl, apiKey, providerForm.format || 'auto');
+      if (directPricing) {
+        return {
+          models: directPricing.pricingData.map((item: any) => item.model_name || item.model || item.id || '').filter(Boolean),
+          apiType: directPricing.source,
+          pricingHint: `已从 ${directPricing.endpointUrl} 同步 ${directPricing.pricingData.length} 条价格配置。`,
+          fetchedAt: Date.now(),
+          pricingData: directPricing.pricingData,
+          groupRatio: directPricing.groupRatio,
+          availableGroups: directPricing.supportsGroups
+            ? extractAvailableGroups(directPricing.pricingData, directPricing.groupRatio, cleanUrl)
+            : [],
+        };
+      }
+    } catch (error) {
+      console.warn('[ApiSettings] direct pricing fetch failed:', error);
+    }
+
+    if (isNoGroupProvider(cleanUrl)) {
+      try {
+        const pricingList = await fetchWuyinPricingCatalog(cleanUrl);
+        return {
+          models: pricingList.map((item) => item.modelId).filter(Boolean),
+          apiType: 'wuyinkeji',
+          pricingHint: `已从无音科技产品目录同步 ${pricingList.length} 个计费项，按供应商原始单位展示（如 元/张、元/次、元/秒）。`,
+          fetchedAt: Date.now(),
+          pricingData: pricingList.map((item) => ({
+            model: item.modelId,
+            model_name: item.modelName,
+            billing_type: 'per_request',
+            quota_type: 'per_request',
+            per_request_price: item.inputPrice,
+            price_per_image: item.inputPrice,
+            currency: item.currency,
+            pay_unit: item.billingUnit,
+            display_price: item.displayPrice,
+          })),
+          groupRatio: {},
+          availableGroups: [],
+        };
+      } catch (error) {
+        console.warn('[ApiSettings] wuyinkeji pricing fetch failed:', error);
+      }
+    }
+
     // 🚀 [Fix] 尝试多个可能的价格接口路径
+    const runtime = resolveProviderRuntime({ baseUrl: cleanUrl, format: providerForm.format || 'auto' });
+    if (runtime.strategyId === '12ai') {
+      return {
+        models: [],
+        apiType: '12ai',
+        pricingHint: '12AI 当前没有兼容 NewAPI 的 /api/pricing 管理接口，价格扫描已跳过。这里出现 404 不代表生成接口配置错误，请以实际生成请求是否成功为准。',
+        fetchedAt: Date.now(),
+        pricingData: [],
+        groupRatio: {},
+        availableGroups: [],
+      };
+    }
+
     const endpoints = ['/api/pricing', '/pricing', '/v1/pricing', '/api/price', '/price'];
     
     for (const endpoint of endpoints) {
@@ -1334,7 +1422,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
         
         // 如果有 API Key，添加到请求头
         if (apiKey) {
-          headers['Authorization'] = `Bearer ${apiKey}`;
+          const runtime = resolveProviderRuntime({ baseUrl: cleanUrl, format: 'openai' });
+          headers['Authorization'] = formatAuthorizationHeaderValue(apiKey, runtime.authorizationValueFormat);
         }
         
         const response = await fetch(`${cleanUrl}${endpoint}`, {
@@ -1376,7 +1465,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
           fetchedAt: Date.now(),
           pricingData: pricingList,
           groupRatio,
-          availableGroups: extractAvailableGroups(pricingList, groupRatio),
+          availableGroups: extractAvailableGroups(pricingList, groupRatio, cleanUrl),
         };
       } catch (error) {
         console.warn(`[ApiSettings] pricing endpoint ${endpoint} failed:`, error);
@@ -1406,7 +1495,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
           fetchedAt: Date.now(),
           pricingData: pricingList,
           groupRatio,
-          availableGroups: extractAvailableGroups(pricingList, groupRatio),
+          availableGroups: extractAvailableGroups(pricingList, groupRatio, cleanUrl),
         };
       }
     } catch (error) {
@@ -1441,6 +1530,9 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
 
       setAdvancedResult(result);
       setShowAdvancedMode(true);
+      if (isNoGroupProvider(baseUrl)) {
+        setProviderForm((prev) => ({ ...prev, group: '' }));
+      }
       notify.success('扫描成功', `已识别 ${result.models.length} 个模型价格配置。`);
     } finally {
       setAdvancedLoading(false);
@@ -1528,7 +1620,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
       name,
       baseUrl,
       apiKey,
-      group: providerForm.group.trim() || undefined,
+      group: currentProviderSupportsGroups ? (providerForm.group.trim() || undefined) : undefined,
       models,
       format: providerForm.format,
       isActive: providerForm.isActive,
@@ -1670,7 +1762,9 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
       if (providerForm.id === provider.id) {
         setAdvancedResult(result);
         setShowAdvancedMode(true);
-        if (!providerForm.group && result.availableGroups?.length) {
+        if (isNoGroupProvider(provider.baseUrl)) {
+          setProviderForm((prev) => ({ ...prev, group: '' }));
+        } else if (!providerForm.group && result.availableGroups?.length) {
           setProviderForm((prev) => ({ ...prev, group: prev.group || result.availableGroups?.[0] || '' }));
         }
       }
@@ -1782,7 +1876,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border p-4" style={overlayPanelStyle}>
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex flex-col gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="h-3 w-3 rounded-full" style={{ backgroundColor: providerForm.providerColor }} />
@@ -1811,7 +1905,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
               </div>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 xl:w-[360px] xl:flex-shrink-0">
+            <div className="grid gap-2 sm:grid-cols-2">
               {editorSummaryCards.map((row) => (
                 <div key={row.label} className="rounded-xl border p-3" style={elevatedPanelStyle}>
                   <div className="text-[11px] text-[var(--text-tertiary)]">{row.label}</div>
@@ -1822,7 +1916,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr),minmax(340px,0.95fr)]">
+        <div className="space-y-4">
           <div className="space-y-4">
             <div className="rounded-2xl border p-4" style={overlayPanelStyle}>
               <div className="mb-3">
@@ -1854,8 +1948,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-3 2xl:grid-cols-[minmax(0,1.1fr),minmax(0,0.95fr),minmax(220px,0.7fr)]">
-                <div>
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <div className="lg:col-span-2">
                   <div className="mb-1 text-xs text-[var(--text-tertiary)]">基础地址</div>
                   <input className="h-10 w-full rounded-xl border px-3 text-sm outline-none" style={formFieldStyle} value={providerForm.baseUrl} onChange={(event) => setProviderForm((prev) => ({ ...prev, baseUrl: event.target.value }))} placeholder="https://example.com/v1" />
                 </div>
@@ -1955,11 +2049,12 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                 style={formFieldStyle}
                 value={providerForm.group}
                 onChange={(event) => setProviderForm((prev) => ({ ...prev, group: event.target.value }))}
+                disabled={!currentProviderSupportsGroups}
                 placeholder="例如：default"
               />
             </div>
 
-            {advancedResult?.availableGroups?.length ? (
+            {currentProviderSupportsGroups && advancedResult?.availableGroups?.length ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {advancedResult.availableGroups.map((group) => (
                   <button
@@ -2051,11 +2146,11 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                       </div>
                       <div className="rounded-xl border p-3" style={overlayPanelStyle}>
                         <div className="text-[11px] text-[var(--text-tertiary)]">默认分组倍率</div>
-                        <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">{formatMultiplier(defaultScannedGroupRatio)}</div>
+                        <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">{formatRatioDisplay(defaultScannedGroupRatio)}</div>
                       </div>
                     </div>
 
-                    {advancedResult.availableGroups && advancedResult.availableGroups.length > 0 ? (
+                    {currentProviderSupportsGroups && advancedResult.availableGroups && advancedResult.availableGroups.length > 0 ? (
                       <div className="rounded-xl border p-3" style={overlayPanelStyle}>
                         <div className="text-xs font-medium text-[var(--text-primary)]">扫描到的可用分组</div>
                         <div className="mt-2 flex flex-wrap gap-2">
@@ -2160,18 +2255,131 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
               </div>
             )}
           </div>
-
         </div>
     );
   };
+
+  const renderProviderEditorCard = () => (
+    <div ref={providerEditorRef} className="api-settings-editor-card overflow-hidden rounded-[24px] border scroll-mt-6" style={elevatedPanelStyle}>
+      {showProviderCreateForm ? (
+        <>
+          <div className="border-b px-5 py-4" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-surface)' }}>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="text-base font-semibold text-[var(--text-primary)]">
+                    {providerForm.id ? `正在编辑：${editingProviderName}` : '新增供应商'}
+                  </div>
+                  <div className="mt-1 text-xs leading-5 text-[var(--text-tertiary)]">
+                    {providerForm.id
+                      ? editingProviderBaseUrl || '请完善供应商基础地址，保存后会作为当前供应商的识别地址。'
+                      : '填写名称、基础地址和 API Key 后即可保存为新的第三方供应商。'}
+                  </div>
+                </div>
+                <div className="api-settings-editor-toolbar flex flex-wrap gap-2 overflow-visible pb-1">
+                  <button
+                    className="apple-button-primary h-9 px-4 text-sm transition-all active:scale-95 disabled:opacity-70 whitespace-nowrap"
+                    onClick={() => void handleSaveProvider()}
+                    disabled={savingProviderId === (providerForm.id || 'new')}
+                  >
+                    <Save size={14} />
+                    {savingProviderId === (providerForm.id || 'new') ? '保存中...' : (providerForm.id ? '保存供应商' : '添加供应商')}
+                  </button>
+                  <button className="apple-button-secondary h-9 px-4 text-sm transition-all active:scale-95 whitespace-nowrap" style={secondaryButtonStyle} onClick={() => resetThirdPartyForm(true)}>
+                    <XCircle size={14} />关闭
+                  </button>
+                  {currentEditingProvider ? (
+                    <>
+                      <button
+                        className="apple-button-secondary h-8 px-3 text-xs transition-all active:scale-95 whitespace-nowrap"
+                        style={secondaryButtonStyle}
+                        onClick={() => handleToggleProvider(currentEditingProvider)}
+                      >
+                        {currentEditingProvider.isActive ? <Pause size={12} /> : <Play size={12} />}
+                        {currentEditingProvider.isActive ? '停用' : '启用'}
+                      </button>
+                      <button className="apple-button-danger h-8 px-3 text-xs transition-all active:scale-95 whitespace-nowrap" onClick={() => handleDeleteProvider(currentEditingProvider.id)}>
+                        <Trash2 size={12} />删除
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div ref={providerEditorBodyRef} className="max-h-none overflow-y-visible p-5 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
+            {renderProviderForm()}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="border-b px-5 py-4" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-surface)' }}>
+            <div className="text-base font-semibold text-[var(--text-primary)]">供应商工作区</div>
+            <div className="mt-1 text-xs leading-5 text-[var(--text-tertiary)]">
+              先从上方列表选中一个供应商，再在这里处理连接配置、模型校验和价格同步。
+            </div>
+          </div>
+
+          <div className="p-5">
+            <div className="space-y-4">
+              <div className="rounded-2xl border p-5" style={overlayPanelStyle}>
+                <div className="text-sm font-semibold text-[var(--text-primary)]">先选择，再处理</div>
+                <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                  列表卡片只负责帮你快速定位对象，具体编辑和同步动作统一放在工作区里，页面层级会更清晰。
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  {[
+                    { title: '1. 选择供应商', description: '从上方队列点选供应商，编辑卡片会直接在该供应商卡片下方展开。' },
+                    { title: '2. 补齐连接信息', description: '统一修改名称、地址、API Key、默认分组和额度模式。' },
+                    { title: '3. 完成校验同步', description: '保存后继续做模型校验、价格扫描与正式同步。' },
+                  ].map((item) => (
+                    <div key={item.title} className="rounded-xl border p-4" style={elevatedPanelStyle}>
+                      <div className="text-sm font-medium text-[var(--text-primary)]">{item.title}</div>
+                      <div className="mt-1 text-xs leading-5 text-[var(--text-tertiary)]">{item.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="rounded-2xl border p-4" style={overlayPanelStyle}>
+                  <div className="text-[11px] text-[var(--text-tertiary)]">当前队列</div>
+                  <div className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">{summary.providerCount}</div>
+                  <div className="mt-1 text-xs text-[var(--text-tertiary)]">已启用 {summary.activeProviderCount}</div>
+                </div>
+                <div className="rounded-2xl border p-4" style={overlayPanelStyle}>
+                  <div className="text-[11px] text-[var(--text-tertiary)]">待处理</div>
+                  <div className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">{providerWorkspaceSummary.pendingSyncCount + providerWorkspaceSummary.errorCount}</div>
+                  <div className="mt-1 text-xs text-[var(--text-tertiary)]">价格待同步或存在异常</div>
+                </div>
+                <button
+                  className="apple-button-primary h-10 w-full text-sm"
+                  onClick={() => {
+                    setShowProviderCreateForm(true);
+                    resetThirdPartyForm(false);
+                  }}
+                >
+                  <Plus size={14} />新增供应商
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="api-settings-view space-y-4 pb-8">
-      <div className="rounded-[24px] border p-5 md:p-6" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr,minmax(auto,580px)] xl:grid-cols-[1fr,minmax(auto,620px)]">
+        {/* 左侧分区：标题与说明 */}
+        <div className="rounded-[24px] border p-5 md:p-6" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
           <div className="min-w-0">
             <h3 className="text-2xl font-semibold text-[var(--text-primary)]">API 管理</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-              把第三方供应商收进左侧队列，右侧只保留一个连续工作区，减少同屏堆叠的信息块。
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+              统一管理官方接口与第三方供应商。在此可以配置 API 密钥、同步模型价格以及管理供应商队列。
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="rounded-full border px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-elevated)' }}>
@@ -2182,9 +2390,12 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
               </span>
             </div>
           </div>
+        </div>
 
-          <div className="flex flex-col gap-3 xl:min-w-[460px] xl:items-end">
-            <div className="apple-pill-group self-start xl:self-auto">
+        {/* 右侧分区：切换与统计 */}
+        <div className="rounded-[24px] border p-5 md:p-6" style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-tertiary)' }}>
+          <div className="flex flex-col gap-4">
+            <div className="apple-pill-group self-start">
               <button
                 className={`apple-pill-button ${tab === 'thirdparty' ? 'active' : ''}`}
                 onClick={() => setTab('thirdparty')}
@@ -2205,31 +2416,32 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
               </button>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 xl:self-stretch">
+            <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
               <div className="rounded-2xl border p-3" style={elevatedPanelStyle}>
-                <div className="text-[11px] text-[var(--text-tertiary)]">第三方供应商</div>
+                <div className="text-[11px] text-[var(--text-tertiary)]">供应商</div>
                 <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{summary.providerCount}</div>
-                <div className="mt-1 text-xs text-[var(--text-tertiary)]">已启用 {summary.activeProviderCount}</div>
+                <div className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">启用 {summary.activeProviderCount}</div>
               </div>
               <div className="rounded-2xl border p-3" style={elevatedPanelStyle}>
-                <div className="text-[11px] text-[var(--text-tertiary)]">已同步价格</div>
+                <div className="text-[11px] text-[var(--text-tertiary)]">已同步</div>
                 <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{providerWorkspaceSummary.syncedCount}</div>
-                <div className="mt-1 text-xs text-[var(--text-tertiary)]">待同步 {providerWorkspaceSummary.pendingSyncCount}</div>
+                <div className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">待办 {providerWorkspaceSummary.pendingSyncCount}</div>
               </div>
               <div className="rounded-2xl border p-3" style={elevatedPanelStyle}>
-                <div className="text-[11px] text-[var(--text-tertiary)]">异常配置</div>
+                <div className="text-[11px] text-[var(--text-tertiary)]">异常</div>
                 <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{providerWorkspaceSummary.errorCount}</div>
-                <div className="mt-1 text-xs text-[var(--text-tertiary)]">受限额度 {providerWorkspaceSummary.limitedCount}</div>
+                <div className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">受限 {providerWorkspaceSummary.limitedCount}</div>
               </div>
               <div className="rounded-2xl border p-3" style={elevatedPanelStyle}>
                 <div className="text-[11px] text-[var(--text-tertiary)]">累计成本</div>
-                <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">${summary.totalCost.toFixed(4)}</div>
-                <div className="mt-1 text-xs text-[var(--text-tertiary)]">Tokens {summary.totalTokens.toLocaleString('zh-CN')}</div>
+                <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">${summary.totalCost.toFixed(2)}</div>
+                <div className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">Tk {summary.totalTokens.toLocaleString('zh-CN')}</div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
 
       {tab === 'thirdparty' ? (
         <div className="api-settings-layout">
@@ -2310,8 +2522,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                       const latestActivity = provider.pricingSnapshot?.fetchedAt || provider.lastChecked;
 
                       return (
+                        <React.Fragment key={provider.id}>
                         <article
-                          key={provider.id}
                           data-provider-id={provider.id}
                           role="button"
                           tabIndex={0}
@@ -2359,11 +2571,52 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                               <StatusBadge label={providerStatus.label} tone={providerStatus.tone} compact />
                             </div>
 
-                            <div className="api-settings-provider-meta">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="api-settings-provider-meta">
                               <span>模型 {provider.models?.length || 0}</span>
                               <span>价格 {providerPricingCount}</span>
                               {provider.group ? <span>分组 {provider.group}</span> : null}
                               <span>{latestActivity ? `最近 ${formatDate(latestActivity)}` : '未校验'}</span>
+                              </div>
+
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                className="apple-button-secondary h-8 px-3 text-xs transition-all active:scale-95 whitespace-nowrap"
+                                style={secondaryButtonStyle}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleToggleProvider(provider);
+                                }}
+                              >
+                                {provider.isActive ? <Pause size={12} /> : <Play size={12} />}
+                                {provider.isActive ? '暂停刷新' : '恢复刷新'}
+                              </button>
+                              <button
+                                type="button"
+                                className="apple-button-secondary h-8 px-3 text-xs transition-all active:scale-95 whitespace-nowrap"
+                                style={secondaryButtonStyle}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleSyncPricing(provider);
+                                }}
+                              >
+                                <RefreshCw size={12} className={syncingProviderId === provider.id ? 'animate-spin' : ''} />
+                                价格查询
+                              </button>
+                              <button
+                                type="button"
+                                className="apple-button-danger h-8 px-3 text-xs transition-all active:scale-95 whitespace-nowrap"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleDeleteProvider(provider.id);
+                                }}
+                              >
+                                <Trash2 size={12} />
+                                删除
+                              </button>
+                            </div>
+
                             </div>
 
                             <div className="rounded-xl border p-3" style={elevatedPanelStyle}>
@@ -2395,9 +2648,21 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                             </div>
                           </div>
                         </article>
+                        {isSelected && showProviderCreateForm ? (
+                          <div className="pt-1">
+                            {renderProviderEditorCard()}
+                          </div>
+                        ) : null}
+                        </React.Fragment>
                       );
                     })
                   )}
+
+                  {!providerForm.id ? (
+                    <div className="pt-1">
+                      {renderProviderEditorCard()}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </aside>
@@ -2419,7 +2684,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                                 : '填写名称、基础地址和 API Key 后即可保存为新的第三方供应商。'}
                             </div>
                           </div>
-                          <div className="api-settings-editor-toolbar flex-nowrap overflow-x-auto pb-1">
+                          <div className="api-settings-editor-toolbar flex flex-wrap gap-2 overflow-visible pb-1">
                             <button
                               className="apple-button-primary h-9 px-4 text-sm transition-all active:scale-95 disabled:opacity-70 whitespace-nowrap"
                               onClick={() => void handleSaveProvider()}
@@ -2465,7 +2730,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                     </div>
 
                     <div className="p-5">
-                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr),280px]">
+                      <div className="space-y-4">
                         <div className="rounded-2xl border p-5" style={overlayPanelStyle}>
                           <div className="text-sm font-semibold text-[var(--text-primary)]">先选择，再处理</div>
                           <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
@@ -2486,7 +2751,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                           </div>
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                           <div className="rounded-2xl border p-4" style={overlayPanelStyle}>
                             <div className="text-[11px] text-[var(--text-tertiary)]">当前队列</div>
                             <div className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">{summary.providerCount}</div>

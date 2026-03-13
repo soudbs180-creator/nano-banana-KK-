@@ -596,14 +596,18 @@ async function syncWithCloud() {
     if (!currentUserId || isSyncing || currentUserId.startsWith('dev-user-')) return;
     isSyncing = true;
     try {
-        const { data } = await supabase.from('profiles').select('daily_cost_usd, daily_images, daily_tokens, daily_date').eq('id', currentUserId).single();
+        const { data } = await supabase
+            .from('profiles')
+            .select('daily_cost_usd, daily_images, daily_tokens, daily_reset_date')
+            .eq('id', currentUserId)
+            .maybeSingle();
 
         let localHistory = loadHistory();
         let todayStats = getTodayCosts(); // From updated logic
 
         // Simple Sync Logic: If cloud has today's date and higher totals, we assume cloud is source of truth for TOTALS.
         // Detailed syncing is skipped to avoid complexity for now.
-        if (data && data.daily_date === getTodayString()) {
+        if (data && data.daily_reset_date === getTodayString()) {
             // Logic to merge if needed
         }
 
@@ -621,7 +625,7 @@ async function syncWithCloud() {
 
         const { data: { user } } = await supabase.auth.getUser();
 
-        await supabase.from('profiles').upsert({
+        const profilePayload = {
             id: currentUserId,
             nickname: user?.user_metadata?.full_name || '',
             avatar_url: user?.user_metadata?.avatar_url || '',
@@ -632,7 +636,26 @@ async function syncWithCloud() {
             total_used: totalUsed,
             user_apis: apiBudgets,
             updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+        };
+
+        if (data) {
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update(profilePayload)
+                .eq('id', currentUserId);
+
+            if (updateError) {
+                throw updateError;
+            }
+        } else {
+            const { error: insertError } = await supabase
+                .from('profiles')
+                .insert(profilePayload);
+
+            if (insertError) {
+                throw insertError;
+            }
+        }
 
     } catch (e) {
         console.warn('[CostService] Sync error:', e);

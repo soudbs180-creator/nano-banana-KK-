@@ -13,7 +13,6 @@ import {
 import {
   DEFAULT_CREDITS_PER_USD,
   buildAdminModelCreditSuggestion,
-  detectAdminProviderVendor,
 } from '../../services/model/adminModelAdvisor';
 import { getModelCapabilities } from '../../services/model/modelCapabilities';
 import { ImageSize } from '../../types';
@@ -273,17 +272,6 @@ const CreditModelSettings: React.FC = () => {
     };
   }, [form.providerId]);
 
-  const vendorProfile = useMemo(
-    () =>
-      detectAdminProviderVendor({
-        providerId: form.providerId,
-        providerName: form.providerName,
-        baseUrl: form.baseUrl,
-        modelIds: form.models.map((item) => normalizeBaseModelId(item.modelId)).filter(Boolean),
-      }),
-    [form.providerId, form.providerName, form.baseUrl, form.models]
-  );
-
   const modelMixSnapshots = useMemo(() => {
     const currentProviderId = form.providerId.trim() || '__draft_provider__';
     const currentProviderName = form.providerName.trim() || form.providerId.trim() || '当前供应商';
@@ -373,7 +361,6 @@ const CreditModelSettings: React.FC = () => {
     return '填写供应商 ID 后会自动尝试读取价格缓存。';
   }, [cachedPricing, pricingCacheStatus]);
 
-  const mixEligibleCount = modelMixSnapshots.filter((item) => item.peerProviderCount > 0).length;
   const suggestionChangeCount = modelSuggestions.filter((item) => item.hasSuggestedChange).length;
 
   const load = async () => {
@@ -884,95 +871,7 @@ const CreditModelSettings: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-            <div className="rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)] p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold text-[var(--text-primary)]">厂家识别 / 来源隔离</div>
-                  <div className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]">
-                    当前页面只管理管理员全局积分路由，不会修改用户自己添加的 API、密钥和模型列表。
-                  </div>
-                </div>
-                <span className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-[10px] font-medium text-indigo-300">
-                  {vendorProfile.confidence === 'high'
-                    ? '高置信'
-                    : vendorProfile.confidence === 'medium'
-                      ? '中置信'
-                      : '低置信'}
-                </span>
-              </div>
-
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div className="rounded-lg bg-[var(--bg-tertiary)] px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">识别厂家</div>
-                  <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{vendorProfile.label}</div>
-                </div>
-                <div className="rounded-lg bg-[var(--bg-tertiary)] px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">协议族</div>
-                  <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">
-                    {vendorProfile.endpointFamily === 'gemini' ? 'Gemini' : 'OpenAI Compatible'}
-                  </div>
-                </div>
-                <div className="rounded-lg bg-[var(--bg-tertiary)] px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">可混合模型</div>
-                  <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">
-                    {mixEligibleCount} / {form.models.length}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] leading-5 text-emerald-200">
-                {vendorProfile.hint}
-              </div>
-
-              <div className="mt-3 space-y-2">
-                {modelMixSnapshots.filter((item) => item.baseModelId).length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-[var(--border-light)] px-3 py-2 text-[11px] text-[var(--text-tertiary)]">
-                    录入模型编号后，这里会自动提示哪些模型可以与其他供应商做同 ID 混合调配。
-                  </div>
-                ) : (
-                  modelMixSnapshots
-                    .filter((item) => item.baseModelId)
-                    .map((item) => {
-                      const model = form.models[item.index];
-                      return (
-                        <div
-                          key={`${item.baseModelId}-${item.index}`}
-                          className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)] px-3 py-2"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium text-[var(--text-primary)]">
-                                {model.displayName || item.baseModelId}
-                              </div>
-                              <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
-                                模型 ID：{item.baseModelId}
-                              </div>
-                            </div>
-                            <span
-                              className={`rounded-full px-2 py-1 text-[10px] font-medium ${
-                                item.peerProviderCount > 0
-                                  ? 'bg-emerald-500/14 text-emerald-200'
-                                  : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]'
-                              }`}
-                            >
-                              {item.peerProviderCount > 0
-                                ? `可混合 ${item.routeCount} 条路由`
-                                : '当前仅单路由'}
-                            </span>
-                          </div>
-                          <div className="mt-2 text-[11px] leading-5 text-[var(--text-secondary)]">
-                            {item.peerProviderCount > 0
-                              ? `匹配到 ${item.peerProviderCount} 个其他供应商：${item.peerProviders.join('、')}。开启“多供应商混合”后即可参与智能调配。`
-                              : '暂未发现其他供应商存在同 model_id，不会进入混合路由池。'}
-                          </div>
-                        </div>
-                      );
-                    })
-                )}
-              </div>
-            </div>
-
+          <div className="grid grid-cols-1 gap-3">
             <div className="rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)] p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>

@@ -10,6 +10,7 @@ import {
   type CostEntry,
 } from '../services/billing/costService';
 import { adminModelService, type AdminModelConfig } from '../services/model/adminModelService';
+import type { AdminModelQualityKey } from '../services/model/adminModelQuality';
 import {
   SETTINGS_ELEVATED_STYLE,
   SettingsActionButton,
@@ -24,6 +25,14 @@ interface CostEstimationProps {
   onBack?: () => void;
   embedded?: boolean;
 }
+
+type CreditModelDisplayRow = {
+  key: string;
+  displayName: string;
+  systemModelId: string;
+  providerLabel: string;
+  qualitySummary: string[];
+};
 
 const formatUsd = (value: number) => `$${Number(value || 0).toFixed(2)}`;
 
@@ -71,6 +80,82 @@ const InfoPanel: React.FC<{ title: string; children: React.ReactNode }> = ({ tit
     </div>
   </section>
 );
+
+const CREDIT_QUALITY_DISPLAY_ORDER: AdminModelQualityKey[] = ['1K', '2K', '4K', '0.5K'];
+
+const sortAdminModelsForDisplay = (models: AdminModelConfig[]) =>
+  [...models].sort((left, right) => {
+    const priorityDiff = Number(right.priority || 0) - Number(left.priority || 0);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    const weightDiff = Number(right.weight || 0) - Number(left.weight || 0);
+    if (weightDiff !== 0) return weightDiff;
+
+    return String(left.providerName || left.provider || '').localeCompare(
+      String(right.providerName || right.provider || ''),
+      'zh-CN'
+    );
+  });
+
+const buildQualitySummary = (model: AdminModelConfig): string[] => {
+  if (!model.advancedEnabled || !model.qualityPricing) {
+    return [`1K/${model.creditCost}积分`];
+  }
+
+  const enabledQualities = CREDIT_QUALITY_DISPLAY_ORDER.filter(
+    (quality) => model.qualityPricing?.[quality]?.enabled !== false
+  );
+
+  if (enabledQualities.length === 0) {
+    return [`1K/${model.creditCost}积分`];
+  }
+
+  return enabledQualities.map(
+    (quality) => `${quality}/${model.qualityPricing?.[quality]?.creditCost ?? model.creditCost}积分`
+  );
+};
+
+const buildCreditModelDisplayRows = (models: AdminModelConfig[]): CreditModelDisplayRow[] => {
+  const grouped = new Map<string, AdminModelConfig[]>();
+
+  models.forEach((model) => {
+    if (!grouped.has(model.id)) {
+      grouped.set(model.id, []);
+    }
+    grouped.get(model.id)!.push(model);
+  });
+
+  const rows: CreditModelDisplayRow[] = [];
+
+  grouped.forEach((items, modelId) => {
+    const sortedItems = sortAdminModelsForDisplay(items);
+    const mixedItems = sortedItems.filter((item) => item.mixWithSameModel);
+
+    if (mixedItems.length > 1) {
+      const primary = mixedItems[0];
+      rows.push({
+        key: `mixed:${modelId}`,
+        displayName: primary.displayName,
+        systemModelId: `${modelId}@system`,
+        providerLabel: `混合路由 · ${mixedItems.length} 个供应商`,
+        qualitySummary: buildQualitySummary(primary),
+      });
+      return;
+    }
+
+    sortedItems.forEach((item) => {
+      rows.push({
+        key: `${item.providerId || item.provider}:${item.id}`,
+        displayName: item.displayName,
+        systemModelId: `${item.id}@system`,
+        providerLabel: item.providerName || item.provider || '系统模型',
+        qualitySummary: buildQualitySummary(item),
+      });
+    });
+  });
+
+  return rows.sort((left, right) => left.displayName.localeCompare(right.displayName, 'zh-CN'));
+};
 
 export const CostEstimation: React.FC<CostEstimationProps> = ({ onBack, embedded = false }) => {
   const [activeTab, setActiveTab] = useState<'records' | 'credits'>('records');
@@ -128,6 +213,8 @@ export const CostEstimation: React.FC<CostEstimationProps> = ({ onBack, embedded
     };
   }, [summaryRows]);
 
+  const creditModelDisplayRows = useMemo(() => buildCreditModelDisplayRows(adminModels), [adminModels]);
+
   const heroMetrics =
     activeTab === 'records' ? (
       <>
@@ -171,7 +258,7 @@ export const CostEstimation: React.FC<CostEstimationProps> = ({ onBack, embedded
         />
         <SettingsMetricCard
           label="积分模型"
-          value={adminModels.length.toString()}
+          value={creditModelDisplayRows.length.toString()}
           helper="由后台统一配置，前台可直接调用。"
           icon={DollarSign}
           tone="indigo"
@@ -360,22 +447,39 @@ export const CostEstimation: React.FC<CostEstimationProps> = ({ onBack, embedded
             eyebrow="CREDIT MODELS"
             title="积分模型列表"
             description="积分模型由后台统一维护，用户在前台可直接使用，不需要单独配置 API Key。"
-            action={<SettingsBadge tone="neutral">{adminModels.length} 个模型</SettingsBadge>}
+            action={<SettingsBadge tone="neutral">{creditModelDisplayRows.length} 个模型</SettingsBadge>}
           >
-            {adminModels.length > 0 ? (
+            {creditModelDisplayRows.length > 0 ? (
               <div className="grid gap-3">
-                {adminModels.map((model) => (
-                  <div key={model.id} className="rounded-2xl border p-4" style={SETTINGS_ELEVATED_STYLE}>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {creditModelDisplayRows.map((model) => (
+                  <div key={model.key} className="rounded-2xl border px-4 py-3" style={SETTINGS_ELEVATED_STYLE}>
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0">
-                        <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {model.displayName}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                            {model.displayName}
+                          </div>
+                          <SettingsBadge tone="neutral">{model.providerLabel}</SettingsBadge>
                         </div>
                         <div className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                          {model.id}@system
+                          {model.systemModelId}
                         </div>
                       </div>
-                      <SettingsBadge tone="amber">{model.creditCost} 积分 / 次</SettingsBadge>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {model.qualitySummary.map((summary) => (
+                          <span
+                            key={`${model.key}:${summary}`}
+                            className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium"
+                            style={{
+                              borderColor: 'rgba(245, 158, 11, 0.24)',
+                              backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                              color: 'var(--state-warning-text)',
+                            }}
+                          >
+                            {summary}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ))}

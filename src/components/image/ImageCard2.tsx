@@ -29,9 +29,10 @@ const getImageStackZIndex = (
     image: GeneratedImage,
     isSelected: boolean,
     isNew: boolean,
-    isActive: boolean
+    isActive: boolean,
+    groupLayerZIndex?: number
 ) => {
-    const persistedOrder = (image.zIndex ?? 0) * 100;
+    const persistedOrder = (groupLayerZIndex ?? image.zIndex ?? 0) * 100;
 
     if (image.isGenerating) return persistedOrder + 40;
     if (isNew) return persistedOrder + 30;
@@ -47,6 +48,8 @@ const snapCanvasCoordinate = (value: number, scale: number = 1) => {
 
 interface ImageNodeProps {
     image: GeneratedImage;
+    groupLayerZIndex?: number;
+    stackZIndexOverride?: number;
     position: { x: number; y: number };
     onPositionChange: (id: string, position: { x: number; y: number }) => void;
     onDelete: (id: string) => void;
@@ -74,6 +77,8 @@ interface ImageNodeProps {
 
 const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     image,
+    groupLayerZIndex,
+    stackZIndexOverride,
     position,
     onPositionChange,
     onDelete,
@@ -168,7 +173,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                     defaults: { force3D: true, overwrite: 'auto' },
                     onStart: () => {
                         document.body.classList.add('is-animating-card');
-                        el.style.zIndex = String(getImageStackZIndex(image, isSelected, isNew, isActive) + 1);
+                        el.style.zIndex = String((stackZIndexOverride ?? getImageStackZIndex(image, isSelected, isNew, isActive, groupLayerZIndex)) + 1);
                     },
                     onComplete: () => {
                         document.body.classList.remove('is-animating-card');
@@ -224,7 +229,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                 restoreVisibility();
             });
         }
-    }, [image.id, image.timestamp, canvasTransform]);
+    }, [image.id, image.timestamp, canvasTransform, image.zIndex, isActive, isNew, isSelected, groupLayerZIndex, stackZIndexOverride]);
 
     // 🚀 [New] Entry Animation Cleanup: remove 'isNew' status after animation ends
     useEffect(() => {
@@ -929,7 +934,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const adaptiveBorderWidth = Math.max(1, 1.5 / borderScale);
     const adaptiveSubBorderWidth = Math.max(1, 1.2 / borderScale);
     const renderPos = isDragging ? localPosRef.current : position;
-    const stackZIndex = getImageStackZIndex(image, isSelected, isNew, isActive);
+    const stackZIndex = stackZIndexOverride ?? getImageStackZIndex(image, isSelected, isNew, isActive, groupLayerZIndex);
     const renderLeft = snapCanvasCoordinate(renderPos.x - nodeWidth / 2, zoomScale || 1);
     const renderTop = snapCanvasCoordinate(renderPos.y - nodeHeight, zoomScale || 1);
 

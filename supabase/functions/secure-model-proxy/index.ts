@@ -183,10 +183,45 @@ function getRouteCreditCost(route: CreditModelRouteRow, requestedSize: string): 
   return Math.max(1, Number(pricing[requestedSize]?.creditCost || route.credit_cost || 1));
 }
 
-/**
- * 基于用量平衡的路由选择
- * 优先选择调用次数最少的供应商，实现API用量均衡
- */
+function pickRandomRoute<T>(routes: T[]): T | null {
+  if (routes.length === 0) return null;
+  if (routes.length === 1) return routes[0];
+
+  const index = Math.floor(Math.random() * routes.length);
+  return routes[index] ?? routes[0] ?? null;
+}
+
+function pickCheapestRoute(
+  routes: CreditModelRouteRow[],
+  requestedSize: string,
+  options?: {
+    onlyEnabledForRequestedSize?: boolean;
+    useBaseCreditCost?: boolean;
+  }
+): { route: CreditModelRouteRow; requiredCredits: number } | null {
+  if (routes.length === 0) return null;
+
+  const onlyEnabledForRequestedSize = options?.onlyEnabledForRequestedSize !== false;
+  const useBaseCreditCost = options?.useBaseCreditCost === true;
+
+  const scopedRoutes = onlyEnabledForRequestedSize
+    ? routes.filter((route) => isRouteQualityEnabled(route, requestedSize))
+    : routes;
+
+  if (scopedRoutes.length === 0) return null;
+
+  const pricedRoutes = scopedRoutes.map((route) => ({
+    route,
+    requiredCredits: useBaseCreditCost
+      ? Math.max(1, Number(route.credit_cost || 1))
+      : getRouteCreditCost(route, requestedSize),
+  }));
+
+  const lowestCost = Math.min(...pricedRoutes.map((item) => item.requiredCredits));
+  const cheapestRoutes = pricedRoutes.filter((item) => item.requiredCredits === lowestCost);
+  return pickRandomRoute(cheapestRoutes);
+}
+
 function pickCreditModelRoute(
   routes: CreditModelRouteRow[],
   requestedSize: string,
@@ -213,28 +248,18 @@ function pickCreditModelRoute(
   }
 
   if ((routeIndex === null || routeIndex === 0) && mixedRoutes.length > 1) {
-    if (eligibleMixedRoutes.length === 0) return null;
-
-    // 按调用次数升序排序，优先选择用量最少的
-    const sortedByUsage = [...eligibleMixedRoutes].sort((a, b) => {
-      const countA = a.call_count ?? 0;
-      const countB = b.call_count ?? 0;
-      if (countA !== countB) return countA - countB;
-      
-      // 如果调用次数相同，按价格优先
-      const costA = getRouteCreditCost(a, requestedSize);
-      const costB = getRouteCreditCost(b, requestedSize);
-      if (costA !== costB) return costA - costB;
-      
-      // 最后按权重
-      return (b.weight ?? 1) - (a.weight ?? 1);
+    const selectedForRequestedSize = pickCheapestRoute(mixedRoutes, requestedSize, {
+      onlyEnabledForRequestedSize: true,
+      useBaseCreditCost: false,
     });
-    
-    const selectedRoute = sortedByUsage[0];
-    return {
-      route: selectedRoute,
-      requiredCredits: getRouteCreditCost(selectedRoute, requestedSize),
-    };
+    if (selectedForRequestedSize) {
+      return selectedForRequestedSize;
+    }
+
+    return pickCheapestRoute(mixedRoutes, requestedSize, {
+      onlyEnabledForRequestedSize: false,
+      useBaseCreditCost: true,
+    });
   }
 
   if (routeIndex !== null) {
@@ -672,6 +697,18 @@ Deno.serve(async (req) => {
         return json({ success: false, error: 'Provider key is not configured' }, 500);
       }
 
+      const refundTaskCredits = async (reason: string): Promise<{ success: boolean; message?: string }> => {
+        const { data: refundRows, error: refundError } = await serviceClient.rpc('refund_credits', {
+          p_transaction_id: taskPayload.transactionId,
+          p_reason: reason,
+        });
+        const refundResult = Array.isArray(refundRows) ? refundRows[0] : refundRows;
+        return {
+          success: !refundError && Boolean(refundResult?.success),
+          message: refundError?.message || refundResult?.message,
+        };
+      };
+
       const baseUrl = String(creditModel.base_url || '').replace(/\/$/, '');
       if (body.mode === 'delete_task') {
         await tryDeleteUpstreamVideoTask(taskPayload.endpointType, baseUrl, selectedKey, taskPayload.operationName);
@@ -692,10 +729,10 @@ Deno.serve(async (req) => {
           return json({ success: false, error: `Cancel failed: ${cancelResponse.status} ${errorText}` }, 502);
         }
 
-        await serviceClient.rpc('refund_credits', {
-          p_transaction_id: taskPayload.transactionId,
-          p_reason: 'video_generation_cancelled',
-        });
+        const refundResult = await refundTaskCredits('video_generation_cancelled');
+        if (!refundResult.success) {
+          return json({ success: false, error: `Cancel succeeded but credit rollback failed: ${refundResult.message || 'unknown error'}` }, 500);
+        }
 
         return json({ success: true, status: 'failed', deducted: true });
       }
@@ -725,10 +762,10 @@ Deno.serve(async (req) => {
           return json({ success: false, error: 'Cancel failed for upstream video task' }, 502);
         }
 
-        await serviceClient.rpc('refund_credits', {
-          p_transaction_id: taskPayload.transactionId,
-          p_reason: 'video_generation_cancelled',
-        });
+        const refundResult = await refundTaskCredits('video_generation_cancelled');
+        if (!refundResult.success) {
+          return json({ success: false, error: `Cancel succeeded but credit rollback failed: ${refundResult.message || 'unknown error'}` }, 500);
+        }
 
         return json({ success: true, status: 'failed', deducted: true });
       }
@@ -753,10 +790,10 @@ Deno.serve(async (req) => {
 
         const videoUri = statusData.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
         if (!videoUri) {
-          await serviceClient.rpc('refund_credits', {
-            p_transaction_id: taskPayload.transactionId,
-            p_reason: 'video_generation_failed',
-          });
+          const refundResult = await refundTaskCredits('video_generation_failed');
+          if (!refundResult.success) {
+            return json({ success: false, error: `Task failed and credit rollback failed: ${refundResult.message || 'unknown error'}` }, 500);
+          }
           return json({ success: true, status: 'failed', deducted: true });
         }
 
@@ -829,10 +866,10 @@ Deno.serve(async (req) => {
       }
 
       if (['failure', 'failed', 'error'].includes(status)) {
-        await serviceClient.rpc('refund_credits', {
-          p_transaction_id: taskPayload.transactionId,
-          p_reason: 'video_generation_failed',
-        });
+        const refundResult = await refundTaskCredits('video_generation_failed');
+        if (!refundResult.success) {
+          return json({ success: false, error: `Task failed and credit rollback failed: ${refundResult.message || 'unknown error'}` }, 500);
+        }
         return json({ success: true, status: 'failed', deducted: true });
       }
 

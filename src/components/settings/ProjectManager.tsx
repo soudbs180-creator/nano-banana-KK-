@@ -13,6 +13,7 @@ import {
     ScrollText,
     Square,
     Sun,
+    Trash2,
     Wand2,
 } from 'lucide-react';
 import { useCanvas } from '../../context/CanvasContext';
@@ -60,6 +61,8 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
         renameCanvas,
         clearAllData,
         canCreateCanvas,
+        mergeCanvasInto,
+        cleanupInvalidCards,
     } = useCanvas();
     const { theme, toggleTheme } = useTheme();
 
@@ -68,6 +71,9 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
+    const [showMergeModal, setShowMergeModal] = useState(false);
+    const [mergingCanvasId, setMergingCanvasId] = useState<string | null>(null);
+    const [cleaningInvalid, setCleaningInvalid] = useState(false);
     const [topPosition, setTopPosition] = useState(() => {
         const saved = localStorage.getItem('kk_pm_pos');
         const parsed = saved ? Number.parseFloat(saved) : 80;
@@ -280,6 +286,58 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
         }
     }, [activeCanvas]);
 
+    const handleCleanupInvalidCards = useCallback(() => {
+        if (!activeCanvas) {
+            return;
+        }
+
+        setCleaningInvalid(true);
+        try {
+            const result = cleanupInvalidCards(activeCanvas.id);
+            if (result.removedPrompts === 0 && result.removedImages === 0 && result.removedGroups === 0) {
+                notify.success('无需清理', '当前项目没有发现错误卡片或失效分组。');
+                return;
+            }
+
+            notify.success(
+                '清理完成',
+                `已清理 ${result.removedPrompts} 张主卡、${result.removedImages} 张子卡，并移除 ${result.removedGroups} 个空分组。`
+            );
+        } finally {
+            setCleaningInvalid(false);
+            setShowDropdown(false);
+        }
+    }, [activeCanvas, cleanupInvalidCards]);
+
+    const handleMergeIntoCurrent = useCallback((sourceCanvasId: string) => {
+        if (!activeCanvas || sourceCanvasId === activeCanvas.id) {
+            return;
+        }
+
+        const sourceCanvas = state.canvases.find(canvas => canvas.id === sourceCanvasId);
+        if (!sourceCanvas) {
+            return;
+        }
+
+        const confirmed = window.confirm(`确认把“${sourceCanvas.name}”合并到“${activeCanvas.name}”吗？合并后原项目会被删除。`);
+        if (!confirmed) {
+            return;
+        }
+
+        setMergingCanvasId(sourceCanvasId);
+        try {
+            const result = mergeCanvasInto(sourceCanvasId, activeCanvas.id, { deleteSource: true });
+            notify.success(
+                '合并完成',
+                `已合并 ${result.movedPrompts} 张主卡和 ${result.movedImages} 张子卡到“${activeCanvas.name}”。`
+            );
+            setShowMergeModal(false);
+            setShowDropdown(false);
+        } finally {
+            setMergingCanvasId(null);
+        }
+    }, [activeCanvas, mergeCanvasInto, state.canvases]);
+
     const desktopIconButtonClass = 'group relative flex h-10 w-10 items-center justify-center rounded-xl text-[var(--text-secondary)] transition-all active:scale-95 hover:bg-[var(--toolbar-hover)] hover:text-[var(--text-primary)]';
     const dropdownPositionStyle = isMobile
         ? { top: 'calc(100% + 10px)', left: 0, width: 'min(92vw, 340px)' }
@@ -435,6 +493,30 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                     <button
                         onClick={(event) => {
                             event.stopPropagation();
+                            setShowMergeModal(true);
+                        }}
+                        disabled={state.canvases.length < 2 || !!mergingCanvasId}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--toolbar-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <Layers size={16} />
+                        {mergingCanvasId ? '正在合并项目...' : '合并其他项目到当前画布'}
+                    </button>
+
+                    <button
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            handleCleanupInvalidCards();
+                        }}
+                        disabled={cleaningInvalid}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-amber-500/10 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <Trash2 size={16} />
+                        {cleaningInvalid ? '正在清理错误卡片...' : '清理错误卡片'}
+                    </button>
+
+                    <button
+                        onClick={(event) => {
+                            event.stopPropagation();
                             handleClearAll();
                         }}
                         className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-red-500/10 hover:text-red-400"
@@ -505,6 +587,65 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
         )
         : null;
 
+    const mergeCandidates = state.canvases.filter(canvas => canvas.id !== activeCanvas?.id);
+    const mergeModal = showMergeModal
+        ? ReactDOM.createPortal(
+            <div
+                className="fixed inset-0 z-[101] flex items-center justify-center bg-black/60 backdrop-blur-md"
+                onClick={() => !mergingCanvasId && setShowMergeModal(false)}
+            >
+                <div
+                    className="glass-strong mx-4 w-[92%] max-w-lg rounded-2xl border border-white/10 p-5 shadow-2xl"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">合并项目到当前画布</h3>
+                            <p className="mt-1 text-sm text-gray-500 dark:text-zinc-400">
+                                选择一个项目合并进“{activeProjectName}”，合并完成后原项目会自动删除。
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setShowMergeModal(false)}
+                            disabled={!!mergingCanvasId}
+                            className="rounded-lg px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-white"
+                        >
+                            关闭
+                        </button>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                        {mergeCandidates.length === 0 ? (
+                            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-5 text-sm text-gray-500 dark:text-zinc-400">
+                                当前没有其他项目可合并。
+                            </div>
+                        ) : (
+                            mergeCandidates.map((canvas) => (
+                                <button
+                                    key={canvas.id}
+                                    onClick={() => handleMergeIntoCurrent(canvas.id)}
+                                    disabled={!!mergingCanvasId}
+                                    className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <div>
+                                        <div className="text-sm font-medium text-gray-900 dark:text-white">{canvas.name}</div>
+                                        <div className="mt-1 text-xs text-gray-500 dark:text-zinc-400">
+                                            {canvas.promptNodes.length} 个主卡，{canvas.imageNodes.length} 个子卡
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-sky-500">
+                                        {mergingCanvasId === canvas.id ? '合并中...' : '合并'}
+                                    </div>
+                                </button>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>,
+            document.body,
+        )
+        : null;
+
     if (isMobile) {
         return (
             <>
@@ -552,6 +693,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 </div>
                 </div>
                 {deleteConfirmModal}
+                {mergeModal}
             </>
         );
     }
@@ -675,6 +817,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                 </div>
             </div>
             {deleteConfirmModal}
+            {mergeModal}
         </>
     );
 };

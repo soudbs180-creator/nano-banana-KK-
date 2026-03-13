@@ -3,8 +3,8 @@
  * 
  * Handles geographic region detection and provides appropriate 12AI API endpoints.
  * Logic:
- * - If user is in China (Asia/Shanghai, etc.): use cdn.12ai.org
- * - Otherwise: use new.12ai.org
+ * - Keep the user's explicit 12AI host when provided
+ * - Otherwise use region-aware defaults
  */
 
 export class RegionService {
@@ -42,7 +42,7 @@ export class RegionService {
     }
 
     /**
-     * Returns the recommended 12AI Base URL based on region.
+     * Returns the default 12AI Base URL.
      */
     static get12AIBaseUrl(): string {
         const CN_GATEWAY = 'https://cdn.12ai.org';
@@ -95,6 +95,15 @@ export class RegionService {
                 clean = clean.substring(0, clean.length - suffix.length).replace(/\/+$/, '');
             }
         });
+
+        try {
+            const parsed = new URL(clean);
+            if (/(^|\.)12ai\.(org|xyz|io|net)$/i.test(parsed.hostname)) {
+                return `${parsed.protocol}//${parsed.host}`;
+            }
+        } catch {
+            return this.isChina() ? CN_GATEWAY : GLOBAL_GATEWAY;
+        }
 
         return clean;
     }

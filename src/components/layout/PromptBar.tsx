@@ -21,6 +21,7 @@ import { useBilling } from '../../context/BillingContext';
 import { useAuth } from '../../context/AuthContext';
 import { calculateCost } from '../../services/billing/costService';
 import { isCreditBasedModel, getModelCredits } from '../../services/model/modelPricing';
+import { adminModelService } from '../../services/model/adminModelService';
 import PromptBarTopRow from './prompt-bar/PromptBarTopRow';
 import PromptBarFooter from './prompt-bar/PromptBarFooter';
 
@@ -284,14 +285,20 @@ const CreditSendButton: React.FC<CreditSendButtonProps> = ({
             const start = normalizeColor(colorStart, '#3B82F6');
             const end = normalizeColor(colorEnd, '#2563EB');
             return {
-                className: 'text-white shadow-md hover:shadow-lg transition-shadow',
+                className: 'text-white shadow-md hover:shadow-lg transition-shadow border border-white/20 backdrop-blur-xl',
                 style: {
-                    background: `linear-gradient(135deg, ${start} 0%, ${end} 100%)`,
-                    boxShadow: `0 2px 8px 0 ${start}40`
+                    background: `linear-gradient(135deg, color-mix(in srgb, ${start} 72%, rgba(255,255,255,0.18)) 0%, color-mix(in srgb, ${end} 82%, rgba(255,255,255,0.08)) 100%)`,
+                    boxShadow: `0 16px 32px -18px ${start}85, inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(255,255,255,0.08)`
                 }
             };
         }
-        return { className: 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/30' };
+        return {
+            className: 'text-white shadow-md hover:shadow-lg transition-shadow border border-white/20 backdrop-blur-xl',
+            style: {
+                background: 'linear-gradient(135deg, rgba(96, 165, 250, 0.92) 0%, rgba(59, 130, 246, 0.88) 45%, rgba(29, 78, 216, 0.82) 100%)',
+                boxShadow: '0 16px 32px -18px rgba(37, 99, 235, 0.88), inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(255,255,255,0.08)'
+            }
+        };
     };
 
     // 🚀 [动画] 箭头从左到右的滑动动画关键帧
@@ -300,6 +307,18 @@ const CreditSendButton: React.FC<CreditSendButtonProps> = ({
             0% { transform: translateX(-3px); opacity: 0.4; }
             50% { transform: translateX(2px); opacity: 1; }
             100% { transform: translateX(-3px); opacity: 0.4; }
+        }
+
+        @keyframes send-button-glow {
+            0%, 100% { box-shadow: 0 14px 30px -18px rgba(37, 99, 235, 0.7), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(255,255,255,0.08); }
+            50% { box-shadow: 0 18px 38px -18px rgba(96, 165, 250, 0.88), 0 0 0 1px rgba(255,255,255,0.12), inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -1px 0 rgba(255,255,255,0.12); }
+        }
+
+        @keyframes send-button-sheen {
+            0% { transform: translateX(-130%); opacity: 0; }
+            18% { opacity: 0.9; }
+            48% { transform: translateX(160%); opacity: 0; }
+            100% { transform: translateX(160%); opacity: 0; }
         }
     `;
 
@@ -352,12 +371,28 @@ const CreditSendButton: React.FC<CreditSendButtonProps> = ({
                 onClick={onClick}
                 disabled={isDisabled}
                 className={`
-                    group relative h-10 px-1 py-1 rounded-full flex flex-row items-center whitespace-nowrap shrink-0 ml-auto transition-all duration-200
+                    group relative h-10 px-1 py-1 rounded-full flex flex-row items-center whitespace-nowrap shrink-0 ml-auto overflow-hidden
+                    transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none
+                    ${!isDisabled && !isInsufficient ? 'hover:translate-x-[1px] hover:scale-[1.025] active:translate-x-0 active:scale-[0.985] focus-visible:ring-2 focus-visible:ring-blue-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent' : ''}
                     ${defaultStyleProps.className || ''}
                 `}
-                style={{ paddingRight: '4px', ...(defaultStyleProps.style || {}) }}
+                style={{
+                    paddingRight: '4px',
+                    ...(defaultStyleProps.style || {}),
+                    animation: !isDisabled && !isInsufficient ? 'send-button-glow 2.2s ease-in-out infinite' : undefined
+                }}
             >
-                <div className="flex items-center gap-2 px-3">
+                {!isDisabled && !isInsufficient && (
+                    <>
+                        <div className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.28)_0%,rgba(255,255,255,0.08)_34%,rgba(255,255,255,0.03)_58%,rgba(255,255,255,0.12)_100%)] opacity-95" />
+                        <div className="pointer-events-none absolute inset-x-[10px] top-[3px] h-[42%] rounded-full bg-white/18 blur-[3px]" />
+                        <div
+                            className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/2 skew-x-[-20deg] bg-[linear-gradient(90deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.42)_50%,rgba(255,255,255,0)_100%)]"
+                            style={{ animation: 'send-button-sheen 3.4s ease-in-out infinite' }}
+                        />
+                    </>
+                )}
+                <div className="relative z-[1] flex items-center gap-2 px-3">
                     {isCreditModel && creditCost > 0 ? (
                         <div className="flex items-center gap-1.5">
                             <Sparkles size={14} fill="currentColor" className={isDisabled ? 'text-gray-400' : isInsufficient ? 'text-red-500' : 'text-white'} />
@@ -366,7 +401,7 @@ const CreditSendButton: React.FC<CreditSendButtonProps> = ({
                             </span>
                         </div>
                     ) : (
-                        <span className={`text-sm font-bold ${isDisabled ? 'text-gray-400' : isInsufficient ? 'text-red-500' : 'text-white'}`}>
+                        <span className={`text-sm font-bold tracking-[0.01em] ${isDisabled ? 'text-gray-400' : isInsufficient ? 'text-red-500' : 'text-white drop-shadow-[0_1px_10px_rgba(255,255,255,0.28)]'}`}>
                             发送
                         </span>
                     )}
@@ -374,16 +409,16 @@ const CreditSendButton: React.FC<CreditSendButtonProps> = ({
 
                 {/* 发送箭头 🚀 箭头朝右 + 动画 */}
                 <div className={`
-                    w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 overflow-hidden
+                    relative z-[1] w-8 h-8 rounded-full flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden
                     ${isDisabled
                         ? 'bg-gray-300 dark:bg-zinc-700 text-gray-500'
                         : isInsufficient
                             ? 'bg-red-500 text-white'
-                            : 'bg-white/20 text-white group-hover:scale-110'
+                            : 'border border-white/20 bg-white/22 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.36),inset_0_-1px_0_rgba(255,255,255,0.08),0_6px_14px_rgba(15,23,42,0.14)] backdrop-blur-md group-hover:scale-[1.08] group-hover:translate-x-[1px] group-hover:bg-white/30'
                     }
                 `}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                        className="transition-transform duration-300 group-hover:translate-x-0.5"
+                        className="transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:translate-x-[1.5px]"
                         style={!isDisabled ? { animation: 'arrow-slide-right 1.5s ease-in-out infinite' } : undefined}
                     >
                         <line x1="5" y1="12" x2="19" y2="12" />
@@ -736,25 +771,35 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 lowerId.includes('ideogram');
 
             let inferredType = m.type || (isVideo ? 'video' : (isImage ? 'image' : 'chat'));
+            const resolvedSystemDisplay = m.isSystemInternal
+                ? adminModelService.getModelDisplayInfo(m.id, config.imageSize)
+                : null;
+            const resolvedProviderLabel = resolvedSystemDisplay?.providerName
+                || resolvedSystemDisplay?.provider
+                || m.providerLabel
+                || m.provider;
 
             // 🚀 [Fix] 优先使用原始模型的颜色和管理员配置
             return {
                 id: m.id,
-                label: m.name || m.id,
-                provider: m.provider,
+                label: resolvedSystemDisplay?.displayName || m.name || m.id,
+                provider: m.isSystemInternal ? 'SystemProxy' : m.provider,
+                providerLabel: resolvedProviderLabel,
                 isSystemInternal: m.isSystemInternal,
+                sourceScope: m.isSystemInternal ? 'system' : 'user',
+                sourceLabel: m.isSystemInternal ? '系统模型' : '用户 API',
                 type: inferredType,
                 enabled: true,
                 description: m.description,
-                creditCost: m.creditCost,
-                colorStart: m.colorStart,
-                colorEnd: m.colorEnd,
-                colorSecondary: m.colorSecondary,
-                textColor: m.textColor
+                creditCost: resolvedSystemDisplay?.creditCost ?? m.creditCost,
+                colorStart: resolvedSystemDisplay?.colorStart || m.colorStart,
+                colorEnd: resolvedSystemDisplay?.colorEnd || m.colorEnd,
+                colorSecondary: resolvedSystemDisplay?.colorSecondary || m.colorSecondary,
+                textColor: resolvedSystemDisplay?.textColor || m.textColor
             } as ActiveModel;
         });
 
-        return step2.filter(m => {
+        const filteredModels = step2.filter(m => {
             const type = m.type || 'image';
             // 🚀 [Fix] 严格按模式过滤模型类型，不掺杂其他类型
             // 🚀 [Fix] 支持多模态模型：image+chat 在 image 模式下也可用
@@ -764,7 +809,35 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
             if (config.mode === GenerationMode.AUDIO) return type === 'audio';
             return type === config.mode;
         });
-    }, [globalModels, config.mode]);
+
+        const displayGroupedModels = new Map<string, ActiveModel>();
+        filteredModels.forEach((model) => {
+            const displayName = String(getModelDisplayInfo(model).displayName || model.label || model.id || '')
+                .trim()
+                .toLowerCase();
+            const visibleProvider = String(model.provider || model.providerLabel || '').trim().toLowerCase();
+            const groupKey = `${model.isSystemInternal ? 'system' : 'user'}:${displayName}:${visibleProvider}`;
+            const existing = displayGroupedModels.get(groupKey);
+
+            if (!existing) {
+                displayGroupedModels.set(groupKey, model);
+                return;
+            }
+
+            const existingDescription = String(existing.description || '').trim();
+            const nextDescription = String(model.description || '').trim();
+            if (!existingDescription && nextDescription) {
+                displayGroupedModels.set(groupKey, model);
+                return;
+            }
+
+            if (nextDescription.length > existingDescription.length) {
+                displayGroupedModels.set(groupKey, model);
+            }
+        });
+
+        return Array.from(displayGroupedModels.values());
+    }, [globalModels, config.mode, config.imageSize]);
 
     const sortedAvailableModels = useMemo(() => {
         return filterAndSortModels(availableModels, '', modelCustomizations);
@@ -1599,14 +1672,28 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
     // 🚀 [NEW] 计算总成本 (单价 * 数量)
     const totalCreditCost = currentCreditCost * (config.parallelCount || 1);
-    const currentModelPrimaryColor = normalizeColor(currentModel?.colorStart, '#3B82F6');
-    const currentModelSecondaryColor = normalizeColor(currentModel?.colorSecondary || currentModel?.colorEnd, '#2563EB');
-    const currentModelTextColor = normalizeModelTextColor(currentModel?.textColor);
+    const resolvedCurrentSystemDisplay = currentModel?.isSystemInternal
+        ? adminModelService.getModelDisplayInfo(currentModel.id, config.imageSize)
+        : null;
+    const currentModelPrimaryColor = normalizeColor(
+        resolvedCurrentSystemDisplay?.colorStart || currentModel?.colorStart,
+        '#3B82F6'
+    );
+    const currentModelSecondaryColor = normalizeColor(
+        resolvedCurrentSystemDisplay?.colorSecondary
+            || resolvedCurrentSystemDisplay?.colorEnd
+            || currentModel?.colorSecondary
+            || currentModel?.colorEnd,
+        '#2563EB'
+    );
+    const currentModelTextColor = normalizeModelTextColor(
+        resolvedCurrentSystemDisplay?.textColor || currentModel?.textColor
+    );
 
     // 🚀 [Fix] 模型名称显示：优先使用管理员配置的label，其次使用ID映射的友好名称
     let currentModelName = isModelListEmpty
         ? '无可用模型'
-        : (currentModel?.label || getModelDisplayName(currentModel?.id || '') || currentModel?.id || '未选择模型');
+        : (resolvedCurrentSystemDisplay?.displayName || currentModel?.label || getModelDisplayName(currentModel?.id || '') || currentModel?.id || '未选择模型');
 
     // 隐藏模型名字中括号及括号内的内容，避免名称过长超出输入框
     if (typeof currentModelName === 'string') {
@@ -1614,7 +1701,14 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     }
 
     // 🚀 [NEW] 获取展示信息 (来源标签)
-    const modelDisplayInfo = currentModel ? getModelDisplayInfo(currentModel) : null;
+    const modelDisplayInfo = currentModel
+        ? {
+            ...getModelDisplayInfo(currentModel),
+            providerName: resolvedCurrentSystemDisplay?.providerName || currentModel?.providerLabel || currentModel?.provider,
+            sourceScope: currentModel?.sourceScope,
+            sourceLabel: currentModel?.sourceLabel
+        }
+        : null;
 
     const truncateModelLabel = useCallback((label: string, max = 25) => {
         if (label.length <= max) return label;
@@ -1772,6 +1866,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             >
                                 <X size={14} />
                             </button>
+                            )}
                         </div>
                     )}
 
@@ -1937,7 +2032,6 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <Wand2 className={`w-3 h-3 ${config.enablePromptOptimization ? 'animate-pulse' : ''}`} />
                                 <span className="font-bold">优化提示词</span>
                             </button>
-                            )}
 
                             {showPromptLibrary && (
                                 <div
@@ -2541,7 +2635,33 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                             {(() => {
                                                 const rawModels = filterAndSortModels(availableModels, modelSearch, modelCustomizations);
                                                 // 🚀 [修正] 使用复合键 (ID + Provider) 去重，确保积分模型和第三方模型能共存
-                                                let uniqueModels = Array.from(new Map(rawModels.map(m => [`${m.id}-${m.provider || ''}`, m])).values());
+                                                const getModelDisplayGroupKey = (model: any) => {
+                                                    const displayName = String(getModelDisplayInfo(model).displayName || model.label || model.id || '')
+                                                        .trim()
+                                                        .toLowerCase();
+                                                    const providerKey = String(model.provider || model.providerLabel || '').trim().toLowerCase();
+                                                    return `${model.isSystemInternal ? 'system' : 'user'}:${displayName}:${providerKey}`;
+                                                };
+
+                                                const pickPreferredDisplayModel = (current: any, candidate: any) => {
+                                                    const currentDescription = String(current?.description || '').trim();
+                                                    const candidateDescription = String(candidate?.description || '').trim();
+                                                    const currentProviderLabel = String(current?.providerLabel || current?.provider || '').trim();
+                                                    const candidateProviderLabel = String(candidate?.providerLabel || candidate?.provider || '').trim();
+
+                                                    if (!currentDescription && candidateDescription) return candidate;
+                                                    if (candidateDescription.length > currentDescription.length) return candidate;
+                                                    if (!currentProviderLabel && candidateProviderLabel) return candidate;
+                                                    return current;
+                                                };
+
+                                                const uniqueModelMap = new Map<string, any>();
+                                                rawModels.forEach((model: any) => {
+                                                    const groupKey = getModelDisplayGroupKey(model);
+                                                    const existing = uniqueModelMap.get(groupKey);
+                                                    uniqueModelMap.set(groupKey, existing ? pickPreferredDisplayModel(existing, model) : model);
+                                                });
+                                                let uniqueModels = Array.from(uniqueModelMap.values());
 
                                                 const getIsExclusive = (m: any) => {
                                                     // 🚀 [Style Isolation] 严格判断：必须是系统内置模型

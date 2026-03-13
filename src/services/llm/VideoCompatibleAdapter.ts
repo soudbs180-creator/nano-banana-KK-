@@ -1,4 +1,5 @@
 import { KeySlot } from '../auth/keyManager';
+import { formatAuthorizationHeaderValue } from '../api/apiConfig';
 import { LLMAdapter, VideoGenerationOptions, VideoGenerationResult } from './LLMAdapter';
 import { resolveProviderRuntime } from '../api/providerStrategy';
 
@@ -46,7 +47,7 @@ export class VideoCompatibleAdapter implements LLMAdapter {
             modelId: options.modelId,
         });
 
-        if (runtime.videoApiStyle === 'openai-v1-videos' || this.isNewApiLikeGateway(cleanBase, keySlot)) {
+        if (runtime.videoApiStyle === 'openai-v1-videos') {
             return this.generateVideoViaNewApi(options, keySlot, cleanBase);
         }
 
@@ -65,19 +66,6 @@ export class VideoCompatibleAdapter implements LLMAdapter {
         return clean.endsWith('/v1') ? clean : `${clean}/v1`;
     }
 
-    private isNewApiLikeGateway(cleanBase: string, keySlot: KeySlot): boolean {
-        const fingerprint = [
-            cleanBase,
-            keySlot.name || '',
-            String(keySlot.provider || '')
-        ].join(' ').toLowerCase();
-
-        return fingerprint.includes('newapi') ||
-            fingerprint.includes('new-api') ||
-            fingerprint.includes('oneapi') ||
-            fingerprint.includes('one-api');
-    }
-
     private isNewApiCompatibilityError(error: any): boolean {
         const message = String(error?.message || '').toLowerCase();
         return message.includes('/videos') ||
@@ -91,8 +79,16 @@ export class VideoCompatibleAdapter implements LLMAdapter {
 
     private buildHeaders(keySlot: KeySlot, includeJsonContentType: boolean): Record<string, string> {
         const token = String(keySlot.key || '').trim();
+        const runtime = resolveProviderRuntime({
+            provider: keySlot.provider,
+            baseUrl: this.normalizeBaseUrl(keySlot.baseUrl),
+            format: keySlot.format,
+            authMethod: keySlot.authMethod,
+            headerName: keySlot.headerName,
+            compatibilityMode: keySlot.compatibilityMode,
+        });
         const headers: Record<string, string> = {
-            'Authorization': /^Bearer\s+/i.test(token) ? token : `Bearer ${token}`
+            'Authorization': formatAuthorizationHeaderValue(token, runtime.authorizationValueFormat)
         };
 
         if (includeJsonContentType) {

@@ -2,6 +2,7 @@ import type { Provider } from '../../types';
 
 export type ProviderStrategyFormat = 'auto' | 'openai' | 'gemini';
 export type ProviderStrategyAuthMethod = 'query' | 'header';
+export type ProviderStrategyAuthorizationValueFormat = 'bearer' | 'raw';
 export type ProviderStrategyCompatibilityMode = 'standard' | 'chat';
 export type ProviderStrategyImageProfile =
     | 'openai-strict'
@@ -22,6 +23,7 @@ export interface ProviderStrategy {
     defaultAuthMethod?: ProviderStrategyAuthMethod;
     geminiAuthMethod?: ProviderStrategyAuthMethod;
     defaultHeaderName?: string;
+    authorizationValueFormat?: ProviderStrategyAuthorizationValueFormat;
     defaultCompatibilityMode?: ProviderStrategyCompatibilityMode;
     imageProfile?: ProviderStrategyImageProfile;
     videoApiStyle?: ProviderStrategyVideoApiStyle;
@@ -51,6 +53,7 @@ export interface ResolvedProviderRuntime {
     resolvedFormat: Exclude<ProviderStrategyFormat, 'auto'>;
     authMethod: ProviderStrategyAuthMethod;
     headerName: string;
+    authorizationValueFormat: ProviderStrategyAuthorizationValueFormat;
     compatibilityMode: ProviderStrategyCompatibilityMode;
     geminiNative: boolean;
     imageProfile: ProviderStrategyImageProfile;
@@ -70,6 +73,7 @@ const FALLBACK_STRATEGY: ProviderStrategy = {
     defaultAuthMethod: 'header',
     geminiAuthMethod: 'header',
     defaultHeaderName: AUTHORIZATION_HEADER,
+    authorizationValueFormat: 'bearer',
     defaultCompatibilityMode: 'standard',
     imageProfile: 'openai-strict',
     videoApiStyle: 'openai-v1-videos',
@@ -90,6 +94,7 @@ const PROVIDER_STRATEGIES: ProviderStrategy[] = [
         defaultAuthMethod: 'query',
         geminiAuthMethod: 'query',
         defaultHeaderName: GOOGLE_API_HEADER,
+        authorizationValueFormat: 'raw',
         defaultCompatibilityMode: 'standard',
         imageProfile: 'openai-strict',
         videoApiStyle: 'openai-v1-videos',
@@ -108,6 +113,7 @@ const PROVIDER_STRATEGIES: ProviderStrategy[] = [
         defaultAuthMethod: 'header',
         geminiAuthMethod: 'query',
         defaultHeaderName: AUTHORIZATION_HEADER,
+        authorizationValueFormat: 'bearer',
         defaultCompatibilityMode: 'standard',
         imageProfile: 'openai-strict',
         videoApiStyle: 'openai-v1-videos',
@@ -116,16 +122,34 @@ const PROVIDER_STRATEGIES: ProviderStrategy[] = [
         uiProvider: '12AI',
     },
     {
+        id: 'wuyinkeji',
+        label: 'Wuyin Keji',
+        known: true,
+        basePatterns: [/api\.wuyinkeji\.com/i, /wuyinkeji/i],
+        defaultFormat: 'openai',
+        defaultAuthMethod: 'header',
+        geminiAuthMethod: 'query',
+        defaultHeaderName: AUTHORIZATION_HEADER,
+        authorizationValueFormat: 'raw',
+        defaultCompatibilityMode: 'standard',
+        imageProfile: 'openai-strict',
+        videoApiStyle: 'openai-v1-videos',
+        autoGeminiNativeForGeminiModels: false,
+        respectProviderOnCustomHost: true,
+        uiProvider: 'OpenAI',
+    },
+    {
         id: 'newapi',
         label: 'NewAPI / OneAPI',
         known: true,
         providerPatterns: [/^newapi$/i, /^oneapi$/i, /^cherry(\s+studio)?$/i],
         hostPatterns: [/^ai\.newapi\.pro$/i, /^docs\.newapi\.pro$/i, /(^|\.)newapi\./i, /(^|\.)oneapi\./i],
-        basePatterns: [/newapi/i, /oneapi/i, /vodeshop/i, /future-api/i, /wuyinkeji/i],
+        basePatterns: [/newapi/i, /oneapi/i, /vodeshop/i, /future-api/i],
         defaultFormat: 'openai',
         defaultAuthMethod: 'header',
         geminiAuthMethod: 'header',
         defaultHeaderName: AUTHORIZATION_HEADER,
+        authorizationValueFormat: 'bearer',
         defaultCompatibilityMode: 'standard',
         imageProfile: 'openai-strict',
         videoApiStyle: 'openai-v1-videos',
@@ -398,7 +422,7 @@ function findStrategyByProvider(provider?: string | Provider): ProviderStrategy 
 }
 
 export function isGeminiFamilyModel(modelId?: string): boolean {
-    const lower = String(modelId || '').trim().toLowerCase();
+    const lower = String(modelId || '').trim().split('@')[0].toLowerCase();
     return lower.startsWith('gemini-') || lower.startsWith('imagen-') || lower.startsWith('veo-');
 }
 
@@ -461,6 +485,7 @@ export function resolveProviderRuntime(input: ProviderRuntimeInput): ResolvedPro
         || (geminiNative && strategy.id === 'google'
             ? GOOGLE_API_HEADER
             : strategy.defaultHeaderName || AUTHORIZATION_HEADER);
+    const authorizationValueFormat = strategy.authorizationValueFormat || 'bearer';
     const compatibilityMode = normalizeCompatibilityMode(input.compatibilityMode)
         || strategy.defaultCompatibilityMode
         || 'standard';
@@ -475,6 +500,7 @@ export function resolveProviderRuntime(input: ProviderRuntimeInput): ResolvedPro
         resolvedFormat,
         authMethod,
         headerName,
+        authorizationValueFormat,
         compatibilityMode,
         geminiNative,
         imageProfile: strategy.imageProfile || 'openai-strict',

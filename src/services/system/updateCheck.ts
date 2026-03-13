@@ -12,10 +12,15 @@ let updateListeners: ((available: boolean) => void)[] = [];
 let initPromise: Promise<void> | null = null;
 let intervalId: number | null = null;
 
+function isExplicitUpdateCheckEnabled(): boolean {
+    return import.meta.env.VITE_ENABLE_UPDATE_CHECK === 'true';
+}
+
 function isUpdateCheckDisabled(): boolean {
     const protocol = window.location.protocol;
 
-    return import.meta.env.DEV
+    return !isExplicitUpdateCheckEnabled()
+        || import.meta.env.DEV
         || protocol !== 'http:' && protocol !== 'https:'
         || window.location.hostname === 'localhost'
         || window.location.hostname === '127.0.0.1';
@@ -86,7 +91,7 @@ export async function initUpdateCheck(): Promise<void> {
                 intervalId = null;
             }
             notifyListeners();
-            console.info('[UpdateCheck] Disabled in local development to avoid disruptive reload prompts.');
+            console.info('[UpdateCheck] Disabled unless VITE_ENABLE_UPDATE_CHECK=true to avoid disruptive reload prompts.');
             return;
         }
 
