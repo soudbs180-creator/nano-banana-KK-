@@ -1,10 +1,20 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
-import { Lock, ShieldCheck, Settings, UserCog } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Clock3, Loader2, Lock, Settings, ShieldAlert, ShieldCheck, UserCog } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../services/system/notificationService';
 import CreditModelSettings from './CreditModelSettings';
 import AdminConsoleSettings from './AdminConsoleSettings';
+import {
+  SETTINGS_ELEVATED_STYLE,
+  SETTINGS_INPUT_CLASSNAME,
+  SETTINGS_LABEL_CLASSNAME,
+  SETTINGS_WARNING_STYLE,
+  SettingsActionButton,
+  SettingsBadge,
+  SettingsSection,
+  SettingsViewShell,
+} from './SettingsScaffold';
 
 type AdminTab = 'credit-models' | 'admin-console';
 
@@ -12,12 +22,75 @@ const SESSION_UNLOCK_KEY = 'admin_panel_unlocked_at';
 const SESSION_UNLOCK_TTL_MS = 30 * 60 * 1000;
 
 function isSessionUnlocked(): boolean {
+  if (typeof window === 'undefined') return false;
+
   const raw = sessionStorage.getItem(SESSION_UNLOCK_KEY);
   if (!raw) return false;
+
   const ts = Number(raw);
   if (!Number.isFinite(ts)) return false;
+
   return Date.now() - ts < SESSION_UNLOCK_TTL_MS;
 }
+
+const infoCardStyle: React.CSSProperties = {
+  borderColor: 'var(--border-light)',
+  backgroundColor: 'var(--bg-overlay)',
+};
+
+const AdminAccessCard: React.FC<{
+  tone: 'slate' | 'rose' | 'amber';
+  icon: React.ComponentType<{ className?: string; size?: number }>;
+  title: string;
+  description: string;
+  badge: string;
+  children?: React.ReactNode;
+  side?: React.ReactNode;
+}> = ({ tone, icon: Icon, title, description, badge, children, side }) => (
+  <section className="mx-auto max-w-[760px] rounded-[24px] border p-6 md:p-7" style={SETTINGS_ELEVATED_STYLE}>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
+            style={
+              tone === 'rose'
+                ? { border: '1px solid var(--state-danger-border)', background: 'var(--state-danger-bg)', color: 'var(--state-danger-text)' }
+                : tone === 'amber'
+                  ? { border: '1px solid var(--state-warning-border)', background: 'var(--state-warning-bg)', color: 'var(--state-warning-text)' }
+                  : { border: '1px solid var(--border-light)', background: 'var(--bg-overlay)', color: 'var(--text-secondary)' }
+            }
+          >
+            <Icon size={18} />
+          </div>
+          <div className="space-y-1.5">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--text-tertiary)' }}>
+              Admin Access
+            </div>
+            <div className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {title}
+            </div>
+            <p className="max-w-2xl text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
+              {description}
+            </p>
+          </div>
+        </div>
+        <SettingsBadge tone={tone}>{badge}</SettingsBadge>
+      </div>
+
+      <div className={`grid gap-4 ${side ? 'lg:grid-cols-[minmax(0,1fr)_240px]' : ''}`.trim()}>
+        <div className="rounded-2xl border p-5" style={SETTINGS_ELEVATED_STYLE}>
+          {children}
+        </div>
+        {side ? (
+          <div className="rounded-2xl border p-5" style={infoCardStyle}>
+            {side}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  </section>
+);
 
 export const AdminSystem: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
@@ -30,12 +103,14 @@ export const AdminSystem: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('credit-models');
   const [mustChangeDefaultPassword, setMustChangeDefaultPassword] = useState(false);
 
+  const userLabel = user?.email || user?.phone || user?.id || '未登录';
+
   const lockedReason = useMemo(() => {
-    if (authLoading || checkingAdmin) return '正在校验管理员权限...';
-    if (!user) return '请先登录后再打开管理后台。';
-    if (!isAdmin) return '当前账号不是管理员。';
+    if (authLoading || checkingAdmin) return '正在校验管理员权限。';
+    if (!user) return '请先登录管理员账号后再进入后台。';
+    if (!isAdmin) return '当前账号没有管理员权限。';
     return '';
-  }, [authLoading, checkingAdmin, user, isAdmin]);
+  }, [authLoading, checkingAdmin, isAdmin, user]);
 
   useEffect(() => {
     let alive = true;
@@ -62,11 +137,7 @@ export const AdminSystem: React.FC = () => {
           return;
         }
 
-        const profileResult = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
+        const profileResult = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
 
         if (!alive) return;
         setIsAdmin(profileResult.data?.role === 'admin');
@@ -78,6 +149,7 @@ export const AdminSystem: React.FC = () => {
     };
 
     void checkAdmin();
+
     return () => {
       alive = false;
     };
@@ -120,7 +192,7 @@ export const AdminSystem: React.FC = () => {
       sessionStorage.setItem(SESSION_UNLOCK_KEY, String(Date.now()));
       setUnlocked(true);
       setPassword('');
-      notify.success('已解锁', '管理后台已解锁。');
+      notify.success('验证通过', '管理员后台已解锁。');
 
       try {
         const defaultPwdResult = await supabase.rpc('verify_admin_password_admin', {
@@ -145,111 +217,202 @@ export const AdminSystem: React.FC = () => {
 
   if (authLoading || checkingAdmin) {
     return (
-      <div className="rounded-2xl border border-[var(--border-light)] p-4 text-sm text-[var(--text-secondary)]">
-        正在加载管理后台...
-      </div>
+      <SettingsViewShell>
+        <AdminAccessCard
+          tone="slate"
+          icon={Loader2}
+          title="管理员后台"
+          description="正在确认当前账号是否具备管理员权限，校验完成后会显示登录入口。"
+          badge="校验中"
+          side={
+            <div className="space-y-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+              <div className="text-xs font-medium uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>
+                当前账号
+              </div>
+              <div className="rounded-xl border px-3 py-3" style={SETTINGS_ELEVATED_STYLE}>
+                {userLabel}
+              </div>
+              <div className="text-xs leading-6" style={{ color: 'var(--text-tertiary)' }}>
+                会先检查 `is_admin` RPC，再回退到 `profiles.role`。
+              </div>
+            </div>
+          }
+        >
+          <div className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed" style={infoCardStyle}>
+            <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              正在校验管理员身份...
+            </div>
+          </div>
+        </AdminAccessCard>
+      </SettingsViewShell>
     );
   }
 
   if (!user || !isAdmin) {
     return (
-      <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-4 text-red-100">
-        <div className="text-sm font-semibold">管理员访问受限</div>
-        <p className="mt-2 text-xs text-red-200/90">{lockedReason}</p>
-      </div>
+      <SettingsViewShell>
+        <AdminAccessCard
+          tone="rose"
+          icon={ShieldAlert}
+          title="管理员后台"
+          description="这里现在只保留轻量登录入口。当前账号未通过管理员校验，所以不会展示后台模块。"
+          badge="访问受限"
+          side={
+            <div className="space-y-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+              <div>
+                <div className="text-xs font-medium uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>
+                  当前账号
+                </div>
+                <div className="mt-2 rounded-xl border px-3 py-3" style={SETTINGS_ELEVATED_STYLE}>
+                  {userLabel}
+                </div>
+              </div>
+              <div className="rounded-xl border px-3 py-3 text-xs leading-6" style={SETTINGS_WARNING_STYLE}>
+                {lockedReason || '请确认当前登录的是管理员账号。'}
+              </div>
+            </div>
+          }
+        >
+          <div className="space-y-3 text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
+            <div>只有管理员账号才能进入后台模块，普通用户不会看到任何后台配置入口。</div>
+            <div>如果你本来就应该有权限，优先检查当前登录账号是否正确，以及 `profiles.role` 是否已设置为 `admin`。</div>
+          </div>
+        </AdminAccessCard>
+      </SettingsViewShell>
     );
   }
 
   if (!unlocked) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-emerald-100">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-emerald-300" />
-            <h3 className="text-sm font-semibold">管理员安全验证</h3>
-          </div>
-          <p className="mt-2 text-xs leading-relaxed text-emerald-200/90">
-            已识别为管理员账号，请输入密码继续。所有写入操作均通过 Supabase RPC 执行。
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-secondary)] p-4">
-          <label className="mb-2 block text-xs text-[var(--text-tertiary)]">管理员密码</label>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
-                <Lock className="h-4 w-4 text-[var(--text-tertiary)]" />
+      <SettingsViewShell>
+        <AdminAccessCard
+          tone="amber"
+          icon={ShieldCheck}
+          title="管理员后台登录"
+          description="管理员页面先只保留一个登录卡片。输入管理员密码后，再进入后续模块。"
+          badge="会话 30 分钟"
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              <span className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5" style={infoCardStyle}>
+                <UserCog size={12} />
+                {userLabel}
               </span>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    void verifyAdminPassword();
-                  }
-                }}
-                placeholder="请输入管理员密码"
-                className="h-10 w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-tertiary)] pl-10 pr-3 text-sm text-[var(--text-primary)]"
-              />
+              <span className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5" style={infoCardStyle}>
+                <Clock3 size={12} />
+                30 分钟会话
+              </span>
             </div>
-            <button
-              onClick={() => void verifyAdminPassword()}
-              disabled={verifying}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
-            >
-              {verifying ? '验证中...' : '解锁'}
-            </button>
+
+            <label className="block space-y-2">
+              <span className={SETTINGS_LABEL_CLASSNAME}>管理员密码</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[var(--text-tertiary)]">
+                  <Lock className="h-4 w-4" />
+                </span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      void verifyAdminPassword();
+                    }
+                  }}
+                  placeholder="请输入管理员密码"
+                  className={`${SETTINGS_INPUT_CLASSNAME} pl-10`}
+                />
+              </div>
+            </label>
+
+            <div className="flex flex-wrap gap-2">
+              <SettingsActionButton icon={ShieldCheck} tone="primary" loading={verifying} onClick={() => void verifyAdminPassword()}>
+                {verifying ? '验证中...' : '登录后台'}
+              </SettingsActionButton>
+            </div>
+
+            <div className="rounded-xl border px-3 py-3 text-xs leading-6" style={infoCardStyle}>
+              输入正确密码后，才会显示积分模型和后台管理模块。所有后台写入仍通过 Supabase RPC 执行。
+            </div>
           </div>
-        </div>
-      </div>
+        </AdminAccessCard>
+      </SettingsViewShell>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-emerald-100">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-emerald-300" />
-            <h3 className="text-sm font-semibold">管理后台（已解锁）</h3>
+    <SettingsViewShell>
+      <section className="rounded-[24px] border p-5 md:p-6" style={SETTINGS_ELEVATED_STYLE}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+                管理员后台
+              </div>
+              <SettingsBadge tone="emerald">已验证</SettingsBadge>
+              {mustChangeDefaultPassword ? <SettingsBadge tone="amber">请修改默认密码</SettingsBadge> : null}
+            </div>
+            <p className="max-w-3xl text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
+              页面只保留必要入口。登录后在这里切换积分模型和后台管理模块，不再展示大块说明和统计卡片。
+            </p>
+            <div className="flex flex-wrap gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              <span className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5" style={infoCardStyle}>
+                <UserCog size={12} />
+                {userLabel}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5" style={infoCardStyle}>
+                <Clock3 size={12} />
+                会话 30 分钟
+              </span>
+            </div>
           </div>
-          <button
-            onClick={lockNow}
-            className="rounded-lg border border-emerald-300/40 px-2 py-1 text-xs text-emerald-100 hover:bg-emerald-400/10"
-          >
-            锁定
-          </button>
+
+          <div className="flex flex-wrap gap-2">
+            <SettingsActionButton icon={Lock} onClick={lockNow}>
+              立即锁定
+            </SettingsActionButton>
+          </div>
         </div>
-        <p className="mt-2 text-xs leading-relaxed text-emerald-200/90">
-          管理员配置的积分模型面向全体用户；用户 API 管理仅作用于本人，两者已隔离。
-        </p>
-        {mustChangeDefaultPassword && (
-          <p className="mt-2 text-xs text-amber-200">
-            检测到当前仍是默认密码 123456，请立即在“后台管理”里修改管理员密码。
-          </p>
-        )}
-      </div>
+      </section>
 
-      <div className="apple-pill-group">
-        <button
-          onClick={() => setActiveTab('credit-models')}
-          className={`apple-pill-button ${activeTab === 'credit-models' ? 'active' : ''}`}
-        >
-          <Settings size={14} />
-          积分模型
-        </button>
-        <button
-          onClick={() => setActiveTab('admin-console')}
-          className={`apple-pill-button ${activeTab === 'admin-console' ? 'active' : ''}`}
-        >
-          <UserCog size={14} />
-          后台管理
-        </button>
-      </div>
+      {mustChangeDefaultPassword ? (
+        <section className="rounded-2xl border p-4" style={SETTINGS_WARNING_STYLE}>
+          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            默认密码仍然有效
+          </div>
+          <div className="mt-2 text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
+            建议先到“后台管理”里修改默认密码 `123456`，再继续执行其他后台操作。
+          </div>
+        </section>
+      ) : null}
 
-      {activeTab === 'credit-models' ? <CreditModelSettings /> : <AdminConsoleSettings />}
-    </div>
+      <SettingsSection
+        eyebrow="ADMIN MODULES"
+        title="后台模块"
+        description="只保留必要切换，避免后台入口本身塞入过多解释信息。"
+        action={
+          <div className="apple-pill-group">
+            <button
+              onClick={() => setActiveTab('credit-models')}
+              className={`apple-pill-button ${activeTab === 'credit-models' ? 'active' : ''}`}
+            >
+              <Settings size={14} />
+              积分模型
+            </button>
+            <button
+              onClick={() => setActiveTab('admin-console')}
+              className={`apple-pill-button ${activeTab === 'admin-console' ? 'active' : ''}`}
+            >
+              <ShieldCheck size={14} />
+              后台管理
+            </button>
+          </div>
+        }
+      >
+        {activeTab === 'credit-models' ? <CreditModelSettings /> : <AdminConsoleSettings />}
+      </SettingsSection>
+    </SettingsViewShell>
   );
 };
 

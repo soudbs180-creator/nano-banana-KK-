@@ -18,7 +18,17 @@ export const dataURLToBlob = (dataURI: string): Blob => {
 
         // 进一步清理 base64 中的所有潜在非法字符，仅保留合法的 base64 字符
         const base64Data = splitDataURI[1].trim();
+        if (/^(blob:|https?:\/\/)/i.test(base64Data)) {
+            console.debug('[blobUtils] Nested URL payload detected, returning empty blob.');
+            return new Blob([], { type: 'image/png' });
+        }
+
         const cleanBase64 = base64Data.replace(/[^A-Za-z0-9+/=]/g, '');
+
+        if (!cleanBase64) {
+            console.debug('[blobUtils] Empty base64 payload detected, returning empty blob.');
+            return new Blob([], { type: 'image/png' });
+        }
 
         try {
             const byteString = atob(cleanBase64);
@@ -33,11 +43,11 @@ export const dataURLToBlob = (dataURI: string): Blob => {
 
             return new Blob([ab], { type: mimeString });
         } catch (e) {
-            console.error('[blobUtils] atob failed for string:', cleanBase64.slice(0, 50) + '...', e);
+            console.debug('[blobUtils] atob failed for string:', cleanBase64.slice(0, 50) + '...', e);
             return new Blob([], { type: 'image/png' });
         }
     } catch (error: any) {
-        console.error('[blobUtils] dataURLToBlob fatal error:', error.message);
+        console.debug('[blobUtils] dataURLToBlob fatal error:', error.message);
         return new Blob([], { type: 'image/png' });
     }
 };

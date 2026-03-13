@@ -6,15 +6,17 @@
  * Syncs with Cost Estimation page
  */
 
+import { type ApiProtocolFormat, normalizeApiProtocolFormat } from '../api/apiConfig';
 import { newApiManagementService } from '../api/newApiManagementService';
 
 export interface Supplier {
   id: string;
-  name: string;           // 供应商名字（用户自定义）
-  baseUrl: string;        // API Base URL
-  apiKey: string;         // API Key（加密存储）
-  systemToken?: string;   // System Access Token（可选，用于获取价格）
-  budgetLimit?: number;   // 预算限制（可选）
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  format: ApiProtocolFormat;
+  systemToken?: string;
+  budgetLimit?: number;
   models: SupplierModel[];
   createdAt: string;
   updatedAt: string;
@@ -23,16 +25,15 @@ export interface Supplier {
 export interface SupplierModel {
   id: string;
   name: string;
-  group?: string;         // 模型分组
-  inputPrice?: number;    // 输入价格（每百万tokens）
-  outputPrice?: number;   // 输出价格（每百万tokens）
-  perRequestPrice?: number; // 每次请求价格
-  multiplier?: number;    // 倍率
+  group?: string;
+  inputPrice?: number;
+  outputPrice?: number;
+  perRequestPrice?: number;
+  multiplier?: number;
   billingType: 'token' | 'per_request' | 'multiplier';
   isActive: boolean;
 }
 
-// Local storage key
 const SUPPLIERS_STORAGE_KEY = 'kk_suppliers_v1';
 
 class SupplierService {
@@ -43,14 +44,12 @@ class SupplierService {
     this.loadFromStorage();
   }
 
-  // ==================== CRUD Operations ====================
-
   getAll(): Supplier[] {
     return [...this.suppliers];
   }
 
   getById(id: string): Supplier | undefined {
-    return this.suppliers.find(s => s.id === id);
+    return this.suppliers.find((supplier) => supplier.id === id);
   }
 
   clearLegacyStorage(): void {
@@ -71,7 +70,11 @@ class SupplierService {
 
     const supplier: Supplier = {
       ...data,
-      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2),
+      format: normalizeApiProtocolFormat(data.format, 'auto'),
+      id:
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : Date.now().toString(36) + Math.random().toString(36).substring(2),
       models: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -83,7 +86,6 @@ class SupplierService {
 
     console.log('[SupplierService] Supplier created:', supplier.id);
 
-    // Fetch models asynchronously if system token provided
     if (data.systemToken) {
       this.fetchModelsAsync(supplier.id, data.baseUrl, data.systemToken);
     }
@@ -94,12 +96,10 @@ class SupplierService {
   update(id: string, data: Partial<Omit<Supplier, 'id' | 'createdAt'>>): Supplier | null {
     console.log('[SupplierService] Updating supplier:', id);
 
-    const index = this.suppliers.findIndex(s => s.id === id);
+    const index = this.suppliers.findIndex((supplier) => supplier.id === id);
     if (index === -1) return null;
 
     const supplier = this.suppliers[index];
-
-    // Check if we need to re-fetch models (URL or Token changed)
     const shouldRefetch =
       (data.baseUrl && data.baseUrl !== supplier.baseUrl) ||
       (data.systemToken && data.systemToken !== supplier.systemToken);
@@ -107,6 +107,7 @@ class SupplierService {
     this.suppliers[index] = {
       ...supplier,
       ...data,
+      format: normalizeApiProtocolFormat(data.format ?? supplier.format, 'auto'),
       updatedAt: new Date().toISOString(),
     };
 
@@ -115,7 +116,6 @@ class SupplierService {
 
     console.log('[SupplierService] Supplier updated:', id);
 
-    // Refetch models asynchronously if needed
     if (shouldRefetch && data.systemToken) {
       this.fetchModelsAsync(id, data.baseUrl || supplier.baseUrl, data.systemToken);
     }
@@ -126,7 +126,7 @@ class SupplierService {
   delete(id: string): boolean {
     console.log('[SupplierService] Deleting supplier:', id);
 
-    const index = this.suppliers.findIndex(s => s.id === id);
+    const index = this.suppliers.findIndex((supplier) => supplier.id === id);
     if (index === -1) return false;
 
     this.suppliers.splice(index, 1);
@@ -137,14 +137,12 @@ class SupplierService {
     return true;
   }
 
-  // ==================== Async Model Fetching ====================
-
   private async fetchModelsAsync(supplierId: string, baseUrl: string, systemToken: string) {
     try {
       console.log('[SupplierService] Fetching models for:', supplierId);
       const models = await this.fetchModelsFromNewAPI(baseUrl, systemToken);
 
-      const index = this.suppliers.findIndex(s => s.id === supplierId);
+      const index = this.suppliers.findIndex((supplier) => supplier.id === supplierId);
       if (index !== -1) {
         this.suppliers[index].models = models;
         this.suppliers[index].updatedAt = new Date().toISOString();
@@ -161,26 +159,26 @@ class SupplierService {
     console.log('[SupplierService] Calling NewAPI for models:', baseUrl);
     const models = await newApiManagementService.fetchAdminModels(systemToken, baseUrl);
 
-    return models.map(m => ({
-      id: m.id,
-      name: m.displayName,
-      billingType: m.billingType,
-      inputPrice: m.inputPrice,
-      outputPrice: m.outputPrice,
-      perRequestPrice: m.perRequestPrice,
-      multiplier: m.multiplier,
+    return models.map((model) => ({
+      id: model.id,
+      name: model.displayName,
+      billingType: model.billingType,
+      inputPrice: model.inputPrice,
+      outputPrice: model.outputPrice,
+      perRequestPrice: model.perRequestPrice,
+      multiplier: model.multiplier,
       isActive: true,
     }));
   }
 
   async refreshModels(supplierId: string): Promise<SupplierModel[]> {
     const supplier = this.getById(supplierId);
-    if (!supplier) throw new Error('供应商不存在');
-    if (!supplier.systemToken) throw new Error('未配置 System Access Token');
+    if (!supplier) throw new Error('渚涘簲鍟嗕笉瀛樺湪');
+    if (!supplier.systemToken) throw new Error('鏈厤缃?System Access Token');
 
     const models = await this.fetchModelsFromNewAPI(supplier.baseUrl, supplier.systemToken);
 
-    const index = this.suppliers.findIndex(s => s.id === supplierId);
+    const index = this.suppliers.findIndex((item) => item.id === supplierId);
     if (index !== -1) {
       this.suppliers[index].models = models;
       this.suppliers[index].updatedAt = new Date().toISOString();
@@ -190,8 +188,6 @@ class SupplierService {
 
     return models;
   }
-
-  // ==================== Pricing for Cost Estimation ====================
 
   getPricingForCostEstimation(): Array<{
     supplierName: string;
@@ -206,28 +202,29 @@ class SupplierService {
       billingType: string;
     }>;
   }> {
-    return this.suppliers.map(s => ({
-      supplierName: s.name,
-      supplierId: s.id,
-      models: s.models.map(m => ({
-        id: m.id,
-        name: m.name,
-        inputPrice: m.inputPrice,
-        outputPrice: m.outputPrice,
-        perRequestPrice: m.perRequestPrice,
-        multiplier: m.multiplier,
-        billingType: m.billingType,
+    return this.suppliers.map((supplier) => ({
+      supplierName: supplier.name,
+      supplierId: supplier.id,
+      models: supplier.models.map((model) => ({
+        id: model.id,
+        name: model.name,
+        inputPrice: model.inputPrice,
+        outputPrice: model.outputPrice,
+        perRequestPrice: model.perRequestPrice,
+        multiplier: model.multiplier,
+        billingType: model.billingType,
       })),
     }));
   }
-
-  // ==================== Storage ====================
 
   private loadFromStorage() {
     try {
       const data = localStorage.getItem(SUPPLIERS_STORAGE_KEY);
       if (data) {
-        this.suppliers = JSON.parse(data);
+        this.suppliers = JSON.parse(data).map((supplier: Supplier) => ({
+          ...supplier,
+          format: normalizeApiProtocolFormat((supplier as any).format, 'auto'),
+        }));
         console.log('[SupplierService] Loaded from storage:', this.suppliers.length);
       }
     } catch (error) {
@@ -245,17 +242,15 @@ class SupplierService {
     }
   }
 
-  // ==================== Subscriptions ====================
-
   subscribe(callback: () => void): () => void {
     this.listeners.push(callback);
     return () => {
-      this.listeners = this.listeners.filter(l => l !== callback);
+      this.listeners = this.listeners.filter((listener) => listener !== callback);
     };
   }
 
   private notifyListeners() {
-    this.listeners.forEach(cb => cb());
+    this.listeners.forEach((callback) => callback());
   }
 }
 

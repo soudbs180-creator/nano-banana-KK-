@@ -6,8 +6,9 @@ import { llmService } from '../../services/llm/LLMService';
 import { notify } from '../../services/system/notificationService';
 import { keyManager } from '../../services/auth/keyManager';
 import { agentService, AgentConfig } from '../../services/chat/agentService';
-import { getModelDisplayInfo } from '../../services/model/modelCapabilities';
+import { getModelDisplayInfo, getModelThemeColor } from '../../services/model/modelCapabilities';
 import { sortModels, toggleModelPin, getPinnedModels, filterAndSortModels } from '../../utils/modelSorting';
+import { writeTextToClipboard } from '../../utils/clipboard';
 import ReactDOM from 'react-dom';
 import { AspectRatio, ImageSize } from '../../types';
 
@@ -1170,7 +1171,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
         const text = (msg.content || '').trim();
         if (!text) return;
         try {
-            await navigator.clipboard.writeText(text);
+            await writeTextToClipboard(text);
             setCopiedMessageId(msg.id);
             setTimeout(() => {
                 setCopiedMessageId(prev => (prev === msg.id ? null : prev));
@@ -2033,7 +2034,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                     ) : (
                                         <>
                                             <span className="text-base">{selectedModel.icon || '🤖'}</span>
-                                            <span className={`text-[var(--text-secondary)] truncate ${getModelDisplayInfo(selectedModel).badgeColor}`}>
+                                            <span
+                                                className={`truncate ${getModelThemeColor(selectedModel.id)}`}
+                                            >
                                                 {modelCustomizations[selectedModel.id]?.alias || getModelDisplayInfo(selectedModel).displayName}
                                             </span>
 
@@ -2044,7 +2047,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                                     style={{
                                                         marginLeft: 'auto',
                                                         marginRight: '4px',
-                                                        flexShrink: 0
+                                                        flexShrink: 0,
+                                                        ...(getModelDisplayInfo(selectedModel).badgeStyle || {})
                                                     }}
                                                 >
                                                     {getModelDisplayInfo(selectedModel).badgeText}
@@ -2111,6 +2115,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                                                 {filterAndSortModels(availableModels, modelSearch, modelCustomizations)
                                                                     .map((model: any) => {
                                                                         const custom = modelCustomizations[model.id] || {};
+                                                                        const displayInfo = getModelDisplayInfo(model);
                                                                         const displayName = custom.alias || model.name || model.id;
                                                                         const advantage = custom.description || model.description || (model.provider ? `${model.provider} 模型` : '自定义模型');
                                                                         const isPinned = getPinnedModels().includes(model.id);
@@ -2131,15 +2136,17 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
                                                                                 </span>
                                                                                 <div className="flex flex-col gap-0.5 w-full min-w-0">
                                                                                     <div className="flex items-center justify-between gap-2 min-w-0">
-                                                                                        <span className={`font-medium truncate min-w-0 ${selectedModel.id === model.id ? getModelDisplayInfo(model).badgeColor : 'text-[var(--text-primary)]'}`}>
-                                                                                            {getModelDisplayInfo(model).displayName}
+                                                                                        <span
+                                                                                            className={`font-medium truncate min-w-0 ${getModelThemeColor(model.id)}`}
+                                                                                        >
+                                                                                            {displayInfo.displayName}
                                                                                         </span>
-                                                                                        {getModelDisplayInfo(model).badgeText && (
+                                                                                        {displayInfo.badgeText && (
                                                                                             <span
-                                                                                                className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 shrink-0 ${getModelDisplayInfo(model).badgeColor}`}
-                                                                                                style={{ whiteSpace: 'nowrap' }}
+                                                                                                className={`text-[10px] px-1.5 py-0.5 rounded border opacity-80 shrink-0 ${displayInfo.badgeColor}`}
+                                                                                                style={{ whiteSpace: 'nowrap', ...(displayInfo.badgeStyle || {}) }}
                                                                                             >
-                                                                                                {getModelDisplayInfo(model).badgeText}
+                                                                                                {displayInfo.badgeText}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>

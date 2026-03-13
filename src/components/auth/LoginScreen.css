@@ -426,6 +426,31 @@ body.auth-screen-active #root {
   text-underline-offset: 3px;
 }
 
+.auth-btn-forgot {
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #8fd8ff;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.auth-btn-forgot:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #c7e8ff;
+}
+
+.auth-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
 .auth-temp-entry {
   width: fit-content;
   height: 32px;

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * API Key Manager Service
  *
  * Provides multi-key rotation, status monitoring, and automatic failover.
@@ -6,12 +6,24 @@
  * NOW SUPPORTS: Supabase Cloud Sync & Third-Party API Proxies
  */
 import { supabase } from '../../lib/supabase';
-import { AuthMethod, GOOGLE_API_BASE, getDefaultAuthMethod } from '../api/apiConfig';
+import {
+    type ApiProtocolFormat,
+    AuthMethod,
+    buildGeminiHeaders,
+    buildGeminiModelsEndpoint,
+    buildOpenAIEndpoint,
+    GOOGLE_API_BASE,
+    getDefaultAuthMethod,
+    normalizeApiProtocolFormat,
+    resolveApiProtocolFormat,
+} from '../api/apiConfig';
+import { buildUserFacingApiErrorMessage, classifyApiFailure, hasAuthErrorMarkers } from '../api/errorClassification';
+import { resolveProviderKeyType, resolveProviderRuntime } from '../api/providerStrategy';
 import { MODEL_PRESETS, CHAT_MODEL_PRESETS } from '../model/modelPresets';
 import { RegionService } from '../system/RegionService';
 import { Provider } from '../../types';
 import { MODEL_REGISTRY } from '../model/modelRegistry';
-import { adminModelService } from '../model/adminModelService'; // 馃殌 [鏂板] 绠＄悊锻橀历缃湇锷?
+import { adminModelService } from '../model/adminModelService'; // 棣冩畬 [閺傛澘顤僝 缁狅紕鎮婇敾姗€鍘嗙純顔芥箛閿?
 import { buildProviderPricingSnapshot, mergeProviderPricingSnapshot, type ProviderPricingSnapshot } from './providerPricingSnapshot';
 
 /**
@@ -25,7 +37,7 @@ export function parseModelString(input: string): { id: string; name?: string; de
         let name = parts[1]?.trim() || undefined;
         const provider = parts[2]?.trim() || undefined;
 
-        // 鍏煎铡嗗彶𫔔忔暟鎹? 鍙兘琚敊璇瓨鎴?"name|id|provider"
+        // 閸忕厧顔愰摗鍡楀蕉皤敂蹇旀殶閹? 閸欘垵鍏樼悮顐︽晩鐠囶垰鐡ㄩ幋?"name|id|provider"
         const idLikeRegex = /^[a-z0-9-.:/]+$/;
         const firstLooksLikeName = /\s/.test(id) || !idLikeRegex.test(id);
         const secondLooksLikeId = !!name && idLikeRegex.test(name);
@@ -52,8 +64,8 @@ export function parseModelString(input: string): { id: string; name?: string; de
     let name = match[2]?.trim();
     const description = match[3]?.trim();
 
-    // 鏅鸿兘妫€娴? 濡傛灉 ID 𫓺嬭捣𨱒ュ儚钖岖О(鍖呭惈绌烘牸鎴栧ぇ鍐?, 钥屾嫭鍙峰唴镄?name 𫓺嬭捣𨱒ュ儚 ID (kebab-case/lowercase)
-    // 𫔄欎氦鎹㈠畠浠?
+    // 閺呴缚鍏樺Λ鈧ù? 婵″倹鐏?ID 皤摵瀣崳皎睊銉ュ剼閽栧矕袨(閸栧懎鎯堢粚鐑樼壐閹存牕銇囬崘?, 閽ュ本瀚崣宄板敶闀?name 皤摵瀣崳皎睊銉ュ剼 ID (kebab-case/lowercase)
+    // 皤攧娆庢唉閹广垹鐣犳禒?
     const idLikeRegex = /^[a-z0-9-.:]+$/;
     const hasSpace = /\s/.test(id);
 
@@ -77,12 +89,7 @@ export function parseModelString(input: string): { id: string; name?: string; de
  * Strictly enforces "official" status only for Google provider with official endpoints.
  */
 export function determineKeyType(provider: string | Provider, baseUrl?: string): 'official' | 'proxy' | 'third-party' {
-    const isGoogle = provider === 'Google';
-    const hasOfficialUrl = !baseUrl || baseUrl.trim() === '' || baseUrl.includes('googleapis.com');
-
-    if (isGoogle && hasOfficialUrl) return 'official';
-    if (isGoogle && !hasOfficialUrl) return 'proxy'; // Google provider but custom URL -> Proxy
-    return 'third-party'; // Non-Google provider
+    return resolveProviderKeyType(provider, baseUrl);
 }
 
 const RATE_LIMIT_COOLDOWN_MS = 30 * 1000;
@@ -91,8 +98,9 @@ export interface KeySlot {
     id: string;
     key: string;
     name: string;
-    provider: Provider; // 𨱅?Updated to strict type
-    type: 'official' | 'proxy' | 'third-party'; // 𨱅?New field for categorization
+    provider: Provider; // 皎眳?Updated to strict type
+    type: 'official' | 'proxy' | 'third-party'; // 皎眳?New field for categorization
+    format: ApiProtocolFormat;
 
     // Provider Specific Config
     providerConfig?: {
@@ -120,10 +128,10 @@ export interface KeySlot {
     customBody?: Record<string, any>; // Provider-specific custom request body template
 
     // Advanced Configuration (NEW)
-    weight?: number;         // 𨱒冮吨 (1-100), 鐢ㄤ簬璐熻浇鍧囱　,榛椫50
-    timeout?: number;        // 瓒呮椂镞堕棿 (ms), 榛椫30000
-    maxRetries?: number;     // 链€澶ч吨璇曟鏁?榛椫2
-    retryDelay?: number;     // 阅𡺃瘯寤惰繜 (ms), 榛椫1000
+    weight?: number;         // 皎睊鍐惃 (1-100), 閻劋绨拹鐔绘祰閸у洷銆€,姒涙か顓?0
+    timeout?: number;        // 鐡掑懏妞傞暈鍫曟？ (ms), 姒涙か顓?0000
+    maxRetries?: number;     // 閾锯偓婢堆囧惃鐠囨洘顐奸弫?姒涙か顓?
+    retryDelay?: number;     // 闃咅『冪槸瀵ゆ儼绻?(ms), 姒涙か顓?000
 
     // Status & Usage
     status: 'valid' | 'invalid' | 'rate_limited' | 'unknown';
@@ -135,10 +143,10 @@ export interface KeySlot {
     createdAt: number;
 
     // Performance Metrics (NEW)
-    avgResponseTime?: number;    // 骞冲潎鍝嶅簲镞堕棿 (ms)
-    lastResponseTime?: number;   // 链€钖庝竴娆″搷搴旀椂闂?(ms)
-    successRate?: number;        // 鎴愬姛鐜?(0-100)
-    totalRequests?: number;      // 镐昏姹傛暟
+    avgResponseTime?: number;    // 楠炲啿娼庨崫宥呯安闀炲爼妫?(ms)
+    lastResponseTime?: number;   // 閾锯偓閽栧簼绔村▎鈥虫惙鎼存梹妞傞梻?(ms)
+    successRate?: number;        // 閹存劕濮涢悳?(0-100)
+    totalRequests?: number;      // 闀愭槒顕Ч鍌涙殶
 
     // Call History (NEW)
     recentCalls?: Array<{
@@ -153,8 +161,8 @@ export interface KeySlot {
     usedTokens?: number;
     totalCost: number;
     budgetLimit: number; // -1 for unlimited
-    tokenLimit?: number; // 𨱅?New: -1 for unlimited
-    creditCost?: number; // 馃殌 [API Isolation] User-defined custom cost per generation
+    tokenLimit?: number; // 皎眳?New: -1 for unlimited
+    creditCost?: number; // 棣冩畬 [API Isolation] User-defined custom cost per generation
 
     // Sync
     updatedAt?: number; // Timestamp of last modification for sync conflict resolution
@@ -177,19 +185,19 @@ interface KeyManagerState {
 }
 
 /**
- * 绗笁鏂?API 链嶅姟鍟嗘帴鍙?
- * 鏀寔鏅鸿氨銆佷竾娓呫€佺伀灞卞紩镎庣瓑 OpenAI 鍏煎 API
+ * 缁楊兛绗侀弬?API 閾惧秴濮熼崯鍡樺复閸?
+ * 閺€顖涘瘮閺呴缚姘ㄩ妴浣风濞撳懌鈧胶浼€鐏炲崬绱╅晭搴ｇ搼 OpenAI 閸忕厧顔?API
  */
 export interface ThirdPartyProvider {
     id: string;
-    name: string;                 // 显示名称（如 "智谱 AI"）
-    baseUrl: string;              // API 基础 URL
+    name: string;                 // 鏄剧ず鍚嶇О锛堝 "鏅鸿氨 AI"锛?
+    baseUrl: string;              // API 鍩虹 URL
     apiKey: string;               // API Key
     group?: string;
-    models: string[];             // 支持的模型列表
-    format: 'auto' | 'openai' | 'gemini';  // 协议格式
-    icon?: string;                // 图标 emoji
-    isActive: boolean;            // 是否激活
+    models: string[];             // 鏀寔鐨勬ā鍨嬪垪琛?
+    format: 'auto' | 'openai' | 'gemini';  // 鍗忚鏍煎紡
+    icon?: string;                // 鍥炬爣 emoji
+    isActive: boolean;            // 鏄惁婵€娲?
     providerColor?: string;
     badgeColor?: string;
     budgetLimit?: number;
@@ -197,24 +205,24 @@ export interface ThirdPartyProvider {
     customCostMode?: 'unlimited' | 'amount' | 'tokens';
     customCostValue?: number;
 
-    // 🔥 [Feature] 后台拉取 New API 价格表的缓存
+    // 馃敟 [Feature] 鍚庡彴鎷夊彇 New API 浠锋牸琛ㄧ殑缂撳瓨
     pricingSnapshot?: ProviderPricingSnapshot;
 
-    // 独立计费
+    // 鐙珛璁¤垂
     usage: {
         totalTokens: number;
         totalCost: number;
         dailyTokens: number;
         dailyCost: number;
-        lastReset: number;        // 每日重置时间戳
+        lastReset: number;        // 姣忔棩閲嶇疆鏃堕棿鎴?
     };
 
-    // 状态
+    // 鐘舵€?
     status: 'active' | 'error' | 'checking';
     lastError?: string;
     lastChecked?: number;
 
-    // 元数据
+    // 鍏冩暟鎹?
     createdAt: number;
     updatedAt: number;
 }
@@ -331,10 +339,10 @@ export const PROVIDER_PRESETS: Record<string, Omit<ThirdPartyProvider, 'id' | 'a
 };
 
 /**
- * 镊姩镙规嵁鍖哄烟阃夋嫨 12AI 缃戝叧骞舵寚钖戝悗绔唬鐞?
+ * 闀婎亜濮╅暀瑙勫祦閸栧搫鐑熼槂澶嬪 12AI 缂冩垵鍙ч獮鑸靛瘹閽栨垵鎮楃粩顖欏敩閻?
  */
 /**
- * 镊姩镙规嵁鍖哄烟阃夋嫨 12AI 缃戝叧骞舵寚钖戝悗绔唬鐞?
+ * 闀婎亜濮╅暀瑙勫祦閸栧搫鐑熼槂澶嬪 12AI 缂冩垵鍙ч獮鑸靛瘹閽栨垵鎮楃粩顖欏敩閻?
  */
 function get12AIBaseUrl(): string {
     return RegionService.get12AIBaseUrl();
@@ -343,28 +351,28 @@ function get12AIBaseUrl(): string {
 const STORAGE_KEY = 'kk_studio_key_manager';
 const PROVIDERS_STORAGE_KEY = 'kk_studio_third_party_providers';
 const DEFAULT_MAX_FAILURES = 3;
-// 镞х増 Gemini 妯″瀷锛埚凡寮幂敤锛?
+// 闀炑呭 Gemini 濡€崇€烽敍鍩氬嚒瀵箓鏁ら敍?
 const LEGACY_GOOGLE_MODELS = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp'];
 
 /**
- * 镞фā鍨?ID 𫔄版柊妯″瀷 ID 镄勮嚜锷ㄦ牎姝ｆ椠灏勮〃
- * 鐢ㄤ簬钖戝悗鍏煎鍜岃嚜锷ㄨ縼绉?
+ * 闀炑勀侀崹?ID 皤攧鐗堟煀濡€崇€?ID 闀勫嫯鍤滈敺銊︾墡濮濓絾妞犵亸鍕€?
+ * 閻劋绨挅鎴濇倵閸忕厧顔愰崪宀冨殰閿枫劏绺肩粔?
  */
 export const MODEL_MIGRATION_MAP: Record<string, string> = {
-    // Gemini 1.5 绯诲垪 鈫?Gemini 2.5 绯诲垪
+    // Gemini 1.5 缁鍨?閳?Gemini 2.5 缁鍨?
     'gemini-1.5-pro': 'gemini-2.5-pro',
     'gemini-1.5-pro-latest': 'gemini-2.5-pro',
     'gemini-1.5-flash': 'gemini-2.5-flash',
     'gemini-1.5-flash-latest': 'gemini-2.5-flash',
 
-    // Gemini 2.0 绯诲垪 鈫?Gemini 2.5 绯诲垪
+    // Gemini 2.0 缁鍨?閳?Gemini 2.5 缁鍨?
     'gemini-2.0-flash-exp': 'gemini-2.5-flash',
     'gemini-2.0-pro-exp': 'gemini-2.5-pro',
 
-    // Gemini 2.0 瀹为獙镐у浘镀忕敚鎴?鈫?Gemini 2.5 Flash Image (Was mapped to Nano Banana)
+    // Gemini 2.0 鐎逛负鐛欓晲褍娴橀晙蹇曟暁閹?閳?Gemini 2.5 Flash Image (Was mapped to Nano Banana)
     'gemini-2.0-flash-exp-image-generation': 'gemini-2.5-flash-image',
 
-    // Nano Banana Alias 鈫?Gemini 2.5 Flash Image (Official)
+    // Nano Banana Alias 閳?Gemini 2.5 Flash Image (Official)
     'nano-banana': 'gemini-2.5-flash-image',
     'nano banana': 'gemini-2.5-flash-image',
     'nano-banana-pro': 'gemini-3-pro-image-preview',
@@ -372,7 +380,7 @@ export const MODEL_MIGRATION_MAP: Record<string, string> = {
     'nano-banana-2': 'gemini-3.1-flash-image-preview',
     'nano banana 2': 'gemini-3.1-flash-image-preview',
 
-    // -latest 𫔄悕 鈫?鍏蜂𫟄鐗堟湰
+    // -latest 皤攧顐㈡倳 閳?閸忚渹皤焺閻楀牊婀?
     'gemini-flash-lite-latest': 'gemini-2.5-flash-lite',
     'gemini-flash-latest': 'gemini-2.5-flash',
     'gemini-pro-latest': 'gemini-2.5-pro',
@@ -381,45 +389,45 @@ export const MODEL_MIGRATION_MAP: Record<string, string> = {
 };
 
 /**
- * 暗€瑕佸畬鍏ㄨ绷婊ゆ帀镄勬ā鍨?涓𡺃繘琛岃縼绉?𬭼存帴𫔄犻櫎)
+ * 鏆椻偓鐟曚礁鐣崗銊ㄧ环濠娿倖甯€闀勫嫭膩閸?娑擆『冪箻鐞涘矁绺肩粔?瓞瀛樺复皤攧鐘绘珟)
  */
 export const BLACKLIST_MODELS = [
-    // Imagen 棰勮鐗?宁︽棩链熷悗缂€)
+    // Imagen 妫板嫯顫嶉悧?瀹侊附妫╅摼鐔锋倵缂傗偓)
     /^imagen-[34]\.0-(ultra-)?generate-preview-\d{2}-\d{2}$/,
     /^imagen-[34]\.0-(fast-)?generate-preview-\d{2}-\d{2}$/,
-    // Imagen 镞х増(generate-001)
+    // Imagen 闀炑呭(generate-001)
     /^imagen-[34]\.0-.*generate-001$/,
 ];
 
 /**
- * 宸插纯鐢ㄧ殑妯″瀷𫔄楄〃(鐢ㄤ簬杩佺Щ)
+ * 瀹告彃绾悽銊ф畱濡€崇€佛珨勬銆?閻劋绨潻浣盒?
  */
 export const DEPRECATED_MODELS = Object.keys(MODEL_MIGRATION_MAP);
 
 /**
- * 镊姩镙℃妯″瀷 ID
- * @param modelId - 铡熷妯″瀷 ID
- * @returns 镙℃钖庣殑妯″瀷 ID锛埚鏋滈渶瑕佹牎姝ｏ级鎴栧师濮?ID
+ * 闀婎亜濮╅暀鈩冾劀濡€崇€?ID
+ * @param modelId - 閾＄喎顫愬Ο鈥崇€?ID
+ * @returns 闀欌剝顒滈挅搴ｆ畱濡€崇€?ID閿涘煔顩ч弸婊堟付鐟曚焦鐗庡锝忕骇閹存牕甯堟慨?ID
  */
 export function normalizeModelId(modelId: string): string {
     const raw = (modelId || '').trim();
     const normalized = MODEL_MIGRATION_MAP[raw];
     if (normalized) {
-        console.log(`[ModelMigration] Auto-correcting "${modelId}" 鈫?"${normalized}"`);
+        console.log(`[ModelMigration] Auto-correcting "${modelId}" 閳?"${normalized}"`);
         return normalized;
     }
 
     const lowerRaw = raw.toLowerCase();
     const lowerMapped = MODEL_MIGRATION_MAP[lowerRaw];
     if (lowerMapped) {
-        console.log(`[ModelMigration] Auto-correcting "${modelId}" 鈫?"${lowerMapped}"`);
+        console.log(`[ModelMigration] Auto-correcting "${modelId}" 閳?"${lowerMapped}"`);
         return lowerMapped;
     }
 
     const dashed = lowerRaw.replace(/\s+/g, '-');
     const dashedMapped = MODEL_MIGRATION_MAP[dashed];
     if (dashedMapped) {
-        console.log(`[ModelMigration] Auto-correcting "${modelId}" 鈫?"${dashedMapped}"`);
+        console.log(`[ModelMigration] Auto-correcting "${modelId}" 閳?"${dashedMapped}"`);
         return dashedMapped;
     }
 
@@ -504,37 +512,37 @@ export function appendModelVariantLabel(baseName: string, modelId: string): stri
     }
 
     if (tags.length === 0) return baseName;
-    return `${baseName} (${tags.join(' 路 ')})`;
+    return `${baseName} (${tags.join(' 璺?')})`;
 }
 
 /**
- * 妫€镆ユā鍨嬫槸钖﹀凡寮幂敤
+ * 濡偓闀嗐儲膩閸ㄥ妲搁挅锕€鍑″骞傛暏
  */
 export function isDeprecatedModel(modelId: string): boolean {
     return DEPRECATED_MODELS.includes(modelId);
 }
 
 /**
- * 妫€镆ユā鍨嬫槸钖﹀簲璇ヨ杩囨护鎺?
+ * 濡偓闀嗐儲膩閸ㄥ妲搁挅锕€绨茬拠銉潶鏉╁洦鎶ら幒?
  */
 function shouldFilterModel(modelId: string): boolean {
-    // 馃殌 [Strict Mode] Whitelist Override
+    // 棣冩畬 [Strict Mode] Whitelist Override
     // If model is explicitly in our whitelist, DO NOT FILTER IT, even if it matches a ban pattern below.
     if (GOOGLE_IMAGE_WHITELIST.includes(modelId)) return false;
 
-    // 杩囨护Imagen棰勮鐗?宁︽棩链熷悗缂€)
+    // 鏉╁洦鎶magen妫板嫯顫嶉悧?瀹侊附妫╅摼鐔锋倵缂傗偓)
     if (/imagen-[34]\.0-.*-preview-\d{2}-\d{2}/.test(modelId)) {
         console.log(`[ModelFilter] Filtering Imagen preview: ${modelId}`);
         return true;
     }
 
-    // 杩囨护Imagen镞х増(generate-001) - BUT allow whitelisted ones
+    // 鏉╁洦鎶magen闀炑呭(generate-001) - BUT allow whitelisted ones
     if (/imagen-[34]\.0-.*generate-001$/.test(modelId)) {
         console.log(`[ModelFilter] Filtering old Imagen: ${modelId}`);
         return true;
     }
 
-    // 杩囨护gemini-2.0-flash-exp-image-generation
+    // 鏉╁洦鎶emini-2.0-flash-exp-image-generation
     if (modelId === 'gemini-2.0-flash-exp-image-generation') {
         console.log(`[ModelFilter] Filtering deprecated model: ${modelId}`);
         return true;
@@ -544,8 +552,8 @@ function shouldFilterModel(modelId: string): boolean {
 }
 
 /**
- * 镓归噺镙℃妯″瀷𫔄楄〃锛埚㡎阅?& 杩佺Щ镞?ID锛?
- * @param provider 鍙€夌殑渚涘簲鍟嗗悕绉帮纴鐢ㄤ簬搴旗敤涓嶅悓镄勮绷婊ょ瓥鐣?
+ * 闀撳綊鍣洪暀鈩冾劀濡€崇€佛珨勬銆冮敍鍩氥闃?& 鏉╀胶些闀?ID閿?
+ * @param provider 閸欘垶鈧娈戞笟娑樼安閸熷棗鎮曠粔甯捍閻劋绨惔鏃楁暏娑撳秴鎮撻晞鍕环濠娿倗鐡ラ悾?
  */
 export function normalizeModelList(models: string[], provider?: string): string[] {
     const isOfficialGoogle = provider === 'Google';
@@ -554,14 +562,14 @@ export function normalizeModelList(models: string[], provider?: string): string[
     const normalized = models.map(id => {
         const raw = (id || '').trim();
 
-        // 闱炲𪽈鏂?Google 娓犻亾锛氢缭鐣𪴙敤鎴峰～鍐?杩灭杩斿洖镄勫师濮嬫ā鍨?ID銆?
-        // 渚嫔 nano-banana-2 杩𪴙被𫔄悕锛屽湪镆愪簺𫔄嗗彂娓犻亾涓嬫槸镫珛链夋晥妯″瀷锛?
-        // 涓𡺃兘寮哄埗杩佺Щ鎴?gemini-3.1-flash-image-preview銆?
+        // 闂辩偛皙綀閺?Google 濞撶娀浜鹃敍姘㈢辑閻ｐ欐暏閹村嘲锝為崘?鏉╃伃顏潻鏂挎礀闀勫嫬甯堟慨瀣侀崹?ID閵?
+        // 娓氬珨顩?nano-banana-2 鏉欒皤攧顐㈡倳閿涘苯婀晢鎰昂皤攧鍡楀絺濞撶娀浜炬稉瀣Ц闀剛鐝涢摼澶嬫櫏濡€崇€烽敍?
+        // 娑擆『冨厴瀵搫鍩楁潻浣盒╅幋?gemini-3.1-flash-image-preview閵?
         if (!isOfficialGoogle) {
             return raw;
         }
 
-        // 瀹樻柟 Google 娓犻亾锛氩厑璁稿仛铡嗗彶杩佺Щ涓庤锣冨寲銆?
+        // 鐎规ɑ鏌?Google 濞撶娀浜鹃敍姘╁帒鐠佺浠涢摗鍡楀蕉鏉╀胶些娑撳氦顫夐敚鍐ㄥ閵?
         const target = MODEL_MIGRATION_MAP[raw];
         if (target) return target;
         return normalizeModelId(raw);
@@ -590,7 +598,7 @@ export function normalizeModelList(models: string[], provider?: string): string[
     return unique;
 }
 
-// 𨱅?Strict Whitelist for Google Image Models
+// 皎眳?Strict Whitelist for Google Image Models
 export const GOOGLE_IMAGE_WHITELIST = [
     'gemini-2.5-flash-image',
     'gemini-3-pro-image-preview',
@@ -600,7 +608,7 @@ export const GOOGLE_IMAGE_WHITELIST = [
     'imagen-4.0-fast-generate-001'
 ];
 
-// 𨱅?Video Model Whitelist
+// 皎眳?Video Model Whitelist
 export const VIDEO_MODEL_WHITELIST = [
     'runway-gen3',
     'luma-video',
@@ -611,14 +619,14 @@ export const VIDEO_MODEL_WHITELIST = [
     'wan-v1'
 ];
 
-// 𨱅?Advanced Image Editing Whitelist
+// 皎眳?Advanced Image Editing Whitelist
 export const ADVANCED_IMAGE_MODEL_WHITELIST = [
     'flux-kontext-max',
     'recraft-v3-svg',
     'ideogram-v2'
 ];
 
-// 𨱅?Audio Model Whitelist
+// 皎眳?Audio Model Whitelist
 export const AUDIO_MODEL_WHITELIST = [
     'suno-v3.5',
     'minimax-t2a-01'
@@ -629,36 +637,25 @@ const isGoogleOfficialModelId = (modelId: string): boolean => {
     return id.startsWith('gemini-') || id.startsWith('imagen-') || id.startsWith('veo-');
 };
 
-// 榛椫 Google 妯″瀷𫔄楄〃锛堜粎镙稿绩Gemini妯″瀷锛?
+// 姒涙か顓?Google 濡€崇€佛珨勬銆冮敍鍫滅矌闀欑缁〨emini濡€崇€烽敍?
 export const DEFAULT_GOOGLE_MODELS = [
-    // Gemini 3.1 绯诲垪锛堟渶鏂伴瑙堢増锛?
+    // Gemini 3.1 缁鍨敍鍫熸付閺備即顣╃憴鍫㈠閿?
     'gemini-3.1-pro-preview',
-    // Gemini 3 绯诲垪锛堥瑙堢増锛? 镵婂ぉ
+    // Gemini 3 缁鍨敍鍫ヮ暕鐟欏牏澧楅敍? 闀靛﹤銇?
     'gemini-3-pro-preview',
     'gemini-3-flash-preview',
-    // Gemini 2.5 绯诲垪锛堢ǔ瀹氱増锛? 镵婂ぉ
+    // Gemini 2.5 缁鍨敍鍫⑶旂€规氨澧楅敍? 闀靛﹤銇?
     'gemini-2.5-flash',
 
     // Strict Image Models
     ...GOOGLE_IMAGE_WHITELIST,
 
-    // Veo 瑙嗛鐢熸垚
+    // Veo 鐟欏棝顣堕悽鐔稿灇
     'veo-3.1-generate-preview',
     'veo-3.1-fast-generate-preview'
 ];
 
 const GOOGLE_HEADER_NAME = 'x-goog-api-key';
-
-const inferHeaderName = (provider: string | undefined, baseUrl: string | undefined, authMethod: AuthMethod): string => {
-    if (authMethod === 'query') return GOOGLE_HEADER_NAME;
-    const providerLower = (provider || '').toLowerCase();
-    const baseLower = (baseUrl || '').toLowerCase();
-    if (providerLower === 'google' || baseLower.includes('googleapis.com')) {
-        return GOOGLE_HEADER_NAME;
-    }
-    // OpenRouter / Other OpenAI compatible
-    return 'Authorization';
-};
 
 const isLegacyGoogleModelList = (models: string[]) => {
     if (models.length !== LEGACY_GOOGLE_MODELS.length) return false;
@@ -729,9 +726,40 @@ GOOGLE_MODEL_METADATA.set('gemini-3.1-flash-image-preview', { name: 'Nano Banana
 GOOGLE_MODEL_METADATA.set('gemini-3-pro-image-preview', { name: 'Nano Banana Pro', icon: '\u{1F34C}', description: 'Gemini 3 Pro Image (Custom)' });
 
 export const getModelMetadata = (modelId: string) => {
-    const baseId = (modelId || '').split('@')[0];
+    const exactId = String(modelId || '').trim();
+    if (exactId) {
+        const exactModel = keyManager.getGlobalModelList().find(model => model.id === exactId);
+        if (exactModel) {
+            return {
+                name: exactModel.name,
+                icon: exactModel.icon,
+                description: exactModel.description
+            };
+        }
+    }
+
+    const baseId = exactId.split('@')[0];
+    const exactAdminModel = adminModelService.getModel(exactId);
+    if (exactAdminModel) {
+        return {
+            name: exactAdminModel.displayName,
+            description: exactAdminModel.advantages
+        };
+    }
+
     return GOOGLE_MODEL_METADATA.get(baseId);
 };
+
+function buildStableSystemRouteId(baseModelId: string, providerId?: string, fallbackIndex?: number): string {
+    const normalizedBaseId = String(baseModelId || '').trim();
+    const normalizedProviderId = String(providerId || '').trim();
+    if (!normalizedProviderId) {
+        return fallbackIndex && fallbackIndex > 1
+            ? `${normalizedBaseId}@system_${fallbackIndex}`
+            : `${normalizedBaseId}@system`;
+    }
+    return `${normalizedBaseId}@system_${encodeURIComponent(normalizedProviderId)}`;
+}
 
 const inferModelType = (modelId: string): GlobalModelType => {
     const id = modelId.toLowerCase();
@@ -748,7 +776,7 @@ const inferModelType = (modelId: string): GlobalModelType => {
         id.includes('jimeng') || id.includes('cogvideo') || id.includes('hunyuanvideo');
     if (isVideo) return 'video';
 
-    // 𨱅?浼桦厛妫€镆ュ浘鐗囧叧阌瘝,阆垮历 gemini-*-image 琚𫔄や负 chat
+    // 皎眳?娴兼ˇ鍘涘Λ鈧晢銉ユ禈閻楀洤鍙ч槍顔跨槤,闃嗗灝鍘?gemini-*-image 鐞氼偉顕ゐ珨勩倓璐?chat
     const isImage = id.includes('imagen') || id.includes('image') || id.includes('img') ||
         id.includes('dall-e') || id.includes('dalle') || id.includes('midjourney') ||
         id.includes('mj') || id.includes('nano') || id.includes('banana') ||
@@ -790,13 +818,13 @@ export class KeyManager {
     private isSyncing = false;
     private cloudSyncBackoffUntil = 0;
 
-    // 馃殌 妯″瀷𫔄楄〃缂揿瓨
+    // 棣冩畬 濡€崇€佛珨勬銆冪紓鎻跨摠
     private globalModelListCache: {
         models: any[];
         slotsHash: string;
         timestamp: number;
     } | null = null;
-    private readonly CACHE_TTL = 5000; // 5绉掔紦瀛?
+    private readonly CACHE_TTL = 5000; // 5缁夋帞绱︾€?
 
     constructor() {
         this.state = this.loadState();
@@ -812,7 +840,7 @@ export class KeyManager {
             status: s.status || 'valid'
         }));
 
-        // 馃殌 Subscribe to admin model changes
+        // 棣冩畬 Subscribe to admin model changes
         adminModelService.subscribe(() => {
             console.log('[KeyManager] Admin models updated, notifying listeners');
             this.notifyListeners();
@@ -826,7 +854,7 @@ export class KeyManager {
 
     /**
      * Add token usage to a key and update cost
-     * 棰勭畻钥楀敖镞惰嚜锷ㄥ皢 key 绉诲埌阒熷垪链熬
+     * 妫板嫮鐣婚挜妤€鏁栭暈鎯板殰閿枫劌鐨?key 缁夎鍩岄槖鐔峰灙閾绢偄鐔?
      */
     addUsage(keyId: string, tokens: number): void {
         const slot = this.state.slots.find(s => s.id === keyId);
@@ -834,9 +862,9 @@ export class KeyManager {
             slot.usedTokens = (slot.usedTokens || 0) + tokens;
             slot.updatedAt = Date.now(); // Update timestamp
 
-            // Check budget - 棰勭畻钥楀敖镞惰嚜锷ㄨ疆鎹?
+            // Check budget - 妫板嫮鐣婚挜妤€鏁栭暈鎯板殰閿枫劏鐤嗛幑?
             if (slot.budgetLimit > 0 && slot.totalCost >= slot.budgetLimit) {
-                console.log(`[KeyManager] API ${slot.name} 棰勭畻宸茶€楀敖 ($${slot.totalCost.toFixed(2)}/$${slot.budgetLimit})`);
+                console.log(`[KeyManager] API ${slot.name} 妫板嫮鐣诲鑼垛偓妤€鏁?($${slot.totalCost.toFixed(2)}/$${slot.budgetLimit})`);
                 // Removed strategy-based rotation, now handled by external logic or just disabled
             }
 
@@ -865,20 +893,33 @@ export class KeyManager {
                 const slots = (parsed.slots || []).map((s: any) => {
                     const provider = s.provider || 'Google';
                     const baseUrl = s.baseUrl || '';
-                    const authMethod = s.authMethod || getDefaultAuthMethod(baseUrl);
+                    const keyType = determineKeyType(provider, baseUrl);
+                    const format = normalizeApiProtocolFormat(
+                        s.format,
+                        provider === 'Google' && keyType === 'official' ? 'gemini' : 'auto'
+                    );
+                    const runtime = resolveProviderRuntime({
+                        provider,
+                        baseUrl,
+                        format,
+                        authMethod: s.authMethod,
+                        headerName: s.headerName,
+                        compatibilityMode: s.compatibilityMode,
+                    });
+                    const authMethod = runtime.authMethod as AuthMethod;
                     const shouldOverrideHeader = !s.headerName || (
                         s.headerName === GOOGLE_HEADER_NAME &&
                         provider !== 'Google' &&
                         !baseUrl.toLowerCase().includes('google')
                     );
-                    const headerName = shouldOverrideHeader ? inferHeaderName(provider, baseUrl, authMethod) : s.headerName;
+                    const headerName = shouldOverrideHeader ? runtime.headerName : s.headerName;
                     const rawModels = Array.isArray(s.supportedModels) ? s.supportedModels : [];
-                    // 𨱅?𬭼存帴浣跨敤瀛桦偍镄勬ā鍨嫔垪琛?浣嗗鏋沧槸 Google Provider, 镊姩琛ュ叏缂哄け镄勫𪽈鏂规ā鍨?
+                    // 皎眳?瓞瀛樺复娴ｈ法鏁ょ€涙ˇ鍋嶉晞鍕侀崹瀚斿灙鐞?娴ｅ棗顩ч弸娌фЦ Google Provider, 闀婎亜濮╃悰銉ュ弿缂傚搫銇戦晞鍕堥弬瑙勀侀崹?
                     let supportedModels = provider === 'Google' && rawModels.length === 0
                         ? [...DEFAULT_GOOGLE_MODELS]
                         : rawModels;
 
-                    // 𨱅?镊姩琛ュ叏: 濡傛灉鏄?Google Key,纭缭鍖呭惈瀹樻柟妯″瀷锛屽苟鍓旈櫎闱炲𪽈鏂规ā鍨?
+                    // 皎眳?闀婎亜濮╃悰銉ュ弿: 婵″倹鐏夐弰?Google Key,绾喕缂崠鍛儓鐎规ɑ鏌熷Ο鈥崇€烽敍灞借嫙閸撴棃娅庨棻鐐拆堥弬瑙勀侀崹?
                     if (provider === 'Google') {
                         supportedModels = supportedModels.filter((m: string) => isGoogleOfficialModelId(parseModelString(m).id));
                         const missingDefaults = DEFAULT_GOOGLE_MODELS.filter(m => !supportedModels.includes(m));
@@ -888,7 +929,7 @@ export class KeyManager {
                         }
                     }
 
-                    // 𨱅?镊姩镙℃妯″瀷𫔄楄〃锛埚皢镞фā鍨嬭縼绉诲埌鏂版ā鍨?& 铡婚吨锛? CRITICAL FIX for Deduplication
+                    // 皎眳?闀婎亜濮╅暀鈩冾劀濡€崇€佛珨勬銆冮敍鍩氱殺闀炑勀侀崹瀣讣缁夎鍩岄弬鐗埬侀崹?& 閾″鍚ㄩ敍? CRITICAL FIX for Deduplication
                     supportedModels = normalizeModelList(supportedModels, provider);
 
                     return {
@@ -898,11 +939,12 @@ export class KeyManager {
                         totalCost: s.totalCost || 0,
                         budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
                         tokenLimit: s.tokenLimit !== undefined ? s.tokenLimit : -1, // Default unlimited
-                        type: s.type || determineKeyType(provider, baseUrl),
+                        type: s.type || keyType,
+                        format,
                         baseUrl,
                         authMethod,
                         headerName,
-                        compatibilityMode: s.compatibilityMode || 'standard',
+                        compatibilityMode: runtime.compatibilityMode,
                         supportedModels,
                         disabled: s.disabled ?? false,
                         status: s.status || 'valid',
@@ -959,7 +1001,8 @@ export class KeyManager {
                         baseUrl: '',
                         authMethod: 'query',
                         headerName: 'x-goog-api-key',
-                        type: 'official', // 𨱅?Default to official for old keys
+                        type: 'official', // 皎眳?Default to official for old keys
+                        format: 'gemini',
                         updatedAt: Date.now() // Set initial timestamp
                     }));
 
@@ -995,11 +1038,11 @@ export class KeyManager {
         const key = this.getStorageKey();
 
         try {
-            // 馃敀 Security Update:
-            // 濡傛灉鐢ㄦ埛宸茬橱褰曪纴涓嶅啀淇𣸣瓨𫔄版湰鍦?localStorage锛岄槻姝㈡硠暗层€?
-            // 浠呬缭瀛桦湪鍐呭瓨涓纴骞跺悓姝ュ埌浜戠銆?
+            // 棣冩晙 Security Update:
+            // 婵″倹鐏夐悽銊﹀煕瀹歌尙姗辫ぐ鏇捍娑撳秴鍟€娣囸８ｇ摠皤攧鐗堟拱閸?localStorage閿涘矂妲诲銏＄鏆楀眰鈧?
+            // 娴犲懍缂€涙ˇ婀崘鍛摠娑擃叏绾撮獮璺烘倱濮濄儱鍩屾禍鎴狀伂閵?
             if (this.userId) {
-                console.log('[KeyManager] 安全模式：登录用户写入云端，跳过本地明文存储');
+                console.log('[KeyManager] 瀹夊叏妯″紡锛氱櫥褰曠敤鎴峰啓鍏ヤ簯绔紝璺宠繃鏈湴鏄庢枃瀛樺偍');
                 // Optional: Clear existing local storage just in case
                 localStorage.removeItem(key);
 
@@ -1120,27 +1163,48 @@ export class KeyManager {
             if (data && data.user_apis) {
                 let cloudSlots = data.user_apis as KeySlot[];
                 if (Array.isArray(cloudSlots)) {
-                    cloudSlots = cloudSlots.map(s => ({
-                        ...s,
-                        name: s.name || 'Cloud Key',
-                        provider: (s.provider as Provider) || 'Google',
-                        totalCost: s.totalCost || 0,
-                        budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
-                        tokenLimit: s.tokenLimit !== undefined ? s.tokenLimit : -1,
-                        disabled: s.disabled || false,
-                        createdAt: s.createdAt || Date.now(),
-                        failCount: s.failCount || 0,
-                        successCount: s.successCount || 0,
-                        lastUsed: s.lastUsed || null,
-                        lastError: s.lastError || null,
-                        status: s.status || 'unknown',
-                        weight: s.weight || 50,
-                        timeout: s.timeout || 30000,
-                        maxRetries: s.maxRetries || 2,
-                        retryDelay: s.retryDelay || 1000,
-                        type: determineKeyType(s.provider || 'Google', s.baseUrl),
-                        compatibilityMode: s.compatibilityMode || 'standard',
-                    }));
+                    cloudSlots = cloudSlots.map(s => {
+                        const provider = (s.provider as Provider) || 'Google';
+                        const keyType = determineKeyType(provider, s.baseUrl);
+                        const format = normalizeApiProtocolFormat(
+                            (s as any).format,
+                            provider === 'Google' && keyType === 'official' ? 'gemini' : 'auto'
+                        );
+                        const runtime = resolveProviderRuntime({
+                            provider,
+                            baseUrl: s.baseUrl,
+                            format,
+                            authMethod: s.authMethod,
+                            headerName: s.headerName,
+                            compatibilityMode: s.compatibilityMode,
+                        });
+                        const authMethod = runtime.authMethod as AuthMethod;
+
+                        return {
+                            ...s,
+                            name: s.name || 'Cloud Key',
+                            provider,
+                            totalCost: s.totalCost || 0,
+                            budgetLimit: s.budgetLimit !== undefined ? s.budgetLimit : -1,
+                            tokenLimit: s.tokenLimit !== undefined ? s.tokenLimit : -1,
+                            disabled: s.disabled || false,
+                            createdAt: s.createdAt || Date.now(),
+                            failCount: s.failCount || 0,
+                            successCount: s.successCount || 0,
+                            lastUsed: s.lastUsed || null,
+                            lastError: s.lastError || null,
+                            status: s.status || 'unknown',
+                            weight: s.weight || 50,
+                            timeout: s.timeout || 30000,
+                            maxRetries: s.maxRetries || 2,
+                            retryDelay: s.retryDelay || 1000,
+                            type: keyType,
+                            format,
+                            authMethod,
+                            headerName: s.headerName || runtime.headerName,
+                            compatibilityMode: runtime.compatibilityMode,
+                        };
+                    });
 
                     cloudSlots = cloudSlots.map(s => {
                         const isGoogle = s.provider === 'Google' || (s.provider as string) === 'Gemini';
@@ -1298,7 +1362,7 @@ export class KeyManager {
      * Notify all listeners of state change
      */
     private notifyListeners(): void {
-        // 馃殌 娓呴櫎妯″瀷𫔄楄〃缂揿瓨锛坰lots 鍙戠敚鍙桦寲镞讹级
+        // 棣冩畬 濞撳懘娅庡Ο鈥崇€佛珨勬銆冪紓鎻跨摠閿涘澃lots 閸欐垹鏁氶崣妗﹀闀炶绾?
         this.globalModelListCache = null;
         this.listeners.forEach(fn => fn());
     }
@@ -1312,7 +1376,7 @@ export class KeyManager {
     }
 
     /**
-     * 馃殌 娓呴櫎鍏ㄥ眬妯″瀷𫔄楄〃缂揿瓨锛埚𫟄 adminModelService 鏁版嵁旋存柊镞惰𤾀鐢级
+     * 棣冩畬 濞撳懘娅庨崗銊ョ湰濡€崇€佛珨勬銆冪紓鎻跨摠閿涘煔皤焺 adminModelService 閺佺増宓佹棆瀛樻煀闀炴儼黏線閻㈩煉绾?
      */
     clearGlobalModelListCache(): void {
         this.globalModelListCache = null;
@@ -1320,7 +1384,7 @@ export class KeyManager {
     }
 
     /**
-     * 馃殌 寮哄埗阃氱煡镓€链夎阒呰€咃纸褰?adminModelService 鏁版嵁旋存柊镞惰𤾀鐢级
+     * 棣冩畬 瀵搫鍩楅槂姘辩叀闀撯偓閾惧顓归槖鍛扳偓鍜冪焊瑜?adminModelService 閺佺増宓佹棆瀛樻煀闀炴儼黏線閻㈩煉绾?
      */
     forceNotify(): void {
         console.log('[KeyManager] Force notifying all listeners');
@@ -1335,7 +1399,8 @@ export class KeyManager {
         key: string,
         provider?: Provider | string,
         authMethod?: AuthMethod,
-        headerName?: string
+        headerName?: string,
+        format?: ApiProtocolFormat
     ): Promise<{ success: boolean, message?: string }> {
         try {
             // Sanitize input key before connectivity test
@@ -1348,10 +1413,17 @@ export class KeyManager {
             // Pre-process URL
             const cleanUrl = url.replace(/\/chat\/completions$/, '').replace(/\/$/, '');
 
-            const resolvedAuthMethod = authMethod || getDefaultAuthMethod(cleanUrl);
-            const resolvedHeader = headerName || inferHeaderName(provider, cleanUrl, resolvedAuthMethod);
+            const runtime = resolveProviderRuntime({
+                provider,
+                baseUrl: cleanUrl,
+                format,
+                authMethod,
+                headerName,
+            });
+            const resolvedAuthMethod = runtime.authMethod as AuthMethod;
+            const resolvedHeader = runtime.headerName;
 
-            if (url.includes('generativelanguage.googleapis.com') || provider === 'Google') {
+            if (runtime.geminiNative || runtime.resolvedFormat === 'gemini') {
                 // Google Native Logic
                 if (cleanUrl === 'https://generativelanguage.googleapis.com') {
                     // Default Google Base
@@ -1370,7 +1442,7 @@ export class KeyManager {
                 }
                 // headers['Content-Type'] = 'application/json'; // Not strictly triggered for GET
             } else {
-                // OpenAI Compatible Logic - 馃殌 [Fix] Use /v1/models for proxy compatibility
+                // OpenAI Compatible Logic - 棣冩畬 [Fix] Use /v1/models for proxy compatibility
                 const cleanBaseUrl = cleanUrl.replace(/\/v1$/, '').replace(/\/v1\/models$/, '').replace(/\/models$/, '');
                 targetUrl = `${cleanBaseUrl}/v1/models`;
                 const headerValue = resolvedHeader.toLowerCase() === 'authorization'
@@ -1426,22 +1498,25 @@ export class KeyManager {
      * Returns a list of model IDs or empty array on failure
      * SIDE EFFECT: Updates GOOGLE_MODEL_METADATA with rich info if available
      */
-    async fetchRemoteModels(baseUrl: string, key: string, authMethod?: AuthMethod, headerName?: string, provider?: Provider | string): Promise<string[]> {
+    async fetchRemoteModels(
+        baseUrl: string,
+        key: string,
+        authMethod?: AuthMethod,
+        headerName?: string,
+        provider?: Provider | string,
+        format?: ApiProtocolFormat
+    ): Promise<string[]> {
         try {
             const cleanUrl = baseUrl.replace(/\/chat\/completions$/, '').replace(/\/$/, '');
-            let targetUrls = [
-                cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`,
-            ];
-
-            if (!cleanUrl.match(/\/v1\/?$/) && !cleanUrl.match(/\/v1beta\/?$/)) {
-                targetUrls.push(`${cleanUrl}/v1/models`);
-                targetUrls.push(`${cleanUrl}/v1beta/models`);
-            }
-
-            targetUrls = [...new Set(targetUrls)];
-
-            const resolvedAuthMethod = authMethod || 'query'; // Simplified default
-            const resolvedHeader = headerName || 'Authorization';
+            const runtime = resolveProviderRuntime({
+                provider,
+                baseUrl: cleanUrl,
+                format,
+                authMethod,
+                headerName,
+            });
+            const resolvedAuthMethod = runtime.authMethod as AuthMethod;
+            const resolvedHeader = runtime.headerName;
             const headers: Record<string, string> = {
                 'Content-Type': 'application/json'
             };
@@ -1457,6 +1532,37 @@ export class KeyManager {
                 headers['HTTP-Referer'] = window.location.origin; // Required by OpenRouter
                 headers['X-Title'] = 'KK Studio'; // Optional
             }
+
+            if (runtime.geminiNative || runtime.resolvedFormat === 'gemini') {
+                const response = await fetch(
+                    buildGeminiModelsEndpoint(cleanUrl, key, resolvedAuthMethod, typeof provider === 'string' ? provider : undefined),
+                    {
+                        method: 'GET',
+                        headers: buildGeminiHeaders(resolvedAuthMethod, key, resolvedHeader),
+                    }
+                );
+
+                if (!response.ok) {
+                    return [];
+                }
+
+                const data = await response.json();
+                const geminiModels: any[] = data.models || data.data || [];
+                return geminiModels
+                    .map((model: any) => String(model?.name || model?.id || model?.model || '').replace(/^models\//i, ''))
+                    .filter(Boolean);
+            }
+
+            let targetUrls = [
+                cleanUrl.endsWith('/models') ? cleanUrl : `${cleanUrl}/models`,
+            ];
+
+            if (!cleanUrl.match(/\/v1\/?$/) && !cleanUrl.match(/\/v1beta\/?$/)) {
+                targetUrls.push(`${cleanUrl}/v1/models`);
+                targetUrls.push(`${cleanUrl}/v1beta/models`);
+            }
+
+            targetUrls = [...new Set(targetUrls)];
 
             // Try each URL until one works
             for (const url of targetUrls) {
@@ -1520,7 +1626,7 @@ export class KeyManager {
                                 });
                             }
 
-                            // 馃殌 Add System Internal Models (Built-in Credits)
+                            // 棣冩畬 Add System Internal Models (Built-in Credits)
                             Object.entries(MODEL_REGISTRY).forEach(([id, m]) => {
                                 // [Fix] Filter system internal models to only include specific "Banana" ones
                                 const isTargetBanana = id === 'gemini-3.1-flash-image-preview' || id === 'gemini-3-pro-image-preview';
@@ -1534,7 +1640,7 @@ export class KeyManager {
                                 }
                             });
 
-                            // ✨ [NEW] 尝试静默获取 /pricing 端点并动态更新全局价格
+                            // 鉁?[NEW] 灏濊瘯闈欓粯鑾峰彇 /pricing 绔偣骞跺姩鎬佹洿鏂板叏灞€浠锋牸
                             try {
                                 const pricingUrl = cleanUrl.endsWith('/v1') ? cleanUrl.replace(/\/v1$/, '') + '/pricing' : cleanUrl + '/pricing';
                                 // We don't want to block the models return, so do this asynchronously but catch errors locally.
@@ -1609,10 +1715,10 @@ export class KeyManager {
 
         // Normalize the requested model ID and apply migration mapping
         let normalizedModelId = baseIdPart.replace(/^models\//, '');
-        // 兼容 UI/历史数据里可能出现的展示名作为 modelId
+        // 鍏煎 UI/鍘嗗彶鏁版嵁閲屽彲鑳藉嚭鐜扮殑灞曠ず鍚嶄綔涓?modelId
         const lowerRequested = normalizedModelId.toLowerCase();
-        // 仅修正“展示名输入”场景（空格形式），不改写标准模型ID（连字符形式）。
-        // 连字符形式可能是分发渠道的真实模型名（例如 nano-banana-2）。
+        // 浠呬慨姝ｂ€滃睍绀哄悕杈撳叆鈥濆満鏅紙绌烘牸褰㈠紡锛夛紝涓嶆敼鍐欐爣鍑嗘ā鍨婭D锛堣繛瀛楃褰㈠紡锛夈€?
+        // 杩炲瓧绗﹀舰寮忓彲鑳芥槸鍒嗗彂娓犻亾鐨勭湡瀹炴ā鍨嬪悕锛堜緥濡?nano-banana-2锛夈€?
         if (lowerRequested === 'nano banana pro') {
             normalizedModelId = 'gemini-3-pro-image-preview';
         } else if (lowerRequested === 'nano banana') {
@@ -1621,15 +1727,15 @@ export class KeyManager {
             normalizedModelId = 'gemini-3.1-flash-image-preview';
         }
 
-        // 有后缀时代表强绑定某个渠道（@xxx），优先尊重该渠道的原始模型ID，
-        // 避免把渠道内别名强制迁移为官方ID导致“无可用渠道”。
+        // 鏈夊悗缂€鏃朵唬琛ㄥ己缁戝畾鏌愪釜娓犻亾锛園xxx锛夛紝浼樺厛灏婇噸璇ユ笭閬撶殑鍘熷妯″瀷ID锛?
+        // 閬垮厤鎶婃笭閬撳唴鍒悕寮哄埗杩佺Щ涓哄畼鏂笽D瀵艰嚧鈥滄棤鍙敤娓犻亾鈥濄€?
         if (!suffix && MODEL_MIGRATION_MAP[normalizedModelId]) {
             normalizedModelId = MODEL_MIGRATION_MAP[normalizedModelId];
         }
 
-        // 🚀 [Model-Driven Logic]
-        // 检测是否为“积分模型”（即内置模型，如 Nano Banana 系列）
-        // 这些模型如果没有指定后缀，默认走内置 PROXY 线路
+        // 馃殌 [Model-Driven Logic]
+        // 妫€娴嬫槸鍚︿负鈥滅Н鍒嗘ā鍨嬧€濓紙鍗冲唴缃ā鍨嬶紝濡?Nano Banana 绯诲垪锛?
+        // 杩欎簺妯″瀷濡傛灉娌℃湁鎸囧畾鍚庣紑锛岄粯璁よ蛋鍐呯疆 PROXY 绾胯矾
         const isCreditModel = normalizedModelId.includes('nano-banana') ||
             normalizedModelId.includes('gemini-3.1-flash-image') ||
             normalizedModelId.includes('gemini-3-pro-image') ||
@@ -1637,43 +1743,51 @@ export class KeyManager {
             normalizedModelId.includes('lyria');
 
         // --- SEPARATION STRATEGY ---
-        // 1. 如果有显示后缀 (@Suffix)，强制寻找对应频道
-        // 2. 如果无后缀：
-        //    - 如果是积分模型 (Nano Banana 等) -> 走内置 PROXY
-        //    - 如果是普通模型 (Gemini 1.5 等) -> 走用户配置的 Google Key
+        // 1. 濡傛灉鏈夋樉绀哄悗缂€ (@Suffix)锛屽己鍒跺鎵惧搴旈閬?
+        // 2. 濡傛灉鏃犲悗缂€锛?
+        //    - 濡傛灉鏄Н鍒嗘ā鍨?(Nano Banana 绛? -> 璧板唴缃?PROXY
+        //    - 濡傛灉鏄櫘閫氭ā鍨?(Gemini 1.5 绛? -> 璧扮敤鎴烽厤缃殑 Google Key
 
-        // 🚀 [Fix] 将 providers 转换为临时的 KeySlot 以便统一调度
+        // 馃殌 [Fix] 灏?providers 杞崲涓轰复鏃剁殑 KeySlot 浠ヤ究缁熶竴璋冨害
         this.loadProviders();
-        const providerSlots: KeySlot[] = this.providers.filter(p => p.isActive).map(p => ({
-            id: p.id,
-            key: p.apiKey,
-            name: p.name,
-            provider: (['Google', 'OpenAI', 'Anthropic', 'Volcengine', 'Aliyun', 'Tencent', 'SiliconFlow', '12AI'].includes(p.name) ? p.name : 'Custom') as Provider,
-            baseUrl: p.baseUrl,
-            authMethod: getDefaultAuthMethod(p.baseUrl),
-            headerName: inferHeaderName(
-                (['Google', 'OpenAI', 'Anthropic', 'Volcengine', 'Aliyun', 'Tencent', 'SiliconFlow', '12AI'].includes(p.name) ? p.name : 'Custom') as Provider,
-                p.baseUrl,
-                getDefaultAuthMethod(p.baseUrl)
-            ),
-            group: p.group,
-            status: 'valid',
-            budgetLimit: -1,
-            totalCost: 0,
-            successCount: 0,
-            failCount: 0,
-            supportedModels: p.models,
-            type: 'third-party',
-            lastUsed: 0,
-            lastError: null,
-            disabled: false,
-            createdAt: 0,
-            proxyConfig: {
-                serverUrl: p.baseUrl,
-                serverName: p.name,
-                isEnabled: true
-            }
-        }));
+        const providerSlots: KeySlot[] = this.providers.filter(p => p.isActive).map(p => {
+            const provider = (['Google', 'OpenAI', 'Anthropic', 'Volcengine', 'Aliyun', 'Tencent', 'SiliconFlow', '12AI'].includes(p.name) ? p.name : 'Custom') as Provider;
+            const format = normalizeApiProtocolFormat(p.format, 'auto');
+            const runtime = resolveProviderRuntime({
+                provider,
+                baseUrl: p.baseUrl,
+                format,
+            });
+            const authMethod = runtime.authMethod as AuthMethod;
+
+            return {
+                id: p.id,
+                key: p.apiKey,
+                name: p.name,
+                provider,
+                baseUrl: p.baseUrl,
+                format,
+                authMethod,
+                headerName: runtime.headerName,
+                group: p.group,
+                status: 'valid',
+                budgetLimit: -1,
+                totalCost: 0,
+                successCount: 0,
+                failCount: 0,
+                supportedModels: p.models,
+                type: 'third-party',
+                lastUsed: 0,
+                lastError: null,
+                disabled: false,
+                createdAt: 0,
+                proxyConfig: {
+                    serverUrl: p.baseUrl,
+                    serverName: p.name,
+                    isEnabled: true
+                }
+            };
+        });
 
         const allSlots = [...this.state.slots, ...providerSlots];
 
@@ -1694,12 +1808,12 @@ export class KeyManager {
         };
 
         const matchesRequestedRoute = (slot: KeySlot) => {
-            // 无后缀 = 官方直连，只允许 Google
+            // 鏃犲悗缂€ = 瀹樻柟鐩磋繛锛屽彧鍏佽 Google
             if (!suffix) {
                 return slot.provider === 'Google';
             }
 
-            // 有后缀 = 必须命中该后缀渠道
+            // 鏈夊悗缂€ = 蹇呴』鍛戒腑璇ュ悗缂€娓犻亾
             const normalizedSuffix = String(suffix || '').trim().toLowerCase();
             const slotNameLower = String(slot.name || '').trim().toLowerCase();
             const slotSuffix = String(slot.proxyConfig?.serverName || slot.provider || 'Custom').trim();
@@ -1714,7 +1828,7 @@ export class KeyManager {
             return false;
         };
 
-        // [Note] 积分模型强制路由已移除
+        // [Note] 绉垎妯″瀷寮哄埗璺敱宸茬Щ闄?
 
         if (preferredKeyId) {
             const preferred = allSlots.find(s => s.id === preferredKeyId);
@@ -1729,29 +1843,27 @@ export class KeyManager {
         if (!suffix) {
             // [No Suffix Case]
 
-            // [Note] 积分模型优先逻辑已移除
+            // [Note] 绉垎妯″瀷浼樺厛閫昏緫宸茬Щ闄?
 
-            // B. 非积分模型：寻找用户自己的 Google 官方 Key (直连模式)
+            // B. 闈炵Н鍒嗘ā鍨嬶細瀵绘壘鐢ㄦ埛鑷繁鐨?Google 瀹樻柟 Key (鐩磋繛妯″紡)
             candidates = allSlots.filter(s => s.provider === 'Google' || (s.provider as string) === 'Gemini');
             let strictCandidates = candidates.filter(s => modelSupportedBySlot(s));
 
             if (strictCandidates.length > 0) {
                 candidates = strictCandidates;
             } else {
-                console.warn(`[KeyManager] 找不到官方 Key: ${normalizedModelId}`);
+                console.warn(`[KeyManager] 鎵句笉鍒板畼鏂?Key: ${normalizedModelId}`);
             }
 
         } else {
             // [Proxy / Channel Connection]
-            // Strategy: Find keys matching the suffix (Custom Name or Provider Name)
+            // Strategy: find keys matching the selected suffix.
             const normalizedSuffix = String(suffix || '').trim().toLowerCase();
             const isSystemRoute = normalizedSuffix.startsWith('system') || normalizedSuffix === 'systemproxy';
-            const proxyAliasSet = new Set(['custom', 'proxy', 'proxied', '浠ｇ悊', '鍙崭唬', 'system', 'builtin']);
-
-            // 绯荤粺绉垎璺敱锛氢弗绂佸洖钀藉埌鐢ㄦ埛镊畾涔夋笭阆掳纴阆垮历钬沧墸绉垎 + 镓ｇ敤鎴禀PI钬𣸣弻阅𡺃璐?
+            const proxyAliasSet = new Set(['custom', 'proxy', 'proxied', 'system', 'builtin']);
             if (isSystemRoute) {
-                // 馃殌 [Fix] 锷ㄦ€佺敚鎴愪竴涓?SystemProxy 镄勮櫄𨰾?KeySlot 浜ょ敱 LLMService 瑙ｆ瀽
-                // 锲犱负绠＄悊锻橀历缃殑绯荤粺绉垎妯″瀷涓嶅啀瀛桦叆链湴鐢ㄦ埛镐佺殑 slots 涓?
+                // 棣冩畬 [Fix] 閿枫劍鈧胶鏁氶幋鎰娑?SystemProxy 闀勫嫯娅勷ò?KeySlot 娴溿倗鏁?LLMService 鐟欙絾鐎?
+                // 閿茬姳璐熺粻锛勬倞閿绘﹢鍘嗙純顔炬畱缁崵绮虹粔顖氬瀻濡€崇€锋稉宥呭晙鐎涙ˇ鍙嗛摼顒€婀撮悽銊﹀煕闀愪胶娈?slots 娑?
                 return this.prepareKeyResult({
                     id: `backend_proxy_${normalizedModelId}`,
                     key: 'system-proxy-managed-key',
@@ -1770,32 +1882,32 @@ export class KeyManager {
                     createdAt: Date.now()
                 } as KeySlot);
 
-                // 璺宠绷钖庣画钬滀唬鐞嗗埆钖嶅洖阃€𫔄颁换镒忛潪Google娓犻亾钬濈殑阃昏緫
+                // 鐠哄疇缁烽挅搴ｇ敾閽粈鍞悶鍡楀焼閽栧秴娲栭槂鈧珨勯鎹㈤晵蹇涙姜Google濞撶娀浜鹃挰婵堟畱闃冩槒绶?
             } else {
 
-                // Step 1: 绮剧‘钖岖О鍖归历
+                // Step 1: 缁墽鈥橀挅宀栃為崠褰掑巻
                 const nameMatchedCandidates = allSlots.filter(s => {
                     const slotNameLower = String(s.name || '').trim().toLowerCase();
                     const slotSuffix = String(s.proxyConfig?.serverName || s.provider || 'Custom').trim();
                     const slotSuffixLower = slotSuffix.toLowerCase();
                     const providerLower = String(s.provider || '').toLowerCase();
 
-                    // 绮剧‘鍖归历
+                    // 缁墽鈥橀崠褰掑巻
                     if (slotNameLower === normalizedSuffix) return true;
                     if (slotSuffixLower === normalizedSuffix) return true;
                     if (providerLower === normalizedSuffix) return true;
 
-                    // 杞ā绯婂尮閰?(瀵逛簬阅嶅懡钖岖殑棰戦亾)
+                    // 鏉烆垱膩缁﹤灏柊?(鐎甸€涚艾闃呭秴鎳￠挅宀栨畱妫版垿浜?
                     if (slotNameLower.includes(normalizedSuffix) || slotSuffixLower.includes(normalizedSuffix)) return true;
 
                     return false;
                 });
 
-                // Step 2: 瀵瑰悕绉板尮閰岖殑炼𣗋€夎繘琛屾ā鍨嬭绷婊?
+                // Step 2: 鐎电懓鎮曠粔鏉垮爱闁板矕娈戠偧穑棆鈧绻樼悰灞灸侀崹瀣环濠?
                 let modelFilteredCandidates = nameMatchedCandidates.filter(s => modelSupportedBySlot(s));
 
-                // Step 3: 濡傛灉钖岖О鍖归历镓惧埌浜嗛阆扑絾妯″瀷杩囨护钖庝负绌猴纴
-                // 淇′换钖岖О鍖归历 钬?璇ラ阆揿彨鑳藉姩镐佹敮镌佹洿澶𣱝ā鍨嬩絾链湴𫔄楄〃链悓姝?
+                // Step 3: 婵″倹鐏夐挅宀栃為崠褰掑巻闀撴儳鍩屾禍鍡涱暥闃嗘墤绲惧Ο鈥崇€锋潻鍥ㄦ姢閽栧簼璐熺粚鐚寸捍
+                // 娣団€叉崲閽栧矕袨閸栧綊鍘?閽?鐠囥儵顣堕槅鎻垮建閼宠棄濮╅晲浣规暜闀屼焦娲挎径穑睗膩閸ㄥ绲鹃摼顒€婀答珨勬銆冮摼顏勬倱濮?
                 if (nameMatchedCandidates.length > 0 && modelFilteredCandidates.length === 0) {
                     console.log(`[KeyManager] Name-matched candidates for suffix '${normalizedSuffix}' but model filter rejected '${normalizedModelId}', fallback to name matches.`);
                     candidates = nameMatchedCandidates;
@@ -1805,8 +1917,8 @@ export class KeyManager {
                     candidates = [];
                 }
 
-                // Step 4: 濡傛灉娌℃湁浠讳綍钖岖О鍖归历锛屼笖钖庣紑灞炰簬阃氱敤浠ｇ悊𫔄悕锛?
-                // 锲为€€𫔄?浠绘剰闱濭oogle阃氶亾涓敮镌佽妯″瀷镄?妯″纺
+                // Step 4: 婵″倹鐏夊▽鈩冩箒娴犺缍嶉挅宀栃為崠褰掑巻閿涘奔绗栭挅搴ｇ磻鐏炵偘绨槂姘辨暏娴狅絿鎮婐珨勵偄鎮曢敍?
+                // 閿蹭负鈧偓皤攧?娴犵粯鍓伴棻婵璷ogle闃冩岸浜炬稉顓熸暜闀屼浇顕氬Ο鈥崇€烽晞?濡€崇汉
                 if (candidates.length === 0 && proxyAliasSet.has(normalizedSuffix)) {
                     candidates = allSlots.filter(s => {
                         if (s.provider === 'Google') return false;
@@ -1814,7 +1926,7 @@ export class KeyManager {
                     });
                 }
 
-                // [Note] system/builtin 钖庣紑澶勭悊宸茬Щ闄?
+                // [Note] system/builtin 閽栧海绱戞径鍕倞瀹歌尙些闂?
 
                 console.log(`[KeyManager] Suffix='${normalizedSuffix}', NameMatched=${nameMatchedCandidates.length}, ModelFiltered=${modelFilteredCandidates.length}, FinalCandidates=${candidates.length}${candidates.length > 0 ? ' -> ' + candidates.map(c => c.name).join(', ') : ''}`);
             }
@@ -1840,7 +1952,7 @@ export class KeyManager {
         }
 
         if (validCandidates.length === 0) {
-            // 𨱅?JIT Auto-Repair (Official Only)
+            // 皎眳?JIT Auto-Repair (Official Only)
             if (!suffix && (normalizedModelId.startsWith('gemini-') || normalizedModelId.startsWith('imagen-') || normalizedModelId.startsWith('veo-'))) {
 
                 // Find any healthy Google key
@@ -1864,7 +1976,7 @@ export class KeyManager {
                 }
             }
 
-            // [Note] 鍐呯疆链嶅姟 Fallback 宸茬Щ闄?
+            // [Note] 閸愬懐鐤嗛摼宥呭 Fallback 瀹歌尙些闂?
 
             return null;
         }
@@ -1873,7 +1985,7 @@ export class KeyManager {
         // Common Sort: Valid > Unknown > Rate Limited
         const now = Date.now();
         const cooldownFiltered = validCandidates.filter(s => {
-            // 馃殌 [Fix] 鍐呯疆锷犻€熸湇锷?绉垎妯″瀷涓𡺃蛋瀹㈡埛绔㖞鍗达纴鐢卞悗绔粺涓€绠＄悊
+            // 棣冩畬 [Fix] 閸愬懐鐤嗛敺鐘烩偓鐔告箛閿?缁夘垰鍨庡Ο鈥崇€锋稉稹簝铔嬬€广垺鍩涚粩顖氥枮閸楄揪绾撮悽鍗炴倵缁旑垳绮烘稉鈧粻锛勬倞
             if (s.provider === 'SystemProxy' || s.id?.startsWith('backend_proxy')) return true;
             if (s.cooldownUntil && now < s.cooldownUntil) return false;
             if (s.status !== 'rate_limited') return true;
@@ -1975,9 +2087,28 @@ export class KeyManager {
             key: slot.key,
             name: slot.name || slot.provider || 'Unnamed Channel',
             baseUrl: slot.baseUrl || GOOGLE_API_BASE,
-            authMethod: slot.authMethod || 'query',
-            headerName: slot.headerName || 'x-goog-api-key',
-            compatibilityMode: slot.compatibilityMode || 'standard',
+            authMethod: slot.authMethod || getDefaultAuthMethod(slot.baseUrl || GOOGLE_API_BASE, {
+                provider: slot.provider,
+                format: slot.format,
+            }),
+            headerName: slot.headerName || resolveProviderRuntime({
+                provider: slot.provider,
+                baseUrl: slot.baseUrl || GOOGLE_API_BASE,
+                format: slot.format,
+                authMethod: slot.authMethod || getDefaultAuthMethod(slot.baseUrl || GOOGLE_API_BASE, {
+                    provider: slot.provider,
+                    format: slot.format,
+                }),
+                compatibilityMode: slot.compatibilityMode,
+            }).headerName,
+            compatibilityMode: resolveProviderRuntime({
+                provider: slot.provider,
+                baseUrl: slot.baseUrl || GOOGLE_API_BASE,
+                format: slot.format,
+                authMethod: slot.authMethod,
+                headerName: slot.headerName,
+                compatibilityMode: slot.compatibilityMode,
+            }).compatibilityMode,
             group: slot.group,
             provider: slot.provider || 'Google',
             timeout: slot.timeout,
@@ -2021,19 +2152,14 @@ export class KeyManager {
                 lowerError.includes('quota exceeded');
 
             const isAuthError =
-                lowerError.includes('401') ||
-                lowerError.includes('403') ||
-                lowerError.includes('unauthorized') ||
-                lowerError.includes('forbidden') ||
-                lowerError.includes('invalid api key') ||
-                lowerError.includes('api key invalid') ||
+                hasAuthErrorMarkers(error) ||
                 lowerError.includes('authentication') ||
                 lowerError.includes('permission denied') ||
                 lowerError.includes('permission_denied');
 
-            // 馃殌 [Fix] 鍐呯疆锷犻€熸湇锷?绉垎妯″瀷涓𡺃蛋瀹㈡埛绔㖞鍗存带𫔄讹纴鐢卞悗绔粺涓€绠＄悊
+            // 棣冩畬 [Fix] 閸愬懐鐤嗛敺鐘烩偓鐔告箛閿?缁夘垰鍨庡Ο鈥崇€锋稉稹簝铔嬬€广垺鍩涚粩顖氥枮閸楀瓨甯︷珨勮绾撮悽鍗炴倵缁旑垳绮烘稉鈧粻锛勬倞
             if (slot.provider === 'SystemProxy' || slot.id?.startsWith('backend_proxy')) {
-                // 浠呰褰曢敊璇纴涓嶆敼鍙樼姸镐侊纸钖庣缁熶竴绠＄悊锛?
+                // 娴犲懓顔囪ぐ鏇㈡晩鐠囶垽绾存稉宥嗘暭閸欐濮搁晲渚婄焊閽栧海顏紒鐔剁缁狅紕鎮婇敍?
                 console.warn(`[KeyManager] SystemProxy error reported but not changing cooldown state: ${error}`);
             } else if (isRateLimit) {
                 slot.status = 'rate_limited';
@@ -2042,7 +2168,7 @@ export class KeyManager {
                 slot.status = 'invalid';
                 slot.cooldownUntil = undefined;
             } else {
-                // 鐢熸垚澶辫触/缃戠粶鿔栧姩/涓婃父寮傚父涓嶅簲姘镐箙镙囩孩涓?invalid锛屽洖𫔄?unknown 鍏佽钖庣画镊姩镇㈠
+                // 閻㈢喐鍨氭径杈Е/缂冩垹绮堕繑鏍уЗ/娑撳﹥鐖跺鍌氱埗娑撳秴绨插闀愮畽闀欏洨瀛╂稉?invalid閿涘苯娲栶珨?unknown 閸忎浇顔忛挅搴ｇ敾闀婎亜濮╅晣銏狀槻
                 slot.status = 'unknown';
                 const transientBackoff = Math.min(15000, 2000 * Math.max(1, slot.failCount));
                 slot.cooldownUntil = Date.now() + transientBackoff;
@@ -2054,7 +2180,7 @@ export class KeyManager {
     }
     /**
      * Toggle disabled state for manual pause/resume
-     * 𨱌傚仠镄?key 浼氱Щ𫔄伴『搴忛槦𫔄楁汤灏?
+     * 皎睂鍌氫粻闀?key 娴兼氨些皤攧浼淬€庢惔蹇涙Е皤攧妤佹堡鐏?
      */
     toggleKey(keyId: string): void {
         const slot = this.state.slots.find(s => s.id === keyId);
@@ -2090,65 +2216,59 @@ export class KeyManager {
      * Add exact cost usage to a key (syncs with CostService)
      */
     addCost(keyId: string, cost: number): void {
-        const slot = this.state.slots.find(s => s.id === keyId);
-        if (slot) {
-            const previousCost = slot.totalCost || 0;
-            slot.totalCost = previousCost + cost;
+        const slot = this.state.slots.find((s) => s.id === keyId);
+        if (!slot) return;
 
-            // Check Budget Thresholds (only if budget limit exists)
-            if (slot.budgetLimit > 0) {
-                const usageRatio = slot.totalCost / slot.budgetLimit;
-                const previousRatio = previousCost / slot.budgetLimit;
+        const previousCost = slot.totalCost || 0;
+        slot.totalCost = previousCost + cost;
 
-                // Trigger Warning at 90% (only once per crossing)
-                if (usageRatio >= 0.9 && previousRatio < 0.9) {
-                    // Using dynamic import to avoid potential circular dependencies
-                    import('../system/notificationService').then(({ notify }) => {
-                        notify.warning(
-                            `预算即将耗尽`,
-                            `API Key "${slot.name}" 已使用 ${(usageRatio * 100).toFixed(0)}% 预算（$${slot.totalCost.toFixed(2)} / $${slot.budgetLimit}）`
-                        );
-                    });
-                }
+        if (slot.budgetLimit > 0) {
+            const usageRatio = slot.totalCost / slot.budgetLimit;
+            const previousRatio = previousCost / slot.budgetLimit;
 
-                // Trigger Error at 100% (only once per crossing)
-                if (usageRatio >= 1.0 && previousRatio < 1.0) {
-                    import('../system/notificationService').then(({ notify }) => {
-                        notify.error(
-                            `预算已耗尽`,
-                            `API Key "${slot.name}" 已达到预算上限，请充值或调整预算后继续使用。`
-                        );
-                    });
-                }
+            if (usageRatio >= 0.9 && previousRatio < 0.9) {
+                import('../system/notificationService').then(({ notify }) => {
+                    notify.warning(
+                        'Budget warning',
+                        `API Key "${slot.name}" is using ${(usageRatio * 100).toFixed(0)}% of its budget ($${slot.totalCost.toFixed(2)} / $${slot.budgetLimit}).`
+                    );
+                });
             }
 
-            this.saveState();
-            this.notifyListeners();
+            if (usageRatio >= 1.0 && previousRatio < 1.0) {
+                import('../system/notificationService').then(({ notify }) => {
+                    notify.error(
+                        'Budget exhausted',
+                        `API Key "${slot.name}" reached its budget limit. Recharge or increase the budget to continue.`
+                    );
+                });
+            }
         }
+
+        this.saveState();
+        this.notifyListeners();
     }
 
     /**
-     * Reset usage statistics for a key
+     * Reset usage statistics for a key.
      */
     resetUsage(keyId: string): void {
-        const slot = this.state.slots.find(s => s.id === keyId);
-        if (slot) {
-            slot.totalCost = 0;
-            slot.failCount = 0;
-            slot.successCount = 0;
-            slot.status = 'unknown'; // Reset status to re-evaluate
-            this.saveState();
-            this.notifyListeners();
-            console.log(`[KeyManager] Usage reset for key ${slot.name} (${keyId})`);
-        }
+        const slot = this.state.slots.find((s) => s.id === keyId);
+        if (!slot) return;
+
+        slot.totalCost = 0;
+        slot.failCount = 0;
+        slot.successCount = 0;
+        slot.status = 'unknown';
+        this.saveState();
+        this.notifyListeners();
+        console.log(`[KeyManager] Usage reset for key ${slot.name} (${keyId})`);
     }
 
-
-
     /**
-     * Clear all keys (e.g. on user switch)
+     * Clear all keys (for example on user switch).
      */
-    clearAll() {
+    clearAll(): void {
         this.state.slots = [];
         this.state.currentIndex = 0;
         this.saveState();
@@ -2156,11 +2276,17 @@ export class KeyManager {
     }
 
     /**
-     * Reorder slots (for manual sorting)
+     * Reorder slots for manual sorting.
      */
-    reorderSlots(fromIndex: number, toIndex: number) {
-        if (fromIndex < 0 || fromIndex >= this.state.slots.length ||
-            toIndex < 0 || toIndex >= this.state.slots.length) return;
+    reorderSlots(fromIndex: number, toIndex: number): void {
+        if (
+            fromIndex < 0
+            || fromIndex >= this.state.slots.length
+            || toIndex < 0
+            || toIndex >= this.state.slots.length
+        ) {
+            return;
+        }
 
         const slots = [...this.state.slots];
         const [moved] = slots.splice(fromIndex, 1);
@@ -2175,21 +2301,24 @@ export class KeyManager {
         name?: string;
         provider?: Provider | string;
         baseUrl?: string;
+        format?: ApiProtocolFormat;
         authMethod?: AuthMethod;
         headerName?: string;
+        compatibilityMode?: 'standard' | 'chat';
         supportedModels?: string[];
         budgetLimit?: number;
         tokenLimit?: number;
+        creditCost?: number;
         type?: 'official' | 'proxy' | 'third-party';
         proxyConfig?: { serverName?: string };
         customHeaders?: Record<string, string>;
         customBody?: Record<string, any>;
     }): Promise<{ success: boolean; error?: string; id?: string }> {
-        // 𨱅?Sanitize input key: trim and remove non-ASCII chars
+        // 皎眳?Sanitize input key: trim and remove non-ASCII chars
         const trimmedKey = key.replace(/[^\x00-\x7F]/g, "").trim();
 
         if (!trimmedKey) {
-            return { success: false, error: '请输入有效的 API Key（需为英文本符）。' };
+            return { success: false, error: '请输入有效的 API Key（仅保留 ASCII 字符）。' };
         }
 
         // Check for duplicates
@@ -2198,8 +2327,21 @@ export class KeyManager {
         }
 
         const baseUrl = options?.baseUrl || '';
-        const authMethod = options?.authMethod || getDefaultAuthMethod(baseUrl);
-        const headerName = options?.headerName || inferHeaderName(options?.provider || 'Custom', baseUrl, authMethod);
+        const keyType = determineKeyType(options?.provider || 'Custom', baseUrl);
+        const format = normalizeApiProtocolFormat(
+            options?.format,
+            options?.provider === 'Google' && keyType === 'official' ? 'gemini' : 'auto'
+        );
+        const runtime = resolveProviderRuntime({
+            provider: options?.provider || 'Custom',
+            baseUrl,
+            format,
+            authMethod: options?.authMethod,
+            headerName: options?.headerName,
+            compatibilityMode: options?.compatibilityMode,
+        });
+        const authMethod = runtime.authMethod as AuthMethod;
+        const headerName = runtime.headerName;
 
         // Initialize supportedModels
         let supportedModels = options?.supportedModels || [];
@@ -2214,7 +2356,7 @@ export class KeyManager {
             });
         }
 
-        // 𨱅?镊姩镙℃妯″瀷𫔄楄〃锛埚皢镞фā鍨嬭縼绉诲埌鏂版ā鍨嬶级
+        // 皎眳?闀婎亜濮╅暀鈩冾劀濡€崇€佛珨勬銆冮敍鍩氱殺闀炑勀侀崹瀣讣缁夎鍩岄弬鐗埬侀崹瀣剁骇
         supportedModels = normalizeModelList(supportedModels, options?.provider);
 
         const newSlot: KeySlot = {
@@ -2224,10 +2366,12 @@ export class KeyManager {
             // Default provider logic
             provider: (options?.provider as Provider) || 'Custom',
             // Default type logic using helper
-            type: options?.type || determineKeyType(options?.provider || 'Custom', baseUrl),
+            type: options?.type || keyType,
+            format,
             baseUrl,
             authMethod,
             headerName,
+            compatibilityMode: runtime.compatibilityMode,
             supportedModels,
             status: 'unknown',
             failCount: 0,
@@ -2239,6 +2383,7 @@ export class KeyManager {
             totalCost: 0,
             budgetLimit: options?.budgetLimit ?? -1,
             tokenLimit: options?.tokenLimit ?? -1,
+            creditCost: options?.creditCost,
             proxyConfig: options?.proxyConfig,
             customHeaders: options?.customHeaders,
             customBody: options?.customBody,
@@ -2278,6 +2423,30 @@ export class KeyManager {
             Object.assign(slot, updates);
             if ((updates.provider || updates.baseUrl !== undefined) && !updates.type) {
                 slot.type = determineKeyType(slot.provider, slot.baseUrl);
+            }
+            if (
+                updates.format !== undefined
+                || updates.provider !== undefined
+                || updates.baseUrl !== undefined
+                || updates.authMethod !== undefined
+                || updates.headerName !== undefined
+                || updates.compatibilityMode !== undefined
+            ) {
+                slot.format = normalizeApiProtocolFormat(
+                    updates.format ?? slot.format,
+                    slot.provider === 'Google' && determineKeyType(slot.provider, slot.baseUrl) === 'official' ? 'gemini' : 'auto'
+                );
+                const runtime = resolveProviderRuntime({
+                    provider: slot.provider,
+                    baseUrl: slot.baseUrl,
+                    format: slot.format,
+                    authMethod: updates.authMethod || slot.authMethod,
+                    headerName: updates.headerName || slot.headerName,
+                    compatibilityMode: updates.compatibilityMode || slot.compatibilityMode,
+                });
+                slot.authMethod = runtime.authMethod as AuthMethod;
+                slot.headerName = runtime.headerName;
+                slot.compatibilityMode = runtime.compatibilityMode;
             }
             if (updates.supportedModels) {
                 slot.supportedModels = normalizeModelList(updates.supportedModels, slot.provider);
@@ -2377,7 +2546,7 @@ export class KeyManager {
     }
     /**
      * Refresh a single key
-     * 馃殌 Now also synchronizes model list!
+     * 棣冩畬 Now also synchronizes model list!
      */
     async refreshKey(id: string): Promise<void> {
         const slot = this.state.slots.find(s => s.id === id);
@@ -2395,15 +2564,16 @@ export class KeyManager {
             if (result.valid) {
                 slot.disabled = false;
                 slot.failCount = 0;
+                const resolvedFormat = resolveApiProtocolFormat(slot.format, slot.baseUrl);
 
                 // 2. Model Synchronization Phase
                 let newModels: string[] = result.models || [];
 
                 // If validateKey didn't return models (e.g. Proxy/Custom where it needs BaseURL), fetch them now
                 if (!newModels.length && slot.baseUrl) {
-                    if (slot.provider === 'Google') {
+                    if (resolvedFormat === 'gemini' || slot.provider === 'Google') {
                         // Fallback if validateKey missed it
-                        newModels = await fetchGoogleModels(slot.key);
+                        newModels = await fetchGeminiCompatModels(slot.key, slot.baseUrl);
                     } else {
                         // Proxy / OpenAI
                         newModels = await fetchOpenAICompatModels(slot.key, slot.baseUrl);
@@ -2462,8 +2632,8 @@ export class KeyManager {
     }
 
     /**
-     * 馃殌 [New] 锷ㄦ€佷笂鿔ョ嚎璺𤾀鐢ㄧ粨鏋?
-     * 鐢遍€傞历鍣ㄥ湪璇锋眰缁撴潫钖庤𤾀鐢纴鐢ㄤ簬瀹炴椂旋存柊鍏ㄩ噺绾胯矾镄勫仴搴风姸镐?
+     * 棣冩畬 [New] 閿枫劍鈧椒绗傞繑銉у殠鐠侯垵黏線閻劎绮ㄩ弸?
+     * 閻㈤亶鈧倿鍘嗛崳銊ユ躬鐠囬攱鐪扮紒鎾存将閽栧氦黏線閻㈩煉绾撮悽銊ょ艾鐎圭偞妞傛棆瀛樻煀閸忋劑鍣虹痪鑳熅闀勫嫬浠存惔椋庡Ц闀?
      */
     public reportCallResult(id: string, success: boolean, error?: string): void {
         const slot = this.state.slots.find(s => s.id === id);
@@ -2480,7 +2650,7 @@ export class KeyManager {
             slot.failCount++;
             slot.lastError = error || 'Unknown error';
 
-            // 镊姩瀹归敊阃昏緫锛氩鏋滆繛缁け璐ユ鏁拌秴杩囬槇炼硷纴镙囱涓?invalid
+            // 闀婎亜濮╃€瑰綊鏁婇槂鏄忕帆閿涙癌顩ч弸婊嗙箾缂侇厼銇戠拹銉︻偧閺佹媽绉存潻鍥鐐肩》绾撮暀鍥鳖唶娑?invalid
             if (slot.failCount >= (this.state.maxFailures || 5)) {
                 slot.status = 'invalid';
                 console.warn(`[KeyManager] Channel ${slot.name} (${id}) failed repeatedly and was marked invalid.`);
@@ -2513,23 +2683,36 @@ export class KeyManager {
         tokenGroup?: string;
         billingType?: string;
         endpointType?: string;
-        colorStart?: string; // 馃殌 [鏂板] 绠＄悊锻橀历缃殑棰滆壊
+        colorStart?: string; // 棣冩畬 [閺傛澘顤僝 缁狅紕鎮婇敾姗€鍘嗙純顔炬畱妫版粏澹?
         colorEnd?: string;
         colorSecondary?: string;
         textColor?: 'white' | 'black';
-        creditCost?: number; // 馃殌 [鏂板] 绉垎娑堣€?
+        creditCost?: number; // 棣冩畬 [閺傛澘顤僝 缁夘垰鍨庡☉鍫ｂ偓?
     }[] {
-        // 馃殌 浣跨敤缂揿瓨锛氩鏋?slots 鍜?adminModels 娌℃湁鍙桦寲锛岀洿鎺ヨ繑锲炵紦瀛?
+        // 棣冩畬 娴ｈ法鏁ょ紓鎻跨摠閿涙癌顩ч弸?slots 閸?adminModels 濞屸剝婀侀崣妗﹀閿涘瞼娲块幒銉ㄧ箲閿茬偟绱︾€?
         const activeSlots = this.state.slots.filter(s => !s.disabled && s.status !== 'invalid');
         const slotsHash = `${activeSlots.length}-${activeSlots.map(s => s.id).join(',')}`;
 
-        // 🚀 [Fix] 添加 adminModels 到缓存键，确保管理员配置变化时缓存失效
-        const adminModels = adminModelService.getModels();
+        // 馃殌 [Fix] 娣诲姞 adminModels 鍒扮紦瀛橀敭锛岀‘淇濈鐞嗗憳閰嶇疆鍙樺寲鏃剁紦瀛樺け鏁?
+        const adminModels = [...adminModelService.getModels()].sort((left, right) => {
+            const modelDiff = String(left.id || '').localeCompare(String(right.id || ''));
+            if (modelDiff !== 0) return modelDiff;
+
+            const priorityDiff = Number(right.priority || 0) - Number(left.priority || 0);
+            if (priorityDiff !== 0) return priorityDiff;
+
+            const weightDiff = Number(right.weight || 0) - Number(left.weight || 0);
+            if (weightDiff !== 0) return weightDiff;
+
+            return String(left.providerId || left.provider || '').localeCompare(
+                String(right.providerId || right.provider || '')
+            );
+        });
         const adminHash = `${adminModels.length}-${adminModels
-            .map(m => `${m.id}:${m.colorStart}:${m.colorEnd}:${m.colorSecondary || ''}:${m.textColor || ''}:${m.creditCost}`)
+            .map(m => `${m.id}:${m.providerId || ''}:${m.providerName || ''}:${m.displayName}:${m.priority || 0}:${m.weight || 0}:${m.mixWithSameModel ? '1' : '0'}:${m.colorStart}:${m.colorEnd}:${m.colorSecondary || ''}:${m.textColor || ''}:${m.creditCost}`)
             .join(',')}`;
 
-        // 🚀 [Fix] 添加 providers 到缓存键，确保供应商增减时模型选择立即响应
+        // 馃殌 [Fix] 娣诲姞 providers 鍒扮紦瀛橀敭锛岀‘淇濅緵搴斿晢澧炲噺鏃舵ā鍨嬮€夋嫨绔嬪嵆鍝嶅簲
         this.loadProviders();
         const providerHash = `${this.providers.length}-${this.providers
             .map(p => `${p.id}:${p.isActive ? '1' : '0'}:${p.models.length}:${p.updatedAt}`)
@@ -2559,11 +2742,11 @@ export class KeyManager {
             tokenGroup?: string;
             billingType?: string;
             endpointType?: string;
-            colorStart?: string; // 馃殌 [鏂板] 绠＄悊锻橀历缃殑棰滆壊
+            colorStart?: string; // 棣冩畬 [閺傛澘顤僝 缁狅紕鎮婇敾姗€鍘嗙純顔炬畱妫版粏澹?
             colorEnd?: string;
             colorSecondary?: string;
             textColor?: 'white' | 'black';
-            creditCost?: number; // 馃殌 [鏂板] 绉垎娑堣€?
+            creditCost?: number; // 棣冩畬 [閺傛澘顤僝 缁夘垰鍨庡☉鍫ｂ偓?
         }>();
         const chatModelIds = new Set(GOOGLE_CHAT_MODELS.map(model => model.id));
 
@@ -2573,7 +2756,7 @@ export class KeyManager {
 
         // 1. Add models from all active keys (Proxies/Custom) - THESE GO FIRST
         this.state.slots.forEach(slot => {
-            // 馃殌 [Strict Mode] Skip disabled, invalid OR empty key slots
+            // 棣冩畬 [Strict Mode] Skip disabled, invalid OR empty key slots
             if (slot.disabled || slot.status === 'invalid' || !slot.key) return;
             const slotSignature = `${String(slot.name || slot.provider || '').trim().toLowerCase()}|${String(slot.baseUrl || '').trim().toLowerCase()}`;
             const isLegacyThirdPartySlot = !!slot.baseUrl && providerSignatureSet.has(slotSignature);
@@ -2584,12 +2767,12 @@ export class KeyManager {
 
                 cleanModels.forEach(rawModelStr => {
                     const { id, name, description } = parseModelString(rawModelStr);
-                    // 璺宠绷镞?ID
+                    // 鐠哄疇缁烽暈?ID
                     if (id === 'nano-banana' || id === 'nano-banana-pro') return;
 
                     let distinctId = id;
                     const suffix = slot.name || slot.proxyConfig?.serverName || slot.provider || 'Custom';
-                    // 濡傛灉涓嶆槸瀹樻柟铡熺敚娓犻亾锛屽己𫔄跺甫钖庣紑闅旗
+                    // 婵″倹鐏夋稉宥嗘Ц鐎规ɑ鏌熼摗鐔烘暁濞撶娀浜鹃敍灞藉繁皤攧璺虹敨閽栧海绱戦梾鏃楊瀲
                     if (slot.provider !== 'Google') {
                         distinctId = `${id}@${suffix}`;
                     }
@@ -2656,7 +2839,7 @@ export class KeyManager {
         const googleSlots = this.state.slots.filter(s => s.provider === 'Google' && !s.disabled && s.status !== 'invalid' && !!s.key);
         if (googleSlots.length > 0) {
             GOOGLE_CHAT_MODELS.forEach(model => {
-                // 馃殌 [Strict Check] 鍙湁褰撶敤鎴风殑 Key 纭疄鏀寔璇ユā鍨嬫椂镓嶆坊锷?
+                // 棣冩畬 [Strict Check] 閸欘亝婀佽ぐ鎾舵暏閹撮娈?Key 绾喖鐤勯弨顖涘瘮鐠囥儲膩閸ㄥ妞傞晸宥嗗潑閿?
                 if (!uniqueModels.has(model.id) && this.hasCustomKeyForModel(model.id)) {
                     uniqueModels.set(model.id, {
                         ...model,
@@ -2669,48 +2852,94 @@ export class KeyManager {
             });
         }
 
-        // 3. Add System Internal Models (Built-in 12AI Proxy) - 馃殌 [淇敼] 浠?adminModelService 锷犺浇绠＄悊锻橀历缃殑妯″瀷
-        // adminModels 宸插湪涓婇溃澹版槑鐢ㄤ簬缂揿瓨阌绠楋纴𬭼存帴浣跨敤
-        // 馃殌 [Fix] 璺熻釜钖屼竴 model_id 鍑虹幇镄勬鏁帮纴涓轰笉钖岄历缃敚鎴愬敮涓€镄勭郴缁烮D
-        const adminModelIdCount = new Map<string, number>();
+        // 3. Add System Internal Models (Built-in 12AI Proxy) - 棣冩畬 [娣囶喗鏁糫 娴?adminModelService 閿风姾娴囩粻锛勬倞閿绘﹢鍘嗙純顔炬畱濡€崇€?
+        // adminModels 瀹告彃婀稉濠囨簝婢圭増妲戦悽銊ょ艾缂傛徔鐡ㄩ槍顔款吀缁犳绾答煎瓨甯存担璺ㄦ暏
+        // 棣冩畬 [Fix] 鐠虹喕閲滈挅灞肩 model_id 閸戣櫣骞囬晞鍕偧閺佸府绾存稉杞扮瑝閽栧矂鍘嗙純顔炬暁閹存劕鏁稉鈧晞鍕兇缂佺儺D
+        const adminModelsByBaseId = new Map<string, typeof adminModels>();
         adminModels.forEach(adminModel => {
-            // 馃殌 [Rule 1] 浣跨敤绠＄悊锻橀历缃殑钖岖О鍜岄镩?
-            // 馃殌 [Rule 2] 濡傛灉鐢ㄦ埛宸茬粡链夌浉钖?ID 镄勮嚜瀹氢箟 Key锛岃烦杩囩郴缁熺増链伩鍏嶉吨澶?
-            // 馃殌 [Fix] 绠＄悊锻樻ā鍨嬬粺涓€浣跨敤 @system 钖庣紑镙囱瘑涓虹Н𫔄嗘ā鍨?
-            // 濡傛灉钖屼竴 model_id 链夊涓笉钖岄历缃纸宸茶 adminModelService 淇濈暀涓虹嫭绔嬫浔𬭼级锛?
-            // 浣跨敤 @system, @system_2, @system_3... 镄勬牸寮忓尯𫔄?
-            const count = (adminModelIdCount.get(adminModel.id) || 0) + 1;
-            adminModelIdCount.set(adminModel.id, count);
-            const systemId = count === 1
-                ? `${adminModel.id}@system`
-                : `${adminModel.id}@system_${count}`;
-
-            if (!uniqueModels.has(systemId)) {
-                uniqueModels.set(systemId, {
-                    id: systemId,
-                    name: adminModel.displayName || adminModel.id,
-                    provider: 'SystemProxy', // 馃殌 [Fix] 缁熶竴浣跨敤 SystemProxy 琛ㄧず绯荤粺绉垎阃氶亾
-                    isCustom: false,
-                    isSystemInternal: true,
-                    // 馃殌 [Fix] 绠＄悊锻樼Н𫔄嗘ā鍨嬮粯璁や负 'image' 绫诲瀷锛堣繖鏄浘鐗囩敚鎴愬伐鍏凤级
-                    // 鍙湁妯″瀷ID鏄庣‘鍖呭惈瑙嗛/阔抽鍏抽敭璇嶆椂镓𡺃𬭼栦负瀵瑰簲绫诲瀷
-                    type: MODEL_TYPE_MAP.get(adminModel.id) || (() => {
-                        const inferred = inferModelType(adminModel.id);
-                        // 濡傛灉鎺ㄦ柇涓?video 鎴?audio锛屼娇鐢ㄦ帹鏂粨鏋滐绂钖﹀垯榛椫 image
-                        return (inferred === 'video' || inferred === 'audio') ? inferred : 'image';
-                    })(),
-                    icon: undefined, // 浣跨敤榛椫锲炬爣
-                    description: adminModel.advantages || '鐢辩郴缁熺Н𫔄嗛┍锷ㄧ殑绋冲畾锷犻€熼€氶亾',
-                    colorStart: adminModel.colorStart, // 馃殌 [鏂板] 浼犻€掔鐞嗗憳閰岖疆镄勯镩?
-                    colorEnd: adminModel.colorEnd,
-                    colorSecondary: adminModel.colorSecondary,
-                    textColor: adminModel.textColor,
-                    creditCost: adminModel.creditCost, // 馃殌 [鏂板] 浼犻€掔Н𫔄嗘秷钥?
-                });
+            const baseId = String(adminModel.id || '').trim();
+            if (!baseId) return;
+            if (!adminModelsByBaseId.has(baseId)) {
+                adminModelsByBaseId.set(baseId, []);
             }
+            adminModelsByBaseId.get(baseId)!.push(adminModel);
         });
 
-        const result = Array.from(uniqueModels.values());
+        adminModelsByBaseId.forEach((routes, baseId) => {
+            const hasMultipleRoutes = routes.length > 1;
+            const primaryRoute = routes[0];
+            const modelType = MODEL_TYPE_MAP.get(baseId) || (() => {
+                const inferred = inferModelType(baseId);
+                return (inferred === 'video' || inferred === 'audio') ? inferred : 'image';
+            })();
+
+            if (hasMultipleRoutes) {
+                const mixedRouteId = `${baseId}@system`;
+                if (!uniqueModels.has(mixedRouteId)) {
+                    uniqueModels.set(mixedRouteId, {
+                        id: mixedRouteId,
+                        name: `${primaryRoute.displayName || baseId} Mixed`,
+                        provider: 'SystemProxy',
+                        providerLogo: undefined,
+                        providerLabel: 'Mixed Route',
+                        isCustom: false,
+                        isSystemInternal: true,
+                        type: modelType,
+                        icon: undefined,
+                        description: primaryRoute.advantages || `Mixed routing enabled across ${routes.length} matching routes`,
+                        colorStart: '#475569',
+                        colorEnd: '#334155',
+                        colorSecondary: '#1E293B',
+                        textColor: 'white',
+                        creditCost: primaryRoute.creditCost,
+                    });
+                }
+            }
+
+            routes.forEach((adminModel, index) => {
+                const systemId = hasMultipleRoutes
+                    ? buildStableSystemRouteId(baseId, adminModel.providerId, index + 1)
+                    : `${baseId}@system`;
+
+                if (!uniqueModels.has(systemId)) {
+                    const routeProviderLabel = adminModel.providerName || adminModel.providerId || adminModel.provider || 'SystemProxy';
+
+                    uniqueModels.set(systemId, {
+                        id: systemId,
+                        name: adminModel.displayName || adminModel.id,
+                        provider: routeProviderLabel,
+                        providerLabel: routeProviderLabel,
+                        isCustom: false,
+                        isSystemInternal: true,
+                        type: modelType,
+                        icon: undefined,
+                        description: adminModel.advantages || 'System credit model route',
+                        colorStart: adminModel.colorStart,
+                        colorEnd: adminModel.colorEnd,
+                        colorSecondary: adminModel.colorSecondary,
+                        textColor: adminModel.textColor,
+                        creditCost: adminModel.creditCost,
+                    });
+                }
+            });
+        });
+
+        const result = Array.from(uniqueModels.values()).map((model) => {
+            const baseId = String(model.id || '').split('@')[0];
+            const relatedAdminRoutes = adminModelsByBaseId.get(baseId) || [];
+            const isMixedRoute = model.provider === 'SystemProxy' && model.id === `${baseId}@system` && relatedAdminRoutes.length > 1;
+
+            if (!isMixedRoute) {
+                return model;
+            }
+
+            return {
+                ...model,
+                name: `${relatedAdminRoutes[0]?.displayName || baseId} Mixed`,
+                providerLabel: 'Mixed Route',
+                description: relatedAdminRoutes[0]?.advantages || `Mixed routing enabled across ${relatedAdminRoutes.length} matching routes`,
+            };
+        });
 
         // Refresh cache
         this.globalModelListCache = {
@@ -2758,16 +2987,16 @@ export class KeyManager {
     }
 
     /**
-     * 馃殌 [鏂板姛鑳絔 妫€镆ユ槸钖﹀瓨鍦ㄧ敤鎴疯嚜瀹氢箟镄勬湁鏁堢殑 API Key 鏀寔璇ユā鍨?
-     * 涓嶅寘𨰾郴缁熷唴缃殑锷ㄦ€?PROXY 瀵嗛挜
+     * 棣冩畬 [閺傛澘濮涢懗绲?濡偓闀嗐儲妲搁挅锕€鐡ㄩ崷銊ф暏閹寸柉鍤滅€规阿绠熼晞鍕箒閺佸牏娈?API Key 閺€顖涘瘮鐠囥儲膩閸?
+     * 娑撳秴瀵橉ò绢剛閮寸紒鐔峰敶缂冾喚娈戦敺銊︹偓?PROXY 鐎靛棝鎸?
      */
     hasCustomKeyForModel(modelIdFull: string): boolean {
         const parts = (modelIdFull || '').split('@');
         const normalizedModelId = parts[0].toLowerCase().trim();
         const suffix = parts.length > 1 ? parts[1].toLowerCase().trim() : null;
 
-        // 馃殌 [镙稿绩淇] 濡傛灉宁︽湁 @system/@system_2/@12ai/@systemproxy 钖庣紑锛岃鏄庢槸寮虹粦瀹氱郴缁熺嚎璺€?
-        // 杩𪴙𨱍呭喌涓嬶纴缁濅笉搴旇鍖归历𫔄扮敤鎴疯嚜瀹氢箟镄勫𪽈鏂?Key 阃昏緫銆?
+        // 棣冩畬 [闀欑缁╂穱顔碱槻] 婵″倹鐏夊畞锔芥箒 @system/@system_2/@12ai/@systemproxy 閽栧海绱戦敍宀冾嚛閺勫孩妲稿铏圭拨鐎规氨閮寸紒鐔哄殠鐠侯垬鈧?
+        // 鏉欘潚皎睄鍛枌娑撳绾寸紒婵呯瑝鎼存棁顕氶崠褰掑巻皤攧鎵暏閹寸柉鍤滅€规阿绠熼晞鍕堥弬?Key 闃冩槒绶妴?
         if (suffix?.startsWith('system') || suffix === '12ai' || suffix === 'systemproxy') {
             return false;
         }
@@ -2797,7 +3026,7 @@ export class KeyManager {
 
         if (hasValidSlot) return true;
 
-        // 🚀 [Fix] 也要检查 ThirdPartyProvider，因为用户在设置里添加的自定义 API 存在于 providers 中
+        // 馃殌 [Fix] 涔熻妫€鏌?ThirdPartyProvider锛屽洜涓虹敤鎴峰湪璁剧疆閲屾坊鍔犵殑鑷畾涔?API 瀛樺湪浜?providers 涓?
         this.loadProviders();
         return this.providers.some(p => {
             if (!p.isActive) return false;
@@ -2825,13 +3054,13 @@ export class KeyManager {
     }
 
     // =========================================================================
-    // 馃啎 绗笁鏂?API 链嶅姟鍟嗙鐞嗘柟娉?
+    // 棣冨晭 缁楊兛绗侀弬?API 閾惧秴濮熼崯鍡欘吀閻炲棙鏌熷▔?
     // =========================================================================
 
     private providers: ThirdPartyProvider[] = [];
 
     /**
-     * 銮峰彇镓€链夌涓夋柟链嶅姟鍟?
+     * 閵嘲褰囬晸鈧摼澶岊儑娑撳鏌熼摼宥呭閸?
      */
     getProviders(): ThirdPartyProvider[] {
         this.loadProviders();
@@ -2839,7 +3068,7 @@ export class KeyManager {
     }
 
     /**
-     * 銮峰彇鍗曚釜链嶅姟鍟?
+     * 閵嘲褰囬崡鏇氶嚋閾惧秴濮熼崯?
      */
     getProvider(id: string): ThirdPartyProvider | undefined {
         this.loadProviders();
@@ -2847,7 +3076,7 @@ export class KeyManager {
     }
 
     /**
-     * 娣诲姞鏂扮殑绗笁鏂规湇锷″晢
+     * 濞ｈ濮為弬鎵畱缁楊兛绗侀弬瑙勬箛閿封€虫櫌
      */
     addProvider(config: Omit<ThirdPartyProvider, 'id' | 'usage' | 'status' | 'createdAt' | 'updatedAt'>): ThirdPartyProvider {
         this.loadProviders();
@@ -2855,6 +3084,7 @@ export class KeyManager {
         const now = Date.now();
         const provider: ThirdPartyProvider = {
             ...config,
+            format: normalizeApiProtocolFormat(config.format, 'auto'),
             id: `provider_${now}_${Math.random().toString(36).substr(2, 9)}`,
             usage: {
                 totalTokens: 0,
@@ -2870,7 +3100,7 @@ export class KeyManager {
 
         this.providers.push(provider);
         this.saveProviders();
-        this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
+        this.globalModelListCache = null; // 馃殌 [Fix] 娓呴櫎妯″瀷缂撳瓨锛屼娇涓嬫媺妗嗙珛鍗冲埛鏂?
         this.notifyListeners();
 
         if (!provider.pricingSnapshot) {
@@ -2881,7 +3111,7 @@ export class KeyManager {
     }
 
     /**
-     * 旋存柊链嶅姟鍟嗛历缃?
+     * 鏃嬪瓨鏌婇摼宥呭閸熷棝鍘嗙純?
      */
     updateProvider(id: string, updates: Partial<Omit<ThirdPartyProvider, 'id' | 'createdAt'>>): boolean {
         this.loadProviders();
@@ -2892,11 +3122,12 @@ export class KeyManager {
         this.providers[index] = {
             ...this.providers[index],
             ...updates,
+            format: normalizeApiProtocolFormat(updates.format ?? this.providers[index].format, 'auto'),
             updatedAt: Date.now()
         };
 
         this.saveProviders();
-        this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
+        this.globalModelListCache = null; // 馃殌 [Fix] 娓呴櫎妯″瀷缂撳瓨锛屼娇涓嬫媺妗嗙珛鍗冲埛鏂?
         this.notifyListeners();
 
         if (updates.baseUrl !== undefined && !updates.pricingSnapshot) {
@@ -2907,7 +3138,7 @@ export class KeyManager {
     }
 
     /**
-     * 𫔄犻櫎链嶅姟鍟?
+     * 皤攧鐘绘珟閾惧秴濮熼崯?
      */
     removeProvider(id: string): boolean {
         this.loadProviders();
@@ -2917,13 +3148,13 @@ export class KeyManager {
 
         this.providers.splice(index, 1);
         this.saveProviders();
-        this.globalModelListCache = null; // 🚀 [Fix] 清除模型缓存，使下拉框立即刷新
+        this.globalModelListCache = null; // 馃殌 [Fix] 娓呴櫎妯″瀷缂撳瓨锛屼娇涓嬫媺妗嗙珛鍗冲埛鏂?
         this.notifyListeners();
         return true;
     }
 
     /**
-     * 璁板綍链嶅姟鍟嗕娇鐢ㄩ噺
+     * 鐠佹澘缍嶉摼宥呭閸熷棔濞囬悽銊╁櫤
      */
     addProviderUsage(providerId: string, tokens: number, cost: number): void {
         this.loadProviders();
@@ -2931,7 +3162,7 @@ export class KeyManager {
         const provider = this.providers.find(p => p.id === providerId);
         if (!provider) return;
 
-        // 妫€镆ユ槸钖﹂渶瑕侀吨缃疮镞ヨ鏁帮纸姣忓ぉ 0 镣归吨缃级
+        // 濡偓闀嗐儲妲搁挅锕傛付鐟曚線鍚ㄧ純顔界柈闀炪儴顓搁弫甯焊濮ｅ繐銇?0 闀ｅ綊鍚ㄧ純顕嗙骇
         const now = Date.now();
         const lastResetDate = new Date(provider.usage.lastReset);
         const today = new Date(now);
@@ -2952,7 +3183,7 @@ export class KeyManager {
     }
 
     /**
-     * 銮峰彇链嶅姟鍟嗙粺璁′俊镇?
+     * 閵嘲褰囬摼宥呭閸熷棛绮虹拋鈥蹭繆闀?
      */
     getProviderStats(): {
         total: number;
@@ -2971,7 +3202,7 @@ export class KeyManager {
     }
 
     /**
-     * 从预设创建服务商
+     * 浠庨璁惧垱寤烘湇鍔″晢
      */
     createProviderFromPreset(presetKey: string, apiKey: string, customModels?: string[]): ThirdPartyProvider | null {
         const preset = PROVIDER_PRESETS[presetKey];
@@ -2987,14 +3218,14 @@ export class KeyManager {
             isActive: true
         });
 
-        // 自动拉取定价
+        // 鑷姩鎷夊彇瀹氫环
         this.syncProviderPricing(provider.id);
 
         return provider;
     }
 
     /**
-     * 自动从供应商的 /api/pricing 接口拉取价格表并保存快照
+     * 鑷姩浠庝緵搴斿晢鐨?/api/pricing 鎺ュ彛鎷夊彇浠锋牸琛ㄥ苟淇濆瓨蹇収
      */
     async syncProviderPricing(providerId: string): Promise<boolean> {
         this.loadProviders();
@@ -3002,7 +3233,7 @@ export class KeyManager {
         if (!provider || !provider.baseUrl) return false;
 
         try {
-            // 解析 BaseURL，如果是 /v1 结尾则退回到根目录加上 /api/pricing
+            // 瑙ｆ瀽 BaseURL锛屽鏋滄槸 /v1 缁撳熬鍒欓€€鍥炲埌鏍圭洰褰曞姞涓?/api/pricing
             let url = provider.baseUrl;
             if (url.endsWith('/v1')) {
                 url = url.replace(/\/v1$/, '');
@@ -3055,7 +3286,7 @@ export class KeyManager {
     }
 
     /**
-     * 锷犺浇链嶅姟鍟嗗垪琛?
+     * 閿风姾娴囬摼宥呭閸熷棗鍨悰?
      */
     private loadProviders(): void {
         if (this.providers.length > 0) return; // Already loaded
@@ -3063,7 +3294,10 @@ export class KeyManager {
         try {
             const stored = localStorage.getItem(PROVIDERS_STORAGE_KEY);
             if (stored) {
-                this.providers = JSON.parse(stored);
+                this.providers = JSON.parse(stored).map((provider: ThirdPartyProvider) => ({
+                    ...provider,
+                    format: normalizeApiProtocolFormat((provider as any).format, 'auto'),
+                }));
             }
         } catch (e) {
             console.error('[KeyManager] Failed to load providers:', e);
@@ -3072,7 +3306,7 @@ export class KeyManager {
     }
 
     /**
-     * 淇𣸣瓨链嶅姟鍟嗗垪琛?
+     * 娣囸８ｇ摠閾惧秴濮熼崯鍡楀灙鐞?
      */
     private saveProviders(): void {
         try {
@@ -3091,24 +3325,24 @@ export const keyManager = new KeyManager();
 export default keyManager;
 
 // ============================================================================
-// 馃啎 镊姩妯″瀷妫€娴嫔拰閰岖疆锷熻兘
+// 棣冨晭 闀婎亜濮╁Ο鈥崇€峰Λ鈧ù瀚旀嫲闁板矕鐤嗛敺鐔诲厴
 // ============================================================================
 
 /**
- * 妫€娴婣PI绫诲瀷
+ * 濡偓濞村PI缁鐎?
  */
 export function detectApiType(apiKey: string, baseUrl?: string): 'google-official' | 'openai' | 'proxy' | 'unknown' {
-    // Google瀹樻柟API
+    // Google鐎规ɑ鏌烝PI
     if (apiKey.startsWith('AIza') || baseUrl?.includes('googleapis.com') || baseUrl?.includes('generativelanguage.googleapis.com')) {
         return 'google-official';
     }
 
-    // OpenAI瀹樻柟API
+    // OpenAI鐎规ɑ鏌烝PI
     if (apiKey.startsWith('sk-') && (!baseUrl || baseUrl.includes('api.openai.com'))) {
         return 'openai';
     }
 
-    // 绗笁鏂逛唬鐞嗭纸NewAPI/One API绛夛级
+    // 缁楊兛绗侀弬閫涘敩閻炲棴绾窷ewAPI/One API缁涘绾?
     if (baseUrl && !baseUrl.includes('googleapis.com') && baseUrl.length > 0) {
         return 'proxy';
     }
@@ -3117,7 +3351,7 @@ export function detectApiType(apiKey: string, baseUrl?: string): 'google-officia
 }
 
 /**
- * 镊姩銮峰彇Google API鏀寔镄勬ā鍨?
+ * Fetch available Google models using the official models endpoint.
  */
 export async function fetchGoogleModels(apiKey: string): Promise<string[]> {
     try {
@@ -3127,19 +3361,23 @@ export async function fetchGoogleModels(apiKey: string): Promise<string[]> {
 
         if (!response.ok) {
             console.error('[KeyManager] Failed to fetch Google models:', response.status);
-            console.log('[KeyManager] Google 模型拉取失败，回退到默认模型列表');
-            return getDefaultGoogleModels();
+            const responseText = await response.text().catch(() => '');
+            const failure = classifyApiFailure({
+                status: response.status,
+                responseText,
+                fallbackMessage: `HTTP ${response.status}`
+            });
+            throw new Error(buildUserFacingApiErrorMessage(failure));
         }
 
         const data = await response.json();
 
         const models = data.models
             ?.map((m: any) => m.name.replace('models/', ''))
-            .filter((rawM: string) => {
-                const m = rawM.replace(/^models\//, '');
-                const lower = m.toLowerCase();
+            .filter((rawModel: string) => {
+                const modelId = rawModel.replace(/^models\//, '');
+                const lower = modelId.toLowerCase();
 
-                // 鉂?鎺挜櫎embedding銆乤udio銆乺obotics绛夐潪鍐呭鐢熸垚妯″瀷
                 if (lower.includes('embedding') ||
                     lower.includes('audio') ||
                     lower.includes('robotics') ||
@@ -3149,57 +3387,94 @@ export async function fetchGoogleModels(apiKey: string): Promise<string[]> {
                     return false;
                 }
 
-                // 鉂?鎺挜櫎TTS妯″瀷
                 if (lower.includes('tts')) return false;
 
-                // 𨱅?锏藉悕鍗?鍙缭鐣𪴙敤鎴烽渶瑕佺殑镙稿绩妯″瀷
                 const allowedPatterns = [
-                    // Strict Image Whitelist
-                    ...GOOGLE_IMAGE_WHITELIST.map(id => new RegExp(`^${id}$`)),
-
-                    // 瑙嗛妯″瀷(2涓? - 鍙缭鐣橵eo 3.1
-                    /^veo-3\.1-generate-preview$/,         // Veo 3.1
-                    /^veo-3\.1-fast-generate-preview$/,    // Veo 3.1 fast
-
-                    // 镵婂ぉ妯″瀷(淇濈暀涓荤嚎鐗堟湰)
+                    ...GOOGLE_IMAGE_WHITELIST.map((id) => new RegExp(`^${id}$`)),
+                    /^veo-3\.1-generate-preview$/,
+                    /^veo-3\.1-fast-generate-preview$/,
                     /^gemini-2\.5-(flash|pro|flash-lite)$/,
                     /^gemini-3-(pro|flash)-preview$/,
                 ];
 
-                return allowedPatterns.some(pattern => pattern.test(m));
+                return allowedPatterns.some((pattern) => pattern.test(modelId));
             }) || [];
 
         console.log(`[KeyManager] Strict whitelist kept ${models.length} models:`, models);
 
-        // 馃殌 [Strict Mode] Ensure DEFAULT models (especially strict whitelist) are ALWAYS present
-        // Even if API doesn't list them (e.g. Imagen 4 might be hidden), we force them in.
         const finalModels = Array.from(new Set([
             ...DEFAULT_GOOGLE_MODELS,
             ...models
         ]));
 
-        console.log(`[KeyManager] 链€缁堣繑锲炴ā鍨嫔垪琛?(Merged):`, finalModels);
+        console.log('[KeyManager] Merged Google model list:', finalModels);
         return finalModels;
     } catch (error) {
         console.error('[KeyManager] Error fetching Google models:', error);
-        console.log('[KeyManager] Google 模型拉取异常，回退到默认模型列表');
-        return getDefaultGoogleModels();
+        const failure = classifyApiFailure({
+            error,
+            fallbackMessage: error instanceof Error ? error.message : 'Google models request failed'
+        });
+        throw new Error(buildUserFacingApiErrorMessage(failure));
     }
 }
 
-// 榛椫Google妯″瀷𫔄楄〃(澶囬€夋柟妗?
+// 姒涙か顓籊oogle濡€崇€佛珨勬銆?婢跺洭鈧鏌熷?
 function getDefaultGoogleModels(): string[] {
     return DEFAULT_GOOGLE_MODELS;
 }
 
+export async function fetchGeminiCompatModels(apiKey: string, baseUrl?: string): Promise<string[]> {
+    const lowerBase = String(baseUrl || '').toLowerCase();
+    if (!baseUrl || lowerBase.includes('googleapis.com') || lowerBase.includes('generativelanguage.googleapis.com')) {
+        return fetchGoogleModels(apiKey);
+    }
+
+    try {
+        const authMethod = getDefaultAuthMethod(baseUrl, { format: 'gemini' });
+        const response = await fetch(buildGeminiModelsEndpoint(baseUrl, apiKey, authMethod), {
+            headers: buildGeminiHeaders(authMethod, apiKey)
+        });
+
+        if (!response.ok) {
+            console.error('[KeyManager] Failed to fetch Gemini-compatible models:', response.status, response.statusText);
+            const responseText = await response.text().catch(() => '');
+            const failure = classifyApiFailure({
+                status: response.status,
+                responseText,
+                fallbackMessage: `HTTP ${response.status}`
+            });
+            if (response.status === 404) {
+                return [];
+            }
+            throw new Error(buildUserFacingApiErrorMessage(failure));
+        }
+        const data = await response.json();
+        const rawModels: any[] = data.models || data.data || [];
+        return Array.from(
+            new Set(
+                rawModels
+                    .map((model: any) => String(model?.name || model?.id || model?.model || '').replace(/^models\//i, '').trim())
+                    .filter(Boolean)
+            )
+        );
+    } catch (error) {
+        console.error('[KeyManager] Error fetching Gemini-compatible models:', error);
+        const failure = classifyApiFailure({
+            error,
+            fallbackMessage: error instanceof Error ? error.message : 'Gemini-compatible models request failed'
+        });
+        throw new Error(buildUserFacingApiErrorMessage(failure));
+    }
+}
+
 /**
- * 镊姩銮峰彇OpenAI鍏煎API镄勬ā鍨嫔垪琛?
- * 馃殌 [Enhancement] 镊姩铡婚吨锛氱Щ闄ゅ弬鏁板悗缂€锛屽彧淇濈暀鍞竴镄勫熀纭€妯″瀷
+ * 闀婎亜濮╅姰宄板絿OpenAI閸忕厧顔怉PI闀勫嫭膩閸ㄥ珨鍨悰?
+ * 棣冩畬 [Enhancement] 闀婎亜濮╅摗濠氬惃閿涙氨些闂勩倕寮弫鏉挎倵缂傗偓閿涘苯褰ф穱婵堟殌閸烆垯绔撮晞鍕唨绾偓濡€崇€?
  */
 export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): Promise<string[]> {
     try {
-        const cleanUrl = baseUrl.replace(/\/$/, '');
-        const response = await fetch(`${cleanUrl}/v1/models`, {
+        const response = await fetch(buildOpenAIEndpoint(baseUrl, 'models'), {
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
@@ -3207,29 +3482,28 @@ export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): 
         });
 
         if (!response.ok) {
-            console.error('[KeyManager] 获取代理模型失败:', response.status, response.statusText);
+            console.error('[KeyManager] Failed to fetch proxy models:', response.status, response.statusText);
             if (response.status === 401) {
-                throw new Error('认证失败(401): API密钥无效或权限不足。请确认使用 sk- 开头的密钥，且密钥未过期或被删除。');
+                throw new Error('认证失败（401）：API Key 无效、已过期，或缺少访问权限。');
             }
             if (response.status === 403) {
-                throw new Error('权限不足(403): 该密钥无权访问模型列表接口。请检查密钥分组权限设置。');
+                throw new Error('权限不足（403）：当前 API Key 无权访问模型列表接口。');
             }
-            // 其他非致命错误（如 404 表示该供应商不支持 /v1/models 端点），返回空数组
             if (response.status === 404) {
-                console.warn('[KeyManager] 该供应商不支持 /v1/models 端点，将返回空模型列表');
+                console.warn('[KeyManager] Provider does not expose /v1/models, returning an empty model list.');
                 return [];
             }
-            throw new Error(`获取模型列表失败(${response.status}): ${response.statusText || '请检查接口地址和密钥'}`);
+            throw new Error(`获取模型列表失败（${response.status}）：${response.statusText || '请检查接口地址和 API Key。'}`);
         }
 
         const data = await response.json();
         const rawModels: any[] = data.data || [];
 
-        console.log(`[KeyManager] /v1/models 响应: 共 ${rawModels.length} 个模型`, rawModels.length > 0 ? `第一个: ${JSON.stringify(rawModels[0]?.id || rawModels[0])}` : '(空列表)', 'data字段类型:', typeof data.data, '是否有object字段:', !!data.object);
+        console.log('[KeyManager] /v1/models response:', { count: rawModels.length, firstModel: rawModels.length > 0 ? rawModels[0]?.id || rawModels[0] : null, dataType: typeof data.data, hasObjectField: !!data.object });
 
-        // 铡婚吨绛栫𬀩锛?
-        // - 𫔄呜鲸鐜?璐ㄩ噺/姣斾緥钖庣紑瑙嗕负钬滃弬鏁板瀷钖庣紑钬𣸣苟鿔桦录
-        // - 蹇€?鎱㈤€?fast/slow)瑙嗕负钬滆兘锷涘瀷钖庣紑钬𣸣苟淇濈暀
+        // 閾″鍚ㄧ粵鏍瑎╅敍?
+        // - 皤攧鍛滈哺閻?鐠愩劑鍣?濮ｆ柧绶ラ挅搴ｇ磻鐟欏棔璐熼挰婊冨棘閺佹澘鐎烽挅搴ｇ磻閽８ｈ嫙榭旀ˇ褰?
+        // - 韫囶偊鈧?閹便垽鈧?fast/slow)鐟欏棔璐熼挰婊嗗厴閿锋稑鐎烽挅搴ｇ磻閽８ｈ嫙娣囨繄鏆€
         const rawSet = new Set(rawModels.map(m => m.id));
         const deduped = new Map<string, string>(); // canonical -> chosen model string
 
@@ -3277,8 +3551,8 @@ export async function fetchOpenAICompatModels(apiKey: string, baseUrl: string): 
 }
 
 /**
- * 镊姩𫔄嗙被妯″瀷 - 澧炲己鐗?
- * 镌変紭鍏堢骇𫔄嗙被: 锲惧儚 鈫?瑙嗛 鈫?镵婂ぉ 鈫?鍏朵粬
+ * 闀婎亜濮珨勫棛琚Ο鈥崇€?- 婢х偛宸遍悧?
+ * 闀屽绱崗鍫㈤獓皤攧鍡欒: 閿叉儳鍎?閳?鐟欏棝顣?閳?闀靛﹤銇?閳?閸忔湹绮?
  */
 export function categorizeModels(models: string[]): {
     imageModels: string[];
@@ -3296,7 +3570,7 @@ export function categorizeModels(models: string[]): {
     models.forEach(model => {
         const lowerModel = model.toLowerCase();
 
-        // 浼桦厛绾?: 瑙嗛妯″瀷
+        // 娴兼ˇ鍘涚痪?: 鐟欏棝顣跺Ο鈥崇€?
         if (lowerModel.includes('veo') ||
             lowerModel.includes('runway') ||
             lowerModel.includes('luma') ||
@@ -3307,7 +3581,7 @@ export function categorizeModels(models: string[]): {
             lowerModel.includes('video')) {
             categories.videoModels.push(model);
         }
-        // 浼桦厛绾?: 锲惧儚妯″瀷
+        // 娴兼ˇ鍘涚痪?: 閿叉儳鍎氬Ο鈥崇€?
         else if (lowerModel.includes('imagen') ||
             lowerModel.includes('dall-e') ||
             lowerModel.includes('midjourney') ||
@@ -3322,14 +3596,14 @@ export function categorizeModels(models: string[]): {
             lowerModel.includes('img')) {
             categories.imageModels.push(model);
         }
-        // 浼桦厛绾?: 镵婂ぉ妯″瀷
+        // 娴兼ˇ鍘涚痪?: 闀靛﹤銇夊Ο鈥崇€?
         else if (lowerModel.includes('gemini') ||
             lowerModel.includes('gpt') ||
             lowerModel.includes('claude') ||
             lowerModel.includes('chat')) {
             categories.chatModels.push(model);
         }
-        // 鍏朵粬: 链垎绫绘ā鍨?
+        // 閸忔湹绮? 閾绢亜鍨庣猾缁樐侀崹?
         else {
             categories.otherModels.push(model);
         }
@@ -3339,30 +3613,41 @@ export function categorizeModels(models: string[]): {
 }
 
 /**
- * 镊姩妫€娴嫔苟閰岖疆API镄勬墍链夋ā鍨?
+ * 闀婎亜濮╁Λ鈧ù瀚旇嫙闁板矕鐤咥PI闀勫嫭澧嶉摼澶嬆侀崹?
  */
-export async function autoDetectAndConfigureModels(apiKey: string, baseUrl?: string): Promise<{
+export async function autoDetectAndConfigureModels(
+    apiKey: string,
+    baseUrl?: string,
+    preferredFormat?: ApiProtocolFormat
+): Promise<{
     success: boolean;
     models: string[];
     categories: ReturnType<typeof categorizeModels>;
     apiType: string;
 }> {
     const apiType = detectApiType(apiKey, baseUrl);
-    console.log('[KeyManager] 妫€娴嫔埌API绫诲瀷:', apiType);
+    const resolvedFormat = resolveApiProtocolFormat(
+        preferredFormat,
+        baseUrl,
+        apiType === 'google-official' ? 'gemini' : 'openai'
+    );
+    console.log('[KeyManager] 濡偓濞村珨鍩孉PI缁鐎?', apiType);
 
     let models: string[] = [];
 
-    if (apiType === 'google-official') {
+    if (resolvedFormat === 'gemini') {
+        models = await fetchGeminiCompatModels(apiKey, baseUrl);
+    } else if (apiType === 'google-official') {
         models = await fetchGoogleModels(apiKey);
     } else if (apiType === 'proxy' && baseUrl) {
         models = await fetchOpenAICompatModels(apiKey, baseUrl);
     } else if (apiType === 'openai') {
-        // OpenAI瀹樻柟锛屼娇鐢ㄥ凡鐭ユā鍨嫔垪琛?
+        // OpenAI鐎规ɑ鏌熼敍灞煎▏閻劌鍑￠惌銉δ侀崹瀚斿灙鐞?
         models = ['dall-e-3', 'dall-e-2', 'gpt-4o', 'gpt-4o-mini'];
     }
 
-    // 搴旗敤妯″瀷镙℃
-    const normalizedModels = normalizeModelList(models, apiType === 'google-official' ? 'Google' : 'Proxy');
+    // 鎼存棗鏁ゅΟ鈥崇€烽暀鈩冾劀
+    const normalizedModels = normalizeModelList(models, resolvedFormat === 'gemini' ? 'Google' : 'Proxy');
 
     const categories = categorizeModels(normalizedModels);
 
@@ -3370,8 +3655,13 @@ export async function autoDetectAndConfigureModels(apiKey: string, baseUrl?: str
         success: normalizedModels.length > 0,
         models: normalizedModels,
         categories,
-        apiType
+        apiType: preferredFormat && preferredFormat !== 'auto' ? preferredFormat : apiType
     };
 }
 
 // Re-export ProxyModelConfig for convenience
+
+
+
+
+

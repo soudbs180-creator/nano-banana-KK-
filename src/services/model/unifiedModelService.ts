@@ -1,16 +1,13 @@
 /**
  * Unified Model Service
- * 
- * Combines:
- * 1. User's own API keys (from keyManager)
- * 2. Admin configured models (from Supabase)
- * 
- * Provides a single source of truth for all available models
+ *
+ * Mirrors the source-aware model list produced by keyManager so
+ * admin credit models and user-owned models can coexist even when
+ * they share the same base provider/model id.
  */
 
 import { keyManager } from '../auth/keyManager';
-import { adminModelService, AdminModelConfig } from './adminModelService';
-import { MODEL_REGISTRY } from './modelRegistry';
+import { adminModelService } from './adminModelService';
 
 export type ModelType = 'chat' | 'image' | 'video' | 'audio' | 'image+chat';
 
@@ -32,145 +29,91 @@ export interface UnifiedModel {
   endpoint?: string;
 }
 
+type GlobalModelEntry = ReturnType<typeof keyManager.getGlobalModelList>[number];
+
 class UnifiedModelService {
   private models: UnifiedModel[] = [];
-  private listeners: (() => void)[] = [];
+  private listeners: Array<() => void> = [];
   private initialized = false;
 
-  /**
-   * Initialize and load all models
-   */
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    
-    // Subscribe to keyManager changes
+
     keyManager.subscribe(() => {
-      this.refreshModels();
+      void this.refreshModels();
     });
-    
-    // 🚀 优化：立即加载本地数据，不等待网络
+
     this.loadFromLocalCache();
-    
-    // 🚀 然后异步加载云端数据
-    setTimeout(() => this.refreshModels(), 0);
-    
+    setTimeout(() => {
+      void this.refreshModels();
+    }, 0);
+
     this.initialized = true;
   }
 
-  /**
-   * Load models from local cache for fast startup
-   */
   private loadFromLocalCache(): void {
     try {
-      // 从 keyManager 获取用户模型（本地缓存）
-      const userModels = keyManager.getGlobalModelList();
-      
-      const modelMap = new Map<string, UnifiedModel>();
-      
-      for (const userModel of userModels) {
-        modelMap.set(userModel.id, this.convertUserModel(userModel));
-      }
-      
-      this.models = Array.from(modelMap.values());
+      this.models = this.mapGlobalModels(keyManager.getGlobalModelList());
       this.notifyListeners();
-      console.log('[UnifiedModelService] 从本地缓存加载了', this.models.length, '个模型');
-    } catch (e) {
-      console.error('[UnifiedModelService] 本地缓存加载失败:', e);
+      console.log('[UnifiedModelService] Loaded models from global cache:', this.models.length);
+    } catch (error) {
+      console.error('[UnifiedModelService] Failed to load local cache:', error);
     }
   }
 
-  /**
-   * Refresh model list from all sources
-   */
   async refreshModels(): Promise<void> {
-    // 1. Load admin configured models
     await adminModelService.loadAdminModels();
-    const adminModels = adminModelService.getModels();
-
-    // 2. Get user's own API models
-    const userModels = keyManager.getGlobalModelList();
-
-    // 3. Merge models
-    const modelMap = new Map<string, UnifiedModel>();
-
-    // Add admin models first (so they take precedence)
-    for (const adminModel of adminModels) {
-      modelMap.set(adminModel.id, this.convertAdminModel(adminModel));
-    }
-
-    // Add user models (but don't override admin models)
-    for (const userModel of userModels) {
-      if (!modelMap.has(userModel.id)) {
-        modelMap.set(userModel.id, this.convertUserModel(userModel));
-      }
-    }
-
-    this.models = Array.from(modelMap.values());
+    this.models = this.mapGlobalModels(keyManager.getGlobalModelList());
     this.notifyListeners();
   }
 
-  /**
-   * Get all available models
-   */
   getModels(): UnifiedModel[] {
     return this.models;
   }
 
-  /**
-   * Get models by type
-   */
   getModelsByType(type: ModelType): UnifiedModel[] {
-    return this.models.filter(m => m.type === type);
+    return this.models.filter((model) => model.type === type);
   }
 
-  /**
-   * Get model by ID
-   */
   getModel(id: string): UnifiedModel | undefined {
-    return this.models.find(m => m.id === id);
+    return this.models.find((model) => model.id === id);
   }
 
-  /**
-   * Check if model is credit-based
-   */
   isCreditBasedModel(id: string): boolean {
-    // Check admin models first
     if (adminModelService.isAdminModel(id)) {
       return true;
     }
 
-    // Check system internal models
     const model = this.getModel(id);
     return model?.isSystemInternal === true || model?.isAdminModel === true;
   }
 
-  /**
-   * Get credit cost for a model
-   */
   getCreditCost(id: string): number {
-    // Try admin model first
     const adminModel = adminModelService.getModel(id);
     if (adminModel) {
       return adminModel.creditCost;
     }
 
-    // Legacy Nano Banana models
     const lowerId = id.toLowerCase();
-    if ((lowerId.includes('pro') && lowerId.includes('banana')) || 
-        (lowerId.includes('pro') && lowerId.includes('gemini') && (lowerId.includes('image') || lowerId.includes('preview')))) {
+    if (
+      (lowerId.includes('pro') && lowerId.includes('banana')) ||
+      (lowerId.includes('pro') &&
+        lowerId.includes('gemini') &&
+        (lowerId.includes('image') || lowerId.includes('preview')))
+    ) {
       return 2;
     }
-    if (lowerId.includes('banana') || 
-        (lowerId.includes('gemini') && (lowerId.includes('image') || lowerId.includes('preview')))) {
+    if (
+      lowerId.includes('banana') ||
+      (lowerId.includes('gemini') &&
+        (lowerId.includes('image') || lowerId.includes('preview')))
+    ) {
       return 1;
     }
 
     return 0;
   }
 
-  /**
-   * Get model display colors
-   */
   getModelColors(id: string): { start: string; end: string } | null {
     const adminModel = adminModelService.getModel(id);
     if (adminModel) {
@@ -182,51 +125,49 @@ class UnifiedModelService {
     return null;
   }
 
-  /**
-   * Subscribe to model changes
-   */
   subscribe(callback: () => void): () => void {
     this.listeners.push(callback);
     return () => {
-      this.listeners = this.listeners.filter(l => l !== callback);
+      this.listeners = this.listeners.filter((listener) => listener !== callback);
     };
   }
 
-  private convertAdminModel(model: AdminModelConfig): UnifiedModel {
-    return {
-      id: model.id,
-      name: model.displayName,
-      provider: model.provider,
-      type: 'image', // Admin models are typically image models for now
-      isCustom: false,
-      isSystemInternal: true,
-      isAdminModel: true,
-      description: model.advantages,
-      colorStart: model.colorStart,
-      colorEnd: model.colorEnd,
-      creditCost: model.creditCost,
-      billingType: model.billingType,
-      advantages: model.advantages,
-      endpoint: model.endpoint,
-    };
+  private mapGlobalModels(models: GlobalModelEntry[]): UnifiedModel[] {
+    const modelMap = new Map<string, UnifiedModel>();
+
+    models.forEach((model) => {
+      if (!modelMap.has(model.id)) {
+        modelMap.set(model.id, this.convertGlobalModel(model));
+      }
+    });
+
+    return Array.from(modelMap.values());
   }
 
-  private convertUserModel(model: any): UnifiedModel {
+  private convertGlobalModel(model: GlobalModelEntry): UnifiedModel {
+    const adminModel = model.isSystemInternal ? adminModelService.getModel(model.id) : undefined;
+
     return {
       id: model.id,
       name: model.name,
       provider: model.provider,
       type: model.type as ModelType,
       isCustom: model.isCustom ?? false,
-      isSystemInternal: model.isSystemInternal,
-      isAdminModel: false,
+      isSystemInternal: model.isSystemInternal === true,
+      isAdminModel: model.isSystemInternal === true,
       description: model.description,
       icon: model.icon,
+      colorStart: model.colorStart ?? adminModel?.colorStart,
+      colorEnd: model.colorEnd ?? adminModel?.colorEnd,
+      creditCost: model.creditCost ?? adminModel?.creditCost,
+      billingType: adminModel?.billingType,
+      advantages: adminModel?.advantages,
+      endpoint: adminModel?.endpoint,
     };
   }
 
-  private notifyListeners() {
-    this.listeners.forEach(cb => cb());
+  private notifyListeners(): void {
+    this.listeners.forEach((callback) => callback());
   }
 }
 

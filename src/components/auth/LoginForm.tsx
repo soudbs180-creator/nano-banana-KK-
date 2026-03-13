@@ -210,6 +210,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
         还没有账号？
         <button
+          type="button"
           onClick={onRegisterClick}
           className="text-blue-600 hover:underline font-medium ml-1"
         >

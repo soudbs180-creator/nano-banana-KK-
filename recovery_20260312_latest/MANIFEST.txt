@@ -1,0 +1,20 @@
+﻿Recovery package created: 2026-03-12 17:57:16
+
+Current latest working-tree files copied from this repo:
+- src/App.tsx
+- src/components/settings/SettingsPanel.tsx
+- src/services/llm/OpenAICompatibleAdapter.ts
+- src/hooks/useImageGeneration.ts
+- src/utils/pptUtils.ts
+
+Older candidate snapshots included for comparison:
+- KK-Studio-restore-20260307/src/App.tsx
+- KK-Studio-restore-20260307/src/components/settings/SettingsPanel.tsx
+- KK-Studio-restore-20260307/src/context/ThemeContext.tsx
+- KK-Studio-restore-20260307/src/index.css
+- KK-Studio-restore-20260307/src/services/llm/OpenAICompatibleAdapter.ts
+- Cursor history App.tsx snapshots: W0h7.tsx, oIuZ.tsx, GEO8.tsx, xCuC.tsx
+
+Notes:
+- Current working-tree files were NOT overwritten.
+- This folder is a safety snapshot for restoring the latest local versions first.

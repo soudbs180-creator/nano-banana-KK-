@@ -104,6 +104,8 @@ export interface ActiveModel {
     enabled: boolean;
     description?: string;
     isSystemInternal?: boolean;
+    sourceScope?: 'system' | 'user' | 'official';
+    sourceLabel?: string;
     creditCost?: number;
     colorStart?: string;
     colorEnd?: string;

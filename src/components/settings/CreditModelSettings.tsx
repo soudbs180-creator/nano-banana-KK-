@@ -1,7 +1,8 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, ShieldAlert } from 'lucide-react';
+import { ArrowRightLeft, Info, Plus, ShieldAlert, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { notify } from '../../services/system/notificationService';
+import { getCachedPricing, type ModelPricingInfo } from '../../services/billing/newApiPricingService';
 import {
   ADMIN_MODEL_QUALITY_KEYS,
   type AdminModelQualityKey,
@@ -9,6 +10,11 @@ import {
   createDefaultAdminQualityPricing,
   normalizeAdminQualityPricing,
 } from '../../services/model/adminModelQuality';
+import {
+  DEFAULT_CREDITS_PER_USD,
+  buildAdminModelCreditSuggestion,
+  detectAdminProviderVendor,
+} from '../../services/model/adminModelAdvisor';
 import { getModelCapabilities } from '../../services/model/modelCapabilities';
 import { ImageSize } from '../../types';
 
@@ -140,6 +146,82 @@ const emptyProvider = (): EditableProvider => ({
   models: [newModel()],
 });
 
+const SIZE_TO_QUALITY: Record<string, AdminModelQualityKey> = {
+  [ImageSize.SIZE_05K]: '0.5K',
+  [ImageSize.SIZE_1K]: '1K',
+  [ImageSize.SIZE_2K]: '2K',
+  [ImageSize.SIZE_4K]: '4K',
+};
+
+const QUALITY_META: Record<AdminModelQualityKey, { resolution: string; hint: string }> = {
+  '0.5K': { resolution: '512px', hint: '快速预览与轻量草稿' },
+  '1K': { resolution: '1024px', hint: '常规出图，速度与质量均衡' },
+  '2K': { resolution: '2048px', hint: '适合细节强化与展示图' },
+  '4K': { resolution: '4096px', hint: '高分辨率交付与精修图' },
+};
+
+type PricingCacheStatus = 'idle' | 'loading' | 'ready' | 'empty';
+
+const formatUsdEstimate = (value: number | null): string => {
+  if (value === null || !Number.isFinite(value)) return '--';
+  return value >= 1 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
+};
+
+const areQualityPricingEqual = (
+  left: AdminModelQualityPricing,
+  right: AdminModelQualityPricing,
+  qualities: AdminModelQualityKey[]
+): boolean =>
+  qualities.every((quality) => {
+    const leftRule = left[quality];
+    const rightRule = right[quality];
+
+    return (
+      Boolean(leftRule?.enabled !== false) === Boolean(rightRule?.enabled !== false) &&
+      Number(leftRule?.creditCost || 0) === Number(rightRule?.creditCost || 0)
+    );
+  });
+
+const getSupportedQualities = (modelId: string): AdminModelQualityKey[] => {
+  const caps = getModelCapabilities(modelId);
+  const supportedSizes = caps?.supportedSizes || [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
+  const supportedQualities = supportedSizes
+    .map((size) => SIZE_TO_QUALITY[size])
+    .filter((quality): quality is AdminModelQualityKey => !!quality);
+
+  return supportedQualities.length > 0 ? supportedQualities : ADMIN_MODEL_QUALITY_KEYS;
+};
+
+type AdvancedToggleProps = {
+  checked: boolean;
+  label: string;
+  onToggle: () => void;
+  tone?: 'indigo' | 'emerald';
+  size?: 'default' | 'compact';
+};
+
+const AdvancedToggle: React.FC<AdvancedToggleProps> = ({
+  checked,
+  label,
+  onToggle,
+  tone = 'indigo',
+  size = 'default',
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    onClick={onToggle}
+    data-tone={tone}
+    className={`credit-advanced-switch ${checked ? 'is-on' : ''} ${
+      size === 'compact' ? 'credit-advanced-switch--compact' : ''
+    }`}
+  >
+    <span className="sr-only">{label}</span>
+    <span className="credit-advanced-switch__thumb" />
+  </button>
+);
+
 const CreditModelSettings: React.FC = () => {
   const [rows, setRows] = useState<CreditModelRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -148,6 +230,9 @@ const CreditModelSettings: React.FC = () => {
   const [supportsAdvancedSettings, setSupportsAdvancedSettings] = useState(true);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
   const [form, setForm] = useState<EditableProvider>(emptyProvider());
+  const [cachedPricing, setCachedPricing] = useState<ModelPricingInfo[] | null>(null);
+  const [pricingCacheStatus, setPricingCacheStatus] = useState<PricingCacheStatus>('idle');
+  const [pricingMultiplier, setPricingMultiplier] = useState(1);
 
   const providers = useMemo(() => {
     const grouped = new Map<string, CreditModelRow[]>();
@@ -158,6 +243,138 @@ const CreditModelSettings: React.FC = () => {
     }
     return Array.from(grouped.entries()).map(([providerId, items]) => ({ providerId, items }));
   }, [rows]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const providerId = form.providerId.trim();
+
+    if (!providerId) {
+      setCachedPricing(null);
+      setPricingCacheStatus('idle');
+      return;
+    }
+
+    setPricingCacheStatus('loading');
+    void getCachedPricing(providerId)
+      .then((data) => {
+        if (cancelled) return;
+        const nextPricing = Array.isArray(data) ? data : null;
+        setCachedPricing(nextPricing);
+        setPricingCacheStatus(nextPricing && nextPricing.length > 0 ? 'ready' : 'empty');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCachedPricing(null);
+        setPricingCacheStatus('empty');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.providerId]);
+
+  const vendorProfile = useMemo(
+    () =>
+      detectAdminProviderVendor({
+        providerId: form.providerId,
+        providerName: form.providerName,
+        baseUrl: form.baseUrl,
+        modelIds: form.models.map((item) => normalizeBaseModelId(item.modelId)).filter(Boolean),
+      }),
+    [form.providerId, form.providerName, form.baseUrl, form.models]
+  );
+
+  const modelMixSnapshots = useMemo(() => {
+    const currentProviderId = form.providerId.trim() || '__draft_provider__';
+    const currentProviderName = form.providerName.trim() || form.providerId.trim() || '当前供应商';
+    const providerNameMap = new Map<string, string>();
+    const routeProvidersByBaseId = new Map<string, Set<string>>();
+
+    rows
+      .filter((row) => row.provider_id !== currentProviderId)
+      .forEach((row) => {
+        const baseId = normalizeBaseModelId(row.model_id);
+        if (!baseId) return;
+        if (!routeProvidersByBaseId.has(baseId)) {
+          routeProvidersByBaseId.set(baseId, new Set());
+        }
+        routeProvidersByBaseId.get(baseId)!.add(row.provider_id);
+        providerNameMap.set(row.provider_id, row.provider_name || row.provider_id);
+      });
+
+    form.models.forEach((model) => {
+      const baseId = normalizeBaseModelId(model.modelId);
+      if (!baseId) return;
+      if (!routeProvidersByBaseId.has(baseId)) {
+        routeProvidersByBaseId.set(baseId, new Set());
+      }
+      routeProvidersByBaseId.get(baseId)!.add(currentProviderId);
+      providerNameMap.set(currentProviderId, currentProviderName);
+    });
+
+    return form.models.map((model, index) => {
+      const baseModelId = normalizeBaseModelId(model.modelId);
+      const providerIds = baseModelId ? Array.from(routeProvidersByBaseId.get(baseModelId) || []) : [];
+      const peerProviderIds = providerIds.filter((providerId) => providerId !== currentProviderId);
+
+      return {
+        index,
+        baseModelId,
+        routeCount: providerIds.length,
+        peerProviderCount: peerProviderIds.length,
+        peerProviders: peerProviderIds.map((providerId) => providerNameMap.get(providerId) || providerId),
+      };
+    });
+  }, [rows, form.providerId, form.providerName, form.models]);
+
+  const creditsPerUsd = useMemo(
+    () => Math.max(1, DEFAULT_CREDITS_PER_USD * pricingMultiplier),
+    [pricingMultiplier]
+  );
+
+  const modelSuggestions = useMemo(
+    () =>
+      form.models.map((model, index) => {
+        const baseModelId = normalizeBaseModelId(model.modelId);
+        const supportedQualities = getSupportedQualities(baseModelId || model.modelId);
+        const suggestion = buildAdminModelCreditSuggestion({
+          modelId: baseModelId || model.modelId,
+          currentCreditCost: Number(model.creditCost || 1),
+          supportedQualities,
+          cachedPricing,
+          creditsPerUsd,
+        });
+
+        const qualitySuggestionChanged =
+          supportsAdvancedSettings &&
+          !areQualityPricingEqual(model.qualityPricing, suggestion.recommendedQualityPricing, supportedQualities);
+
+        return {
+          index,
+          baseModelId,
+          supportedQualities,
+          suggestion,
+          mixSnapshot: modelMixSnapshots[index],
+          hasSuggestedChange:
+            suggestion.recommendedCredits !== Number(model.creditCost || 1) || qualitySuggestionChanged,
+        };
+      }),
+    [form.models, cachedPricing, creditsPerUsd, modelMixSnapshots, supportsAdvancedSettings]
+  );
+
+  const pricingCacheSummary = useMemo(() => {
+    if (pricingCacheStatus === 'loading') return '正在读取价格缓存...';
+    if (pricingCacheStatus === 'ready') {
+      return `已读取 ${cachedPricing?.length || 0} 条缓存价格，优先用于积分建议。`;
+    }
+    if (pricingCacheStatus === 'empty') {
+      return '未找到缓存价格，将自动回退到内置定价或当前积分。';
+    }
+    return '填写供应商 ID 后会自动尝试读取价格缓存。';
+  }, [cachedPricing, pricingCacheStatus]);
+
+  const mixEligibleCount = modelMixSnapshots.filter((item) => item.peerProviderCount > 0).length;
+  const suggestionChangeCount = modelSuggestions.filter((item) => item.hasSuggestedChange).length;
 
   const load = async () => {
     setLoading(true);
@@ -428,6 +645,49 @@ const CreditModelSettings: React.FC = () => {
     }));
   };
 
+  const applySuggestionToModel = (index: number) => {
+    const entry = modelSuggestions[index];
+    if (!entry) return;
+
+    setForm((prev) => ({
+      ...prev,
+      models: prev.models.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              creditCost: entry.suggestion.recommendedCredits,
+              qualityPricing: supportsAdvancedSettings
+                ? entry.suggestion.recommendedQualityPricing
+                : item.qualityPricing,
+            }
+          : item
+      ),
+    }));
+  };
+
+  const applyAllSuggestions = () => {
+    setForm((prev) => ({
+      ...prev,
+      models: prev.models.map((item, index) => {
+        const entry = modelSuggestions[index];
+        if (!entry) return item;
+
+        return {
+          ...item,
+          creditCost: entry.suggestion.recommendedCredits,
+          qualityPricing: supportsAdvancedSettings
+            ? entry.suggestion.recommendedQualityPricing
+            : item.qualityPricing,
+        };
+      }),
+    }));
+
+    notify.success(
+      '建议已应用',
+      supportsAdvancedSettings ? '积分与画质矩阵已回填建议值。' : '基础积分已回填建议值。'
+    );
+  };
+
   const saveProvider = async () => {
     if (!form.providerId.trim() || !form.providerName.trim() || !form.baseUrl.trim()) {
       notify.error('缺少字段', '供应商 ID、名称和基础 地址 为必填项');
@@ -517,38 +777,38 @@ const CreditModelSettings: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-amber-100">
-        <div className="flex items-center gap-2 text-sm font-semibold">
+      <div className="settings-intent-card settings-intent-card--warning">
+        <div className="settings-intent-card__title">
           <ShieldAlert className="h-4 w-4" />
           积分模型配置（全局）
         </div>
-        <p className="mt-2 text-xs text-amber-200/90">
+        <p className="settings-intent-card__body">
           这里配置的是管理员全局积分模型，会同步给所有用户。用户自己的接口配置不在本页面修改。
         </p>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="settings-action-row">
         <button
           onClick={() => void load()}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-light)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-white/5"
+          className="apple-button-secondary min-h-10 px-3 text-xs"
         >
           {loading ? '刷新中...' : '刷新'}
         </button>
         <button
           onClick={resetForm}
-          className="rounded-lg border border-[var(--border-light)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-white/5"
+          className="apple-button-secondary min-h-10 px-3 text-xs"
         >
           新建供应商
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px,1fr]">
-        <div className="rounded-2xl border border-[var(--border-light)] p-3">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[280px,minmax(0,1fr)]">
+        <div className="settings-section-card self-start p-3 xl:sticky xl:top-4">
           <div className="mb-2 text-xs text-[var(--text-tertiary)]">已配置供应商</div>
-          <div className="space-y-2">
+          <div className="settings-scroll-region space-y-2 pr-1">
             {providers.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-[var(--border-light)] p-3 text-xs text-[var(--text-tertiary)]">
+              <div className="apple-empty-state rounded-lg border border-dashed border-[var(--border-light)] p-3 text-xs text-[var(--text-tertiary)]">
                 暂无积分供应商配置。
               </div>
             ) : (
@@ -569,7 +829,7 @@ const CreditModelSettings: React.FC = () => {
                     </button>
                     <button
                       onClick={() => void deleteProvider(item.providerId)}
-                      className="mt-2 inline-flex items-center gap-1 text-[11px] text-red-400 hover:text-red-300"
+                      className="settings-danger-text mt-2 inline-flex items-center gap-1 text-[11px]"
                     >
                       删除
                     </button>
@@ -580,7 +840,7 @@ const CreditModelSettings: React.FC = () => {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[var(--border-light)] p-4 space-y-4">
+        <div className="settings-section-card space-y-4 p-4">
           <div>
             <div className="mb-2 text-xs font-semibold text-[var(--text-primary)]">供应商基础信息</div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -624,16 +884,216 @@ const CreditModelSettings: React.FC = () => {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            <div className="rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-[var(--text-primary)]">厂家识别 / 来源隔离</div>
+                  <div className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]">
+                    当前页面只管理管理员全局积分路由，不会修改用户自己添加的 API、密钥和模型列表。
+                  </div>
+                </div>
+                <span className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-[10px] font-medium text-indigo-300">
+                  {vendorProfile.confidence === 'high'
+                    ? '高置信'
+                    : vendorProfile.confidence === 'medium'
+                      ? '中置信'
+                      : '低置信'}
+                </span>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="rounded-lg bg-[var(--bg-tertiary)] px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">识别厂家</div>
+                  <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{vendorProfile.label}</div>
+                </div>
+                <div className="rounded-lg bg-[var(--bg-tertiary)] px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">协议族</div>
+                  <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">
+                    {vendorProfile.endpointFamily === 'gemini' ? 'Gemini' : 'OpenAI Compatible'}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[var(--bg-tertiary)] px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">可混合模型</div>
+                  <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">
+                    {mixEligibleCount} / {form.models.length}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] leading-5 text-emerald-200">
+                {vendorProfile.hint}
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {modelMixSnapshots.filter((item) => item.baseModelId).length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-[var(--border-light)] px-3 py-2 text-[11px] text-[var(--text-tertiary)]">
+                    录入模型编号后，这里会自动提示哪些模型可以与其他供应商做同 ID 混合调配。
+                  </div>
+                ) : (
+                  modelMixSnapshots
+                    .filter((item) => item.baseModelId)
+                    .map((item) => {
+                      const model = form.models[item.index];
+                      return (
+                        <div
+                          key={`${item.baseModelId}-${item.index}`}
+                          className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)] px-3 py-2"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-[var(--text-primary)]">
+                                {model.displayName || item.baseModelId}
+                              </div>
+                              <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                                模型 ID：{item.baseModelId}
+                              </div>
+                            </div>
+                            <span
+                              className={`rounded-full px-2 py-1 text-[10px] font-medium ${
+                                item.peerProviderCount > 0
+                                  ? 'bg-emerald-500/14 text-emerald-200'
+                                  : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]'
+                              }`}
+                            >
+                              {item.peerProviderCount > 0
+                                ? `可混合 ${item.routeCount} 条路由`
+                                : '当前仅单路由'}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-[11px] leading-5 text-[var(--text-secondary)]">
+                            {item.peerProviderCount > 0
+                              ? `匹配到 ${item.peerProviderCount} 个其他供应商：${item.peerProviders.join('、')}。开启“多供应商混合”后即可参与智能调配。`
+                              : '暂未发现其他供应商存在同 model_id，不会进入混合路由池。'}
+                          </div>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-[var(--text-primary)]">价格建议 / 快速调节</div>
+                  <div className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]">
+                    依据缓存价格、内置定价和积分换算系数，快速回填每个模型的推荐积分。
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={applyAllSuggestions}
+                  disabled={suggestionChangeCount === 0}
+                  className="apple-button-secondary min-h-9 px-3 text-[11px] disabled:opacity-60"
+                >
+                  应用全部建议
+                </button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr),120px]">
+                <div className="rounded-lg bg-[var(--bg-tertiary)] px-3 py-2">
+                  <div className="text-[11px] font-medium text-[var(--text-primary)]">
+                    $1 ≈ {DEFAULT_CREDITS_PER_USD} 积分 × 系数 = {creditsPerUsd.toFixed(1)} 积分
+                  </div>
+                  <div className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]">
+                    {pricingCacheSummary}
+                  </div>
+                </div>
+                <label className="space-y-1">
+                  <span className="text-[11px] text-[var(--text-tertiary)]">调节系数</span>
+                  <input
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    value={pricingMultiplier}
+                    onChange={(e) => {
+                      const nextValue = Number(e.target.value);
+                      setPricingMultiplier(Number.isFinite(nextValue) && nextValue > 0 ? nextValue : 1);
+                    }}
+                    className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {modelSuggestions.filter((item) => item.baseModelId).length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-[var(--border-light)] px-3 py-2 text-[11px] text-[var(--text-tertiary)]">
+                    添加模型后，这里会自动显示当前积分与建议积分的对照。
+                  </div>
+                ) : (
+                  modelSuggestions
+                    .filter((item) => item.baseModelId)
+                    .map((item) => {
+                      const model = form.models[item.index];
+                      const qualityPreview = item.supportedQualities
+                        .map(
+                          (quality) =>
+                            `${quality}: ${item.suggestion.recommendedQualityPricing[quality].creditCost}`
+                        )
+                        .join(' / ');
+
+                      return (
+                        <div
+                          key={`${item.baseModelId}-${item.index}`}
+                          className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)] px-3 py-2"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium text-[var(--text-primary)]">
+                                {model.displayName || item.baseModelId}
+                              </div>
+                              <div className="mt-1 text-[11px] leading-5 text-[var(--text-secondary)]">
+                                当前 {model.creditCost} 积分 → 建议 {item.suggestion.recommendedCredits} 积分
+                              </div>
+                              <div className="text-[11px] leading-5 text-[var(--text-tertiary)]">
+                                来源：{item.suggestion.sourceLabel}
+                                {item.suggestion.usdEstimate !== null
+                                  ? ` · 估算单次成本 ${formatUsdEstimate(item.suggestion.usdEstimate)}`
+                                  : ''}
+                                {item.suggestion.matchedModel ? ` · 匹配 ${item.suggestion.matchedModel}` : ''}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => applySuggestionToModel(item.index)}
+                              disabled={!item.hasSuggestedChange}
+                              className="apple-button-secondary min-h-9 px-3 text-[11px] disabled:opacity-60"
+                            >
+                              套用建议
+                            </button>
+                          </div>
+                          <div className="mt-2 text-[11px] leading-5 text-[var(--text-tertiary)]">
+                            {item.suggestion.note}
+                          </div>
+                          {supportsAdvancedSettings && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="rounded-full bg-indigo-500/14 px-2 py-1 text-[10px] font-medium text-indigo-200">
+                                画质矩阵建议
+                              </span>
+                              <span className="text-[10px] leading-5 text-[var(--text-tertiary)]">
+                                {qualityPreview} 积分
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-3">
             <div className="text-xs font-semibold text-[var(--text-primary)]">模型配置</div>
             {!supportsMaxCallsLimit && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+              <div className="settings-intent-card settings-intent-card--warning px-3 py-2 text-[11px]">
                 当前数据库未包含总调用上限字段（`max_calls_limit`），已自动降级兼容。
                 执行最新 Supabase 迁移后，可启用“总调用上限/自动暂停”能力。
               </div>
             )}
             {!supportsAdvancedSettings && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+              <div className="settings-intent-card settings-intent-card--warning px-3 py-2 text-[11px]">
                 当前数据库未包含高级设置字段（`advanced_enabled / mix_with_same_model / quality_pricing`），
                 已自动隐藏画质定价与混合路由配置。执行最新 Supabase 迁移后即可启用。
               </div>
@@ -642,6 +1102,10 @@ const CreditModelSettings: React.FC = () => {
               const callsUsed = rows.find(
                 (row) => row.provider_id === form.providerId && row.model_id === model.modelId
               )?.call_count;
+              const qualitiesToShow = getSupportedQualities(model.modelId);
+              const enabledQualityCount = qualitiesToShow.filter(
+                (quality) => model.qualityPricing[quality]?.enabled !== false
+              ).length;
 
               return (
                 <div key={`${model.modelId}-${index}`} className="rounded-xl border border-[var(--border-light)] p-3 space-y-2">
@@ -724,41 +1188,26 @@ const CreditModelSettings: React.FC = () => {
                       />
                       {model.advancedEnabled && (
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
-                          {(() => {
-                            const caps = getModelCapabilities(model.modelId);
-                            const supportedSizes = caps?.supportedSizes || [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
-                            const sizeToQuality: Record<string, AdminModelQualityKey> = {
-                              [ImageSize.SIZE_05K]: '0.5K',
-                              [ImageSize.SIZE_1K]: '1K',
-                              [ImageSize.SIZE_2K]: '2K',
-                              [ImageSize.SIZE_4K]: '4K',
-                            };
-                            const sizeLabel: Record<string, string> = {
-                              [ImageSize.SIZE_05K]: '512px',
-                              [ImageSize.SIZE_1K]: '1K',
-                              [ImageSize.SIZE_2K]: '2K',
-                              [ImageSize.SIZE_4K]: '4K',
-                            };
-                            return supportedSizes.map(size => {
-                              const quality = sizeToQuality[size];
-                              if (!quality) return null;
-                              const rule = model.qualityPricing[quality];
-                              const isEnabled = rule.enabled !== false;
-                              return (
-                                <span 
-                                  key={quality}
-                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${
-                                    isEnabled 
-                                      ? 'bg-indigo-500/20 text-indigo-300' 
-                                      : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] line-through'
-                                  }`}
-                                >
-                                  {sizeLabel[size]}: {rule.creditCost}
-                                  {!isEnabled && <span className="text-[8px]">(已禁用)</span>}
-                                </span>
-                              );
-                            });
-                          })()}
+                          {qualitiesToShow.map((quality) => {
+                            const rule = model.qualityPricing[quality];
+                            const isEnabled = rule.enabled !== false;
+                            const qualityMeta = QUALITY_META[quality];
+
+                            return (
+                              <span
+                                key={quality}
+                                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-medium ${
+                                  isEnabled
+                                    ? 'bg-indigo-500/14 text-indigo-500 dark:text-indigo-200'
+                                    : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]'
+                                }`}
+                              >
+                                <span>{qualityMeta.resolution}</span>
+                                <span>{rule.creditCost} 积分</span>
+                                {!isEnabled ? <span className="opacity-80">已停用</span> : null}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </label>
@@ -849,167 +1298,166 @@ const CreditModelSettings: React.FC = () => {
                   </label>
 
                   {supportsAdvancedSettings && (
-                    <div className="rounded-xl border border-[var(--border-light)] bg-[var(--bg-tertiary)]/40 overflow-hidden">
-                      {/* 高级设置头部 */}
-                      <div className="flex items-center justify-between gap-3 p-3 border-b border-[var(--border-light)]">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-md bg-indigo-500/20 flex items-center justify-center">
-                            <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                            </svg>
+                    <div className="credit-advanced-panel">
+                      <div className="credit-advanced-panel__header">
+                        <div className="credit-advanced-panel__intro">
+                          <div className="credit-advanced-panel__icon">
+                            <SlidersHorizontal size={16} />
                           </div>
-                          <div>
-                            <div className="text-sm font-semibold text-[var(--text-primary)]">高级设置</div>
-                            <div className="text-[11px] text-[var(--text-tertiary)]">
-                              自定义画质定价与多供应商混合策略
+                          <div className="min-w-0">
+                            <div className="credit-advanced-panel__eyebrow">Advanced Controls</div>
+                            <div className="credit-advanced-panel__title-row">
+                              <div className="credit-advanced-panel__title">高级设置</div>
+                              <span className={`credit-advanced-panel__status ${model.advancedEnabled ? 'is-on' : ''}`}>
+                                {model.advancedEnabled ? '已启用' : '未启用'}
+                              </span>
+                            </div>
+                            <div className="credit-advanced-panel__description">
+                              把复杂配置收敛成两件事：混合路由和分辨率定价。
                             </div>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={model.advancedEnabled}
-                          onClick={() => {
-                            const enabled = !model.advancedEnabled;
-                            updateModelAt(index, {
-                              advancedEnabled: enabled,
-                              qualityPricing: normalizeAdminQualityPricing(model.qualityPricing, model.creditCost),
-                            });
-                          }}
-                          className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
-                            model.advancedEnabled ? 'bg-indigo-500' : 'bg-gray-500'
-                          }`}
-                        >
-                          <span className="sr-only">启用高级设置</span>
-                          <span
-                            className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                              model.advancedEnabled ? 'translate-x-5' : 'translate-x-0'
-                            }`}
+                        <div className="credit-advanced-panel__control">
+                          <div className="credit-advanced-panel__control-label">启用高级策略</div>
+                          <AdvancedToggle
+                            checked={model.advancedEnabled}
+                            label="启用高级设置"
+                            onToggle={() => {
+                              const enabled = !model.advancedEnabled;
+                              updateModelAt(index, {
+                                advancedEnabled: enabled,
+                                qualityPricing: normalizeAdminQualityPricing(model.qualityPricing, model.creditCost),
+                              });
+                            }}
                           />
-                        </button>
+                        </div>
                       </div>
 
                       {model.advancedEnabled && (
-                        <div className="p-3 space-y-4">
-                          {/* 混合模式开关 */}
-                          <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-[var(--bg-elevated)]/50 border border-[var(--border-light)]">
-                            <div className="flex items-center gap-2">
-                              <div className="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center">
-                                <svg className="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                                </svg>
+                        <div className="credit-advanced-panel__body">
+                          <div className="credit-advanced-grid">
+                            <div className="credit-advanced-card">
+                              <div className="credit-advanced-card__head">
+                                <div className="credit-advanced-card__icon-badge credit-advanced-card__icon-badge--emerald">
+                                  <ArrowRightLeft size={15} />
+                                </div>
+                                <div>
+                                  <div className="credit-advanced-card__title">多供应商混合</div>
+                                  <div className="credit-advanced-card__description">
+                                    自动均衡同模型下的请求量，优先使用调用次数较少的供应商。
+                                  </div>
+                                </div>
                               </div>
-                              <div>
-                                <div className="text-xs font-medium text-[var(--text-primary)]">多供应商混合</div>
-                                <div className="text-[10px] text-[var(--text-tertiary)]">自动均衡各API用量，优先使用调用次数少的供应商</div>
+                              <div className="credit-advanced-card__footer">
+                                <span className={`credit-advanced-card__pill ${model.mixWithSameModel ? 'is-on' : ''}`}>
+                                  {model.mixWithSameModel ? '自动均衡已开启' : '保持单供应商'}
+                                </span>
+                                <AdvancedToggle
+                                  checked={model.mixWithSameModel}
+                                  label="启用多供应商混合"
+                                  onToggle={() => updateModelAt(index, { mixWithSameModel: !model.mixWithSameModel })}
+                                  tone="emerald"
+                                />
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={model.mixWithSameModel}
-                              onClick={() => updateModelAt(index, { mixWithSameModel: !model.mixWithSameModel })}
-                              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                model.mixWithSameModel ? 'bg-emerald-500' : 'bg-gray-500'
-                              }`}
-                            >
-                              <span className="sr-only">启用多供应商混合</span>
-                              <span
-                                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                  model.mixWithSameModel ? 'translate-x-5' : 'translate-x-0'
-                                }`}
-                              />
-                            </button>
+
+                            <div className="credit-advanced-card">
+                              <div className="credit-advanced-card__head">
+                                <div className="credit-advanced-card__icon-badge credit-advanced-card__icon-badge--indigo">
+                                  <Sparkles size={15} />
+                                </div>
+                                <div>
+                                  <div className="credit-advanced-card__title">画质定价</div>
+                                  <div className="credit-advanced-card__description">
+                                    按分辨率单独设置积分成本，方便把高质量出图与默认费率区分开。
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="credit-advanced-card__stats">
+                                <div className="credit-advanced-card__stat">
+                                  <span className="credit-advanced-card__stat-label">可配置规格</span>
+                                  <span className="credit-advanced-card__stat-value">{qualitiesToShow.length}</span>
+                                </div>
+                                <div className="credit-advanced-card__stat">
+                                  <span className="credit-advanced-card__stat-label">当前启用</span>
+                                  <span className="credit-advanced-card__stat-value">{enabledQualityCount}</span>
+                                </div>
+                                <div className="credit-advanced-card__stat">
+                                  <span className="credit-advanced-card__stat-label">默认积分</span>
+                                  <span className="credit-advanced-card__stat-value">{model.creditCost}</span>
+                                </div>
+                              </div>
+                            </div>
                           </div>
 
-                          {/* 画质定价配置 */}
-                          <div>
-                            <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">画质定价配置</div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                              {(() => {
-                                // 获取模型支持的尺寸
-                                const caps = getModelCapabilities(model.modelId);
-                                const supportedSizes = caps?.supportedSizes || [ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
-                                
-                                // 尺寸到 quality key 的映射
-                                const sizeToQuality: Record<string, AdminModelQualityKey> = {
-                                  [ImageSize.SIZE_05K]: '0.5K',
-                                  [ImageSize.SIZE_1K]: '1K',
-                                  [ImageSize.SIZE_2K]: '2K',
-                                  [ImageSize.SIZE_4K]: '4K',
-                                };
-                                
-                                // 过滤出支持的 quality keys
-                                const supportedQualities = supportedSizes
-                                  .map(size => sizeToQuality[size])
-                                  .filter((q): q is AdminModelQualityKey => !!q);
-                                
-                                // 如果没有支持的 sizes，默认显示所有
-                                const qualitiesToShow = supportedQualities.length > 0 ? supportedQualities : ADMIN_MODEL_QUALITY_KEYS;
-                                
-                                return qualitiesToShow.map((quality) => {
-                                  const rule = model.qualityPricing[quality];
-                                  const isEnabled = rule.enabled !== false;
-                                  return (
-                                    <div 
-                                      key={quality} 
-                                      className={`relative rounded-lg border p-2.5 transition-all ${
-                                        isEnabled 
-                                          ? 'bg-[var(--bg-surface)] border-indigo-500/30 shadow-sm' 
-                                          : 'bg-[var(--bg-elevated)]/30 border-[var(--border-light)] opacity-60'
-                                      }`}
-                                    >
-                                      {/* 启用开关 */}
-                                      <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={isEnabled}
-                                        onClick={() => updateModelQualityAt(index, quality, { enabled: !isEnabled })}
-                                        className={`absolute top-2 right-2 inline-flex h-4 w-8 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                          isEnabled ? 'bg-indigo-500' : 'bg-gray-500'
-                                        }`}
-                                      >
-                                        <span className="sr-only">启用{quality}</span>
-                                        <span
-                                          className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
-                                            isEnabled ? 'translate-x-4' : 'translate-x-0'
-                                          }`}
-                                        />
-                                      </button>
+                          <div className="credit-quality-section">
+                            <div className="credit-quality-section__header">
+                              <div>
+                                <div className="credit-quality-section__eyebrow">Pricing Matrix</div>
+                                <div className="credit-quality-section__title">按画质单独定价</div>
+                              </div>
+                              <div className="credit-quality-section__summary">
+                                已启用 {enabledQualityCount} / {qualitiesToShow.length}
+                              </div>
+                            </div>
+                            <div className="credit-quality-grid">
+                              {qualitiesToShow.map((quality) => {
+                                const rule = model.qualityPricing[quality];
+                                const isEnabled = rule.enabled !== false;
+                                const qualityMeta = QUALITY_META[quality];
 
-                                      <div className="pr-6">
-                                        <div className={`text-sm font-bold ${isEnabled ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'}`}>
-                                          {quality}
+                                return (
+                                  <div
+                                    key={quality}
+                                    className={`credit-quality-card ${isEnabled ? 'is-enabled' : 'is-disabled'}`}
+                                  >
+                                    <div className="credit-quality-card__top">
+                                      <div>
+                                        <div className="credit-quality-card__label-row">
+                                          <div className="credit-quality-card__name">{quality}</div>
+                                          <span className="credit-quality-card__resolution">{qualityMeta.resolution}</span>
                                         </div>
-                                        <div className="text-[10px] text-[var(--text-tertiary)] mb-1.5">
-                                          {quality === '0.5K' ? '512px' : quality === '1K' ? '1024px' : quality === '2K' ? '2048px' : '4096px'}
-                                        </div>
+                                        <div className="credit-quality-card__hint">{qualityMeta.hint}</div>
+                                      </div>
+                                      <AdvancedToggle
+                                        checked={isEnabled}
+                                        label={`启用 ${quality}`}
+                                        onToggle={() => updateModelQualityAt(index, quality, { enabled: !isEnabled })}
+                                        size="compact"
+                                      />
+                                    </div>
+
+                                    <label className="credit-quality-card__field">
+                                      <span className="credit-quality-card__field-label">
+                                        {isEnabled ? '单次积分' : '当前已停用'}
+                                      </span>
+                                      <div className="credit-quality-card__input-wrap">
                                         <input
                                           type="number"
                                           min={1}
                                           disabled={!isEnabled}
                                           value={rule.creditCost}
-                                          onChange={(e) => updateModelQualityAt(index, quality, { creditCost: Math.max(1, Number(e.target.value || model.creditCost || 1)) })}
-                                          className="w-full h-7 text-xs rounded-md border border-[var(--border-light)] bg-[var(--bg-elevated)] px-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                          onChange={(e) =>
+                                            updateModelQualityAt(index, quality, {
+                                              creditCost: Math.max(1, Number(e.target.value || model.creditCost || 1)),
+                                            })
+                                          }
+                                          className="credit-quality-input"
                                         />
+                                        <span className="credit-quality-card__suffix">积分</span>
                                       </div>
-                                    </div>
-                                  );
-                                });
-                              })()}
+                                    </label>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
 
-                          {/* 路由规则说明 */}
-                          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                            <svg className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <div className="text-[11px] leading-4 text-blue-300/90">
-                              <span className="font-medium">混合路由策略：</span>
-                              当同一模型有多个供应商开启混合时，系统会优先选择
-                              <span className="text-blue-200 font-medium">调用次数最少</span>
-                              的供应商，实现API用量均衡。若用量相同，则选择价格更低的。相同价格时会分散请求以均衡负载。
+                          <div className="credit-advanced-note">
+                            <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                            <div className="text-[11px] leading-5">
+                              <span className="font-semibold">混合路由策略：</span>
+                              同一模型有多个供应商开启混合时，系统会先选择调用次数更少的供应商；若用量相同，再优先选择成本更低的链路。
                             </div>
                           </div>
                         </div>
@@ -1017,7 +1465,7 @@ const CreditModelSettings: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-[11px] text-[var(--text-tertiary)]">
                       已调用：{callsUsed ?? 0}
                       {model.maxCallsLimit ? ` / ${model.maxCallsLimit}` : ' / 无限'}
@@ -1038,7 +1486,7 @@ const CreditModelSettings: React.FC = () => {
                         />
                         启用
                       </label>
-                      <button onClick={() => removeModel(index)} className="text-xs text-red-400 hover:text-red-300">
+                      <button onClick={() => removeModel(index)} className="settings-danger-text text-xs">
                         删除模型
                       </button>
                     </div>
@@ -1048,15 +1496,15 @@ const CreditModelSettings: React.FC = () => {
             })}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={addModel} className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-light)] px-3 py-2 text-xs">
+          <div className="settings-action-row">
+            <button onClick={addModel} className="apple-button-secondary min-h-10 px-3 text-xs">
               <Plus size={12} />
               添加模型
             </button>
             <button
               onClick={() => void saveProvider()}
               disabled={saving}
-              className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-xs text-white hover:bg-indigo-500 disabled:opacity-60"
+              className="apple-button-primary min-h-10 px-3 text-xs disabled:opacity-60"
             >
               {saving ? '保存中...' : '保存供应商'}
             </button>

@@ -3,12 +3,15 @@ import ReactDOM from 'react-dom';
 import { GeneratedImage, GenerationMode } from '../../types';
 import { Download, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, RotateCcw, Pen } from 'lucide-react';
 import { InpaintModal } from './InpaintModal';
+import { notify } from '../../services/system/notificationService';
+import { writeTextToClipboard } from '../../utils/clipboard';
 
 interface GlobalLightboxProps {
     images: GeneratedImage[];
     initialIndex: number;
     onClose: () => void;
     onEditText?: (image: GeneratedImage) => void;
+    onEditPptDeck?: (image: GeneratedImage) => void;
     onInpaint?: (image: GeneratedImage, maskBase64: string, prompt?: string) => void;
     onDownloadPptComposite?: (imageId: string) => void;
 }
@@ -20,7 +23,7 @@ interface GlobalLightboxProps {
  * @param initialIndex 𫔄𣸣鏄剧ず镄勫浘鐗囩储寮?
  * @param onClose 鍏抽棴浜嬩欢锲炶𤾀
  */
-export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialIndex, onClose, onEditText, onInpaint, onDownloadPptComposite }) => {
+export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialIndex, onClose, onEditText, onEditPptDeck, onInpaint, onDownloadPptComposite }) => {
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -518,11 +521,11 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                         onClick={async (e) => {
                             e.stopPropagation();
                             try {
-                                await navigator.clipboard.writeText(image.prompt);
-                                const { notify } = await import('../../services/system/notificationService');
+                                await writeTextToClipboard(image.prompt);
                                 notify.success('已复制', '提示词已复制到剪贴板');
                             } catch (err) {
                                 console.error('Copy failed', err);
+                                notify.warning('复制失败', '当前环境无法复制提示词。');
                             }
                         }}
                     >
@@ -563,6 +566,20 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                         </button>
                     )}
 
+                    {onEditPptDeck && image.mode === GenerationMode.PPT && !isVideo && !isAudio && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onEditPptDeck(image);
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-emerald-600/80 border border-[var(--border-medium)] hover:border-emerald-500 rounded-lg text-sm font-medium transition-all"
+                            title="Edit layered deck"
+                        >
+                            <Pen size={16} />
+                            Edit Deck
+                        </button>
+                    )}
+
                     {onEditText && image.mode === GenerationMode.PPT && !isVideo && !isAudio && (
                         <button
                             onClick={(e) => {
@@ -573,7 +590,7 @@ export const GlobalLightbox: React.FC<GlobalLightboxProps> = ({ images, initialI
                             title="编辑当前页文字"
                         >
                             <Pen size={16} />
-                            编辑文字
+                            Quick Text
                         </button>
                     )}
 

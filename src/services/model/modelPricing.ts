@@ -406,13 +406,14 @@ export const getModelCredits = (modelId: string, imageSize?: ImageSize | string)
   const baseModelId = modelId.split('@')[0];
 
   // 1. 优先从管理员配置获取（getModel 内部也会做后缀剥离，双重保障）
-  const adminCreditCost = adminModelService.getModelCreditCost(baseModelId, typeof imageSize === 'string' ? imageSize : String(imageSize || ''));
+  const normalizedImageSize = typeof imageSize === 'string' ? imageSize : String(imageSize || '');
+  const adminCreditCost = adminModelService.getModelCreditCost(modelId, normalizedImageSize);
   if (adminCreditCost > 0) {
     return adminCreditCost;
   }
 
   // 2. 兼容旧的 Nano Banana 模型
-  const id = baseModelId.toLowerCase();
+  const id = modelId.split('@')[0].toLowerCase();
   if ((id.includes('pro') && id.includes('banana')) || (id.includes('pro') && id.includes('gemini') && (id.includes('image') || id.includes('preview')))) return 2;
   if (id.includes('banana') || (id.includes('gemini') && (id.includes('image') || id.includes('preview')))) return 1;
 
@@ -461,7 +462,8 @@ export const isCreditBasedModel = (
 
   // 1. [严格判定] 只有 @system 后缀才是积分模型
   // 管理员配置的模型统一使用 @system 后缀
-  if (lowerId.endsWith('@system')) {
+  const suffix = lowerId.includes('@') ? lowerId.split('@')[1] : '';
+  if (suffix.startsWith('system') || suffix === 'systemproxy' || suffix === '12ai') {
     return true;
   }
 

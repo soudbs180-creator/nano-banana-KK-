@@ -5,6 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { ThirdPartyProvider, PROVIDER_PRESETS, keyManager } from '../../services/auth/keyManager';
 import { testModelsList } from '../../services/api/connectionTest';
+import { resolveProviderRuntime } from '../../services/api/providerStrategy';
 
 interface AddProviderModalProps {
     isOpen: boolean;
@@ -81,7 +82,7 @@ export const AddProviderModal: React.FC<AddProviderModalProps> = ({
             const result = await testModelsList({
                 apiKey,
                 baseUrl,
-                provider: name.includes('Google') || baseUrl.includes('googleapis') ? 'Google' : 'Custom'
+                provider: resolveProviderRuntime({ provider: name, baseUrl }).uiProvider
             });
 
             if (result.success) {
@@ -122,12 +123,14 @@ export const AddProviderModal: React.FC<AddProviderModalProps> = ({
             if (updated) onSave(updated);
         } else {
             // 创建新服务商
+            const presetKey = (selectedPreset || 'custom') as keyof typeof PROVIDER_PRESETS;
+            const preset: any = PROVIDER_PRESETS[presetKey];
             const provider = keyManager.addProvider({
                 name,
                 baseUrl,
                 apiKey,
                 models: modelList,
-                format: 'auto',
+                format: preset?.format || 'auto',
                 icon: PROVIDER_PRESETS[selectedPreset || 'custom']?.icon || '⚙️',
                 isActive: true
             });

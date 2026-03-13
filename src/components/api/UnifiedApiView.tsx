@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Server, Key, Plus, Trash2, CheckCircle, XCircle, RefreshCw, Edit2, Radio, Zap, Globe, ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { testModelsList } from '../../services/api/connectionTest';
 import { notify } from '../../services/system/notificationService';
 
 /**
@@ -150,7 +151,7 @@ const UnifiedApiView = () => {
         resetForm();
 
         // 测试连接
-        await testConnection(newChannel.id);
+        await testConnection(newChannel.id, newChannel);
     };
 
     // 删除信道
@@ -195,39 +196,30 @@ const UnifiedApiView = () => {
     };
 
     // 测试连接
-    const testConnection = async (channelId: string) => {
-        const channel = channels.find(c => c.id === channelId);
-        if (!channel) return;
+    const testConnection = async (channelId: string, channelOverride?: ApiChannel) => {
+        const channel = channelOverride ?? loadChannels().find(c => c.id === channelId) ?? channels.find(c => c.id === channelId);
+        if (!channel) {
+            notify.error('Test failed', 'Unable to find the selected API channel.');
+            return;
+        }
 
         // 更新状态为检测中
-        const updatedChannels = channels.map(c =>
+        const updatedChannels = loadChannels().map(c =>
             c.id === channelId ? { ...c, status: 'checking' as const } : c
         );
         updateChannels(updatedChannels);
 
         try {
-            let success = false;
-            let message = '';
-
-            if (channel.type === 'proxy') {
-                // 代理模式：测试 /v1/models 端点
-                const response = await fetch(`${channel.baseUrl}/v1/models`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${channel.apiKey}`,
-                        'Content-Type': 'application/json',
-                    },
-                });
-                success = response.ok;
-                message = success ? '代理服务器响应正常' : `连接失败: ${response.status}`;
-            } else {
-                // 直连模式：测试 Google API
-                const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models?key=${channel.googleApiKey}`
-                );
-                success = response.ok;
-                message = success ? 'Google API 连接正常' : `连接失败: ${response.status}`;
-            }
+            const result = await testModelsList({
+                apiKey: channel.type === 'proxy' ? (channel.apiKey || '') : (channel.googleApiKey || ''),
+                baseUrl: channel.type === 'proxy'
+                    ? (channel.baseUrl || '')
+                    : 'https://generativelanguage.googleapis.com',
+                provider: channel.type === 'proxy' ? 'Custom' : 'Google',
+                format: channel.type === 'proxy' ? 'openai' : 'gemini',
+            });
+            const success = result.success;
+            const message = result.message;
 
             const finalChannels = loadChannels().map(c =>
                 c.id === channelId ? {
@@ -252,7 +244,7 @@ const UnifiedApiView = () => {
                 } : c
             );
             updateChannels(finalChannels);
-            notify.error('网络错误', error instanceof Error ? error.message : '未知错误');
+            notify.error('连接失败', error instanceof Error ? error.message : '未知错误');
         }
     };
 
@@ -342,7 +334,7 @@ const UnifiedApiView = () => {
                                     {/* 操作按钮 */}
                                     <div className="flex items-center gap-2">
                                         <button
-                                            onClick={() => testConnection(channel.id)}
+                                            onClick={() => void testConnection(channel.id)}
                                             className="p-2 rounded-lg transition-colors hover:bg-blue-500/10"
                                             style={{ color: '#6366f1' }}
                                             title="测试连接"

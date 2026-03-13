@@ -1,0 +1,51 @@
+{
+  "dashboardMetrics": {
+    "navTitle": "Settings高级设置",
+    "sections": 74
+  },
+  "apiOverviewMetrics": {
+    "hasQueueTitle": true,
+    "hasWorkspaceTitle": true,
+    "hasRedundantStats": false
+  },
+  "apiEditorMetrics": {
+    "toolbarFound": true,
+    "flexWrap": "nowrap",
+    "overflowX": "auto",
+    "buttonCount": 2,
+    "uniqueToolbarRows": 1,
+    "buttonRects": [
+      {
+        "text": "添加供应商",
+        "top": 219,
+        "left": 1176
+      },
+      {
+        "text": "关闭",
+        "top": 219,
+        "left": 1310
+      }
+    ],
+    "hasSection1": true,
+    "hasSection2": true,
+    "hasSection3": true
+  },
+  "costMetrics": {
+    "tableCount": 0,
+    "emptyStateTexts": []
+  },
+  "adminRestrictedMetrics": {
+    "hasRestrictedText": false,
+    "hasCurrentAccount": true,
+    "hasLoginCard": false
+  },
+  "adminLoginMetrics": {
+    "hasLoginCard": true,
+    "hasSessionBadge": true,
+    "pills": [
+      "f685d5f1-fd42-4882-83d7-82ec512c846a@temp.local",
+      "30 分钟会话"
+    ],
+    "multiColumnSplit": false
+  }
+}

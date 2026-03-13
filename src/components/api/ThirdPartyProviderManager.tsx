@@ -301,7 +301,7 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
                     }));
                 } catch (e) {
                     // 回退到标准 API 获取模型
-                    const modelIds = await fetchProviderModels(formBaseUrl, formApiKey);
+                    const modelIds = await fetchProviderModels(formBaseUrl, formApiKey, formApiFormat);
                     models = modelIds.map(id => ({
                         id,
                         name: id,
@@ -312,7 +312,7 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
             } catch (e: any) {
                 notify.warning('管理 API 初始化失败', e.message || '将使用标准 API 模式');
                 // 回退到标准模式
-                const modelIds = await fetchProviderModels(formBaseUrl, formApiKey);
+                const modelIds = await fetchProviderModels(formBaseUrl, formApiKey, formApiFormat);
                 models = modelIds.map(id => ({
                     id,
                     name: id,
@@ -323,7 +323,7 @@ const ThirdPartyProviderManager: React.FC<Props> = ({ onProvidersChange }) => {
         } else {
             // 标准模式：使用 API Key 获取模型
             try {
-                const modelIds = await fetchProviderModels(formBaseUrl, formApiKey);
+                const modelIds = await fetchProviderModels(formBaseUrl, formApiKey, formApiFormat);
                 models = modelIds.map(id => ({
                     id,
                     name: id,

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   ArrowRight,
@@ -408,11 +408,6 @@ const LoginScreen: React.FC = () => {
               <label className="auth-field">
                 <div className="auth-field-row">
                   <span>登录密码</span>
-                  {view === 'login' && (
-                    <button type="button" className="auth-text-btn" onClick={() => setView('forgot-password')}>
-                      忘记密码？
-                    </button>
-                  )}
                 </div>
                 <div className={`auth-input-wrap ${showFieldError('password') ? 'auth-input-error' : ''}`}>
                   <Lock size={18} />
@@ -526,9 +521,14 @@ const LoginScreen: React.FC = () => {
 
             <div className="auth-footer-actions">
               {view === 'login' && (
-                <button type="button" className="auth-text-btn" onClick={() => setView('register')}>
-                  没有账号？立即注册
-                </button>
+                <>
+                  <button type="button" className="auth-text-btn" onClick={() => setView('register')}>
+                    没有账号？立即注册
+                  </button>
+                  <button type="button" className="auth-btn-forgot" onClick={() => setView('forgot-password')}>
+                    忘记密码？
+                  </button>
+                </>
               )}
               {view === 'register' && (
                 <button type="button" className="auth-text-btn" onClick={() => setView('login')}>

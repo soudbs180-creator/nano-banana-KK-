@@ -466,7 +466,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
     const modelText = image.modelLabel || image.model || image.id;
     const providerText = image.providerLabel || image.provider || '';
-    const modelBadge = useMemo(() => getModelBadgeInfo({ id: image.model || '', label: modelText, provider: providerText }), [image.model, modelText, providerText]);
+    const modelBadge = useMemo(() => getModelBadgeInfo({
+        id: image.model || '',
+        label: modelText,
+        provider: providerText,
+        colorStart: image.modelColorStart,
+        colorEnd: image.modelColorEnd,
+        textColor: image.modelTextColor,
+    }), [image.model, modelText, providerText, image.modelColorStart, image.modelColorEnd, image.modelTextColor]);
     const providerBadgeStyle = useMemo(() => getProviderBadgeStyle(providerText), [providerText]);
 
     // 🚀 根据画布缩放自动选择合适质量 - 使用队列加载优化
@@ -931,7 +938,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         <>
             <div
                 ref={containerRef}
-                className={`${isChatMode ? 'relative w-full max-w-[420px] mx-auto my-3' : 'absolute'} flex flex-col items-center group select-none`}
+                className={`${isChatMode ? 'relative w-full max-w-[460px] mx-auto my-3' : 'absolute'} flex flex-col items-center group select-none`}
                 style={isChatMode ? {
                     zIndex: stackZIndex,
                     width: isChatMode ? '100%' : nodeWidth,
@@ -1367,7 +1374,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                                 {(() => {
                                                     const modelText = image.modelLabel || image.model || image.id;
                                                     const providerText = image.providerLabel || image.provider || '';
-                                                    const modelBadge = getModelBadgeInfo({ id: image.model || '', label: modelText, provider: providerText });
+                                                    const modelBadge = getModelBadgeInfo({
+                                                        id: image.model || '',
+                                                        label: modelText,
+                                                        provider: providerText,
+                                                        colorStart: image.modelColorStart,
+                                                        colorEnd: image.modelColorEnd,
+                                                        textColor: image.modelTextColor,
+                                                    });
 
                                                     if (isCreditModel) {
                                                         // 积分模型：保持与Prompt加载占位符一样的外观 (胶囊带有系统设置颜色作为字体颜色/透明背景)
@@ -1449,7 +1463,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
                                             {isCreditModel ? (
                                                 <>
                                                     <span className="text-[var(--border-medium)]">|</span>
-                                                    <span title="积分消耗" className="text-blue-400 font-medium">✨{getModelCredits((image.model || '').split('@')[0], image.imageSize)}</span>
+                                                    <span title="积分消耗" className="text-blue-400 font-medium">✨{getModelCredits(image.model || '', image.imageSize)}</span>
                                                 </>
                                             ) : (
                                                 <>

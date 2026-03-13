@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
+import { type ApiProtocolFormat } from '../../services/api/apiConfig';
 import { supplierService, type Supplier } from '../../services/billing/supplierService';
 import { newApiManagementService } from '../../services/api/newApiManagementService';
 import { notify } from '../../services/system/notificationService';
@@ -36,6 +37,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
     name: '',
     baseUrl: 'https://ai.newapi.pro',
     apiKey: '',
+    format: 'auto' as ApiProtocolFormat,
     systemToken: '',
     budgetLimit: '',
   });
@@ -55,6 +57,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
         name: editSupplier.name,
         baseUrl: editSupplier.baseUrl,
         apiKey: editSupplier.apiKey,
+        format: editSupplier.format || 'auto',
         systemToken: editSupplier.systemToken || '',
         budgetLimit: editSupplier.budgetLimit?.toString() || '',
       });
@@ -70,6 +73,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
         name: '',
         baseUrl: 'https://ai.newapi.pro',
         apiKey: '',
+        format: 'auto' as ApiProtocolFormat,
         systemToken: '',
         budgetLimit: '',
       });
@@ -161,6 +165,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
         name: formData.name.trim(),
         baseUrl: formData.baseUrl.trim(),
         apiKey: formData.apiKey.trim(),
+        format: formData.format,
         systemToken: formData.systemToken.trim() || undefined,
         budgetLimit: formData.budgetLimit ? parseFloat(formData.budgetLimit) : undefined,
       };
@@ -238,6 +243,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-light)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition hover:bg-[var(--bg-overlay)] hover:text-[var(--text-primary)]"
           >
@@ -270,10 +276,24 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
               type="text"
               value={formData.baseUrl}
               onChange={e => setFormData(prev => ({ ...prev, baseUrl: e.target.value }))}
-              placeholder="https://ai.newapi.pro"
+              placeholder="https://api.example.com/v1"
               className={fieldClass}
             />
             <p className={helperTextClass}>NewAPI 地址，用于调用模型</p>
+          </div>
+
+          <div>
+            <label className={labelClass}>协议格式</label>
+            <select
+              value={formData.format}
+              onChange={e => setFormData(prev => ({ ...prev, format: e.target.value as ApiProtocolFormat }))}
+              className={fieldClass}
+            >
+              <option value="openai">OpenAI 兼容</option>
+              <option value="gemini">Gemini 原生</option>
+              <option value="auto">自动检测</option>
+            </select>
+            <p className={helperTextClass}>OpenAI 使用 Bearer Token；Gemini 使用 URL 参数 `?key=...`。</p>
           </div>
 
           {/* API Key */}

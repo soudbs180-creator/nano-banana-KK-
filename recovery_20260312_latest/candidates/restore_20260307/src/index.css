@@ -1,0 +1,3049 @@
+/* KK Studio - Design System v2.0 */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ============================================
+   CSS Variables & Design Tokens
+   ============================================ */
+:root {
+  /* ===== 背景层级 - 亮色模式 ===== */
+  --bg-base: #f5f5f5;
+  --bg-elevated: #fafafa;
+  --bg-surface: #ffffff;
+  --bg-overlay: #ffffff;
+  --bg-input: #f0f0f0;
+  --bg-hover: #e5e5e5;
+  --bg-canvas: #f3f4f6;
+
+  /* 兼容旧变�?*/
+  --bg-primary: var(--bg-base);
+  --bg-secondary: var(--bg-surface);
+  --bg-tertiary: var(--bg-elevated);
+  --bg-color: var(--bg-surface);
+  --menu-bg: var(--bg-elevated);
+
+  /* ===== Toolbar & Glass ===== */
+  --toolbar-bg: rgba(255, 255, 255, 0.85);
+  --toolbar-bg-dark: rgba(255, 255, 255, 0.9);
+  --toolbar-hover: rgba(0, 0, 0, 0.04);
+  --toolbar-active: rgba(0, 0, 0, 0.08);
+  --toolbar-divider: rgba(0, 0, 0, 0.06);
+
+  /* ===== 边框 ===== */
+  --border-subtle: rgba(0, 0, 0, 0.04);
+  --border-default: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.15);
+  --border-focus: rgba(59, 130, 246, 0.5);
+  /* 兼容旧变�?*/
+  --border-light: var(--border-subtle);
+  --border-medium: var(--border-default);
+
+  /* ===== 文字 ===== */
+  --text-primary: #0a0a0a;
+  --text-secondary: rgba(0, 0, 0, 0.7);
+  --text-tertiary: rgba(0, 0, 0, 0.5);
+  --text-muted: rgba(0, 0, 0, 0.35);
+  --text-disabled: rgba(0, 0, 0, 0.2);
+  --text-color: var(--text-primary);
+
+  /* ===== 强调�?===== */
+  --accent-blue: #2563eb;
+  --accent-green: #16a34a;
+  --accent-red: #dc2626;
+  --accent-gold: #d97706;
+  --accent-purple: #7c3aed;
+  --accent-cyan: #0891b2;
+  --accent-indigo: #4f46e5;
+  --accent-orange: #ea580c;
+  --connector-color: #4338ca;
+  --accent-pink: #db2777;
+  --accent-color: var(--accent-blue);
+
+  /* ===== 选中高亮 - 淡蓝色扩散光 ===== */
+  --glow-blue: 0 0 20px rgba(59, 130, 246, 0.3);
+  --glow-blue-strong: 0 0 30px rgba(59, 130, 246, 0.5);
+  --glow-indigo: 0 0 20px rgba(99, 102, 241, 0.3);
+  /* Draft 模式 */
+  --glow-green: 0 0 20px rgba(34, 197, 94, 0.3);
+  --glow-gold: 0 0 20px rgba(245, 158, 11, 0.3);
+  --glow-red: 0 0 20px rgba(239, 68, 68, 0.3);
+  --selected-bg: rgba(59, 130, 246, 0.1);
+  --selected-border: rgba(59, 130, 246, 0.4);
+
+
+  /* ===== 渐变 ===== */
+  --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(245, 245, 245, 0.8) 100%);
+
+  /* ===== 阴影 ===== */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.16);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.2);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --shadow-glow: var(--glow-blue);
+
+  /* ===== 圆角 - 统一规范 ===== */
+  --radius-none: 0;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* ===== 过渡 ===== */
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  --duration-instant: 50ms;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --duration-slower: 600ms;
+
+  /* 兼容旧变�?*/
+  --transition-fast: var(--duration-fast) var(--ease-default);
+  --transition-normal: var(--duration-normal) var(--ease-default);
+  --transition-slow: var(--duration-slow) var(--ease-default);
+  --transition-bounce: var(--duration-slow) var(--ease-spring);
+
+  /* ===== 网格 ===== */
+  --grid-dot: rgba(0, 0, 0, 0.1);
+
+  /* ===== 字体系统 - 统一字体�?===== */
+  --font-sans: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* ===== 字体大小系统 ===== */
+  /* 标题层级 */
+  --text-h1: 28px;
+  /* 大标题：页面标题、Hero�?*/
+  --text-h2: 22px;
+  /* 中标题：区块标题 */
+  --text-h3: 18px;
+  /* 小标题：卡片标题、列表头 */
+
+  /* 正文层级 */
+  --text-body-lg: 16px;
+  /* 大正文：重要内容 */
+  --text-body-md: 14px;
+  /* 中正文：默认内容（最常用�?*/
+  --text-body-sm: 13px;
+  /* 小正文：紧凑内容 */
+
+  /* 标注层级 */
+  --text-xs: 12px;
+  /* 大标注：次要信息 */
+  --text-2xs: 11px;
+  /* 中标注：辅助文字 */
+  --text-3xs: 10px;
+  /* 小标注：最小文�?*/
+
+  /* 字重 */
+  --font-normal: 400;
+  /* 正文 */
+  --font-medium: 500;
+  /* 强调正文、按�?*/
+  --font-semibold: 600;
+  /* 标题、重要文�?*/
+  --font-bold: 700;
+  /* 特别强调 */
+
+  /* 行高 */
+  --leading-tight: 1.25;
+  /* 标题 */
+  --leading-normal: 1.5;
+  /* 正文 */
+  --leading-relaxed: 1.75;
+  /* 长文阅读 */
+}
+
+/* ===== 主题切换平滑过渡 ===== */
+body {
+  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 为所有可能受主题影响的属性添加过�?*/
+* {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 0.25s;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 禁用某些元素的过渡以避免性能问题 */
+svg,
+img,
+video,
+canvas,
+iframe {
+  transition: none !important;
+}
+
+/* ===== 暗色模式 - 深灰主题 (提亮版) ===== */
+body.dark-mode {
+  /* 背景层级 - 深灰色，便于区分（进一步提亮） */
+  --bg-base: #141416;
+  --bg-elevated: #1e1e21;
+  --bg-surface: #2a2a2e;
+  --bg-overlay: #323236;
+  --bg-input: #3a3a3e;
+  --bg-hover: #424246;
+  --bg-canvas: #0f0f10;
+
+  /* 兼容旧变�?*/
+  --bg-primary: var(--bg-base);
+  --bg-secondary: var(--bg-surface);
+  --bg-tertiary: var(--bg-overlay);
+  --bg-color: var(--bg-surface);
+  --menu-bg: var(--bg-overlay);
+
+  /* Toolbar & Glass - 提亮版 */
+  --toolbar-bg: rgba(37, 37, 40, 0.85);
+  --toolbar-bg-dark: rgba(42, 42, 46, 0.9);
+  --toolbar-hover: rgba(255, 255, 255, 0.08);
+  --toolbar-active: rgba(255, 255, 255, 0.12);
+  --toolbar-divider: rgba(255, 255, 255, 0.1);
+
+  /* 边框 */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --border-focus: rgba(59, 130, 246, 0.5);
+  --border-light: var(--border-subtle);
+  --border-medium: var(--border-default);
+
+  /* 文字 - 清晰白色 */
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-tertiary: rgba(255, 255, 255, 0.5);
+  --text-muted: rgba(255, 255, 255, 0.35);
+  --text-disabled: rgba(255, 255, 255, 0.2);
+  --text-color: var(--text-primary);
+
+  /* 强调�?- 暗色模式略微调亮 */
+  --accent-blue: #3b82f6;
+  --accent-green: #22c55e;
+  --accent-red: #ef4444;
+  --accent-gold: #f59e0b;
+  --accent-purple: #a855f7;
+  --accent-cyan: #06b6d4;
+  --accent-indigo: #6366f1;
+  --accent-orange: #f97316;
+  --connector-color: #818cf8;
+  --accent-pink: #ec4899;
+  --accent-color: var(--accent-blue);
+
+  /* 选中高亮 - 淡蓝色扩散光 */
+  --glow-blue: 0 0 20px rgba(59, 130, 246, 0.4);
+  --glow-blue-strong: 0 0 30px rgba(59, 130, 246, 0.6);
+  --glow-green: 0 0 20px rgba(34, 197, 94, 0.4);
+  --glow-gold: 0 0 20px rgba(245, 158, 11, 0.4);
+  --glow-red: 0 0 20px rgba(239, 68, 68, 0.4);
+  --selected-bg: rgba(59, 130, 246, 0.15);
+  --selected-border: rgba(59, 130, 246, 0.5);
+
+  /* 渐变 */
+  --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #a855f7 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(20, 20, 20, 0.8) 0%, rgba(10, 10, 10, 0.6) 100%);
+
+  /* 阴影 - 暗色模式更深 */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-glow: var(--glow-blue);
+
+  /* 网格 */
+  --grid-dot: rgba(255, 255, 255, 0.12);
+}
+
+/* ============================================
+   移动端响应式变量 (Mobile Responsive)
+   ============================================ */
+
+/* 触摸目标 */
+:root {
+  --touch-target-min: 44px;
+  --touch-target-comfortable: 48px;
+  --touch-target-spacious: 56px;
+  --mobile-header-height: 58px;
+  --mobile-tabbar-height: 74px;
+  --mobile-tabbar-floating-offset: 10px;
+  --mobile-tabbar-total-height: calc(var(--mobile-tabbar-height) + var(--mobile-tabbar-floating-offset));
+  --mobile-prompt-gap: 12px;
+  --mobile-sheet-radius: 24px;
+  --mobile-glass-bg: rgba(20, 20, 23, 0.76);
+  --mobile-glass-border: rgba(255, 255, 255, 0.16);
+  --mobile-glass-shadow: 0 16px 45px rgba(0, 0, 0, 0.36);
+  --mobile-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* 移动端间�?*/
+  --mobile-margin-xs: 12px;
+  --mobile-margin-sm: 16px;
+  --mobile-margin-md: 20px;
+  --mobile-margin-lg: 24px;
+
+  --mobile-gap-tight: 8px;
+  --mobile-gap-normal: 12px;
+  --mobile-gap-relaxed: 16px;
+  --mobile-gap-loose: 24px;
+}
+
+/* 移动端响应式调整 */
+@media (max-width: 767px) {
+  :root {
+    /* 字体放大 */
+    --text-h1: 24px;
+    --text-h2: 20px;
+    --text-body-lg: 17px;
+    --text-body-md: 15px;
+    --text-caption-lg: 13px;
+
+    /* 圆角放大 */
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-2xl: 28px;
+
+    /* 移动端边�?*/
+    --mobile-margin: 16px;
+    --mobile-header-height: 56px;
+    --mobile-tabbar-height: 72px;
+    --mobile-tabbar-floating-offset: 12px;
+    --mobile-sheet-radius: 22px;
+    --mobile-content-top-inset: calc(env(safe-area-inset-top, 0px) + var(--mobile-header-height) + 12px);
+    --mobile-content-bottom-inset: calc(env(safe-area-inset-bottom, 0px) + var(--mobile-tabbar-height) + var(--mobile-tabbar-floating-offset) + 12px);
+  }
+}
+
+/* 平板适配 */
+@media (min-width: 768px) and (max-width: 1023px) {
+  :root {
+    --mobile-margin: 20px;
+  }
+}
+
+/* 桌面适配 */
+@media (min-width: 1024px) {
+  :root {
+    --mobile-margin: 24px;
+  }
+}
+
+/* ============================================
+   Animation Keyframes - Design System v2.0
+   ============================================ */
+
+/* 淡入 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* 淡出 */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* 缩放入场 */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 缩放退�?*/
+@keyframes scaleOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* 弹窗入场 */
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 弹窗退�?*/
+@keyframes modalOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+}
+
+/* 从上滑入 */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 向上滑出 */
+@keyframes slideUp {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+/* 从右滑入 (Toast) */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 向右滑出 */
+@keyframes slideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+/* 卡片弹出入场 - 从底部输入框飞出动画 */
+@keyframes cardFlyOut {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 100px) scale(0.6);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.prompt-node.is-new {
+  animation: cardFlyOut 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: center bottom;
+  pointer-events: none;
+  /* 动画期间禁止交互 */
+}
+
+/* 加载脉冲 */
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 生成中流�?- 黑白灰扫光效�?*/
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer-sweep {
+  animation: shimmerSweep 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes shimmerSweep {
+  0% {
+    transform: translateX(-150%) rotate(-15deg);
+  }
+
+  100% {
+    transform: translateX(150%) rotate(-15deg);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2.5s ease-in-out infinite;
+}
+
+/* 数字滚动 */
+@keyframes countUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 选中光晕脉冲 */
+@keyframes glowPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
+  }
+}
+
+/* 边框流光 (生成�? */
+@keyframes borderGlow {
+
+  0%,
+  100% {
+    border-color: rgba(59, 130, 246, 0.3);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+  }
+
+  50% {
+    border-color: rgba(59, 130, 246, 0.6);
+    box-shadow: 0 0 25px rgba(59, 130, 246, 0.4);
+  }
+}
+
+/* 旋转加载 */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 🚀 边框白光往中间靠拢 - 弥散动画 */
+@keyframes shimmerInward {
+  0% {
+    box-shadow:
+      inset 0 0 0 0 rgba(255, 255, 255, 0),
+      inset 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+
+  50% {
+    box-shadow:
+      inset 0 0 60px 20px rgba(255, 255, 255, 0.15),
+      inset 0 0 100px 40px rgba(255, 255, 255, 0.08);
+  }
+
+  100% {
+    box-shadow:
+      inset 0 0 0 0 rgba(255, 255, 255, 0),
+      inset 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+}
+
+/* 外边框柔和呼�?*/
+@keyframes borderGlowPulse {
+
+  0%,
+  100% {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  50% {
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* 卡片悬浮 */
+@keyframes cardHover {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(-4px);
+  }
+}
+
+/* 卡片悬浮 */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* AI助手图标旋转动画 */
+.group-hover\:rotate-360 {
+  transition: transform 0.6s ease-in-out;
+}
+
+.group:hover .group-hover\:rotate-360 {
+  transform: rotate(360deg);
+}
+
+.duration-600 {
+  transition-duration: 600ms;
+}
+
+/* ============================================
+   Reset & Base Styles
+   ============================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* VisionOS Aurora Glow Backdrop */
+#root {
+  position: relative;
+}
+
+#root::before {
+  content: '';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 800px;
+  height: 800px;
+  transform: translate(-50%, -50%);
+  /* Light Gradient */
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+  /* 快速过�?*/
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 1;
+}
+
+body.dark-mode #root::before {
+  background: radial-gradient(circle, rgba(30, 27, 75, 0.2) 0%, transparent 70%);
+}
+
+body {
+  font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  /* transition: all 0.3s ease;  <-- CAUSES JELLY EFFECT ON DRAG */
+  /* 快速过�?避免卡顿 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ============================================
+   Global Scrollbar & Input Styles 
+   Description: Fixes "White Bar" issues on Windows
+   ============================================ */
+
+/* 1. Hide Number Input Spinners */
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* 2. Global Dark Scrollbar (Webkit) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 3. Utility: Hide Scrollbar completely */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* 4. Utility: Custom thin scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  height: 4px;
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 99px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* Settings panel button feedback */
+.settings-panel button {
+  transition: transform 120ms ease, box-shadow 200ms ease, background-color 200ms ease, color 200ms ease;
+}
+
+.settings-panel button:active {
+  transform: scale(0.97);
+}
+
+.settings-panel button:disabled {
+  transform: none;
+}
+
+/* Safe area helpers (mobile) */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ============================================
+   主题切换过渡效果 (性能优化)
+   ============================================ */
+
+/* 
+ * 仅为关键元素添加快速过�?
+ * 200ms 快速响�?避免卡顿�?
+ * 移除全局规则以提升性能
+ */
+
+/* 拖拽时禁用所有过�?*/
+.dragging,
+.dragging * {
+  transition: none !important;
+}
+
+/* ============================================
+   iOS Style Animations & Interactions (Apple HIG)
+   ============================================ */
+
+/* 🚀 触控目标 - Apple HIG推荐最�?4x44pt */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 🚀 移动端大触控目标 - 48x48 for primary actions */
+.touch-target-lg {
+  min-height: 48px;
+  min-width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 🚀 iOS风格缩放动效 (带有弹簧阻尼的回弹感) */
+.active-scale {
+  transition: transform 400ms var(--ease-spring);
+}
+
+.active-scale:active {
+  transform: scale(0.95);
+  transition-duration: 100ms;
+}
+
+/* 全局按钮统一增加弹簧动效 */
+button {
+  transition-property: all;
+  transition-timing-function: var(--ease-spring);
+  transition-duration: 400ms;
+}
+
+button:active {
+  transform: scale(0.95);
+  transition-duration: 100ms;
+}
+
+/* 覆盖 Tailwind 默认�?transition-all 使其也带弹簧�?*/
+.transition-all {
+  transition-property: all;
+  transition-timing-function: var(--ease-spring);
+  transition-duration: 400ms;
+}
+
+.transition-transform {
+  transition-property: transform;
+  transition-timing-function: var(--ease-spring);
+  transition-duration: 400ms;
+}
+
+/* 🚀 iOS标准过渡曲线 */
+.ios-transition {
+  transition: all 500ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* 🚀 iOS弹性过�?*/
+.ios-spring {
+  transition: all 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 🚀 平滑触控滚动 */
+.smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 🚀 安全区域适配 */
+.safe-area-top {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+.safe-area-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* 🚀 底部安全区域缓冲 */
+.safe-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* 🚀 FAB悬浮按钮 (Apple推荐样式) */
+.fab {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.fab:active {
+  transform: scale(0.9);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* 🚀 iOS底部弹出面板 */
+.bottom-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(28, 28, 30, 0.95);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-top-left-radius: 32px;
+  border-top-right-radius: 32px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* 🚀 底部弹出面板拖动手柄 */
+.sheet-handle {
+  width: 36px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  margin: 10px auto 0;
+}
+
+/* 🚀 移动端涟漪效�?*/
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 10%, transparent 10.01%);
+  background-position: 50%;
+  background-repeat: no-repeat;
+  transform: scale(0);
+  opacity: 0;
+  transition: transform 400ms, opacity 300ms;
+}
+
+.ripple:active::after {
+  transform: scale(10);
+  opacity: 1;
+  transition: 0s;
+}
+
+/* 🚀 移动端按钮增�?*/
+@media (max-width: 768px) {
+
+  /* 所有按钮增大触控区�?*/
+  button,
+  [role="button"] {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  /* 移动端输入框优化 */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+    /* 防止iOS缩放 */
+    min-height: 44px;
+  }
+
+  /* 卡片内按钮紧凑模�?*/
+  .card-btn-compact {
+    min-height: 32px;
+    padding: 6px 8px;
+  }
+}
+
+.blur-transition {
+  @apply transition-all duration-500;
+}
+
+.ios-list-item {
+  @apply flex items-center justify-between px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors active:bg-white/10;
+}
+
+.gpu-accelerated {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+@media (max-width: 768px) {
+
+  button,
+  a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .smooth-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  button {
+    touch-action: manipulation;
+  }
+
+  .mobile-optimized {
+    @apply px-4 py-3;
+  }
+}
+
+/* ============================================
+   Glass Effect & Toolbar Styles
+   ============================================ */
+.glass {
+  background: var(--toolbar-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.glass-strong {
+  background: var(--toolbar-bg-dark);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid var(--border-medium);
+  box-shadow: var(--shadow-lg);
+}
+
+.glass-frost {
+  background: rgba(18, 18, 20, 0.52);
+  backdrop-filter: blur(26px) saturate(180%);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-frost {
+    background: rgba(18, 18, 20, 0.78);
+  }
+}
+
+.toolbar {
+  background: var(--toolbar-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: var(--shadow-md);
+}
+
+.toolbar-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.toolbar-btn:hover {
+  background: var(--toolbar-hover);
+  color: var(--text-primary);
+  transform: scale(1.05);
+  /* Subtle scale */
+}
+
+.toolbar-btn:active {
+  transform: scale(0.95);
+}
+
+.toolbar-btn.active {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-inner);
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--toolbar-divider);
+  margin: 0 6px;
+}
+
+/* ============================================
+   Infinite Canvas Styles
+   ============================================ */
+.canvas-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-canvas);
+  overflow: hidden;
+  cursor: grab;
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.canvas-container:active {
+  cursor: grabbing;
+}
+
+.canvas-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.canvas-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  /* Dot grid pattern */
+  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: center center;
+  transition: background-image 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* GSAP Flying Animation Override: 
+   Temporarily make the canvas container transparent and sit above the prompt bar 
+   (z-index > 100) so that flying cards appear on top of everything. */
+body.is-animating-card .canvas-container {
+  background-color: transparent !important;
+  z-index: 105 !important;
+}
+
+body.is-animating-card .canvas-grid {
+  opacity: 0.1 !important;
+}
+
+/* ============================================
+   Sidebar Styles
+   ============================================ */
+.sidebar {
+  width: 280px;
+  height: 100%;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  transition: width var(--transition-slow), background-color 0.3s ease, border-color 0.3s ease;
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 60px;
+}
+
+.sidebar-header {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.sidebar-logo {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-logo img,
+.sidebar-logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--toolbar-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-nav-item.active {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-indigo-light);
+}
+
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border-light);
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.sidebar-user:hover {
+  background: var(--toolbar-hover);
+}
+
+.sidebar-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: white;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-avatar:hover {
+  transform: scale(1.05);
+}
+
+/* ============================================
+   Image Node (Card) Styles
+   ============================================ */
+.image-node {
+  position: absolute;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: move;
+  transition: box-shadow var(--transition-fast), border-color var(--transition-fast), background-color 0.3s ease;
+  user-select: none;
+}
+
+.image-node:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
+}
+
+.image-node.selected {
+  border-color: var(--accent-indigo);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3), var(--shadow-lg);
+}
+
+.image-node-content {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.image-node-header {
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.image-node-prompt {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.image-node-footer {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+}
+
+.image-node-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.image-node-action-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.image-node-action-btn:hover {
+  background: var(--toolbar-hover);
+  color: var(--text-primary);
+}
+
+/* ============================================
+   Input Bar Styles (Prompt Bar)
+   ============================================ */
+.input-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 720px;
+  /* Fallback for browsers without backdrop-filter support */
+  background: rgba(255, 255, 255, 0.85);
+  /* Modern browsers with backdrop-filter */
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  z-index: 100;
+  overflow: visible;
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* 支持backdrop-filter时使用更透明的背�?*/
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .input-bar {
+    background: rgba(255, 255, 255, 0.6);
+  }
+
+  body.dark-mode .input-bar {
+    background: rgba(24, 24, 27, 0.6);
+  }
+}
+
+body.dark-mode .input-bar {
+  background: rgba(37, 37, 40, 0.9);
+}
+
+.input-bar-inner {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-bar-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.input-bar-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.input-bar-option:hover {
+  background: var(--toolbar-hover);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+}
+
+.input-bar-textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  min-height: 44px;
+  max-height: 160px;
+
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.input-bar-textarea::-webkit-scrollbar {
+  display: none;
+}
+
+.input-bar-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.input-bar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+}
+
+.input-bar-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.input-bar-model:hover {
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+}
+
+.input-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-bar-send {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.input-bar-send:hover {
+  transform: scale(1.08) translateY(-1px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+}
+
+.input-bar-send:active {
+  transform: scale(0.95);
+}
+
+.input-bar-send.sending {
+  animation: sendPulse 1s ease-in-out infinite;
+}
+
+.input-bar-send .send-icon {
+  transition: transform 0.2s ease;
+}
+
+.input-bar-send:hover .send-icon {
+  transform: translate(2px, -2px);
+}
+
+.input-bar-send:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@keyframes sendPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  }
+
+  50% {
+    box-shadow: 0 4px 24px rgba(99, 102, 241, 0.6);
+  }
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 640px) {
+  .input-bar {
+    bottom: 12px;
+    left: 16px;
+    right: 16px;
+    transform: none;
+    width: auto;
+    max-width: none;
+    border-radius: var(--radius-lg);
+  }
+
+  .input-bar-inner {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .input-bar-options {
+    gap: 4px;
+  }
+
+  .input-bar-option {
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+
+  .input-bar-textarea {
+    min-height: 36px;
+    font-size: 14px;
+  }
+
+  .input-bar-footer {
+    flex-wrap: nowrap;
+    gap: 4px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .input-bar-model {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  .input-bar-send {
+    width: 36px;
+    height: 36px;
+  }
+
+  .input-bar-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .input-bar {
+    bottom: 8px;
+    left: 12px;
+    right: 12px;
+  }
+
+  .input-bar-inner {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .input-bar-option {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+
+  .input-bar-model span {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 767px) {
+  #canvas-container.ios-mobile-shell {
+    background:
+      radial-gradient(120% 75% at 10% -10%, rgba(58, 96, 168, 0.2) 0%, rgba(58, 96, 168, 0) 62%),
+      radial-gradient(110% 80% at 92% 0%, rgba(28, 120, 152, 0.2) 0%, rgba(28, 120, 152, 0) 64%),
+      linear-gradient(180deg, #0d0f13 0%, #090a0d 44%, #08090c 100%);
+  }
+
+  .ios-mobile-header-glass,
+  .ios-mobile-tabbar-shell,
+  .ios-mobile-sheet {
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
+    background: var(--mobile-glass-bg);
+    border: 1px solid var(--mobile-glass-border);
+    box-shadow: var(--mobile-glass-shadow);
+  }
+
+  .ios-mobile-tabbar-shell {
+    border-radius: 26px;
+    min-height: var(--mobile-tabbar-height);
+    transform: translateZ(0);
+    transition: transform 0.28s var(--mobile-motion-spring), opacity 0.24s ease;
+  }
+
+  .ios-mobile-tab-button {
+    min-height: var(--touch-target-min);
+    border-radius: 999px;
+    transition: all 0.24s var(--mobile-motion-spring);
+  }
+
+  .ios-mobile-tab-button.is-active {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.06) 100%);
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 16px rgba(0, 0, 0, 0.28);
+  }
+
+  .ios-mobile-tab-label {
+    font-size: 10px;
+    line-height: 1;
+    margin-top: 2px;
+    letter-spacing: 0.01em;
+  }
+
+  .input-bar.ios-mobile-prompt {
+    border-radius: 22px;
+    border: 1px solid var(--mobile-glass-border);
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.44), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    -webkit-backdrop-filter: blur(26px) saturate(170%);
+    backdrop-filter: blur(26px) saturate(170%);
+    background: linear-gradient(180deg, rgba(30, 30, 35, 0.86) 0%, rgba(20, 20, 24, 0.84) 100%);
+  }
+
+  .input-bar.ios-mobile-prompt .input-bar-inner {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .input-bar.ios-mobile-prompt .input-bar-textarea {
+    min-height: 38px;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  .input-bar.ios-mobile-prompt .input-bar-option {
+    min-height: 34px;
+  }
+
+  .ios-mobile-sheet {
+    border-radius: var(--mobile-sheet-radius) var(--mobile-sheet-radius) 0 0;
+    border-bottom: none;
+  }
+}
+
+/* ============================================
+   Dropdown Menu Styles
+   ============================================ */
+.dropdown {
+  position: absolute;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  min-width: min-content;
+  z-index: 200;
+}
+
+.dropdown.static {
+  position: static;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+  width: 100%;
+  /* Center text alignment */
+  justify-content: center;
+  text-align: center;
+}
+
+/* Mobile Responsive Dropdown */
+@media (max-width: 640px) {
+  .dropdown {
+    /* Keep position relative to parent button */
+    max-width: 90vw;
+    max-height: 50vh;
+    overflow-y: auto;
+    width: max-content;
+    min-width: 100px;
+  }
+}
+
+.dropdown-item:hover {
+  background: var(--toolbar-hover);
+  color: var(--text-primary);
+}
+
+.dropdown-item.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ============================================
+   Modal Styles
+   ============================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 150ms ease;
+}
+
+.modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: var(--shadow-xl);
+  animation: scaleIn 200ms ease;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.modal-close:hover {
+  background: var(--toolbar-hover);
+  color: var(--text-primary);
+}
+
+/* ============================================
+   Button Styles
+   ============================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+}
+
+.btn-primary {
+  background: var(--accent-yellow);
+  color: #000;
+}
+
+.btn-primary:hover {
+  background: #fbbf24;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+  background: var(--toolbar-hover);
+  color: var(--text-primary);
+}
+
+/* ============================================
+   Input Styles
+   ============================================ */
+.input {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  transition: all var(--transition-fast);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-yellow);
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.2);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ============================================
+   Badge & Tag Styles
+   ============================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-indigo-light);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.badge-success {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-emerald);
+}
+
+.badge-warning {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--accent-yellow);
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 200ms ease;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 200ms ease;
+}
+
+.animate-slideUp {
+  animation: slideUp 200ms ease;
+}
+
+.animate-pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Lightbox specific animation - smooth expand from smaller to full size */
+@keyframes lightboxScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Card slide down animation */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Card pop-in animation */
+@keyframes cardPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(-10px);
+  }
+
+  60% {
+    transform: scale(1.02) translateY(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Connection line draw animation */
+@keyframes drawLine {
+  from {
+    stroke-dashoffset: 1000;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-slideDown {
+  animation: slideDown 300ms ease-out;
+}
+
+.animate-cardPopIn {
+  animation: cardPopIn 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-drawLine {
+  animation: drawLine 600ms ease-out forwards;
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-1 {
+  gap: 4px;
+}
+
+.gap-2 {
+  gap: 8px;
+}
+
+.gap-3 {
+  gap: 12px;
+}
+
+.gap-4 {
+  gap: 16px;
+}
+
+.p-2 {
+  padding: 8px;
+}
+
+.p-3 {
+  padding: 12px;
+}
+
+.p-4 {
+  padding: 16px;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.h-full {
+  height: 100%;
+}
+
+/* ===== 字体大小 Utility Classes ===== */
+.text-h1 {
+  font-size: var(--text-h1);
+  line-height: var(--leading-tight);
+  font-weight: var(--font-semibold);
+}
+
+.text-h2 {
+  font-size: var(--text-h2);
+  line-height: var(--leading-tight);
+  font-weight: var(--font-semibold);
+}
+
+.text-h3 {
+  font-size: var(--text-h3);
+  line-height: var(--leading-tight);
+  font-weight: var(--font-semibold);
+}
+
+.text-body-lg {
+  font-size: var(--text-body-lg);
+  line-height: var(--leading-normal);
+}
+
+.text-body-md {
+  font-size: var(--text-body-md);
+  line-height: var(--leading-normal);
+}
+
+.text-body-sm {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-normal);
+}
+
+.text-xs {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.text-2xs {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+}
+
+.text-3xs {
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
+}
+
+/* 兼容旧类�?*/
+.text-sm {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-normal);
+}
+
+/* ===== 字重 Utility Classes ===== */
+.font-normal {
+  font-weight: var(--font-normal);
+}
+
+.font-medium {
+  font-weight: var(--font-medium);
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.opacity-50 {
+  opacity: 0.5;
+}
+
+.opacity-70 {
+  opacity: 0.7;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Flo Mode Button Style */
+.flo-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--accent-indigo-light);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.flo-mode-btn:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+/* Add Node Button */
+.add-node-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-xl);
+  background: var(--toolbar-bg-dark);
+  border: 1px solid var(--border-medium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  box-shadow: var(--shadow-md);
+}
+
+.add-node-btn:hover {
+  transform: scale(1.05) rotate(3deg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ============================================
+   Chat Bubble Animations & Styles
+   ============================================ */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* Breathing animation for bubble */
+@keyframes bubble-breathe {
+
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 4px 20px rgba(0, 122, 255, 0.3);
+  }
+
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 6px 28px rgba(0, 122, 255, 0.45);
+  }
+}
+
+@keyframes icon-breathe {
+
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.animate-bubble-breathe {
+  animation: bubble-breathe 3s ease-in-out infinite;
+}
+
+.animate-icon-breathe {
+  animation: icon-breathe 3s ease-in-out infinite;
+}
+
+/* Custom thin scrollbar for chat */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Breathing Animation for Floating Bubble */
+@keyframes float-breathe {
+
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+  }
+
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+  }
+}
+
+.animate-float-breathe {
+  animation: float-breathe 3s ease-in-out infinite;
+}
+
+/* Breathing Animation for Icon (Counter-scale/Sync) */
+@keyframes icon-breathe {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.animate-icon-breathe {
+  animation: icon-breathe 3s ease-in-out infinite;
+}
+
+/* Pop-in Animation for Card (Scale Up from Corner) */
+@keyframes scale-up-corner {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translate(40px, 40px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) translate(0, 0);
+  }
+}
+
+.animate-scale-up-corner {
+  animation: scale-up-corner 0.4s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+/* User Requested "Liquid Glass" Style (Distortion Removed) */
+.liquid-glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-top: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+/* Utility to hide scrollbar */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Refined Pop-in Animation (fallback for non-GSAP contexts) */
+.animate-cardPopIn {
+  animation: cardPopIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Animation Keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes progress {
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
+}
+
+/* Light-mode overrides for settings panel readability */
+body:not(.dark-mode) .settings-panel .text-white {
+  color: var(--text-primary) !important;
+}
+
+body:not(.dark-mode) .settings-panel .text-zinc-300,
+body:not(.dark-mode) .settings-panel .text-zinc-400,
+body:not(.dark-mode) .settings-panel .text-zinc-500 {
+  color: var(--text-secondary) !important;
+}
+
+body:not(.dark-mode) .settings-panel .bg-zinc-900,
+body:not(.dark-mode) .settings-panel .bg-zinc-800 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+body:not(.dark-mode) .settings-panel .border-white\/10,
+body:not(.dark-mode) .settings-panel .border-white\/5,
+body:not(.dark-mode) .settings-panel .border-zinc-800 {
+  border-color: var(--border-light) !important;
+}
+
+/* ============================================
+   Global Theme Transition Fallback
+   ============================================ */
+div,
+span,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+input,
+textarea,
+button,
+select,
+a {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+  transition-duration: 0.3s;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(161, 161, 170, 0.3);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(161, 161, 170, 0.5);
+}
+
+/* Frosted Aurora Liquid Flow (Chaotic & Soft) */
+@keyframes chaotic-drift {
+  0% {
+    background-position: 10% 10%, 90% 90%, 50% 10%;
+  }
+
+  25% {
+    background-position: 40% 60%, 80% 20%, 30% 80%;
+  }
+
+  50% {
+    background-position: 70% 30%, 30% 50%, 80% 60%;
+  }
+
+  75% {
+    background-position: 40% 10%, 10% 80%, 60% 30%;
+  }
+
+  100% {
+    background-position: 10% 10%, 90% 90%, 50% 10%;
+  }
+}
+
+.generating-flow-bg {
+  position: relative;
+  /* �?移除: overflow, animation, will-change */
+}
+
+/* Light Mode: 纯色不透明背景 - 浅灰�?*/
+body:not(.dark-mode) .generating-flow-bg {
+  background-color: #f3f4f6;
+  /* 不透明灰色 */
+  background-image: none;
+  /* 移除渐变 */
+  border-color: rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  color: #000000;
+}
+
+/* Dark Mode: 纯色不透明背景 - 深灰�?*/
+body.dark-mode .generating-flow-bg {
+  background-color: #1f2937;
+  /* 不透明深灰 */
+  background-image: none;
+  /* 移除渐变 */
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.9);
+  color: #ffffff;
+}
+
+
+/* Sweep Removed for Softness */
+/* 添加�?index.css 末尾的新动画 */
+
+/* 呼吸效果（慢速脉冲） */
+@keyframes pulse-slow {
+
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.95);
+  }
+
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+/* 色相旋转动画（慢速） */
+@keyframes rotate-hue-slow {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+
+  100% {
+    filter: hue-rotate(360deg);
+  }
+}
+
+/* 轻微浮动效果 */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* 应用动画 */
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+.animate-rotate-hue-slow {
+  animation: rotate-hue-slow 10s linear infinite;
+}
+
+/* ============================================== 
+   占位�?- 呼吸光晕动画（黑白灰主题适配�?
+   ============================================== */
+@keyframes breatheGlow {
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.02);
+  }
+}
+
+/* 亮色主题 - 黑色光晕 */
+body:not(.dark-mode) .placeholder-breathe {
+  animation: breatheGlow 2.5s ease-in-out infinite;
+  box-shadow:
+    0 0 15px rgba(0, 0, 0, 0.12),
+    0 0 30px rgba(0, 0, 0, 0.06);
+}
+
+/* 暗色主题 - 白色光晕 */
+body.dark-mode .placeholder-breathe {
+  animation: breatheGlow 2.5s ease-in-out infinite;
+  box-shadow:
+    0 0 15px rgba(255, 255, 255, 0.15),
+    0 0 30px rgba(255, 255, 255, 0.08);
+}
+
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ========== AI聊天按钮渐变动画 ========== */
+.uiverse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  border-radius: 50%;
+}
+
+/* Hover时加速动�?- 充能效果 */
+.group:hover .uiverse .circle {
+  animation-duration: calc(var(--duration) / 3) !important;
+}
+
+.uiverse .circle {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  background: linear-gradient(rgb(var(--circle-color, 99, 102, 241)), rgb(var(--circle-color-alt, 168, 85, 247)));
+  animation: moveCircle var(--duration) var(--timing) infinite;
+  filter: blur(5px);
+  opacity: 1;
+}
+
+/* 12个渐变圆�?- 不同的颜色和动画参数 */
+.uiverse .circle-1 {
+  --circle-color: 67, 56, 202;
+  --circle-color-alt: 109, 40, 217;
+  --duration: 13s;
+  --timing: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.uiverse .circle-2 {
+  --circle-color: 126, 34, 206;
+  --circle-color-alt: 168, 25, 191;
+  --duration: 11s;
+  --timing: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.uiverse .circle-3 {
+  --circle-color: 88, 28, 135;
+  --circle-color-alt: 67, 20, 107;
+  --duration: 17s;
+  --timing: cubic-bezier(0.86, 0, 0.07, 1);
+}
+
+.uiverse .circle-4 {
+  --circle-color: 79, 70, 229;
+  --circle-color-alt: 37, 99, 235;
+  --duration: 19s;
+  --timing: cubic-bezier(0.445, 0.05, 0.55, 0.95);
+}
+
+.uiverse .circle-5 {
+  --circle-color: 147, 51, 234;
+  --circle-color-alt: 192, 38, 211;
+  --duration: 13s;
+  --timing: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.uiverse .circle-6 {
+  --circle-color: 168, 25, 191;
+  --circle-color-alt: 126, 34, 206;
+  --duration: 23s;
+  --timing: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.uiverse .circle-7 {
+  --circle-color: 29, 78, 216;
+  --circle-color-alt: 20, 60, 180;
+  --duration: 15s;
+  --timing: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.uiverse .circle-8 {
+  --circle-color: 109, 40, 217;
+  --circle-color-alt: 88, 28, 135;
+  --duration: 21s;
+  --timing: cubic-bezier(0.86, 0, 0.07, 1);
+}
+
+.uiverse .circle-9 {
+  --circle-color: 67, 56, 202;
+  --circle-color-alt: 88, 28, 135;
+  --duration: 16s;
+  --timing: cubic-bezier(0.445, 0.05, 0.55, 0.95);
+}
+
+.uiverse .circle-10 {
+  --circle-color: 126, 34, 206;
+  --circle-color-alt: 147, 51, 234;
+  --duration: 14s;
+  --timing: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.uiverse .circle-11 {
+  --circle-color: 109, 40, 217;
+  --circle-color-alt: 79, 70, 229;
+  --duration: 18s;
+  --timing: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.uiverse .circle-12 {
+  --circle-color: 88, 28, 135;
+  --circle-color-alt: 126, 34, 206;
+  --duration: 20s;
+  --timing: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* 圆圈移动动画 */
+@keyframes moveCircle {
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+
+  25% {
+    transform: translate(-40%, 50%) scale(1.3);
+    opacity: 0.9;
+  }
+
+  50% {
+    transform: translate(60%, -40%) scale(0.8);
+    opacity: 1;
+  }
+
+  75% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 0.95;
+  }
+}
+
+/* AI助手按钮图标旋转效果 */
+.ai-chat-icon {
+  transition: transform 0.7s ease-out !important;
+}
+
+.ai-chat-btn:hover .ai-chat-icon {
+  transform: rotate(90deg) !important;
+}
+
+.ai-chat-btn:hover .uiverse .circle {
+  animation-duration: calc(var(--duration) / 3) !important;
+}
+
+/* ============================================
+   GPU 加速工具类 - Client-Side Rendering Optimization
+   ============================================ */
+
+/**
+ * 🚀 GPU 加速基础�?
+ * 使用 translateZ(0) �?translate3d() 强制创建 GPU 合成�?
+ * 适用于：需要频繁变换的元素（拖拽、动画、滚动）
+ */
+.gpu-accelerated {
+  /* 🚀 [Fix] Removed translateZ(0) which causes blurry text at high zoom */
+  /* transform: translateZ(0); */
+  will-change: transform;
+  /* Keep will-change for performance */
+  /* Force-disable stale 3D context from earlier rule definition */
+  perspective: none;
+  -webkit-perspective: none;
+  backface-visibility: visible;
+  -webkit-backface-visibility: visible;
+}
+
+/**
+ * 🚀 GPU 变换优化
+ * 用于拖拽、缩放等高频变换操作
+ */
+.gpu-transform {
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
+}
+
+/**
+ * 🚀 画布专用 GPU 优化
+ * 针对 InfiniteCanvas 的无限拖拽场�?
+ */
+.gpu-canvas {
+  transform: translate3d(var(--canvas-x, 0), var(--canvas-y, 0), 0) scale(var(--canvas-scale, 1));
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout style paint;
+}
+
+/**
+ * 🚀 图片 GPU 加�?
+ * 优化图片渲染性能，减少重�?
+ */
+.gpu-image {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+/**
+ * 🚀 动画专用 GPU 加�?
+ * 用于有动画的元素
+ */
+.gpu-animate {
+  transform: translateZ(0);
+  will-change: transform, opacity, filter;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/**
+ * 🚀 虚拟化容器优�?
+ * 使用 content-visibility 实现虚拟化渲�?
+ */
+.gpu-virtualize {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
+}
+
+/**
+ * 🚀 滚动容器优化
+ * 平滑滚动 + GPU 加�?
+ */
+.gpu-scroll {
+  transform: translateZ(0);
+  will-change: scroll-position;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+/**
+ * 🚀 模态框 GPU 优化
+ * 用于弹窗、对话框等叠加层
+ */
+.gpu-modal {
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  isolation: isolate;
+}
+
+/**
+ * 🚀 卡片 GPU 优化
+ * 用于可拖拽、可交互的卡�?
+ */
+.gpu-card {
+  transform: translateZ(0);
+  will-change: transform, box-shadow;
+  backface-visibility: hidden;
+  contain: layout style;
+}
+
+/**
+ * 🚀 粒子/特效 GPU 优化
+ * 用于粒子效果、背景动�?
+ */
+.gpu-particle {
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+/**
+ * 🚀 清除 will-change (性能优化)
+ * 动画结束后应移除 will-change 以释�?GPU 内存
+ */
+.gpu-idle {
+  will-change: auto;
+}
+
+/**
+ * 🚀 高性能选择�?
+ * 批量应用 GPU 加速到常用动画元素
+ */
+.animate-fadeIn,
+.animate-scaleIn,
+.animate-slideDown,
+.animate-slideUp,
+.animate-modalIn,
+.animate-pulse,
+.animate-shimmer,
+.animate-float {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* 🚀 拖拽状态优�?- 禁用过渡提升性能 */
+.is-dragging,
+.is-dragging * {
+  transition: none !important;
+  will-change: transform !important;
+}
+
+/* 🚀 缩放状态优�?*/
+.is-zooming {
+  will-change: transform !important;
+  transition: none !important;
+}
+
+/* 🚀 降低动画复杂�?(省电模式/低性能设备) */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .gpu-accelerated,
+  .gpu-transform,
+  .gpu-canvas,
+  .gpu-animate {
+    will-change: auto;
+  }
+}
+
+
+
+/* 🚀 恢复 shimmer-sweep 动画 (User Request) */
+@keyframes shimmer-transform {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer-transform {
+  animation: shimmer-transform 1.5s infinite linear;
+  /* Smooth, continuous loop */
+  will-change: transform;
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+
+
+/* 🚀 优化后的内发光动�?(Opacity based, GPU friendly) */
+.shimmer-static-glow {
+  box-shadow: inset 0 0 60px 20px rgba(255, 255, 255, 0.15),
+    inset 0 0 100px 40px rgba(255, 255, 255, 0.08);
+}
+
+@keyframes pulse-opacity {
+
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-pulse-opacity {
+  animation: pulse-opacity 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+.animate-shimmer-inward {
+  /* Legacy fallback or alias to new optimized version if applied directly */
+  animation: pulse-opacity 2s ease-in-out infinite;
+}
+
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 2s linear infinite;
+}
+
+/* ============================================== 
+   生成态连接线（脉冲线�?
+   ============================================== */
+@keyframes connector-dot-pulse {
+
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.86);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+.generation-connector-line {
+  width: 1px;
+  background: linear-gradient(to bottom,
+      rgba(99, 102, 241, 0.15),
+      rgba(99, 102, 241, 0.55),
+      rgba(99, 102, 241, 0.15));
+}
+
+.generation-connector-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, rgba(196, 181, 253, 0.95), rgba(99, 102, 241, 0.9));
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.45);
+  animation: connector-dot-pulse 1.6s ease-in-out infinite;
+}

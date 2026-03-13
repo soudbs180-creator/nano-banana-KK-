@@ -3,295 +3,314 @@ import { AspectRatio, ImageSize } from '../../types';
 import { Fullscreen } from 'lucide-react';
 
 interface ImageOptionsPanelProps {
-    aspectRatio: AspectRatio;
-    imageSize: ImageSize;
-    showThinkingMode?: boolean;
-    thinkingMode?: 'minimal' | 'high';
-    onThinkingModeChange?: (mode: 'minimal' | 'high') => void;
-    onAspectRatioChange: (ratio: AspectRatio) => void;
-    onImageSizeChange: (size: ImageSize) => void;
-    availableRatios?: AspectRatio[];
-    availableSizes?: ImageSize[];
+  aspectRatio: AspectRatio;
+  imageSize: ImageSize;
+  networkOptions?: Array<{
+    id: string;
+    label: string;
+    active: boolean;
+    onToggle: () => void;
+  }>;
+  showThinkingMode?: boolean;
+  thinkingMode?: 'minimal' | 'high';
+  onThinkingModeChange?: (mode: 'minimal' | 'high') => void;
+  onAspectRatioChange: (ratio: AspectRatio) => void;
+  onImageSizeChange: (size: ImageSize) => void;
+  availableRatios?: AspectRatio[];
+  availableSizes?: ImageSize[];
 }
 
+const SECTION_STYLE: React.CSSProperties = {
+  background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%)',
+  borderColor: 'rgba(148, 163, 184, 0.18)',
+};
+
+const TITLE_STYLE: React.CSSProperties = {
+  color: 'var(--text-secondary)',
+};
+
+const getRatioDimensions = (ratio: AspectRatio): { width: number; height: number } => {
+  const maxSize = 14;
+  const ratioMap: Record<string, [number, number]> = {
+    [AspectRatio.SQUARE]: [1, 1],
+    [AspectRatio.PORTRAIT_1_8]: [1, 8],
+    [AspectRatio.PORTRAIT_1_4]: [1, 4],
+    [AspectRatio.PORTRAIT_2_3]: [2, 3],
+    [AspectRatio.PORTRAIT_3_4]: [3, 4],
+    [AspectRatio.PORTRAIT_4_5]: [4, 5],
+    [AspectRatio.PORTRAIT_9_16]: [9, 16],
+    [AspectRatio.PORTRAIT_9_21]: [9, 21],
+    [AspectRatio.LANDSCAPE_3_2]: [3, 2],
+    [AspectRatio.LANDSCAPE_4_3]: [4, 3],
+    [AspectRatio.LANDSCAPE_5_4]: [5, 4],
+    [AspectRatio.LANDSCAPE_16_9]: [16, 9],
+    [AspectRatio.LANDSCAPE_21_9]: [21, 9],
+    [AspectRatio.LANDSCAPE_4_1]: [4, 1],
+    [AspectRatio.LANDSCAPE_8_1]: [8, 1],
+  };
+  const [w, h] = ratioMap[ratio] || [1, 1];
+
+  if (w > h) {
+    return { width: maxSize, height: (maxSize * h) / w };
+  }
+
+  return { height: maxSize, width: (maxSize * w) / h };
+};
+
+const getRatioIcon = (ratio: AspectRatio) => {
+  const dimensions = getRatioDimensions(ratio);
+
+  return (
+    <div className="flex items-center justify-center" style={{ width: 14, height: 14 }}>
+      <div
+        className="rounded-[2px] border-[1.5px] border-current"
+        style={{ width: dimensions.width, height: dimensions.height }}
+      />
+    </div>
+  );
+};
+
 const ImageOptionsPanel: React.FC<ImageOptionsPanelProps> = ({
-    aspectRatio,
-    imageSize,
-    showThinkingMode = false,
-    thinkingMode = 'minimal',
-    onThinkingModeChange,
-    onAspectRatioChange,
-    onImageSizeChange,
-    availableRatios = Object.values(AspectRatio),
-    availableSizes = Object.values(ImageSize)
+  aspectRatio,
+  imageSize,
+  networkOptions = [],
+  showThinkingMode = false,
+  thinkingMode = 'minimal',
+  onThinkingModeChange,
+  onAspectRatioChange,
+  onImageSizeChange,
+  availableRatios = Object.values(AspectRatio),
+  availableSizes = Object.values(ImageSize),
 }) => {
-    // 计算比例图标的尺寸
-    const getRatioDimensions = (ratio: AspectRatio): { width: number; height: number } => {
-        const maxSize = 14;
+  const uniqueRatios = useMemo(() => Array.from(new Set(availableRatios)), [availableRatios]);
+  const gridRatios = useMemo(() => {
+    const explicitRatios = uniqueRatios.filter((ratio) => ratio !== AspectRatio.AUTO);
+    return explicitRatios.sort((left, right) => {
+      const [leftWidth, leftHeight] = left.split(':').map(Number);
+      const [rightWidth, rightHeight] = right.split(':').map(Number);
+      const leftRatio = leftWidth / leftHeight;
+      const rightRatio = rightWidth / rightHeight;
+      return rightRatio - leftRatio;
+    });
+  }, [uniqueRatios]);
 
-        const ratioMap: Record<string, [number, number]> = {
-            [AspectRatio.SQUARE]: [1, 1],
-            [AspectRatio.PORTRAIT_9_16]: [9, 16],
-            [AspectRatio.LANDSCAPE_16_9]: [16, 9],
-            [AspectRatio.PORTRAIT_3_4]: [3, 4],
-            [AspectRatio.LANDSCAPE_4_3]: [4, 3],
-            [AspectRatio.LANDSCAPE_3_2]: [3, 2],
-            [AspectRatio.PORTRAIT_2_3]: [2, 3],
-            [AspectRatio.LANDSCAPE_5_4]: [5, 4],
-            [AspectRatio.PORTRAIT_4_5]: [4, 5],
-            [AspectRatio.LANDSCAPE_21_9]: [21, 9],
-            [AspectRatio.LANDSCAPE_4_1]: [4, 1],
-            [AspectRatio.PORTRAIT_1_4]: [1, 4],
-            [AspectRatio.LANDSCAPE_8_1]: [8, 1],
-            [AspectRatio.PORTRAIT_1_8]: [1, 8]
-        };
+  const displaySizes = useMemo(() => {
+    const sizeOrder = [ImageSize.SIZE_05K, ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
+    return sizeOrder.filter((size, index) => availableSizes.includes(size) && sizeOrder.indexOf(size) === index);
+  }, [availableSizes]);
 
-        const [w, h] = ratioMap[ratio] || [1, 1];
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (scrollContainerRef.current && event.deltaY !== 0) {
+      scrollContainerRef.current.scrollLeft += event.deltaY;
+    }
+  };
 
-        if (w > h) {
-            return { width: maxSize, height: (maxSize * h) / w };
-        } else {
-            return { height: maxSize, width: (maxSize * w) / h };
-        }
+  const sizeSlide = useMemo(() => {
+    if (displaySizes.length === 0) {
+      return { left: '0%', width: '0%' };
+    }
+
+    const index = displaySizes.indexOf(imageSize);
+    if (index === -1) {
+      return { left: '2px', width: `calc(${100 / displaySizes.length}% - 4px)` };
+    }
+
+    const buttonWidthPercent = 100 / displaySizes.length;
+    return {
+      left: `calc(${buttonWidthPercent * index}% + 2px)`,
+      width: `calc(${buttonWidthPercent}% - 4px)`,
     };
+  }, [displaySizes, imageSize]);
 
-    // 渲染比例图标
-    const getRatioIcon = (ratio: AspectRatio) => {
-        const dims = getRatioDimensions(ratio);
+  const hasAuto = uniqueRatios.includes(AspectRatio.AUTO);
+  const isOddCount = gridRatios.length % 2 !== 0;
+  const autoInGrid = hasAuto && isOddCount;
+  const totalGridItems = autoInGrid ? gridRatios.length + 1 : gridRatios.length;
+  const useDoubleRow = totalGridItems > 3 || (hasAuto && !autoInGrid);
+  const columns = useDoubleRow ? Math.ceil(totalGridItems / 2) : Math.max(1, totalGridItems);
+  const needsScroll = useDoubleRow ? columns > 5 : columns > 4;
 
-        return (
-            <div className="flex items-center justify-center" style={{ width: 14, height: 14 }}>
-                <div
-                    className="border-[1.5px] border-current rounded-[2px]"
-                    style={{ width: dims.width, height: dims.height }}
-                />
-            </div>
-        );
-    };
+  return (
+    <div
+      className="custom-scrollbar overflow-y-auto rounded-[28px] border p-4"
+      style={{
+        width: 'min(420px, calc(100vw - 24px))',
+        maxHeight: 'min(60vh, 520px)',
+        background: 'linear-gradient(180deg, rgba(20, 24, 36, 0.96) 0%, rgba(10, 13, 22, 0.98) 100%)',
+        borderColor: 'rgba(148, 163, 184, 0.18)',
+        boxShadow: '0 24px 52px rgba(2, 6, 23, 0.36), inset 0 1px 0 rgba(255,255,255,0.08)',
+      }}
+    >
+      {networkOptions.length > 0 ? (
+        <section className="mb-3 rounded-2xl border p-3" style={SECTION_STYLE}>
+          <div className="mb-2 text-sm font-medium" style={TITLE_STYLE}>
+            {'\u641c\u7d22\u589e\u5f3a'}
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            {networkOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={option.onToggle}
+                className="flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition-colors"
+                style={{
+                  borderColor: option.active ? 'rgba(96,165,250,0.4)' : 'rgba(148, 163, 184, 0.16)',
+                  backgroundColor: option.active ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)',
+                  color: option.active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                }}
+              >
+                <span>{option.label}</span>
+                <span className="text-xs">{option.active ? '\u5df2\u5f00\u542f' : '\u672a\u5f00\u542f'}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
-    // 网格中的比例（排除AUTO），只显示支持的，按比值从小到大排序（竖图→方图→横图）
-    const gridRatios = useMemo(() => {
-        const explicitRatios = availableRatios.filter(r => r !== AspectRatio.AUTO);
-        return explicitRatios.sort((a, b) => {
-            const [aw, ah] = a.split(':').map(Number);
-            const [bw, bh] = b.split(':').map(Number);
-            const ratioA = aw / ah;
-            const ratioB = bw / bh;
-            // 🚀 用户觉得原本是"从大到小"，是因为图标的高度在不断缩小（竖图最高，横图最矮）
-            // 因此我们将其反过来，变成从最宽横图到最高竖图（数值从大到小），这样图标视觉上会"由短变高"，符合"从小到大"感观。
-            return ratioB - ratioA;
-        });
-    }, [availableRatios]);
+      {showThinkingMode ? (
+        <section className="mb-3 rounded-2xl border p-3" style={SECTION_STYLE}>
+          <div className="mb-2 text-sm font-medium" style={TITLE_STYLE}>
+            {'\u601d\u8003\u6a21\u5f0f'}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onThinkingModeChange?.('minimal')}
+              className="rounded-xl border px-3 py-2 text-sm transition-colors"
+              style={{
+                borderColor: thinkingMode === 'minimal' ? 'rgba(99,102,241,0.65)' : 'rgba(148, 163, 184, 0.16)',
+                backgroundColor: thinkingMode === 'minimal' ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
+                color: thinkingMode === 'minimal' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              }}
+            >
+              {'\u5feb\u901f (minimal)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onThinkingModeChange?.('high')}
+              className="rounded-xl border px-3 py-2 text-sm transition-colors"
+              style={{
+                borderColor: thinkingMode === 'high' ? 'rgba(99,102,241,0.65)' : 'rgba(148, 163, 184, 0.16)',
+                backgroundColor: thinkingMode === 'high' ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
+                color: thinkingMode === 'high' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              }}
+            >
+              {'\u6df1\u5165 (high)'}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
-    // 只显示当前模型支持的画质选项
-    const displaySizes = useMemo(() => {
-        const sizeOrder = [ImageSize.SIZE_05K, ImageSize.SIZE_1K, ImageSize.SIZE_2K, ImageSize.SIZE_4K];
-        return sizeOrder.filter(s => availableSizes.includes(s));
-    }, [availableSizes]);
+      {displaySizes.length > 1 ? (
+        <section className="mb-3 rounded-2xl border p-3" style={SECTION_STYLE}>
+          <div className="mb-2 text-sm font-medium" style={TITLE_STYLE}>
+            {'\u753b\u8d28'}
+          </div>
+          <div className="relative flex rounded-xl p-0.5" style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}>
+            <div
+              className="absolute bottom-0.5 top-0.5 rounded-[10px] transition-all duration-200 ease-out"
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                left: sizeSlide.left,
+                width: sizeSlide.width,
+              }}
+            />
 
-    // 鼠标滚轮横向滚动支持
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
-    const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-        if (scrollContainerRef.current) {
-            if (e.deltaY !== 0) {
-                scrollContainerRef.current.scrollLeft += e.deltaY;
-            }
-        }
-    };
+            {displaySizes.map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => onImageSizeChange(size)}
+                className="relative z-10 flex-1 rounded-[10px] px-2 py-2 text-sm transition-colors duration-200"
+                style={{
+                  color: imageSize === size ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                }}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
-    // 计算滑动背景位置（画质）
-    const sizeSlide = useMemo(() => {
-        const index = displaySizes.indexOf(imageSize);
-        if (index === -1) return { left: '2px', width: `calc(${100 / displaySizes.length}% - 4px)` };
-
-        const totalButtons = displaySizes.length;
-        const buttonWidthPercent = 100 / totalButtons;
-
-        return {
-            left: `calc(${buttonWidthPercent * index}% + 2px)`,
-            width: `calc(${buttonWidthPercent}% - 4px)`
-        };
-    }, [imageSize, displaySizes]);
-
-    // 判断自适应按钮布局模式
-    const hasAuto = availableRatios.includes(AspectRatio.AUTO);
-    const isOddCount = gridRatios.length % 2 !== 0;
-
-    // 奇数个比例时：自适应变成小按钮混入网格（凑偶数）
-    // 偶数个时：自适应独立大按钮占左侧两行
-    const autoInGrid = hasAuto && isOddCount;
-
-    // 网格中的实际项目数（含/不含AUTO）
-    const totalGridItems = autoInGrid ? gridRatios.length + 1 : gridRatios.length;
-    const columns = Math.ceil(totalGridItems / 2);
-
-    // 🚀 [Fix] 只要项目超过3个，或者处于“独立大按钮”模式，就固定使用双行，保证布局美观。
-    const useDoubleRow = totalGridItems > 3 || (hasAuto && !autoInGrid);
-
-    // 超过10个时才显示滚动条
-    const needsScroll = gridRatios.length > 10;
-
-    return (
-        <div
-            className="p-4 rounded-xl border max-w-[95vw] sm:max-w-[90vw]"
-            style={{
-                width: 'min(420px, calc(100vw - 24px))',
-                backgroundColor: 'var(--bg-secondary)',
-                backdropFilter: 'blur(8px)',
-                borderColor: 'var(--border-light)',
-                boxShadow: 'var(--shadow-xl)'
-            }}
-        >
-            {showThinkingMode && (
-                <div className="mb-4">
-                    <div className="text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                        思考模式
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <button
-                            onClick={() => onThinkingModeChange?.('minimal')}
-                            className="px-3 py-2 rounded-lg text-sm border transition-colors"
-                            style={{
-                                borderColor: thinkingMode === 'minimal' ? 'rgba(99,102,241,0.7)' : 'var(--border-light)',
-                                backgroundColor: thinkingMode === 'minimal' ? 'rgba(99,102,241,0.14)' : 'var(--bg-tertiary)',
-                                color: thinkingMode === 'minimal' ? 'var(--text-primary)' : 'var(--text-tertiary)'
-                            }}
-                        >
-                            快速 (minimal)
-                        </button>
-                        <button
-                            onClick={() => onThinkingModeChange?.('high')}
-                            className="px-3 py-2 rounded-lg text-sm border transition-colors"
-                            style={{
-                                borderColor: thinkingMode === 'high' ? 'rgba(99,102,241,0.7)' : 'var(--border-light)',
-                                backgroundColor: thinkingMode === 'high' ? 'rgba(99,102,241,0.14)' : 'var(--bg-tertiary)',
-                                color: thinkingMode === 'high' ? 'var(--text-primary)' : 'var(--text-tertiary)'
-                            }}
-                        >
-                            思考 (high)
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* 画质 - 只显示支持的选项 */}
-            {displaySizes.length > 1 && (
-                <div className="mb-4 last:mb-0">
-                    <div className="text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                        画质
-                    </div>
-                    <div
-                        className="relative flex rounded-lg p-0.5"
-                        style={{ backgroundColor: 'var(--bg-tertiary)' }}
-                    >
-                        {/* 滑动背景 */}
-                        <div
-                            className="absolute top-0.5 bottom-0.5 rounded-md transition-all duration-200 ease-out"
-                            style={{
-                                backgroundColor: 'var(--bg-secondary)',
-                                left: sizeSlide.left,
-                                width: sizeSlide.width
-                            }}
-                        />
-
-                        {/* 按钮 - 只渲染支持的size */}
-                        {displaySizes.map((size) => (
-                            <button
-                                key={size}
-                                onClick={() => onImageSizeChange(size)}
-                                className="relative z-10 flex-1 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)] cursor-pointer"
-                                style={{
-                                    color: imageSize === size ? 'var(--text-primary)' : 'var(--text-tertiary)'
-                                }}
-                            >
-                                {size}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* 比例 */}
-            <div>
-                <div className="text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                    比例
-                </div>
-                <div
-                    className="flex gap-1.5 rounded-lg p-1.5 overflow-hidden"
-                    style={{ backgroundColor: 'var(--bg-tertiary)' }}
-                >
-                    {/* 偶数模式：自适应按钮独立占左侧两行 */}
-                    {hasAuto && !autoInGrid && (
-                        <button
-                            onClick={() => onAspectRatioChange(AspectRatio.AUTO)}
-                            className="flex flex-col items-center justify-center rounded-md transition-all duration-200 gap-1 hover:text-[var(--text-secondary)] shrink-0"
-                            style={{
-                                width: '56px',
-                                height: useDoubleRow ? '100px' : '48px',
-                                color: aspectRatio === AspectRatio.AUTO ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                                backgroundColor: aspectRatio === AspectRatio.AUTO ? 'var(--bg-secondary)' : 'transparent'
-                            }}
-                        >
-                            <Fullscreen size={18} />
-                            <span className="text-xs">自适应</span>
-                        </button>
-                    )}
-
-                    {/* 比例网格 */}
-                    <div
-                        ref={scrollContainerRef}
-                        onWheel={handleWheel}
-                        className={`grid flex-1 min-w-0 overflow-y-hidden ${needsScroll ? 'overflow-x-auto custom-scrollbar' : 'overflow-x-hidden'}`}
-                        style={{
-                            gridTemplateColumns: needsScroll ? `repeat(${columns}, minmax(50px, 1fr))` : `repeat(${columns}, minmax(0, 1fr))`,
-                            gridTemplateRows: useDoubleRow ? 'repeat(2, 48px)' : '1fr',
-                            gap: '4px',
-                            paddingBottom: needsScroll ? '4px' : '0',
-                            WebkitOverflowScrolling: 'touch',
-                            overscrollBehaviorX: 'contain'
-                        }}
-                    >
-                        {/* 奇数模式：自适应按钮作为网格第一个小按钮 */}
-                        {autoInGrid && (
-                            <button
-                                onClick={() => onAspectRatioChange(AspectRatio.AUTO)}
-                                className="flex flex-col items-center justify-center rounded-md transition-all duration-200 hover:text-[var(--text-secondary)]"
-                                style={{
-                                    height: '46px',
-                                    padding: '4px',
-                                    color: aspectRatio === AspectRatio.AUTO ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                                    backgroundColor: aspectRatio === AspectRatio.AUTO ? 'var(--bg-secondary)' : 'transparent',
-                                    gap: '4px'
-                                }}
-                            >
-                                <Fullscreen size={14} />
-                                <span className="text-[10px] leading-none whitespace-nowrap">自适应</span>
-                            </button>
-                        )}
-
-                        {/* 比例按钮 */}
-                        {gridRatios.map(ratio => (
-                            <button
-                                key={ratio}
-                                onClick={() => onAspectRatioChange(ratio)}
-                                className="flex flex-col items-center justify-center rounded-md transition-all duration-200 hover:text-[var(--text-secondary)]"
-                                style={{
-                                    height: '46px',
-                                    padding: '4px',
-                                    color: aspectRatio === ratio ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                                    backgroundColor: aspectRatio === ratio ? 'var(--bg-secondary)' : 'transparent',
-                                    gap: '6px'
-                                }}
-                            >
-                                {getRatioIcon(ratio)}
-                                <span className="text-[10px] leading-none whitespace-nowrap">{ratio}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </div>
+      <section className="rounded-2xl border p-3" style={SECTION_STYLE}>
+        <div className="mb-2 text-sm font-medium" style={TITLE_STYLE}>
+          {'\u6bd4\u4f8b'}
         </div>
-    );
+        <div
+          className="flex gap-1.5 overflow-hidden rounded-xl p-1.5"
+          style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}
+        >
+          {hasAuto && !autoInGrid ? (
+            <button
+              type="button"
+              onClick={() => onAspectRatioChange(AspectRatio.AUTO)}
+              className="flex shrink-0 flex-col items-center justify-center gap-1 rounded-xl transition-all duration-200"
+              style={{
+                width: '58px',
+                height: useDoubleRow ? '100px' : '48px',
+                color: aspectRatio === AspectRatio.AUTO ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                backgroundColor: aspectRatio === AspectRatio.AUTO ? 'rgba(255,255,255,0.08)' : 'transparent',
+              }}
+            >
+              <Fullscreen size={18} />
+              <span className="text-xs">{'\u81ea\u9002\u5e94'}</span>
+            </button>
+          ) : null}
+
+          <div
+            ref={scrollContainerRef}
+            onWheel={handleWheel}
+            className={`grid min-w-0 flex-1 overflow-y-hidden ${needsScroll ? 'custom-scrollbar overflow-x-auto' : 'overflow-x-hidden'}`}
+            style={{
+              gridTemplateColumns: needsScroll ? `repeat(${columns}, minmax(54px, 1fr))` : `repeat(${columns}, minmax(0, 1fr))`,
+              gridTemplateRows: useDoubleRow ? 'repeat(2, 48px)' : '48px',
+              gap: '4px',
+              paddingBottom: needsScroll ? '4px' : '0',
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehaviorX: 'contain',
+            }}
+          >
+            {autoInGrid ? (
+              <button
+                type="button"
+                onClick={() => onAspectRatioChange(AspectRatio.AUTO)}
+                className="flex flex-col items-center justify-center gap-1 rounded-xl transition-all duration-200"
+                style={{
+                  height: '46px',
+                  padding: '4px',
+                  color: aspectRatio === AspectRatio.AUTO ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  backgroundColor: aspectRatio === AspectRatio.AUTO ? 'rgba(255,255,255,0.08)' : 'transparent',
+                }}
+              >
+                <Fullscreen size={14} />
+                <span className="whitespace-nowrap text-[10px] leading-none">{'\u81ea\u9002\u5e94'}</span>
+              </button>
+            ) : null}
+
+            {gridRatios.map((ratio) => (
+              <button
+                key={ratio}
+                type="button"
+                onClick={() => onAspectRatioChange(ratio)}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl transition-all duration-200"
+                style={{
+                  height: '46px',
+                  padding: '4px',
+                  color: aspectRatio === ratio ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  backgroundColor: aspectRatio === ratio ? 'rgba(255,255,255,0.08)' : 'transparent',
+                }}
+              >
+                {getRatioIcon(ratio)}
+                <span className="whitespace-nowrap text-[10px] leading-none">{ratio}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
 };
 
 export default ImageOptionsPanel;

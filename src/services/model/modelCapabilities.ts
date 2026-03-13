@@ -7,7 +7,9 @@
  * This is the Single Source of Truth for model capabilities.
  */
 
+import type { CSSProperties } from 'react';
 import { AspectRatio, ImageSize } from '../../types';
+import { getConfiguredProviderColor, hexToRgba } from '../../utils/modelBadge';
 import { keyManager } from '../auth/keyManager';
 import { adminModelService } from './adminModelService';
 import { isAdminQualityEnabled } from './adminModelQuality';
@@ -746,15 +748,19 @@ export function getAvailableSizes(
     modelId: string
 ): ImageSize[] {
     const caps = getModelCapabilities(modelId);
-    const baseModelId = modelId.split('@')[0];
-    const adminModels = adminModelService.getRouteCandidates(baseModelId);
+    const routeContext = adminModelService.getRouteSelectionContext(modelId);
+    const adminModels = routeContext.useMixedRouting
+        ? routeContext.mixedModels
+        : routeContext.exactModel
+            ? [routeContext.exactModel]
+            : routeContext.matchedModels.length > 0
+                ? [routeContext.matchedModels[0]]
+                : [];
 
     if (adminModels.length > 0) {
-        const mixedModels = adminModels.filter((model) => model.mixWithSameModel);
-        const sourceModels = mixedModels.length > 1 ? mixedModels : [adminModels[0]];
         const enabledSizes = new Set<ImageSize>();
 
-        sourceModels.forEach((model) => {
+        adminModels.forEach((model) => {
             if (isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, '0.5K')) {
                 enabledSizes.add(ImageSize.SIZE_05K);
             }
@@ -858,6 +864,18 @@ export function getModelDisplayName(modelId: string, customLabel?: string, provi
     // 🏷️ 优先使用管理员配置的自定义名称（如果提供）
     if (customLabel) return customLabel;
 
+    if (lowerModelId.includes('@')) {
+        const exactGlobalModel = keyManager.getGlobalModelList().find((model) => model.id === modelId);
+        if (exactGlobalModel?.name && exactGlobalModel.name.trim()) {
+            return exactGlobalModel.name.trim();
+        }
+
+        const exactAdminModel = adminModelService.getModel(modelId);
+        if (exactAdminModel?.displayName && exactAdminModel.displayName.trim()) {
+            return exactAdminModel.displayName.trim();
+        }
+    }
+
     // 🍌 Nano Banana 系列模型 - 默认显示名称（仅当没有自定义label时使用）
     if (baseId.includes('gemini-3.1-flash-image') || baseId.includes('nano-banana-2')) return 'Nano Banana 2';
     if (baseId.includes('gemini-3-pro-image') || baseId.includes('nano-banana-pro')) return 'Nano Banana Pro';
@@ -915,7 +933,6 @@ export function getModelThemeColor(modelId: string): string {
     if (lowerId.includes('veo-3')) return 'text-fuchsia-400 border-fuchsia-400';
     if (lowerId.includes('veo')) return 'text-violet-400 border-violet-400';
 
-    // 2. 未知模型的确定性颜色生成
     const palette = [
         'text-red-400 border-red-400',
         'text-orange-400 border-orange-400',
@@ -933,16 +950,18 @@ export function getModelThemeColor(modelId: string): string {
         'text-purple-400 border-purple-400',
         'text-fuchsia-400 border-fuchsia-400',
         'text-pink-400 border-pink-400',
-        'text-rose-400 border-rose-400'
+        'text-rose-400 border-rose-400',
     ];
 
     let hash = 0;
-    for (let i = 0; i < modelId.length; i++) {
-        hash = modelId.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < lowerId.length; i += 1) {
+        hash = lowerId.charCodeAt(i) + ((hash << 5) - hash);
     }
 
-    const index = Math.abs(hash) % palette.length;
-    return palette[index];
+    return palette[Math.abs(hash) % palette.length];
+
+    // 2. 未配置主题色的模型保持中性，不再使用随机色
+    return 'text-slate-300 border-white/15';
 }
 
 /**
@@ -975,11 +994,22 @@ export function getModelDisplayInfo(model: { id: string, name?: string, label?: 
     sourceType: 'official' | 'proxy' | 'custom';
     badgeText: string;
     badgeColor: string;
+    badgeStyle?: CSSProperties;
+    nameStyle?: CSSProperties;
 } {
     const { id, name, label, provider, custom } = model;
 
     // Parse ID for suffix
     const [baseId, suffix] = id.split('@');
+    const normalizedSuffix = String(suffix || '').trim().toLowerCase();
+    const isSystemRoute = normalizedSuffix === 'system' || normalizedSuffix.startsWith('system_');
+    const decodedSuffix = (() => {
+        try {
+            return decodeURIComponent(String(suffix || ''));
+        } catch {
+            return String(suffix || '');
+        }
+    })();
 
     // 1. 确定来源类型
     let sourceType: 'official' | 'proxy' | 'custom' = 'custom';
@@ -1008,13 +1038,28 @@ export function getModelDisplayInfo(model: { id: string, name?: string, label?: 
     // 获取统一的主题色
     const themeColor = getModelThemeColor(baseId); // Use base ID for color lookup
     let badgeColor = themeColor; // 默认使用主题色
+    let badgeStyle: CSSProperties | undefined;
+    let nameStyle: CSSProperties | undefined;
+
+    const configuredProviderColor = getConfiguredProviderColor(provider || decodedSuffix);
+    if (configuredProviderColor) {
+        badgeStyle = {
+            color: configuredProviderColor,
+            backgroundColor: hexToRgba(configuredProviderColor, 0.16),
+            borderColor: hexToRgba(configuredProviderColor, 0.32),
+        };
+    }
 
     if (sourceType === 'official') {
         badgeText = '官方';
     } else if (sourceType === 'proxy') {
         // 使用 suffix 作为徽章文本 (e.g. MyProxy)
         // 如果没有 suffix (自动探测情况)，显示 '代理'
-        badgeText = suffix || '代理';
+        badgeText = isSystemRoute
+            ? (normalizedSuffix === 'system'
+                ? '混合'
+                : (provider && provider !== 'SystemProxy' ? provider : decodedSuffix.replace(/^system_/i, '')))
+            : (decodedSuffix || '代理');
         // 代理模型也使用模型本身的主题色
     }
 
@@ -1051,7 +1096,7 @@ export function getModelDisplayInfo(model: { id: string, name?: string, label?: 
         }
     }
 
-    return { displayName, sourceType, badgeText, badgeColor };
+    return { displayName, sourceType, badgeText, badgeColor, badgeStyle, nameStyle };
 }
 
 /**

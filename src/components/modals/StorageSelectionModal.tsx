@@ -43,10 +43,17 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
     }
   };
 
-  const chooseBrowser = () => {
+  const chooseBrowser = async () => {
     setError('');
     setSelectedMode('browser');
-    disconnectLocalFolder();
+    try {
+      await disconnectLocalFolder();
+    } catch (error) {
+      console.error('[StorageSelectionModal] Failed to disconnect local folder:', error);
+      setError('Failed to switch to browser storage. Please try again.');
+      return;
+      setError('切换到浏览器存储失败，请稍后重试。');
+    }
   };
 
   const handleConfirm = async () => {
@@ -97,7 +104,7 @@ const StorageSelectionModal: React.FC<StorageSelectionModalProps> = ({ isOpen, o
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <button
-            onClick={chooseBrowser}
+            onClick={() => void chooseBrowser()}
             className={`rounded-2xl border p-4 text-left transition ${
               selectedMode === 'browser' ? 'border-indigo-500 bg-indigo-500/10 shadow-lg shadow-indigo-500/10' : 'border-[var(--border-light)]'
             }`}

@@ -10,6 +10,15 @@ import {
   type CostEntry,
 } from '../services/billing/costService';
 import { adminModelService, type AdminModelConfig } from '../services/model/adminModelService';
+import {
+  SETTINGS_ELEVATED_STYLE,
+  SettingsActionButton,
+  SettingsBadge,
+  SettingsHero,
+  SettingsMetricCard,
+  SettingsSection,
+  SettingsViewShell,
+} from '../components/settings/SettingsScaffold';
 
 interface CostEstimationProps {
   onBack?: () => void;
@@ -25,6 +34,43 @@ const formatDateTime = (value: number) =>
     hour: '2-digit',
     minute: '2-digit',
   });
+
+const tableWrapperStyle = {
+  borderColor: 'var(--border-light)',
+  backgroundColor: 'var(--bg-elevated)',
+} as const;
+
+const tableHeaderCellClassName =
+  'px-4 py-2.5 text-left text-[11px] font-semibold tracking-[0.06em] text-[var(--text-tertiary)] whitespace-nowrap';
+
+const tableCellClassName = 'px-4 py-3.5 align-top text-sm';
+
+const EmptyState: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div
+    className="rounded-2xl border border-dashed px-4 py-8 text-center text-sm leading-6"
+    style={{
+      borderColor: 'var(--border-light)',
+      backgroundColor: 'var(--bg-elevated)',
+      color: 'var(--text-tertiary)',
+    }}
+  >
+    {children}
+  </div>
+);
+
+const InfoPanel: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <section className="rounded-2xl border p-4" style={SETTINGS_ELEVATED_STYLE}>
+    <div className="flex items-start gap-3">
+      <Info className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--state-info-text)' }} />
+      <div className="text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
+        <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+          {title}
+        </div>
+        <div className="mt-1">{children}</div>
+      </div>
+    </div>
+  </section>
+);
 
 export const CostEstimation: React.FC<CostEstimationProps> = ({ onBack, embedded = false }) => {
   const [activeTab, setActiveTab] = useState<'records' | 'credits'>('records');
@@ -47,9 +93,7 @@ export const CostEstimation: React.FC<CostEstimationProps> = ({ onBack, embedded
     };
 
     const updateAdminModels = () => {
-      const models = adminModelService
-        .getModels()
-        .filter((item) => item.creditCost !== undefined && item.creditCost > 0);
+      const models = adminModelService.getModels().filter((item) => item.creditCost !== undefined && item.creditCost > 0);
       setAdminModels(models);
     };
 
@@ -84,273 +128,278 @@ export const CostEstimation: React.FC<CostEstimationProps> = ({ onBack, embedded
     };
   }, [summaryRows]);
 
-  const content = (
-    <div className="space-y-6">
-      <div className={embedded ? 'apple-glass-card rounded-[28px] p-5 md:p-6' : 'apple-glass-card rounded-[30px] p-5 md:p-6'}>
-        <div className="flex flex-col items-start gap-5 md:flex-row md:items-start md:justify-between">
-          <div className="flex items-start gap-4">
-            {!embedded && onBack ? (
-              <button onClick={onBack} className="apple-icon-button mt-0.5">
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-            ) : null}
-            <div>
-              <div className="apple-badge info mb-3">成本与积分面板</div>
-              <h1 className={`${embedded ? 'text-2xl' : 'text-[28px]'} font-semibold tracking-tight text-[var(--text-primary)]`}>
-                价格估算
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                分别查看模型累计消耗、单次消耗记录，以及积分模型的当前可用情况。
-              </p>
-            </div>
-          </div>
+  const heroMetrics =
+    activeTab === 'records' ? (
+      <>
+        <SettingsMetricCard
+          label="累计成本"
+          value={formatUsd(recordsOverview.totalCost)}
+          helper="基于近 30 天成本记录汇总，帮助判断主要消耗方向。"
+          icon={DollarSign}
+          tone="amber"
+        />
+        <SettingsMetricCard
+          label="累计调用"
+          value={recordsOverview.totalCount.toLocaleString('zh-CN')}
+          helper="统计所有成功写入的费用记录。"
+          icon={RefreshCw}
+          tone="indigo"
+        />
+        <SettingsMetricCard
+          label="累计 Tokens"
+          value={recordsOverview.totalTokens.toLocaleString('zh-CN')}
+          helper="用于识别高消耗模型和长期使用趋势。"
+          icon={Calculator}
+          tone="sky"
+        />
+        <SettingsMetricCard
+          label="最近一条"
+          value={recentRows.length > 0 ? formatDateTime(recentRows[0].timestamp) : '暂无'}
+          helper="展示最近一次费用记录的时间。"
+          icon={Info}
+          tone="neutral"
+        />
+      </>
+    ) : (
+      <>
+        <SettingsMetricCard
+          label="当前积分"
+          value={userBalance !== null ? userBalance.toString() : '--'}
+          helper="当前账号还可直接使用的积分余额。"
+          icon={Calculator}
+          tone="emerald"
+        />
+        <SettingsMetricCard
+          label="积分模型"
+          value={adminModels.length.toString()}
+          helper="由后台统一配置，前台可直接调用。"
+          icon={DollarSign}
+          tone="indigo"
+        />
+        <SettingsMetricCard
+          label="计费方式"
+          value="按模型扣减"
+          helper="调用积分模型时会直接扣除对应积分。"
+          icon={RefreshCw}
+          tone="sky"
+        />
+        <SettingsMetricCard
+          label="补充方式"
+          value="联系管理员"
+          helper="当积分不足时，可通过后台完成充值或补量。"
+          icon={Info}
+          tone="neutral"
+        />
+      </>
+    );
 
-          <div className="apple-pill-group self-start">
-            <button
-              onClick={() => setActiveTab('records')}
-              className={`apple-pill-button ${activeTab === 'records' ? 'active' : ''}`}
-            >
-              <DollarSign className="h-4 w-4" />
-              费用记录
-            </button>
-            <button
-              onClick={() => setActiveTab('credits')}
-              className={`apple-pill-button ${activeTab === 'credits' ? 'active' : ''}`}
-            >
-              <Calculator className="h-4 w-4" />
-              积分系统
-            </button>
-          </div>
-        </div>
-      </div>
+  const content = (
+    <SettingsViewShell>
+      <SettingsHero
+        tone={activeTab === 'records' ? 'indigo' : 'emerald'}
+        icon={activeTab === 'records' ? DollarSign : Calculator}
+        eyebrow="COST CENTER"
+        title="价格估算"
+        description={
+          activeTab === 'records'
+            ? '把累计成本、最近记录和模型来源整理到一个视图里，方便快速定位费用变化。'
+            : '积分模式保留最关键的信息：余额、可用模型和补充方式，减少不必要的后台干扰。'
+        }
+        badge={<SettingsBadge tone={activeTab === 'records' ? 'amber' : 'emerald'}>{activeTab === 'records' ? '费用记录' : '积分系统'}</SettingsBadge>}
+        actions={
+          <>
+            {!embedded && onBack ? (
+              <SettingsActionButton icon={ArrowLeft} onClick={onBack}>
+                返回
+              </SettingsActionButton>
+            ) : null}
+            <SettingsActionButton icon={RefreshCw} onClick={() => setRefreshTick((value) => value + 1)}>
+              刷新
+            </SettingsActionButton>
+            <div className="apple-pill-group">
+              <button
+                onClick={() => setActiveTab('records')}
+                className={`apple-pill-button ${activeTab === 'records' ? 'active' : ''}`}
+              >
+                <DollarSign className="h-4 w-4" />
+                费用记录
+              </button>
+              <button
+                onClick={() => setActiveTab('credits')}
+                className={`apple-pill-button ${activeTab === 'credits' ? 'active' : ''}`}
+              >
+                <Calculator className="h-4 w-4" />
+                积分系统
+              </button>
+            </div>
+          </>
+        }
+        metrics={heroMetrics}
+      />
 
       {activeTab === 'records' ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="apple-soft-card rounded-[24px] p-5">
-              <div className="text-xs text-[var(--text-tertiary)]">模型累计总消耗</div>
-              <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                {formatUsd(recordsOverview.totalCost)}
+        <>
+          <SettingsSection
+            eyebrow="MODEL SUMMARY"
+            title="按模型汇总"
+            description="查看每个模型在近 30 天内的调用次数、Token 消耗和费用表现。"
+            action={<SettingsBadge tone="neutral">近 30 天</SettingsBadge>}
+          >
+            {summaryRows.length > 0 ? (
+              <div className="overflow-hidden rounded-2xl border" style={tableWrapperStyle}>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border-collapse">
+                    <thead style={{ backgroundColor: 'var(--bg-overlay)' }}>
+                      <tr>
+                        <th className={tableHeaderCellClassName}>模型</th>
+                        <th className={tableHeaderCellClassName}>来源</th>
+                        <th className={`${tableHeaderCellClassName} text-right`}>累计调用</th>
+                        <th className={`${tableHeaderCellClassName} text-right`}>累计 Tokens</th>
+                        <th className={`${tableHeaderCellClassName} text-right`}>累计费用</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summaryRows.map((item, index) => {
+                        const parsed = parseModelSource(item.model);
+                        return (
+                          <tr key={`${item.model}_${item.imageSize}_${index}`} className="border-t" style={{ borderColor: 'var(--border-light)' }}>
+                            <td className={tableCellClassName}>
+                              <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                                {parsed.modelId}
+                              </div>
+                              <div className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                                {item.imageSize}
+                              </div>
+                            </td>
+                            <td className={tableCellClassName}>
+                              <SettingsBadge tone="neutral">{parsed.source}</SettingsBadge>
+                            </td>
+                            <td className={`${tableCellClassName} text-right`} style={{ color: 'var(--text-secondary)' }}>
+                              {item.count.toLocaleString('zh-CN')}
+                            </td>
+                            <td className={`${tableCellClassName} text-right`} style={{ color: 'var(--text-secondary)' }}>
+                              {item.tokens.toLocaleString('zh-CN')}
+                            </td>
+                            <td className={`${tableCellClassName} text-right font-semibold`} style={{ color: 'var(--state-success-text)' }}>
+                              {formatUsd(item.cost)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="mt-1 text-xs text-[var(--text-tertiary)]">按模型累计，持续计入总成本</div>
-            </div>
+            ) : (
+              <EmptyState>暂无累计费用记录，完成生成后这里会逐步汇总每个模型的成本。</EmptyState>
+            )}
+          </SettingsSection>
 
-            <div className="apple-soft-card rounded-[24px] p-5">
-              <div className="text-xs text-[var(--text-tertiary)]">累计调用次数</div>
-              <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                {recordsOverview.totalCount}
+          <SettingsSection
+            eyebrow="RECENT ENTRIES"
+            title="最近记录"
+            description="保留最近 50 条单次费用记录，方便快速回看和排查。"
+          >
+            {recentRows.length > 0 ? (
+              <div className="overflow-hidden rounded-2xl border" style={tableWrapperStyle}>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border-collapse">
+                    <thead style={{ backgroundColor: 'var(--bg-overlay)' }}>
+                      <tr>
+                        <th className={tableHeaderCellClassName}>时间</th>
+                        <th className={tableHeaderCellClassName}>模型</th>
+                        <th className={`${tableHeaderCellClassName} text-right`}>本次调用</th>
+                        <th className={`${tableHeaderCellClassName} text-right`}>本次 Tokens</th>
+                        <th className={`${tableHeaderCellClassName} text-right`}>本次费用</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentRows.map((entry) => {
+                        const parsed = parseModelSource(entry.model);
+                        return (
+                          <tr key={entry.id} className="border-t" style={{ borderColor: 'var(--border-light)' }}>
+                            <td className={tableCellClassName} style={{ color: 'var(--text-secondary)' }}>
+                              {formatDateTime(entry.timestamp)}
+                            </td>
+                            <td className={tableCellClassName}>
+                              <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                                {parsed.modelId}
+                              </div>
+                              <div className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                                {parsed.source}
+                              </div>
+                            </td>
+                            <td className={`${tableCellClassName} text-right`} style={{ color: 'var(--text-secondary)' }}>
+                              {entry.count.toLocaleString('zh-CN')}
+                            </td>
+                            <td className={`${tableCellClassName} text-right`} style={{ color: 'var(--text-secondary)' }}>
+                              {(entry.tokens || 0).toLocaleString('zh-CN')}
+                            </td>
+                            <td className={`${tableCellClassName} text-right font-semibold`} style={{ color: 'var(--state-success-text)' }}>
+                              {formatUsd(entry.costUsd)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="mt-1 text-xs text-[var(--text-tertiary)]">统计所有成功记录</div>
-            </div>
+            ) : (
+              <EmptyState>暂无单次费用记录。</EmptyState>
+            )}
+          </SettingsSection>
 
-            <div className="apple-soft-card rounded-[24px] p-5">
-              <div className="text-xs text-[var(--text-tertiary)]">累计 Tokens</div>
-              <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                {recordsOverview.totalTokens.toLocaleString('zh-CN')}
-              </div>
-              <div className="mt-1 text-xs text-[var(--text-tertiary)]">来自费用记录汇总</div>
-            </div>
-          </div>
-
-          <div className="apple-table-card">
-            <div className="flex flex-col items-start gap-3 border-b border-[rgba(148,163,184,0.14)] px-6 py-5 md:flex-row md:items-start md:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--text-primary)]">该模型总消耗</h3>
-                <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-                  每个模型的累计费用会持续累加，便于长期核算成本。
-                </p>
-              </div>
-              <button
-                onClick={() => setRefreshTick((value) => value + 1)}
-                className="apple-button-secondary self-start px-3 text-xs"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                刷新
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="apple-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">模型</th>
-                    <th className="text-left">来源</th>
-                    <th className="text-right">累计次数</th>
-                    <th className="text-right">累计 Tokens</th>
-                    <th className="text-right">累计费用</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summaryRows.length > 0 ? (
-                    summaryRows.map((item, index) => {
-                      const parsed = parseModelSource(item.model);
-                      return (
-                        <tr key={`${item.model}_${item.imageSize}_${index}`}>
-                          <td>
-                            <div className="text-sm font-medium text-[var(--text-primary)]">{parsed.modelId}</div>
-                            <div className="mt-1 text-xs text-[var(--text-tertiary)]">{item.imageSize}</div>
-                          </td>
-                          <td className="text-sm text-[var(--text-secondary)]">{parsed.source}</td>
-                          <td className="text-right text-sm text-[var(--text-secondary)]">{item.count}</td>
-                          <td className="text-right text-sm text-[var(--text-secondary)]">
-                            {item.tokens.toLocaleString('zh-CN')}
-                          </td>
-                          <td className="text-right text-sm font-semibold text-emerald-600">{formatUsd(item.cost)}</td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-sm text-[var(--text-tertiary)]">
-                        暂无累计费用记录，生成成功后这里会逐步汇总每个模型的总消耗。
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="apple-table-card">
-            <div className="border-b border-[rgba(148,163,184,0.14)] px-6 py-5">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)]">单次消耗记录</h3>
-              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-                每一次调用都会单独记录，方便回查某次生成的实际消耗。
-              </p>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="apple-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">时间</th>
-                    <th className="text-left">模型</th>
-                    <th className="text-right">本次数量</th>
-                    <th className="text-right">本次 Tokens</th>
-                    <th className="text-right">本次费用</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentRows.length > 0 ? (
-                    recentRows.map((entry) => {
-                      const parsed = parseModelSource(entry.model);
-                      return (
-                        <tr key={entry.id}>
-                          <td className="text-sm text-[var(--text-secondary)]">{formatDateTime(entry.timestamp)}</td>
-                          <td>
-                            <div className="text-sm font-medium text-[var(--text-primary)]">{parsed.modelId}</div>
-                            <div className="mt-1 text-xs text-[var(--text-tertiary)]">{parsed.source}</div>
-                          </td>
-                          <td className="text-right text-sm text-[var(--text-secondary)]">{entry.count}</td>
-                          <td className="text-right text-sm text-[var(--text-secondary)]">
-                            {(entry.tokens || 0).toLocaleString('zh-CN')}
-                          </td>
-                          <td className="text-right text-sm font-semibold text-emerald-600">
-                            {formatUsd(entry.costUsd)}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-sm text-[var(--text-tertiary)]">
-                        暂无单次消耗记录。
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="apple-note-card flex items-start gap-3 rounded-[24px] p-5">
-            <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-sky-600" />
-            <div className="text-sm text-[var(--text-secondary)]">
-              <p className="mb-1 font-medium text-sky-700">费用记录说明</p>
-              <p>
-                上面的“该模型总消耗”会累计计入模型总成本；下面的“单次消耗记录”只记录某一次调用本身的消耗，
-                两者分开用于长期统计和单次排查。
-              </p>
-            </div>
-          </div>
-        </div>
+          <InfoPanel title="费用说明">
+            “按模型汇总”会持续累计模型总成本；“最近记录”只展示单次调用本身的消耗，两者分别用于长期观察和短期排查。
+          </InfoPanel>
+        </>
       ) : (
-        <div className="space-y-6">
-          <div className="apple-glass-card rounded-[28px] p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <Calculator className="h-6 w-6 text-indigo-600" />
-              <h3 className="text-lg font-semibold text-[var(--text-primary)]">积分系统</h3>
-            </div>
-            <p className="mb-4 text-sm leading-6 text-[var(--text-secondary)]">
-              积分模型由管理员统一配置，用户调用时会直接扣减积分，无需单独填写对应模型的 API Key。
-            </p>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="apple-soft-card rounded-[22px] p-4">
-                <p className="text-2xl font-semibold text-[var(--text-primary)]">
-                  {userBalance !== null ? userBalance.toString() : '--'}
-                </p>
-                <p className="mt-1 text-sm text-[var(--text-tertiary)]">当前可用积分</p>
-              </div>
-              <div className="apple-soft-card rounded-[22px] p-4">
-                <p className="text-2xl font-semibold text-[var(--text-primary)]">{adminModels.length}</p>
-                <p className="mt-1 text-sm text-[var(--text-tertiary)]">可用积分模型</p>
-              </div>
-              <div className="apple-soft-card rounded-[22px] p-4">
-                <p className="text-2xl font-semibold text-[var(--text-primary)]">联系管理员</p>
-                <p className="mt-1 text-sm text-[var(--text-tertiary)]">充值与补充方式</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="apple-table-card">
-            <div className="border-b border-[rgba(148,163,184,0.14)] px-6 py-5">
-              <h4 className="text-lg font-medium text-[var(--text-primary)]">积分模型列表</h4>
-            </div>
-            <div className="p-6">
-              <div className="space-y-3">
-                {adminModels.length > 0 ? (
-                  adminModels.map((model) => (
-                    <div key={model.id} className="apple-soft-card flex items-center justify-between rounded-[22px] p-4">
-                      <div>
-                        <p className="font-medium text-[var(--text-primary)]">{model.displayName}</p>
-                        <p className="text-sm text-[var(--text-tertiary)]">{model.id}@system</p>
+        <>
+          <SettingsSection
+            eyebrow="CREDIT MODELS"
+            title="积分模型列表"
+            description="积分模型由后台统一维护，用户在前台可直接使用，不需要单独配置 API Key。"
+            action={<SettingsBadge tone="neutral">{adminModels.length} 个模型</SettingsBadge>}
+          >
+            {adminModels.length > 0 ? (
+              <div className="grid gap-3">
+                {adminModels.map((model) => (
+                  <div key={model.id} className="rounded-2xl border p-4" style={SETTINGS_ELEVATED_STYLE}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {model.displayName}
+                        </div>
+                        <div className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                          {model.id}@system
+                        </div>
                       </div>
-                      <span className="apple-badge warn">{model.creditCost} 积分 / 次</span>
+                      <SettingsBadge tone="amber">{model.creditCost} 积分 / 次</SettingsBadge>
                     </div>
-                  ))
-                ) : (
-                  <p className="py-4 text-center text-sm text-[var(--text-tertiary)]">暂无积分模型，或正在加载中...</p>
-                )}
+                  </div>
+                ))}
               </div>
-            </div>
-          </div>
+            ) : (
+              <EmptyState>暂无积分模型，或仍在加载中。</EmptyState>
+            )}
+          </SettingsSection>
 
-          <div className="apple-note-card flex items-start gap-3 rounded-[24px] p-5">
-            <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-sky-600" />
-            <div className="text-sm text-[var(--text-secondary)]">
-              <p className="mb-1 font-medium text-sky-700">关于积分系统</p>
-              <p>
-                积分模型通过系统代理调用，用户无需再单独配置 API Key；调用时会自动扣减对应积分，积分不足时请先联系管理员充值。
-              </p>
-            </div>
-          </div>
-        </div>
+          <InfoPanel title="关于积分系统">
+            积分模型通过系统代理调用，用户无需维护对应的 API Key；当积分不足时，可以通过后台完成充值或补量。
+          </InfoPanel>
+        </>
       )}
-    </div>
+    </SettingsViewShell>
   );
 
   if (embedded) {
     return content;
   }
 
-  const contentBlocks = React.Children.toArray(content.props.children);
-
   return (
     <div className="apple-page-shell">
-      <header className="apple-topbar">
-        <div className="apple-shell py-4">{contentBlocks[0]}</div>
-      </header>
-      <main className="apple-shell py-6">{contentBlocks.slice(1)}</main>
+      <main className="apple-shell py-6">{content}</main>
     </div>
   );
 };

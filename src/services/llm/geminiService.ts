@@ -2,6 +2,7 @@ import { AspectRatio, ImageSize, ModelType, ReferenceImage, GenerationMode } fro
 import { keyManager, normalizeModelId } from '../auth/keyManager';
 import { getImageTokenEstimate, getModelPricing } from '../model/modelPricing';
 import { AuthMethod, buildApiUrl, buildHeaders, GOOGLE_API_BASE } from '../api/apiConfig';
+import { classifyApiFailure } from '../api/errorClassification';
 import { ProxyModelConfig } from '../model/proxyModelConfig';
 import { logError } from '../system/systemLogService';
 import { getImage } from '../storage/imageStorage';
@@ -88,6 +89,12 @@ function normalizeError(error: any): Error {
   const rawMessage = error?.message || error?.toString?.() || '未知错误';
   const msg = rawMessage.toLowerCase();
   const status = error?.status || error?.code;
+  const failure = classifyApiFailure({
+    error,
+    status,
+    responseText: error?.responseBody,
+    fallbackMessage: rawMessage,
+  });
   
   const withMeta = (normalized: Error): Error => {
     const out: any = normalized;
@@ -103,7 +110,7 @@ function normalizeError(error: any): Error {
   if (msg.includes('cancelled')) return withMeta(new Error("任务已取消"));
 
   // 🚀 [Critical Fix] API 鉴权错误检测 - 优先检查状态码
-  if (status === 401 || msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid authentication') || msg.includes('invalid token')) {
+  if (failure.kind === 'auth') {
     return withMeta(new Error("API 令牌无效 (401)：检测到鉴权错误，请在'设置 - API管理'中检查密钥或令牌是否正确、是否过期，以及当前请求是否走到了您选中的供应商"));
   }
   

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info, Copy, Check } from 'lucide-react';
 import { notificationService, Notification, NotificationType } from '../../services/system/notificationService';
+import { writeTextToClipboard } from '../../utils/clipboard';
 
 const NotificationToast: React.FC = () => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -20,9 +21,14 @@ const NotificationToast: React.FC = () => {
 
     const handleCopyDetails = async (notification: Notification) => {
         const text = `[${notification.type.toUpperCase()}] ${notification.title}\n${notification.message}${notification.details ? '\n\nDetails: ' + notification.details : ''}`;
-        await navigator.clipboard.writeText(text);
-        setCopiedId(notification.id);
-        setTimeout(() => setCopiedId(null), 2000);
+        try {
+            await writeTextToClipboard(text);
+            setCopiedId(notification.id);
+            setTimeout(() => setCopiedId(null), 2000);
+        } catch (error) {
+            console.error('[NotificationToast] Copy failed:', error);
+            notificationService.warning('复制失败', '当前环境无法复制通知详情。');
+        }
     };
 
     const getIcon = (type: NotificationType) => {

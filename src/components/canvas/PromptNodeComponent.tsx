@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { PromptNode, AspectRatio, GenerationMode } from '../../types';
-import { Sparkles, Loader2, Video, Image, Pin, Music, Copy, Check, Languages, Info, ChevronRight } from 'lucide-react';
+import { Sparkles, Loader2, Video, Image, Pin, Music, Copy, Check, Languages, Info, ChevronRight, Shield, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { getCardDimensions } from '../../utils/styleUtils';
 import { generateTagColor } from '../../utils/colorUtils';
 import { getModelDisplayName } from '../../services/model/modelCapabilities';
+import { notify } from '../../services/system/notificationService';
 import { getModelBadgeInfo, getProviderBadgeColor, getProviderBadgeStyle } from '../../utils/modelBadge';
+import { writeTextToClipboard } from '../../utils/clipboard';
 import { getLaunchTimelineByOffset, getPromptBarLaunchPoint } from '../../utils/cardLaunch';
 import ImagePreview from '../image/ImagePreview';
 
@@ -42,6 +44,7 @@ interface PromptNodeProps {
     onCancel?: (id: string) => void;
     onDelete?: (id: string) => void;
     onRetry?: (node: PromptNode) => void;
+    onEditPptDeck?: (node: PromptNode) => void;
     onExportPpt?: (node: PromptNode) => void;
     onExportPptx?: (node: PromptNode) => void;
     onRetryPptPage?: (node: PromptNode, pageIndex: number) => void;
@@ -253,6 +256,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     onCancel,
     onDelete,
     onRetry,
+    onEditPptDeck,
     onExportPpt,
     onExportPptx,
     onRetryPptPage,
@@ -591,7 +595,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     return (
         <div
             ref={containerRef}
-            className={`${isChatMode ? 'relative w-full max-w-[420px] mx-auto my-3' : 'absolute'} flex flex-col items-center group antialiased select-none ${node.isNew && !canvasTransform && !isChatMode ? 'is-new' : ''}`}
+            className={`${isChatMode ? 'relative w-full max-w-[460px] mx-auto my-3' : 'absolute'} flex flex-col items-center group antialiased select-none ${node.isNew && !canvasTransform && !isChatMode ? 'is-new' : ''}`}
             style={isChatMode ? {
                 zIndex: stackZIndex,
                 opacity: 1,
@@ -664,7 +668,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                 <span className="text-[13px] font-medium tracking-wide truncate text-red-500" title={node.error}>
                                     生成失败{(() => {
                                         // 🚀 [Fix] 只有 SystemProxy 或者明确带有 @system 后缀才是积分模型
-                                        const isCreditModel = node.provider === 'SystemProxy' || node.model?.toLowerCase().endsWith('@system') || node.model?.toLowerCase().endsWith('@systemproxy');
+                                        const lowerModelId = node.model?.toLowerCase() || '';
+                                        const isCreditModel = node.provider === 'SystemProxy' || lowerModelId.includes('@system') || lowerModelId.includes('@systemproxy');
                                         if (!isCreditModel) return '';
                                         if (node.refundStatus === 'success') return '，积分已退回';
                                         if (node.refundStatus === 'failed') return '，积分退回失败';
@@ -822,6 +827,21 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                 {node.promptOptimizerResult.params.aspect_ratio}
                                             </div>
                                         )}
+                                        {node.promptOptimizerResult?.meta?.template_title && (
+                                            <div className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 text-[9px] font-bold border border-emerald-500/20">
+                                                {node.promptOptimizerResult.meta.template_title}
+                                            </div>
+                                        )}
+                                        {node.promptOptimizerResult?.confidence && (
+                                            <div className="px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] text-[9px] font-bold border border-[var(--border-light)]">
+                                                {node.promptOptimizerResult.confidence}
+                                            </div>
+                                        )}
+                                        {node.promptOptimizerResult?.meta?.strategy && (
+                                            <div className="px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-300 text-[9px] font-bold border border-violet-500/20">
+                                                {node.promptOptimizerResult.meta.strategy}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -835,9 +855,15 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             const text = node.optimizedPromptEn || node.promptOptimizerResult?.optimized_prompt_en || '';
-                                            navigator.clipboard.writeText(text);
-                                            setCopyStatus('en');
-                                            setTimeout(() => setCopyStatus('idle'), 2000);
+                                            void writeTextToClipboard(text)
+                                                .then(() => {
+                                                    setCopyStatus('en');
+                                                    setTimeout(() => setCopyStatus('idle'), 2000);
+                                                })
+                                                .catch((error) => {
+                                                    console.error('[PromptNodeComponent] Copy English prompt failed:', error);
+                                                    notify.warning('复制失败', '当前环境无法复制英文提示词。');
+                                                });
                                         }}
                                         title="复制英文提示词"
                                     >
@@ -862,9 +888,15 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             const text = node.optimizedPromptZh || node.promptOptimizerResult?.optimized_prompt_zh_display || '';
-                                            navigator.clipboard.writeText(text);
-                                            setCopyStatus('zh');
-                                            setTimeout(() => setCopyStatus('idle'), 2000);
+                                            void writeTextToClipboard(text)
+                                                .then(() => {
+                                                    setCopyStatus('zh');
+                                                    setTimeout(() => setCopyStatus('idle'), 2000);
+                                                })
+                                                .catch((error) => {
+                                                    console.error('[PromptNodeComponent] Copy Chinese prompt failed:', error);
+                                                    notify.warning('复制失败', '当前环境无法复制中文提示词。');
+                                                });
                                         }}
                                         title="复制中文注释"
                                     >
@@ -873,11 +905,65 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                 </div>
 
                                 {/* Assumptions / Tips */}
-                                {node.promptOptimizerResult?.assumptions && (
+                                {(node.promptOptimizerResult?.assumptions || []).length > 0 && (
                                     <div className="mt-2 flex items-start gap-2 p-2 rounded-lg bg-blue-500/5 border border-blue-500/10">
                                         <Info size={12} className="text-blue-400 mt-0.5 shrink-0" />
-                                        <div className="text-[10px] text-blue-300/80 leading-normal">
-                                            {node.promptOptimizerResult.assumptions}
+                                        <div className="space-y-1 text-[10px] text-blue-300/80 leading-normal">
+                                            {(node.promptOptimizerResult?.assumptions || []).map((assumption, index) => (
+                                                <div key={`assumption-${index}`}>{assumption}</div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {(node.promptOptimizerResult?.negative_constraints || []).length > 0 && (
+                                    <div className="mt-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/15">
+                                        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-amber-300/90 mb-2">
+                                            <Shield size={12} />
+                                            <span>避免项</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {(node.promptOptimizerResult?.negative_constraints || []).map((constraint, index) => (
+                                                <span
+                                                    key={`constraint-${index}`}
+                                                    className="px-2 py-1 rounded-full text-[10px] border border-amber-500/20 bg-amber-500/10 text-amber-200/90"
+                                                >
+                                                    {constraint}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {(node.promptOptimizerResult?.validation_checks || []).length > 0 && (
+                                    <div className="mt-2 p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/15">
+                                        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-300/90 mb-2">
+                                            <CheckCircle2 size={12} />
+                                            <span>校验清单</span>
+                                        </div>
+                                        <div className="space-y-1 text-[10px] text-emerald-100/80 leading-normal">
+                                            {(node.promptOptimizerResult?.validation_checks || []).map((checkItem, index) => (
+                                                <div key={`validation-${index}`}>{checkItem}</div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {(node.promptOptimizerResult?.missing_inputs || []).length > 0 && (
+                                    <div className="mt-2 p-2 rounded-lg bg-red-500/5 border border-red-500/15">
+                                        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-red-300/90 mb-2">
+                                            <AlertTriangle size={12} />
+                                            <span>仍可补充</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {(node.promptOptimizerResult?.missing_inputs || []).map((item, index) => (
+                                                <span
+                                                    key={`missing-${index}`}
+                                                    className="px-2 py-1 rounded-full text-[10px] border border-red-500/20 bg-red-500/10 text-red-200/90"
+                                                >
+                                                    {item}
+                                                </span>
+                                            ))}
                                         </div>
                                     </div>
                                 )}
@@ -886,6 +972,19 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                             <div className="text-[15px] leading-7 text-[var(--text-primary)] font-normal selection:bg-blue-500/20 pr-2">
                                 {node.originalPrompt || node.prompt || (node.isDraft ? <span className="text-[var(--text-tertiary)] italic">输入提示词...</span> : '')}
                             </div>
+                        )}
+
+                        {onEditPptDeck && node.mode === GenerationMode.PPT && (node.childImageIds?.length || 0) > 0 && !node.isGenerating && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onEditPptDeck(node);
+                                }}
+                                className="px-2 py-1 rounded-md border text-[11px] leading-none bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+                                title="Edit layered PPT content"
+                            >
+                                Edit Deck
+                            </button>
                         )}
 
                         {onExportPpt && node.mode === GenerationMode.PPT && (node.childImageIds?.length || 0) > 0 && !node.isGenerating && (
@@ -1028,6 +1127,49 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                         const { width: w, totalHeight: h } = getCardDimensions(resolvedRatio, true);
                         const rows = Math.ceil(count / COLS);
                         const totalPlaceholderHeight = gapToPlaceholders + rows * (h + GAP);
+
+                        if (isChatMode) {
+                            return (
+                                <div className="mobile-generating-stack">
+                                    {Array.from({ length: count }).map((_, i) => (
+                                        <div
+                                            key={i}
+                                            className="mobile-generating-stack__card"
+                                            style={{
+                                                minHeight: h,
+                                                zIndex: count - i,
+                                                marginTop: i === 0 ? 0 : -Math.min(h * 0.72, 108),
+                                                transform: `translateX(${Math.min(i * 6, 18)}px) scale(${Math.max(0.92, 1 - i * 0.025)})`
+                                            }}
+                                        >
+                                            <div className="mobile-generating-stack__card-sheen" />
+                                            <div className="mobile-generating-stack__card-grid" />
+
+                                            <div className="absolute inset-x-0 top-4 flex items-center justify-between gap-3 px-4">
+                                                <span className="mobile-generating-stack__badge">生成中 {i + 1}/{count}</span>
+                                                <span className="mobile-generating-stack__hint">
+                                                    {node.aspectRatio || '1:1'} · {node.mode === GenerationMode.PPT ? 'PPT' : node.imageSize || '1K'}
+                                                </span>
+                                            </div>
+
+                                            <div className="absolute inset-x-0 bottom-4 flex items-center justify-between gap-3 px-4">
+                                                <span className="mobile-generating-stack__status">
+                                                    {i === 0 ? '正在为这组卡片生成结果' : '等待上一张完成后继续'}
+                                                </span>
+                                                {i === 0 ? (
+                                                    <GenerationTimer
+                                                        start={timerStartRef.current}
+                                                        onTimeout={() => onCancel && onCancel(node.id)}
+                                                    />
+                                                ) : (
+                                                    <span className="mobile-generating-stack__hint">AI Queue</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            );
+                        }
 
                         return (
                             <div
@@ -1212,9 +1354,16 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
                                                             const modelId = node.model || '';
                                                             const modelText = node.modelLabel || getModelDisplayName(modelId);
                                                             const providerText = node.providerLabel || node.provider || (modelId.includes('@') ? modelId.split('@')[1] : 'Google');
-                                                            const modelBadge = getModelBadgeInfo({ id: modelId, label: modelText, provider: providerText });
+                                                            const modelBadge = getModelBadgeInfo({
+                                                                id: modelId,
+                                                                label: modelText,
+                                                                provider: providerText,
+                                                                colorStart: node.modelColorStart,
+                                                                colorEnd: node.modelColorEnd,
+                                                                textColor: node.modelTextColor,
+                                                            });
 
-                                                            const isCreditModel = modelId.toLowerCase().endsWith('@system');
+                                                            const isCreditModel = modelId.toLowerCase().includes('@system');
 
                                                             return (
                                                                 <>

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Model Caller Service
  *
  * Unified service for calling models:
@@ -8,8 +8,16 @@
  */
 
 import { type ChatMessage } from '../api/AI12APIService';
-import { supplierService } from '../billing/supplierService';
+import {
+  buildGeminiHeaders,
+  buildGeminiEndpoint,
+  buildOpenAIEndpoint,
+  buildProxyHeaders,
+  type ApiProtocolFormat,
+} from '../api/apiConfig';
+import { resolveProviderRuntime } from '../api/providerStrategy';
 import { keyManager, type ThirdPartyProvider } from '../auth/keyManager';
+import { supplierService } from '../billing/supplierService';
 import { supabase } from '../../lib/supabase';
 import { callSecureSystemProxyChat } from './secureModelProxy';
 
@@ -33,6 +41,13 @@ export interface CallResult {
   };
 }
 
+type RoutedApiConfig = {
+  baseUrl: string;
+  apiKey: string;
+  provider?: string;
+  format?: ApiProtocolFormat;
+};
+
 class ModelCaller {
   private isModelMatch(modelId: string, candidate: string): boolean {
     const normalizedModelId = String(modelId || '').trim().toLowerCase();
@@ -42,12 +57,16 @@ class ModelCaller {
       return false;
     }
 
-    return normalizedCandidate === normalizedModelId
-      || normalizedCandidate.endsWith(`/${normalizedModelId}`)
-      || normalizedModelId.endsWith(`/${normalizedCandidate}`);
+    return (
+      normalizedCandidate === normalizedModelId ||
+      normalizedCandidate.endsWith(`/${normalizedModelId}`) ||
+      normalizedModelId.endsWith(`/${normalizedCandidate}`)
+    );
   }
 
-  private findConfiguredProviderForModel(modelId: string): Pick<ThirdPartyProvider, 'baseUrl' | 'apiKey'> | null {
+  private findConfiguredProviderForModel(
+    modelId: string,
+  ): RoutedApiConfig | null {
     const providers = keyManager
       .getProviders()
       .filter((provider) => provider.isActive && provider.baseUrl && provider.apiKey);
@@ -58,6 +77,8 @@ class ModelCaller {
         return {
           baseUrl: provider.baseUrl,
           apiKey: provider.apiKey,
+          provider: undefined,
+          format: provider.format,
         };
       }
     }
@@ -65,40 +86,37 @@ class ModelCaller {
     return null;
   }
 
-  /**
-   * Main entry point for calling any model.
-   */
   async call(options: CallModelOptions): Promise<CallResult> {
     const { modelId } = options;
 
-    // 1. Credit-based model: use secure system proxy.
     const creditCost = await this.getCreditCost(modelId);
     if (creditCost > 0) {
       return this.callCreditModel(options, creditCost);
     }
 
-    // 2. User supplier mapping.
     const supplier = this.findSupplierForModel(modelId);
     if (supplier) {
       return this.callViaSupplier(options, supplier);
     }
 
-    // 3. User key slot mapping.
     const slots = keyManager.getSlots();
     const userSlot = slots.find(
-      (s) => s.supportedModels?.includes(modelId) || s.supportedModels?.some((m) => modelId.includes(m))
+      (slot) =>
+        slot.supportedModels?.includes(modelId) ||
+        slot.supportedModels?.some((supportedModel) => modelId.includes(supportedModel)),
     );
     if (userSlot) {
-      return this.callWithUserKey(options, { key: userSlot.key, baseUrl: userSlot.baseUrl });
+      return this.callWithUserKey(options, {
+        key: userSlot.key,
+        baseUrl: userSlot.baseUrl,
+        provider: userSlot.provider,
+        format: userSlot.format,
+      });
     }
 
-    // 4. Fallback.
     return this.callWithSystemDefault(options);
   }
 
-  /**
-   * Call credit-based model through secure server-side proxy.
-   */
   private async callCreditModel(options: CallModelOptions, creditCost: number): Promise<CallResult> {
     const {
       data: { user },
@@ -129,7 +147,6 @@ class ModelCaller {
         stream: false,
       });
 
-      // Fallback only when server-side deduction is not available.
       if (!response.deducted) {
         await this.deductCredits(user.id, creditCost, options.modelId);
       }
@@ -144,65 +161,49 @@ class ModelCaller {
     }
   }
 
-  /**
-   * Call via user's configured supplier.
-   */
-  private async callViaSupplier(
-    options: CallModelOptions,
-    supplier: { baseUrl: string; apiKey: string }
-  ): Promise<CallResult> {
-    try {
-      const response = await fetch(`${supplier.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${supplier.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: options.modelId,
-          messages: options.messages,
-          max_tokens: options.maxTokens || 2048,
-          temperature: options.temperature ?? 0.7,
-          stream: false,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`API error: ${response.status} - ${error}`);
-      }
-
-      const data = await response.json();
-      return {
-        success: true,
-        content: data.choices?.[0]?.message?.content || '',
-        usage: {
-          promptTokens: data.usage?.prompt_tokens || 0,
-          completionTokens: data.usage?.completion_tokens || 0,
-          totalTokens: data.usage?.total_tokens || 0,
-        },
-      };
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
+  private async callViaSupplier(options: CallModelOptions, supplier: RoutedApiConfig): Promise<CallResult> {
+    return this.callWithProtocol(options, supplier);
   }
 
-  /**
-   * Call with user's own API key.
-   */
   private async callWithUserKey(
     options: CallModelOptions,
-    userKey: { key: string; baseUrl?: string }
+    userKey: { key: string; baseUrl?: string; format?: ApiProtocolFormat; provider?: string },
   ): Promise<CallResult> {
-    const baseUrl = userKey.baseUrl || 'https://cdn.12ai.org';
+    return this.callWithProtocol(options, {
+      apiKey: userKey.key,
+      baseUrl: userKey.baseUrl || 'https://cdn.12ai.org',
+      provider: userKey.provider,
+      format: userKey.format,
+    });
+  }
 
+  private async callWithProtocol(options: CallModelOptions, config: RoutedApiConfig): Promise<CallResult> {
+    const runtime = resolveProviderRuntime({
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      format: config.format,
+      modelId: options.modelId,
+    });
+    if (runtime.geminiNative) {
+      return this.callGeminiCompatible(options, config);
+    }
+
+    return this.callOpenAICompatible(options, config);
+  }
+
+  private async callOpenAICompatible(
+    options: CallModelOptions,
+    config: RoutedApiConfig,
+  ): Promise<CallResult> {
     try {
-      const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      const runtime = resolveProviderRuntime({
+        provider: config.provider,
+        baseUrl: config.baseUrl,
+        format: config.format,
+      });
+      const response = await fetch(buildOpenAIEndpoint(config.baseUrl, 'chat/completions'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${userKey.key}`,
-        },
+        headers: buildProxyHeaders(runtime.authMethod as 'header' | 'query', config.apiKey, runtime.headerName),
         body: JSON.stringify({
           model: options.modelId,
           messages: options.messages,
@@ -232,9 +233,99 @@ class ModelCaller {
     }
   }
 
-  /**
-   * Call with system default (12AI).
-   */
+  private buildGeminiPayload(options: CallModelOptions): Record<string, any> {
+    const systemInstruction = options.messages
+      .filter((message) => message.role === 'system')
+      .map((message) => String(message.content || '').trim())
+      .filter(Boolean)
+      .join('\n\n');
+
+    const contents = options.messages
+      .filter((message) => message.role !== 'system')
+      .map((message) => ({
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: String(message.content || '') }],
+      }));
+
+    if (contents.length === 0) {
+      contents.push({
+        role: 'user',
+        parts: [{ text: systemInstruction || 'Hello' }],
+      });
+    }
+
+    const payload: Record<string, any> = {
+      contents,
+      generationConfig: {
+        maxOutputTokens: options.maxTokens || 2048,
+        temperature: options.temperature ?? 0.7,
+      },
+    };
+
+    if (systemInstruction) {
+      payload.systemInstruction = {
+        parts: [{ text: systemInstruction }],
+      };
+    }
+
+    return payload;
+  }
+
+  private async callGeminiCompatible(
+    options: CallModelOptions,
+    config: RoutedApiConfig,
+  ): Promise<CallResult> {
+    try {
+      const runtime = resolveProviderRuntime({
+        provider: config.provider,
+        baseUrl: config.baseUrl,
+        format: 'gemini',
+        modelId: options.modelId,
+      });
+      const authMethod = runtime.authMethod as 'query' | 'header';
+      const response = await fetch(
+        buildGeminiEndpoint(config.baseUrl, options.modelId, 'generateContent', config.apiKey, authMethod, config.provider),
+        {
+          method: 'POST',
+          headers: buildGeminiHeaders(authMethod, config.apiKey, runtime.headerName),
+          body: JSON.stringify(this.buildGeminiPayload(options)),
+        },
+      );
+
+      if (!response.ok) {
+        const rawError = await response.text();
+        let message = rawError;
+
+        try {
+          const parsed = JSON.parse(rawError || '{}');
+          message = parsed.error?.message || parsed.message || rawError;
+        } catch {
+          message = rawError;
+        }
+
+        throw new Error(`API error: ${response.status} - ${message}`);
+      }
+
+      const data = await response.json();
+      const content = (data.candidates?.[0]?.content?.parts || [])
+        .map((part: any) => part?.text || '')
+        .filter(Boolean)
+        .join('\n');
+
+      return {
+        success: true,
+        content,
+        usage: {
+          promptTokens: data.usageMetadata?.promptTokenCount || 0,
+          completionTokens: data.usageMetadata?.candidatesTokenCount || 0,
+          totalTokens: data.usageMetadata?.totalTokenCount || 0,
+        },
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
   private async callWithSystemDefault(options: CallModelOptions): Promise<CallResult> {
     const hasMessages = Array.isArray(options.messages) && options.messages.length > 0;
     if (!hasMessages) {
@@ -244,16 +335,12 @@ class ModelCaller {
       };
     }
 
-    // Preserve previous behavior:
     return {
       success: false,
       error: '请先配置 API Key 或选择供应商。',
     };
   }
 
-  /**
-   * Get credit cost for a model from admin config.
-   */
   private async getCreditCost(modelId: string): Promise<number> {
     const { data, error } = await supabase.rpc('get_model_credit_cost', {
       model_id: modelId,
@@ -267,13 +354,20 @@ class ModelCaller {
     return data || 0;
   }
 
-  /**
-   * Find supplier that provides this model.
-   */
-  private findSupplierForModel(modelId: string): { baseUrl: string; apiKey: string } | null {
+  private findSupplierForModel(modelId: string): {
+    baseUrl: string;
+    apiKey: string;
+    provider?: string;
+    format: ApiProtocolFormat;
+  } | null {
     const configuredProvider = this.findConfiguredProviderForModel(modelId);
     if (configuredProvider) {
-      return configuredProvider;
+        return {
+          baseUrl: configuredProvider.baseUrl,
+          apiKey: configuredProvider.apiKey,
+          provider: undefined,
+          format: configuredProvider.format || 'auto',
+        };
     }
 
     const suppliers = supplierService.getAll();
@@ -284,6 +378,8 @@ class ModelCaller {
         return {
           baseUrl: supplier.baseUrl,
           apiKey: supplier.apiKey,
+          provider: undefined,
+          format: supplier.format || 'auto',
         };
       }
     }
@@ -291,9 +387,6 @@ class ModelCaller {
     return null;
   }
 
-  /**
-   * Deduct credits from user.
-   */
   private async deductCredits(userId: string, credits: number, modelId: string): Promise<void> {
     const { error } = await supabase.rpc('deduct_user_credits', {
       user_id: userId,

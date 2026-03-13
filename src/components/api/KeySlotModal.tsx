@@ -127,7 +127,7 @@ export const KeySlotModal: React.FC<KeySlotModalProps> = ({
       >
         <div className={`flex items-center justify-between border-b ${isMobile ? 'px-4 py-3' : 'px-6 py-4'}`} style={{ borderColor: 'var(--border-light)' }}>
           <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{editingSlot ? '编辑接口配置' : '添加接口配置'}</h3>
-          <button onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-xl hover:bg-[var(--toolbar-hover)]" style={{ color: 'var(--text-secondary)' }}>
+          <button type="button" onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-xl hover:bg-[var(--toolbar-hover)]" style={{ color: 'var(--text-secondary)' }}>
             <X size={18} />
           </button>
         </div>

@@ -128,6 +128,7 @@ export const UserApiKeySettings: React.FC = () => {
 
       {/* 添加按钮 */}
       <button
+        type="button"
         onClick={() => setShowAddForm(!showAddForm)}
         className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-500 transition-colors"
       >
@@ -263,6 +264,7 @@ export const UserApiKeySettings: React.FC = () => {
                         : key.api_key_encrypted}
                     </code>
                     <button
+                      type="button"
                       onClick={() =>
                         setShowKeyId(showKeyId === key.id ? null : key.id)
                       }
@@ -286,6 +288,7 @@ export const UserApiKeySettings: React.FC = () => {
                 <div className="flex items-center gap-1">
                   {/* 启用/禁用切换 */}
                   <button
+                    type="button"
                     onClick={() => handleToggleStatus(key)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                       key.is_active ? 'bg-indigo-500' : 'bg-gray-600'
@@ -300,6 +303,7 @@ export const UserApiKeySettings: React.FC = () => {
 
                   {/* 删除按钮 */}
                   <button
+                    type="button"
                     onClick={() => handleDeleteKey(key.id)}
                     className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
                     title="删除"

@@ -1606,7 +1606,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     // 🚀 [Fix] 模型名称显示：优先使用管理员配置的label，其次使用ID映射的友好名称
     let currentModelName = isModelListEmpty
         ? '无可用模型'
-        : (currentModel ? getModelDisplayName(currentModel.id, currentModel.label, currentModel.provider as any) : '未知模型');
+        : (currentModel?.label || getModelDisplayName(currentModel?.id || '') || currentModel?.id || '未选择模型');
 
     // 隐藏模型名字中括号及括号内的内容，避免名称过长超出输入框
     if (typeof currentModelName === 'string') {
@@ -1654,6 +1654,8 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
     } : {
         // Desktop floating style handling...
     };
+    const mobileFloatingSheetBottom = 'calc(env(safe-area-inset-bottom, 0px) + var(--mobile-tabbar-total-height) + var(--mobile-floating-sheet-clearance))';
+    const mobileFloatingSheetMaxHeight = 'min(62vh, calc(100vh - var(--mobile-content-top-inset) - env(safe-area-inset-bottom, 0px) - var(--mobile-tabbar-total-height) - var(--mobile-floating-sheet-clearance) - 18px))';
 
     // Swipe Detection State
     const wrapperTouchStartY = useRef<number | null>(null);
@@ -1725,7 +1727,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 <div
                     className="input-bar-inner !overflow-visible"
                     style={{
-                        position: 'relative'
+                        position: 'relative',
                         // Mobile: No capsule wrapper - keep it clean and flat
                     }}
                 >
@@ -1755,6 +1757,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <div className="text-xs font-semibold text-amber-600 dark:text-amber-500">从此图继续创作</div>
                                 <div className="text-xs text-[var(--text-tertiary)] truncate">{activeSourceImage.prompt}</div>
                             </div>
+                            {!isMobile && (
                             <button
                                 onClick={onClearSource}
                                 className="
@@ -1934,15 +1937,24 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 <Wand2 className={`w-3 h-3 ${config.enablePromptOptimization ? 'animate-pulse' : ''}`} />
                                 <span className="font-bold">优化提示词</span>
                             </button>
+                            )}
 
                             {showPromptLibrary && (
                                 <div
-                                    className="absolute bottom-full right-0 mb-2 z-40 rounded-2xl border shadow-xl p-2 max-w-[calc(100vw-24px)]"
-                                    style={{
-                                        width: 'min(34rem, calc(100vw - 24px))',
-                                        backgroundColor: 'var(--bg-secondary)',
-                                        borderColor: 'var(--border-medium)'
-                                    }}
+                                    className={isMobile
+                                        ? 'fixed left-3 right-3 z-[1005] ios-mobile-floating-sheet rounded-[30px] p-3 shadow-2xl overflow-hidden'
+                                        : 'absolute bottom-full right-0 mb-2 z-40 rounded-2xl border shadow-xl p-2 max-w-[calc(100vw-24px)]'}
+                                    style={isMobile
+                                        ? {
+                                            bottom: mobileFloatingSheetBottom,
+                                            maxHeight: mobileFloatingSheetMaxHeight,
+                                            overscrollBehavior: 'contain',
+                                        }
+                                        : {
+                                            width: 'min(34rem, calc(100vw - 24px))',
+                                            backgroundColor: 'var(--bg-secondary)',
+                                            borderColor: 'var(--border-medium)'
+                                        }}
                                 >
                                     <div className={`mb-2 gap-1 ${isMobile ? 'flex flex-wrap items-center' : 'flex items-center'}`}>
                                         <button
@@ -2415,9 +2427,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
 
                     {/* Footer - Modified to be a standard flex row, flowing or wrapping lightly on mobile */}
                     <PromptBarFooter isMobile={isMobile}>
-                        <div className={`flex items-center gap-1.5 min-w-0 ${isMobile ? 'w-full' : 'flex-1'}`}>
+                        <div className={`flex min-w-0 items-center ${isMobile ? 'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2' : 'flex-1 gap-1.5'}`}>
                             {/* Model Button */}
-                            <div className={`relative inline-flex min-w-0 ${isMobile ? 'flex-1' : 'flex-shrink-0'}`}>
+                            <div className={`relative inline-flex min-w-0 ${isMobile ? 'col-span-2' : 'flex-shrink-0'}`}>
                                 <button
                                     id="models-dropdown-trigger"
                                     className={`input-bar-model flex w-full max-w-full items-center flex-nowrap justify-center gap-1.5 md:gap-2 px-2 md:px-3 h-10 rounded-lg border transition-all duration-300 min-w-0 overflow-hidden ${isModelListEmpty
@@ -2482,8 +2494,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 {!isModelListEmpty && activeMenu === 'model' && (
                                     <div
                                         ref={modelDropdownRef}
-                                        className="absolute bottom-full mb-3 z-50 animate-scaleIn origin-bottom"
-                                        style={isMobile ? { left: 0, transform: 'none' } : { left: '50%', transform: 'translateX(-50%)' }}
+                                        className={isMobile ? 'fixed left-3 right-3 z-[1005] ios-mobile-floating-sheet p-2 animate-scaleIn origin-bottom overflow-hidden' : 'absolute bottom-full mb-3 z-50 animate-scaleIn origin-bottom'}
+                                        style={isMobile
+                                            ? { bottom: mobileFloatingSheetBottom, maxHeight: mobileFloatingSheetMaxHeight, overscrollBehavior: 'contain' }
+                                            : { left: '50%', transform: 'translateX(-50%)' }}
                                     >
                                         {/* 🔍 Search Input Module - Above the list - 只在多个模型时显示 */}
                                         {sortedAvailableModels.length > 1 && (
@@ -2733,10 +2747,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                             </div >
 
                             {/* Options Button - Shows current ratio and size, shrink on mobile */}
-                            <div className="relative inline-flex flex-shrink-0">
+                            <div className={`relative inline-flex min-w-0 ${isMobile ? 'row-start-2 min-w-0' : 'flex-shrink-0'}`}>
                                 <button
                                     data-options-toggle
-                                    className={`flex items-center gap-1.5 h-10 rounded-lg border transition-all text-xs font-medium whitespace-nowrap flex-shrink-0 min-w-0 ${isMobile ? 'px-2 max-w-[9.5rem]' : 'px-3'}`}
+                                    className={`flex w-full items-center justify-center gap-1.5 h-10 rounded-lg border transition-all text-xs font-medium whitespace-nowrap min-w-0 ${isMobile ? 'px-2.5 max-w-none' : 'px-3 flex-shrink-0'}`}
                                     style={{
                                         backgroundColor: showOptionsPanel ? 'var(--bg-hover)' : 'var(--bg-tertiary)',
                                         color: 'var(--text-secondary)',
@@ -2797,8 +2811,10 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 {/* Options Panel - positioned relative to button */}
                                 {showOptionsPanel && (
                                     <div
-                                        className="absolute bottom-full mb-2 z-30"
-                                        style={isMobile ? { right: 0 } : { left: '50%', transform: 'translateX(-50%)' }}
+                                        className={isMobile ? 'fixed left-3 right-3 z-[1005] ios-mobile-floating-sheet p-2 animate-scaleIn origin-bottom overflow-hidden' : 'absolute bottom-full mb-2 z-30'}
+                                        style={isMobile
+                                            ? { bottom: mobileFloatingSheetBottom, maxHeight: mobileFloatingSheetMaxHeight, overscrollBehavior: 'contain' }
+                                            : { left: '50%', transform: 'translateX(-50%)' }}
                                     >
                                         <div ref={optionsPanelRef}>
                                             {config.mode === GenerationMode.AUDIO ? (
@@ -2824,6 +2840,20 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                                 <ImageOptionsPanel
                                                     aspectRatio={config.aspectRatio}
                                                     imageSize={config.imageSize}
+                                                    networkOptions={[
+                                                        ...(groundingSupported ? [{
+                                                            id: 'grounding',
+                                                            label: '联网搜索',
+                                                            active: !!config.enableGrounding,
+                                                            onToggle: () => setConfig(prev => ({ ...prev, enableGrounding: !prev.enableGrounding })),
+                                                        }] : []),
+                                                        ...(imageSearchSupported ? [{
+                                                            id: 'image-search',
+                                                            label: '图片搜索',
+                                                            active: !!config.enableImageSearch,
+                                                            onToggle: () => setConfig(prev => ({ ...prev, enableImageSearch: !prev.enableImageSearch })),
+                                                        }] : []),
+                                                    ]}
                                                     showThinkingMode={thinkingSupported}
                                                     thinkingMode={config.thinkingMode || 'minimal'}
                                                     onThinkingModeChange={(mode) => setConfig(prev => ({ ...prev, thinkingMode: mode }))}

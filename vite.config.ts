@@ -1,6 +1,82 @@
 import path from 'path';
 import { defineConfig, loadEnv, Plugin } from 'vite';
 
+const WORKSPACE_DATA_DIRS = new Set([
+    'picture',
+    'video',
+    'refs',
+    'settings',
+    'tags',
+    'originals',
+    'thumbnails',
+    'cache',
+    'images',
+]);
+
+const ALWAYS_IGNORE_SEGMENTS = new Set([
+    '.agents',
+    '.git',
+    '.vite',
+    '.vscode',
+    'dist',
+    'node_modules',
+]);
+
+const ROOT_WATCH_FILES = new Set([
+    '.env',
+    '.env.development',
+    '.env.local',
+    '.env.production',
+    'index.html',
+    'package-lock.json',
+    'package.json',
+    'postcss.config.cjs',
+    'postcss.config.js',
+    'tailwind.config.js',
+    'tailwind.config.ts',
+    'tsconfig.json',
+    'tsconfig.node.json',
+    'vite.config.js',
+    'vite.config.ts',
+]);
+
+function shouldIgnoreWatchPath(targetPath: string): boolean {
+    const normalized = targetPath.replace(/\\/g, '/');
+    const segments = normalized.split('/').filter(Boolean);
+    const filename = segments[segments.length - 1]?.toLowerCase() || '';
+
+    if (
+        segments.some((segment) =>
+            ALWAYS_IGNORE_SEGMENTS.has(segment)
+            || segment.startsWith('recovery_')
+            || segment.startsWith('backup_')
+        )
+    ) {
+        return true;
+    }
+
+    if (
+        normalized.includes('/src/') ||
+        normalized.includes('/public/') ||
+        normalized.includes('/api/') ||
+        normalized.includes('/server/') ||
+        normalized.includes('/tests/')
+    ) {
+        return false;
+    }
+
+    if (ROOT_WATCH_FILES.has(filename)) {
+        return false;
+    }
+
+    if (normalized.endsWith('/project.json')) {
+        return true;
+    }
+
+    return normalized.includes('/docs/')
+        || segments.some((segment) => WORKSPACE_DATA_DIRS.has(segment));
+}
+
 function resolveManualChunk(id: string): string | undefined {
     const normalizedId = id.replace(/\\/g, '/');
 
@@ -160,18 +236,7 @@ export default defineConfig(({ mode }) => {
             },
             watch: {
                 // 🚀 [Critical Fix] 忽略应用自身生成的本地数据文档，防止 Vite HMR 触发强制刷新
-                ignored: [
-                    '**/project.json',
-                    '**/picture/**',
-                    '**/video/**',
-                    '**/refs/**',
-                    '**/settings/**',
-                    '**/tags/**',
-                    '**/originals/**',
-                    '**/thumbnails/**',
-                    '**/cache/**',
-                    '**/images/**'
-                ]
+                ignored: shouldIgnoreWatchPath
             }
         },
         plugins: [pricingProxyPlugin()],

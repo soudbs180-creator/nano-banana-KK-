@@ -1,7 +1,5 @@
 import React, { Suspense, lazy, useState, useCallback, useRef, useEffect, startTransition } from 'react';
 import InfiniteCanvas, { InfiniteCanvasHandle } from './components/canvas/InfiniteCanvas';
-import MobileChatFeed from './components/MobileChatFeed';
-
 import PromptBar from './components/layout/PromptBar';
 import ImageNode from './components/image/ImageCard';
 import PptStackPreviewModal from './components/image/PptStackPreviewModal';
@@ -9,8 +7,8 @@ import PromptNodeComponent from './components/canvas/PromptNodeComponent';
 import PendingNode from './components/canvas/PendingNode';
 // KeyManagerModal removed - integrated into UserProfileModal
 import ChatSidebar from './components/layout/ChatSidebar';
-import { AspectRatio, ImageSize, GenerationConfig, PromptNode, GeneratedImage, GenerationMode, KnownModel, CanvasGroup } from './types';
-import { Image as ImageIcon, Plus, Trash2, Shield, FileText, CheckCircle2, History, CreditCard, ChevronDown, Wand2, RefreshCw, Star, Coins, User, LayoutDashboard, LogOut, Settings, Zap, Sparkles } from 'lucide-react';
+import { AspectRatio, ImageSize, GenerationConfig, PromptNode, GeneratedImage, GenerationMode, KnownModel, CanvasGroup, type AppSurface, type MobilePrimaryTab, type WorkspacePanel, type PptEditableImageLayer, type PptEditablePage } from './types';
+import { Image as ImageIcon, MessageSquare, Plus, Trash2, Shield, FileText, CheckCircle2, History, CreditCard, ChevronDown, Wand2, RefreshCw, Star, Coins, User, LayoutDashboard, LogOut, Settings, Zap, Sparkles } from 'lucide-react';
 import { SelectionMenu } from './components/canvas/SelectionMenu';
 import { CanvasGroupComponent } from './components/canvas/CanvasGroupComponent';
 import { generateImage, cancelGeneration } from './services/llm/geminiService';
@@ -19,6 +17,7 @@ import { getModelPricing, isCreditBasedModel, getModelCredits } from './services
 import { keyManager, getModelMetadata } from './services/auth/keyManager';
 import { adminModelService } from './services/model/adminModelService';
 import { unifiedModelService } from './services/model/unifiedModelService';
+import { getModelCapabilities } from './services/model/modelCapabilities';
 import { llmService } from './services/llm/LLMService';
 import { cancelSecureSystemProxyTask } from './services/model/secureModelProxy';
 import { getCardDimensions } from './utils/styleUtils';
@@ -56,19 +55,39 @@ import JSZip from 'jszip';
 import { saveImage, saveOriginalImage } from './services/storage/imageStorage';
 import { calculateImageHash } from './utils/imageUtils';
 import { optimizePromptForImage } from './services/llm/promptOptimizerService';
+import {
+  getDefaultPromptOptimizerTemplateId,
+  getPromptOptimizerTemplate,
+} from './config/promptOptimizerTemplates';
+import { normalizePptSlidesForCount, buildAutoPptSlides } from './utils/pptUtils';
+import {
+  PPT_EDITABLE_CANVAS,
+  buildPptEditablePages,
+  getPptTextLayer,
+  patchPptTextLayer,
+  sortPptImageNodes,
+  sortPptLayers,
+  syncPptSlidesFromEditablePages,
+} from './utils/pptEditable';
 import NotificationToast from './components/common/NotificationToast';
+import { useImageGeneration } from './hooks/useImageGeneration';
 // import { notify } from './services/system/notificationService'; // [FIX] Dynamic Import
-
-// import { initUpdateCheck } from './services/system/updateCheck'; // [FIX] Dynamic Import
 
 // ProjectManager imported from components
 import ProjectManager from './components/settings/ProjectManager';
 import { Search } from 'lucide-react'; // Import Search icon
-import MobileTabBar from './components/mobile/MobileTabBar';
-import MobileHeader from './components/mobile/MobileHeader'; // [NEW] Mobile Header
 import GpuBackground from './components/layout/GpuBackground';
 import type { Supplier } from './services/billing/supplierService';
 import { apiKeyModalService } from './services/api/apiKeyModalService';
+import { MobileChatFeed, MobileHeader, MobileTabBar, MobileWorkspaceQuickBar } from './components/mobile';
+import {
+  AssetLibraryPanel,
+  GlobalModals,
+  WorkspaceActionBar,
+  WorkspaceActionButton,
+  WorkspacePanels,
+  WorkspaceShell,
+} from './components/workspace';
 
 const UserProfileModal = lazy(() => import('./components/modals/UserProfileModal'));
 const SettingsPanel = lazy(() => import('./components/settings/SettingsPanel'));
@@ -84,6 +103,7 @@ const GlobalLightbox = lazy(async () => {
   const module = await import('./components/image/GlobalLightbox');
   return { default: module.GlobalLightbox };
 });
+const PptDeckEditorModal = lazy(() => import('./components/image/PptDeckEditorModal'));
 const RechargeModal = lazy(() => import('./components/modals/RechargeModal'));
 const CostEstimation = lazy(() => import('./pages/CostEstimation'));
 
@@ -201,6 +221,7 @@ const AppContent: React.FC<AppContentProps> = () => {
   const [previewImages, setPreviewImages] = useState<GeneratedImage[] | null>(null);
   const [previewInitialIndex, setPreviewInitialIndex] = useState(0);
   const [pptStackPreview, setPptStackPreview] = useState<{ images: GeneratedImage[]; initialIndex: number } | null>(null);
+  const [pptDeckEditor, setPptDeckEditor] = useState<{ nodeId: string; initialIndex: number } | null>(null);
   const [showMigrateModal, setShowMigrateModal] = useState(false); // 馃殌 杩佺Щ寮圭獥鐘舵€?
 
   const handleOpenPreview = useCallback((imageId: string) => {
@@ -551,7 +572,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         const hasKeys = keyManager.hasValidKeys();
         if (!hasKeys && !hasLoggedInBefore && !isDevMode) {
           // 鍙湁棣栨鐢ㄦ埛鎵嶈嚜鍔ㄥ脊鍑?API 璁剧疆闈㈡澘
-          openSettingsPanel('api-management');
+          openSettingsSurface('api-management');
         }
         setIsStorageChecked(true);
       }
@@ -592,6 +613,9 @@ const AppContent: React.FC<AppContentProps> = () => {
         return {
           prompt: parsed.prompt || '', // 馃殌 鎭㈠鎸佷箙鍖栫殑 Prompt
           enablePromptOptimization: parsed.enablePromptOptimization || false,
+          promptOptimizationMode: parsed.promptOptimizationMode === 'custom' ? 'custom' : 'auto',
+          promptOptimizationTemplateId: parsed.promptOptimizationTemplateId || getDefaultPromptOptimizerTemplateId(parsed.mode || GenerationMode.IMAGE),
+          promptOptimizationCustomPrompt: typeof parsed.promptOptimizationCustomPrompt === 'string' ? parsed.promptOptimizationCustomPrompt : '',
           aspectRatio: AspectRatio.AUTO, // [Default: Auto]
           imageSize: ImageSize.SIZE_1K,
           parallelCount: parsed.parallelCount || 1,
@@ -616,6 +640,9 @@ const AppContent: React.FC<AppContentProps> = () => {
     return {
       prompt: '',
       enablePromptOptimization: false,
+      promptOptimizationMode: 'auto',
+      promptOptimizationTemplateId: getDefaultPromptOptimizerTemplateId(GenerationMode.IMAGE),
+      promptOptimizationCustomPrompt: '',
       aspectRatio: AspectRatio.AUTO, // [Default: Auto]
       imageSize: ImageSize.SIZE_1K,
       parallelCount: 1,
@@ -735,6 +762,9 @@ const AppContent: React.FC<AppContentProps> = () => {
 
     const toSave = {
       enablePromptOptimization: config.enablePromptOptimization || false,
+      promptOptimizationMode: config.promptOptimizationMode || 'auto',
+      promptOptimizationTemplateId: config.promptOptimizationTemplateId || getDefaultPromptOptimizerTemplateId(config.mode),
+      promptOptimizationCustomPrompt: config.promptOptimizationCustomPrompt || '',
       aspectRatio: config.aspectRatio,
       imageSize: config.imageSize,
       parallelCount: config.parallelCount,
@@ -765,6 +795,9 @@ const AppContent: React.FC<AppContentProps> = () => {
     localStorage.setItem('kk_generation_config', JSON.stringify(toSave));
   }, [
     config.enablePromptOptimization,
+    config.promptOptimizationMode,
+    config.promptOptimizationTemplateId,
+    config.promptOptimizationCustomPrompt,
     config.aspectRatio, config.imageSize, config.parallelCount,
     config.model, config.enableGrounding, config.enableImageSearch, config.thinkingMode, config.mode, config.pptSlides, config.pptStyleLocked,
     config.referenceImages, // Add referenceImages to dep array
@@ -1170,16 +1203,38 @@ const AppContent: React.FC<AppContentProps> = () => {
     setDragConnection(nextDragConnection);
     return nextDragConnection;
   }, []);
-  const [isGenerating, setIsGenerating] = useState(false);
   const lastGenerateAtRef = useRef(0);
   const lastGenerateSignatureRef = useRef<{ value: string; at: number } | null>(null);
-  const pollTaskStatusRef = useRef<((node: PromptNode, taskIdOverride?: string) => Promise<void>) | null>(null);
+
   // error state removed, using notify service
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatSidebarWidth, setChatSidebarWidth] = useState(420);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [workspaceSurface, setWorkspaceSurface] = useState<Extract<AppSurface, 'workspace' | 'library'>>('workspace');
+
+  const activeAppSurface: AppSurface = showSettingsPanel
+    ? 'settings'
+    : showProfileModal
+      ? 'profile'
+      : isChatOpen
+        ? 'chat'
+        : workspaceSurface;
+
+  const activeWorkspacePanel: WorkspacePanel = isChatOpen
+    ? 'chat'
+    : workspaceSurface === 'library'
+      ? 'history'
+      : null;
+
+  const currentMobileTab: MobilePrimaryTab = activeAppSurface === 'library'
+    ? 'library'
+    : activeAppSurface === 'chat'
+      ? 'chat'
+      : activeAppSurface === 'profile'
+        ? 'me'
+        : 'create';
 
   // 浣跨敤鏂板皝瑁呯殑 CanvasCenter API锛堝紩鍏ヨ嚜 src/utils/canvasCenter.ts锛?
 
@@ -1195,7 +1250,18 @@ const AppContent: React.FC<AppContentProps> = () => {
 
   useEffect(() => {
     if (!isMobile) setIsSidebarOpen(true);
-  }, []);
+  }, [isMobile]);
+
+  const {
+    isGenerating,
+    executeGeneration,
+    pollTaskStatus,
+    cancelGeneration: cancelGen
+  } = useImageGeneration({
+    isMobile,
+    getCardDimensions,
+    rememberPreferredKeyForMode
+  });
 
   useEffect(() => {
     return () => {
@@ -1583,6 +1649,37 @@ const AppContent: React.FC<AppContentProps> = () => {
   // Get derived API status for UI indicator - use keyManager
   const derivedApiStatus = keyStats.valid > 0 ? 'success' : keyStats.invalid > 0 ? 'error' : 'neutral';
 
+  const focusWorkspace = useCallback(() => {
+    setWorkspaceSurface('workspace');
+  }, []);
+
+  const openLibrarySurface = useCallback(() => {
+    setWorkspaceSurface('library');
+    setShowUserMenu(false);
+    setIsChatOpen(false);
+  }, []);
+
+  const toggleChatPanel = useCallback(() => {
+    setWorkspaceSurface('workspace');
+    setIsChatOpen(prev => !prev);
+  }, []);
+
+  const openProfileSurface = useCallback((view: UserProfileView = 'main') => {
+    setWorkspaceSurface('workspace');
+    setProfileInitialView(view);
+    setShowProfileModal(true);
+    setShowUserMenu(false);
+  }, []);
+
+  const openSettingsSurface = useCallback((
+    view: 'dashboard' | 'api-management' | 'storage-settings' | 'system-logs' = 'dashboard',
+    supplier: Supplier | null = null
+  ) => {
+    setWorkspaceSurface('workspace');
+    openSettingsPanel(view, supplier);
+    setShowUserMenu(false);
+  }, [openSettingsPanel]);
+
   const handleCancelGeneration = useCallback(async (id?: string) => {
     // If ID provided, cancel specific
     if (id) {
@@ -1642,7 +1739,7 @@ const AppContent: React.FC<AppContentProps> = () => {
           });
         }));
       }
-      setIsGenerating(false);
+
     }
   }, [activeCanvas, updatePromptNode, cancelGeneration]);
 
@@ -1788,10 +1885,9 @@ const AppContent: React.FC<AppContentProps> = () => {
     if (!promptNode) return null;
 
     const orderedIds = (promptNode.childImageIds || []).filter(Boolean) as string[];
-    const fallbackOrder = canvas.imageNodes
-      .filter((img) => img.parentPromptId === promptNode.id)
-      .sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x) || (a.timestamp - b.timestamp))
-      .map((img) => img.id);
+    const fallbackOrder = sortPptImageNodes(
+      canvas.imageNodes.filter((img) => img.parentPromptId === promptNode.id),
+    ).map((img) => img.id);
     const finalOrder = orderedIds.length > 0 ? orderedIds : fallbackOrder;
 
     const images = finalOrder
@@ -1807,6 +1903,119 @@ const AppContent: React.FC<AppContentProps> = () => {
       currentIndex,
     };
   }
+
+  const getOrderedPptNodeBundle = useCallback((nodeOrId: PromptNode | string) => {
+    const canvas = activeCanvasRef.current;
+    if (!canvas) return null;
+
+    const promptNode = typeof nodeOrId === 'string'
+      ? canvas.promptNodes.find((node) => node.id === nodeOrId)
+      : canvas.promptNodes.find((node) => node.id === nodeOrId.id) || nodeOrId;
+
+    if (!promptNode || promptNode.mode !== GenerationMode.PPT) return null;
+
+    const orderedIds = (promptNode.childImageIds || []).filter(Boolean) as string[];
+    const fallbackImages = sortPptImageNodes(
+      canvas.imageNodes.filter((img) => img.parentPromptId === promptNode.id),
+    );
+
+    const images = orderedIds.length > 0
+      ? orderedIds
+          .map((id) => canvas.imageNodes.find((img) => img.id === id))
+          .filter((img): img is GeneratedImage => !!img)
+      : fallbackImages;
+
+    if (images.length === 0) return null;
+
+    return {
+      promptNode,
+      images,
+    };
+  }, []);
+
+  const handleOpenPptDeckEditor = useCallback((nodeOrId: PromptNode | string, initialIndex = 0) => {
+    const bundle = getOrderedPptNodeBundle(nodeOrId);
+    if (!bundle) return;
+
+    setPptDeckEditor({
+      nodeId: bundle.promptNode.id,
+      initialIndex: Math.max(0, Math.min(initialIndex, bundle.images.length - 1)),
+    });
+  }, [getOrderedPptNodeBundle]);
+
+  const handleOpenPptDeckEditorFromImage = useCallback((image: GeneratedImage) => {
+    const bundle = getOrderedPptPreviewBundle(image.id);
+    if (!bundle) return;
+    handleOpenPptDeckEditor(bundle.promptNode, bundle.currentIndex);
+  }, [getOrderedPptPreviewBundle, handleOpenPptDeckEditor]);
+
+  const handleSavePptEditablePages = useCallback((nodeId: string, pages: PptEditablePage[]) => {
+    const canvas = activeCanvasRef.current;
+    if (!canvas) return;
+
+    const promptNode = canvas.promptNodes.find((node) => node.id === nodeId);
+    if (!promptNode) return;
+
+    const nextSlides = syncPptSlidesFromEditablePages(pages);
+    updatePromptNode({
+      ...promptNode,
+      pptEditablePages: pages,
+      pptSlides: nextSlides,
+      parallelCount: Math.max(promptNode.parallelCount || 1, nextSlides.length || 1),
+    });
+
+    const bundle = getOrderedPptNodeBundle(nodeId);
+    bundle?.images.forEach((image, index) => {
+      const alias = buildPptPageAlias(nextSlides[index], index);
+      updateImageNode(image.id, { alias });
+    });
+
+    setPreviewImages((prev) => {
+      if (!prev) return prev;
+      return prev.map((image, index) => {
+        const alias = nextSlides[index] ? buildPptPageAlias(nextSlides[index], index) : image.alias;
+        return alias ? { ...image, alias } : image;
+      });
+    });
+
+    setPptStackPreview((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        images: prev.images.map((image, index) => {
+          const alias = nextSlides[index] ? buildPptPageAlias(nextSlides[index], index) : image.alias;
+          return alias ? { ...image, alias } : image;
+        }),
+      };
+    });
+
+    import('./services/system/notificationService').then(({ notify }) => {
+      notify.success('Deck updated', `Saved ${pages.length} editable PPT page${pages.length === 1 ? '' : 's'}.`);
+    });
+  }, [buildPptPageAlias, getOrderedPptNodeBundle, updateImageNode, updatePromptNode]);
+
+  const getPptEditableExportBundle = useCallback((node: PromptNode) => {
+    const bundle = getOrderedPptNodeBundle(node);
+    if (!bundle) return null;
+
+    const images = bundle.images.slice(0, 20);
+    const pages = buildPptEditablePages(bundle.promptNode, images);
+
+    return {
+      promptNode: bundle.promptNode,
+      images,
+      pages,
+      imageById: new Map(images.map((image) => [image.id, image] as const)),
+    };
+  }, [getOrderedPptNodeBundle]);
+
+  const sanitizePptFileSegment = useCallback((value: string, fallback: string) => {
+    const normalized = String(value || '')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return normalized || fallback;
+  }, []);
 
   const resolvePptImageBlob = useCallback(async (image: GeneratedImage): Promise<Blob> => {
     const { getStrictOriginalImage } = await import('./services/storage/imageStorage');
@@ -1838,6 +2047,164 @@ const AppContent: React.FC<AppContentProps> = () => {
     }
     return await response.blob();
   }, []);
+
+  const renderBlobIntoImage = useCallback((blob: Blob) => (
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(blob);
+      const image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('图片解码失败'));
+      };
+      image.src = objectUrl;
+    })
+  ), []);
+
+  const convertBlobToPng = useCallback(async (blob: Blob) => {
+    const image = await renderBlobIntoImage(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('无法创建导出画布');
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const pngBlob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/png', 1);
+    });
+
+    if (!pngBlob) {
+      throw new Error('无法转换图片格式');
+    }
+
+    return pngBlob;
+  }, [renderBlobIntoImage]);
+
+  const resolvePptExportImageAsset = useCallback(async (image: GeneratedImage) => {
+    const blob = await resolvePptImageBlob(image);
+    const type = String(blob.type || '').toLowerCase();
+
+    if (type.includes('png')) {
+      return { blob, ext: 'png' as const, mime: 'image/png' };
+    }
+    if (type.includes('jpeg') || type.includes('jpg')) {
+      return { blob, ext: 'jpg' as const, mime: 'image/jpeg' };
+    }
+
+    const pngBlob = await convertBlobToPng(blob);
+    return { blob: pngBlob, ext: 'png' as const, mime: 'image/png' };
+  }, [convertBlobToPng, resolvePptImageBlob]);
+
+  const renderPptEditablePagePreviewBlob = useCallback(async (
+    page: PptEditablePage,
+    imageById: Map<string, GeneratedImage>,
+  ) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = PPT_EDITABLE_CANVAS.width;
+    canvas.height = PPT_EDITABLE_CANVAS.height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('无法创建页面预览画布');
+    }
+
+    context.fillStyle = '#020617';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.textBaseline = 'top';
+
+    const normalizeColor = (value?: string, fallback = '#FFFFFF') => {
+      const raw = String(value || '').trim();
+      if (/^#[0-9a-fA-F]{3}$/.test(raw) || /^#[0-9a-fA-F]{6}$/.test(raw)) {
+        return raw;
+      }
+      return fallback;
+    };
+
+    for (const layer of sortPptLayers(page.layers)) {
+      if (!layer.visible) continue;
+
+      if (layer.type === 'image') {
+        const sourceImageId = layer.imageNodeId || page.backgroundImageId;
+        const sourceImage = sourceImageId ? imageById.get(sourceImageId) : undefined;
+        const sourceBlob = sourceImage ? await resolvePptImageBlob(sourceImage) : null;
+        const imageElement = sourceBlob ? await renderBlobIntoImage(sourceBlob) : null;
+
+        if (!imageElement) continue;
+
+        context.save();
+        context.globalAlpha = Math.max(0, Math.min(1, layer.opacity ?? 1));
+        context.drawImage(imageElement, layer.x, layer.y, layer.width, layer.height);
+        context.restore();
+        continue;
+      }
+
+      if (!layer.text.trim()) continue;
+
+      const backgroundOpacity = Math.max(0, Math.min(1, (layer.backgroundOpacity ?? 0) * (layer.opacity ?? 1)));
+      if (layer.backgroundColor && backgroundOpacity > 0) {
+        context.save();
+        context.globalAlpha = backgroundOpacity;
+        context.fillStyle = normalizeColor(layer.backgroundColor, '#111827');
+        context.fillRect(layer.x, layer.y, layer.width, layer.height);
+        context.restore();
+      }
+
+      const paddingX = 24;
+      const paddingY = 18;
+      const availableWidth = Math.max(0, layer.width - paddingX * 2);
+      const lines = layer.text.split(/\r?\n/);
+
+      context.save();
+      context.globalAlpha = Math.max(0, Math.min(1, layer.opacity ?? 1));
+      context.fillStyle = normalizeColor(layer.color, '#FFFFFF');
+      context.font = `${layer.fontWeight || 500} ${layer.fontSize}px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`;
+      context.textAlign = layer.align || 'left';
+
+      const baseX = layer.align === 'center'
+        ? layer.x + layer.width / 2
+        : layer.align === 'right'
+          ? layer.x + layer.width - paddingX
+          : layer.x + paddingX;
+      const lineHeight = Math.round(layer.fontSize * 1.3);
+
+      lines.forEach((line, lineIndex) => {
+        const y = layer.y + paddingY + lineIndex * lineHeight;
+        if (y > layer.y + layer.height - lineHeight) return;
+        const text = line || ' ';
+
+        if (availableWidth > 0 && context.measureText(text).width > availableWidth && layer.align !== 'center') {
+          context.save();
+          context.beginPath();
+          context.rect(layer.x + paddingX, layer.y + paddingY, availableWidth, layer.height - paddingY * 2);
+          context.clip();
+          context.fillText(text, baseX, y);
+          context.restore();
+        } else {
+          context.fillText(text, baseX, y);
+        }
+      });
+
+      context.restore();
+    }
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/png', 1);
+    });
+
+    if (!blob) {
+      throw new Error('无法生成页面预览');
+    }
+
+    return blob;
+  }, [renderBlobIntoImage, resolvePptImageBlob]);
 
   const stitchPptImagesToBlob = useCallback(async (images: GeneratedImage[]) => {
     const loaded = await Promise.all(images.map(async (image) => {
@@ -1950,9 +2317,23 @@ const AppContent: React.FC<AppContentProps> = () => {
     }
     nextSlides[bundle.currentIndex] = trimmed;
 
+    const nextPages = buildPptEditablePages(bundle.promptNode, bundle.images);
+    const parsed = parsePptOutlineLine(trimmed);
+    const currentPage = nextPages[bundle.currentIndex];
+    if (currentPage) {
+      let patchedPage = patchPptTextLayer(
+        currentPage,
+        'title',
+        parsed.title || buildPptPageAlias(trimmed, bundle.currentIndex),
+      );
+      patchedPage = patchPptTextLayer(patchedPage, 'subtitle', parsed.subtitle || '');
+      nextPages[bundle.currentIndex] = patchedPage;
+    }
+
     updatePromptNode({
       ...bundle.promptNode,
       pptSlides: nextSlides,
+      pptEditablePages: nextPages,
       parallelCount: Math.max(bundle.promptNode.parallelCount || 1, nextSlides.length),
     });
 
@@ -1978,7 +2359,7 @@ const AppContent: React.FC<AppContentProps> = () => {
     import('./services/system/notificationService').then(({ notify }) => {
       notify.success('页面文案已更新', `第 ${bundle.currentIndex + 1} 页已同步到主卡设置`);
     });
-  }, [buildPptPageAlias, getOrderedPptPreviewBundle, updateImageNode, updatePromptNode]);
+  }, [buildPptPageAlias, getOrderedPptPreviewBundle, parsePptOutlineLine, updateImageNode, updatePromptNode]);
 
   const getNodeIoTrace = useCallback((nodeId: string) => {
     const node = activeCanvas?.promptNodes.find(n => n.id === nodeId);
@@ -1990,1393 +2371,8 @@ const AppContent: React.FC<AppContentProps> = () => {
     return { inputStorageIds, outputStorageIds };
   }, [activeCanvas]);
 
-  const buildAutoPptSlides = useCallback((topicRaw: string, totalRaw: number) => {
-    const topic = String(topicRaw || '').trim() || '主题演示';
-    const total = Math.min(20, Math.max(1, Number(totalRaw) || 1));
-
-    const basePool = [
-      `背景与问题定义：${topic}`,
-      `行业趋势与机会：${topic}`,
-      `目标用户与核心场景：${topic}`,
-      `解决方案概览：${topic}`,
-      `核心能力与差异化：${topic}`,
-      `关键数据与证据：${topic}`,
-      `典型案例与应用示例：${topic}`,
-      `落地路径与实施步骤：${topic}`,
-      `风险评估与应对策略：${topic}`,
-      `里程碑与路线图：${topic}`,
-      `资源需求与协同机制：${topic}`,
-      `预期收益与评估指标：${topic}`
-    ];
-
-    const pages: string[] = [];
-    pages.push(`封面：${topic}`);
-
-    if (total >= 3) {
-      pages.push(`目录：${topic} 的核心章节`);
-    }
-
-    const remainForMiddle = Math.max(0, total - 1 - pages.length);
-    for (let i = 0; i < remainForMiddle; i++) {
-      pages.push(basePool[i % basePool.length]);
-    }
-
-    if (pages.length < total) {
-      pages.push(`总结与行动建议：${topic}`);
-    }
-
-    return pages.slice(0, total);
-  }, []);
-
-  const normalizePptSlidesForCount = useCallback((
-    rawSlides: string[] | undefined,
-    topicRaw: string,
-    totalRaw: number
-  ) => {
-    const total = Math.min(20, Math.max(1, Number(totalRaw) || 1));
-    const manualSlides = (rawSlides || [])
-      .map((line) => String(line || '').trim())
-      .filter(Boolean)
-      .slice(0, total);
-
-    if (manualSlides.length >= total) {
-      return manualSlides.slice(0, total);
-    }
-
-    const autoSlides = buildAutoPptSlides(topicRaw, total);
-    return Array.from({ length: total }, (_, index) => (
-      manualSlides[index] || autoSlides[index] || `第 ${index + 1} 页：${String(topicRaw || '').trim() || '主题演示'}`
-    ));
-  }, [buildAutoPptSlides]);
-
-  const getPendingTaskIds = useCallback((node?: PromptNode | null): string[] => {
-    const rawPendingTaskIds = (node?.generationMetadata as { pendingTaskIds?: unknown } | undefined)?.pendingTaskIds;
-    const fallbackTaskIds = node?.jobId ? [node.jobId] : [];
-    const normalizedTaskIds = Array.isArray(rawPendingTaskIds) ? rawPendingTaskIds : fallbackTaskIds;
-    return Array.from(new Set(
-      normalizedTaskIds.filter((taskId): taskId is string => typeof taskId === 'string' && taskId.trim().length > 0)
-    ));
-  }, []);
-
-  const buildPendingTaskMetadata = useCallback((node: PromptNode | null | undefined, pendingTaskIds: string[]) => ({
-    ...(node?.generationMetadata || {}),
-    pendingTaskIds,
-  }), []);
-
-  const registerPendingTaskId = useCallback((node: PromptNode, taskId: string): PromptNode => {
-    const nextPendingTaskIds = Array.from(new Set([...getPendingTaskIds(node), taskId]));
-    return {
-      ...node,
-      jobId: nextPendingTaskIds[0],
-      generationMetadata: buildPendingTaskMetadata(node, nextPendingTaskIds),
-    };
-  }, [buildPendingTaskMetadata, getPendingTaskIds]);
-
-  const resolvePendingTaskState = useCallback((node: PromptNode, completedTaskId?: string) => {
-    const currentPendingTaskIds = getPendingTaskIds(node);
-    const nextPendingTaskIds = completedTaskId
-      ? currentPendingTaskIds.filter(taskId => taskId !== completedTaskId)
-      : [];
-    return {
-      nextPendingTaskIds,
-      nextJobId: nextPendingTaskIds[0],
-      nextGenerationMetadata: buildPendingTaskMetadata(node, nextPendingTaskIds),
-    };
-  }, [buildPendingTaskMetadata, getPendingTaskIds]);
-
-  const getExpectedGenerationCount = useCallback((node?: PromptNode | null) => (
-    Math.max(1, Number(node?.lastGenerationTotalCount || node?.parallelCount || 1) || 1)
-  ), []);
-
-  const getGeneratedImagePosition = useCallback((
-    basePosition: { x: number; y: number },
-    aspectRatio: AspectRatio,
-    mode: GenerationMode | undefined,
-    index: number,
-    totalCount: number
-  ) => {
-    const safeTotalCount = Math.max(1, totalCount);
-    const gapToImages = 80;
-    const gap = 20;
-    const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(aspectRatio, true);
-    const columns = 2;
-    const col = index % columns;
-    const row = Math.floor(index / columns);
-    const cardsInCurrentRow = Math.min(columns, Math.max(1, safeTotalCount - row * columns));
-
-    if (mode === GenerationMode.PPT) {
-      const pptGap = 28;
-      return {
-        x: basePosition.x,
-        y: basePosition.y + gapToImages + cardHeight + index * (cardHeight + pptGap),
-      };
-    }
-
-    if (isMobile) {
-      const mobileCardWidth = 170;
-      const mobileCardHeight = 260;
-      const mobileGap = 10;
-      const rowWidth = cardsInCurrentRow * mobileCardWidth + (cardsInCurrentRow - 1) * mobileGap;
-      const startX = -rowWidth / 2;
-      return {
-        x: basePosition.x + startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2,
-        y: basePosition.y + gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap),
-      };
-    }
-
-    const rowWidth = cardsInCurrentRow * cardWidth + (cardsInCurrentRow - 1) * gap;
-    const startX = -rowWidth / 2;
-    return {
-      x: basePosition.x + startX + col * (cardWidth + gap) + cardWidth / 2,
-      y: basePosition.y + gapToImages + cardHeight + row * (cardHeight + gap),
-    };
-  }, [isMobile]);
 
   // Extracted Execution Logic
-  const executeGeneration = useCallback(async (node: PromptNode) => {
-    const { id: promptNodeId, prompt: promptToUse, parallelCount: count = 1, model: initialModel, mode, referenceImages: initialFiles = [] } = node;
-    const generationPrompt = (node.promptOptimizationEnabled && node.optimizedPromptEn?.trim())
-      ? node.optimizedPromptEn.trim()
-      : promptToUse;
-    let effectiveModel = initialModel;
-    let successResults: GeneratedImage[] = [];
-    let generationTotalCount = Math.max(1, Number(count) || 1);
-    let generationSuccessCount = 0;
-    let generationFailCount = 0;
-    let partialFailureDetails: PromptNode['errorDetails'] | undefined = undefined;
-
-    // 🚀 [Performance Fix] 异步加载参考图（如果在 handleGenerate 中没有加载完成）
-    const { getImage } = await import('./services/storage/imageStorage');
-    const { fileSystemService } = await import('./services/storage/fileSystemService');
-    const globalHandle = fileSystemService.getGlobalHandle();
-    
-    const hydratedFiles = await Promise.all(
-      initialFiles.map(async (img) => {
-        // 如果已经有 data，直接返回
-        if (img.data && img.data.length > 100) {
-          return img;
-        }
-        
-        // 尝试从 storageId 加载
-        if (img.storageId) {
-          try {
-            const dataUrl = await getImage(img.storageId);
-            if (dataUrl) {
-              const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
-              if (matches && matches[2]) {
-                return { ...img, data: matches[2], mimeType: matches[1] || img.mimeType || 'image/png' };
-              }
-              return { ...img, data: dataUrl };
-            }
-          } catch (e) {
-            console.warn('[executeGeneration] Failed to load ref from IDB:', img.storageId, e);
-          }
-          
-          // 尝试从本地文件系统加载
-          if (globalHandle) {
-            try {
-              const base64Data = await fileSystemService.loadReferenceImage(globalHandle, img.storageId);
-              if (base64Data) {
-                return { ...img, data: base64Data, mimeType: 'image/jpeg' };
-              }
-            } catch (e) {
-              console.warn('[executeGeneration] Failed to load ref from FS:', img.storageId, e);
-            }
-          }
-        }
-        
-        // 尝试从 url 加载（追询模式）
-        if ((img as any).url && !img.data) {
-          try {
-            const response = await fetch((img as any).url);
-            const blob = await response.blob();
-            const dataUrl = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.onerror = () => reject(reader.error);
-              reader.readAsDataURL(blob);
-            });
-            const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
-            if (matches && matches[2]) {
-              return { ...img, data: matches[2], mimeType: matches[1] || img.mimeType || 'image/png' };
-            }
-          } catch (e) {
-            console.warn('[executeGeneration] Failed to load ref from url:', (img as any).url, e);
-          }
-        }
-        
-        return img;
-      })
-    );
-    
-    // 过滤掉没有 data 的图片
-    const files = hydratedFiles.filter(img => img.data && img.data.length > 100);
-
-    // 馃殌 [Critical Fix] Define finalPos at a higher scope to ensure Error cards also land at latest center
-    let finalPos = node.position;
-
-    // [FIX] Get fresh position from canvas state to support moving during generation
-    // 鉁?浣跨敤ref鑾峰彇鏈€鏂扮姸鎬?閬垮厤闂寘闂
-    const freshCanvas = activeCanvasRef.current;
-    const liveNode = freshCanvas?.promptNodes.find(n => n.id === promptNodeId);
-
-    // 馃殌 [淇] 濡傛灉鎵句笉鍒拌妭鐐癸紝浣跨敤浼犲叆鐨?node 鍙傛暟浣滀负鍚庡
-    if (!liveNode) {
-      console.warn('[executeGeneration] Node not found in canvas, using original node as fallback:', promptNodeId);
-    }
-
-    const isVideo = mode === GenerationMode.VIDEO;
-    const isAudio = mode === GenerationMode.AUDIO;
-    const isPpt = mode === GenerationMode.PPT;
-    const effectiveSlideLines = isPpt
-      ? normalizePptSlidesForCount(node.pptSlides, node.prompt, count)
-      : [];
-
-    const buildPptPagePrompt = (basePrompt: string, index: number, total: number) => {
-      const pageNo = index + 1;
-      const getLayoutDirective = (text: string) => {
-        const t = (text || '').toLowerCase();
-        if (/封面|cover|title/.test(t)) return '采用封面版式：大标题 + 副标题 + 视觉主图，信息精简。';
-        if (/目录|agenda|contents?/.test(t)) return '采用目录版式：清晰列出 4-6 个章节条目，层级分明。';
-        if (/总结|结论|行动|summary|conclusion/.test(t)) return '采用总结版式：突出结论要点和行动建议，重点高亮。';
-        if (/章节|section|transition/.test(t)) return '采用章节过渡页版式：突出章节标题，并配合关键词。';
-        return '采用内容页版式：标题 + 3-5 个信息块，层次清晰。';
-      };
-      const lockStyle = node.pptStyleLocked !== false;
-      const styleDirective = lockStyle
-        ? '与整套 PPT 保持完全统一的视觉语言，包括配色、字体、版式和插画风格。'
-        : '保持整体风格统一，但允许当前页面有适度变化。';
-      const slideLines = effectiveSlideLines.length > 0
-        ? effectiveSlideLines
-        : buildAutoPptSlides(basePrompt, total);
-      if (slideLines[index]) {
-        const picked = slideLines[index];
-        return `PPT 第 ${pageNo} 页：${picked}。16:9 演示文稿风格，中文排版清晰，信息层次分明。${styleDirective}${getLayoutDirective(picked)}`;
-      }
-      const lines = basePrompt
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(line => line.replace(/^[-*\d.)、\s]+/, '').trim())
-        .filter(Boolean);
-
-      if (lines.length >= total) {
-        const picked = lines[Math.min(index, lines.length - 1)];
-        return `PPT 第 ${pageNo} 页：${picked}。16:9 演示文稿风格，中文排版清晰，信息层次分明。${styleDirective}${getLayoutDirective(picked)}`;
-      }
-
-      return `你正在设计同一套 PPT。当前生成第 ${pageNo}/${total} 页。主题：${basePrompt}。请输出一页与其他页面风格统一但内容不重复的页面，16:9，包含明确标题和结构化信息区块。${styleDirective}采用内容页版式：标题 + 3-5 个信息块，层次清晰。`;
-    };
-
-    // 馃殌 [Safe State Tracking] Track success to prevent error overwrite
-
-    try {
-      const buildTask = (index: number) => async () => {
-        const startTime = Date.now();
-        const currentRequestId = `${promptNodeId}-${index}`;
-        let taskIdForRecovery: string | undefined = undefined;
-
-        // Timeout Check (4 minutes)
-        let isFinished = false;
-        const timeoutId = setTimeout(() => {
-          if (!isFinished) {
-            cancelGeneration(currentRequestId);
-            updatePromptNode({
-              ...node,
-              isGenerating: false,
-              error: '生成超时，结果未确认，请勿立即重复发送',
-              errorDetails: {
-                code: 'TIMEOUT',
-                responseBody: 'Request exceeded 600000ms timeout in executeGeneration',
-                model: node.model,
-                timestamp: Date.now()
-              }
-            });
-            import('./services/system/notificationService').then(({ notify }) => {
-              notify.warning('生成超时', '已超过 600 秒（10 分钟）仍未收到完整结果。为避免重复扣费，请先查看卡片状态或供应商后台，再决定是否重试。');
-            });
-
-            // 馃殌 杩旇繕绉垎
-            if (node.cost && node.cost > 0) {
-              refundCredits(node.cost, `超时退款 ${node.id}`);
-            } else if (node.provider !== 'Google') {
-              refundCredits(1, `超时退款 ${node.id}`);
-            }
-          }
-        }, GENERATE_TIMEOUT_MS);
-
-        try {
-          let generatedBase64 = '';
-          let videoUrl = '';
-          const taskPrompt = isPpt ? buildPptPagePrompt(generationPrompt, index, actualCount) : generationPrompt;
-          let tokenUsage = 0;
-          let costUsd = 0;
-          let currentAspectRatio = node.aspectRatio;
-          let currentSize = node.imageSize;
-          let exactDimensions: { width: number; height: number } | undefined = undefined;
-          let provider: string | undefined = undefined; // 馃殌 Provider info
-          let providerLabel: string | undefined = undefined; // 馃殌 Provider display name
-          let modelLabel: string | undefined = undefined; // 馃殌 Model display name
-          let keySlotId: string | undefined = node.keySlotId;
-          let requestPath: string | undefined = undefined;
-          let requestBodyPreview: string | undefined = undefined;
-          let pythonSnippet: string | undefined = undefined;
-          let apiDurationMs: number | undefined = undefined;
-
-          if (isAudio) {
-            // 馃殌 闊抽鐢熸垚璺敱
-            const audioResult = await llmService.generateAudio({
-              modelId: node.model,
-              prompt: taskPrompt,
-              audioDuration: node.audioDuration,
-              audioLyrics: node.audioLyrics,
-              preferredKeyId: node.keySlotId,
-              providerConfig: {}
-            });
-
-            videoUrl = audioResult.url; // 澶嶇敤 videoUrl 瀛楁瀛樺偍闊抽 URL
-            generatedBase64 = '';
-            tokenUsage = audioResult.usage?.totalTokens || 0;
-            costUsd = audioResult.usage?.cost || 0.05;
-
-            if (audioResult.provider) provider = audioResult.provider;
-            if (audioResult.providerName) providerLabel = audioResult.providerName;
-            if (audioResult.modelName) modelLabel = audioResult.modelName;
-            if (audioResult.keySlotId) keySlotId = audioResult.keySlotId;
-
-          } else if (isVideo) {
-            const videoResolution = (() => {
-              if (node.videoResolution) return node.videoResolution;
-              const size = node.imageSize?.toLowerCase() || '';
-              if (size.includes('4k') || size.includes('ultra')) return '4k';
-              if (size.includes('1080') || size.includes('hd')) return '1080p';
-              return '720p'; // 榛樿720p
-            })();
-
-            const videoAspect = node.aspectRatio === '9:16' ? '9:16' : '16:9';
-
-            const videoResult = await llmService.generateVideo({
-              modelId: node.model,
-              prompt: taskPrompt,
-              aspectRatio: videoAspect,
-              imageUrl: files[0]?.data,
-              imageTailUrl: files[1]?.data,
-              videoDuration: node.videoDuration,
-              preferredKeyId: node.keySlotId,
-              providerConfig: {
-                google: {
-                  imageConfig: { imageSize: videoResolution }
-                }
-              },
-              onTaskId: (taskId: string) => {
-                console.log(`[executeGeneration] Received Video TaskID: ${taskId} for node ${promptNodeId}`);
-                taskIdForRecovery = taskId;
-                const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-                if (fresh) {
-                  const patchedNode = registerPendingTaskId(fresh, taskId);
-                  urgentUpdatePromptNode(patchedNode);
-                  window.setTimeout(() => {
-                    const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-                    if (latest?.isGenerating) {
-                      pollTaskStatusRef.current?.(latest, taskId);
-                    }
-                  }, 2000);
-                }
-              }
-            });
-
-            videoUrl = videoResult.url;
-            generatedBase64 = ''; // 瑙嗛娌℃湁base64
-            tokenUsage = videoResult.usage?.totalTokens || 0;
-            costUsd = videoResult.usage?.cost || (effectiveModel.toLowerCase().includes('fast') ? 0.15 : 0.30);
-
-            if (videoResult.provider) provider = videoResult.provider;
-            if (videoResult.providerName) providerLabel = videoResult.providerName;
-            if (videoResult.modelName) modelLabel = videoResult.modelName;
-            if (videoResult.keySlotId) keySlotId = videoResult.keySlotId;
-
-          } else {
-            // 馃殌 [Security/Persistence Fix] Verify model capabilities before request
-            // We keep the user preference in the node, but degrade the actual request params
-            const { modelSupportsGrounding, getModelCapabilities } = await import('./services/model/modelCapabilities');
-            const canGround = modelSupportsGrounding(effectiveModel);
-            const canImageSearch = getModelCapabilities(effectiveModel)?.supportsImageSearch ?? false;
-
-            const result = await generateImage(
-              taskPrompt,
-              node.aspectRatio,
-              node.imageSize,
-              files,
-              effectiveModel,
-              '',
-              currentRequestId,
-              (!!node.enableGrounding && canGround) || (!!node.enableImageSearch && canImageSearch),
-              {
-                maskUrl: node.maskUrl,
-                editMode: node.mode === GenerationMode.INPAINT ? 'inpaint' : (node.mode === GenerationMode.EDIT ? 'edit' : undefined),
-                preferredKeyId: node.keySlotId,
-                enableWebSearch: !!node.enableGrounding && canGround,
-                enableImageSearch: !!node.enableImageSearch && canImageSearch,
-                thinkingMode: node.thinkingMode || 'minimal',
-
-                onTaskId: (taskId) => {
-                  console.log(`[executeGeneration] Received TaskID: ${taskId} for node ${promptNodeId}`);
-                  taskIdForRecovery = taskId;
-                  const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-                  if (fresh) {
-                    const patchedNode = registerPendingTaskId(fresh, taskId);
-                    urgentUpdatePromptNode(patchedNode);
-                    window.setTimeout(() => {
-                      const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-                      if (latest?.isGenerating) {
-                        pollTaskStatusRef.current?.(latest, taskId);
-                      }
-                    }, 2000);
-                  }
-                }
-              }
-            );
-            generatedBase64 = result.url;
-            const runtimeUsage = (result as any).usage;
-            tokenUsage = result.tokens ?? runtimeUsage?.totalTokens ?? 0;
-            costUsd = result.cost ?? runtimeUsage?.cost ?? 0;
-            // 馃殌 Update effective model and size from result if available
-            if (result.model) effectiveModel = result.model;
-            // Capture returned metadata
-            if (result.imageSize) currentSize = result.imageSize;
-            if (result.aspectRatio) currentAspectRatio = result.aspectRatio;
-            // 馃殌 Capture exact dimensions for AUTO mode
-            if (result.dimensions) {
-              exactDimensions = result.dimensions;
-            }
-            if (result.provider) provider = result.provider; // 馃殌 Capture provider
-            if (result.providerName) providerLabel = result.providerName;
-            if (result.modelName) modelLabel = result.modelName;
-            if (result.keySlotId) keySlotId = result.keySlotId;
-            requestPath = result.requestPath;
-            requestBodyPreview = result.requestBodyPreview;
-            pythonSnippet = result.pythonSnippet;
-            apiDurationMs = result.apiDurationMs;
-          }
-
-          isFinished = true;
-          clearTimeout(timeoutId);
-
-          const generationTime = (apiDurationMs && apiDurationMs > 0)
-            ? apiDurationMs
-            : (Date.now() - startTime);
-
-          // 馃殌 Latency Optimization: avoid blocking UI on remote image re-download
-          let originalUrl = generatedBase64;
-          let displayUrl = generatedBase64;
-          const isRemoteGenerated = generatedBase64.startsWith('http');
-
-          // Keep remote URL directly for first paint; persistence fallback is handled asynchronously.
-          if (!isRemoteGenerated) {
-            // Ensure data: URIs are also treated as original
-            originalUrl = generatedBase64;
-          }
-
-          // Cloud Sync / Upload (鍚庡彴鎵ц锛屼笉闃诲杩斿洖)
-          if (generatedBase64 && generatedBase64.startsWith('data:')) {
-            // 鍚庡彴涓婁紶鍒颁簯绔紝浣嗕笉褰卞搷鏈湴鏄剧ず
-            import('./services/system/syncService').then(async ({ syncService }) => {
-              try {
-                const res = await fetch(generatedBase64);
-                const blob = await res.blob();
-                const id = `${Date.now()}_${index}`;
-                await syncService.uploadImagePair(id, blob);
-                // 浜戠涓婁紶鎴愬姛鍚庝笉鏇存柊鏈湴鐘舵€侊紝鍥犱负鏈湴宸叉湁 base64
-              } catch (e) {
-                console.warn('Cloud upload failed (non-blocking):', e);
-              }
-            }).catch(() => { });
-          }
-
-          if (isVideo) {
-            displayUrl = videoUrl;
-            originalUrl = videoUrl;
-          }
-
-          return {
-            index,
-            url: displayUrl,
-            originalUrl,
-            generationTime,
-            base64: generatedBase64,
-            mode,
-            tokens: tokenUsage,
-            cost: costUsd,
-            effectiveModel,
-            effectiveSize: currentSize,
-            effectiveAspectRatio: currentAspectRatio,
-            exactDimensions, // 馃殌 Pass exact dimensions
-            provider, // 馃殌 Pass provider
-            providerLabel: providerLabel, // 馃殌 Pass Display Provider Name
-            modelName: modelLabel, // 馃殌 Pass Display Model Name
-            keySlotId,
-            taskId: taskIdForRecovery,
-            taskPrompt,
-            requestPath,
-            requestBodyPreview,
-            pythonSnippet
-          };
-        } catch (error: any) {
-          isFinished = true;
-          clearTimeout(timeoutId);
-          console.error(`Generation ${index} failed:`, error);
-          return {
-            error: error.message || 'Unknown error',
-            errorDetails: extractErrorDetails(error, node.model),
-            taskId: taskIdForRecovery
-          };
-        }
-      };
-
-      const requestedCount = Math.max(1, Number(count) || 1);
-      const actualCount = isPpt ? Math.min(20, requestedCount) : requestedCount;
-      generationTotalCount = actualCount;
-      const tasks = Array.from({ length: actualCount }).map((_, index) => buildTask(index));
-
-      const runWithConcurrency = async <T,>(taskList: Array<() => Promise<T>>, limit: number): Promise<T[]> => {
-        const results: T[] = new Array(taskList.length);
-        let nextIndex = 0;
-        const workers = Array.from({ length: Math.max(1, limit) }).map(async () => {
-          while (nextIndex < taskList.length) {
-            const current = nextIndex;
-            nextIndex += 1;
-            results[current] = await taskList[current]();
-          }
-        });
-        await Promise.all(workers);
-        return results;
-      };
-
-      const imageData = await runWithConcurrency(tasks, actualCount);
-      generationTotalCount = imageData.length || actualCount;
-      const failedImageData = imageData.filter(d => !!d && 'error' in d) as Array<{
-        error: string;
-        errorDetails?: PromptNode['errorDetails'];
-        taskId?: string;
-      }>;
-
-      // 杩囨护鎴愬姛鐨勭粨鏋?
-      const validImageData = imageData.filter(d => !!d && !('error' in d) && !!d.url && typeof d.index === 'number') as Array<{
-        index: number;
-        url: string;
-        originalUrl: string;
-        generationTime: number;
-        base64: string;
-        mode: GenerationMode;
-        tokens: number;
-        cost: number;
-        effectiveModel?: string; // 馃殌 Pass through
-        effectiveSize?: string; // 馃殌 Pass through
-        effectiveAspectRatio?: AspectRatio; // 馃殌 Pass through
-        exactDimensions?: { width: number; height: number }; // 馃殌 Pass through
-        provider?: string; // 馃殌 Pass through
-        providerLabel?: string; // 馃殌 Pass through
-        modelName?: string; // 馃殌 Pass through
-        keySlotId?: string;
-        taskId?: string;
-        taskPrompt?: string;
-        requestPath?: string;
-        requestBodyPreview?: string;
-        pythonSnippet?: string;
-      }>;
-
-      generationSuccessCount = validImageData.length;
-      generationFailCount = Math.max(0, generationTotalCount - generationSuccessCount);
-      partialFailureDetails = failedImageData[0]?.errorDetails;
-      const latestNodeForRecovery = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId) || node;
-      const successfulTaskIds = validImageData
-        .map(item => item.taskId)
-        .filter((taskId): taskId is string => !!taskId);
-      const pendingRecoveryTaskIds = Array.from(new Set(
-        getPendingTaskIds(latestNodeForRecovery).filter(taskId => !successfulTaskIds.includes(taskId))
-      ));
-
-      if (validImageData.length === 0) {
-        const firstError = imageData.find(d => d && 'error' in d);
-        const message = firstError && 'error' in firstError ? firstError.error : '所有图片生成失败';
-        const enrichedError = new Error(message);
-        (enrichedError as any).details = firstError && 'errorDetails' in firstError ? firstError.errorDetails : undefined;
-        throw enrichedError;
-      }
-
-      // 鉁?鐢熸垚瀹屾垚鍚庨噸鏂拌幏鍙栦富鍗℃渶鏂颁綅缃?(鏀寔鐢熸垚杩囩▼涓嫋鍔?
-      const finalCanvas = activeCanvasRef.current;
-      const latestNode = finalCanvas?.promptNodes.find(n => n.id === promptNodeId);
-      const effectiveNodeForPos = latestNode || node;
-
-      // 馃殌 [Critical Fix] 鐩存帴浣跨敤鍦?handleGenerate 纭畾鐨?琚敤鎴锋嫋鍔ㄥ悗鐨勭湡瀹炰綅缃€?
-      // 涓嶅啀寮哄埗鍔ㄦ€佽绠楀睆骞曚腑蹇?(latestCenter)锛岄槻姝㈢敤鎴峰湪鐢熸垚鏈熼棿骞崇Щ鐢诲竷瀵艰嚧鏂板崱鐗囦綅缃獊鍙樸€?
-      finalPos = effectiveNodeForPos.position;
-
-      console.log('[executeGeneration] Resolving Position (Final Sync):', {
-        original: node.position,
-        latestFromCanvas: latestNode?.position,
-        finalUsed: finalPos,
-      });
-
-      // 馃洝锔?[Anti-Zero-Bug]
-      if (finalPos.x === 0 && finalPos.y === 0 && (node.position.x !== 0 || node.position.y !== 0)) {
-        console.warn('[App] Detected zero-position bug, falling back to original position', node.position);
-        finalPos = node.position;
-      }
-
-      const effectiveNode = effectiveNodeForPos;
-
-      if (!latestNode) {
-        console.warn("Critical: PromptNode missing in activeCanvas after generation, using fallback node", promptNodeId);
-        // We continue instead of returning, to ensure we at least show the result
-      }
-      // Use latestNode for all future updates instead of stale 'node' closure
-
-      // 璁＄畻浣嶇疆
-      const gapToImages = 80; // 涓诲崱鍜屽壇鍗′箣闂寸殑璺濈
-      const gap = 20; // 鍓崱涔嬮棿鐨勯棿璺?
-      const { width: cardWidth, totalHeight: cardHeight } = getCardDimensions(node.aspectRatio, true);
-
-      // 馃殌 [Safe State Tracking] Inner block
-      try {
-        const results = validImageData.map((item, mapIndex) => {
-          // ... (Mapping Logic) ...
-          // 浣跨敤 mapIndex 浣滀负鍚庡锛屽洜涓?item.index 宸插湪 filter 涓獙璇?
-          const idx = item.index ?? mapIndex;
-          const {
-            url, originalUrl, generationTime, base64, mode: itemMode, tokens, cost,
-            effectiveModel: resModel, effectiveSize: resSize, effectiveAspectRatio: resRatio,
-            exactDimensions, provider, providerLabel: itemProviderLabel, modelName, taskPrompt: itemTaskPrompt
-            , keySlotId, requestPath, requestBodyPreview, pythonSnippet
-          } = item;
-          const providerDisplay = resolveProviderDisplay(keySlotId, itemProviderLabel, provider);
-
-          // 馃殌 Use result model/size if available, otherwise fallback
-          const finalModel = resModel || effectiveModel;
-          const finalSize = resSize || node.imageSize;
-          const finalAspectRatio = resRatio || node.aspectRatio;
-          let x, y;
-
-          // 鉁?缁熶竴甯冨眬: 鍥哄畾2鍒?浣跨敤鍜孭endingNode鐩稿悓鐨勮绠楀叕寮?
-          const columns = 2; // 鍥哄畾2鍒?
-          const col = idx % columns;
-          const row = Math.floor(idx / columns);
-
-
-          // 璁＄畻褰撳墠琛屽疄闄呮湁澶氬皯寮犲崱鐗?
-          const totalCards = validImageData.length;
-          const cardsInCurrentRow = Math.min(columns, totalCards - row * columns);
-
-          if (isPpt) {
-            const pptGap = 28;
-            const offsetY = gapToImages + cardHeight + idx * (cardHeight + pptGap);
-            x = finalPos.x;
-            y = finalPos.y + offsetY;
-          } else if (isMobile) {
-            const mobileCardWidth = 170;
-            const mobileCardHeight = 260;
-            const mobileGap = 10;
-            // 灞呬腑璁＄畻:鍏堢畻鍑哄綋鍓嶈鐨勬€诲搴?鐒跺悗灞呬腑瀵归綈
-            const rowWidth = cardsInCurrentRow * mobileCardWidth + (cardsInCurrentRow - 1) * mobileGap;
-            const startX = -rowWidth / 2; // 鐩稿涓诲崱涓績鐨勮捣濮嬩綅缃?
-            const offsetX = startX + col * (mobileCardWidth + mobileGap) + mobileCardWidth / 2;
-            const offsetY = gapToImages + mobileCardHeight + row * (mobileCardHeight + mobileGap);
-            x = finalPos.x + offsetX; // Use FINAL calibrated position
-            y = finalPos.y + offsetY;
-          } else {
-            // 灞呬腑璁＄畻:鍏堢畻鍑哄綋鍓嶈鐨勬€诲搴?鐒跺悗灞呬腑瀵归綈
-            const rowWidth = cardsInCurrentRow * cardWidth + (cardsInCurrentRow - 1) * gap;
-            const startX = -rowWidth / 2; // 鐩稿涓诲崱涓績鐨勮捣濮嬩綅缃?
-            const offsetX = startX + col * (cardWidth + gap) + cardWidth / 2;
-            const offsetY = gapToImages + cardHeight + row * (cardHeight + gap);
-            x = finalPos.x + offsetX; // Use FINAL calibrated position
-            y = finalPos.y + offsetY;
-          }
-
-          const uniqueId = Date.now().toString() + idx + Math.random();
-          if (base64) {
-            saveOriginalImage(uniqueId, base64, itemMode === GenerationMode.VIDEO)
-              .catch(err => {
-                console.error("Failed to persist original locally", err);
-                saveImage(uniqueId, base64).catch(e2 => console.error("Fallback cache also failed", e2));
-              });
-          }
-
-          return {
-            id: uniqueId,
-            storageId: uniqueId, // 馃殌 纭繚 storageId 琚缃紝鐢ㄤ簬鎸佷箙鍖栨仮澶?
-            url,
-            originalUrl,
-            prompt: itemTaskPrompt || node.originalPrompt || promptToUse,
-            aspectRatio: finalAspectRatio, // 馃殌 Use resolved ratio
-            imageSize: finalSize, // Add imageSize field
-            timestamp: Date.now(),
-            model: finalModel,
-            modelLabel: modelName || (() => {
-              const m = finalModel.toLowerCase();
-              if (m.includes('gemini-3-pro')) return 'Gemini 3 Pro Image';
-              if (m.includes('gemini-2.5-flash-image')) return 'Gemini 2.5 Flash Image';
-              if (m.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
-              if (m.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
-              if (m.includes('imagen-4') && m.includes('ultra')) return 'Imagen 4 Ultra';
-              if (m.includes('imagen-4') && m.includes('fast')) return 'Imagen 4 Fast';
-              if (m.includes('imagen-4')) return 'Imagen 4';
-              if (m.includes('veo-3.1') && m.includes('fast')) return 'Veo 3.1 Fast';
-              if (m.includes('veo-3.1')) return 'Veo 3.1';
-              if (m.includes('veo-3') && m.includes('fast')) return 'Veo 3 Fast';
-              if (m.includes('veo-3')) return 'Veo 3';
-              if (m.includes('veo')) return 'Veo 2';
-              return effectiveModel;
-            })(),
-            provider: providerDisplay.provider,
-            providerLabel: providerDisplay.providerLabel,
-            keySlotId,
-            sourceReferenceStorageIds: (files || []).map(ref => ref.storageId || ref.id).filter(Boolean),
-            requestPath,
-            requestBodyPreview,
-            pythonSnippet,
-            alias: isPpt ? `图${idx + 1}` : undefined,
-            mode: itemMode,
-            canvasId: activeCanvasRef.current?.id || 'default',
-            parentPromptId: promptNodeId,
-            position: { x, y },
-            dimensions: isVideo
-              ? `${finalAspectRatio} 路 720p`
-              : `${finalAspectRatio} 路 ${finalSize || '1K'}`,
-            generationTime,
-            tokens,
-            cost,
-            exactDimensions,
-            promptOptimizerResult: node.promptOptimizerResult, // 馃殌 鍏ㄩ摼璺悓姝ョ紪璇戝櫒缁撴灉
-            optimizedPromptEn: node.optimizedPromptEn, // 馃殌 鍚屾浼樺寲鍚庣殑鑻辨枃
-            optimizedPromptZh: node.optimizedPromptZh  // 馃殌 鍚屾浼樺寲鍚庣殑涓枃
-          } as GeneratedImage;
-        });
-
-        successResults = results; // 鉁?Mark as safe
-      } catch (mapErr) {
-        console.error("Result Mapping Failed", mapErr);
-        throw mapErr;
-      }
-
-      const displayFailCount = pendingRecoveryTaskIds.length > 0
-        ? Math.max(0, generationFailCount - pendingRecoveryTaskIds.length)
-        : generationFailCount;
-      const updatedNode = {
-        ...effectiveNode, // 馃殌 Use effectiveNode (latest or fallback)
-        position: finalPos,
-        isGenerating: pendingRecoveryTaskIds.length > 0,
-        jobId: pendingRecoveryTaskIds[0],
-        childImageIds: successResults.map(r => r.id), // Use successResults
-        lastGenerationSuccessCount: generationSuccessCount,
-        lastGenerationFailCount: displayFailCount,
-        lastGenerationTotalCount: generationTotalCount,
-        keySlotId: successResults[0]?.keySlotId || effectiveNode.keySlotId,
-        error: undefined,
-        errorDetails: displayFailCount > 0 ? partialFailureDetails : undefined,
-        refundStatus: undefined,
-        isDraft: false,
-        generationMetadata: buildPendingTaskMetadata(effectiveNode, pendingRecoveryTaskIds),
-      };
-
-      rememberPreferredKeyForMode(updatedNode.mode, updatedNode.keySlotId);
-
-      // 馃殌 [Critical Fix] Execute updates atomically to prevent state overwrite race conditions
-      // 鍏堟竻鐞嗘棫瀛愬崱锛岄伩鍏嶅苟鍙?閲嶅叆瀵艰嚧鍚屼竴涓诲崱鍑虹幇閲嶅鍓崱
-      
-      // 馃洝锔?[闃插尽鎬т慨澶峕 杩囨护鎺変换浣曟棤鏁堢殑缁撴灉锛堢己灏?id 鐨勶級
-      const validSuccessResults = successResults.filter(r => {
-        const hasValidId = r && r.id && String(r.id).length > 0;
-        if (!hasValidId) {
-          console.warn('[executeGeneration] Filtering out result with invalid id:', r);
-        }
-        return hasValidId;
-      });
-      
-      console.log('[executeGeneration] Cleaning up old child cards:', {
-        existingChildIds: effectiveNode.childImageIds || [],
-        newResultIds: validSuccessResults.map(r => r.id),
-        successResultsCount: successResults.length,
-        validSuccessResultsCount: validSuccessResults.length
-      });
-      
-      // 馃洝锔?[闃插尽鎬т慨澶峕 纭繚 validSuccessResults 涓嶄负绌烘墠杩涜娓呯悊
-      if (validSuccessResults.length === 0) {
-        console.warn('[executeGeneration] No valid results with IDs, skipping old child cleanup to prevent data loss');
-      } else {
-        const oldChildIds = (effectiveNode.childImageIds || []).filter(id => 
-          !validSuccessResults.some(r => {
-            // 寮哄埗瀛楃涓叉瘮杈冿紝閬垮厤绫诲瀷涓嶅尮閰?
-            const resultId = String(r.id);
-            const childId = String(id);
-            return resultId === childId;
-          })
-        );
-        
-        console.log('[executeGeneration] Deleting old child cards:', oldChildIds);
-        
-        // 馃洝锔?[闃插尽鎬т慨澶峕 闄愬埗涓€娆℃€у垹闄ょ殑鏁伴噺锛岄槻姝㈡剰澶栨竻绌?
-        if (oldChildIds.length > 50) {
-          console.error('[executeGeneration] Suspiciously high number of old children:', oldChildIds.length, 'Aborting cleanup to prevent data loss');
-        } else if (oldChildIds.length === (effectiveNode.childImageIds || []).length && oldChildIds.length > 0) {
-          // 馃毃 闃插尽鎬ф鏌ワ細濡傛灉瑕佸垹闄ゆ墍鏈夊瓙鍗★紝鍙兘鏄?ID 鍖归厤閫昏緫鍑轰簡闂
-          console.error('[executeGeneration] Attempting to delete ALL child cards, aborting to prevent data loss. This may indicate ID mismatch.');
-        } else {
-          oldChildIds.forEach(id => deleteImageNode(id));
-        }
-      }
-
-      // 馃帹 Atomic update: Use the new parentUpdates feature of addImageNodes
-      console.log('[executeGeneration] Adding new image nodes:', validSuccessResults.length);
-      addImageNodes(validSuccessResults, { [updatedNode.id]: updatedNode });
-      if (pendingRecoveryTaskIds.length > 0) {
-        window.setTimeout(() => {
-          const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === updatedNode.id);
-          if (latest?.isGenerating) {
-            pendingRecoveryTaskIds.forEach(taskId => {
-              pollTaskStatusRef.current?.(latest, taskId);
-            });
-          }
-        }, 3000);
-      }
-
-      import('./services/billing/costService').then(({ recordCost }) => {
-        const usedModel = successResults[0]?.model || effectiveModel;
-        const usedSize = successResults[0]?.imageSize || effectiveNode.imageSize;
-        const firstDebug = validImageData[0];
-
-        recordCost(
-          usedModel,
-          usedSize,
-          successResults.length,
-          generationPrompt,
-          files.length,
-          undefined,
-          {
-            requestPath: firstDebug?.requestPath,
-            requestBodyPreview: firstDebug?.requestBodyPreview,
-            pythonSnippet: firstDebug?.pythonSnippet
-          },
-          successResults[0]?.keySlotId || updatedNode.keySlotId
-        );
-      });
-
-      // Clear active source if it was this node (simple check)
-      if (activeSourceImage && activeSourceImage === effectiveNode.sourceImageId) {
-        setActiveSourceImage(null);
-      }
-
-    } catch (err: any) {
-      console.error('[executeGeneration] Error:', err);
-
-      const currentNodeSnapshot = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id) || node;
-      const errorMessage = String(err?.message || '');
-      const pendingTaskIds = getPendingTaskIds(currentNodeSnapshot);
-      const hasRecoverableTask = pendingTaskIds.length > 0;
-      const isRecoverableTaskError = hasRecoverableTask && /timeout|timed out|network|fetch|abort|socket|econn|etimedout|503|504/i.test(errorMessage);
-
-      if (isRecoverableTaskError) {
-        console.warn('[executeGeneration] Task switched to polling recovery mode:', {
-          nodeId: node.id,
-          jobIds: pendingTaskIds,
-          errorMessage,
-        });
-        urgentUpdatePromptNode({
-          ...currentNodeSnapshot,
-          isGenerating: true,
-          jobId: pendingTaskIds[0],
-          error: undefined,
-          errorDetails: undefined,
-          generationMetadata: {
-            ...(currentNodeSnapshot.generationMetadata || {}),
-            pendingTaskIds,
-            recoveryMode: 'polling',
-            lastRecoverableErrorAt: Date.now(),
-            lastRecoverableErrorMessage: errorMessage,
-          }
-        });
-        window.setTimeout(() => {
-          const latest = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-          if (latest?.isGenerating) {
-            pendingTaskIds.forEach(taskId => {
-              pollTaskStatusRef.current?.(latest, taskId);
-            });
-          }
-        }, 3000);
-        import('./services/system/notificationService').then(({ notify }) => {
-          notify.warning('任务继续查询', '供应商任务已提交，前端改为轮询恢复，暂不直接判定失败。');
-        });
-        return;
-      }
-
-      // 馃殌 [Safe Fault Tolerance] If we generated images but failed later (e.g. Cost Service / UI Update),
-      // DO NOT mark the node as failed. Just log it and ensure it's not "Generating".
-      if (successResults.length > 0) {
-        console.warn('[executeGeneration] Partial Success - Images generated but post-processing failed. Ignoring error state.');
-        // Force "Done" state without error
-        const currentCanvas = activeCanvasRef.current;
-        const currentNode = currentCanvas?.promptNodes.find(n => n.id === node.id) || node;
-        
-        // 馃殌 [Critical Fix] Add the generated images to canvas even on partial failure
-        // This prevents cards from disappearing when Cost Service or other post-processing fails
-        addImageNodes(successResults, {
-          [currentNode.id]: {
-            isGenerating: false,
-            isDraft: false,
-            childImageIds: successResults.map(n => n.id),
-            error: undefined,
-            errorDetails: generationFailCount > 0 ? partialFailureDetails : undefined,
-            lastGenerationSuccessCount: generationSuccessCount || successResults.length,
-            lastGenerationFailCount: generationFailCount,
-            lastGenerationTotalCount: generationTotalCount,
-          }
-        });
-        
-        updatePromptNode({
-          ...currentNode,
-          isGenerating: false,
-          error: undefined,
-          errorDetails: generationFailCount > 0 ? partialFailureDetails : undefined,
-          refundStatus: undefined,
-          lastGenerationSuccessCount: generationSuccessCount || successResults.length,
-          lastGenerationFailCount: generationFailCount,
-          lastGenerationTotalCount: generationTotalCount,
-        });
-        return; // 馃殌 Exit without showing error notification
-      }
-
-      // 馃殌 [绔炴€佹娴媇 鑾峰彇鑺傜偣鏈€鏂板疄鏃剁姸鎬侊紝妫€鏌ユ槸鍚﹀凡琚?pollTaskStatus 鏍囪涓烘垚鍔?
-      const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-      const hasImagesOnFreshNode = freshNode && (freshNode.childImageIds?.length || 0) > 0;
-      const hasCanvasImagesForNode = !!activeCanvasRef.current?.imageNodes.some(img => img.parentPromptId === node.id);
-      const isNoLongerGenerating = freshNode && !freshNode.isGenerating;
-
-      if (hasImagesOnFreshNode || hasCanvasImagesForNode || isNoLongerGenerating) {
-        console.warn('[executeGeneration] 检测到竞态冲突：原始连接超时，但节点已通过轮询成功完成，放弃显示失败状态。', {
-          nodeId: node.id,
-          hasImages: hasImagesOnFreshNode,
-          hasCanvasImages: hasCanvasImagesForNode,
-          isGenerating: freshNode?.isGenerating
-        });
-        return; // 馃挜 鐩存帴閫€鍑猴紝涓嶆洿鏂伴敊璇姸鎬?
-      }
-
-      // 馃殌 [淇] 纭繚閿欒鍗＄墖濮嬬粓鏄剧ず鍦ㄥ綋鍓嶆渶鏂扮殑 finalPos 涓?
-      const viewportRect = canvasRef.current?.getCanvasRect() || null;
-      const viewportOffsets = getViewportOffsets(isSidebarOpen, isChatOpen, isMobile, chatSidebarWidth);
-      const latestCenter = getPromptBarFrontPosition(canvasTransform, viewportRect, viewportOffsets, 200, 48);
-      const errorPos = (liveNode?.userMoved) ? liveNode.position : latestCenter;
-
-      const currentCanvasForError = activeCanvasRef.current;
-      const currentNode = currentCanvasForError?.promptNodes.find(n => n.id === node.id) || node;
-
-      // 馃殌 [Fix] 鍒ゆ柇鏄惁闇€瑕侀€€璐?
-      // 鏉′欢锛氬凡鎵ｈ垂锛坈ost > 0 涓?isPaymentProcessed锛夋垨浣跨敤绉垎妯″瀷
-      const isCreditModelForError = node.model.includes('@system') || node.model.includes('@google') || isCreditBasedModel(node.model);
-      const shouldRefund = Boolean(node.isPaymentProcessed && node.cost && node.cost > 0 && isCreditModelForError);
-
-      const errorNode = {
-        ...currentNode,
-        position: errorPos, // 馃殌 Use latest center even on error!
-        isGenerating: false,
-        lastGenerationSuccessCount: generationSuccessCount,
-        lastGenerationFailCount: generationFailCount > 0 ? generationFailCount : generationTotalCount,
-        lastGenerationTotalCount: generationTotalCount,
-        error: err.message || 'Failed',
-        errorDetails: (err as any)?.details || extractErrorDetails(err, currentNode.model),
-        // 馃殌 [淇] 浣跨敤 as const 淇绫诲瀷閿欒
-        refundStatus: shouldRefund ? 'pending' as const : undefined
-      };
-      const existsInCanvas = currentCanvasForError?.promptNodes.some((n: any) => n.id === node.id);
-
-      // 馃殌 [Refund Credits Fix] 閫€杩樻鑺傜偣娑堣€楃殑绉垎
-      const hasCustomUserKey = keyManager.hasCustomKeyForModel(node.model);
-      const isCreditModel = isCreditBasedModel(node.model, undefined, undefined, hasCustomUserKey);
-      let refundPromise: Promise<boolean> = Promise.resolve(false);
-      const shouldTryRefund = Boolean(isCreditModel && node.isPaymentProcessed && node.cost && node.cost > 0);
-      if (shouldTryRefund) {
-        const costToRefund = node.cost || (node.mode === GenerationMode.PPT ? (node.childImageIds?.length || 1) : (node.parallelCount || 1));
-        refundPromise = refundCredits(costToRefund, `生成失败退款 ${node.model} (${node.id})`);
-        refundPromise
-          .then(success => {
-            if (success) {
-              console.log(`[executeGeneration] 閫€鍥炵Н鍒嗘垚鍔? ${costToRefund}`);
-              // 馃殌 鏇存柊鑺傜偣鐘舵€佷负"绉垎宸查€€鍥?
-              const updatedNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-              if (updatedNode) {
-                updatePromptNode({ ...updatedNode, refundStatus: 'success' as const });
-              }
-            } else {
-              const updatedNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-              if (updatedNode) {
-                updatePromptNode({ ...updatedNode, refundStatus: 'failed' as const });
-              }
-            }
-          })
-          .catch(e => {
-            console.error('[executeGeneration] 退回积分异常', e);
-            const updatedNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-            if (updatedNode) {
-              updatePromptNode({ ...updatedNode, refundStatus: 'failed' as const });
-            }
-          });
-      }
-      // 馃殌 [Fix] 鍙洿鏂板凡瀛樺湪鐨勮妭鐐癸紝濡傛灉涓嶅瓨鍦紙鍙兘鍥犱负鐘舵€佸紓姝ュ鑷磋繕娌″嚭鐜板湪 canvas锛夛紝鍒欏皾璇曟坊鍔?
-      if (existsInCanvas) {
-        updatePromptNode(errorNode);
-      } else {
-        console.warn('[executeGeneration] Error node not found in canvas, forcing add to ensure visibility:', node.id);
-        addPromptNode(errorNode); // 寮哄埗娣诲姞锛岀‘淇濈敤鎴疯兘鐪嬪埌閿欒鎻愮ず
-      }
-
-      // 馃殌 [Fix] 绛夊緟閫€璐瑰畬鎴愬悗鏄剧ず鎻愮ず锛屽憡鐭ョ敤鎴风Н鍒嗗凡閫€鍥?
-      refundPromise.then((refundSuccess) => {
-        const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-        const hasRecoveredImages = !!activeCanvasRef.current?.imageNodes.some(img => img.parentPromptId === node.id);
-        import('./services/system/notificationService').then(({ notify }) => {
-          const shouldSuppressErrorToast = !!latestNode && (
-            hasRecoveredImages ||
-            (latestNode.childImageIds?.length || 0) > 0 ||
-            (!latestNode.isGenerating && !latestNode.error)
-          );
-
-          if (shouldSuppressErrorToast) {
-            console.warn('[executeGeneration] Suppressing stale failure notification for completed node:', {
-              nodeId: node.id,
-              hasRecoveredImages,
-              childImageIds: latestNode?.childImageIds?.length || 0,
-              isGenerating: latestNode?.isGenerating,
-              error: latestNode?.error
-            });
-            return;
-          }
-          // 馃殌 杩囨护鎺夋ā鍨嬩笉鏀寔鍙傝€冨浘鐨勯敊璇彁绀猴紝涓嶆樉绀虹粰鐢ㄦ埛
-          if (err.message && err.message.includes('does not support image input')) {
-            return;
-          }
-          // 馃殌 [Fix] 鍙湁 @system 鍚庣紑鐨勭Н鍒嗘ā鍨嬫墠鏄剧ず"绉垎宸查€€鍥?
-          const isCredit = node.model?.toLowerCase().endsWith('@system') || isCreditModel;
-          const refundMsg = (isCredit && refundSuccess) ? '，积分已退回' : '';
-
-          // 馃殌 澧炲己 401 鎻愮ず
-          let displayTitle = '生成失败' + refundMsg;
-          let displayMsg = err.message || "Generation failed.";
-          const normalizedError = String(displayMsg || '').toLowerCase();
-          const isAuthError =
-            normalizedError.includes('401') ||
-            normalizedError.includes('403') ||
-            normalizedError.includes('unauthorized') ||
-            normalizedError.includes('forbidden') ||
-            normalizedError.includes('authentication') ||
-            normalizedError.includes('invalid api key') ||
-            normalizedError.includes('api key invalid') ||
-            normalizedError.includes('api密钥无效') ||
-            normalizedError.includes('api key 无效') ||
-            normalizedError.includes('认证失败') ||
-            normalizedError.includes('令牌无效');
-          if (isAuthError) {
-            displayTitle = 'API 令牌无效' + refundMsg;
-            displayMsg = '检测到鉴权错误，请在“设置 - API管理”中检查密钥或令牌是否正确、是否过期，以及当前请求是否走到了你选中的供应商。';
-          }
-
-          notify.error(displayTitle, displayMsg);
-        });
-      });
-      if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
-        openSettingsPanel('api-management');
-      }
-    }
-  }, [isMobile, updatePromptNode, urgentUpdatePromptNode, addPromptNode, addImageNodes, activeCanvas, activeSourceImage, getCardDimensions, extractErrorDetails, buildAutoPptSlides, rememberPreferredKeyForMode, openSettingsPanel]);
-
-  // [New] Poll for task status
-  const pollTaskStatus = useCallback(async (node: PromptNode, taskIdOverride?: string) => {
-    const targetTaskId = taskIdOverride || node.jobId;
-    if (!targetTaskId) return;
-
-    console.log(`[Auto-Resume] Polling task status for node ${node.id}, jobId: ${targetTaskId}`);
-
-    try {
-      // Create a temporary "pending" state visualization if needed, 
-      // but usually the node is already in isGenerating state.
-
-      const result = await llmService.checkTaskStatus(targetTaskId, node.mode || GenerationMode.IMAGE, node.keySlotId ? { id: node.keySlotId } as any : undefined);
-
-      if (result && 'status' in result && (result.status === 'success' || result.status === 'failed')) {
-        const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id) || node;
-        const pendingTaskIds = getPendingTaskIds(latestNode);
-        const { nextPendingTaskIds, nextJobId, nextGenerationMetadata } = resolvePendingTaskState(latestNode, targetTaskId);
-        const expectedCount = getExpectedGenerationCount(latestNode);
-        const currentChildIds = Array.from(new Set((latestNode.childImageIds || []).filter(Boolean)));
-        const isTrackedTask = pendingTaskIds.includes(targetTaskId) || latestNode.jobId === targetTaskId;
-        const isAlreadyComplete = !latestNode.isGenerating && nextPendingTaskIds.length === 0 && currentChildIds.length >= expectedCount;
-
-        if (!isTrackedTask && isAlreadyComplete) {
-          console.warn('[Auto-Resume] Ignoring stale poll result for completed node:', {
-            nodeId: node.id,
-            status: result.status,
-            childImageIds: latestNode.childImageIds?.length || 0,
-            isGenerating: latestNode.isGenerating,
-            targetTaskId,
-          });
-          return;
-        }
-
-        // We got a final result! 
-        // We can't easily "inject" this back into executeGeneration without refactoring, 
-        // so we'll handle the insertion here or trigger a simplified success flow.
-
-        if (result.status === 'success') {
-          console.log(`[Auto-Resume] Task success for node ${node.id}`);
-          // Handle result insertion... 
-          // (Simplified: just call executeGeneration to let it handle the full flow 
-          // if we can't easily mock the success)
-          // Actually, if it's already success, checkTaskStatus should return the URLs.
-
-          // For now, if it's finished, let's just let executeGeneration handles it if possible, 
-          // or we just call addImageNodes here.
-
-          // If result has urls/url, we can finish it.
-          const imageUrls = (result as any).urls || [(result as any).url].filter(Boolean);
-          if (imageUrls.length > 0) {
-            const existingImageNodes = currentChildIds
-              .map(id => activeCanvasRef.current?.imageNodes.find(img => img.id === id))
-              .filter((imageNode): imageNode is GeneratedImage => !!imageNode);
-            const totalLayoutCount = existingImageNodes.length + imageUrls.length;
-
-            existingImageNodes.forEach((imageNode, index) => {
-              const nextPosition = getGeneratedImagePosition(
-                latestNode.position,
-                imageNode.aspectRatio || latestNode.aspectRatio,
-                latestNode.mode,
-                index,
-                totalLayoutCount
-              );
-              updateImageNodePosition(imageNode.id, nextPosition, { ignoreSelection: true });
-            });
-
-            const recoveredImageNodes = imageUrls.map((url: string, index: number) => {
-              const imageId = `${node.id}_recovered_${Date.now()}_${index}`;
-              const layoutIndex = existingImageNodes.length + index;
-              const pageIndex = currentChildIds.length + index;
-              const resolvedAspectRatio = (result as any).aspectRatio || latestNode.aspectRatio;
-              const resolvedImageSize = (result as any).imageSize || latestNode.imageSize;
-              return {
-                id: imageId,
-                storageId: imageId,
-                url,
-                originalUrl: url,
-                prompt: latestNode.prompt,
-                model: (result as any).model || latestNode.model,
-                aspectRatio: resolvedAspectRatio,
-                imageSize: resolvedImageSize,
-                timestamp: Date.now(),
-                canvasId: activeCanvasRef.current?.id || 'default',
-                parentPromptId: node.id,
-                position: getGeneratedImagePosition(
-                  latestNode.position,
-                  resolvedAspectRatio,
-                  latestNode.mode,
-                  layoutIndex,
-                  totalLayoutCount
-                ),
-                dimensions: `${resolvedAspectRatio} 路 ${resolvedImageSize || '1K'}`,
-                provider: (result as any).provider || latestNode.provider,
-                providerLabel: (result as any).providerName || latestNode.providerLabel,
-                keySlotId: (result as any).keySlotId || latestNode.keySlotId,
-                generationTime: (result as any).generationTime || 0,
-                alias: latestNode.mode === GenerationMode.PPT ? buildPptPageAlias(latestNode.pptSlides?.[pageIndex], pageIndex) : undefined,
-              };
-            });
-            const mergedChildIds = Array.from(new Set([
-              ...currentChildIds,
-              ...recoveredImageNodes.map((img: { id: string }) => img.id),
-            ]));
-            const nextSuccessCount = mergedChildIds.length;
-            const nextFailCount = nextPendingTaskIds.length > 0
-              ? Math.max(0, expectedCount - nextSuccessCount - nextPendingTaskIds.length)
-              : Math.max(0, expectedCount - nextSuccessCount);
-
-            addImageNodes(recoveredImageNodes as any, {
-              [latestNode.id]: {
-                isGenerating: nextPendingTaskIds.length > 0,
-                jobId: nextJobId,
-                childImageIds: mergedChildIds,
-                error: undefined,
-                errorDetails: nextFailCount > 0 ? latestNode.errorDetails : undefined,
-                refundStatus: undefined,
-                lastGenerationSuccessCount: nextSuccessCount,
-                lastGenerationFailCount: nextFailCount,
-                lastGenerationTotalCount: Math.max(expectedCount, nextSuccessCount),
-                generationMetadata: nextGenerationMetadata,
-              }
-            });
-
-            if (nextPendingTaskIds.length > 0) {
-              window.setTimeout(() => {
-                const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-                if (freshNode?.isGenerating) {
-                  nextPendingTaskIds.forEach(taskId => {
-                    pollTaskStatusRef.current?.(freshNode, taskId);
-                  });
-                }
-              }, 3000);
-            }
-            return;
-            const recoveredImages = imageUrls.map((url: string, index: number) => {
-              const imageId = `${node.id}_recovered_${Date.now()}_${index}`;
-              return {
-                id: imageId,
-                storageId: imageId,
-                url,
-                originalUrl: url,
-                prompt: node.prompt,
-                model: node.model,
-                aspectRatio: node.aspectRatio,
-                imageSize: node.imageSize,
-                timestamp: Date.now(),
-                canvasId: activeCanvasRef.current?.id || 'default',
-                parentPromptId: node.id,
-                position: {
-                  x: node.position.x,
-                  y: node.position.y + 320 + index * 24
-                },
-                dimensions: `${node.aspectRatio} 路 ${node.imageSize || '1K'}`,
-                provider: (result as any).provider || node.provider,
-                providerLabel: (result as any).providerName || node.providerLabel,
-                keySlotId: node.keySlotId,
-                generationTime: (result as any).generationTime || 0,
-                alias: node.mode === GenerationMode.PPT ? buildPptPageAlias(node.pptSlides?.[index], index) : undefined,
-              };
-            });
-            addImageNodes(recoveredImages as any);
-            updatePromptNode({
-              ...(latestNode || node),
-              isGenerating: false,
-              jobId: undefined,
-              childImageIds: recoveredImages.map((img: { id: string }) => img.id),
-              error: undefined,
-              errorDetails: undefined,
-              refundStatus: undefined
-            });
-            return;
-          }
-        } else {
-          // Failed
-          const failureTarget = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id) || node;
-          const completedCount = failureTarget.childImageIds?.length || 0;
-          if (nextPendingTaskIds.length > 0) {
-            updatePromptNode({
-              ...failureTarget,
-              isGenerating: true,
-              jobId: nextJobId,
-              generationMetadata: nextGenerationMetadata,
-              error: undefined,
-            });
-            return;
-          }
-          if (completedCount > 0) {
-            updatePromptNode({
-              ...failureTarget,
-              isGenerating: false,
-              jobId: undefined,
-              generationMetadata: nextGenerationMetadata,
-              error: undefined,
-              errorDetails: undefined,
-              refundStatus: undefined,
-              lastGenerationSuccessCount: completedCount,
-              lastGenerationFailCount: Math.max(1, expectedCount - completedCount),
-              lastGenerationTotalCount: Math.max(expectedCount, completedCount),
-            });
-            return;
-          }
-          const hasRecoveredImages = !!activeCanvasRef.current?.imageNodes.some(img => img.parentPromptId === node.id);
-          if (hasRecoveredImages || !failureTarget.isGenerating || (failureTarget.childImageIds?.length || 0) > 0) {
-            console.warn('[Auto-Resume] Skip stale failed poll result because node already completed:', {
-              nodeId: node.id,
-              hasRecoveredImages,
-              childImageIds: failureTarget.childImageIds?.length || 0,
-              isGenerating: failureTarget.isGenerating
-            });
-            return;
-          }
-          updatePromptNode({ ...failureTarget, isGenerating: false, error: 'Task failed on backend' });
-          return;
-        }
-      }
-
-      // If still pending, poll again in 10s
-      setTimeout(() => {
-        // Refresh node from state to check if it's still generating
-        const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-        if (freshNode && freshNode.isGenerating) {
-          const freshPendingTaskIds = getPendingTaskIds(freshNode);
-          if (freshPendingTaskIds.includes(targetTaskId) || freshNode.jobId === targetTaskId) {
-            pollTaskStatus(freshNode, targetTaskId);
-          }
-        }
-      }, 10000);
-
-    } catch (err: any) {
-      console.error(`[Auto-Resume] Polling failed for node ${node.id}:`, err);
-      const freshNode = activeCanvasRef.current?.promptNodes.find(n => n.id === node.id);
-      if (freshNode?.isGenerating) {
-        const freshPendingTaskIds = getPendingTaskIds(freshNode);
-        if (freshPendingTaskIds.includes(targetTaskId) || freshNode.jobId === targetTaskId) {
-          setTimeout(() => pollTaskStatus(freshNode, targetTaskId), 15000);
-        }
-      }
-    }
-  }, [llmService, updatePromptNode, addImageNodes, getPendingTaskIds, resolvePendingTaskState, getExpectedGenerationCount, getGeneratedImagePosition, updateImageNodePosition]);
-
-  useEffect(() => {
-    pollTaskStatusRef.current = pollTaskStatus;
-  }, [pollTaskStatus]);
-
-  // Auto-Resume Effect
-  const hasResumedRef = useRef(false);
-  useEffect(() => {
-    // Wait for canvas to be ready and loaded
-    if (!activeCanvas || hasResumedRef.current || !isReady) return;
-
-    const interruptedNodes = activeCanvas.promptNodes.filter(n => n.isGenerating);
-    if (interruptedNodes.length > 0) {
-      console.log(`[Auto-Resume] Found ${interruptedNodes.length} interrupted tasks. Resuming...`);
-      interruptedNodes.forEach(node => {
-        const pendingTaskIds = getPendingTaskIds(node);
-        if (pendingTaskIds.length > 0 || node.jobId) {
-          // Delay to ensure services are ready
-          setTimeout(() => {
-            const taskIdsToResume = pendingTaskIds.length > 0 ? pendingTaskIds : (node.jobId ? [node.jobId] : []);
-            taskIdsToResume.forEach(taskId => pollTaskStatus(node, taskId));
-          }, 1000);
-        } else {
-          urgentUpdatePromptNode({
-            ...node,
-            isGenerating: false,
-            error: '刷新后无法确认任务状态，已阻止自动重发以避免重复扣费',
-            errorDetails: {
-              ...(node.errorDetails || {}),
-              code: 'RESUME_REQUIRES_TASK_ID',
-              responseBody: '任务已发送但缺少 jobId，刷新后不会自动重发，以避免供应商重复扣费',
-              model: node.model,
-              timestamp: Date.now()
-            },
-            generationMetadata: {
-              ...(node.generationMetadata || {}),
-              resumeBlocked: true,
-              reason: 'missing_job_id_after_reload'
-            }
-          });
-        }
-      });
-      import('./services/system/notificationService').then(({ notify }) => {
-        notify.info('任务自动恢复', `已恢复 ${interruptedNodes.length} 个未完成的生成任务`);
-      });
-    }
-    hasResumedRef.current = true;
-  }, [activeCanvas, isReady, pollTaskStatus, urgentUpdatePromptNode, getPendingTaskIds]);
-
 
   const handleGenerate = useCallback(async () => {
     const now = Date.now();
@@ -3467,7 +2463,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         }
       }
     }
-    setIsGenerating(true);
+    // setIsGenerating(true); // Removed, handled by hook
     try {
 
       // 4. Calculate Position
@@ -3641,10 +2637,25 @@ const AppContent: React.FC<AppContentProps> = () => {
 
       if ((config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT) && config.enablePromptOptimization && rawPrompt) {
         try {
+          const selectedOptimizerTemplate = getPromptOptimizerTemplate(config.promptOptimizationTemplateId, config.mode);
+          const optimizationMode = config.promptOptimizationMode || 'auto';
+          const optimizationPrompt = [
+            selectedOptimizerTemplate?.instruction || '',
+            optimizationMode === 'custom' ? (config.promptOptimizationCustomPrompt || '').trim() : ''
+          ]
+            .filter(Boolean)
+            .join('\n');
           const optimized = await optimizePromptForImage(rawPrompt, {
             preferredModelId: config.model,
             aspectRatio: config.aspectRatio,
+            imageSize: config.imageSize,
             mode: config.mode,
+            optimizationMode,
+            optimizationTemplateId: selectedOptimizerTemplate?.id,
+            optimizationTemplateTitle: selectedOptimizerTemplate?.title,
+            optimizationPrompt,
+            supportsThinking: !!getModelCapabilities(config.model)?.supportsThinking,
+            thinkingMode: config.thinkingMode || 'minimal',
             referenceImages: finalReferenceImages
               .filter(ref => ref.data)
               .map(ref => {
@@ -3672,10 +2683,11 @@ const AppContent: React.FC<AppContentProps> = () => {
 
       const baseModelIdForPreview = config.model.split('@')[0];
       const modelSuffixForPreview = config.model.split('@')[1];
-      const previewModelLabel = getModelMetadata(baseModelIdForPreview)?.name || baseModelIdForPreview;
+      const previewModelMeta = keyManager.getGlobalModelList().find((model) => model.id === config.model);
+      const previewModelLabel = previewModelMeta?.name || getModelMetadata(config.model)?.name || baseModelIdForPreview;
       const selectedKey = keyManager.getNextKey(config.model, getPreferredKeyForMode(config.mode));
-      const previewProvider = selectedKey?.provider || (modelSuffixForPreview ? 'Custom' : 'Google');
-      const previewProviderLabel = selectedKey?.name || modelSuffixForPreview || 'Google';
+      const previewProvider = previewModelMeta?.provider || selectedKey?.provider || (modelSuffixForPreview ? 'Custom' : 'Google');
+      const previewProviderLabel = previewModelMeta?.providerLabel || selectedKey?.name || modelSuffixForPreview || 'Google';
       const pptCount = config.mode === GenerationMode.PPT
         ? Math.min(20, Math.max(1, config.parallelCount || 1))
         : Math.min(4, Math.max(1, config.parallelCount || 1));
@@ -3697,6 +2709,10 @@ const AppContent: React.FC<AppContentProps> = () => {
         imageSize: config.imageSize,
         model: config.model,
         modelLabel: previewModelLabel,
+        modelColorStart: previewModelMeta?.colorStart,
+        modelColorEnd: previewModelMeta?.colorEnd,
+        modelColorSecondary: previewModelMeta?.colorSecondary,
+        modelTextColor: previewModelMeta?.textColor,
         thinkingMode: config.thinkingMode || 'minimal',
         enableGrounding: !!config.enableGrounding,
         enableImageSearch: !!config.enableImageSearch,
@@ -4573,7 +3589,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       }
 
       updateImageNode(target.id, {
-        ...resolveProviderDisplay(result.keySlotId || node.keySlotId, result.providerName || target.providerLabel, result.provider || target.provider),
+        ...resolveProviderDisplay(result.keySlotId || node.keySlotId, target.providerLabel || result.providerName, target.provider || result.provider),
         url: result.url,
         originalUrl: result.url,
         prompt: taskPrompt,
@@ -4581,6 +3597,10 @@ const AppContent: React.FC<AppContentProps> = () => {
         generationTime: Date.now() - startTime,
         model: result.model || node.model,
         modelLabel: result.modelName || target.modelLabel,
+        modelColorStart: target.modelColorStart,
+        modelColorEnd: target.modelColorEnd,
+        modelColorSecondary: target.modelColorSecondary,
+        modelTextColor: target.modelTextColor,
         keySlotId: result.keySlotId || node.keySlotId,
         imageSize: result.imageSize || node.imageSize,
         aspectRatio: result.aspectRatio || node.aspectRatio,
@@ -4867,6 +3887,483 @@ const AppContent: React.FC<AppContentProps> = () => {
       notify.success('PPTX 导出完成', `已导出 ${ordered.length} 页的 .pptx 文件`);
     });
   }, [activeCanvas, parsePptOutlineLine]);
+
+  const handleExportPptPackageEditable = useCallback(async (node: PromptNode) => {
+    const exportBundle = getPptEditableExportBundle(node);
+    if (!exportBundle) {
+      import('./services/system/notificationService').then(({ notify }) => {
+        notify.warning('无可导出页面', '当前主卡还没有生成副卡页面');
+      });
+      return;
+    }
+
+    const zip = new JSZip();
+    const { promptNode, images, pages, imageById } = exportBundle;
+    const outlinePages = syncPptSlidesFromEditablePages(pages);
+    const pageSummaries: Array<Record<string, unknown>> = [];
+    const assetFileByImageId = new Map<string, string>();
+    const uniqueImageIds = Array.from(new Set(
+      pages.flatMap((page) => page.layers
+        .map((layer) => layer.type === 'image' ? (layer.imageNodeId || page.backgroundImageId || null) : null)
+        .filter((id): id is string => Boolean(id))),
+    ));
+
+    for (let assetIndex = 0; assetIndex < uniqueImageIds.length; assetIndex += 1) {
+      const imageId = uniqueImageIds[assetIndex];
+      const image = imageById.get(imageId);
+      if (!image) continue;
+
+      const asset = await resolvePptExportImageAsset(image);
+      const assetSlug = sanitizePptFileSegment(
+        image.alias || `slide-${assetIndex + 1}`,
+        `slide-${assetIndex + 1}`,
+      );
+      const assetFile = `editable/assets/${String(assetIndex + 1).padStart(2, '0')}-${assetSlug}.${asset.ext}`;
+      zip.file(assetFile, asset.blob);
+      assetFileByImageId.set(imageId, assetFile);
+    }
+
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+      const page = pages[pageIndex];
+      const pageNo = pageIndex + 1;
+      const pageTitle = getPptTextLayer(page, 'title')?.text.trim() || page.name || `Slide ${pageNo}`;
+      const pageSlug = sanitizePptFileSegment(pageTitle, `slide-${pageNo}`);
+      const previewFile = `pages/${String(pageNo).padStart(2, '0')}-${pageSlug}.png`;
+      const backgroundImageId = page.backgroundImageId
+        || page.layers.find((layer): layer is PptEditableImageLayer => layer.type === 'image')?.imageNodeId;
+      zip.file(previewFile, await renderPptEditablePagePreviewBlob(page, imageById));
+
+      const slideFile = `editable/slides/slide-${String(pageNo).padStart(2, '0')}.json`;
+      const subtitle = getPptTextLayer(page, 'subtitle')?.text.trim() || '';
+      const layerPayload = page.layers.map((layer) => {
+        if (layer.type === 'image') {
+          const layerImageId = layer.imageNodeId || page.backgroundImageId;
+          return {
+            ...layer,
+            sourceUrl: undefined,
+            assetFile: layerImageId ? assetFileByImageId.get(layerImageId) : undefined,
+          };
+        }
+
+        return layer;
+      });
+
+      zip.file(slideFile, JSON.stringify({
+        id: page.id,
+        page: pageNo,
+        name: page.name,
+        outline: outlinePages[pageIndex] || page.outline,
+        notes: page.notes || '',
+        backgroundImageId: backgroundImageId || null,
+        previewFile,
+        layers: layerPayload,
+      }, null, 2));
+
+      pageSummaries.push({
+        page: pageNo,
+        id: page.id,
+        title: pageTitle,
+        subtitle,
+        outline: outlinePages[pageIndex] || page.outline,
+        prompt: images[pageIndex]?.prompt || promptNode.prompt,
+        model: images[pageIndex]?.model || promptNode.model,
+        provider: images[pageIndex]?.providerLabel || images[pageIndex]?.provider || promptNode.providerLabel || promptNode.provider,
+        keySlotId: images[pageIndex]?.keySlotId || promptNode.keySlotId,
+        dimensions: images[pageIndex]?.dimensions,
+        imageSize: images[pageIndex]?.imageSize || promptNode.imageSize,
+        timestamp: images[pageIndex]?.timestamp || promptNode.timestamp,
+        previewFile,
+        editableFile: slideFile,
+        backgroundAsset: backgroundImageId ? assetFileByImageId.get(backgroundImageId) : undefined,
+        layerCount: page.layers.length,
+        visibleLayerCount: page.layers.filter((layer) => layer.visible).length,
+      });
+    }
+
+    zip.file('editable/deck.json', JSON.stringify({
+      exportedAt: new Date().toISOString(),
+      format: 'kk-studio-ppt-editable/v1',
+      canvas: PPT_EDITABLE_CANVAS,
+      node: {
+        id: promptNode.id,
+        prompt: promptNode.prompt,
+        mode: promptNode.mode,
+        model: promptNode.model,
+        modelLabel: promptNode.modelLabel,
+        provider: promptNode.provider,
+        providerLabel: promptNode.providerLabel,
+        keySlotId: promptNode.keySlotId,
+        aspectRatio: promptNode.aspectRatio,
+        imageSize: promptNode.imageSize,
+        styleLocked: promptNode.pptStyleLocked !== false,
+      },
+      pages: pages.map((page, index) => ({
+        id: page.id,
+        page: index + 1,
+        name: page.name,
+        outline: outlinePages[index] || page.outline,
+        previewFile: `pages/${String(index + 1).padStart(2, '0')}-${sanitizePptFileSegment(
+          getPptTextLayer(page, 'title')?.text.trim() || page.name || `slide-${index + 1}`,
+          `slide-${index + 1}`,
+        )}.png`,
+        editableFile: `editable/slides/slide-${String(index + 1).padStart(2, '0')}.json`,
+      })),
+      assets: Object.fromEntries(assetFileByImageId.entries()),
+      notes: [
+        'This package preserves layered PPT scene data for online editing and PPTX export.',
+        'PSD export is not reconstructed automatically from a flat AI image; it must be rebuilt from these layers.',
+      ],
+    }, null, 2));
+
+    zip.file('meta/manifest.json', JSON.stringify({
+      exportedAt: new Date().toISOString(),
+      nodeId: promptNode.id,
+      nodePrompt: promptNode.prompt,
+      pageCount: pages.length,
+      pages: pageSummaries,
+    }, null, 2));
+
+    zip.file('outline/ppt-outline.json', JSON.stringify({
+      topic: promptNode.prompt,
+      pageCount: pages.length,
+      styleLocked: promptNode.pptStyleLocked !== false,
+      pages: outlinePages.map((text, index) => ({
+        page: index + 1,
+        text,
+      })),
+    }, null, 2));
+
+    zip.file('meta/node-meta.json', JSON.stringify({
+      nodeId: promptNode.id,
+      model: promptNode.model,
+      modelLabel: promptNode.modelLabel,
+      provider: promptNode.provider,
+      providerLabel: promptNode.providerLabel,
+      keySlotId: promptNode.keySlotId,
+      aspectRatio: promptNode.aspectRatio,
+      imageSize: promptNode.imageSize,
+      parallelCount: promptNode.parallelCount,
+      styleLocked: promptNode.pptStyleLocked !== false,
+      referenceStorageIds: (promptNode.referenceImages || []).map((ref) => ref.storageId || ref.id).filter(Boolean),
+    }, null, 2));
+
+    zip.file('editable/README.md', [
+      '# Editable PPT Package',
+      '',
+      '- `editable/deck.json`: layered deck manifest used by KK Studio.',
+      '- `editable/slides/*.json`: per-slide editable layer data.',
+      '- `editable/assets/*`: image layer assets referenced by the slide JSON.',
+      '- `pages/*`: preview PNGs for quick inspection.',
+      '',
+      'Use this package when you want to keep editable text and layer ordering, then export to PPTX now or rebuild PSD later.',
+    ].join('\n'));
+
+    const slidesHtml = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PPT 导出预览</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0b1020; color: #e5e7eb; margin: 0; padding: 20px; }
+    h1 { font-size: 18px; margin: 0 0 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+    .card { background: #121a2f; border: 1px solid #23304f; border-radius: 10px; overflow: hidden; }
+    .meta { padding: 10px 12px; font-size: 12px; line-height: 1.4; }
+    .title { color: #7dd3fc; font-weight: 600; margin-bottom: 6px; }
+    img { width: 100%; display: block; background: #0f172a; }
+  </style>
+</head>
+<body>
+  <h1>${(promptNode.prompt || 'PPT 导出预览').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h1>
+  <div class="grid">
+    ${pageSummaries.map((page) => `
+      <div class="card">
+        <img src="../${String(page.previewFile)}" alt="${String(page.title).replace(/"/g, '&quot;')}" />
+        <div class="meta">
+          <div class="title">第 ${String(page.page)} 页 · ${String(page.title).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+          <div>${String(page.outline || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        </div>
+      </div>`).join('')}
+  </div>
+</body>
+</html>`;
+    zip.file('outline/slides-preview.html', slidesHtml);
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    saveAs(blob, `ppt-editable-package-${Date.now()}.zip`);
+
+    import('./services/system/notificationService').then(({ notify }) => {
+      notify.success('导出完成', `已导出 ${pages.length} 页，以及 editable 图层包、预览页和素材目录`);
+    });
+  }, [getPptEditableExportBundle, renderPptEditablePagePreviewBlob, resolvePptExportImageAsset, sanitizePptFileSegment]);
+
+  const handleExportPptxEditable = useCallback(async (node: PromptNode) => {
+    const exportBundle = getPptEditableExportBundle(node);
+    if (!exportBundle) {
+      import('./services/system/notificationService').then(({ notify }) => {
+        notify.warning('无可导出页面', '当前主卡还没有生成副卡页面');
+      });
+      return;
+    }
+
+    const { promptNode, pages, imageById } = exportBundle;
+    const slideWidth = 12192000;
+    const slideHeight = 6858000;
+    const emuPerPx = Math.round(slideWidth / PPT_EDITABLE_CANVAS.width);
+    const escapeXml = (value: string) => String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+    const normalizeColor = (value?: string, fallback = 'FFFFFF') => {
+      const raw = String(value || '').trim().replace(/^#/, '');
+      if (/^[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
+      if (/^[0-9a-fA-F]{3}$/.test(raw)) {
+        return raw.split('').map((part) => `${part}${part}`).join('').toUpperCase();
+      }
+      return fallback;
+    };
+    const toAlphaValue = (opacity: number) => Math.max(0, Math.min(100000, Math.round(opacity * 100000)));
+    const toEmu = (value: number) => Math.max(0, Math.round(value * emuPerPx));
+    const alignMap = {
+      left: 'l',
+      center: 'ctr',
+      right: 'r',
+    } as const;
+    const makeColorXml = (value: string | undefined, fallback: string, opacity = 1) => (
+      `<a:srgbClr val="${normalizeColor(value, fallback)}">${opacity < 1 ? `<a:alpha val="${toAlphaValue(opacity)}"/>` : ''}</a:srgbClr>`
+    );
+
+    const zip = new JSZip();
+    const visibleImageIds = Array.from(new Set(
+      pages.flatMap((page) => page.layers.reduce<string[]>((ids, layer) => {
+        if (!layer.visible || layer.type !== 'image') {
+          return ids;
+        }
+
+        const imageId = layer.imageNodeId || page.backgroundImageId;
+        if (imageId) {
+          ids.push(imageId);
+        }
+
+        return ids;
+      }, [])),
+    ));
+    const mediaByImageId = new Map<string, { fileName: string; ext: 'png' | 'jpg' }>();
+
+    for (let mediaIndex = 0; mediaIndex < visibleImageIds.length; mediaIndex += 1) {
+      const imageId = visibleImageIds[mediaIndex];
+      const image = imageById.get(imageId);
+      if (!image) continue;
+
+      const asset = await resolvePptExportImageAsset(image);
+      const fileName = `image${mediaIndex + 1}.${asset.ext}`;
+      zip.file(`ppt/media/${fileName}`, asset.blob);
+      mediaByImageId.set(imageId, { fileName, ext: asset.ext });
+    }
+
+    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Default Extension="jpg" ContentType="image/jpeg"/>
+  <Default Extension="jpeg" ContentType="image/jpeg"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  ${pages.map((_, index) => `  <Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join('\n')}
+</Types>`);
+
+    zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`);
+
+    const nowIso = new Date().toISOString();
+    zip.file('docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${escapeXml(promptNode.prompt || 'KK Studio PPT')}</dc:title>
+  <dc:creator>KK Studio</dc:creator>
+  <cp:lastModifiedBy>KK Studio</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${nowIso}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${nowIso}</dcterms:modified>
+</cp:coreProperties>`);
+
+    zip.file('docProps/app.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>KK Studio</Application>
+  <Slides>${pages.length}</Slides>
+</Properties>`);
+
+    zip.file('ppt/presentation.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
+  <p:sldIdLst>
+    ${pages.map((_, index) => `<p:sldId id="${256 + index}" r:id="rId${index + 2}"/>`).join('')}
+  </p:sldIdLst>
+  <p:sldSz cx="${slideWidth}" cy="${slideHeight}" type="screen16x9"/>
+  <p:notesSz cx="6858000" cy="9144000"/>
+</p:presentation>`);
+
+    zip.file('ppt/_rels/presentation.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+  ${pages.map((_, index) => `<Relationship Id="rId${index + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${index + 1}.xml"/>`).join('\n')}
+</Relationships>`);
+
+    zip.file('ppt/slideMasters/slideMaster1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld name="Master"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>
+  <p:clrMap accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" bg1="lt1" bg2="lt2" folHlink="folHlink" hlink="hlink" tx1="dk1" tx2="dk2"/>
+  <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
+</p:sldMaster>`);
+
+    zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>
+</Relationships>`);
+
+    zip.file('ppt/slideLayouts/slideLayout1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">
+  <p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sldLayout>`);
+
+    zip.file('ppt/slideLayouts/_rels/slideLayout1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>`);
+
+    zip.file('ppt/theme/theme1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme"><a:themeElements><a:clrScheme name="Default"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F497D"/></a:dk2><a:lt2><a:srgbClr val="EEECE1"/></a:lt2><a:accent1><a:srgbClr val="4F81BD"/></a:accent1><a:accent2><a:srgbClr val="C0504D"/></a:accent2><a:accent3><a:srgbClr val="9BBB59"/></a:accent3><a:accent4><a:srgbClr val="8064A2"/></a:accent4><a:accent5><a:srgbClr val="4BACC6"/></a:accent5><a:accent6><a:srgbClr val="F79646"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Default"><a:majorFont><a:latin typeface="Calibri"/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/></a:minorFont></a:fontScheme><a:fmtScheme name="Default"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`);
+
+    for (let slideIndex = 0; slideIndex < pages.length; slideIndex += 1) {
+      const page = pages[slideIndex];
+      const visibleLayers = sortPptLayers(page.layers).filter((layer) => layer.visible);
+      const slideLayerXml: string[] = [];
+      const slideRelationships: string[] = [];
+      let nextShapeId = 2;
+      let nextRelationshipId = 1;
+
+      visibleLayers.forEach((layer) => {
+        if (layer.type === 'image') {
+          const imageId = layer.imageNodeId || page.backgroundImageId;
+          if (!imageId) return;
+
+          const media = mediaByImageId.get(imageId);
+          if (!media) return;
+
+          const relationshipId = `rId${nextRelationshipId}`;
+          nextRelationshipId += 1;
+          slideRelationships.push(
+            `<Relationship Id="${relationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${media.fileName}"/>`,
+          );
+
+          const opacity = Math.max(0, Math.min(1, layer.opacity ?? 1));
+          const pictureXml = `      <p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="${nextShapeId}" name="${escapeXml(layer.name || `Image ${nextShapeId}`)}"/>
+          <p:cNvPicPr/>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip r:embed="${relationshipId}">${opacity < 1 ? `<a:alphaModFix amt="${toAlphaValue(opacity)}"/>` : ''}</a:blip>
+          <a:stretch><a:fillRect/></a:stretch>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm><a:off x="${toEmu(layer.x)}" y="${toEmu(layer.y)}"/><a:ext cx="${toEmu(layer.width)}" cy="${toEmu(layer.height)}"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        </p:spPr>
+      </p:pic>`;
+          slideLayerXml.push(pictureXml);
+          nextShapeId += 1;
+          return;
+        }
+
+        if (!layer.text.trim()) return;
+
+        const fontSize = Math.max(100, Math.round(layer.fontSize * 100));
+        const textOpacity = Math.max(0, Math.min(1, layer.opacity ?? 1));
+        const backgroundOpacity = Math.max(0, Math.min(1, (layer.backgroundOpacity ?? 0) * textOpacity));
+        const paragraphs = layer.text.split(/\r?\n/).map((line) => (
+          `          <a:p>
+            <a:pPr algn="${alignMap[layer.align || 'left']}"/>
+            <a:r>
+              <a:rPr lang="zh-CN"${(layer.fontWeight || 0) >= 600 ? ' b="1"' : ''} sz="${fontSize}">
+                <a:solidFill>${makeColorXml(layer.color, 'FFFFFF', textOpacity)}</a:solidFill>
+              </a:rPr>
+              <a:t>${escapeXml(line || ' ')}</a:t>
+            </a:r>
+            <a:endParaRPr lang="zh-CN" sz="${fontSize}"/>
+          </a:p>`
+        )).join('\n');
+        const textXml = `      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="${nextShapeId}" name="${escapeXml(layer.name || `Text ${nextShapeId}`)}"/>
+          <p:cNvSpPr txBox="1"/>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="${toEmu(layer.x)}" y="${toEmu(layer.y)}"/><a:ext cx="${toEmu(layer.width)}" cy="${toEmu(layer.height)}"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          ${layer.backgroundColor && backgroundOpacity > 0 ? `<a:solidFill>${makeColorXml(layer.backgroundColor, '111827', backgroundOpacity)}</a:solidFill>` : '<a:noFill/>'}
+          <a:ln><a:noFill/></a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr wrap="square" lIns="114300" tIns="57150" rIns="114300" bIns="57150"/>
+          <a:lstStyle/>
+${paragraphs}
+        </p:txBody>
+      </p:sp>`;
+        slideLayerXml.push(textXml);
+        nextShapeId += 1;
+      });
+
+      slideRelationships.push(
+        `<Relationship Id="rId${nextRelationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`,
+      );
+
+      zip.file(`ppt/slides/slide${slideIndex + 1}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm>
+          <a:off x="0" y="0"/>
+          <a:ext cx="0" cy="0"/>
+          <a:chOff x="0" y="0"/>
+          <a:chExt cx="0" cy="0"/>
+        </a:xfrm>
+      </p:grpSpPr>
+${slideLayerXml.join('\n')}
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>`);
+
+      zip.file(`ppt/slides/_rels/slide${slideIndex + 1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${slideRelationships.join('\n  ')}
+</Relationships>`);
+    }
+
+    const pptxBlob = await zip.generateAsync({ type: 'blob' });
+    saveAs(pptxBlob, `ppt-layered-${Date.now()}.pptx`);
+
+    import('./services/system/notificationService').then(({ notify }) => {
+      notify.success('PPTX 导出完成', `已导出 ${pages.length} 页的可编辑图层 PPTX`);
+    });
+  }, [getPptEditableExportBundle, resolvePptExportImageAsset]);
 
   // Auto-Recover Interrupted Tasks
   useEffect(() => {
@@ -5179,15 +4676,6 @@ const AppContent: React.FC<AppContentProps> = () => {
     setIsCanvasTransforming(prev => (prev === nextValue ? prev : nextValue));
   }, []);
 
-  // [Blocking Load] Wait for Canvas Hydration to prevent "Triple Load" flash
-  if (!isReady) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'var(--bg-base)' }}>
-        <Loader2 className="animate-spin text-indigo-500" size={32} />
-      </div>
-    );
-  }
-
   const CONNECTOR_LAYER_Z_INDEX = 0;
 
   // Adaptive connector styles for zoomed canvas (keep dashed lines visible when zoomed out)
@@ -5201,15 +4689,133 @@ const AppContent: React.FC<AppContentProps> = () => {
   const connectorHitStroke = Math.max(16, Math.min(40, 20 / zoomForConnectors));
   const connectorDotStart = Math.max(2, Math.min(4.5, 3 / zoomForConnectors));
   const connectorDotEnd = Math.max(1.5, Math.min(3.5, 2 / zoomForConnectors));
+  const derivedMobileUserName = (() => {
+    const candidate =
+      user?.user_metadata?.full_name ||
+      user?.user_metadata?.name ||
+      user?.email?.split('@')[0];
+
+    return typeof candidate === 'string' && candidate.trim().length > 0
+      ? candidate.trim()
+      : '\u7528\u6237';
+  })();
+  const derivedMobileUserAvatarUrl =
+    typeof user?.user_metadata?.avatar_url === 'string' && user?.user_metadata?.avatar_url.length > 0
+      ? user?.user_metadata?.avatar_url
+      : undefined;
+
+  const desktopChromeRight = isChatOpen
+    ? `calc(min(100vw - 60px, ${chatSidebarWidth + 28}px))`
+    : workspaceSurface === 'library'
+      ? '428px'
+      : '48px';
+
+  const handlePreviewFromLibrary = useCallback((imageId: string) => {
+    setWorkspaceSurface('workspace');
+    handleOpenPreview(imageId);
+  }, [handleOpenPreview]);
+
+  const handleFocusLibraryImage = useCallback((imageId: string) => {
+    const imageNode = activeCanvas?.imageNodes.find(node => node.id === imageId);
+    if (!imageNode) return;
+
+    setWorkspaceSurface('workspace');
+    handleNavigateToNode(imageNode.position.x, imageNode.position.y, imageNode.id);
+  }, [activeCanvas, handleNavigateToNode]);
+
+  const handleSelectMobileTab = useCallback((tab: MobilePrimaryTab) => {
+    handleShowMobileNav();
+
+    if (tab === 'create') {
+      focusWorkspace();
+      setIsChatOpen(false);
+      return;
+    }
+
+    if (tab === 'library') {
+      openLibrarySurface();
+      return;
+    }
+
+    if (tab === 'chat') {
+      focusWorkspace();
+      setIsChatOpen(true);
+      return;
+    }
+
+    setIsChatOpen(false);
+    openProfileSurface('main');
+  }, [focusWorkspace, handleShowMobileNav, openLibrarySurface, openProfileSurface]);
+
+  // [Blocking Load] Wait for Canvas Hydration to prevent "Triple Load" flash
+  // Keep this after all hooks so the hook order stays stable across renders.
+  if (!isReady) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'var(--bg-base)' }}>
+        <Loader2 className="animate-spin text-indigo-500" size={32} />
+      </div>
+    );
+  }
+
+  const workspaceChrome = (
+    <>
+      {isMobile ? (
+        <>
+          <MobileHeader
+            onMenuClick={() => setIsSidebarOpen(true)}
+            onDashboardClick={() => openSettingsSurface('dashboard')}
+            onSettingsClick={() => openSettingsSurface('api-management')}
+            onUserClick={() => openProfileSurface('main')}
+            onBillingClick={() => openProfileSurface('billing')}
+            onRechargeClick={() => setShowRechargeModal(true)}
+            balance={balance}
+            balanceLoading={balanceLoading}
+            title="KK Studio"
+            userName={derivedMobileUserName}
+            userAvatarUrl={derivedMobileUserAvatarUrl}
+          />
+          <MobileWorkspaceQuickBar
+            onSearch={() => {
+              focusWorkspace();
+              setIsSearchOpen(true);
+            }}
+            onOpenPromptLibrary={() => {
+              window.dispatchEvent(new CustomEvent('kk-mobile-open-prompt-library'));
+            }}
+            onTogglePromptOptimization={() => {
+              if (config.mode !== GenerationMode.IMAGE && config.mode !== GenerationMode.PPT) {
+                return;
+              }
+
+              setConfig(prev => ({
+                ...prev,
+                enablePromptOptimization: !prev.enablePromptOptimization,
+              }));
+            }}
+            promptOptimizationEnabled={!!config.enablePromptOptimization}
+            promptOptimizationSupported={config.mode === GenerationMode.IMAGE || config.mode === GenerationMode.PPT}
+          />
+          <MobileTabBar
+            currentMode={config.mode}
+            currentTab={currentMobileTab}
+            onSelectTab={handleSelectMobileTab}
+            isVisible={true}
+            onInteract={handleShowMobileNav}
+          />
+        </>
+      ) : null}
+    </>
+  );
 
 
   return (
-    <div id="canvas-container" className={`relative w-screen h-screen overflow-hidden text-zinc-100 font-inter selection:bg-indigo-500/30 ${isMobile ? 'ios-mobile-shell' : ''}`}
-      style={{ backgroundColor: 'var(--bg-canvas)' }}
+    <WorkspaceShell
+      isMobile={isMobile}
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
       onMouseMove={handleRootMouseMove}
       onMouseUp={handleRootMouseUp}
+      chrome={workspaceChrome}
     >
       {/* Top Left Credits Display */}
       {!isMobile && (
@@ -5218,21 +4824,21 @@ const AppContent: React.FC<AppContentProps> = () => {
             className="flex items-center gap-3 px-4 py-2 rounded-full border shadow-2xl backdrop-blur-md transition-all hover:border-[var(--border-medium)] group"
             style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}
           >
-            <div className="flex items-center gap-1.5 pt-0.5">
-              <Sparkles size={18} fill="currentColor" className="text-blue-500 mb-0.5" />
+            <div className="flex items-center gap-1.5">
+              <Sparkles size={18} fill="currentColor" className="text-blue-500" />
               <div className="flex items-center select-none gap-1">
                 <span className="text-[18px] font-mono font-bold leading-none min-w-[20px] drop-shadow-sm" style={{ color: 'var(--text-primary)' }}>
                   {balanceLoading ? (
                     <Loader2 size={16} className="animate-spin opacity-40 text-blue-400" />
                   ) : balance}
                 </span>
-                <span className="text-[14px] font-bold text-blue-400 mt-0.5">积分</span>
+                <span className="text-[14px] font-bold leading-none text-blue-400">积分</span>
               </div>
             </div>
             <div className="w-px h-6" style={{ backgroundColor: 'var(--border-light)' }} />
             <button
               onClick={() => setShowRechargeModal(true)}
-              className="px-3 py-1 bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-bold rounded-lg transition-all active:scale-95 shadow-lg shadow-indigo-500/20"
+              className="inline-flex items-center justify-center px-3 py-1 bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-bold leading-none rounded-lg transition-all active:scale-95 shadow-lg shadow-indigo-500/20"
             >
               充值
             </button>
@@ -5241,7 +4847,7 @@ const AppContent: React.FC<AppContentProps> = () => {
       )}
 
       {/* [NEW] Mobile Header & Navigation */}
-      {isMobile && (
+      {false && isMobile && (
         <>
           <MobileHeader
             onMenuClick={() => setIsSidebarOpen(true)}
@@ -5259,21 +4865,19 @@ const AppContent: React.FC<AppContentProps> = () => {
               setProfileInitialView('billing');
               setShowProfileModal(true);
             }}
+            onRechargeClick={() => {
+              setShowRechargeModal(true);
+            }}
+            balance={balance}
+            balanceLoading={balanceLoading}
             title="KK Studio"
+            userName={derivedMobileUserName}
+            userAvatarUrl={derivedMobileUserAvatarUrl}
           />
           <MobileTabBar
-            onSetMode={(mode) => setConfig(prev => ({ ...prev, mode }))}
-            onOpenSettings={() => {
-              setShowSettingsPanel(true);
-              setSettingsInitialView('dashboard');
-            }}
-            onOpenProfile={() => {
-              setShowProfileModal(true);
-              setProfileInitialView('main');
-            }}
-            onToggleChat={() => setIsChatOpen(prev => !prev)}
             currentMode={config.mode}
-            currentView={showSettingsPanel ? 'settings' : (showProfileModal ? 'profile' : (isChatOpen ? 'chat' : 'home'))}
+            currentTab={currentMobileTab}
+            onSelectTab={handleSelectMobileTab}
           />
         </>
       )}
@@ -5292,8 +4896,8 @@ const AppContent: React.FC<AppContentProps> = () => {
               className="relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all shadow-2xl flex items-center justify-center cursor-pointer active:scale-95"
               style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--bg-secondary)' }}
             >
-              {user?.user_metadata?.avatar_url ? (
-                <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />
+              {derivedMobileUserAvatarUrl ? (
+                <img src={derivedMobileUserAvatarUrl} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full bg-gradient-to-tr from-indigo-500 via-purple-500 to-amber-500 flex items-center justify-center font-bold text-white text-sm">
                   {user?.email?.[0].toUpperCase() || 'K'}
@@ -5324,8 +4928,8 @@ const AppContent: React.FC<AppContentProps> = () => {
                     }}>
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold overflow-hidden">
-                        {user?.user_metadata?.avatar_url ? (
-                          <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />
+                        {derivedMobileUserAvatarUrl ? (
+                          <img src={derivedMobileUserAvatarUrl} className="w-full h-full object-cover" />
                         ) : user?.email?.[0].toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -5365,7 +4969,7 @@ const AppContent: React.FC<AppContentProps> = () => {
                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                     >
                       <div className="p-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-yellow)' }}><Zap size={14} /></div>
-                      账户管理
+                      账号管理
                     </button>
 
                     <button
@@ -5572,8 +5176,9 @@ const AppContent: React.FC<AppContentProps> = () => {
             const node = activeCanvas?.promptNodes.find(n => n.id === id);
             if (node && node.tags) updatePromptNode({ ...node, tags: node.tags.filter(t => t !== tag) });
           }}
-          onPromptExportPpt={handleExportPptPackage}
-          onPromptExportPptx={handleExportPptx}
+          onPromptEditPptDeck={handleOpenPptDeckEditor}
+          onPromptExportPpt={handleExportPptPackageEditable}
+          onPromptExportPptx={handleExportPptxEditable}
           onPromptRetryPptPage={handleRetryPptSinglePage}
           onPromptExportPptPage={handleExportPptSinglePage}
           onOpenStorageSettings={() => { setShowSettingsPanel(true); setSettingsInitialView('storage-settings'); }}
@@ -6000,8 +5605,9 @@ const AppContent: React.FC<AppContentProps> = () => {
             }
             onCancel={handleCancelGeneration}
             onRetry={handleRetryNode}
-            onExportPpt={handleExportPptPackage}
-            onExportPptx={handleExportPptx}
+            onEditPptDeck={handleOpenPptDeckEditor}
+            onExportPpt={handleExportPptPackageEditable}
+            onExportPptx={handleExportPptxEditable}
             onRetryPptPage={handleRetryPptSinglePage}
             onExportPptPage={handleExportPptSinglePage}
             ioTrace={getNodeIoTrace(node.id)}
@@ -6144,7 +5750,7 @@ const AppContent: React.FC<AppContentProps> = () => {
           onClearSource={handleClearSource}
           isMobile={isMobile}
           onOpenSettings={(view) => {
-            openSettingsPanel(view || 'api-management');
+            openSettingsSurface(view || 'api-management');
             handleHideMobileNav(); // Hide nav when opening settings (optional, but requested behavior implies consistent handling)
           }}
           onInteract={handleShowMobileNav}
@@ -6161,23 +5767,38 @@ const AppContent: React.FC<AppContentProps> = () => {
         />
       </div>
 
-      {/* Liquid Glass SVG Filter Definition */}
-      {/* Liquid Glass SVG Filter Removed (User Request) */}
-      {/* Chat Sidebar (Left) */}
-      <div id="chat-sidebar-wrapper">
-        <ChatSidebar
-          isOpen={isChatOpen}
-          onToggle={() => setIsChatOpen(prev => !prev)}
-          onClose={() => setIsChatOpen(false)}
-          isMobile={isMobile}
-          onOpenSettings={(view) => {
-            openSettingsPanel(view || 'api-management');
-          }}
-          onHoverChange={(isHovered) => setIsSidebarHovered(isHovered)}
-          onWidthChange={setChatSidebarWidth}
-        />
-      </div>
+      <WorkspacePanels
+        activeSurface={activeAppSurface}
+        activePanel={activeWorkspacePanel}
+        chatSidebar={(
+          <div id="chat-sidebar-wrapper">
+            <ChatSidebar
+              isOpen={isChatOpen}
+              onToggle={toggleChatPanel}
+              onClose={() => setIsChatOpen(false)}
+              isMobile={isMobile}
+              onOpenSettings={(view) => {
+                openSettingsSurface(view || 'api-management');
+              }}
+              onHoverChange={(isHovered) => setIsSidebarHovered(isHovered)}
+              onWidthChange={setChatSidebarWidth}
+            />
+          </div>
+        )}
+        libraryPanel={(
+          <AssetLibraryPanel
+            isOpen={workspaceSurface === 'library'}
+            isMobile={isMobile}
+            images={activeCanvas?.imageNodes || []}
+            promptCount={activeCanvas?.promptNodes.length || 0}
+            onClose={focusWorkspace}
+            onPreview={handlePreviewFromLibrary}
+            onFocusImage={handleFocusLibraryImage}
+          />
+        )}
+      />
 
+      <GlobalModals>
       {/* Legacy KeyManagerModal removed - integrated into UserProfileModal */}
 
       {/* User Profile Modal (Unified) */}
@@ -6235,7 +5856,7 @@ const AppContent: React.FC<AppContentProps> = () => {
               setShowStorageModal(false);
               setIsStorageChecked(true);
               if (!keyManager.hasValidKeys()) {
-                openSettingsPanel('api-management');
+                openSettingsSurface('api-management');
               }
             }}
           />
@@ -6249,19 +5870,24 @@ const AppContent: React.FC<AppContentProps> = () => {
 
 
       {/* Project Manager (Replaces Canvas Manager) */}
-      <ProjectManager
-        onSearch={() => setIsSearchOpen(true)}
-        isSidebarOpen={isSidebarOpen}
-        onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
-        isMobile={isMobile}
-        onFitToAll={handleFitToAll}
-        onResetView={handleResetView}
-        onToggleGrid={handleToggleGrid}
-        showGrid={showGrid}
-        onAutoArrange={handleAutoArrange}
-        onToggleChat={() => setIsChatOpen(prev => !prev)}
-        isChatOpen={isChatOpen}
-      />
+      {!isMobile && (
+        <ProjectManager
+          onSearch={() => {
+            focusWorkspace();
+            setIsSearchOpen(true);
+          }}
+          isSidebarOpen={isSidebarOpen}
+          onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
+          isMobile={isMobile}
+          onFitToAll={handleFitToAll}
+          onResetView={handleResetView}
+          onToggleGrid={handleToggleGrid}
+          showGrid={showGrid}
+          onAutoArrange={handleAutoArrange}
+          onToggleChat={toggleChatPanel}
+          isChatOpen={isChatOpen}
+        />
+      )}
 
 
 
@@ -6318,6 +5944,7 @@ const AppContent: React.FC<AppContentProps> = () => {
             images={previewImages}
             initialIndex={previewInitialIndex}
             onClose={() => setPreviewImages(null)}
+            onEditPptDeck={handleOpenPptDeckEditorFromImage}
             onEditText={handleEditPptTextFromLightbox}
             onDownloadPptComposite={handleDownloadPptComposite}
             onInpaint={(image, maskBase64, prompt) => {
@@ -6381,6 +6008,24 @@ const AppContent: React.FC<AppContentProps> = () => {
           onClose={() => setPptStackPreview(null)}
         />
       )}
+
+      {pptDeckEditor && (() => {
+        const bundle = getOrderedPptNodeBundle(pptDeckEditor.nodeId);
+        if (!bundle) return null;
+
+        return (
+          <Suspense fallback={null}>
+            <PptDeckEditorModal
+              promptNode={bundle.promptNode}
+              images={bundle.images}
+              initialIndex={pptDeckEditor.initialIndex}
+              onClose={() => setPptDeckEditor(null)}
+              onSave={(pages) => handleSavePptEditablePages(bundle.promptNode.id, pages)}
+            />
+          </Suspense>
+        );
+      })()}
+
       {isSearchOpen && (
         <Suspense fallback={null}>
           <SearchPalette
@@ -6409,7 +6054,7 @@ const AppContent: React.FC<AppContentProps> = () => {
 
       {/* AI鑱婂ぉ鎸夐挳 - 鍙充笅瑙掑浐瀹?*/}
       {/* AI鑱婂ぉ鎸夐挳 - 鍙充笅瑙掑浐瀹?*/}
-      <div className="absolute bottom-6 z-50 transition-all duration-300 hidden md:block" style={{ right: isChatOpen ? `calc(min(100vw - 60px, ${chatSidebarWidth + 28}px))` : '48px' }}>
+      {false && <div className="absolute bottom-6 z-50 transition-all duration-300 hidden md:block" style={{ right: isChatOpen ? `calc(min(100vw - 60px, ${chatSidebarWidth + 28}px))` : '48px' }}>
         <button
           id="chat-trigger-button"
           className="ai-chat-btn flex items-center justify-center cursor-pointer focus-visible:outline-none text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-blue-400/80 hover:shadow-[0_0_35px] bg-transparent overflow-hidden relative rounded-full aspect-square h-10 hover:scale-110 transition-all duration-300 p-2"
@@ -6458,7 +6103,7 @@ const AppContent: React.FC<AppContentProps> = () => {
             }
           `}</style>
         </button>
-      </div>
+      </div>}
 
       {/* 馃殌 杩佺Щ寮圭獥 */}
       {showMigrateModal && (
@@ -6509,7 +6154,8 @@ const AppContent: React.FC<AppContentProps> = () => {
           <RechargeModal />
         </Suspense>
       )}
-    </div>
+      </GlobalModals>
+    </WorkspaceShell>
   );
 };
 

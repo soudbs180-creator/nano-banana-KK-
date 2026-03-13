@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import keyManager, { KeySlot, autoDetectAndConfigureModels, parseModelString, categorizeModels } from '../../services/auth/keyManager';
 import { comprehensiveConnectionTest } from "../../services/api/connectionTest";
+import { resolveProviderRuntime } from '../../services/api/providerStrategy';
 import { notify } from '../../services/system/notificationService';
 import { CHAT_MODEL_PRESETS } from '../../services/model/modelPresets';
 import { maskApiKey } from '../../utils/securityUtils';
@@ -128,24 +129,9 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
 
     // Auto-detect settings from Base URL
     const detectSettingsFromUrl = (url: string) => {
-        const lower = url.toLowerCase();
-        if (lower.includes('googleapis.com')) {
-            setFormProvider('Google');
-            setFormCompatibility('standard');
-        } else if (lower.includes('anthropic.com')) {
-            setFormProvider('Anthropic');
-            setFormCompatibility('standard');
-        } else {
-            // Default to OpenAI Compatible for most custom URLs
-            setFormProvider('OpenAI');
-
-            // Auto-detect Chat Mode for known chat-only providers
-            if (lower.includes('vodeshop') || lower.includes('cherry') || lower.includes('siliconflow') || lower.includes('deepseek')) {
-                setFormCompatibility('chat');
-            } else {
-                setFormCompatibility('standard'); // Default standard for NewAPI/OneAPI
-            }
-        }
+        const runtime = resolveProviderRuntime({ baseUrl: url });
+        setFormProvider(runtime.uiProvider as any);
+        setFormCompatibility(runtime.compatibilityMode);
     };
 
     // Apply Preset
@@ -266,6 +252,9 @@ export const ApiChannelsView = ({ mode = 'dispatch' }: { mode?: 'dispatch' | 'as
                 baseUrl: targetUrl,
                 model: slot.supportedModels?.[0] || 'gemini-2.5-flash',
                 provider: slot.provider,
+                format: slot.format,
+                authMethod: slot.authMethod,
+                headerName: slot.headerName,
                 compatibilityMode: slot.compatibilityMode
             });
 

@@ -190,8 +190,8 @@ export class LLMService {
                     usage: response.usage,
                     provider: 'SystemProxy',
                     providerName: '系统积分模型',
-                    modelName: getModelMetadata(cleanModelId)?.name || cleanModelId,
-                    model: cleanModelId,
+                    modelName: getModelMetadata(options.modelId)?.name || cleanModelId,
+                    model: options.modelId,
                     keySlotId: keySlot.id,
                 };
             }
@@ -265,7 +265,7 @@ export class LLMService {
                     result.providerName = keySlot.name || keySlot.provider;
                 }
                 if (!result.modelName) {
-                    const metadata = getModelMetadata(cleanModelId);
+                    const metadata = getModelMetadata(result.model || options.modelId);
                     result.modelName = metadata?.name || cleanModelId;
                 }
 
@@ -344,8 +344,8 @@ export class LLMService {
                     status: response.status,
                     provider: 'SystemProxy',
                     providerName: '系统积分模型',
-                    modelName: getModelMetadata(cleanModelId)?.name || cleanModelId,
-                    model: cleanModelId,
+                    modelName: getModelMetadata(options.modelId)?.name || cleanModelId,
+                    model: options.modelId,
                     keySlotId: keySlot.id,
                 };
             }
@@ -365,7 +365,7 @@ export class LLMService {
                 if (!result.provider) result.provider = keySlot.provider;
                 if (!result.providerName) result.providerName = keySlot.name || keySlot.provider;
                 if (!result.modelName) {
-                    const metadata = getModelMetadata(cleanModelId);
+                    const metadata = getModelMetadata(result.model || options.modelId);
                     result.modelName = metadata?.name || cleanModelId;
                 }
                 if (!result.keySlotId) {
@@ -415,8 +415,8 @@ export class LLMService {
                     usage: response.usage,
                     provider: 'SystemProxy',
                     providerName: '系统积分模型',
-                    modelName: getModelMetadata(cleanModelId)?.name || cleanModelId,
-                    model: cleanModelId,
+                    modelName: getModelMetadata(options.modelId)?.name || cleanModelId,
+                    model: options.modelId,
                     keySlotId: keySlot.id,
                 };
             }
@@ -435,7 +435,7 @@ export class LLMService {
                 if (!result.provider) result.provider = keySlot.provider;
                 if (!result.providerName) result.providerName = keySlot.name || keySlot.provider;
                 if (!result.modelName) {
-                    const metadata = getModelMetadata(cleanModelId);
+                    const metadata = getModelMetadata(result.model || options.modelId);
                     result.modelName = metadata?.name || cleanModelId;
                 }
                 if (!result.keySlotId) {

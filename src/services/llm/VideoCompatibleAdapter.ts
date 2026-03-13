@@ -1,5 +1,6 @@
 import { KeySlot } from '../auth/keyManager';
 import { LLMAdapter, VideoGenerationOptions, VideoGenerationResult } from './LLMAdapter';
+import { resolveProviderRuntime } from '../api/providerStrategy';
 
 export class VideoCompatibleAdapter implements LLMAdapter {
     id = 'video-compatible-adapter';
@@ -35,8 +36,17 @@ export class VideoCompatibleAdapter implements LLMAdapter {
 
     async generateVideo(options: VideoGenerationOptions, keySlot: KeySlot): Promise<VideoGenerationResult> {
         const cleanBase = this.normalizeBaseUrl(keySlot.baseUrl);
+        const runtime = resolveProviderRuntime({
+            provider: keySlot.provider,
+            baseUrl: cleanBase,
+            format: keySlot.format,
+            authMethod: keySlot.authMethod,
+            headerName: keySlot.headerName,
+            compatibilityMode: keySlot.compatibilityMode,
+            modelId: options.modelId,
+        });
 
-        if (this.isNewApiLikeGateway(cleanBase, keySlot)) {
+        if (runtime.videoApiStyle === 'openai-v1-videos' || this.isNewApiLikeGateway(cleanBase, keySlot)) {
             return this.generateVideoViaNewApi(options, keySlot, cleanBase);
         }
 
@@ -107,6 +117,54 @@ export class VideoCompatibleAdapter implements LLMAdapter {
         }
 
         return undefined;
+    }
+
+    private getNormalizedAspectRatio(options: VideoGenerationOptions): '16:9' | '9:16' | '1:1' | undefined {
+        const raw = String(options.aspectRatio || '').trim();
+        if (!raw || raw.toLowerCase() === 'auto') {
+            return undefined;
+        }
+
+        if (raw === '16:9' || raw === '9:16' || raw === '1:1') {
+            return raw;
+        }
+
+        return undefined;
+    }
+
+    private getVideoSizeString(options: VideoGenerationOptions): string | undefined {
+        const explicitSize = String(options.size || '').trim();
+        if (/^\d+x\d+$/i.test(explicitSize)) {
+            return explicitSize;
+        }
+
+        const resolution = String(options.resolution || '').trim().toLowerCase();
+        const aspectRatio = this.getNormalizedAspectRatio(options) || '16:9';
+
+        const sizeMap: Record<string, Record<'16:9' | '9:16' | '1:1', string>> = {
+            '480p': {
+                '16:9': '854x480',
+                '9:16': '480x854',
+                '1:1': '480x480'
+            },
+            '720p': {
+                '16:9': '1280x720',
+                '9:16': '720x1280',
+                '1:1': '720x720'
+            },
+            '1080p': {
+                '16:9': '1920x1080',
+                '9:16': '1080x1920',
+                '1:1': '1080x1080'
+            },
+            '4k': {
+                '16:9': '3840x2160',
+                '9:16': '2160x3840',
+                '1:1': '2160x2160'
+            }
+        };
+
+        return sizeMap[resolution]?.[aspectRatio];
     }
 
     private extractTaskId(payload: any): string | undefined {
@@ -186,24 +244,36 @@ export class VideoCompatibleAdapter implements LLMAdapter {
         headers: Record<string, string>,
         signal?: AbortSignal
     ): Promise<string> {
-        const contentUrl = `${cleanBase}/videos/${encodeURIComponent(taskId)}/content`;
-        const response = await fetch(contentUrl, { headers, signal });
-        if (!response.ok) {
-            return '';
+        const contentUrls = [
+            `${cleanBase}/videos/${encodeURIComponent(taskId)}/content`,
+            `${cleanBase}/video/generations/${encodeURIComponent(taskId)}/content`
+        ];
+
+        for (const contentUrl of contentUrls) {
+            const response = await fetch(contentUrl, { headers, signal });
+            if (!response || !response.ok) {
+                continue;
+            }
+
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                const payload = await response.json().catch(() => ({}));
+                const videoUrl = this.extractVideoUrl(payload);
+                if (videoUrl) {
+                    return videoUrl;
+                }
+                continue;
+            }
+
+            const blob = await response.blob();
+            if (!blob.size || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+                continue;
+            }
+
+            return URL.createObjectURL(blob);
         }
 
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-            const payload = await response.json().catch(() => ({}));
-            return this.extractVideoUrl(payload);
-        }
-
-        const blob = await response.blob();
-        if (!blob.size || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
-            return '';
-        }
-
-        return URL.createObjectURL(blob);
+        return '';
     }
 
     private async generateVideoViaNewApi(
@@ -221,6 +291,11 @@ export class VideoCompatibleAdapter implements LLMAdapter {
         const seconds = this.getDurationSeconds(options);
         if (seconds) {
             formData.append('seconds', String(seconds));
+        }
+
+        const size = this.getVideoSizeString(options);
+        if (size) {
+            formData.append('size', size);
         }
 
         if (options.imageUrl) {
@@ -277,7 +352,10 @@ export class VideoCompatibleAdapter implements LLMAdapter {
         cleanBase: string
     ): Promise<VideoGenerationResult> {
         const headers = this.buildHeaders(keySlot, false);
-        const pollUrl = `${cleanBase}/videos/${encodeURIComponent(taskId)}`;
+        const pollUrls = [
+            `${cleanBase}/videos/${encodeURIComponent(taskId)}`,
+            `${cleanBase}/video/generations/${encodeURIComponent(taskId)}`
+        ];
         const maxDurationMs = 30 * 60 * 1000;
         const startTime = Date.now();
         let pollInterval = 3000;
@@ -291,15 +369,34 @@ export class VideoCompatibleAdapter implements LLMAdapter {
             await new Promise(resolve => setTimeout(resolve, pollInterval));
             pollInterval = Math.min(Math.round(pollInterval * 1.5), maxInterval);
 
-            const response = await fetch(pollUrl, {
-                headers,
-                signal: options.signal
-            });
+            let response!: Response;
+            let fatalError: Error | null = null;
 
-            if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                if (response.status >= 500) {
+            for (const pollUrl of pollUrls) {
+                response = await fetch(pollUrl, {
+                    headers,
+                    signal: options.signal
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text().catch(() => '');
+                    if (response.status >= 500 || response.status === 404) {
+                        continue;
+                    }
+                    fatalError = new Error(`瑙嗛杞閿欒 ${response.status}: ${errText.slice(0, 200)}`);
+                    break;
+                }
+
+                break;
+            }
+
+            if (!response || !response.ok) {
+                const errText = response ? await response.text().catch(() => '') : '';
+                if (response?.status >= 500 || response?.status === 404) {
                     continue;
+                }
+                if (fatalError) {
+                    throw fatalError;
                 }
                 throw new Error(`视频轮询错误 ${response.status}: ${errText.slice(0, 200)}`);
             }

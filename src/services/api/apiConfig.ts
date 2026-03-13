@@ -1,16 +1,21 @@
 /**
  * API Provider Configuration
  *
- * Defines API provider types and utilities for third-party proxy support.
- * Supports Google official API and custom proxies (e.g., gemini-balance-lite).
+ * Centralized helpers for protocol/auth resolution and endpoint building.
  */
+
+import {
+    resolveProviderRuntime,
+    type ProviderStrategyAuthMethod,
+} from './providerStrategy';
 
 /**
  * API authentication method
  * - 'query': API key passed as URL query parameter (?key=xxx)
- * - 'header': API key passed in request header (x-goog-api-key: xxx)
+ * - 'header': API key passed in request header
  */
 export type AuthMethod = 'query' | 'header';
+export type ApiProtocolFormat = 'auto' | 'openai' | 'gemini';
 
 /**
  * API Provider configuration interface
@@ -20,7 +25,7 @@ export interface ApiProvider {
     name: string;
     baseUrl: string;
     authMethod: AuthMethod;
-    headerName?: string;  // Custom header name (default: x-goog-api-key)
+    headerName?: string;
 }
 
 /**
@@ -29,17 +34,18 @@ export interface ApiProvider {
 export const DEFAULT_PROVIDERS: ApiProvider[] = [
     {
         id: 'google',
-        name: 'Google (官方)',
+        name: 'Google Official',
         baseUrl: 'https://generativelanguage.googleapis.com',
-        authMethod: 'query'
+        authMethod: 'query',
+        headerName: 'x-goog-api-key',
     },
     {
         id: 'custom',
-        name: '自定义代理',
+        name: 'Custom Proxy',
         baseUrl: '',
         authMethod: 'header',
-        headerName: 'x-goog-api-key'
-    }
+        headerName: 'Authorization',
+    },
 ];
 
 /**
@@ -47,15 +53,37 @@ export const DEFAULT_PROVIDERS: ApiProvider[] = [
  */
 export const GOOGLE_API_BASE = 'https://generativelanguage.googleapis.com';
 
+export function normalizeApiProtocolFormat(
+    format: unknown,
+    fallback: ApiProtocolFormat = 'auto'
+): ApiProtocolFormat {
+    const normalized = String(format || '').trim().toLowerCase();
+    if (normalized === 'openai' || normalized === 'gemini' || normalized === 'auto') {
+        return normalized;
+    }
+    return fallback;
+}
+
+export function resolveApiProtocolFormat(
+    format: unknown,
+    baseUrl?: string,
+    fallback: Exclude<ApiProtocolFormat, 'auto'> = 'openai',
+    provider?: string
+): Exclude<ApiProtocolFormat, 'auto'> {
+    return resolveProviderRuntime({
+        provider,
+        baseUrl,
+        format,
+        fallbackFormat: fallback,
+    }).resolvedFormat;
+}
+
+export function getApiKeyToken(apiKey: string): string {
+    return String(apiKey || '').trim().replace(/^Bearer\s+/i, '').trim();
+}
+
 /**
- * Build API URL for model operations
- *
- * @param baseUrl - Base URL of API provider
- * @param model - Model name (e.g., 'gemini-2.5-flash-image')
- * @param action - API action (e.g., 'generateContent', 'predict')
- * @param authMethod - Authentication method
- * @param apiKey - API key (only used when authMethod is 'query')
- * @returns Full API URL
+ * Build API URL for Gemini-native model operations.
  */
 export function buildApiUrl(
     baseUrl: string | undefined,
@@ -65,31 +93,20 @@ export function buildApiUrl(
     apiKey?: string
 ): string {
     const base = baseUrl || GOOGLE_API_BASE;
-
-    // Normalize model ID: remove 'models/' prefix if present
     const normalizedModel = model.replace(/^models\//, '');
-
-    // Special handling: Preview models like gemini-3-pro-image-preview require v1beta
-    // Also 'exp' (experimental), 'gemini-2', 'flash' (often newer) usually work better on v1beta
-    const useBeta = normalizedModel.includes('preview') ||
-        normalizedModel.includes('exp') ||
-        normalizedModel.includes('gemini-2') ||
-        normalizedModel.includes('gemini-3') ||
-        normalizedModel.includes('ultra'); // Imagen 3 Ultra / Gemini 1.5 Ultra?
-
+    const useBeta = normalizedModel.includes('preview')
+        || normalizedModel.includes('exp')
+        || normalizedModel.includes('gemini-2')
+        || normalizedModel.includes('gemini-3')
+        || normalizedModel.includes('ultra');
     const apiVersion = useBeta ? 'v1beta' : 'v1';
-
     const url = `${base}/${apiVersion}/models/${normalizedModel}:${action}`;
-    return authMethod === 'query' && apiKey ? `${url}?key=${apiKey}` : url;
+
+    return authMethod === 'query' && apiKey ? `${url}?key=${encodeURIComponent(getApiKeyToken(apiKey))}` : url;
 }
 
 /**
- * Build request headers for API calls
- *
- * @param authMethod - Authentication method
- * @param apiKey - API key
- * @param headerName - Custom header name (default: x-goog-api-key)
- * @returns Headers object
+ * Build request headers for generic API calls.
  */
 export function buildHeaders(
     authMethod: AuthMethod,
@@ -97,18 +114,21 @@ export function buildHeaders(
     headerName?: string
 ): Record<string, string> {
     const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
     };
 
     if (authMethod === 'header') {
-        headers[headerName || 'x-goog-api-key'] = apiKey;
+        const effectiveHeaderName = headerName || 'x-goog-api-key';
+        headers[effectiveHeaderName] = effectiveHeaderName === 'Authorization'
+            ? (/^Bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${getApiKeyToken(apiKey)}`)
+            : getApiKeyToken(apiKey);
     }
 
     return headers;
 }
 
 /**
- * Normalize Proxy Base URL (strip trailing slash and /v1)
+ * Normalize proxy base URL (strip trailing slash and /v1)
  */
 export function normalizeProxyBaseUrl(url: string | undefined): string {
     if (!url) return '';
@@ -118,8 +138,137 @@ export function normalizeProxyBaseUrl(url: string | undefined): string {
     return clean;
 }
 
+export function normalizeOpenAIBaseUrl(url: string | undefined): string {
+    if (!url) return '';
+
+    let clean = url.trim().replace(/\/+$/, '');
+    clean = clean.replace(/\/(?:chat\/completions|images\/generations|images\/edits|responses|models)$/i, '');
+
+    if (!/\/v\d[\w.-]*$/i.test(clean)) {
+        clean = `${clean}/v1`;
+    }
+
+    return clean.replace(/\/+$/, '');
+}
+
+export function buildOpenAIEndpoint(baseUrl: string | undefined, endpoint: string): string {
+    const cleanBase = normalizeOpenAIBaseUrl(baseUrl);
+    return `${cleanBase}/${endpoint.replace(/^\/+/, '')}`;
+}
+
+export function normalizeGeminiBaseUrl(url: string | undefined): string {
+    let clean = (url || GOOGLE_API_BASE).trim().replace(/\/+$/, '');
+    clean = clean
+        .replace(/\/v1beta\/models\/[^/?]+:(?:generateContent|streamGenerateContent)$/i, '')
+        .replace(/\/v1\/models\/[^/?]+:(?:generateContent|streamGenerateContent)$/i, '')
+        .replace(/\/+$/, '');
+
+    const suffixes = [
+        '/v1beta/models',
+        '/v1/models',
+        '/models',
+        '/v1beta',
+        '/v1',
+    ];
+
+    let stripped = true;
+    while (stripped) {
+        stripped = false;
+        const lower = clean.toLowerCase();
+        for (const suffix of suffixes) {
+            if (lower.endsWith(suffix)) {
+                clean = clean.slice(0, -suffix.length).replace(/\/+$/, '');
+                stripped = true;
+                break;
+            }
+        }
+    }
+
+    return clean || GOOGLE_API_BASE;
+}
+
+export function normalizeGeminiModelId(model: string): string {
+    return String(model || '').trim().replace(/^models\//i, '');
+}
+
+export function usesGeminiQueryAuth(baseUrl: string | undefined, provider?: string): boolean {
+    return resolveProviderRuntime({
+        provider,
+        baseUrl,
+        format: 'gemini',
+    }).authMethod === 'query';
+}
+
+export function resolveGeminiAuthMethod(
+    baseUrl: string | undefined,
+    preferred?: AuthMethod,
+    provider?: string
+): AuthMethod {
+    return resolveProviderRuntime({
+        provider,
+        baseUrl,
+        format: 'gemini',
+        authMethod: preferred,
+    }).authMethod as ProviderStrategyAuthMethod;
+}
+
+export function buildGeminiEndpoint(
+    baseUrl: string | undefined,
+    model: string,
+    action: string,
+    apiKey: string,
+    authMethod?: AuthMethod,
+    provider?: string
+): string {
+    const cleanBase = normalizeGeminiBaseUrl(baseUrl);
+    const normalizedModel = normalizeGeminiModelId(model);
+    const endpoint = `${cleanBase}/v1beta/models/${encodeURIComponent(normalizedModel)}:${action}`;
+    if (resolveGeminiAuthMethod(baseUrl, authMethod, provider) === 'query') {
+        const encodedKey = encodeURIComponent(getApiKeyToken(apiKey));
+        return `${endpoint}?key=${encodedKey}`;
+    }
+    return endpoint;
+}
+
+export function buildGeminiModelsEndpoint(
+    baseUrl: string | undefined,
+    apiKey: string,
+    authMethod?: AuthMethod,
+    provider?: string
+): string {
+    const cleanBase = normalizeGeminiBaseUrl(baseUrl);
+    const endpoint = `${cleanBase}/v1beta/models`;
+    if (resolveGeminiAuthMethod(baseUrl, authMethod, provider) === 'query') {
+        const encodedKey = encodeURIComponent(getApiKeyToken(apiKey));
+        return `${endpoint}?key=${encodedKey}`;
+    }
+    return endpoint;
+}
+
+export function buildGeminiHeaders(
+    authMethod: AuthMethod,
+    apiKey: string,
+    headerName?: string
+): Record<string, string> {
+    const headers: Record<string, string> = {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+    };
+
+    if (authMethod !== 'header') {
+        return headers;
+    }
+
+    const effectiveHeaderName = headerName || 'Authorization';
+    headers[effectiveHeaderName] = effectiveHeaderName === 'Authorization'
+        ? (/^Bearer\s+/i.test(apiKey) ? apiKey : `Bearer ${getApiKeyToken(apiKey)}`)
+        : getApiKeyToken(apiKey);
+
+    return headers;
+}
+
 /**
- * Build headers for Proxy API requests (OpenAI-compatible)
+ * Build headers for OpenAI-compatible proxy requests.
  */
 export function buildProxyHeaders(
     authMethod: AuthMethod,
@@ -128,22 +277,18 @@ export function buildProxyHeaders(
     group?: string
 ): Record<string, string> {
     const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
     };
 
     if (authMethod === 'header' && apiKey) {
-        // Special handling for Authorization header: Add Bearer prefix if missing
-        if (headerName === 'Authorization' && !apiKey.startsWith('Bearer ')) {
+        if (headerName === 'Authorization' && !/^Bearer\s+/i.test(apiKey)) {
             headers[headerName] = `Bearer ${apiKey}`;
         } else {
             headers[headerName] = apiKey;
         }
-    } else if (authMethod === 'query') {
-        // Some proxies accept key in query, handled by URL builder, but we leave headers clean unless needed
     }
 
-    // OpenRouter Specific Headers for CORS
-    if (apiKey.startsWith('sk-or-') || (headerName && headerName.toLowerCase() === 'authorization')) {
+    if (apiKey.startsWith('sk-or-') || headerName.toLowerCase() === 'authorization') {
         if (typeof window !== 'undefined') {
             headers['HTTP-Referer'] = window.location.origin;
             headers['X-Title'] = 'KK Studio';
@@ -157,15 +302,35 @@ export function buildProxyHeaders(
     return headers;
 }
 
+export function resolveApiHeaderName(
+    provider: string | undefined,
+    baseUrl: string | undefined,
+    authMethod: AuthMethod,
+    format: ApiProtocolFormat = 'auto'
+): string {
+    return resolveProviderRuntime({
+        provider,
+        baseUrl,
+        authMethod,
+        format,
+    }).headerName;
+}
+
 /**
- * Get default auth method for a base URL
- * Proxy URLs typically use header auth, Google uses query
+ * Resolve the default auth method for the current provider/protocol.
  */
-export function getDefaultAuthMethod(baseUrl?: string): AuthMethod {
-    const lowerBase = (baseUrl || '').toLowerCase();
-    // Google 官方与 12AI Gemini 格式默认使用 query 鉴权
-    if (!baseUrl || lowerBase.includes('googleapis.com') || lowerBase.includes('12ai.org')) {
-        return 'query';
+export function getDefaultAuthMethod(
+    baseUrl?: string,
+    options?: {
+        provider?: string;
+        format?: ApiProtocolFormat;
+        modelId?: string;
     }
-    return 'header';
+): AuthMethod {
+    return resolveProviderRuntime({
+        provider: options?.provider,
+        baseUrl,
+        format: options?.format,
+        modelId: options?.modelId,
+    }).authMethod as ProviderStrategyAuthMethod;
 }

@@ -6,6 +6,14 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import {
+    buildGeminiHeaders,
+    buildGeminiModelsEndpoint,
+    buildOpenAIEndpoint,
+    resolveApiProtocolFormat,
+    type ApiProtocolFormat,
+} from '../api/apiConfig';
+import { resolveProviderRuntime } from '../api/providerStrategy';
 
 export interface ModelPricingInfo {
     modelId: string;
@@ -75,19 +83,30 @@ export async function fetchProviderPricing(
  */
 export async function fetchProviderModels(
     baseUrl: string,
-    apiKey: string
+    apiKey: string,
+    format: ApiProtocolFormat | 'claude' = 'openai'
 ): Promise<string[]> {
     try {
-        // Try OpenAI compatible endpoint first
-        const modelsUrl = `${baseUrl.replace(/\/$/, '')}/v1/models`;
-        
-        const response = await fetch(modelsUrl, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            }
+        const resolvedFormat = resolveApiProtocolFormat(format, baseUrl);
+        const runtime = resolveProviderRuntime({
+            baseUrl,
+            format: resolvedFormat === 'gemini' ? 'gemini' : format,
         });
+        const geminiAuthMethod = runtime.authMethod as 'query' | 'header';
+        const response = await fetch(
+            resolvedFormat === 'gemini'
+                ? buildGeminiModelsEndpoint(baseUrl, apiKey, geminiAuthMethod)
+                : buildOpenAIEndpoint(baseUrl, 'models'),
+            {
+                method: 'GET',
+                headers: resolvedFormat === 'gemini'
+                    ? buildGeminiHeaders(geminiAuthMethod, apiKey, runtime.headerName)
+                    : {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    }
+            }
+        );
 
         if (!response.ok) {
             return [];
@@ -95,8 +114,12 @@ export async function fetchProviderModels(
 
         const data = await response.json();
         
-        if (data.data && Array.isArray(data.data)) {
-            return data.data.map((m: any) => m.id || m.model || '');
+        const models = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
+
+        if (models.length > 0) {
+            return models
+                .map((m: any) => (m.id || m.model || m.name || '').replace(/^models\//i, ''))
+                .filter(Boolean);
         }
 
         return [];

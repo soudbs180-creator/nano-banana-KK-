@@ -41,8 +41,56 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function normalizeModelId(input: string): string {
-  return (input || '').split('@')[0].trim();
+type ParsedSystemModelRoute = {
+  baseModelId: string;
+  routeIndex: number | null;
+  routeKey: string | null;
+};
+
+function parseSystemModelRoute(input: string): ParsedSystemModelRoute {
+  const rawModelId = String(input || '').trim();
+  const [baseModelId, rawSuffix = ''] = rawModelId.split('@');
+  const suffix = rawSuffix.trim().toLowerCase();
+  const systemMatch = suffix.match(/^system(?:_(.+))?$/);
+
+  if (!systemMatch) {
+    return {
+      baseModelId: baseModelId.trim(),
+      routeIndex: null,
+      routeKey: null,
+    };
+  }
+
+  const rawRouteToken = String(systemMatch[1] || '').trim();
+  if (!rawRouteToken) {
+    return {
+      baseModelId: baseModelId.trim(),
+      routeIndex: null,
+      routeKey: null,
+    };
+  }
+
+  if (/^\d+$/.test(rawRouteToken)) {
+    const parsedIndex = Number(rawRouteToken) - 1;
+    return {
+      baseModelId: baseModelId.trim(),
+      routeIndex: Number.isFinite(parsedIndex) && parsedIndex >= 0 ? parsedIndex : 0,
+      routeKey: null,
+    };
+  }
+
+  let routeKey = rawRouteToken;
+  try {
+    routeKey = decodeURIComponent(rawRouteToken);
+  } catch {
+    routeKey = rawRouteToken;
+  }
+
+  return {
+    baseModelId: baseModelId.trim(),
+    routeIndex: null,
+    routeKey: routeKey.toLowerCase(),
+  };
 }
 
 function pickRandomKey(keys: string[]): string | null {
@@ -76,6 +124,21 @@ type CreditModelRouteRow = {
   mix_with_same_model?: boolean | null;
   quality_pricing?: Record<string, { enabled?: boolean; creditCost?: number; credit_cost?: number } | null> | null;
 };
+
+function sortCreditModelRoutes(routes: CreditModelRouteRow[]): CreditModelRouteRow[] {
+  return [...routes].sort((left, right) => {
+    const priorityDiff = Number(right.priority || 0) - Number(left.priority || 0);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    const weightDiff = Number(right.weight || 0) - Number(left.weight || 0);
+    if (weightDiff !== 0) return weightDiff;
+
+    const providerDiff = String(left.provider_id || '').localeCompare(String(right.provider_id || ''));
+    if (providerDiff !== 0) return providerDiff;
+
+    return String(left.model_id || '').localeCompare(String(right.model_id || ''));
+  });
+}
 
 function normalizeQualityPricing(
   pricing: CreditModelRouteRow['quality_pricing'],
@@ -126,17 +189,34 @@ function getRouteCreditCost(route: CreditModelRouteRow, requestedSize: string): 
  */
 function pickCreditModelRoute(
   routes: CreditModelRouteRow[],
-  requestedSize: string
+  requestedSize: string,
+  routeIndex: number | null,
+  routeKey: string | null
 ): { route: CreditModelRouteRow; requiredCredits: number } | null {
-  const eligibleRoutes = routes.filter((route) => isRouteQualityEnabled(route, requestedSize));
-  if (eligibleRoutes.length === 0) return null;
+  const sortedRoutes = sortCreditModelRoutes(routes);
+  const mixedRoutes = sortedRoutes.filter((route) => route.mix_with_same_model === true);
+  const eligibleRoutes = sortedRoutes.filter((route) => isRouteQualityEnabled(route, requestedSize));
+  const eligibleMixedRoutes = mixedRoutes.filter((route) => isRouteQualityEnabled(route, requestedSize));
 
-  const mixedRoutes = eligibleRoutes.filter((route) => route.mix_with_same_model === true);
-  
-  // 混合模式：基于用量平衡选择
-  if (mixedRoutes.length > 1) {
+  if (routeKey) {
+    const exactRoute = sortedRoutes.find(
+      (route) => String(route.provider_id || '').trim().toLowerCase() === routeKey
+    );
+    if (!exactRoute || !isRouteQualityEnabled(exactRoute, requestedSize)) {
+      return null;
+    }
+
+    return {
+      route: exactRoute,
+      requiredCredits: getRouteCreditCost(exactRoute, requestedSize),
+    };
+  }
+
+  if ((routeIndex === null || routeIndex === 0) && mixedRoutes.length > 1) {
+    if (eligibleMixedRoutes.length === 0) return null;
+
     // 按调用次数升序排序，优先选择用量最少的
-    const sortedByUsage = [...mixedRoutes].sort((a, b) => {
+    const sortedByUsage = [...eligibleMixedRoutes].sort((a, b) => {
       const countA = a.call_count ?? 0;
       const countB = b.call_count ?? 0;
       if (countA !== countB) return countA - countB;
@@ -157,6 +237,19 @@ function pickCreditModelRoute(
     };
   }
 
+  if (routeIndex !== null) {
+    const exactRoute = sortedRoutes[routeIndex] || sortedRoutes[0];
+    if (!exactRoute || !isRouteQualityEnabled(exactRoute, requestedSize)) {
+      return null;
+    }
+
+    return {
+      route: exactRoute,
+      requiredCredits: getRouteCreditCost(exactRoute, requestedSize),
+    };
+  }
+
+  if (eligibleRoutes.length === 0) return null;
   const selectedRoute = eligibleRoutes[0];
   return {
     route: selectedRoute,
@@ -179,6 +272,7 @@ function mapAspectRatioToOpenAI(aspectRatio?: string): string {
 type EncodedSystemTask = {
   kind: 'video';
   modelId: string;
+  providerId?: string;
   endpointType: 'gemini' | 'openai';
   operationName: string;
   transactionId: string;
@@ -221,6 +315,7 @@ async function decodeTaskPayload(taskId: string, secret: string): Promise<Encode
       !parsed ||
       parsed.kind !== 'video' ||
       typeof parsed.modelId !== 'string' ||
+      (parsed.providerId !== undefined && typeof parsed.providerId !== 'string') ||
       typeof parsed.endpointType !== 'string' ||
       typeof parsed.operationName !== 'string' ||
       typeof parsed.transactionId !== 'string' ||
@@ -233,6 +328,7 @@ async function decodeTaskPayload(taskId: string, secret: string): Promise<Encode
     const payload: EncodedSystemTask = {
       kind: 'video',
       modelId: parsed.modelId,
+      providerId: typeof parsed.providerId === 'string' ? parsed.providerId : undefined,
       endpointType: parsed.endpointType === 'gemini' ? 'gemini' : 'openai',
       operationName: parsed.operationName,
       transactionId: parsed.transactionId,
@@ -552,11 +648,17 @@ Deno.serve(async (req) => {
         return json({ success: false, error: 'Task metadata mismatch' }, 400);
       }
 
-      const { data: creditModel, error: modelError } = await serviceClient
+      let creditModelQuery = serviceClient
         .from('admin_credit_models')
         .select('base_url, api_keys, endpoint_type, model_id')
         .eq('model_id', taskPayload.modelId)
-        .eq('is_active', true)
+        .eq('is_active', true);
+
+      if (taskPayload.providerId) {
+        creditModelQuery = creditModelQuery.eq('provider_id', taskPayload.providerId);
+      }
+
+      const { data: creditModel, error: modelError } = await creditModelQuery
         .order('priority', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -741,7 +843,8 @@ Deno.serve(async (req) => {
       return json({ success: true, status: 'pending', deducted: true });
     }
 
-    const modelId = normalizeModelId(body.modelId);
+    const modelRoute = parseSystemModelRoute(body.modelId);
+    const modelId = modelRoute.baseModelId;
     if (!modelId) {
       return json({ success: false, error: 'modelId is required' }, 400);
     }
@@ -760,7 +863,12 @@ Deno.serve(async (req) => {
       return json({ success: false, error: 'Model route not found' }, 404);
     }
 
-    const selectedRoute = pickCreditModelRoute((creditModels || []) as CreditModelRouteRow[], requestedImageSize);
+    const selectedRoute = pickCreditModelRoute(
+      (creditModels || []) as CreditModelRouteRow[],
+      requestedImageSize,
+      modelRoute.routeIndex,
+      modelRoute.routeKey
+    );
     if (!selectedRoute) {
       return json({ success: false, error: `当前模型未启用 ${requestedImageSize} 画质` }, 409);
     }
@@ -1099,6 +1207,7 @@ Deno.serve(async (req) => {
         taskId: await encodeTaskPayload({
           kind: 'video',
           modelId,
+          providerId: String(creditModel.provider_id || ''),
           endpointType,
           operationName,
           transactionId,
@@ -1193,6 +1302,7 @@ Deno.serve(async (req) => {
           taskId: await encodeTaskPayload({
             kind: 'video',
             modelId,
+            providerId: String(creditModel.provider_id || ''),
             endpointType: 'openai',
             operationName: taskId,
             transactionId,

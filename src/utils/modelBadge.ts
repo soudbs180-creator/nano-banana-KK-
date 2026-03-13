@@ -83,7 +83,7 @@ function normalizeHexColor(input?: string | null): string | null {
   return null;
 }
 
-function hexToRgba(hex: string, alpha: number): string {
+export function hexToRgba(hex: string, alpha: number): string {
   const normalized = hex.replace('#', '');
   const expanded = normalized.length === 3
     ? normalized.split('').map((item) => item + item).join('')
@@ -122,7 +122,7 @@ function extractTextColor(badgeClass: string): string {
   return match ? match[0] : 'text-gray-400';
 }
 
-function getConfiguredProviderColor(provider?: string): string | null {
+export function getConfiguredProviderColor(provider?: string): string | null {
   if (typeof window === 'undefined' || !provider) return null;
 
   const raw = localStorage.getItem(PROVIDERS_STORAGE_KEY) || '';

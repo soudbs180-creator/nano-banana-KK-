@@ -1,5 +1,13 @@
 import { LLMAdapter, ChatOptions, ImageGenerationOptions, ImageGenerationResult, AudioGenerationOptions, AudioGenerationResult, extractRefImageData } from './LLMAdapter';
 import { KeySlot, keyManager } from '../auth/keyManager';
+import {
+    buildGeminiEndpoint,
+    buildGeminiHeaders,
+    normalizeApiProtocolFormat,
+    normalizeGeminiBaseUrl,
+    resolveGeminiAuthMethod,
+} from '../api/apiConfig';
+import { resolveProviderRuntime } from '../api/providerStrategy';
 import { ImageSize, AspectRatio } from '../../types';
 import { logError, logWarning, addLog, LogLevel } from '../system/systemLogService';
 import { GoogleAdapter, convertImageToBase64, buildInlineImagePart } from './GoogleAdapter';
@@ -450,6 +458,227 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
     }
 
+    private buildImageRequestHeaders(keySlot: KeySlot, includeJsonContentType: boolean): Record<string, string> {
+        let headers: Record<string, string> = {
+            'Accept': 'application/json',
+            'Authorization': this.getAuthorizationHeaderValue(keySlot.key)
+        };
+
+        if (includeJsonContentType) {
+            headers['Content-Type'] = 'application/json';
+        }
+
+        if (keySlot.headerName && keySlot.headerName !== 'Authorization') {
+            headers[keySlot.headerName] = keySlot.key;
+        }
+
+        headers = this.applyCustomHeaders(headers, keySlot);
+
+        if (!includeJsonContentType) {
+            delete headers['Content-Type'];
+            delete headers['content-type'];
+        }
+
+        return headers;
+    }
+
+    private applyCustomFormData(formData: FormData, keySlot: KeySlot): FormData {
+        const custom = keySlot.customBody;
+        if (!custom || typeof custom !== 'object' || Array.isArray(custom)) {
+            return formData;
+        }
+
+        Object.entries(custom).forEach(([key, value]) => {
+            if (value === undefined || value === null) return;
+
+            if (value instanceof Blob) {
+                formData.append(key, value);
+                return;
+            }
+
+            if (typeof value === 'string') {
+                formData.append(key, value);
+                return;
+            }
+
+            formData.append(key, JSON.stringify(value));
+        });
+
+        return formData;
+    }
+
+    private buildSafeFormDataPreview(formData: FormData): string {
+        const preview: Record<string, any> = {};
+
+        for (const [key, value] of formData.entries()) {
+            let safeValue: any;
+
+            if (value instanceof Blob) {
+                safeValue = {
+                    kind: 'blob',
+                    type: value.type || 'application/octet-stream',
+                    size: value.size,
+                    name: value instanceof File ? value.name : undefined
+                };
+            } else if (typeof value === 'string') {
+                safeValue = value.startsWith('data:')
+                    ? '<omitted:data-uri>'
+                    : value.length > 400
+                        ? `${value.slice(0, 200)}...<truncated>`
+                        : value;
+            } else {
+                safeValue = String(value);
+            }
+
+            if (preview[key] === undefined) {
+                preview[key] = safeValue;
+            } else if (Array.isArray(preview[key])) {
+                preview[key].push(safeValue);
+            } else {
+                preview[key] = [preview[key], safeValue];
+            }
+        }
+
+        return JSON.stringify(preview, null, 2);
+    }
+
+    private getOpenAIImageProfile(modelId: string): 'gpt-image-1' | 'dall-e-2' | 'dall-e-3' | 'generic' {
+        const lower = String(modelId || '').toLowerCase();
+        if (lower.includes('gpt-image-1')) return 'gpt-image-1';
+        if (lower.includes('dall-e-2')) return 'dall-e-2';
+        if (lower.includes('dall-e-3')) return 'dall-e-3';
+        return 'generic';
+    }
+
+    private getAspectOrientation(aspectRatio?: string): 'square' | 'landscape' | 'portrait' {
+        const value = String(aspectRatio || '').trim();
+        if (!value || value.toLowerCase() === 'auto') {
+            return 'square';
+        }
+
+        const [widthRaw, heightRaw] = value.split(':');
+        const width = Number.parseFloat(widthRaw);
+        const height = Number.parseFloat(heightRaw);
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+            return 'square';
+        }
+
+        if (Math.abs(width - height) < 0.0001) {
+            return 'square';
+        }
+
+        return width > height ? 'landscape' : 'portrait';
+    }
+
+    private clampImageCount(count: number | undefined, maxCount: number): number {
+        if (!count || !Number.isFinite(count)) return 1;
+        return Math.max(1, Math.min(Math.round(count), maxCount));
+    }
+
+    private resolveOpenAIImageSize(
+        options: ImageGenerationOptions,
+        profile: 'gpt-image-1' | 'dall-e-2' | 'dall-e-3' | 'generic'
+    ): string {
+        const override = String(options.providerConfig?.openai?.size || '').trim();
+        const orientation = this.getAspectOrientation(options.aspectRatio);
+
+        const allow = (sizes: string[]): string | undefined => {
+            if (override && sizes.includes(override)) {
+                return override;
+            }
+            return undefined;
+        };
+
+        if (profile === 'gpt-image-1') {
+            return allow(['1024x1024', '1536x1024', '1024x1536', 'auto'])
+                || (orientation === 'landscape' ? '1536x1024' : orientation === 'portrait' ? '1024x1536' : '1024x1024');
+        }
+
+        if (profile === 'dall-e-2') {
+            const requested = String(options.imageSize || '').toUpperCase();
+            return allow(['256x256', '512x512', '1024x1024'])
+                || (requested.includes('256')
+                    ? '256x256'
+                    : requested.includes('512') || requested.includes('0.5K')
+                        ? '512x512'
+                        : '1024x1024');
+        }
+
+        return allow(['1024x1024', '1792x1024', '1024x1792'])
+            || (orientation === 'landscape' ? '1792x1024' : orientation === 'portrait' ? '1024x1792' : '1024x1024');
+    }
+
+    private resolveOpenAIEditSize(options: ImageGenerationOptions): string {
+        const override = String(options.providerConfig?.openai?.size || '').trim();
+        if (['256x256', '512x512', '1024x1024'].includes(override)) {
+            return override;
+        }
+
+        const requested = String(options.imageSize || '').toUpperCase();
+        if (requested.includes('256')) return '256x256';
+        if (requested.includes('512') || requested.includes('0.5K')) return '512x512';
+        return '1024x1024';
+    }
+
+    private shouldUseOpenAIEditsEndpoint(options: ImageGenerationOptions, baseUrl: string): boolean {
+        const hasReferenceImages = Array.isArray(options.referenceImages) && options.referenceImages.length > 0;
+        if (!hasReferenceImages) return false;
+        if (options.editMode) return true;
+
+        const profile = this.getOpenAIImageProfile(options.modelId);
+        return baseUrl.includes('api.openai.com') || profile !== 'generic';
+    }
+
+    private async buildMultipartBlob(
+        source: string | { data: string; mimeType: string },
+        fallbackBaseName: string
+    ): Promise<{ blob: Blob; fileName: string }> {
+        const { data, mimeType } = extractRefImageData(source);
+        const raw = String(data || '');
+
+        let blob: Blob;
+        let resolvedMimeType = mimeType || 'image/png';
+
+        if (/^https?:\/\//i.test(raw)) {
+            const response = await fetch(raw);
+            if (!response.ok) {
+                throw new Error(`Failed to download multipart input: HTTP ${response.status}`);
+            }
+            blob = await response.blob();
+            resolvedMimeType = blob.type || resolvedMimeType;
+        } else {
+            const normalized = raw.startsWith('data:')
+                ? raw
+                : `data:${resolvedMimeType};base64,${raw.replace(/^data:[^;]+;base64,/, '')}`;
+            const response = await fetch(normalized);
+            blob = await response.blob();
+            resolvedMimeType = blob.type || resolvedMimeType;
+        }
+
+        const extension = resolvedMimeType.includes('jpeg')
+            ? 'jpg'
+            : resolvedMimeType.includes('webp')
+                ? 'webp'
+                : resolvedMimeType.includes('gif')
+                    ? 'gif'
+                    : 'png';
+
+        return {
+            blob,
+            fileName: `${fallbackBaseName}.${extension}`
+        };
+    }
+
+    private async appendMultipartImageField(
+        formData: FormData,
+        fieldName: string,
+        source: string | { data: string; mimeType: string },
+        fallbackBaseName: string
+    ): Promise<void> {
+        const { blob, fileName } = await this.buildMultipartBlob(source, fallbackBaseName);
+        formData.append(fieldName, blob, fileName);
+    }
+
     async chat(options: ChatOptions, keySlot: KeySlot): Promise<string> {
         const baseUrl = (keySlot.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
         const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : baseUrl + '/v1';
@@ -699,6 +928,16 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         // 12AI + Gemini 图片模型：强制走 Gemini Native（严格对齐 12AI 文档），
         // 忽略 compatibilityMode='chat'，避免命中 Chat-to-Image 信道导致 503。
         const forceGeminiNativeOn12AI = this.is12AIGateway(baseUrl, keySlot, options.modelId) && isGeminiImage;
+        const channelRuntime = resolveProviderRuntime({
+            provider: keySlot.provider,
+            baseUrl,
+            format: keySlot.format,
+            authMethod: keySlot.authMethod,
+            headerName: keySlot.headerName,
+            compatibilityMode: keySlot.compatibilityMode,
+            modelId: options.modelId,
+        });
+
         if (keySlot.compatibilityMode === 'chat' && !forceGeminiNativeOn12AI) {
             console.log(`[OpenAICompatibleAdapter] 使用 Chat API (显式 compatibilityMode='chat') -> ${keySlot.name}`);
             if (isGeminiImage && !this.isLegacyGeminiChatGateway(baseUrl)) {
@@ -707,13 +946,14 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             return this.generateImageViaChat(options, keySlot);
         }
 
-        const isAntigravity = baseUrl.includes('127.0.0.1:8045') || baseUrl.includes('antigravity');
-        const isOfficialOpenAI = baseUrl.includes('api.openai.com');
-        const isSiliconFlow = baseUrl.includes('siliconflow');
-        const isGptBest = baseUrl.includes('gpt-best') || baseUrl.includes('gptbest');
-        const is12AI = this.is12AIGateway(baseUrl, keySlot, options.modelId);
-        const isComfly = baseUrl.includes('comfly') || baseUrl.includes('vodeshop') || baseUrl.includes('future-api');
-        const isSuxiGateway = baseUrl.includes('suxi.ai');
+        const isAntigravity = channelRuntime.strategyId === 'antigravity';
+        const isOfficialOpenAI = channelRuntime.strategyId === 'openai';
+        const isSiliconFlow = channelRuntime.strategyId === 'siliconflow';
+        const isGptBest = channelRuntime.strategyId === 'gpt-best';
+        const is12AI = channelRuntime.strategyId === '12ai' && channelRuntime.geminiNative;
+        const isComfly = channelRuntime.strategyId === 'newapi';
+        const isSuxiGateway = channelRuntime.strategyId === 'suxi';
+        const configuredFormat = normalizeApiProtocolFormat(keySlot.format, 'auto');
 
         if (isAntigravity) {
             if (modelLower.includes('gemini') && modelLower.includes('image')) {
@@ -739,7 +979,9 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             return this.generateImageStandard_OpenAI_Strict(options, keySlot);
         }
 
-        if (is12AI && isGeminiImage) {
+        // 🚀 [Fix] 12AI 网关使用 OpenAI 格式 key (sk-开头) 时，不应使用 Gemini Native 格式
+        const isOpenAIFormatKey = keySlot.key?.startsWith('sk-');
+        if ((configuredFormat === 'gemini' && isGeminiImage) || (is12AI && isGeminiImage && !isOpenAIFormatKey)) {
             console.log(`[OpenAICompatibleAdapter] 使用 12AI 原生 Gemini 协议 (Native) -> ${keySlot.name}`);
             return this.generateImageGeminiNative(options, keySlot);
         }
@@ -918,7 +1160,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             headers,
             body: payloadStr,
             signal: options.signal
-        }, this.getTimeoutMs(keySlot, 150000), 1);
+        }, this.getTimeoutMs(keySlot, 400000), 1);
 
         if (!response.ok) {
             const text = await response.text().catch(() => '');
@@ -1106,7 +1348,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             headers,
             body: payloadStr,
             signal: options.signal
-        }, this.getTimeoutMs(keySlot, 150000), 1);
+        }, this.getTimeoutMs(keySlot, 400000), 1);
 
         if (!response.ok) {
             const text = await response.text().catch(() => '');
@@ -1190,10 +1432,89 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         throw new Error('Failed to extract image from strict chat response. Content starts with: ' + String(content).substring(0, 50));
     }
 
+    private async generateImageStandard_OpenAI_Strict_DocSafe(
+        options: ImageGenerationOptions,
+        keySlot: KeySlot
+    ): Promise<ImageGenerationResult> {
+        const baseUrl = (keySlot.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+        const profile = this.getOpenAIImageProfile(options.modelId);
+
+        if (this.shouldUseOpenAIEditsEndpoint(options, baseUrl)) {
+            return this.generateImageStandard_OpenAI_Edits(options, keySlot);
+        }
+
+        const url = `${cleanBase}/images/generations`;
+        const body: any = {
+            model: options.modelId,
+            prompt: options.prompt,
+            n: this.clampImageCount(options.imageCount, profile === 'dall-e-3' ? 1 : 10),
+            size: this.resolveOpenAIImageSize(options, profile),
+            response_format: 'b64_json'
+        };
+
+        if (profile === 'dall-e-3') {
+            body.quality = options.providerConfig?.openai?.quality
+                || (String(options.imageSize || '').toUpperCase().includes('2K')
+                    || String(options.imageSize || '').toUpperCase().includes('4K')
+                    ? 'hd'
+                    : 'standard');
+
+            if (options.providerConfig?.openai?.style) {
+                body.style = options.providerConfig.openai.style;
+            }
+        }
+
+        if (options.referenceImages?.length) {
+            const { data: refData, mimeType: refMime } = extractRefImageData(options.referenceImages[0]);
+            const dataUrl = refData.startsWith('http') ? refData : `data:${refMime};base64,${refData}`;
+            body.image = dataUrl;
+
+            if (options.modelId.toLowerCase().includes('midjourney') || options.modelId.toLowerCase().includes('mj-')) {
+                body.prompt = `${dataUrl} ${body.prompt}`;
+            }
+        }
+
+        console.log(`[OpenAICompatibleAdapter] OpenAI_Strict -> size=${body.size}${body.quality ? `, quality=${body.quality}` : ''}`);
+        return this.executeImageRequest(url, body, keySlot, options);
+    }
+
+    private async generateImageStandard_OpenAI_Edits(
+        options: ImageGenerationOptions,
+        keySlot: KeySlot
+    ): Promise<ImageGenerationResult> {
+        const baseUrl = (keySlot.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+        const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+        const url = `${cleanBase}/images/edits`;
+        const sizeString = this.resolveOpenAIEditSize(options);
+        const formData = new FormData();
+
+        formData.append('model', options.modelId);
+        formData.append('prompt', options.prompt);
+        formData.append('n', String(this.clampImageCount(options.imageCount, 10)));
+        formData.append('size', sizeString);
+        formData.append('response_format', 'b64_json');
+
+        if (!options.referenceImages?.length) {
+            throw new Error('OpenAI image edits require at least one reference image.');
+        }
+
+        await this.appendMultipartImageField(formData, 'image', options.referenceImages[0], 'openai-image');
+
+        if (options.maskUrl) {
+            await this.appendMultipartImageField(formData, 'mask', options.maskUrl, 'openai-mask');
+        }
+
+        console.log(`[OpenAICompatibleAdapter] OpenAI_Edits -> size=${sizeString}`);
+        return this.executeImageFormRequest(url, formData, keySlot, options, sizeString);
+    }
+
     private async generateImageStandard_OpenAI_Strict(
         options: ImageGenerationOptions,
         keySlot: KeySlot
     ): Promise<ImageGenerationResult> {
+        return this.generateImageStandard_OpenAI_Strict_DocSafe(options, keySlot);
+        /*
         const baseUrl = (keySlot.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
         const cleanBase = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
         const url = `${cleanBase}/images/generations`;
@@ -1258,6 +1579,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         console.log(`[OpenAICompatibleAdapter] OpenAI_Strict -> size=${body.size}, quality=${body.quality}`);
 
         return this.executeImageRequest(url, body, keySlot, options);
+        */
     }
 
     // ============================================================================
@@ -1477,22 +1799,32 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         options: ImageGenerationOptions,
         keySlot: KeySlot
     ): Promise<ImageGenerationResult> {
-        // 🚀 [修复] 如果未配置 Base URL，自动根据地区选择 12AI 官方网关 (cdn.12ai.org / new.12ai.org)
-        const rawBase = keySlot.baseUrl || RegionService.get12AIBaseUrl();
-        const cleanBase = this.normalize12AIBaseUrl(rawBase).replace(/\/+$/, '');
+        const is12AIChannel = this.is12AIGateway(keySlot.baseUrl || '', keySlot, options.modelId);
+        const rawBase = keySlot.baseUrl || (is12AIChannel ? RegionService.get12AIBaseUrl() : '');
+        const cleanBase = is12AIChannel
+            ? this.normalize12AIBaseUrl(rawBase).replace(/\/+$/, '')
+            : normalizeGeminiBaseUrl(rawBase).replace(/\/+$/, '');
+        const runtime = resolveProviderRuntime({
+            provider: keySlot.provider,
+            baseUrl: cleanBase,
+            format: 'gemini',
+            authMethod: keySlot.authMethod,
+            headerName: keySlot.headerName,
+            compatibilityMode: keySlot.compatibilityMode,
+            modelId: options.modelId,
+        });
+        const authMethod = resolveGeminiAuthMethod(cleanBase, keySlot.authMethod, keySlot.provider);
 
-        // 严格模式：模型 ID 不做任何自动回退/映射，完全按用户选择发送。
         const effectiveModelId = options.modelId;
         const requestedImageSize = this.normalizeGeminiImageSize(
             options.providerConfig?.google?.imageConfig?.imageSize || options.imageSize
         );
 
-        // 🚀 [鉴权修复] 12AI 原生接口必须使用 URL 参数中的 key 字段进行鉴权，Header 鉴权可能无效
-        const queryKey = this.getQueryApiKey(keySlot.key);
-        if (!queryKey) {
-            throw new Error('12AI API Key 为空或格式无效');
+        const normalizedKey = String(keySlot.key || '').trim();
+        if (!normalizedKey) {
+            throw new Error('Gemini API Key / Token 不能为空');
         }
-        const url = `${cleanBase}/v1beta/models/${effectiveModelId}:generateContent?key=${encodeURIComponent(queryKey)}`;
+        const url = buildGeminiEndpoint(cleanBase, effectiveModelId, 'generateContent', normalizedKey, authMethod, keySlot.provider);
 
         const parts: any[] = [];
 
@@ -1554,22 +1886,19 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
 
         const payloadStr = JSON.stringify(payload);
-        // 🚀 [修复] 12AI 原生接口在浏览器端极其敏感，移除特殊的 x-goog-api-key 标头
-        // 官方文档要求认证仅通过 URL 参数 key=... 进行，添加额外标头常导致 CORS Preflight 失败
-        let headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        };
+        let headers: Record<string, string> = buildGeminiHeaders(authMethod, normalizedKey, runtime.headerName);
 
-        // 应用用户可能的自定义标头，但排除可能产生冲突的 Google 原生认证标头
+        // Query auth 的 Gemini 原生链路避免叠加认证头，降低 12AI/Google 预检失败概率。
         headers = this.applyCustomHeaders(headers, keySlot);
-        delete headers['x-goog-api-key'];
-        delete headers['Authorization'];
-        delete headers['authorization'];
+        if (authMethod === 'query') {
+            delete headers['x-goog-api-key'];
+            delete headers['Authorization'];
+            delete headers['authorization'];
+        }
 
         const startTime = Date.now();
         const safeUrl = url.replace(/key=[^&]+/, 'key=***'); // 用于日志的安全 URL
-        console.log(`[OpenAICompatibleAdapter] 12AI Native Request -> ${safeUrl}`);
+        console.log(`[OpenAICompatibleAdapter] Gemini Native Request -> ${safeUrl}`);
 
         const response = await this.fetchWithTimeout(url, {
             method: 'POST',
@@ -1582,7 +1911,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         if (!response.ok) {
             const raw = await response.text().catch(() => '');
-            let detail = `12AI Native Error: ${response.status}`;
+            let detail = `Gemini Native Error: ${response.status}`;
             try {
                 const err = JSON.parse(raw || '{}');
                 detail = err.error?.message || err.message || detail;
@@ -1596,7 +1925,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const data = await response.json();
         keyManager.reportCallResult(keySlot.id, true);
         const candidate = data.candidates?.[0];
-        if (!candidate) throw new Error('12AI API 返回空结果 Candidate');
+        if (!candidate) throw new Error('Gemini native API returned no candidate content');
 
         const candidateParts = candidate.content?.parts || [];
         const imagePart = candidateParts.find((p: any) => p.inlineData || p.inline_data);
@@ -1613,7 +1942,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
 
         return {
             urls: [`data:${mime};base64,${b64}`],
-            provider: '12AI-Native',
+            provider: is12AIChannel ? '12AI-Native' : 'Gemini-Native',
             model: options.modelId,
             imageSize: requestedImageSize,
             metadata: {
@@ -1624,16 +1953,81 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         };
     }
 
-    private async executeImageRequest(url: string, body: any, keySlot: KeySlot, options: ImageGenerationOptions): Promise<ImageGenerationResult> {
-        let headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            'Authorization': this.getAuthorizationHeaderValue(keySlot.key)
-        };
-        if (keySlot.headerName && keySlot.headerName !== 'Authorization') {
-            headers[keySlot.headerName] = keySlot.key;
+    private async executeImageFormRequest(
+        url: string,
+        formData: FormData,
+        keySlot: KeySlot,
+        options: ImageGenerationOptions,
+        reportedImageSize: string
+    ): Promise<ImageGenerationResult> {
+        const headers = this.buildImageRequestHeaders(keySlot, false);
+        const requestBody = this.applyCustomFormData(formData, keySlot);
+        const requestBodyPreview = this.buildSafeFormDataPreview(requestBody);
+
+        const response = await this.fetchWithTimeout(url, {
+            method: 'POST',
+            headers,
+            body: requestBody,
+            signal: options.signal
+        }, this.getTimeoutMs(keySlot, 400000), 1);
+
+        const requestPath = this.getRequestPathFromUrl(url);
+
+        if (!response.ok) {
+            const raw = await response.text().catch(() => '');
+            let detail = `OpenAI Image Error: ${response.status}`;
+            try {
+                const err = JSON.parse(raw || '{}');
+                const errorObj = err.error || err;
+                detail = errorObj.message || (typeof errorObj === 'string' ? errorObj : JSON.stringify(errorObj));
+            } catch {
+                if (raw) detail = raw.slice(0, 500);
+            }
+
+            keyManager.reportCallResult(keySlot.id, false, detail);
+            logError('OpenAIAdapter', new Error(detail), `URL: ${url}\nStatus: ${response.status}\nRaw Response: ${raw.slice(0, 500)}`);
+            throw this.buildHttpError({
+                message: `[${response.status}] ${detail}`,
+                status: response.status,
+                requestPath,
+                requestBody: requestBodyPreview,
+                responseBody: raw.slice(0, 1600),
+                provider: keySlot.provider
+            });
         }
 
-        headers = this.applyCustomHeaders(headers, keySlot);
+        const data = await response.json();
+        keyManager.reportCallResult(keySlot.id, true);
+        const urls = this.extractImageUrlsFromPayload(data);
+
+        if (!urls.length) {
+            const rawPreview = JSON.stringify(data || {}).slice(0, 1600);
+            throw this.buildHttpError({
+                message: '接口已返回成功状态，但未找到可用图片数据',
+                status: response.status,
+                requestPath,
+                requestBody: requestBodyPreview,
+                responseBody: rawPreview,
+                provider: keySlot.provider
+            });
+        }
+
+        return {
+            urls,
+            provider: 'OpenAI',
+            providerName: keySlot.name,
+            model: options.modelId,
+            imageSize: reportedImageSize,
+            metadata: {
+                requestPath,
+                requestBodyPreview,
+                pythonSnippet: `import requests\n\nurl = "${url}"\nheaders = {"Authorization": "Bearer <API_KEY>"}\nfiles = {"image": open("input.png", "rb")}\ndata = {"model": "${options.modelId}", "prompt": ${JSON.stringify(options.prompt)}, "size": "${reportedImageSize}", "response_format": "b64_json"}\nresp = requests.post(url, headers=headers, files=files, data=data, timeout=150)\nprint(resp.status_code)\nprint(resp.text[:1000])`
+            }
+        };
+    }
+
+    private async executeImageRequest(url: string, body: any, keySlot: KeySlot, options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        let headers = this.buildImageRequestHeaders(keySlot, true);
 
         body = this.applyCustomBody(body, keySlot);
 
@@ -1647,7 +2041,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             headers,
             body: payloadStr,
             signal: options.signal
-        }, this.getTimeoutMs(keySlot, 150000), 1);
+        }, this.getTimeoutMs(keySlot, 400000), 1);
 
         const requestPath = this.getRequestPathFromUrl(url);
 
@@ -1714,4 +2108,3 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         };
     }
 }
-

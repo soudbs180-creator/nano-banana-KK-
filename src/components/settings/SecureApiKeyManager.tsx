@@ -157,6 +157,7 @@ export function SecureApiKeyManager({ className = '' }: SecureApiKeyManagerProps
           已配置的密钥 ({keys.length})
         </h3>
         <button
+          type="button"
           onClick={() => setIsAdding(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors"
         >
@@ -344,6 +345,7 @@ export function SecureApiKeyManager({ className = '' }: SecureApiKeyManagerProps
 
                 <div className="flex items-center gap-1">
                   <button
+                    type="button"
                     onClick={() => handleToggle(key.id, key.is_active)}
                     title={key.is_active ? '禁用' : '启用'}
                     className={`p-2 rounded-lg transition-colors ${
@@ -355,6 +357,7 @@ export function SecureApiKeyManager({ className = '' }: SecureApiKeyManagerProps
                     {key.is_active ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleDelete(key.id)}
                     title="删除"
                     className="p-2 text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"

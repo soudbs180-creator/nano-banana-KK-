@@ -29,6 +29,17 @@
     "include": [
         "src"
     ],
+    "exclude": [
+        ".codex-backups",
+        ".codex-temp-esbuild",
+        ".codex-temp-esbuild-components",
+        ".codex-tmp-check",
+        "dist",
+        "recovery_*",
+        "**/*.codex-corrupt-backup.tsx",
+        "**/*.backup.ts",
+        "**/*.backup.tsx"
+    ],
     "references": [
         {
             "path": "./tsconfig.node.json"

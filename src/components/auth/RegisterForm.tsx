@@ -267,6 +267,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
         已有账号？
         <button
+          type="button"
           onClick={onLoginClick}
           className="text-blue-600 hover:underline font-medium ml-1"
         >

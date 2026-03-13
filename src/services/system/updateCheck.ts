@@ -12,6 +12,15 @@ let updateListeners: ((available: boolean) => void)[] = [];
 let initPromise: Promise<void> | null = null;
 let intervalId: number | null = null;
 
+function isUpdateCheckDisabled(): boolean {
+    const protocol = window.location.protocol;
+
+    return import.meta.env.DEV
+        || protocol !== 'http:' && protocol !== 'https:'
+        || window.location.hostname === 'localhost'
+        || window.location.hostname === '127.0.0.1';
+}
+
 function buildNoCacheUrl(queryKey: string): string {
     const url = new URL(window.location.href);
     url.searchParams.set(queryKey, Date.now().toString());
@@ -70,6 +79,17 @@ export async function initUpdateCheck(): Promise<void> {
     if (initPromise) return initPromise;
 
     initPromise = (async () => {
+        if (isUpdateCheckDisabled()) {
+            updateAvailable = false;
+            if (intervalId !== null) {
+                window.clearInterval(intervalId);
+                intervalId = null;
+            }
+            notifyListeners();
+            console.info('[UpdateCheck] Disabled in local development to avoid disruptive reload prompts.');
+            return;
+        }
+
         currentBuildHash = await fetchBuildHash();
         console.log('[UpdateCheck] Initial build hash:', currentBuildHash);
 
@@ -117,6 +137,11 @@ export function isUpdateAvailable(): boolean {
  * Data is preserved because we save to IndexedDB/localStorage/Supabase
  */
 export function applyUpdate(): void {
+    if (isUpdateCheckDisabled()) {
+        console.info('[UpdateCheck] Ignoring applyUpdate in local development.');
+        return;
+    }
+
     updateAvailable = false;
     notifyListeners();
 

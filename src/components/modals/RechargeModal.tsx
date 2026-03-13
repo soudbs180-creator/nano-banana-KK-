@@ -141,13 +141,12 @@ const RechargeModal: React.FC = () => {
         if (data.tradeStatus === 'TRADE_SUCCESS' || data.tradeStatus === 'TRADE_FINISHED') {
           if (isSubscribed) {
             setPaymentSuccess(true);
-            notify.success('支付成功', '积分已自动到账，页面即将刷新...');
+            notify.success('支付成功', '积分已自动到账，无需刷新页面。');
             setTimeout(() => {
               if (isSubscribed) {
                 setShowRechargeModal(false);
                 setQrCodeResult(null);
                 setPaymentSuccess(false);
-                window.location.reload(); // Reload to refresh user credits
               }
             }, 3000);
           }
@@ -226,9 +225,9 @@ const RechargeModal: React.FC = () => {
                     <p className="text-gray-900 dark:text-gray-100 font-bold text-center">
                       已在安全窗口打开支付宝收银台
                     </p>
-                    <p className="text-gray-500 dark:text-zinc-400 text-sm mt-2 text-center">
-                      请在新窗口完成付款，支付成功后系统将自动刷新
-                    </p>
+                      <p className="text-gray-500 dark:text-zinc-400 text-sm mt-2 text-center">
+                        请在新窗口完成付款，支付成功后会自动更新积分状态
+                      </p>
                   </div>
 
                   <button

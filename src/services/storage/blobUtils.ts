@@ -35,10 +35,20 @@ export async function dataURLToBlob(dataURL: string): Promise<Blob | null> {
                 return new Blob([decoded], { type: mimeType });
             }
 
+            if (/^(blob:|https?:\/\/)/i.test(payload.trim())) {
+                console.debug('[blobUtils] Nested URL payload detected, skipping blob conversion.');
+                return null;
+            }
+
             const normalizedBase64 = payload
                 .replace(/[\s\r\n]+/g, '')
                 .replace(/-/g, '+')
                 .replace(/_/g, '/');
+
+            if (!normalizedBase64 || /[^A-Za-z0-9+/=]/.test(normalizedBase64)) {
+                console.debug('[blobUtils] Invalid base64 payload detected, skipping blob conversion.');
+                return null;
+            }
             const paddedBase64 = normalizedBase64.padEnd(
                 normalizedBase64.length + ((4 - normalizedBase64.length % 4) % 4),
                 '=',
@@ -54,7 +64,7 @@ export async function dataURLToBlob(dataURL: string): Promise<Blob | null> {
 
             return new Blob([ab], { type: mimeType });
         } catch (e) {
-            console.error('[blobUtils] Failed to parse data URL:', e);
+            console.debug('[blobUtils] Failed to parse data URL:', e);
             return null;
         }
     }

@@ -45,6 +45,8 @@ export interface AdminModelConfig {
   displayName: string;
   provider: string;
   providerId?: string;
+  providerName?: string;
+  recordId?: string;
   priority?: number;
   weight?: number;
   callCount?: number;
@@ -90,6 +92,25 @@ interface FlatModelRow {
   mix_with_same_model?: boolean | null;
   quality_pricing?: Record<string, any> | null;
 }
+
+type AdminModelRouteSelection = {
+  baseModelId: string;
+  routeIndex: number | null;
+  routeKey: string | null;
+  hasSystemRouteSuffix: boolean;
+};
+
+export type AdminModelRouteSelectionContext = {
+  baseModelId: string;
+  routeIndex: number | null;
+  routeKey: string | null;
+  hasSystemRouteSuffix: boolean;
+  matchedModels: AdminModelConfig[];
+  mixedModels: AdminModelConfig[];
+  mixedEligibleModels: AdminModelConfig[];
+  exactModel: AdminModelConfig | null;
+  useMixedRouting: boolean;
+};
 
 class AdminModelService {
   private providers: AdminProvider[] = [];
@@ -211,6 +232,8 @@ class AdminModelService {
               displayName: (row.display_name || modelId).trim(),
               provider: providerId,
               providerId,
+              providerName: (row.provider_name || providerId).trim(),
+              recordId: row.id?.trim(),
               priority: Number(row.priority || 0),
               weight: Number(row.weight || 0),
               callCount: Number(row.call_count || 0),
@@ -267,15 +290,98 @@ class AdminModelService {
     return this.models.filter((model) => model.provider === providerId);
   }
 
+  private parseRouteSelection(modelId: string): AdminModelRouteSelection {
+    const rawId = String(modelId || '').trim();
+    const parts = rawId.split('@');
+    const baseModelId = (parts[0] || rawId).trim();
+    const suffix = String(parts[1] || '').trim().toLowerCase();
+    const systemMatch = suffix.match(/^system(?:_(.+))?$/);
+
+    if (!systemMatch) {
+      return {
+        baseModelId,
+        routeIndex: null,
+        routeKey: null,
+        hasSystemRouteSuffix: false,
+      };
+    }
+
+    const rawRouteToken = String(systemMatch[1] || '').trim();
+    if (!rawRouteToken) {
+      return {
+        baseModelId,
+        routeIndex: null,
+        routeKey: null,
+        hasSystemRouteSuffix: true,
+      };
+    }
+
+    if (/^\d+$/.test(rawRouteToken)) {
+      const parsedIndex = Number(rawRouteToken) - 1;
+      return {
+        baseModelId,
+        routeIndex: Number.isFinite(parsedIndex) && parsedIndex >= 0 ? parsedIndex : 0,
+        routeKey: null,
+        hasSystemRouteSuffix: true,
+      };
+    }
+
+    let routeKey = rawRouteToken;
+    try {
+      routeKey = decodeURIComponent(rawRouteToken);
+    } catch {
+      routeKey = rawRouteToken;
+    }
+
+    return {
+      baseModelId,
+      routeIndex: null,
+      routeKey: routeKey.toLowerCase(),
+      hasSystemRouteSuffix: true,
+    };
+  }
+
+  getRouteSelectionContext(modelId: string, imageSize?: string | null): AdminModelRouteSelectionContext {
+    const selection = this.parseRouteSelection(modelId);
+    const matchedModels = this.getRouteCandidates(selection.baseModelId);
+    const mixedModels = matchedModels.filter((model) => model.mixWithSameModel);
+    const mixedEligibleModels = mixedModels.filter((model) =>
+      isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
+    );
+    const exactModelByRouteKey =
+      selection.routeKey !== null
+        ? matchedModels.find(
+            (model) => String(model.providerId || '').trim().toLowerCase() === selection.routeKey
+          ) || null
+        : null;
+    const exactModel =
+      exactModelByRouteKey ||
+      (selection.routeIndex !== null
+        ? matchedModels[selection.routeIndex] || matchedModels[0] || null
+        : null);
+
+    return {
+      ...selection,
+      matchedModels,
+      mixedModels,
+      mixedEligibleModels,
+      exactModel,
+      useMixedRouting:
+        selection.routeKey === null &&
+        (selection.routeIndex === null || selection.routeIndex === 0) &&
+        mixedModels.length > 1,
+    };
+  }
+
   getModel(modelId: string): AdminModelConfig | undefined {
-    // 1. 精确匹配
+    const { exactModel, matchedModels } = this.getRouteSelectionContext(modelId);
+    if (exactModel) return exactModel;
+
     const exact = this.models.find((model) => model.id === modelId);
     if (exact) return exact;
 
-    // 2. 去掉 @后缀 再匹配（如 gemini-xxx@system -> gemini-xxx）
-    const baseId = modelId.split('@')[0];
-    if (baseId !== modelId) {
-      return this.models.find((model) => model.id === baseId);
+    if (matchedModels.length > 0) {
+      return matchedModels[0];
     }
 
     return undefined;
@@ -360,18 +466,11 @@ class AdminModelService {
   }
 
   getModelCreditCost(modelId: string, imageSize?: string | null): number {
-    const matchedModels = this.getRouteCandidates(modelId);
-    if (matchedModels.length === 0) return 0;
+    const context = this.getRouteSelectionContext(modelId, imageSize);
+    if (context.matchedModels.length === 0) return 0;
 
-    const mixedCandidates = matchedModels.filter(
-      (model) =>
-        model.mixWithSameModel &&
-        isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
-    );
-
-    // 混合模式：基于用量平衡选择
-    if (mixedCandidates.length > 1) {
-      const selected = this.selectBalancedProvider(mixedCandidates, imageSize);
+    if (context.useMixedRouting) {
+      const selected = this.selectBalancedProvider(context.mixedModels, imageSize);
       if (selected) {
         return getAdminModelCreditCostForSize(
           selected.creditCost,
@@ -380,12 +479,16 @@ class AdminModelService {
           imageSize
         );
       }
+
+      return 0;
     }
 
     const selectedModel =
-      matchedModels.find((model) =>
+      context.exactModel ||
+      context.matchedModels.find((model) =>
         isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
-      ) || matchedModels[0];
+      ) ||
+      context.matchedModels[0];
 
     return getAdminModelCreditCostForSize(
       selectedModel.creditCost,
@@ -399,24 +502,20 @@ class AdminModelService {
    * 获取混合模式下选择的最佳供应商ID（用于调试和日志）
    */
   getSelectedProviderForModel(modelId: string, imageSize?: string | null): string | null {
-    const matchedModels = this.getRouteCandidates(modelId);
-    if (matchedModels.length === 0) return null;
+    const context = this.getRouteSelectionContext(modelId, imageSize);
+    if (context.matchedModels.length === 0) return null;
 
-    const mixedCandidates = matchedModels.filter(
-      (model) =>
-        model.mixWithSameModel &&
-        isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
-    );
-
-    if (mixedCandidates.length > 1) {
-      const selected = this.selectBalancedProvider(mixedCandidates, imageSize);
+    if (context.useMixedRouting) {
+      const selected = this.selectBalancedProvider(context.mixedModels, imageSize);
       return selected?.providerId ?? null;
     }
 
     const selectedModel =
-      matchedModels.find((model) =>
+      context.exactModel ||
+      context.matchedModels.find((model) =>
         isAdminQualityEnabled(Boolean(model.advancedEnabled), model.qualityPricing, imageSize)
-      ) || matchedModels[0];
+      ) ||
+      context.matchedModels[0];
 
     return selectedModel?.providerId ?? null;
   }
