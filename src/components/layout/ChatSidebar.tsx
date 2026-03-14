@@ -969,7 +969,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onToggle, onClose, is
             if (result.referenceImagesDropped && result.referenceImagesDropped > 0) {
                 notify.warning(
                     '参考图已自动裁剪',
-                    `模型最多使用 ${result.referenceImagesUsed || 0} 张，已忽略 ${result.referenceImagesDropped} 张`
+                    `本次实际使用 ${result.referenceImagesUsed || 0} 张参考图，忽略 ${result.referenceImagesDropped} 张`
                 );
             }
 

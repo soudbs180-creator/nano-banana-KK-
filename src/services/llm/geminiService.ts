@@ -9,6 +9,7 @@ import { getImage } from '../storage/imageStorage';
 import { llmService } from './LLMService';
 import { ImageGenerationOptions, ProviderConfig } from './LLMAdapter';
 import { getMaxRefImages } from '../model/modelCapabilities';
+import { abortSyncImageBridgeRequest } from './syncImageBridge';
 
 
 // Fallback control: allow config/env-driven auto-backoff when quota is exhausted
@@ -68,6 +69,7 @@ export const cancelGeneration = (id: string) => {
     controller.abort("Generation cancelled by user");
     abortControllers.delete(id);
   }
+  void abortSyncImageBridgeRequest(id).catch(() => undefined);
 };
 
 /**
@@ -243,6 +245,7 @@ export const generateImage = async (
     enableImageSearch?: boolean;
     thinkingMode?: 'minimal' | 'high';
     onTaskId?: (id: string) => void;
+    onSyncBridgeRegistered?: (requestId: string) => void;
   }
 ): Promise<GenerateImageResult> => {
   // 🚀 Parse Model Suffix (Consistency)
@@ -400,6 +403,17 @@ export const generateImage = async (
     const cleanData = currentData.replace(/^data:image\/\w+;base64,/, '');
     return { ...img, data: cleanData };
   }))).filter((img): img is ReferenceImage => !!img && !!img.data);
+  const normalizedReferenceImages = processedReferences
+    .filter(r => !!r.data && !r.data.startsWith('http') && !r.data.startsWith('blob:') && !r.data.startsWith('file:'))
+    .map(r => ({ data: r.data, mimeType: r.mimeType || 'image/png' }));
+  const skippedDuringNormalization = Math.max(0, clippedReferenceImages.length - normalizedReferenceImages.length);
+  const totalDroppedReferenceImages = Math.max(0, inputRefCount - normalizedReferenceImages.length);
+  if (inputRefCount > 0) {
+    console.log(`[GeminiService] Reference images prepared: input=${inputRefCount}, clipped=${clippedReferenceImages.length}, forwarded=${normalizedReferenceImages.length}, dropped=${totalDroppedReferenceImages}`);
+    if (skippedDuringNormalization > 0) {
+      console.warn(`[GeminiService] ${skippedDuringNormalization} reference image(s) could not be normalized and were skipped.`);
+    }
+  }
 
   // Create AbortController if requestId provided
   if (requestId && !abortControllers.has(requestId)) {
@@ -481,15 +495,15 @@ export const generateImage = async (
     imageSize: imageSize, // Pass high level enum
     imageCount: 1,
     // 🚀 [Fix] 保留完整 { data, mimeType } 对象，严格对齐官方文档 MIME 类型要求
-    referenceImages: processedReferences
-      .filter(r => !!r.data && !r.data.startsWith('http') && !r.data.startsWith('blob:') && !r.data.startsWith('file:'))
-      .map(r => ({ data: r.data, mimeType: r.mimeType || 'image/png' })),
+    referenceImages: normalizedReferenceImages,
     providerConfig: providerConfig, // 🚀 Pass the Universal Config
     maskUrl: options?.maskUrl, // 🚀 Pass Edit Options
     editMode: options?.editMode,
     preferredKeyId: options?.preferredKeyId,
     signal: controller?.signal,
-    onTaskId: options?.onTaskId
+    onTaskId: options?.onTaskId,
+    syncBridgeRequestId: requestId,
+    onSyncBridgeRegistered: options?.onSyncBridgeRegistered,
   };
 
   try {
@@ -533,8 +547,8 @@ export const generateImage = async (
       requestPath: result.metadata?.requestPath,
       requestBodyPreview: result.metadata?.requestBodyPreview,
       pythonSnippet: result.metadata?.pythonSnippet,
-      referenceImagesUsed: clippedReferenceImages.length,
-      referenceImagesDropped: droppedRefCount,
+      referenceImagesUsed: normalizedReferenceImages.length,
+      referenceImagesDropped: totalDroppedReferenceImages,
       groundingSources: result.metadata?.grounding?.sources
     };
 

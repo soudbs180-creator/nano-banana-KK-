@@ -82,19 +82,14 @@ function resolveManualChunk(id: string): string | undefined {
 
     if (
         normalizedId.includes('/src/components/settings/') ||
-        normalizedId.includes('/src/pages/CostEstimation.tsx')
-    ) {
-        return 'settings-panel';
-    }
-
-    if (
         normalizedId.includes('/src/components/modals/StorageSelectionModal.tsx') ||
         normalizedId.includes('/src/components/modals/MigrateModal.tsx') ||
         normalizedId.includes('/src/components/modals/RechargeModal.tsx') ||
         normalizedId.includes('/src/components/modals/UserProfileModal.tsx') ||
-        normalizedId.includes('/src/components/modals/TagInputModal.tsx')
+        normalizedId.includes('/src/components/modals/TagInputModal.tsx') ||
+        normalizedId.includes('/src/pages/CostEstimation.tsx')
     ) {
-        return 'modal-panels';
+        return 'app-panels';
     }
 
     if (
@@ -102,7 +97,7 @@ function resolveManualChunk(id: string): string | undefined {
         normalizedId.includes('/src/components/common/TutorialOverlay.tsx') ||
         normalizedId.includes('/src/components/image/GlobalLightbox.tsx')
     ) {
-        return 'experience-panels';
+        return 'app-panels';
     }
 
     if (normalizedId.includes('/node_modules/')) {

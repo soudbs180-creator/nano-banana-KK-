@@ -97,6 +97,8 @@ export interface ImageGenerationOptions {
     preferredKeyId?: string;
     signal?: AbortSignal; // 🚀 支持请求取消
     onTaskId?: (id: string) => void; // 🚀 [New] 异步任务 ID 回调
+    syncBridgeRequestId?: string; // 页面刷新时可恢复的同步请求 ID
+    onSyncBridgeRegistered?: (requestId: string) => void; // 同步请求已交给持久桥接层
 }
 
 // 🚀 [Fix] 工具函数：从联合类型中提取 base64 数据和 MIME 类型

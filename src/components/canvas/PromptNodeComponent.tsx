@@ -37,6 +37,7 @@ interface PromptNodeProps {
     onPositionChange: (id: string, newPos: { x: number; y: number }) => void;
     isSelected: boolean;
     onSelect: () => void;
+    onBringToFront?: () => void;
     onClickPrompt?: (node: PromptNode, isOptimizedView?: boolean) => void;
     onConnectStart?: (id: string, startPos: { x: number; y: number }) => void;
     canvasTransform?: { x: number; y: number; scale: number }; // Deprecated
@@ -251,6 +252,7 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     onPositionChange,
     isSelected,
     onSelect,
+    onBringToFront,
     onClickPrompt,
     onConnectStart,
     canvasTransform, // Optional now
@@ -500,7 +502,11 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if (isChatMode) return; // Disable drag/select logic in chat mode
-        if ('button' in e && e.button === 2) return; // Right click
+        if ('button' in e && e.button === 2) {
+            onBringToFront?.();
+            return;
+        }
+        onBringToFront?.();
         // Only select if not already selected (Preserve Group)
         if (!isSelected) {
             onSelect();
@@ -1434,6 +1440,8 @@ const PromptNodeComponent: React.FC<PromptNodeProps> = React.memo(({
     if (prev.node.isGenerating !== next.node.isGenerating) return false;
     return (
         prev.node === next.node &&
+        prev.groupLayerZIndex === next.groupLayerZIndex &&
+        prev.stackZIndexOverride === next.stackZIndexOverride &&
         prev.actualChildImageCount === next.actualChildImageCount &&
         prev.isSelected === next.isSelected &&
         prev.highlighted === next.highlighted &&

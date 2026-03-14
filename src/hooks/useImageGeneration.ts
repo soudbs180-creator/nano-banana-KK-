@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { PromptNode, GeneratedImage, GenerationMode, AspectRatio, ImageSize } from '../types';
+import { PromptNode, GeneratedImage, GenerationMode, AspectRatio, ImageSize, ReferenceImage } from '../types';
 import { llmService } from '../services/llm/LLMService';
 import { generateImage, cancelGeneration } from '../services/llm/geminiService';
 import { useCanvas } from '../context/CanvasContext';
@@ -13,8 +13,32 @@ import {
   buildAutoPptSlides, 
   buildPptPageAlias 
 } from '../utils/pptUtils';
+import { clearSyncImageBridgeRequest, getSyncImageBridgeRequest } from '../services/llm/syncImageBridge';
 
 const GENERATE_TIMEOUT_MS = 600000;
+const SYNC_BRIDGE_RECOVERY_RETRY_MS = 2500;
+const SYNC_BRIDGE_RECOVERY_MAX_AGE_MS = 15 * 60 * 1000;
+
+type PendingSyncRequest = {
+  requestId: string;
+  index: number;
+  prompt: string;
+  startedAt: number;
+  keySlotId?: string;
+};
+
+const hasRecoverableReferenceImage = (img?: Partial<ReferenceImage> | null): boolean => {
+  if (!img) return false;
+
+  const data = typeof img.data === 'string' ? img.data.trim() : '';
+  if (data.length > 0) return true;
+
+  if (typeof img.storageId === 'string' && img.storageId.trim().length > 0) return true;
+  if (typeof img.url === 'string' && img.url.trim().length > 0) return true;
+
+  // Keep legacy records that rely on id-only cache recovery.
+  return typeof img.id === 'string' && img.id.trim().length > 0;
+};
 
 export const useImageGeneration = (options: {
   isMobile: boolean;
@@ -81,10 +105,30 @@ export const useImageGeneration = (options: {
     ));
   }, []);
 
-  const buildPendingTaskMetadata = useCallback((node: PromptNode | null | undefined, pendingTaskIds: string[]) => ({
+  const buildGenerationMetadata = useCallback((node: PromptNode | null | undefined, partial: Record<string, unknown>) => ({
     ...(node?.generationMetadata || {}),
-    pendingTaskIds,
+    ...partial,
   }), []);
+
+  const getPendingSyncRequests = useCallback((node?: PromptNode | null): PendingSyncRequest[] => {
+    const rawPendingSyncRequests = (node?.generationMetadata as { pendingSyncRequests?: unknown } | undefined)?.pendingSyncRequests;
+    if (!Array.isArray(rawPendingSyncRequests)) return [];
+
+    return rawPendingSyncRequests.filter((item): item is PendingSyncRequest => (
+      !!item
+      && typeof item === 'object'
+      && typeof (item as PendingSyncRequest).requestId === 'string'
+      && (item as PendingSyncRequest).requestId.trim().length > 0
+    ));
+  }, []);
+
+  const buildPendingTaskMetadata = useCallback((node: PromptNode | null | undefined, pendingTaskIds: string[]) => (
+    buildGenerationMetadata(node, { pendingTaskIds })
+  ), [buildGenerationMetadata]);
+
+  const buildPendingSyncMetadata = useCallback((node: PromptNode | null | undefined, pendingSyncRequests: PendingSyncRequest[]) => (
+    buildGenerationMetadata(node, { pendingSyncRequests })
+  ), [buildGenerationMetadata]);
 
   const registerPendingTaskId = useCallback((node: PromptNode, taskId: string): PromptNode => {
     const nextPendingTaskIds = Array.from(new Set([...getPendingTaskIds(node), taskId]));
@@ -94,6 +138,28 @@ export const useImageGeneration = (options: {
       generationMetadata: buildPendingTaskMetadata(node, nextPendingTaskIds),
     };
   }, [buildPendingTaskMetadata, getPendingTaskIds]);
+
+  const registerPendingSyncRequest = useCallback((node: PromptNode, pendingRequest: PendingSyncRequest): PromptNode => {
+    const existing = getPendingSyncRequests(node);
+    const nextPendingSyncRequests = existing.some(item => item.requestId === pendingRequest.requestId)
+      ? existing
+      : [...existing, pendingRequest];
+
+    return {
+      ...node,
+      generationMetadata: buildPendingSyncMetadata(node, nextPendingSyncRequests),
+    };
+  }, [buildPendingSyncMetadata, getPendingSyncRequests]);
+
+  const clearPendingSyncRequests = useCallback((node: PromptNode, requestIds: string[]): PromptNode => {
+    if (!requestIds.length) return node;
+    const requestIdSet = new Set(requestIds);
+    const nextPendingSyncRequests = getPendingSyncRequests(node).filter(item => !requestIdSet.has(item.requestId));
+    return {
+      ...node,
+      generationMetadata: buildPendingSyncMetadata(node, nextPendingSyncRequests),
+    };
+  }, [buildPendingSyncMetadata, getPendingSyncRequests]);
 
   const resolvePendingTaskState = useCallback((node: PromptNode, completedTaskId?: string) => {
     const currentPendingTaskIds = getPendingTaskIds(node);
@@ -151,6 +217,179 @@ export const useImageGeneration = (options: {
       y: basePosition.y + gapToImages + cardHeight + row * (cardHeight + gap),
     };
   }, [isMobile, getCardDimensions]);
+
+  const syncBridgeRecoveryTimersRef = useRef<Map<string, number>>(new Map());
+  const syncBridgeRecoveryInFlightRef = useRef<Set<string>>(new Set());
+
+  const clearSyncBridgeRecoveryTimer = useCallback((requestId: string) => {
+    const timer = syncBridgeRecoveryTimersRef.current.get(requestId);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      syncBridgeRecoveryTimersRef.current.delete(requestId);
+    }
+  }, []);
+
+  const scheduleSyncBridgeRecovery = useCallback((nodeId: string, pendingRequest: PendingSyncRequest, delayMs: number = SYNC_BRIDGE_RECOVERY_RETRY_MS) => {
+    clearSyncBridgeRecoveryTimer(pendingRequest.requestId);
+    const timer = window.setTimeout(() => {
+      syncBridgeRecoveryTimersRef.current.delete(pendingRequest.requestId);
+      syncBridgeRecoveryInFlightRef.current.delete(pendingRequest.requestId);
+      void recoverSyncBridgeRequest(nodeId, pendingRequest);
+    }, delayMs);
+    syncBridgeRecoveryTimersRef.current.set(pendingRequest.requestId, timer);
+  }, [clearSyncBridgeRecoveryTimer]);
+
+  const recoverSyncBridgeRequest = useCallback(async (nodeId: string, pendingRequest: PendingSyncRequest) => {
+    if (syncBridgeRecoveryInFlightRef.current.has(pendingRequest.requestId)) return;
+    syncBridgeRecoveryInFlightRef.current.add(pendingRequest.requestId);
+
+    try {
+      const bridgeResult = await getSyncImageBridgeRequest(pendingRequest.requestId);
+      const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === nodeId);
+      if (!latestNode) {
+        await clearSyncImageBridgeRequest(pendingRequest.requestId).catch(() => undefined);
+        return;
+      }
+
+      if (bridgeResult.status === 'pending' || bridgeResult.status === 'missing') {
+        const elapsed = Date.now() - (pendingRequest.startedAt || 0);
+        if (elapsed < SYNC_BRIDGE_RECOVERY_MAX_AGE_MS) {
+          scheduleSyncBridgeRecovery(nodeId, pendingRequest);
+        } else {
+          const nextNode = clearPendingSyncRequests(latestNode, [pendingRequest.requestId]);
+          urgentUpdatePromptNode({
+            ...nextNode,
+            isGenerating: getPendingTaskIds(nextNode).length > 0 || getPendingSyncRequests(nextNode).length > 0,
+            jobId: getPendingTaskIds(nextNode)[0],
+            error: getPendingTaskIds(nextNode).length === 0 && getPendingSyncRequests(nextNode).length === 0
+              ? '同步生成恢复超时，供应商结果未能重新接回。'
+              : nextNode.error,
+            errorDetails: {
+              ...(nextNode.errorDetails || {}),
+              code: nextNode.errorDetails?.code || 'SYNC_BRIDGE_TIMEOUT',
+              responseBody: nextNode.errorDetails?.responseBody || 'Sync bridge result recovery timed out',
+              model: nextNode.errorDetails?.model || nextNode.model,
+              timestamp: Date.now()
+            }
+          });
+          await clearSyncImageBridgeRequest(pendingRequest.requestId).catch(() => undefined);
+        }
+        return;
+      }
+
+      if (bridgeResult.status === 'error') {
+        const nextNode = clearPendingSyncRequests(latestNode, [pendingRequest.requestId]);
+        const remainingTaskIds = getPendingTaskIds(nextNode);
+        const remainingSyncRequests = getPendingSyncRequests(nextNode);
+        urgentUpdatePromptNode({
+          ...nextNode,
+          isGenerating: remainingTaskIds.length > 0 || remainingSyncRequests.length > 0,
+          jobId: remainingTaskIds[0],
+          error: remainingTaskIds.length === 0 && remainingSyncRequests.length === 0
+            ? bridgeResult.error
+            : nextNode.error,
+          errorDetails: {
+            ...(nextNode.errorDetails || {}),
+            code: bridgeResult.code || nextNode.errorDetails?.code || 'SYNC_BRIDGE_ERROR',
+            status: bridgeResult.responseStatus || nextNode.errorDetails?.status,
+            responseBody: bridgeResult.responseBodyPreview || bridgeResult.error || nextNode.errorDetails?.responseBody,
+            model: nextNode.errorDetails?.model || nextNode.model,
+            timestamp: Date.now()
+          }
+        });
+        await clearSyncImageBridgeRequest(pendingRequest.requestId).catch(() => undefined);
+        return;
+      }
+
+      const currentChildIds = Array.from(new Set((latestNode.childImageIds || []).filter(Boolean)));
+      const expectedCount = getExpectedGenerationCount(latestNode);
+      const recoveredResults = bridgeResult.urls.map((url, index) => {
+        const imageId = `${nodeId}_sync_recovered_${Date.now()}_${pendingRequest.index}_${index}`;
+        const layoutIndex = pendingRequest.index + index;
+        return {
+          id: imageId,
+          storageId: imageId,
+          url,
+          originalUrl: url,
+          prompt: pendingRequest.prompt || latestNode.prompt,
+          model: latestNode.model,
+          modelLabel: latestNode.modelLabel,
+          modelColorStart: latestNode.modelColorStart,
+          modelColorEnd: latestNode.modelColorEnd,
+          modelColorSecondary: latestNode.modelColorSecondary,
+          modelTextColor: latestNode.modelTextColor,
+          aspectRatio: latestNode.aspectRatio,
+          imageSize: latestNode.imageSize,
+          timestamp: Date.now(),
+          canvasId: activeCanvasRef.current?.id || 'default',
+          parentPromptId: nodeId,
+          position: getGeneratedImagePosition(latestNode.position, latestNode.aspectRatio, latestNode.mode, layoutIndex, expectedCount),
+          provider: latestNode.provider,
+          providerLabel: latestNode.providerLabel,
+          keySlotId: pendingRequest.keySlotId || latestNode.keySlotId,
+          generationTime: 0,
+          alias: latestNode.mode === GenerationMode.PPT ? buildPptPageAlias(latestNode.pptSlides?.[layoutIndex], layoutIndex) : undefined,
+        };
+      });
+
+      const mergedChildIds = Array.from(new Set([...currentChildIds, ...recoveredResults.map(result => result.id)]));
+      const nextNode = clearPendingSyncRequests(latestNode, [pendingRequest.requestId]);
+      const remainingTaskIds = getPendingTaskIds(nextNode);
+      const remainingSyncRequests = getPendingSyncRequests(nextNode);
+      const nextSuccessCount = mergedChildIds.length;
+      const nextFailCount = remainingTaskIds.length > 0 || remainingSyncRequests.length > 0
+        ? Math.max(0, expectedCount - nextSuccessCount - remainingTaskIds.length - remainingSyncRequests.length)
+        : Math.max(0, expectedCount - nextSuccessCount);
+
+      addImageNodes(recoveredResults as any, {
+        [latestNode.id]: {
+          ...nextNode,
+          isGenerating: remainingTaskIds.length > 0 || remainingSyncRequests.length > 0,
+          jobId: remainingTaskIds[0],
+          childImageIds: mergedChildIds,
+          error: undefined,
+          lastGenerationSuccessCount: nextSuccessCount,
+          lastGenerationFailCount: nextFailCount
+        }
+      });
+      await clearSyncImageBridgeRequest(pendingRequest.requestId).catch(() => undefined);
+    } catch (error) {
+      console.warn('[useImageGeneration] Sync bridge recovery failed:', error);
+      scheduleSyncBridgeRecovery(nodeId, pendingRequest, 4000);
+    } finally {
+      syncBridgeRecoveryInFlightRef.current.delete(pendingRequest.requestId);
+    }
+  }, [
+    addImageNodes,
+    buildPptPageAlias,
+    clearPendingSyncRequests,
+    getExpectedGenerationCount,
+    getGeneratedImagePosition,
+    getPendingSyncRequests,
+    getPendingTaskIds,
+    scheduleSyncBridgeRecovery,
+    urgentUpdatePromptNode
+  ]);
+
+  useEffect(() => {
+    const canvas = activeCanvas;
+    if (!canvas?.promptNodes?.length) return;
+
+    canvas.promptNodes.forEach((node) => {
+      getPendingSyncRequests(node).forEach((pendingRequest) => {
+        if (!pendingRequest?.requestId) return;
+        if (syncBridgeRecoveryInFlightRef.current.has(pendingRequest.requestId)) return;
+        if (syncBridgeRecoveryTimersRef.current.has(pendingRequest.requestId)) return;
+        void recoverSyncBridgeRequest(node.id, pendingRequest);
+      });
+    });
+  }, [activeCanvas, getPendingSyncRequests, recoverSyncBridgeRequest]);
+
+  useEffect(() => () => {
+    syncBridgeRecoveryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    syncBridgeRecoveryTimersRef.current.clear();
+    syncBridgeRecoveryInFlightRef.current.clear();
+  }, []);
 
   // --- Polling Logic ---
 
@@ -288,7 +527,14 @@ export const useImageGeneration = (options: {
         return img;
       }));
       
-      const files = hydratedFiles.filter(img => img.data && img.data.length > 100);
+      const files = hydratedFiles.filter(hasRecoverableReferenceImage);
+      if (initialFiles.length > 0) {
+        const droppedCount = Math.max(0, hydratedFiles.length - files.length);
+        console.log(`[useImageGeneration] Reference images prepared: input=${initialFiles.length}, hydrated=${hydratedFiles.length}, forwarded=${files.length}, dropped=${droppedCount}`);
+        if (droppedCount > 0) {
+          console.warn(`[useImageGeneration] Dropped ${droppedCount} empty reference image(s) before generation.`);
+        }
+      }
       const resolvedKey = keyManager.getNextKey(node.model, node.keySlotId);
       const effectiveKeySlotId = resolvedKey?.id || node.keySlotId;
       const resolvedProviderDisplay = effectiveKeySlotId
@@ -377,7 +623,18 @@ export const useImageGeneration = (options: {
               onTaskId: (taskId) => {
                 taskIdForRecovery = taskId;
                 const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
-                if (fresh) urgentUpdatePromptNode(registerPendingTaskId(fresh, taskId));
+                if (fresh) urgentUpdatePromptNode(clearPendingSyncRequests(registerPendingTaskId(fresh, taskId), [currentRequestId]));
+              },
+              onSyncBridgeRegistered: (requestId: string) => {
+                const fresh = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId);
+                if (!fresh) return;
+                urgentUpdatePromptNode(registerPendingSyncRequest(fresh, {
+                  requestId,
+                  index,
+                  prompt: taskPrompt,
+                  startedAt: Date.now(),
+                  keySlotId: executionNode.keySlotId
+                }));
               }
             });
             generatedBase64 = result.url;
@@ -391,11 +648,11 @@ export const useImageGeneration = (options: {
           return { 
             index, url: isVideo || isAudio ? videoUrl : generatedBase64, originalUrl: isVideo || isAudio ? videoUrl : generatedBase64, 
             generationTime: Date.now() - startTime, base64: generatedBase64, mode, 
-            taskId: taskIdForRecovery, taskPrompt, keySlotId: resolvedResultKeySlotId,
+            taskId: taskIdForRecovery, taskPrompt, keySlotId: resolvedResultKeySlotId, requestId: currentRequestId,
             provider: resolvedProvider, providerName: resolvedProviderName, modelName: resolvedModelName, model: resolvedModelId 
           };
         } catch (error: any) {
-          return { error: error.message || 'Unknown error', errorDetails: extractErrorDetails(error, executionNode.model), taskId: taskIdForRecovery };
+          return { error: error.message || 'Unknown error', errorDetails: extractErrorDetails(error, executionNode.model), taskId: taskIdForRecovery, requestId: currentRequestId };
         }
       };
 
@@ -429,16 +686,21 @@ export const useImageGeneration = (options: {
 
         const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId) || node;
         const pendingIds = getPendingTaskIds(latestNode).filter(tid => !validImageData.some(v => v.taskId === tid));
+        const completedSyncRequestIds = imageData
+          .map(item => item.requestId)
+          .filter((requestId): requestId is string => typeof requestId === 'string' && requestId.trim().length > 0);
+        const nextNodeBase = clearPendingSyncRequests(latestNode, completedSyncRequestIds);
+        const remainingSyncRequests = getPendingSyncRequests(nextNodeBase);
         const firstSuccess = validImageData[0];
         const resolvedSuccessDisplay = firstSuccess?.keySlotId
           ? resolveProviderDisplay(firstSuccess.keySlotId)
           : resolveProviderDisplay(undefined, executionNode.providerLabel, executionNode.provider);
         
         const updatedNode = {
-          ...latestNode, isGenerating: pendingIds.length > 0, jobId: pendingIds[0],
+          ...nextNodeBase, isGenerating: pendingIds.length > 0 || remainingSyncRequests.length > 0, jobId: pendingIds[0],
           childImageIds: results.map(r => r.id), lastGenerationSuccessCount: validImageData.length,
           lastGenerationFailCount: failedImageData.length, lastGenerationTotalCount: actualCount,
-          generationMetadata: buildPendingTaskMetadata(latestNode, pendingIds),
+          generationMetadata: buildGenerationMetadata(nextNodeBase, { pendingTaskIds: pendingIds, pendingSyncRequests: remainingSyncRequests }),
           keySlotId: firstSuccess?.keySlotId || executionNode.keySlotId,
           provider: resolvedSuccessDisplay.provider || executionNode.provider,
           providerLabel: resolvedSuccessDisplay.providerLabel || executionNode.providerLabel,
@@ -446,6 +708,10 @@ export const useImageGeneration = (options: {
         };
         
         addImageNodes(results as any, { [updatedNode.id]: updatedNode });
+        completedSyncRequestIds.forEach((requestId) => {
+          void clearSyncImageBridgeRequest(requestId).catch(() => undefined);
+          clearSyncBridgeRecoveryTimer(requestId);
+        });
         rememberPreferredKeyForMode(mode, updatedNode.keySlotId);
         
         if (pendingIds.length > 0) {
@@ -455,6 +721,22 @@ export const useImageGeneration = (options: {
           }, 5000);
         }
       } else {
+        const latestNode = activeCanvasRef.current?.promptNodes.find(n => n.id === promptNodeId) || node;
+        const completedSyncRequestIds = imageData
+          .map(item => item.requestId)
+          .filter((requestId): requestId is string => typeof requestId === 'string' && requestId.trim().length > 0);
+        const nextNodeBase = clearPendingSyncRequests(latestNode, completedSyncRequestIds);
+        updatePromptNode({
+          ...nextNodeBase,
+          isGenerating: getPendingTaskIds(nextNodeBase).length > 0 || getPendingSyncRequests(nextNodeBase).length > 0,
+          jobId: getPendingTaskIds(nextNodeBase)[0],
+          error: failedImageData[0]?.error || 'Generation failed',
+          errorDetails: failedImageData[0]?.errorDetails || extractErrorDetails(new Error(failedImageData[0]?.error || 'Generation failed'), executionNode.model)
+        });
+        completedSyncRequestIds.forEach((requestId) => {
+          void clearSyncImageBridgeRequest(requestId).catch(() => undefined);
+          clearSyncBridgeRecoveryTimer(requestId);
+        });
         throw new Error(failedImageData[0]?.error || 'Generation failed');
       }
 
@@ -466,7 +748,28 @@ export const useImageGeneration = (options: {
     } finally {
       setIsGenerating(false);
     }
-  }, [activeCanvasRef, addImageNodes, updatePromptNode, urgentUpdatePromptNode, getGeneratedImagePosition, registerPendingTaskId, getPendingTaskIds, buildPendingTaskMetadata, pollTaskStatus, extractErrorDetails, normalizePptSlidesForCount, buildAutoPptSlides, rememberPreferredKeyForMode, refundCredits, resolveProviderDisplay]);
+  }, [
+    activeCanvasRef,
+    addImageNodes,
+    updatePromptNode,
+    urgentUpdatePromptNode,
+    getGeneratedImagePosition,
+    registerPendingTaskId,
+    registerPendingSyncRequest,
+    clearPendingSyncRequests,
+    getPendingTaskIds,
+    getPendingSyncRequests,
+    buildPendingTaskMetadata,
+    buildGenerationMetadata,
+    pollTaskStatus,
+    extractErrorDetails,
+    normalizePptSlidesForCount,
+    buildAutoPptSlides,
+    rememberPreferredKeyForMode,
+    refundCredits,
+    resolveProviderDisplay,
+    clearSyncBridgeRecoveryTimer
+  ]);
 
   const hookCancelGeneration = useCallback((nodeId?: string) => {
     if (!nodeId) return;

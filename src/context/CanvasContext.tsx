@@ -113,6 +113,7 @@ const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
 const STORAGE_KEY = 'kk_studio_canvas_state';
 const LOCAL_FOLDER_REFRESH_INTERVAL_MS = 60000;
 const LOCAL_FOLDER_IDLE_GRACE_MS = 45000;
+const SYNC_GENERATION_INTERRUPTED_ERROR = '页面刷新或离开时中断了同步生成请求，供应商可能已完成出图，但当前项目没有收到最终响应。';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
@@ -168,6 +169,154 @@ const buildStorageState = (state: CanvasState, aggressive: boolean = false): Can
     folderName: null
 });
 
+const getExpectedPromptImageCount = (node?: Partial<PromptNode> | null): number => (
+    Math.max(1, Number(node?.lastGenerationTotalCount || node?.parallelCount || 1) || 1)
+);
+
+const getPendingTaskIdsFromPrompt = (node?: Partial<PromptNode> | null): string[] => {
+    const rawPendingTaskIds = (node?.generationMetadata as { pendingTaskIds?: unknown } | undefined)?.pendingTaskIds;
+    if (!Array.isArray(rawPendingTaskIds)) return [];
+
+    return Array.from(new Set(
+        rawPendingTaskIds.filter((taskId): taskId is string => typeof taskId === 'string' && taskId.trim().length > 0)
+    ));
+};
+
+const getPendingSyncRequestsFromPrompt = (node?: Partial<PromptNode> | null): Array<{ requestId: string }> => {
+    const rawPendingSyncRequests = (node?.generationMetadata as { pendingSyncRequests?: unknown } | undefined)?.pendingSyncRequests;
+    if (!Array.isArray(rawPendingSyncRequests)) return [];
+
+    return rawPendingSyncRequests.filter((item): item is { requestId: string } => (
+        !!item
+        && typeof item === 'object'
+        && typeof (item as { requestId?: unknown }).requestId === 'string'
+        && String((item as { requestId: string }).requestId).trim().length > 0
+    ));
+};
+
+const hasRecoverablePendingTask = (node?: Partial<PromptNode> | null): boolean => {
+    if (!node) return false;
+    if (getPendingTaskIdsFromPrompt(node).length > 0) return true;
+    if (getPendingSyncRequestsFromPrompt(node).length > 0) return true;
+    return typeof node.jobId === 'string' && node.jobId.trim().length > 0;
+};
+
+const resolvePromptChildImageIds = (
+    node?: Pick<PromptNode, 'id' | 'childImageIds'> | null,
+    imageNodes: GeneratedImage[] = []
+): string[] => {
+    if (!node?.id) return [];
+
+    const orderedIds: string[] = [];
+    const seenIds = new Set<string>();
+    const pushId = (id?: string) => {
+        if (!id || seenIds.has(id)) return;
+        seenIds.add(id);
+        orderedIds.push(id);
+    };
+
+    (node.childImageIds || []).forEach(pushId);
+    imageNodes.forEach((imageNode) => {
+        if (imageNode.parentPromptId === node.id) {
+            pushId(imageNode.id);
+        }
+    });
+
+    return orderedIds;
+};
+
+const normalizeRecoveredPromptNode = (
+    node: PromptNode,
+    imageNodes: GeneratedImage[] = []
+): PromptNode => {
+    const resolvedChildImageIds = resolvePromptChildImageIds(node, imageNodes);
+    const pendingTaskIds = getPendingTaskIdsFromPrompt(node);
+    const pendingSyncRequests = getPendingSyncRequestsFromPrompt(node);
+    const expectedImageCount = getExpectedPromptImageCount(node);
+    const isEffectivelyComplete = resolvedChildImageIds.length > 0 && (
+        resolvedChildImageIds.length >= expectedImageCount || (pendingTaskIds.length === 0 && pendingSyncRequests.length === 0)
+    );
+    const nextPendingTaskIds = isEffectivelyComplete ? [] : pendingTaskIds;
+    const nextPendingSyncRequests = isEffectivelyComplete ? [] : pendingSyncRequests;
+    const shouldPersistGenerationMetadata = !!node.generationMetadata || pendingTaskIds.length > 0 || pendingSyncRequests.length > 0 || isEffectivelyComplete;
+
+    return {
+        ...node,
+        childImageIds: resolvedChildImageIds,
+        referenceImages: node.referenceImages || [],
+        parallelCount: node.parallelCount || 1,
+        tags: node.tags || [],
+        isGenerating: Boolean(node.isGenerating) && !isEffectivelyComplete,
+        jobId: isEffectivelyComplete ? undefined : (nextPendingTaskIds[0] || node.jobId),
+        generationMetadata: shouldPersistGenerationMetadata
+            ? {
+                ...(node.generationMetadata || {}),
+                pendingTaskIds: nextPendingTaskIds,
+                pendingSyncRequests: nextPendingSyncRequests
+            }
+            : node.generationMetadata,
+        error: isEffectivelyComplete ? undefined : node.error,
+    };
+};
+
+const normalizeCanvasPromptRecovery = (canvas: Canvas): Canvas => ({
+    ...canvas,
+    promptNodes: (canvas.promptNodes || []).map((node) => normalizeRecoveredPromptNode(node, canvas.imageNodes || [])),
+    groups: canvas.groups || [],
+    drawings: canvas.drawings || []
+});
+
+const markInterruptedSyncPromptGenerations = (state: CanvasState): CanvasState => ({
+    ...state,
+    canvases: (state.canvases || []).map((canvas) => {
+        let hasChanges = false;
+
+        const promptNodes = (canvas.promptNodes || []).map((node) => {
+            const hasResolvedImages = resolvePromptChildImageIds(node, canvas.imageNodes || []).length > 0;
+            const shouldMarkInterrupted = Boolean(node?.isGenerating)
+                && !hasResolvedImages
+                && !hasRecoverablePendingTask(node);
+
+            if (!shouldMarkInterrupted) return node;
+            hasChanges = true;
+
+            return {
+                ...node,
+                isGenerating: false,
+                jobId: undefined,
+                error: node.error || SYNC_GENERATION_INTERRUPTED_ERROR,
+                errorDetails: {
+                    ...(node.errorDetails || {}),
+                    code: node.errorDetails?.code || 'SYNC_REQUEST_INTERRUPTED',
+                    responseBody: node.errorDetails?.responseBody || SYNC_GENERATION_INTERRUPTED_ERROR,
+                    model: node.errorDetails?.model || node.model,
+                    timestamp: Date.now()
+                },
+                generationMetadata: {
+                    ...(node.generationMetadata || {}),
+                    pendingTaskIds: [],
+                    pendingSyncRequests: []
+                }
+            };
+        });
+
+        if (!hasChanges) return canvas;
+        return normalizeCanvasPromptRecovery({ ...canvas, promptNodes });
+    })
+});
+
+const hasUnrecoverableSyncGenerationInFlight = (state?: CanvasState | null): boolean => {
+    if (!state?.canvases?.length) return false;
+
+    return state.canvases.some((canvas) =>
+        (canvas.promptNodes || []).some((node) =>
+            Boolean(node?.isGenerating)
+            && resolvePromptChildImageIds(node, canvas.imageNodes || []).length === 0
+            && !hasRecoverablePendingTask(node)
+        )
+    );
+};
+
 const persistCanvasStateToLocalStorage = (state: CanvasState, context: string = 'canvas-save') => {
     const write = (aggressive: boolean) => {
         const serialized = JSON.stringify(buildStorageState(state, aggressive));
@@ -221,24 +370,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         aspectRatio: img.aspectRatio || AspectRatio.SQUARE,
                         model: img.model || 'imagen-3.0-generate-001' // 鍥為€€鍒伴粯璁ゆā鍨?
                     })),
-                    // 淇 Prompt Nodes
-                    promptNodes: (canvas.promptNodes || []).map(node => {
-                        const hasChildren = node.childImageIds && node.childImageIds.length > 0;
-                        return {
-                            ...node,
-                            referenceImages: node.referenceImages || [],
-                            parallelCount: node.parallelCount || 1,
-                            // 淇濈暀 generating 鐘舵€佷互鏀寔 App.tsx 鐨勮嚜鍔ㄦ仮澶?
-                            // 馃殌 [Critical Fix] 濡傛灉鑺傜偣宸茬粡鏈変簡鍏宠仈鐨勫瓙鍥剧墖锛屽畠鑲畾宸茬粡鐢熸垚瀹屾瘯浜嗭紝姝ゆ椂鍗充娇 isGenerating 涓?true 涔熷氨鏄洜涓洪槻鎶栨暟鎹湭钀界洏锛屽己鍒朵慨鍥炲埌 false锛岄槻姝㈣ App.tsx 璇涓烘柇杩炲苟閲嶈瘯瀵艰嚧鎶ラ敊
-                            isGenerating: node.isGenerating && !hasChildren,
-                            // 濡傛灉瀹冩湁瀛愬浘涓旀浘鏍囪閿欒锛屼篃搴旇瑙嗕负瀹為檯涓婃垚鍔熸垨鑷冲皯涓嶆槸鈥滃畬鍏ㄥけ璐モ€濓紝杩欓噷鍙互閫夋嫨涓嶆竻闄ゅ巻鍙?error 锛屾垨鑰呯洿鎺ユ竻鎺夐槻鍐茬獊
-                            error: hasChildren ? undefined : node.error,
-                            tags: node.tags || []
-                        };
-                    }),
-                    groups: canvas.groups || [],
-                    drawings: canvas.drawings || []
-                }));
+                })).map(normalizeCanvasPromptRecovery);
 
                 // 馃殌 [Critical Fix] FileSystemHandle 涓嶈兘浠?localStorage 鎭㈠ (浼氬彉鎴愭櫘閫氬璞?
                 // 蹇呴』寮哄埗璁句负 null锛屼緷璧?useEffect + IndexedDB 鎭㈠
@@ -292,9 +424,15 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 馃殌 [闃插埛鏂颁涪澶盷 beforeunload 浜嬩欢璀﹀憡鐢ㄦ埛
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (pendingSavesRef.current.size > 0) {
+            const currentState = stateRef.current;
+            const hasPendingSaves = pendingSavesRef.current.size > 0;
+            const hasRiskySyncGeneration = hasUnrecoverableSyncGenerationInFlight(currentState);
+
+            if (hasPendingSaves || hasRiskySyncGeneration) {
                 e.preventDefault();
-                e.returnValue = '鍥剧墖姝ｅ湪淇濆瓨涓紝绂诲紑鍙兘瀵艰嚧鏁版嵁涓㈠け';
+                e.returnValue = hasRiskySyncGeneration
+                    ? '当前有同步图片生成正在返回结果，刷新或离开会导致项目收不到最终图片。'
+                    : '鍥剧墖姝ｅ湪淇濆瓨涓紝绂诲紑鍙兘瀵艰嚧鏁版嵁涓㈠け';
                 return e.returnValue;
             }
         };
@@ -648,7 +786,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const diskCount = getCanvasCardCount(diskCanvas);
 
         if (localCount === 0 && diskCount > 0) {
-            return {
+            return normalizeCanvasPromptRecovery({
                 ...localCanvas,
                 ...diskCanvas,
                 name: diskCanvas.name || localCanvas.name,
@@ -658,11 +796,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 groups: diskCanvas.groups || [],
                 drawings: diskCanvas.drawings || [],
                 lastModified: Math.max(localCanvas.lastModified || 0, diskCanvas.lastModified || 0)
-            };
+            });
         }
 
         if (diskCount === 0 && localCount > 0) {
-            return {
+            return normalizeCanvasPromptRecovery({
                 ...diskCanvas,
                 ...localCanvas,
                 promptNodes: localCanvas.promptNodes || [],
@@ -670,14 +808,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 groups: localCanvas.groups || [],
                 drawings: localCanvas.drawings || [],
                 lastModified: Math.max(localCanvas.lastModified || 0, diskCanvas.lastModified || 0)
-            };
+            });
         }
 
         const preferLocal = (localCanvas.lastModified || 0) >= (diskCanvas.lastModified || 0);
         const baseCanvas = preferLocal ? diskCanvas : localCanvas;
         const overrideCanvas = preferLocal ? localCanvas : diskCanvas;
 
-        return {
+        return normalizeCanvasPromptRecovery({
             ...baseCanvas,
             ...overrideCanvas,
             name: overrideCanvas.name || baseCanvas.name,
@@ -687,7 +825,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             groups: mergeItemsById(localCanvas.groups || [], diskCanvas.groups || []),
             drawings: mergeItemsById(localCanvas.drawings || [], diskCanvas.drawings || []),
             lastModified: Math.max(localCanvas.lastModified || 0, diskCanvas.lastModified || 0)
-        };
+        });
     };
 
     const mergeCanvases = (local: Canvas[], disk: Canvas[]): Canvas[] => {
@@ -864,24 +1002,28 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // 2. Stable Safety Save (Unload / Hidden) - Unmounts only once
     useEffect(() => {
-        const handleSave = () => {
+        const handleSave = (source: 'visibility' | 'beforeunload') => {
             if (isLoadingRef.current) return;
             try {
                 const currentState = stateRef.current;
-                persistCanvasStateToLocalStorage(currentState, 'visibility-save');
+                const stateToPersist = source === 'beforeunload'
+                    ? markInterruptedSyncPromptGenerations(currentState)
+                    : currentState;
+                persistCanvasStateToLocalStorage(stateToPersist, source === 'beforeunload' ? 'beforeunload-save' : 'visibility-save');
             } catch (e) {
                 console.error('Failed to save state on unload:', e);
             }
         };
 
-        window.addEventListener('beforeunload', handleSave);
+        const handleBeforeUnloadSave = () => handleSave('beforeunload');
+        window.addEventListener('beforeunload', handleBeforeUnloadSave);
         const handleVisibilityChange = () => {
-            if (document.visibilityState === 'hidden') handleSave();
+            if (document.visibilityState === 'hidden') handleSave('visibility');
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         return () => {
-            window.removeEventListener('beforeunload', handleSave);
+            window.removeEventListener('beforeunload', handleBeforeUnloadSave);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, []);
@@ -1025,7 +1167,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     try {
                         // @ts-ignore
                         for await (const entry of projectDir.values()) {
-                            if (entry.kind === 'file' && entry.name.startsWith('馃憠姝ら」鐩凡閲嶅懡鍚嶄负_')) {
+                            if (entry.kind === 'file' && entry.name.startsWith('project-renamed-to_')) {
                                 // @ts-ignore
                                 await projectDir.removeEntry(entry.name);
                             }
@@ -1033,12 +1175,12 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     } catch (e) { /* 蹇界暐 */ }
 
                     // 3. 鍐欏叆鏂扮殑蹇嵎鏂瑰紡鎻愮ず鏂囨。
-                    const hintFileName = `馃憠姝ら」鐩凡閲嶅懡鍚嶄负_${finalNewName.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
+                    const hintFileName = `project-renamed-to_${finalNewName.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
                     // @ts-ignore
                     const hintFile = await projectDir.getFileHandle(hintFileName, { create: true });
                     // @ts-ignore
                     const hintWritable = await hintFile.createWritable();
-                    await hintWritable.write(`姝ゆ枃妗ｅす瀵瑰簲鐨?KK Studio 椤圭洰宸茶閲嶅懡鍚嶄负: ${finalNewName}\n鍘熷鏂囨。澶瑰悕: ${physicalFolderName}\n鏇存柊鏃堕棿: ${new Date().toLocaleString()}`);
+                    await hintWritable.write(`This folder corresponds to the KK Studio project renamed to: ${finalNewName}\nOriginal folder name: ${physicalFolderName}\nUpdated at: ${new Date().toLocaleString()}`);
                     await hintWritable.close();
 
                     console.log('[CanvasContext] Project rename completed (light rename)', { oldName, finalNewName, physicalFolderName });
@@ -1087,7 +1229,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const addPromptNode = useCallback(async (node: PromptNode) => {
-        console.log('[CanvasContext.addPromptNode] 馃殌 寮€濮嬫坊鍔犳彁绀鸿瘝鍗＄墖', { nodeId: node.id, prompt: node.prompt?.substring(0, 50) });
+        console.log('[CanvasContext.addPromptNode] Starting prompt node insert', { nodeId: node.id, prompt: node.prompt?.substring(0, 50) });
 
         try {
             // 馃殌 [闃插尽鎬т慨澶峕 鍏堟坊鍔犺妭鐐瑰埌鐘舵€侊紝淇濊瘉UI绔嬪嵆鏄剧ず
@@ -1109,11 +1251,11 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         [...c.promptNodes, nodeWithZIndex]
                 };
             });
-            console.log('[CanvasContext.addPromptNode] 鉁?鍗＄墖宸叉坊鍔犲埌鐢诲竷');
+            console.log('[CanvasContext.addPromptNode] Prompt card added to canvas');
 
             // 馃殌 [鍏抽敭淇] 寮傛淇濆瓨鍙傝€冨浘 - 鍗充娇澶辫触涔熶笉褰卞搷鍗＄墖鏄剧ず
             if (node.referenceImages && node.referenceImages.length > 0) {
-                console.log(`[CanvasContext.addPromptNode] 馃摳 寮€濮嬩繚瀛?${node.referenceImages.length} 寮犲弬鑰冨浘`);
+                console.log(`[CanvasContext.addPromptNode] Saving ${node.referenceImages.length} reference images`);
                 const saveTasks = node.referenceImages.map(async (ref, index) => {
                     if (ref.data) {
                         const mime = ref.mimeType || 'image/png';
@@ -1123,22 +1265,22 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         }
                         try {
                             await saveImage(ref.id, fullUrl);
-                            console.log(`[CanvasContext.addPromptNode] 鉁?鍙傝€冨浘 ${index + 1}/${node.referenceImages?.length || 0} 淇濆瓨鎴愬姛:`, ref.id);
+                            console.log(`[CanvasContext.addPromptNode] Reference image ${index + 1}/${node.referenceImages?.length || 0} saved:`, ref.id);
                         } catch (e: any) {
-                            console.error(`[CanvasContext.addPromptNode] 鉂?鍙傝€冨浘 ${index + 1} 淇濆瓨澶辫触:`, ref.id, e?.message || e);
+                            console.error(`[CanvasContext.addPromptNode] Failed to save reference image ${index + 1}:`, ref.id, e?.message || e);
                             // 馃敂 閫氱煡鐢ㄦ埛锛堜絾涓嶉樆姝㈡祦绋嬶級
                             import('../services/system/notificationService').then(({ notificationService }) => {
-                                notificationService.warning('鍙傝€冨浘淇濆瓨澶辫触', `鍙傝€冨浘 ${index + 1} 淇濆瓨澶辫触锛屽埛鏂板悗鍙兘涓㈠け`);
+                                notificationService.warning('参考图保存失败', `参考图 ${index + 1} 保存失败，刷新后可能丢失`);
                             });
                         }
                     }
                 });
                 await Promise.allSettled(saveTasks); // 浣跨敤 allSettled 鑰屼笉鏄?all锛岀‘淇濇墍鏈変换鍔″畬鎴?
-                console.log('[CanvasContext.addPromptNode] 馃摳 鍙傝€冨浘淇濆瓨浠诲姟瀹屾垚');
+                console.log('[CanvasContext.addPromptNode] Reference image persistence finished');
             }
         } catch (error: any) {
             // 馃毃 鑷村懡閿欒锛氭坊鍔犲崱鐗囧け璐?
-            console.error('[CanvasContext.addPromptNode] 馃敟 鑷村懡閿欒锛氭坊鍔犲崱鐗囧け璐?', error);
+            console.error('[CanvasContext.addPromptNode] Failed to add prompt node', error);
             import('../services/system/notificationService').then(({ notificationService }) => {
                 notificationService.error('添加卡片失败', '无法创建卡片：' + (error?.message || '未知错误'));
             });
@@ -1183,7 +1325,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     try {
                         await saveImage(ref.id, fullUrl);
                     } catch (e) {
-                        console.error(`[CanvasContext] 鉂?Failed to save reference image ${ref.id}`, e);
+                        console.error(`[CanvasContext] Failed to save reference image ${ref.id}`, e);
                     }
                 }
             });
@@ -1209,7 +1351,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                     // 馃殌 [Bugfix] 闃叉闄堟棫鍥炶皟鎶婂凡瀹屾垚/宸插け璐ヨ妭鐐归敊璇湴鏀瑰洖鈥滄鍦ㄧ敓鎴愨€?
                     // 鍏稿瀷鍦烘櫙锛歊esizeObserver(onHeightChange)鍙犲姞闂寘绔炰簤锛屾惡甯︽棫node蹇収瑕嗙洊鏈€鏂扮姸鎬?
-                    const hasFinished = (n.childImageIds?.length || 0) > 0;
+                    const hasFinished = resolvePromptChildImageIds(n, c.imageNodes).length > 0;
                     const hasFailed = !!n.error;
 
                     if ((hasFinished || hasFailed) && node.isGenerating === true && n.isGenerating === false) {
@@ -1257,9 +1399,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             try {
                 persistCanvasStateToLocalStorage(stateToSave, 'urgent-node-save');
-                console.log(`[CanvasContext] 馃殌 URGENT SAVE for Node ${node.id} to localStorage`);
+                console.log(`[CanvasContext] URGENT SAVE for node ${node.id} to localStorage`);
             } catch (e) {
-                console.error('[CanvasContext] 鉂?Urgent save failed', e);
+                console.error('[CanvasContext] Urgent save failed', e);
             }
         }
     }, [updateCanvas]);
@@ -1316,10 +1458,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             const res = await fetch(previewSource); // works with data:/blob:/http:
                             const blob = await res.blob();
                             await fileSystemService.saveImageToHandle(currentHandle, storageId, blob, isVideo);
-                            console.log(`[CanvasContext] 鉁?Saved ORIGINAL ${isVideo ? 'video' : 'image'} ${storageId} to LOCAL DISK`);
+                            console.log(`[CanvasContext] Saved ORIGINAL ${isVideo ? 'video' : 'image'} ${storageId} to LOCAL DISK`);
                         } catch (e) {
                             if (!preferredOriginalSource.startsWith('blob:')) {
-                                console.error(`[CanvasContext] 鉂?Failed to save ${isVideo ? 'video' : 'image'} ${node.id} to LOCAL DISK`, e);
+                                console.error(`[CanvasContext] Failed to save ${isVideo ? 'video' : 'image'} ${node.id} to LOCAL DISK`, e);
                             }
                         }
                     } else if (selectedStorageMode === 'opfs') {
@@ -1334,14 +1476,14 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                                 if (isVideo) {
                                     await saveToOPFS(blob, storageId, 'video');
-                                    console.log(`[CanvasContext] 鉁?Saved video ${storageId} to OPFS`);
+                                    console.log(`[CanvasContext] Saved video ${storageId} to OPFS`);
                                 } else {
                                     await saveToOPFS(blob, storageId, 'image');
-                                    console.log(`[CanvasContext] 鉁?Saved ORIGINAL image ${storageId} to OPFS`);
+                                    console.log(`[CanvasContext] Saved ORIGINAL image ${storageId} to OPFS`);
                                 }
                             } catch (e) {
                                 if (!preferredOriginalSource.startsWith('blob:')) {
-                                    console.error(`[CanvasContext] 鉂?Failed to save to OPFS`, e);
+                                    console.error(`[CanvasContext] Failed to save to OPFS`, e);
                                 }
                             }
                         } else {
@@ -1365,7 +1507,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         // 杩欐牱棣栧睆涓庨噸杞介兘鑳介€氳繃 storageId 绉掔骇鍛戒腑锛屼笉蹇呯瓑寰呯鐩樺洖璇?
                         if (stableOriginalSource) {
                             await saveOriginalImage(storageId, stableOriginalSource);
-                            console.log(`[CanvasContext] 鉁?Saved ORIGINAL for ${storageId} to IndexedDB cache`);
+                            console.log(`[CanvasContext] Saved ORIGINAL for ${storageId} to IndexedDB cache`);
                         } else {
                             console.debug(`[CanvasContext] Skip ORIGINAL IDB save for transient blob ${storageId}`);
                         }
@@ -1385,7 +1527,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                             const microId = getQualityStorageId(storageId, ImageQuality.MICRO);
                             await saveImage(microId, microData);
-                            console.log(`[CanvasContext] 鉁?Saved MICRO thumbnail (Worker) for ${storageId}`);
+                            console.log(`[CanvasContext] Saved MICRO thumbnail (Worker) for ${storageId}`);
 
                             if (selectedStorageMode === 'local' && currentHandle) {
                                 await fileSystemService.saveThumbnailToHandle(currentHandle, storageId, blob);
@@ -1401,7 +1543,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             const microData = await compressImageToQuality(previewSource, QUALITY_CONFIGS[ImageQuality.MICRO]);
                             const microId = getQualityStorageId(storageId, ImageQuality.MICRO);
                             await saveImage(microId, microData);
-                            console.log(`[CanvasContext] 鉁?Saved MICRO thumbnail (main thread) for ${storageId}`);
+                            console.log(`[CanvasContext] Saved MICRO thumbnail (main thread) for ${storageId}`);
 
                             if (selectedStorageMode === 'local' && currentHandle) {
                                 const microBlob = base64ToBlob(microData);
@@ -1449,21 +1591,30 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const nextPromptZById = new Map<string, number>();
                 const nextExistingImageZById = new Map<string, number>();
                 const nextAppendedImageZById = new Map<string, number>();
+                const promotedGroupZByPromptId = new Map<string, number>();
 
                 Array.from(parentIdsToPromote).forEach(promptId => {
+                    const promotedGroupZIndex = ++maxZ;
+                    promotedGroupZByPromptId.set(promptId, promotedGroupZIndex);
                     if (c.promptNodes.some(promptNode => promptNode.id === promptId)) {
-                        nextPromptZById.set(promptId, ++maxZ);
+                        nextPromptZById.set(promptId, promotedGroupZIndex);
                     }
 
                     c.imageNodes
                         .filter(imageNode => imageNode.parentPromptId === promptId)
-                        .sort((left, right) => (left.zIndex ?? 0) - (right.zIndex ?? 0) || left.timestamp - right.timestamp)
                         .forEach(imageNode => {
-                            nextExistingImageZById.set(imageNode.id, ++maxZ);
+                            nextExistingImageZById.set(imageNode.id, promotedGroupZIndex);
                         });
                 });
 
                 appendedNodes.forEach(node => {
+                    if (node.parentPromptId) {
+                        const promotedGroupZIndex = promotedGroupZByPromptId.get(node.parentPromptId);
+                        if (promotedGroupZIndex !== undefined) {
+                            nextAppendedImageZById.set(node.id, promotedGroupZIndex);
+                            return;
+                        }
+                    }
                     nextAppendedImageZById.set(node.id, node.zIndex ?? ++maxZ);
                 });
 
@@ -1538,10 +1689,10 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     groups: nextGroups
                 };
             });
-            console.log('[CanvasContext.addImageNodes] 鉁?UI鏇存柊鎴愬姛锛屽崱鐗囧凡鏄剧ず');
+            console.log('[CanvasContext.addImageNodes] UI update completed, images are visible');
         } catch (uiError: any) {
             // 馃毃 鑷村懡閿欒锛歎I鏇存柊澶辫触
-            console.error('[CanvasContext.addImageNodes] 馃敟 UI鏇存柊澶辫触!', uiError);
+            console.error('[CanvasContext.addImageNodes] UI update failed!', uiError);
             import('../services/system/notificationService').then(({ notificationService }) => {
                 notificationService.error('显示图片失败', '无法显示图片：' + (uiError?.message || '未知错误'));
             });
@@ -1557,13 +1708,13 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             console.log('[CanvasContext.addImageNodes] Persistence completed:', successful, 'succeeded /', failed, 'failed /', results.length, 'total');
 
             if (failed > 0) {
-                console.warn('[CanvasContext.addImageNodes] 鈿狅笍 閮ㄥ垎鍥剧墖淇濆瓨澶辫触锛屽埛鏂板悗鍙兘涓㈠け');
+                console.warn('[CanvasContext.addImageNodes] Some image persistence tasks failed; data may be missing after refresh');
                 import('../services/system/notificationService').then(({ notificationService }) => {
                     notificationService.warning('图片保存失败', failed + ' 张图片保存失败，建议重新保存或重试。');
                 });
             }
         }).catch(e => {
-            console.error('[CanvasContext.addImageNodes] 鉂?淇濆瓨浠诲姟寮傚父:', e);
+            console.error('[CanvasContext.addImageNodes] Persistence task failed:', e);
         });
 
         // 杩借釜鏈畬鎴愮殑淇濆瓨浠诲姟
@@ -3623,7 +3774,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         // 馃洝锔?[闃插尽鎬т慨澶峕 纭繚 canvases 涓嶄负绌轰笖鍖呭惈 activeCanvasId
                         const cleanCanvases = stripImageUrls(state.canvases);
                         if (cleanCanvases.length === 0) {
-                            console.error('[CanvasContext] 馃毃 Aborting save: canvases array is empty! This would wipe project.json');
+                            console.error('[CanvasContext] Aborting save: canvases array is empty! This would wipe project.json');
                             return;
                         }
 
@@ -3633,7 +3784,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             version: 1
                         };
 
-                        console.log('[CanvasContext] 馃捑 Saving project to disk:', {
+                        console.log('[CanvasContext] Saving project to disk:', {
                             canvasesCount: fsState.canvases.length,
                             activeCanvasId: fsState.activeCanvasId,
                             imagesToSave: imagesToSave.size
@@ -3759,14 +3910,9 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 linkedGroups.forEach(pushCanvasGroup);
             };
 
-            const pushPromptGroup = (promptId: string) => {
-                if (expandedPromptIds.has(promptId)) return;
-                expandedPromptIds.add(promptId);
-
+            const getPromptGroupImageIds = (promptId: string) => {
                 const prompt = promptById.get(promptId);
-                if (!prompt) return;
-
-                pushNodeId(prompt.id);
+                if (!prompt) return [] as string[];
 
                 const childImageIds = new Set<string>(
                     (prompt.childImageIds || []).filter((id): id is string => Boolean(id))
@@ -3778,7 +3924,18 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     }
                 });
 
-                childImageIds.forEach(pushNodeId);
+                return Array.from(childImageIds);
+            };
+
+            const pushPromptGroup = (promptId: string) => {
+                if (expandedPromptIds.has(promptId)) return;
+                expandedPromptIds.add(promptId);
+
+                const prompt = promptById.get(promptId);
+                if (!prompt) return;
+
+                pushNodeId(prompt.id);
+                getPromptGroupImageIds(promptId).forEach(pushNodeId);
             };
 
             nodeIds.forEach(id => {
@@ -3811,9 +3968,36 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             ];
             let maxZ = allZIndices.length > 0 ? Math.max(...allZIndices) : 0;
             const nextZIndexById = new Map<string, number>();
+            const promotedPromptGroupIds = new Set<string>();
 
             orderedNodeIds.forEach(id => {
-                nextZIndexById.set(id, ++maxZ);
+                const prompt = promptById.get(id);
+                if (prompt) {
+                    if (promotedPromptGroupIds.has(prompt.id)) return;
+                    promotedPromptGroupIds.add(prompt.id);
+                    const groupZIndex = ++maxZ;
+                    nextZIndexById.set(prompt.id, groupZIndex);
+                    getPromptGroupImageIds(prompt.id).forEach(childImageId => {
+                        nextZIndexById.set(childImageId, groupZIndex);
+                    });
+                    return;
+                }
+
+                const image = imageById.get(id);
+                if (image?.parentPromptId && promptById.has(image.parentPromptId)) {
+                    if (promotedPromptGroupIds.has(image.parentPromptId)) return;
+                    promotedPromptGroupIds.add(image.parentPromptId);
+                    const groupZIndex = ++maxZ;
+                    nextZIndexById.set(image.parentPromptId, groupZIndex);
+                    getPromptGroupImageIds(image.parentPromptId).forEach(childImageId => {
+                        nextZIndexById.set(childImageId, groupZIndex);
+                    });
+                    return;
+                }
+
+                if (!nextZIndexById.has(id)) {
+                    nextZIndexById.set(id, ++maxZ);
+                }
             });
 
             // Update prompt nodes
@@ -3865,6 +4049,7 @@ export const CanvasProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 currentSelected.some(id => !prevSelected.includes(id)));
 
         if (hasNewSelection) {
+            prevSelectedRef.current = [...currentSelected];
             // Small delay to avoid state update during render
             const timer = setTimeout(() => {
                 bringNodesToFront(currentSelected);

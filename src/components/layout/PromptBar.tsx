@@ -717,7 +717,6 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
         // 🚀 [Fix] 初始加载时刷新模型列表，确保获取最新的 admin models
         const refreshModels = async () => {
             try {
-                const { adminModelService } = await import('../../services/model/adminModelService');
                 console.log('[PromptBar] Loading admin models...');
                 await adminModelService.forceLoadAdminModels?.();
                 // 🚀 [Fix] 等待一小段时间确保数据已写入

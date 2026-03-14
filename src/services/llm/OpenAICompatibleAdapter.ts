@@ -9,10 +9,84 @@ import {
     normalizeGeminiModelId,
 } from '../api/apiConfig';
 import { resolveProviderRuntime } from '../api/providerStrategy';
-import { ImageSize, AspectRatio } from '../../types';
+import { ImageSize, AspectRatio, GenerationMode } from '../../types';
 import { logError, logWarning, addLog, LogLevel } from '../system/systemLogService';
 import { GoogleAdapter, convertImageToBase64, buildInlineImagePart } from './GoogleAdapter';
 import { RegionService } from '../system/RegionService';
+import { SyncImageBridgeParserType, executeSyncImageBridgeRequest, isSyncImageBridgeSupported } from './syncImageBridge';
+
+type WuyinImageRoute = {
+    endpointPath: string;
+    aliases: string[];
+};
+
+const WUYIN_DEFAULT_BASE_URL = 'https://api.wuyinkeji.com';
+const WUYIN_DETAIL_PATH = '/api/async/detail';
+const WUYIN_IMAGE_ROUTES: WuyinImageRoute[] = [
+    {
+        endpointPath: '/api/async/image_nanoBanana2',
+        aliases: [
+            'image_nanobanana2',
+            'nanobanana2',
+            'nano-banana-2',
+            'nano banana 2',
+            'gemini-3.1-flash-image-preview',
+            'gemini-3.1-flash-image',
+        ],
+    },
+    {
+        endpointPath: '/api/async/image_nanoBanana_pro',
+        aliases: [
+            'image_nanobanana_pro',
+            'nanobanana_pro',
+            'nanobananapro',
+            'nano-banana-pro',
+            'nano banana pro',
+            'gemini-3-pro-image-preview',
+            'gemini-3-pro-image',
+        ],
+    },
+    {
+        endpointPath: '/api/async/image_nanoBanana',
+        aliases: [
+            'image_nanobanana',
+            'nanobanana',
+            'nano-banana',
+            'nano banana',
+            'gemini-2.5-flash-image',
+            'gemini-2.0-flash-exp-image-generation',
+        ],
+    },
+    {
+        endpointPath: '/api/async/image_grok_imagine',
+        aliases: [
+            'image_grok_imagine',
+            'grok_imagine',
+            'grok-imagine',
+            'grok imagine',
+        ],
+    },
+    {
+        endpointPath: '/api/async/image_sora',
+        aliases: [
+            'image_sora',
+            'sora',
+        ],
+    },
+];
+const WUYIN_SUPPORTED_ASPECT_RATIOS = new Set([
+    'auto',
+    '1:1',
+    '16:9',
+    '9:16',
+    '4:3',
+    '3:4',
+    '3:2',
+    '2:3',
+    '5:4',
+    '4:5',
+    '21:9',
+]);
 
 export class OpenAICompatibleAdapter implements LLMAdapter {
     id = 'openai-compatible-adapter';
@@ -167,6 +241,60 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         return err as Error;
     }
 
+    private async executeRecoverableSyncImageRequest(params: {
+        options: ImageGenerationOptions;
+        parserType: SyncImageBridgeParserType;
+        url: string;
+        method?: string;
+        headers: Record<string, string>;
+        body?: string;
+        timeoutMs: number;
+        requestPath: string;
+        requestBodyPreview?: string;
+        provider?: string;
+    }): Promise<{ urls: string[]; responseStatus?: number; responseBodyPreview?: string } | null> {
+        const { options, parserType, url, method = 'POST', headers, body, timeoutMs } = params;
+        const requestId = String(options.syncBridgeRequestId || '').trim();
+        if (!requestId || !isSyncImageBridgeSupported()) {
+            return null;
+        }
+
+        const result = await executeSyncImageBridgeRequest({
+            requestId,
+            parserType,
+            url,
+            method,
+            headers,
+            body,
+            timeoutMs,
+            signal: options.signal,
+        });
+        options.onSyncBridgeRegistered?.(requestId);
+
+        if (result.status === 'success') {
+            return {
+                urls: result.urls,
+                responseStatus: result.responseStatus,
+                responseBodyPreview: result.responseBodyPreview,
+            };
+        }
+
+        if (result.status === 'error') {
+            throw this.buildHttpError({
+                message: result.responseStatus
+                    ? `[${result.responseStatus}] ${result.error}`
+                    : result.error,
+                status: result.responseStatus,
+                requestPath: params.requestPath,
+                requestBody: params.requestBodyPreview,
+                responseBody: result.responseBodyPreview,
+                provider: params.provider,
+            });
+        }
+
+        return null;
+    }
+
     private buildImageCompatibilityModeError(endpointMode: 'chat' | 'standard', originalError: any, keySlot: KeySlot): Error {
         const originalMessage = String(originalError?.message || originalError || 'Unknown image endpoint error');
         const guidance = endpointMode === 'chat'
@@ -191,13 +319,25 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         };
 
         pushAny(data?.data);
+        pushAny(data?.data?.result);
+        pushAny(data?.data?.output);
+        pushAny(data?.data?.images);
+        pushAny(data?.data?.urls);
+        pushAny(data?.data?.outputs);
         pushAny(data?.images);
         pushAny(data?.result?.data);
         pushAny(data?.result?.images);
+        pushAny(data?.result?.result);
+        pushAny(data?.result?.urls);
+        pushAny(data?.result?.outputs);
         pushAny(data?.output?.data);
         pushAny(data?.output?.images);
+        pushAny(data?.output?.result);
+        pushAny(data?.output?.urls);
+        pushAny(data?.output?.outputs);
 
         if (typeof data?.url === 'string') candidates.push({ url: data.url });
+        if (typeof data?.data?.url === 'string') candidates.push({ url: data.data.url });
         if (typeof data?.result?.url === 'string') candidates.push({ url: data.result.url });
         if (typeof data?.output?.url === 'string') candidates.push({ url: data.output.url });
         if (typeof data?.output?.image_url === 'string') candidates.push({ url: data.output.image_url });
@@ -225,6 +365,12 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 urls.push(`data:image/png;base64,${cleaned}`);
                 return;
             }
+
+            pushAny(item.urls);
+            pushAny(item.images);
+            pushAny(item.outputs);
+            pushAny(item.output);
+            pushAny(item.result);
 
             addUrl(item.hd_url);
             addUrl(item.original_url);
@@ -289,6 +435,414 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             return undefined;
         }
         return value;
+    }
+
+    private normalizeWuyinBaseUrl(baseUrl: string): string {
+        const raw = String(baseUrl || '').trim();
+        if (!raw) return WUYIN_DEFAULT_BASE_URL;
+
+        const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+
+        try {
+            const parsed = new URL(withProtocol);
+            if (/^api\.wuyinkeji\.com$/i.test(parsed.hostname)) {
+                return `${parsed.protocol}//${parsed.host}`;
+            }
+
+            const sanitizedPath = parsed.pathname
+                .replace(/\/+(doc\/\d+)?$/i, '')
+                .replace(/\/+(api\/async\/[a-z0-9_.-]+)$/i, '')
+                .replace(/\/+$/, '');
+            return `${parsed.protocol}//${parsed.host}${sanitizedPath}`;
+        } catch {
+            return WUYIN_DEFAULT_BASE_URL;
+        }
+    }
+
+    private normalizeWuyinAlias(value: string): string {
+        return String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/^models\//i, '')
+            .replace(/\|.*$/, '')
+            .replace(/@.*$/, '')
+            .replace(/[^a-z0-9]+/g, '');
+    }
+
+    private resolveWuyinImageEndpoint(modelId: string): { endpointPath: string; endpointModelId: string } {
+        const rawModelId = String(modelId || '').trim().split('@')[0].split('|')[0].trim();
+        const endpointModelId = rawModelId.replace(/^\/+/, '');
+        const normalized = this.normalizeWuyinAlias(rawModelId);
+
+        if (/^apiasyncimage[a-z0-9]+$/i.test(normalized)) {
+            const suffix = rawModelId.replace(/^\/+/, '').replace(/^api\/async\//i, '');
+            return {
+                endpointPath: `/api/async/${suffix}`,
+                endpointModelId: suffix,
+            };
+        }
+
+        if (/^image[a-z0-9]+$/i.test(normalized) && !normalized.startsWith('images')) {
+            return {
+                endpointPath: `/api/async/${endpointModelId}`,
+                endpointModelId,
+            };
+        }
+
+        const matchedRoute = WUYIN_IMAGE_ROUTES.find((route) =>
+            route.aliases.some((alias) => this.normalizeWuyinAlias(alias) === normalized)
+        );
+        if (matchedRoute) {
+            return {
+                endpointPath: matchedRoute.endpointPath,
+                endpointModelId: matchedRoute.endpointPath.split('/').pop() || endpointModelId,
+            };
+        }
+
+        if (normalized.includes('grok') && normalized.includes('imagine')) {
+            return {
+                endpointPath: '/api/async/image_grok_imagine',
+                endpointModelId: 'image_grok_imagine',
+            };
+        }
+        if (normalized.includes('sora')) {
+            return {
+                endpointPath: '/api/async/image_sora',
+                endpointModelId: 'image_sora',
+            };
+        }
+        if (normalized.includes('31flashimage') || normalized.includes('nanobanana2')) {
+            return {
+                endpointPath: '/api/async/image_nanoBanana2',
+                endpointModelId: 'image_nanoBanana2',
+            };
+        }
+        if (normalized.includes('proimage') || normalized.includes('nanobananapro')) {
+            return {
+                endpointPath: '/api/async/image_nanoBanana_pro',
+                endpointModelId: 'image_nanoBanana_pro',
+            };
+        }
+        if (normalized.includes('25flashimage') || normalized.includes('nanobanana')) {
+            return {
+                endpointPath: '/api/async/image_nanoBanana',
+                endpointModelId: 'image_nanoBanana',
+            };
+        }
+
+        throw new Error(`Wuyin provider does not know how to route image model "${modelId}". Please use the exact Wuyin model ID from the catalog, such as image_nanoBanana2.`);
+    }
+
+    private normalizeWuyinImageSize(raw: string | undefined): '1K' | '2K' | '4K' {
+        const normalized = String(raw || '').trim().toUpperCase();
+        if (normalized.includes('4K') || normalized.includes('HD')) return '4K';
+        if (normalized.includes('2K')) return '2K';
+        return '1K';
+    }
+
+    private normalizeWuyinAspectRatio(raw: string | undefined): string {
+        const normalized = String(raw || '').trim() || AspectRatio.AUTO;
+        return WUYIN_SUPPORTED_ASPECT_RATIOS.has(normalized) ? normalized : AspectRatio.AUTO;
+    }
+
+    private extractWuyinTaskId(payload: any): string {
+        return String(
+            payload?.data?.id ||
+            payload?.id ||
+            payload?.task_id ||
+            payload?.taskId ||
+            ''
+        ).trim();
+    }
+
+    private extractWuyinStatusCode(payload: any): number | undefined {
+        const value = payload?.data?.status ?? payload?.status;
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (typeof value === 'string' && value.trim() !== '') {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed)) return parsed;
+        }
+        return undefined;
+    }
+
+    private extractProviderMessage(payload: any): string {
+        const candidates = [
+            payload?.msg,
+            payload?.message,
+            payload?.error,
+            payload?.data?.message,
+            payload?.data?.msg,
+            payload?.data?.error,
+            payload?.result?.message,
+            payload?.result?.error,
+            payload?.debug?.message,
+            payload?.debug,
+        ];
+
+        for (const candidate of candidates) {
+            if (typeof candidate === 'string' && candidate.trim()) {
+                return candidate.trim();
+            }
+        }
+
+        return '';
+    }
+
+    private mapWuyinStatus(statusCode: number | undefined): 'pending' | 'processing' | 'success' | 'failed' {
+        if (statusCode === 2) return 'success';
+        if (statusCode === 3) return 'failed';
+        if (statusCode === 1) return 'processing';
+        return 'pending';
+    }
+
+    private async fetchWuyinTaskDetail(
+        taskId: string,
+        keySlot: KeySlot,
+        signal?: AbortSignal
+    ): Promise<{ payload: any; requestPath: string }> {
+        const cleanBase = this.normalizeWuyinBaseUrl(keySlot.baseUrl || '');
+        const detailUrl = new URL(`${cleanBase}${WUYIN_DETAIL_PATH}`);
+        detailUrl.searchParams.set('id', taskId);
+
+        const response = await this.fetchWithTimeout(detailUrl.toString(), {
+            method: 'GET',
+            headers: this.buildImageRequestHeaders(keySlot, true),
+            signal,
+        }, this.getTimeoutMs(keySlot, 120000), 1);
+
+        const requestPath = `${WUYIN_DETAIL_PATH}?id=${encodeURIComponent(taskId)}`;
+        const raw = await response.text().catch(() => '');
+
+        if (!response.ok) {
+            throw this.buildHttpError({
+                message: `[${response.status}] ${raw.slice(0, 500) || 'Wuyin detail request failed'}`,
+                status: response.status,
+                requestPath,
+                responseBody: raw.slice(0, 1600),
+                provider: keySlot.provider,
+            });
+        }
+
+        let payload: any = {};
+        try {
+            payload = raw ? JSON.parse(raw) : {};
+        } catch {
+            throw this.buildHttpError({
+                message: 'Wuyin detail endpoint returned non-JSON payload',
+                requestPath,
+                responseBody: raw.slice(0, 1600),
+                provider: keySlot.provider,
+            });
+        }
+
+        const logicalCode = Number(payload?.code);
+        if (Number.isFinite(logicalCode) && logicalCode !== 200) {
+            const message = this.extractProviderMessage(payload) || `Wuyin detail error code ${logicalCode}`;
+            throw this.buildHttpError({
+                message,
+                requestPath,
+                responseBody: raw.slice(0, 1600),
+                provider: keySlot.provider,
+            });
+        }
+
+        return { payload, requestPath };
+    }
+
+    private async pollWuyinImageTask(
+        taskId: string,
+        keySlot: KeySlot,
+        options: ImageGenerationOptions,
+        requestMeta?: { submitPath?: string; requestBodyPreview?: string; endpointModelId?: string }
+    ): Promise<ImageGenerationResult> {
+        const startTime = Date.now();
+        const maxDurationMs = 10 * 60 * 1000;
+        let pollIntervalMs = 2500;
+        const maxIntervalMs = 12000;
+
+        while (Date.now() - startTime < maxDurationMs) {
+            if (options.signal?.aborted) {
+                throw new Error('Image generation cancelled');
+            }
+
+            const { payload, requestPath } = await this.fetchWuyinTaskDetail(taskId, keySlot, options.signal);
+            const statusCode = this.extractWuyinStatusCode(payload);
+            const status = this.mapWuyinStatus(statusCode);
+
+            if (status === 'success') {
+                const urls = this.extractImageUrlsFromPayload(payload);
+                if (!urls.length) {
+                    throw this.buildHttpError({
+                        message: 'Wuyin task completed, but no image URL was returned',
+                        requestPath,
+                        requestBody: requestMeta?.requestBodyPreview,
+                        responseBody: JSON.stringify(payload).slice(0, 1600),
+                        provider: keySlot.provider,
+                    });
+                }
+
+                keyManager.reportCallResult(keySlot.id, true);
+                return {
+                    urls,
+                    taskId,
+                    provider: keySlot.provider,
+                    providerName: keySlot.name,
+                    model: options.modelId,
+                    imageSize: this.normalizeWuyinImageSize(options.imageSize),
+                    metadata: {
+                        requestPath: requestMeta?.submitPath || requestPath,
+                        requestBodyPreview: requestMeta?.requestBodyPreview,
+                        apiDurationMs: Date.now() - startTime,
+                    }
+                };
+            }
+
+            if (status === 'failed') {
+                const message = this.extractProviderMessage(payload) || 'Wuyin image generation failed';
+                keyManager.reportCallResult(keySlot.id, false, message);
+                throw this.buildHttpError({
+                    message,
+                    requestPath,
+                    requestBody: requestMeta?.requestBodyPreview,
+                    responseBody: JSON.stringify(payload).slice(0, 1600),
+                    provider: keySlot.provider,
+                });
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+            pollIntervalMs = Math.min(Math.round(pollIntervalMs * 1.4), maxIntervalMs);
+        }
+
+        throw this.buildHttpError({
+            message: 'Wuyin image generation timed out after 10 minutes',
+            requestPath: requestMeta?.submitPath || WUYIN_DETAIL_PATH,
+            requestBody: requestMeta?.requestBodyPreview,
+            provider: keySlot.provider,
+        });
+    }
+
+    private async generateImageWuyinAsync(
+        options: ImageGenerationOptions,
+        keySlot: KeySlot
+    ): Promise<ImageGenerationResult> {
+        const cleanBase = this.normalizeWuyinBaseUrl(keySlot.baseUrl || '');
+        const route = this.resolveWuyinImageEndpoint(options.modelId);
+        const url = `${cleanBase}${route.endpointPath}`;
+        const requestPath = route.endpointPath;
+        const body: Record<string, any> = {
+            prompt: options.prompt,
+            size: this.normalizeWuyinImageSize(options.imageSize),
+            aspectRatio: this.normalizeWuyinAspectRatio(options.aspectRatio),
+        };
+
+        if (options.referenceImages?.length) {
+            body.urls = options.referenceImages.map((ref) => {
+                const { data, mimeType } = extractRefImageData(ref);
+                if (/^https?:\/\//i.test(data)) {
+                    return data;
+                }
+                if (/^data:/i.test(data)) {
+                    return data;
+                }
+                return `data:${mimeType || 'image/png'};base64,${data}`;
+            });
+        }
+
+        const headers = this.buildImageRequestHeaders(keySlot, true);
+        const payload = this.applyCustomBody(body, keySlot);
+        const requestBodyPreview = this.buildSafeRequestBodyPreview(payload);
+        const response = await this.fetchWithTimeout(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload),
+            signal: options.signal,
+        }, this.getTimeoutMs(keySlot, 120000), 1);
+
+        const raw = await response.text().catch(() => '');
+        if (!response.ok) {
+            keyManager.reportCallResult(keySlot.id, false, raw.slice(0, 300) || `HTTP ${response.status}`);
+            throw this.buildHttpError({
+                message: `[${response.status}] ${raw.slice(0, 500) || 'Wuyin image request failed'}`,
+                status: response.status,
+                requestPath,
+                requestBody: requestBodyPreview,
+                responseBody: raw.slice(0, 1600),
+                provider: keySlot.provider,
+            });
+        }
+
+        let submitPayload: any = {};
+        try {
+            submitPayload = raw ? JSON.parse(raw) : {};
+        } catch {
+            throw this.buildHttpError({
+                message: 'Wuyin image submit endpoint returned non-JSON payload',
+                requestPath,
+                requestBody: requestBodyPreview,
+                responseBody: raw.slice(0, 1600),
+                provider: keySlot.provider,
+            });
+        }
+
+        const logicalCode = Number(submitPayload?.code);
+        if (Number.isFinite(logicalCode) && logicalCode !== 200) {
+            const message = this.extractProviderMessage(submitPayload) || `Wuyin submit error code ${logicalCode}`;
+            keyManager.reportCallResult(keySlot.id, false, message);
+            throw this.buildHttpError({
+                message,
+                requestPath,
+                requestBody: requestBodyPreview,
+                responseBody: raw.slice(0, 1600),
+                provider: keySlot.provider,
+            });
+        }
+
+        const immediateUrls = this.extractImageUrlsFromPayload(submitPayload);
+        if (immediateUrls.length > 0) {
+            keyManager.reportCallResult(keySlot.id, true);
+            return {
+                urls: immediateUrls,
+                provider: keySlot.provider,
+                providerName: keySlot.name,
+                model: options.modelId,
+                imageSize: this.normalizeWuyinImageSize(options.imageSize),
+                keySlotId: keySlot.id,
+                metadata: {
+                    requestPath,
+                    requestBodyPreview,
+                }
+            };
+        }
+
+        const taskId = this.extractWuyinTaskId(submitPayload);
+        if (!taskId) {
+            throw this.buildHttpError({
+                message: 'Wuyin submit succeeded but no task ID was returned',
+                requestPath,
+                requestBody: requestBodyPreview,
+                responseBody: raw.slice(0, 1600),
+                provider: keySlot.provider,
+            });
+        }
+
+        options.onTaskId?.(taskId);
+        const finalResult = await this.pollWuyinImageTask(taskId, keySlot, options, {
+            submitPath: requestPath,
+            requestBodyPreview,
+            endpointModelId: route.endpointModelId,
+        });
+
+        if (!finalResult.model) {
+            finalResult.model = options.modelId;
+        }
+        if (!finalResult.providerName) {
+            finalResult.providerName = keySlot.name;
+        }
+        if (!finalResult.keySlotId) {
+            finalResult.keySlotId = keySlot.id;
+        }
+
+        return finalResult;
     }
 
     private mergeExtraBody(
@@ -952,6 +1506,10 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         // 12AI + Gemini 图片模型：强制走 Gemini Native（严格对齐 12AI 文档），
         // 忽略 compatibilityMode='chat'，避免命中 Chat-to-Image 信道导致 503。
         const channelRuntime = this.resolveChannelRuntime(baseUrl, keySlot, options.modelId);
+        if (channelRuntime.strategyId === 'wuyinkeji') {
+            console.log(`[OpenAICompatibleAdapter] 使用 Wuyin async image API -> ${keySlot.name}`);
+            return this.generateImageWuyinAsync(options, keySlot);
+        }
         const forceGeminiNativeOn12AI = channelRuntime.strategyId === '12ai' && channelRuntime.geminiNative && isGeminiImage;
 
         if (keySlot.compatibilityMode === 'chat' && !forceGeminiNativeOn12AI) {
@@ -1165,9 +1723,36 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         headers = this.applyCustomHeaders(headers, keySlot);
 
         // 🚀 [12AI 对齐] 负载体积检查
-        const payloadStr = JSON.stringify(this.applyCustomBody(body, keySlot));
+        const requestBody = this.applyCustomBody(body, keySlot);
+        const requestBodyPreview = this.buildSafeRequestBodyPreview(requestBody);
+        const payloadStr = JSON.stringify(requestBody);
         if (payloadStr.length > 48 * 1024 * 1024) {
             console.error(`[OpenAICompatibleAdapter] Chat-Image 请求体积 (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) 接近 50MB 上限!`);
+        }
+
+        const bridgedResult = await this.executeRecoverableSyncImageRequest({
+            options,
+            parserType: 'openai-chat-best-image',
+            url,
+            headers,
+            body: payloadStr,
+            timeoutMs: this.getTimeoutMs(keySlot, 400000),
+            requestPath,
+            requestBodyPreview,
+            provider: keySlot.provider,
+        });
+        if (bridgedResult) {
+            return {
+                urls: bridgedResult.urls,
+                provider: 'OpenAI-Chat',
+                model: options.modelId,
+                imageSize: sizeString,
+                metadata: {
+                    requestPath,
+                    requestBodyPreview,
+                    pythonSnippet
+                }
+            };
         }
 
         const response = await this.fetchWithTimeout(url, {
@@ -1183,7 +1768,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 message: `Chat-to-Image Error (${response.status}): ${text.substring(0, 200)}`,
                 status: response.status,
                 requestPath,
-                requestBody: this.buildSafeRequestBodyPreview(body),
+                requestBody: requestBodyPreview,
                 responseBody: text.substring(0, 1200),
                 provider: keySlot.provider
             });
@@ -1221,7 +1806,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 imageSize: sizeString,
                 metadata: {
                     requestPath,
-                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    requestBodyPreview,
                     pythonSnippet
                 }
             };
@@ -1234,7 +1819,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 imageSize: sizeString,
                 metadata: {
                     requestPath,
-                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    requestBodyPreview,
                     pythonSnippet
                 }
             };
@@ -1254,7 +1839,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 imageSize: sizeString,
                 metadata: {
                     requestPath,
-                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    requestBodyPreview,
                     pythonSnippet
                 }
             };
@@ -1271,7 +1856,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 imageSize: sizeString,
                 metadata: {
                     requestPath,
-                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    requestBodyPreview,
                     pythonSnippet
                 }
             };
@@ -1288,7 +1873,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 imageSize: sizeString,
                 metadata: {
                     requestPath,
-                    requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                    requestBodyPreview,
                     pythonSnippet
                 }
             };
@@ -1356,7 +1941,34 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         headers = this.applyCustomHeaders(headers, keySlot);
 
         const requestBody = this.applyCustomBody(body, keySlot);
+        const requestBodyPreview = this.buildSafeRequestBodyPreview(requestBody);
         const payloadStr = JSON.stringify(requestBody);
+
+        const bridgedResult = await this.executeRecoverableSyncImageRequest({
+            options,
+            parserType: 'openai-chat-best-image',
+            url,
+            headers,
+            body: payloadStr,
+            timeoutMs: this.getTimeoutMs(keySlot, 400000),
+            requestPath,
+            requestBodyPreview,
+            provider: keySlot.provider,
+        });
+        if (bridgedResult) {
+            return {
+                urls: bridgedResult.urls,
+                provider: 'OpenAI-Chat',
+                model: options.modelId,
+                imageSize: reportedImageSize,
+                metadata: {
+                    aspectRatio,
+                    requestPath,
+                    requestBodyPreview,
+                    pythonSnippet
+                }
+            };
+        }
 
         const response = await this.fetchWithTimeout(url, {
             method: 'POST',
@@ -1371,7 +1983,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 message: `Chat-to-Image Error (${response.status}): ${text.substring(0, 200)}`,
                 status: response.status,
                 requestPath,
-                requestBody: this.buildSafeRequestBodyPreview(requestBody),
+                requestBody: requestBodyPreview,
                 responseBody: text.substring(0, 1200),
                 provider: keySlot.provider
             });
@@ -1406,7 +2018,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 metadata: {
                     aspectRatio,
                     requestPath,
-                    requestBodyPreview: this.buildSafeRequestBodyPreview(requestBody),
+                    requestBodyPreview,
                     pythonSnippet
                 }
             };
@@ -1421,7 +2033,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 metadata: {
                     aspectRatio,
                     requestPath,
-                    requestBodyPreview: this.buildSafeRequestBodyPreview(requestBody),
+                    requestBodyPreview,
                     pythonSnippet
                 }
             };
@@ -1537,6 +2149,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         // 质量与尺寸推断
         const is4K = options.imageSize === '4K' || options.imageSize === 'SIZE_4K';
         const is2K = options.imageSize === '2K' || options.imageSize === 'SIZE_2K';
+        const is12AIChannel = this.resolveChannelRuntime(baseUrl, keySlot, options.modelId).strategyId === '12ai';
 
         let sizeString = '1024x1024';
         if (options.aspectRatio === '16:9') sizeString = '1792x1024';
@@ -1661,6 +2274,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         //   gemini-3-pro-image-preview -> gemini-3-pro-image-preview-4k
         //   gemini-3.1-flash-image-preview -> gemini-3.1-flash-image-preview-4k
         // 适应此代理商广泛使用的分辨率命名规则
+        const is12AIChannel = this.resolveChannelRuntime(baseUrl, keySlot, options.modelId).strategyId === '12ai';
         const effectiveModelId = is12AIChannel ? options.modelId : normalizeGeminiModelId(options.modelId);
 
         let baseDim = 1024;
@@ -1900,6 +2514,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
 
         const payloadStr = JSON.stringify(payload);
+        const requestPath = `/v1beta/models/${is12AIChannel ? options.modelId : effectiveModelId}:generateContent`;
         let headers: Record<string, string> = is12AIChannel
             ? {
                 'Content-Type': 'application/json',
@@ -1919,7 +2534,31 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         const maskedKey = queryKey.length > 8
             ? `${queryKey.slice(0, 4)}***${queryKey.slice(-4)}`
             : '***';
-        console.log(`[OpenAICompatibleAdapter] ${is12AIChannel ? '12AI Native' : 'Gemini Native'} Request -> ${safeUrl} | slot=${keySlot.id} | channel=${keySlot.name} | auth=${is12AIChannel ? 'query' : authMethod} | key=${maskedKey}`);
+        console.log(`[OpenAICompatibleAdapter] ${is12AIChannel ? '12AI Native' : 'Gemini Native'} Request -> ${safeUrl} | slot=${keySlot.id} | channel=${keySlot.name} | auth=${is12AIChannel ? 'query' : authMethod} | refs=${options.referenceImages?.length || 0} | key=${maskedKey}`);
+
+        const bridgedResult = await this.executeRecoverableSyncImageRequest({
+            options,
+            parserType: 'gemini-native-image',
+            url,
+            headers,
+            body: payloadStr,
+            timeoutMs: this.getTimeoutMs(keySlot, 120000),
+            requestPath,
+            requestBodyPreview: this.buildSafeRequestBodyPreview(payload),
+            provider: keySlot.provider,
+        });
+        if (bridgedResult) {
+            return {
+                urls: bridgedResult.urls,
+                provider: is12AIChannel ? '12AI-Native' : 'Gemini-Native',
+                model: is12AIChannel ? options.modelId : effectiveModelId,
+                imageSize: requestedImageSize,
+                metadata: {
+                    requestPath,
+                    requestBodyPreview: this.buildSafeRequestBodyPreview(payload)
+                }
+            };
+        }
 
         const response = await this.fetchWithTimeout(url, {
             method: 'POST',
@@ -1967,11 +2606,39 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             model: is12AIChannel ? options.modelId : effectiveModelId,
             imageSize: requestedImageSize,
             metadata: {
-                requestPath: `/v1beta/models/${is12AIChannel ? options.modelId : effectiveModelId}:generateContent`,
+                requestPath,
                 apiDurationMs: duration,
                 requestBodyPreview: this.buildSafeRequestBodyPreview(payload)
             }
         };
+    }
+
+    async checkTaskStatus(taskId: string, mode: GenerationMode, keySlot: KeySlot): Promise<any> {
+        const runtime = this.resolveChannelRuntime(keySlot.baseUrl || '', keySlot);
+
+        if (mode === GenerationMode.IMAGE && runtime.strategyId === 'wuyinkeji') {
+            const { payload, requestPath } = await this.fetchWuyinTaskDetail(taskId, keySlot);
+            const statusCode = this.extractWuyinStatusCode(payload);
+            const status = this.mapWuyinStatus(statusCode);
+            const message = this.extractProviderMessage(payload);
+            const urls = status === 'success' ? this.extractImageUrlsFromPayload(payload) : [];
+            const effectiveStatus = status === 'success' && urls.length === 0 ? 'processing' : status;
+
+            return {
+                urls,
+                taskId,
+                status: effectiveStatus,
+                provider: keySlot.provider,
+                providerName: keySlot.name,
+                keySlotId: keySlot.id,
+                metadata: {
+                    requestPath,
+                    responseMessage: message,
+                }
+            };
+        }
+
+        throw new Error(`Adapter for ${keySlot.provider} does not support task polling for ${mode}`);
     }
 
     private async executeImageFormRequest(
@@ -2057,14 +2724,40 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             console.error(`[OpenAICompatibleAdapter] Image 请求体积 (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) 接近 50MB 上限!`);
         }
 
+        const requestPath = this.getRequestPathFromUrl(url);
+        const requestBodyPreview = this.buildSafeRequestBodyPreview(body);
+        const bridgedResult = await this.executeRecoverableSyncImageRequest({
+            options,
+            parserType: 'openai-compatible-image',
+            url,
+            headers,
+            body: payloadStr,
+            timeoutMs: this.getTimeoutMs(keySlot, 400000),
+            requestPath,
+            requestBodyPreview,
+            provider: keySlot.provider,
+        });
+        if (bridgedResult) {
+            return {
+                urls: bridgedResult.urls,
+                provider: 'OpenAI',
+                providerName: keySlot.name,
+                model: options.modelId,
+                imageSize: body.size || body.image_size || 'Unknown',
+                metadata: {
+                    requestPath,
+                    requestBodyPreview,
+                    pythonSnippet: `import requests\n\nurl = "${url}"\nheaders = {"Authorization": "Bearer <API_KEY>", "Content-Type": "application/json"}\npayload = ${JSON.stringify(body, null, 2)}\nresp = requests.post(url, headers=headers, json=payload, timeout=150)\nprint(resp.status_code)\nprint(resp.text[:1000])`
+                }
+            };
+        }
+
         const response = await this.fetchWithTimeout(url, {
             method: 'POST',
             headers,
             body: payloadStr,
             signal: options.signal
         }, this.getTimeoutMs(keySlot, 400000), 1);
-
-        const requestPath = this.getRequestPathFromUrl(url);
 
         if (!response.ok) {
             const raw = await response.text().catch(() => '');
@@ -2082,7 +2775,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 message: `[${response.status}] ${detail}`,
                 status: response.status,
                 requestPath,
-                requestBody: this.buildSafeRequestBodyPreview(body),
+                requestBody: requestBodyPreview,
                 responseBody: raw.slice(0, 1600),
                 provider: keySlot.provider
             });
@@ -2109,7 +2802,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
                 message: '接口已返回成功状态，但未找到可用图片数据',
                 status: response.status,
                 requestPath,
-                requestBody: this.buildSafeRequestBodyPreview(body),
+                requestBody: requestBodyPreview,
                 responseBody: rawPreview,
                 provider: keySlot.provider
             });
@@ -2123,7 +2816,7 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             imageSize: body.size || body.image_size || 'Unknown',
             metadata: {
                 requestPath,
-                requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+                requestBodyPreview,
                 pythonSnippet: `import requests\n\nurl = "${url}"\nheaders = {"Authorization": "Bearer <API_KEY>", "Content-Type": "application/json"}\npayload = ${JSON.stringify(body, null, 2)}\nresp = requests.post(url, headers=headers, json=payload, timeout=150)\nprint(resp.status_code)\nprint(resp.text[:1000])`
             }
         };

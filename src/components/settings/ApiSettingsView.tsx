@@ -25,7 +25,7 @@ import {
   buildProviderPricingSnapshot,
   type ProviderPricingSnapshot,
 } from '../../services/auth/providerPricingSnapshot';
-import { type ApiProtocolFormat } from '../../services/api/apiConfig';
+import { formatAuthorizationHeaderValue, type ApiProtocolFormat } from '../../services/api/apiConfig';
 import { resolveProviderRuntime } from '../../services/api/providerStrategy';
 import { fetchRawPricingCatalog, fetchWuyinPricingCatalog } from '../../services/billing/newApiPricingService';
 import { supplierService, type Supplier as LegacySupplier } from '../../services/billing/supplierService';
@@ -1774,6 +1774,15 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     }
   };
 
+  const handleFetchAndSyncPricing = async () => {
+    if (currentEditingProvider) {
+      await handleSyncPricing(currentEditingProvider);
+      return;
+    }
+
+    await handleDetectAdvanced();
+  };
+
   const renderCostEditor = (
     costMode: CostMode,
     costValue: number,
@@ -1987,8 +1996,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                 <StatusBadge label={priceSyncStatus.label} tone={priceSyncStatus.tone} helper={priceSyncStatus.helper} compact />
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-3">
-                <button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm" style={secondaryButtonStyle} onClick={() => void handleDetectAdvanced()} disabled={advancedLoading}>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60" style={secondaryButtonStyle} onClick={() => void handleFetchAndSyncPricing()} disabled={advancedLoading || syncingProviderId === currentEditingProvider?.id}>
                   <Search size={14} />{advancedLoading ? '扫描中...' : '扫描价格'}
                 </button>
                 <button
@@ -2004,6 +2013,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                   style={secondaryButtonStyle}
                   onClick={() => currentEditingProvider && void handleSyncPricing(currentEditingProvider)}
                   disabled={!canOperateOnCurrentProvider || syncingProviderId === currentEditingProvider?.id}
+                  hidden
                 >
                   <RefreshCw size={14} className={syncingProviderId === currentEditingProvider?.id ? 'animate-spin' : ''} />
                   {syncingProviderId === currentEditingProvider?.id ? '同步中...' : '同步到供应商'}

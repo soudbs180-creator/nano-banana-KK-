@@ -62,6 +62,7 @@ interface ImageNodeProps {
     isMobile?: boolean;
     isSelected?: boolean;
     onSelect?: () => void;
+    onBringToFront?: () => void;
     highlighted?: boolean;
     onPreview?: (imageId: string) => void;
     onPreviewPptStack?: (imageId: string) => void;
@@ -90,6 +91,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     isMobile = false,
     isSelected = false,
     onSelect,
+    onBringToFront,
     highlighted,
     onPreview,
     onPreviewPptStack,
@@ -778,12 +780,14 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         // Handle Right Click (2) - Select Only
         if ('button' in e && e.button === 2) {
             e.stopPropagation();
+            onBringToFront?.();
             if (onSelect) onSelect();
             return;
         }
 
         // 阻止事件冒泡到 Canvas，通过 global listeners 处理拖拽
         e.stopPropagation();
+        onBringToFront?.();
 
         const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
         const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
@@ -1522,6 +1526,8 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         prev.position.x === next.position.x &&
         prev.position.y === next.position.y &&
         prev.isActive === next.isActive &&
+        prev.groupLayerZIndex === next.groupLayerZIndex &&
+        prev.stackZIndexOverride === next.stackZIndexOverride &&
         prev.zoomScale === next.zoomScale &&
         prev.isSelected === next.isSelected &&
         prev.highlighted === next.highlighted &&

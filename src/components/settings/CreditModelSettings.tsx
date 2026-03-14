@@ -14,7 +14,9 @@ import {
   DEFAULT_CREDITS_PER_USD,
   buildAdminModelCreditSuggestion,
 } from '../../services/model/adminModelAdvisor';
+import { adminModelService } from '../../services/model/adminModelService';
 import { getModelCapabilities } from '../../services/model/modelCapabilities';
+import { unifiedModelService } from '../../services/model/unifiedModelService';
 import { ImageSize } from '../../types';
 
 type CreditModelRow = {
@@ -546,11 +548,6 @@ const CreditModelSettings: React.FC = () => {
   };
 
   const refreshAdminModelSync = async () => {
-    const [{ adminModelService }, { unifiedModelService }] = await Promise.all([
-      import('../../services/model/adminModelService'),
-      import('../../services/model/unifiedModelService'),
-    ]);
-
     await adminModelService.forceLoadAdminModels();
     await unifiedModelService.refreshModels();
   };

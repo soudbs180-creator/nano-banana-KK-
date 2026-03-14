@@ -141,6 +141,7 @@ const AppContent: React.FC<AppContentProps> = () => {
     selectedNodeIds,
     selectNodes,
     clearSelection,
+    bringNodesToFront,
     findSmartPosition,
     findNextGroupPosition,
     addGroup,
@@ -2846,7 +2847,7 @@ const AppContent: React.FC<AppContentProps> = () => {
         } else {
           console.log('[handleGenerate] Creating NEW node:', generatingNode.id);
           await addPromptNode(generatingNode);
-          console.log('[handleGenerate] 鉁?addPromptNode completed for:', generatingNode.id, 'isDraft:', generatingNode.isDraft);
+          console.log('[handleGenerate] addPromptNode completed for:', generatingNode.id, 'isDraft:', generatingNode.isDraft);
         }
       }
 
@@ -5798,94 +5799,91 @@ ${slideLayerXml.join('\n')}
 
         {/* 3. 鎸佷箙鍖栨彁绀鸿瘝鑺傜偣 */}
         {visiblePromptNodes.map(node => (
-          <PromptNodeComponent
-            key={node.id}
-            node={node}
-            groupLayerZIndex={promptGroupLayerById.get(node.id) ?? node.zIndex ?? 0}
-            stackZIndexOverride={promptGroupStackZIndexById.get(node.id)}
-            actualChildImageCount={(actualChildImagesByPromptId.get(node.id) || []).length}
-            onPositionChange={updatePromptNodePosition}
-            isSelected={selectedNodeIds.includes(node.id)}
-            highlighted={highlightedId === node.id}
-            onSelect={() => {
-              selectNodes([node.id], (window.event as any)?.shiftKey ? 'toggle' : 'replace');
-              // 馃殌 Right Click triggers Selection Menu centered on node bounds
-              if ((window.event as any)?.button === 2) {
-                const pos = getSelectionScreenCenter([node.id]);
-                if (pos) setSelectionMenuPosition(pos);
+          <React.Fragment key={node.id}>
+            <PromptNodeComponent
+              node={node}
+              groupLayerZIndex={promptGroupLayerById.get(node.id) ?? node.zIndex ?? 0}
+              stackZIndexOverride={promptGroupStackZIndexById.get(node.id)}
+              actualChildImageCount={(actualChildImagesByPromptId.get(node.id) || []).length}
+              onPositionChange={updatePromptNodePosition}
+              isSelected={selectedNodeIds.includes(node.id)}
+              highlighted={highlightedId === node.id}
+              onBringToFront={() => bringNodesToFront([node.id])}
+              onSelect={() => {
+                selectNodes([node.id], (window.event as any)?.shiftKey ? 'toggle' : 'replace');
+                // 棣冩畬 Right Click triggers Selection Menu centered on node bounds
+                if ((window.event as any)?.button === 2) {
+                  const pos = getSelectionScreenCenter([node.id]);
+                  if (pos) setSelectionMenuPosition(pos);
+                }
+              }}
+              onClickPrompt={handlePromptClick}
+              onConnectStart={handleConnectStart}
+              zoomScale={canvasTransform.scale}
+              isMobile={isMobile}
+              sourcePosition={node.sourceImageId
+                ? activeCanvas?.imageNodes.find(n => n.id === node.sourceImageId)?.position
+                : undefined
               }
-            }}
-            onClickPrompt={handlePromptClick}
-            onConnectStart={handleConnectStart}
-            zoomScale={canvasTransform.scale}
-            isMobile={isMobile}
-            sourcePosition={node.sourceImageId
-              ? activeCanvas?.imageNodes.find(n => n.id === node.sourceImageId)?.position
-              : undefined
-            }
-            onCancel={handleCancelGeneration}
-            onRetry={handleRetryNode}
-            onEditPptDeck={handleOpenPptDeckEditor}
-            onExportPpt={handleExportPptPackageEditable}
-            onExportPptx={handleExportPptxEditable}
-            onRetryPptPage={handleRetryPptSinglePage}
-            onExportPptPage={handleExportPptSinglePage}
-            ioTrace={getNodeIoTrace(node.id)}
-            onOpenStorageSettings={() => {
-              setShowSettingsPanel(true);
-              setSettingsInitialView('storage-settings');
-            }}
-            onDelete={deletePromptNode}
-            onDisconnect={handleDisconnectPrompt}
-            onUpdateNode={updatePromptNode}
-            onHeightChange={(id, height) => {
-              const latestNode = activeCanvas?.promptNodes.find(n => n.id === id);
-              const targetNode = latestNode || node;
-              if (targetNode.height !== height) {
-                updatePromptNode({ ...targetNode, height });
-              }
-            }}
-            onPin={handlePinDraft}
-            onRemoveTag={(id, tag) => {
-              const node = activeCanvas?.promptNodes.find(n => n.id === id);
-              if (node && node.tags) {
-                const newTags = node.tags.filter(t => t !== tag);
-                updatePromptNode({ ...node, tags: newTags });
-              }
-            }}
-            onDragDelta={(delta, sourceNodeId) => {
-              if (!sourceNodeId) return;
+              onCancel={handleCancelGeneration}
+              onRetry={handleRetryNode}
+              onEditPptDeck={handleOpenPptDeckEditor}
+              onExportPpt={handleExportPptPackageEditable}
+              onExportPptx={handleExportPptxEditable}
+              onRetryPptPage={handleRetryPptSinglePage}
+              onExportPptPage={handleExportPptSinglePage}
+              ioTrace={getNodeIoTrace(node.id)}
+              onOpenStorageSettings={() => {
+                setShowSettingsPanel(true);
+                setSettingsInitialView('storage-settings');
+              }}
+              onDelete={deletePromptNode}
+              onDisconnect={handleDisconnectPrompt}
+              onUpdateNode={updatePromptNode}
+              onHeightChange={(id, height) => {
+                const latestNode = activeCanvas?.promptNodes.find(n => n.id === id);
+                const targetNode = latestNode || node;
+                if (targetNode.height !== height) {
+                  updatePromptNode({ ...targetNode, height });
+                }
+              }}
+              onPin={handlePinDraft}
+              onRemoveTag={(id, tag) => {
+                const node = activeCanvas?.promptNodes.find(n => n.id === id);
+                if (node && node.tags) {
+                  const newTags = node.tags.filter(t => t !== tag);
+                  updatePromptNode({ ...node, tags: newTags });
+                }
+              }}
+              onDragDelta={(delta, sourceNodeId) => {
+                if (!sourceNodeId) return;
 
-              const mainCard = activeCanvas?.promptNodes.find(p => p.id === sourceNodeId);
-              const childImageIds = mainCard?.childImageIds || [];
-              const expandedSelectedIds = Array.from(new Set(
-                selectedNodeIds.flatMap((selectedId) => {
-                  const selectedPrompt = activeCanvas?.promptNodes.find(p => p.id === selectedId);
-                  if (!selectedPrompt) return [selectedId];
+                const mainCard = activeCanvas?.promptNodes.find(p => p.id === sourceNodeId);
+                const childImageIds = mainCard?.childImageIds || [];
+                const expandedSelectedIds = Array.from(new Set(
+                  selectedNodeIds.flatMap((selectedId) => {
+                    const selectedPrompt = activeCanvas?.promptNodes.find(p => p.id === selectedId);
+                    if (!selectedPrompt) return [selectedId];
 
-                  return [
-                    selectedId,
-                    ...(selectedPrompt.childImageIds || []).filter((id): id is string => !!id),
-                  ];
-                })
-              ));
+                    return [
+                      selectedId,
+                      ...(selectedPrompt.childImageIds || []).filter((id): id is string => !!id),
+                    ];
+                  })
+                ));
 
-              if (selectedNodeIds.includes(sourceNodeId) && expandedSelectedIds.length > 0) {
-                moveSelectedNodes(delta, expandedSelectedIds);
-              } else if (childImageIds.length > 0) {
-                moveSelectedNodes(delta, [sourceNodeId, ...childImageIds.filter((id): id is string => !!id)]);
-              } else {
-                moveSelectedNodes(delta, sourceNodeId);
-              }
-              // 馃殌 [Fix] Force re-render for real-time connection line updates
-            }} // 馃殌 Enable Safe Relative Drag
-            canvasTransform={canvasTransform} // 馃殌 Pass Transform for Animation Calculation
-          />
-        ))}
+                if (selectedNodeIds.includes(sourceNodeId) && expandedSelectedIds.length > 0) {
+                  moveSelectedNodes(delta, expandedSelectedIds);
+                } else if (childImageIds.length > 0) {
+                  moveSelectedNodes(delta, [sourceNodeId, ...childImageIds.filter((id): id is string => !!id)]);
+                } else {
+                  moveSelectedNodes(delta, sourceNodeId);
+                }
+                // 棣冩畬 [Fix] Force re-render for real-time connection line updates
+              }} // 棣冩畬 Enable Safe Relative Drag
+              canvasTransform={canvasTransform} // 棣冩畬 Pass Transform for Animation Calculation
+            />
 
-        {/* 3. 鍥剧墖鑺傜偣 */}
-        {visiblePromptNodes.map(node => (
-          <React.Fragment key={`${node.id}-children`}>
             {(visibleChildImagesByPromptId.get(node.id) || []).map(childNode => (
               <ImageNode
                 key={childNode.id}
@@ -5900,6 +5898,7 @@ ${slideLayerXml.join('\n')}
                 onDelete={deleteImageNode}
                 onConnectEnd={handleConnectEnd}
                 onClick={handleImageClick}
+                onBringToFront={() => bringNodesToFront([childNode.id])}
                 isActive={childNode.id === activeSourceImage}
                 isSelected={selectedNodeIds.includes(childNode.id)}
                 onSelect={() => {
@@ -5945,7 +5944,6 @@ ${slideLayerXml.join('\n')}
             ))}
           </React.Fragment>
         ))}
-
         {standaloneVisibleImageNodes.map(node => (
           <ImageNode
             key={node.id}
@@ -5964,6 +5962,7 @@ ${slideLayerXml.join('\n')}
             onDelete={deleteImageNode}
             onConnectEnd={handleConnectEnd}
             onClick={handleImageClick}
+            onBringToFront={() => bringNodesToFront([node.id])}
             isActive={node.id === activeSourceImage}
             isSelected={selectedNodeIds.includes(node.id)}
             onSelect={() => {
@@ -6519,4 +6518,3 @@ const App: React.FC = () => {
 
 export default App;
 // Force Rebuild
-

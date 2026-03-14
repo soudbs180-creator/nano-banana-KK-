@@ -16,24 +16,27 @@ const roots = [
 
 const extensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.html', '.css']);
 const suspiciousTokens = [
-  '锟?',
   '閿?',
+  '闁?',
+  '妫?',
+  '闁稿繑濞婂Λ?',
+  '闂冨懎鐭曠划?',
+  '缂傚啯鍨圭划鍫曟閺嶇虎鍤?',
+  'API Key 闂€鐐靛У閺?',
+  '闁炬儳顦伴弲銉︽媴閸℃鍤掗梻鍕姈缁?',
+  '缂傚倸鎼惃?',
+  '闁衡偓椤栨瑧甯?',
+  '缂佸鍨伴崹搴ㄥ礂閸涱厸鍋?',
+  '闁活潿鍔嶉崺?',
+  '濞戞挸顑堝ù?',
+  '濡澘瀚～?',
   '棣?',
-  '閸忔娊妫?',
-  '闃呭矕绮?',
-  '缂冩垹绮堕槍鏍绢嚖',
-  'API Key 闀炵姵鏅?',
-  '閾惧鏅ユ担鍡楀嚒闂勬劖绁?',
-  '缂傚搫鐨?',
-  '閺€顖欑帛',
-  '缁夘垰鍨庨崗鍛偓',
-  '閻劍鍩?',
-  '娑撳娴?',
-  '妫板嫯顫?',
+  '皎眳?',
+  '閴?',
+  '閽跨媴绗?',
   '馃',
-  '𨱅?',
-  '鉂?',
-  '钿狅笍',
+  '鉂',
+  '鉁',
 ];
 
 const issues = [];
@@ -46,10 +49,13 @@ function shouldScan(filePath) {
 function walk(targetPath) {
   if (!fs.existsSync(targetPath)) return;
   if (path.resolve(targetPath) === selfPath) return;
+
   const stat = fs.statSync(targetPath);
   if (stat.isDirectory()) {
     for (const entry of fs.readdirSync(targetPath, { withFileTypes: true })) {
-      if (['node_modules', 'dist', '.git', '.npm-cache', 'coverage', '.agent'].includes(entry.name)) continue;
+      if (['node_modules', 'dist', '.git', '.npm-cache', 'coverage', '.agent'].includes(entry.name)) {
+        continue;
+      }
       walk(path.join(targetPath, entry.name));
     }
     return;
@@ -122,7 +128,7 @@ for (const target of roots) {
 }
 
 if (issues.length > 0) {
-  console.error('发现可疑乱码，请检查以下位置：');
+  console.error('发现可疑乱码，请检查以下位置:');
   for (const issue of issues) {
     console.error(issue);
   }

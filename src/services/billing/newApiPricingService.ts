@@ -317,6 +317,8 @@ type WuyinCatalogResponse = {
     };
 };
 
+type WuyinCatalogItem = NonNullable<NonNullable<WuyinCatalogResponse['data']>['api_list']>[number];
+
 const WUYIN_PRICE_API_PATH = '/themes/DigitalBlue/api?action=api_list';
 
 const normalizeBaseUrl = (baseUrl: string) => baseUrl.replace(/\/$/, '');
@@ -332,7 +334,7 @@ const toFiniteNumber = (value: unknown): number | undefined => {
     return undefined;
 };
 
-const extractWuyinDisplayPrice = (item: NonNullable<WuyinCatalogResponse['data']>['api_list'][number]) => {
+const extractWuyinDisplayPrice = (item: WuyinCatalogItem) => {
     const unit = String(item?.pay_unit || '').trim() || '次';
     const text = stripHtml(String(item?.price || ''));
     const priceMatch = text.match(/([0-9]+(?:\.[0-9]+)?)/);
@@ -363,7 +365,9 @@ export async function fetchWuyinPricingCatalog(baseUrl: string): Promise<ModelPr
     }
 
     const data = await response.json() as WuyinCatalogResponse;
-    const apiList = Array.isArray(data?.data?.api_list) ? data.data!.api_list! : [];
+    const apiList: WuyinCatalogItem[] = Array.isArray(data?.data?.api_list)
+        ? data.data.api_list
+        : [];
 
     return apiList.map((item) => {
         const { numeric, unit, displayPrice } = extractWuyinDisplayPrice(item);

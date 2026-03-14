@@ -6,8 +6,42 @@ const { AlipaySdk } = require('alipay-sdk');
 const { createClient } = require('@supabase/supabase-js');
 const webhookRouter = require('./webhook');
 
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://kkai.plus',
+  'https://www.kkai.plus',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:8888',
+  'http://127.0.0.1:8888',
+];
+
+function getAllowedOrigins() {
+  const configuredOrigins = String(process.env.PAYMENT_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return configuredOrigins.length > 0 ? configuredOrigins : DEFAULT_ALLOWED_ORIGINS;
+}
+
 const app = express();
-app.use(cors());
+app.disable('x-powered-by');
+
+const allowedOrigins = new Set(getAllowedOrigins().map((origin) => origin.toLowerCase()));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has('*')) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, allowedOrigins.has(String(origin).toLowerCase()));
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -60,8 +94,6 @@ if (!supabaseServiceRoleKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-const creditedOrders = new Set();
-
 app.use('/api/pay/notify', webhookRouter);
 
 const alipayPayMethodMode = String(process.env.ALIPAY_PAY_METHOD || 'page').toLowerCase();
@@ -82,6 +114,7 @@ async function createAlipayPageLink({ outTradeNo, amount, userId, returnUrl, not
     returnUrl,
     notifyUrl,
   };
+
   if (appAuthToken) {
     bizParams.appAuthToken = appAuthToken;
   }
@@ -94,37 +127,11 @@ async function createAlipayPageLink({ outTradeNo, amount, userId, returnUrl, not
     return sanitizePaymentUrl(link);
   } catch (error) {
     const msg = String(error?.message || '');
-    if (
-      msg.includes('formData 参数不包含文件') ||
-      (msg.includes('formData') && msg.includes('pageExec'))
-    ) {
+    if (msg.includes('formData 参数不包含文件') || (msg.includes('formData') && msg.includes('pageExec'))) {
       const link = await alipaySdk.pageExecute(alipayTradeMethod, 'GET', bizParams);
       return sanitizePaymentUrl(link);
     }
     throw error;
-  }
-}
-
-async function creditUserIfNeeded({ outTradeNo, userId, totalAmount }) {
-  if (!userId || creditedOrders.has(outTradeNo)) return;
-  creditedOrders.add(outTradeNo);
-
-  let amountToAdd = 5000;
-  if (totalAmount) {
-    amountToAdd = Math.round(parseFloat(totalAmount) * 100);
-  }
-
-  console.log(`[payment-server] Accredit user ${userId} for order ${outTradeNo} with ${amountToAdd} credits.`);
-  const { error: rpcError } = await supabase.rpc('increment_credits', {
-    user_id: userId,
-    amount: amountToAdd,
-  });
-
-  if (rpcError) {
-    const { data: profile } = await supabase.from('profiles').select('credits').eq('id', userId).single();
-    if (profile) {
-      await supabase.from('profiles').update({ credits: (profile.credits || 0) + amountToAdd }).eq('id', userId);
-    }
   }
 }
 
@@ -195,6 +202,7 @@ app.get('/api/pay', async (req, res) => {
     if (!/^https?:\/\//i.test(payLink)) {
       return res.status(500).send('支付链接生成失败');
     }
+
     return res.redirect(302, payLink);
   } catch (err) {
     console.error('[payment-server] create pay redirect failed:', err);
@@ -204,7 +212,7 @@ app.get('/api/pay', async (req, res) => {
 
 app.get('/api/pay/status', async (req, res) => {
   try {
-    const { outTradeNo, userId } = req.query;
+    const { outTradeNo } = req.query;
     if (!outTradeNo) {
       return res.status(400).json({ error: '缺少商户订单号' });
     }
@@ -219,12 +227,12 @@ app.get('/api/pay/status', async (req, res) => {
     if (appAuthToken) {
       queryParams.appAuthToken = appAuthToken;
     }
+
     const result = await alipaySdk.exec('alipay.trade.query', queryParams);
 
     let tradeStatus = 'WAITING';
     if (result.tradeStatus === 'TRADE_SUCCESS' || result.tradeStatus === 'TRADE_FINISHED') {
       tradeStatus = 'TRADE_SUCCESS';
-      await creditUserIfNeeded({ outTradeNo, userId, totalAmount: result.totalAmount });
     } else if (result.tradeStatus === 'TRADE_CLOSED') {
       tradeStatus = 'TRADE_CLOSED';
     }
