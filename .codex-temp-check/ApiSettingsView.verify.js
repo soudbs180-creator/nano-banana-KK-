@@ -1,12 +1,1276 @@
+var __create = Object.create;
 var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// node_modules/react/cjs/react.development.js
+var require_react_development = __commonJS({
+  "node_modules/react/cjs/react.development.js"(exports, module) {
+    "use strict";
+    (function() {
+      function defineDeprecationWarning(methodName, info) {
+        Object.defineProperty(Component.prototype, methodName, {
+          get: function() {
+            console.warn(
+              "%s(...) is deprecated in plain JavaScript React classes. %s",
+              info[0],
+              info[1]
+            );
+          }
+        });
+      }
+      function getIteratorFn(maybeIterable) {
+        if (null === maybeIterable || "object" !== typeof maybeIterable)
+          return null;
+        maybeIterable = MAYBE_ITERATOR_SYMBOL && maybeIterable[MAYBE_ITERATOR_SYMBOL] || maybeIterable["@@iterator"];
+        return "function" === typeof maybeIterable ? maybeIterable : null;
+      }
+      function warnNoop(publicInstance, callerName) {
+        publicInstance = (publicInstance = publicInstance.constructor) && (publicInstance.displayName || publicInstance.name) || "ReactClass";
+        var warningKey = publicInstance + "." + callerName;
+        didWarnStateUpdateForUnmountedComponent[warningKey] || (console.error(
+          "Can't call %s on a component that is not yet mounted. This is a no-op, but it might indicate a bug in your application. Instead, assign to `this.state` directly or define a `state = {};` class property with the desired state in the %s component.",
+          callerName,
+          publicInstance
+        ), didWarnStateUpdateForUnmountedComponent[warningKey] = true);
+      }
+      function Component(props, context, updater) {
+        this.props = props;
+        this.context = context;
+        this.refs = emptyObject;
+        this.updater = updater || ReactNoopUpdateQueue;
+      }
+      function ComponentDummy() {
+      }
+      function PureComponent(props, context, updater) {
+        this.props = props;
+        this.context = context;
+        this.refs = emptyObject;
+        this.updater = updater || ReactNoopUpdateQueue;
+      }
+      function noop3() {
+      }
+      function testStringCoercion(value) {
+        return "" + value;
+      }
+      function checkKeyStringCoercion(value) {
+        try {
+          testStringCoercion(value);
+          var JSCompiler_inline_result = false;
+        } catch (e) {
+          JSCompiler_inline_result = true;
+        }
+        if (JSCompiler_inline_result) {
+          JSCompiler_inline_result = console;
+          var JSCompiler_temp_const = JSCompiler_inline_result.error;
+          var JSCompiler_inline_result$jscomp$0 = "function" === typeof Symbol && Symbol.toStringTag && value[Symbol.toStringTag] || value.constructor.name || "Object";
+          JSCompiler_temp_const.call(
+            JSCompiler_inline_result,
+            "The provided key is an unsupported type %s. This value must be coerced to a string before using it here.",
+            JSCompiler_inline_result$jscomp$0
+          );
+          return testStringCoercion(value);
+        }
+      }
+      function getComponentNameFromType(type) {
+        if (null == type) return null;
+        if ("function" === typeof type)
+          return type.$$typeof === REACT_CLIENT_REFERENCE ? null : type.displayName || type.name || null;
+        if ("string" === typeof type) return type;
+        switch (type) {
+          case REACT_FRAGMENT_TYPE:
+            return "Fragment";
+          case REACT_PROFILER_TYPE:
+            return "Profiler";
+          case REACT_STRICT_MODE_TYPE:
+            return "StrictMode";
+          case REACT_SUSPENSE_TYPE:
+            return "Suspense";
+          case REACT_SUSPENSE_LIST_TYPE:
+            return "SuspenseList";
+          case REACT_ACTIVITY_TYPE:
+            return "Activity";
+        }
+        if ("object" === typeof type)
+          switch ("number" === typeof type.tag && console.error(
+            "Received an unexpected object in getComponentNameFromType(). This is likely a bug in React. Please file an issue."
+          ), type.$$typeof) {
+            case REACT_PORTAL_TYPE:
+              return "Portal";
+            case REACT_CONTEXT_TYPE:
+              return type.displayName || "Context";
+            case REACT_CONSUMER_TYPE:
+              return (type._context.displayName || "Context") + ".Consumer";
+            case REACT_FORWARD_REF_TYPE:
+              var innerType = type.render;
+              type = type.displayName;
+              type || (type = innerType.displayName || innerType.name || "", type = "" !== type ? "ForwardRef(" + type + ")" : "ForwardRef");
+              return type;
+            case REACT_MEMO_TYPE:
+              return innerType = type.displayName || null, null !== innerType ? innerType : getComponentNameFromType(type.type) || "Memo";
+            case REACT_LAZY_TYPE:
+              innerType = type._payload;
+              type = type._init;
+              try {
+                return getComponentNameFromType(type(innerType));
+              } catch (x) {
+              }
+          }
+        return null;
+      }
+      function getTaskName(type) {
+        if (type === REACT_FRAGMENT_TYPE) return "<>";
+        if ("object" === typeof type && null !== type && type.$$typeof === REACT_LAZY_TYPE)
+          return "<...>";
+        try {
+          var name = getComponentNameFromType(type);
+          return name ? "<" + name + ">" : "<...>";
+        } catch (x) {
+          return "<...>";
+        }
+      }
+      function getOwner() {
+        var dispatcher = ReactSharedInternals.A;
+        return null === dispatcher ? null : dispatcher.getOwner();
+      }
+      function UnknownOwner() {
+        return Error("react-stack-top-frame");
+      }
+      function hasValidKey(config) {
+        if (hasOwnProperty.call(config, "key")) {
+          var getter = Object.getOwnPropertyDescriptor(config, "key").get;
+          if (getter && getter.isReactWarning) return false;
+        }
+        return void 0 !== config.key;
+      }
+      function defineKeyPropWarningGetter(props, displayName) {
+        function warnAboutAccessingKey() {
+          specialPropKeyWarningShown || (specialPropKeyWarningShown = true, console.error(
+            "%s: `key` is not a prop. Trying to access it will result in `undefined` being returned. If you need to access the same value within the child component, you should pass it as a different prop. (https://react.dev/link/special-props)",
+            displayName
+          ));
+        }
+        warnAboutAccessingKey.isReactWarning = true;
+        Object.defineProperty(props, "key", {
+          get: warnAboutAccessingKey,
+          configurable: true
+        });
+      }
+      function elementRefGetterWithDeprecationWarning() {
+        var componentName = getComponentNameFromType(this.type);
+        didWarnAboutElementRef[componentName] || (didWarnAboutElementRef[componentName] = true, console.error(
+          "Accessing element.ref was removed in React 19. ref is now a regular prop. It will be removed from the JSX Element type in a future release."
+        ));
+        componentName = this.props.ref;
+        return void 0 !== componentName ? componentName : null;
+      }
+      function ReactElement(type, key, props, owner, debugStack, debugTask) {
+        var refProp = props.ref;
+        type = {
+          $$typeof: REACT_ELEMENT_TYPE,
+          type,
+          key,
+          props,
+          _owner: owner
+        };
+        null !== (void 0 !== refProp ? refProp : null) ? Object.defineProperty(type, "ref", {
+          enumerable: false,
+          get: elementRefGetterWithDeprecationWarning
+        }) : Object.defineProperty(type, "ref", { enumerable: false, value: null });
+        type._store = {};
+        Object.defineProperty(type._store, "validated", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: 0
+        });
+        Object.defineProperty(type, "_debugInfo", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: null
+        });
+        Object.defineProperty(type, "_debugStack", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugStack
+        });
+        Object.defineProperty(type, "_debugTask", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugTask
+        });
+        Object.freeze && (Object.freeze(type.props), Object.freeze(type));
+        return type;
+      }
+      function cloneAndReplaceKey(oldElement, newKey) {
+        newKey = ReactElement(
+          oldElement.type,
+          newKey,
+          oldElement.props,
+          oldElement._owner,
+          oldElement._debugStack,
+          oldElement._debugTask
+        );
+        oldElement._store && (newKey._store.validated = oldElement._store.validated);
+        return newKey;
+      }
+      function validateChildKeys(node) {
+        isValidElement(node) ? node._store && (node._store.validated = 1) : "object" === typeof node && null !== node && node.$$typeof === REACT_LAZY_TYPE && ("fulfilled" === node._payload.status ? isValidElement(node._payload.value) && node._payload.value._store && (node._payload.value._store.validated = 1) : node._store && (node._store.validated = 1));
+      }
+      function isValidElement(object) {
+        return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
+      }
+      function escape(key) {
+        var escaperLookup = { "=": "=0", ":": "=2" };
+        return "$" + key.replace(/[=:]/g, function(match) {
+          return escaperLookup[match];
+        });
+      }
+      function getElementKey(element, index) {
+        return "object" === typeof element && null !== element && null != element.key ? (checkKeyStringCoercion(element.key), escape("" + element.key)) : index.toString(36);
+      }
+      function resolveThenable(thenable) {
+        switch (thenable.status) {
+          case "fulfilled":
+            return thenable.value;
+          case "rejected":
+            throw thenable.reason;
+          default:
+            switch ("string" === typeof thenable.status ? thenable.then(noop3, noop3) : (thenable.status = "pending", thenable.then(
+              function(fulfilledValue) {
+                "pending" === thenable.status && (thenable.status = "fulfilled", thenable.value = fulfilledValue);
+              },
+              function(error) {
+                "pending" === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+              }
+            )), thenable.status) {
+              case "fulfilled":
+                return thenable.value;
+              case "rejected":
+                throw thenable.reason;
+            }
+        }
+        throw thenable;
+      }
+      function mapIntoArray(children, array, escapedPrefix, nameSoFar, callback) {
+        var type = typeof children;
+        if ("undefined" === type || "boolean" === type) children = null;
+        var invokeCallback = false;
+        if (null === children) invokeCallback = true;
+        else
+          switch (type) {
+            case "bigint":
+            case "string":
+            case "number":
+              invokeCallback = true;
+              break;
+            case "object":
+              switch (children.$$typeof) {
+                case REACT_ELEMENT_TYPE:
+                case REACT_PORTAL_TYPE:
+                  invokeCallback = true;
+                  break;
+                case REACT_LAZY_TYPE:
+                  return invokeCallback = children._init, mapIntoArray(
+                    invokeCallback(children._payload),
+                    array,
+                    escapedPrefix,
+                    nameSoFar,
+                    callback
+                  );
+              }
+          }
+        if (invokeCallback) {
+          invokeCallback = children;
+          callback = callback(invokeCallback);
+          var childKey = "" === nameSoFar ? "." + getElementKey(invokeCallback, 0) : nameSoFar;
+          isArrayImpl(callback) ? (escapedPrefix = "", null != childKey && (escapedPrefix = childKey.replace(userProvidedKeyEscapeRegex, "$&/") + "/"), mapIntoArray(callback, array, escapedPrefix, "", function(c) {
+            return c;
+          })) : null != callback && (isValidElement(callback) && (null != callback.key && (invokeCallback && invokeCallback.key === callback.key || checkKeyStringCoercion(callback.key)), escapedPrefix = cloneAndReplaceKey(
+            callback,
+            escapedPrefix + (null == callback.key || invokeCallback && invokeCallback.key === callback.key ? "" : ("" + callback.key).replace(
+              userProvidedKeyEscapeRegex,
+              "$&/"
+            ) + "/") + childKey
+          ), "" !== nameSoFar && null != invokeCallback && isValidElement(invokeCallback) && null == invokeCallback.key && invokeCallback._store && !invokeCallback._store.validated && (escapedPrefix._store.validated = 2), callback = escapedPrefix), array.push(callback));
+          return 1;
+        }
+        invokeCallback = 0;
+        childKey = "" === nameSoFar ? "." : nameSoFar + ":";
+        if (isArrayImpl(children))
+          for (var i = 0; i < children.length; i++)
+            nameSoFar = children[i], type = childKey + getElementKey(nameSoFar, i), invokeCallback += mapIntoArray(
+              nameSoFar,
+              array,
+              escapedPrefix,
+              type,
+              callback
+            );
+        else if (i = getIteratorFn(children), "function" === typeof i)
+          for (i === children.entries && (didWarnAboutMaps || console.warn(
+            "Using Maps as children is not supported. Use an array of keyed ReactElements instead."
+          ), didWarnAboutMaps = true), children = i.call(children), i = 0; !(nameSoFar = children.next()).done; )
+            nameSoFar = nameSoFar.value, type = childKey + getElementKey(nameSoFar, i++), invokeCallback += mapIntoArray(
+              nameSoFar,
+              array,
+              escapedPrefix,
+              type,
+              callback
+            );
+        else if ("object" === type) {
+          if ("function" === typeof children.then)
+            return mapIntoArray(
+              resolveThenable(children),
+              array,
+              escapedPrefix,
+              nameSoFar,
+              callback
+            );
+          array = String(children);
+          throw Error(
+            "Objects are not valid as a React child (found: " + ("[object Object]" === array ? "object with keys {" + Object.keys(children).join(", ") + "}" : array) + "). If you meant to render a collection of children, use an array instead."
+          );
+        }
+        return invokeCallback;
+      }
+      function mapChildren(children, func, context) {
+        if (null == children) return children;
+        var result = [], count = 0;
+        mapIntoArray(children, result, "", "", function(child) {
+          return func.call(context, child, count++);
+        });
+        return result;
+      }
+      function lazyInitializer(payload) {
+        if (-1 === payload._status) {
+          var ioInfo = payload._ioInfo;
+          null != ioInfo && (ioInfo.start = ioInfo.end = performance.now());
+          ioInfo = payload._result;
+          var thenable = ioInfo();
+          thenable.then(
+            function(moduleObject) {
+              if (0 === payload._status || -1 === payload._status) {
+                payload._status = 1;
+                payload._result = moduleObject;
+                var _ioInfo = payload._ioInfo;
+                null != _ioInfo && (_ioInfo.end = performance.now());
+                void 0 === thenable.status && (thenable.status = "fulfilled", thenable.value = moduleObject);
+              }
+            },
+            function(error) {
+              if (0 === payload._status || -1 === payload._status) {
+                payload._status = 2;
+                payload._result = error;
+                var _ioInfo2 = payload._ioInfo;
+                null != _ioInfo2 && (_ioInfo2.end = performance.now());
+                void 0 === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+              }
+            }
+          );
+          ioInfo = payload._ioInfo;
+          if (null != ioInfo) {
+            ioInfo.value = thenable;
+            var displayName = thenable.displayName;
+            "string" === typeof displayName && (ioInfo.name = displayName);
+          }
+          -1 === payload._status && (payload._status = 0, payload._result = thenable);
+        }
+        if (1 === payload._status)
+          return ioInfo = payload._result, void 0 === ioInfo && console.error(
+            "lazy: Expected the result of a dynamic import() call. Instead received: %s\n\nYour code should look like: \n  const MyComponent = lazy(() => import('./MyComponent'))\n\nDid you accidentally put curly braces around the import?",
+            ioInfo
+          ), "default" in ioInfo || console.error(
+            "lazy: Expected the result of a dynamic import() call. Instead received: %s\n\nYour code should look like: \n  const MyComponent = lazy(() => import('./MyComponent'))",
+            ioInfo
+          ), ioInfo.default;
+        throw payload._result;
+      }
+      function resolveDispatcher() {
+        var dispatcher = ReactSharedInternals.H;
+        null === dispatcher && console.error(
+          "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
+        );
+        return dispatcher;
+      }
+      function releaseAsyncTransition() {
+        ReactSharedInternals.asyncTransitions--;
+      }
+      function enqueueTask(task) {
+        if (null === enqueueTaskImpl)
+          try {
+            var requireString = ("require" + Math.random()).slice(0, 7);
+            enqueueTaskImpl = (module && module[requireString]).call(
+              module,
+              "timers"
+            ).setImmediate;
+          } catch (_err) {
+            enqueueTaskImpl = function(callback) {
+              false === didWarnAboutMessageChannel && (didWarnAboutMessageChannel = true, "undefined" === typeof MessageChannel && console.error(
+                "This browser does not have a MessageChannel implementation, so enqueuing tasks via await act(async () => ...) will fail. Please file an issue at https://github.com/facebook/react/issues if you encounter this warning."
+              ));
+              var channel = new MessageChannel();
+              channel.port1.onmessage = callback;
+              channel.port2.postMessage(void 0);
+            };
+          }
+        return enqueueTaskImpl(task);
+      }
+      function aggregateErrors(errors) {
+        return 1 < errors.length && "function" === typeof AggregateError ? new AggregateError(errors) : errors[0];
+      }
+      function popActScope(prevActQueue, prevActScopeDepth) {
+        prevActScopeDepth !== actScopeDepth - 1 && console.error(
+          "You seem to have overlapping act() calls, this is not supported. Be sure to await previous act() calls before making a new one. "
+        );
+        actScopeDepth = prevActScopeDepth;
+      }
+      function recursivelyFlushAsyncActWork(returnValue, resolve, reject) {
+        var queue = ReactSharedInternals.actQueue;
+        if (null !== queue)
+          if (0 !== queue.length)
+            try {
+              flushActQueue(queue);
+              enqueueTask(function() {
+                return recursivelyFlushAsyncActWork(returnValue, resolve, reject);
+              });
+              return;
+            } catch (error) {
+              ReactSharedInternals.thrownErrors.push(error);
+            }
+          else ReactSharedInternals.actQueue = null;
+        0 < ReactSharedInternals.thrownErrors.length ? (queue = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, reject(queue)) : resolve(returnValue);
+      }
+      function flushActQueue(queue) {
+        if (!isFlushing) {
+          isFlushing = true;
+          var i = 0;
+          try {
+            for (; i < queue.length; i++) {
+              var callback = queue[i];
+              do {
+                ReactSharedInternals.didUsePromise = false;
+                var continuation = callback(false);
+                if (null !== continuation) {
+                  if (ReactSharedInternals.didUsePromise) {
+                    queue[i] = callback;
+                    queue.splice(0, i);
+                    return;
+                  }
+                  callback = continuation;
+                } else break;
+              } while (1);
+            }
+            queue.length = 0;
+          } catch (error) {
+            queue.splice(0, i + 1), ReactSharedInternals.thrownErrors.push(error);
+          } finally {
+            isFlushing = false;
+          }
+        }
+      }
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+      var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, didWarnStateUpdateForUnmountedComponent = {}, ReactNoopUpdateQueue = {
+        isMounted: function() {
+          return false;
+        },
+        enqueueForceUpdate: function(publicInstance) {
+          warnNoop(publicInstance, "forceUpdate");
+        },
+        enqueueReplaceState: function(publicInstance) {
+          warnNoop(publicInstance, "replaceState");
+        },
+        enqueueSetState: function(publicInstance) {
+          warnNoop(publicInstance, "setState");
+        }
+      }, assign = Object.assign, emptyObject = {};
+      Object.freeze(emptyObject);
+      Component.prototype.isReactComponent = {};
+      Component.prototype.setState = function(partialState, callback) {
+        if ("object" !== typeof partialState && "function" !== typeof partialState && null != partialState)
+          throw Error(
+            "takes an object of state variables to update or a function which returns an object of state variables."
+          );
+        this.updater.enqueueSetState(this, partialState, callback, "setState");
+      };
+      Component.prototype.forceUpdate = function(callback) {
+        this.updater.enqueueForceUpdate(this, callback, "forceUpdate");
+      };
+      var deprecatedAPIs = {
+        isMounted: [
+          "isMounted",
+          "Instead, make sure to clean up subscriptions and pending requests in componentWillUnmount to prevent memory leaks."
+        ],
+        replaceState: [
+          "replaceState",
+          "Refactor your code to use setState instead (see https://github.com/facebook/react/issues/3236)."
+        ]
+      };
+      for (fnName in deprecatedAPIs)
+        deprecatedAPIs.hasOwnProperty(fnName) && defineDeprecationWarning(fnName, deprecatedAPIs[fnName]);
+      ComponentDummy.prototype = Component.prototype;
+      deprecatedAPIs = PureComponent.prototype = new ComponentDummy();
+      deprecatedAPIs.constructor = PureComponent;
+      assign(deprecatedAPIs, Component.prototype);
+      deprecatedAPIs.isPureReactComponent = true;
+      var isArrayImpl = Array.isArray, REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = {
+        H: null,
+        A: null,
+        T: null,
+        S: null,
+        actQueue: null,
+        asyncTransitions: 0,
+        isBatchingLegacy: false,
+        didScheduleLegacyUpdate: false,
+        didUsePromise: false,
+        thrownErrors: [],
+        getCurrentStack: null,
+        recentlyCreatedOwnerStacks: 0
+      }, hasOwnProperty = Object.prototype.hasOwnProperty, createTask = console.createTask ? console.createTask : function() {
+        return null;
+      };
+      deprecatedAPIs = {
+        react_stack_bottom_frame: function(callStackForError) {
+          return callStackForError();
+        }
+      };
+      var specialPropKeyWarningShown, didWarnAboutOldJSXRuntime;
+      var didWarnAboutElementRef = {};
+      var unknownOwnerDebugStack = deprecatedAPIs.react_stack_bottom_frame.bind(
+        deprecatedAPIs,
+        UnknownOwner
+      )();
+      var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
+      var didWarnAboutMaps = false, userProvidedKeyEscapeRegex = /\/+/g, reportGlobalError = "function" === typeof reportError ? reportError : function(error) {
+        if ("object" === typeof window && "function" === typeof window.ErrorEvent) {
+          var event = new window.ErrorEvent("error", {
+            bubbles: true,
+            cancelable: true,
+            message: "object" === typeof error && null !== error && "string" === typeof error.message ? String(error.message) : String(error),
+            error
+          });
+          if (!window.dispatchEvent(event)) return;
+        } else if ("object" === typeof process && "function" === typeof process.emit) {
+          process.emit("uncaughtException", error);
+          return;
+        }
+        console.error(error);
+      }, didWarnAboutMessageChannel = false, enqueueTaskImpl = null, actScopeDepth = 0, didWarnNoAwaitAct = false, isFlushing = false, queueSeveralMicrotasks = "function" === typeof queueMicrotask ? function(callback) {
+        queueMicrotask(function() {
+          return queueMicrotask(callback);
+        });
+      } : enqueueTask;
+      deprecatedAPIs = Object.freeze({
+        __proto__: null,
+        c: function(size) {
+          return resolveDispatcher().useMemoCache(size);
+        }
+      });
+      var fnName = {
+        map: mapChildren,
+        forEach: function(children, forEachFunc, forEachContext) {
+          mapChildren(
+            children,
+            function() {
+              forEachFunc.apply(this, arguments);
+            },
+            forEachContext
+          );
+        },
+        count: function(children) {
+          var n = 0;
+          mapChildren(children, function() {
+            n++;
+          });
+          return n;
+        },
+        toArray: function(children) {
+          return mapChildren(children, function(child) {
+            return child;
+          }) || [];
+        },
+        only: function(children) {
+          if (!isValidElement(children))
+            throw Error(
+              "React.Children.only expected to receive a single React element child."
+            );
+          return children;
+        }
+      };
+      exports.Activity = REACT_ACTIVITY_TYPE;
+      exports.Children = fnName;
+      exports.Component = Component;
+      exports.Fragment = REACT_FRAGMENT_TYPE;
+      exports.Profiler = REACT_PROFILER_TYPE;
+      exports.PureComponent = PureComponent;
+      exports.StrictMode = REACT_STRICT_MODE_TYPE;
+      exports.Suspense = REACT_SUSPENSE_TYPE;
+      exports.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = ReactSharedInternals;
+      exports.__COMPILER_RUNTIME = deprecatedAPIs;
+      exports.act = function(callback) {
+        var prevActQueue = ReactSharedInternals.actQueue, prevActScopeDepth = actScopeDepth;
+        actScopeDepth++;
+        var queue = ReactSharedInternals.actQueue = null !== prevActQueue ? prevActQueue : [], didAwaitActCall = false;
+        try {
+          var result = callback();
+        } catch (error) {
+          ReactSharedInternals.thrownErrors.push(error);
+        }
+        if (0 < ReactSharedInternals.thrownErrors.length)
+          throw popActScope(prevActQueue, prevActScopeDepth), callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
+        if (null !== result && "object" === typeof result && "function" === typeof result.then) {
+          var thenable = result;
+          queueSeveralMicrotasks(function() {
+            didAwaitActCall || didWarnNoAwaitAct || (didWarnNoAwaitAct = true, console.error(
+              "You called act(async () => ...) without await. This could lead to unexpected testing behaviour, interleaving multiple act calls and mixing their scopes. You should - await act(async () => ...);"
+            ));
+          });
+          return {
+            then: function(resolve, reject) {
+              didAwaitActCall = true;
+              thenable.then(
+                function(returnValue) {
+                  popActScope(prevActQueue, prevActScopeDepth);
+                  if (0 === prevActScopeDepth) {
+                    try {
+                      flushActQueue(queue), enqueueTask(function() {
+                        return recursivelyFlushAsyncActWork(
+                          returnValue,
+                          resolve,
+                          reject
+                        );
+                      });
+                    } catch (error$0) {
+                      ReactSharedInternals.thrownErrors.push(error$0);
+                    }
+                    if (0 < ReactSharedInternals.thrownErrors.length) {
+                      var _thrownError = aggregateErrors(
+                        ReactSharedInternals.thrownErrors
+                      );
+                      ReactSharedInternals.thrownErrors.length = 0;
+                      reject(_thrownError);
+                    }
+                  } else resolve(returnValue);
+                },
+                function(error) {
+                  popActScope(prevActQueue, prevActScopeDepth);
+                  0 < ReactSharedInternals.thrownErrors.length ? (error = aggregateErrors(
+                    ReactSharedInternals.thrownErrors
+                  ), ReactSharedInternals.thrownErrors.length = 0, reject(error)) : reject(error);
+                }
+              );
+            }
+          };
+        }
+        var returnValue$jscomp$0 = result;
+        popActScope(prevActQueue, prevActScopeDepth);
+        0 === prevActScopeDepth && (flushActQueue(queue), 0 !== queue.length && queueSeveralMicrotasks(function() {
+          didAwaitActCall || didWarnNoAwaitAct || (didWarnNoAwaitAct = true, console.error(
+            "A component suspended inside an `act` scope, but the `act` call was not awaited. When testing React components that depend on asynchronous data, you must await the result:\n\nawait act(() => ...)"
+          ));
+        }), ReactSharedInternals.actQueue = null);
+        if (0 < ReactSharedInternals.thrownErrors.length)
+          throw callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
+        return {
+          then: function(resolve, reject) {
+            didAwaitActCall = true;
+            0 === prevActScopeDepth ? (ReactSharedInternals.actQueue = queue, enqueueTask(function() {
+              return recursivelyFlushAsyncActWork(
+                returnValue$jscomp$0,
+                resolve,
+                reject
+              );
+            })) : resolve(returnValue$jscomp$0);
+          }
+        };
+      };
+      exports.cache = function(fn) {
+        return function() {
+          return fn.apply(null, arguments);
+        };
+      };
+      exports.cacheSignal = function() {
+        return null;
+      };
+      exports.captureOwnerStack = function() {
+        var getCurrentStack = ReactSharedInternals.getCurrentStack;
+        return null === getCurrentStack ? null : getCurrentStack();
+      };
+      exports.cloneElement = function(element, config, children) {
+        if (null === element || void 0 === element)
+          throw Error(
+            "The argument must be a React element, but you passed " + element + "."
+          );
+        var props = assign({}, element.props), key = element.key, owner = element._owner;
+        if (null != config) {
+          var JSCompiler_inline_result;
+          a: {
+            if (hasOwnProperty.call(config, "ref") && (JSCompiler_inline_result = Object.getOwnPropertyDescriptor(
+              config,
+              "ref"
+            ).get) && JSCompiler_inline_result.isReactWarning) {
+              JSCompiler_inline_result = false;
+              break a;
+            }
+            JSCompiler_inline_result = void 0 !== config.ref;
+          }
+          JSCompiler_inline_result && (owner = getOwner());
+          hasValidKey(config) && (checkKeyStringCoercion(config.key), key = "" + config.key);
+          for (propName in config)
+            !hasOwnProperty.call(config, propName) || "key" === propName || "__self" === propName || "__source" === propName || "ref" === propName && void 0 === config.ref || (props[propName] = config[propName]);
+        }
+        var propName = arguments.length - 2;
+        if (1 === propName) props.children = children;
+        else if (1 < propName) {
+          JSCompiler_inline_result = Array(propName);
+          for (var i = 0; i < propName; i++)
+            JSCompiler_inline_result[i] = arguments[i + 2];
+          props.children = JSCompiler_inline_result;
+        }
+        props = ReactElement(
+          element.type,
+          key,
+          props,
+          owner,
+          element._debugStack,
+          element._debugTask
+        );
+        for (key = 2; key < arguments.length; key++)
+          validateChildKeys(arguments[key]);
+        return props;
+      };
+      exports.createContext = function(defaultValue) {
+        defaultValue = {
+          $$typeof: REACT_CONTEXT_TYPE,
+          _currentValue: defaultValue,
+          _currentValue2: defaultValue,
+          _threadCount: 0,
+          Provider: null,
+          Consumer: null
+        };
+        defaultValue.Provider = defaultValue;
+        defaultValue.Consumer = {
+          $$typeof: REACT_CONSUMER_TYPE,
+          _context: defaultValue
+        };
+        defaultValue._currentRenderer = null;
+        defaultValue._currentRenderer2 = null;
+        return defaultValue;
+      };
+      exports.createElement = function(type, config, children) {
+        for (var i = 2; i < arguments.length; i++)
+          validateChildKeys(arguments[i]);
+        i = {};
+        var key = null;
+        if (null != config)
+          for (propName in didWarnAboutOldJSXRuntime || !("__self" in config) || "key" in config || (didWarnAboutOldJSXRuntime = true, console.warn(
+            "Your app (or one of its dependencies) is using an outdated JSX transform. Update to the modern JSX transform for faster performance: https://react.dev/link/new-jsx-transform"
+          )), hasValidKey(config) && (checkKeyStringCoercion(config.key), key = "" + config.key), config)
+            hasOwnProperty.call(config, propName) && "key" !== propName && "__self" !== propName && "__source" !== propName && (i[propName] = config[propName]);
+        var childrenLength = arguments.length - 2;
+        if (1 === childrenLength) i.children = children;
+        else if (1 < childrenLength) {
+          for (var childArray = Array(childrenLength), _i = 0; _i < childrenLength; _i++)
+            childArray[_i] = arguments[_i + 2];
+          Object.freeze && Object.freeze(childArray);
+          i.children = childArray;
+        }
+        if (type && type.defaultProps)
+          for (propName in childrenLength = type.defaultProps, childrenLength)
+            void 0 === i[propName] && (i[propName] = childrenLength[propName]);
+        key && defineKeyPropWarningGetter(
+          i,
+          "function" === typeof type ? type.displayName || type.name || "Unknown" : type
+        );
+        var propName = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++;
+        return ReactElement(
+          type,
+          key,
+          i,
+          getOwner(),
+          propName ? Error("react-stack-top-frame") : unknownOwnerDebugStack,
+          propName ? createTask(getTaskName(type)) : unknownOwnerDebugTask
+        );
+      };
+      exports.createRef = function() {
+        var refObject = { current: null };
+        Object.seal(refObject);
+        return refObject;
+      };
+      exports.forwardRef = function(render) {
+        null != render && render.$$typeof === REACT_MEMO_TYPE ? console.error(
+          "forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...))."
+        ) : "function" !== typeof render ? console.error(
+          "forwardRef requires a render function but was given %s.",
+          null === render ? "null" : typeof render
+        ) : 0 !== render.length && 2 !== render.length && console.error(
+          "forwardRef render functions accept exactly two parameters: props and ref. %s",
+          1 === render.length ? "Did you forget to use the ref parameter?" : "Any additional parameter will be undefined."
+        );
+        null != render && null != render.defaultProps && console.error(
+          "forwardRef render functions do not support defaultProps. Did you accidentally pass a React component?"
+        );
+        var elementType = { $$typeof: REACT_FORWARD_REF_TYPE, render }, ownName;
+        Object.defineProperty(elementType, "displayName", {
+          enumerable: false,
+          configurable: true,
+          get: function() {
+            return ownName;
+          },
+          set: function(name) {
+            ownName = name;
+            render.name || render.displayName || (Object.defineProperty(render, "name", { value: name }), render.displayName = name);
+          }
+        });
+        return elementType;
+      };
+      exports.isValidElement = isValidElement;
+      exports.lazy = function(ctor) {
+        ctor = { _status: -1, _result: ctor };
+        var lazyType = {
+          $$typeof: REACT_LAZY_TYPE,
+          _payload: ctor,
+          _init: lazyInitializer
+        }, ioInfo = {
+          name: "lazy",
+          start: -1,
+          end: -1,
+          value: null,
+          owner: null,
+          debugStack: Error("react-stack-top-frame"),
+          debugTask: console.createTask ? console.createTask("lazy()") : null
+        };
+        ctor._ioInfo = ioInfo;
+        lazyType._debugInfo = [{ awaited: ioInfo }];
+        return lazyType;
+      };
+      exports.memo = function(type, compare) {
+        null == type && console.error(
+          "memo: The first argument must be a component. Instead received: %s",
+          null === type ? "null" : typeof type
+        );
+        compare = {
+          $$typeof: REACT_MEMO_TYPE,
+          type,
+          compare: void 0 === compare ? null : compare
+        };
+        var ownName;
+        Object.defineProperty(compare, "displayName", {
+          enumerable: false,
+          configurable: true,
+          get: function() {
+            return ownName;
+          },
+          set: function(name) {
+            ownName = name;
+            type.name || type.displayName || (Object.defineProperty(type, "name", { value: name }), type.displayName = name);
+          }
+        });
+        return compare;
+      };
+      exports.startTransition = function(scope) {
+        var prevTransition = ReactSharedInternals.T, currentTransition = {};
+        currentTransition._updatedFibers = /* @__PURE__ */ new Set();
+        ReactSharedInternals.T = currentTransition;
+        try {
+          var returnValue = scope(), onStartTransitionFinish = ReactSharedInternals.S;
+          null !== onStartTransitionFinish && onStartTransitionFinish(currentTransition, returnValue);
+          "object" === typeof returnValue && null !== returnValue && "function" === typeof returnValue.then && (ReactSharedInternals.asyncTransitions++, returnValue.then(releaseAsyncTransition, releaseAsyncTransition), returnValue.then(noop3, reportGlobalError));
+        } catch (error) {
+          reportGlobalError(error);
+        } finally {
+          null === prevTransition && currentTransition._updatedFibers && (scope = currentTransition._updatedFibers.size, currentTransition._updatedFibers.clear(), 10 < scope && console.warn(
+            "Detected a large number of updates inside startTransition. If this is due to a subscription please re-write it to use React provided hooks. Otherwise concurrent mode guarantees are off the table."
+          )), null !== prevTransition && null !== currentTransition.types && (null !== prevTransition.types && prevTransition.types !== currentTransition.types && console.error(
+            "We expected inner Transitions to have transferred the outer types set and that you cannot add to the outer Transition while inside the inner.This is a bug in React."
+          ), prevTransition.types = currentTransition.types), ReactSharedInternals.T = prevTransition;
+        }
+      };
+      exports.unstable_useCacheRefresh = function() {
+        return resolveDispatcher().useCacheRefresh();
+      };
+      exports.use = function(usable) {
+        return resolveDispatcher().use(usable);
+      };
+      exports.useActionState = function(action, initialState, permalink) {
+        return resolveDispatcher().useActionState(
+          action,
+          initialState,
+          permalink
+        );
+      };
+      exports.useCallback = function(callback, deps) {
+        return resolveDispatcher().useCallback(callback, deps);
+      };
+      exports.useContext = function(Context) {
+        var dispatcher = resolveDispatcher();
+        Context.$$typeof === REACT_CONSUMER_TYPE && console.error(
+          "Calling useContext(Context.Consumer) is not supported and will cause bugs. Did you mean to call useContext(Context) instead?"
+        );
+        return dispatcher.useContext(Context);
+      };
+      exports.useDebugValue = function(value, formatterFn) {
+        return resolveDispatcher().useDebugValue(value, formatterFn);
+      };
+      exports.useDeferredValue = function(value, initialValue) {
+        return resolveDispatcher().useDeferredValue(value, initialValue);
+      };
+      exports.useEffect = function(create, deps) {
+        null == create && console.warn(
+          "React Hook useEffect requires an effect callback. Did you forget to pass a callback to the hook?"
+        );
+        return resolveDispatcher().useEffect(create, deps);
+      };
+      exports.useEffectEvent = function(callback) {
+        return resolveDispatcher().useEffectEvent(callback);
+      };
+      exports.useId = function() {
+        return resolveDispatcher().useId();
+      };
+      exports.useImperativeHandle = function(ref, create, deps) {
+        return resolveDispatcher().useImperativeHandle(ref, create, deps);
+      };
+      exports.useInsertionEffect = function(create, deps) {
+        null == create && console.warn(
+          "React Hook useInsertionEffect requires an effect callback. Did you forget to pass a callback to the hook?"
+        );
+        return resolveDispatcher().useInsertionEffect(create, deps);
+      };
+      exports.useLayoutEffect = function(create, deps) {
+        null == create && console.warn(
+          "React Hook useLayoutEffect requires an effect callback. Did you forget to pass a callback to the hook?"
+        );
+        return resolveDispatcher().useLayoutEffect(create, deps);
+      };
+      exports.useMemo = function(create, deps) {
+        return resolveDispatcher().useMemo(create, deps);
+      };
+      exports.useOptimistic = function(passthrough, reducer) {
+        return resolveDispatcher().useOptimistic(passthrough, reducer);
+      };
+      exports.useReducer = function(reducer, initialArg, init) {
+        return resolveDispatcher().useReducer(reducer, initialArg, init);
+      };
+      exports.useRef = function(initialValue) {
+        return resolveDispatcher().useRef(initialValue);
+      };
+      exports.useState = function(initialState) {
+        return resolveDispatcher().useState(initialState);
+      };
+      exports.useSyncExternalStore = function(subscribe, getSnapshot, getServerSnapshot) {
+        return resolveDispatcher().useSyncExternalStore(
+          subscribe,
+          getSnapshot,
+          getServerSnapshot
+        );
+      };
+      exports.useTransition = function() {
+        return resolveDispatcher().useTransition();
+      };
+      exports.version = "19.2.4";
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+    })();
+  }
+});
+
+// node_modules/react/index.js
+var require_react = __commonJS({
+  "node_modules/react/index.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_react_development();
+    }
+  }
+});
+
+// node_modules/react-dom/cjs/react-dom.development.js
+var require_react_dom_development = __commonJS({
+  "node_modules/react-dom/cjs/react-dom.development.js"(exports) {
+    "use strict";
+    (function() {
+      function noop3() {
+      }
+      function testStringCoercion(value) {
+        return "" + value;
+      }
+      function createPortal$1(children, containerInfo, implementation) {
+        var key = 3 < arguments.length && void 0 !== arguments[3] ? arguments[3] : null;
+        try {
+          testStringCoercion(key);
+          var JSCompiler_inline_result = false;
+        } catch (e) {
+          JSCompiler_inline_result = true;
+        }
+        JSCompiler_inline_result && (console.error(
+          "The provided key is an unsupported type %s. This value must be coerced to a string before using it here.",
+          "function" === typeof Symbol && Symbol.toStringTag && key[Symbol.toStringTag] || key.constructor.name || "Object"
+        ), testStringCoercion(key));
+        return {
+          $$typeof: REACT_PORTAL_TYPE,
+          key: null == key ? null : "" + key,
+          children,
+          containerInfo,
+          implementation
+        };
+      }
+      function getCrossOriginStringAs(as, input) {
+        if ("font" === as) return "";
+        if ("string" === typeof input)
+          return "use-credentials" === input ? input : "";
+      }
+      function getValueDescriptorExpectingObjectForWarning(thing) {
+        return null === thing ? "`null`" : void 0 === thing ? "`undefined`" : "" === thing ? "an empty string" : 'something with type "' + typeof thing + '"';
+      }
+      function getValueDescriptorExpectingEnumForWarning(thing) {
+        return null === thing ? "`null`" : void 0 === thing ? "`undefined`" : "" === thing ? "an empty string" : "string" === typeof thing ? JSON.stringify(thing) : "number" === typeof thing ? "`" + thing + "`" : 'something with type "' + typeof thing + '"';
+      }
+      function resolveDispatcher() {
+        var dispatcher = ReactSharedInternals.H;
+        null === dispatcher && console.error(
+          "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
+        );
+        return dispatcher;
+      }
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+      var React2 = require_react(), Internals = {
+        d: {
+          f: noop3,
+          r: function() {
+            throw Error(
+              "Invalid form element. requestFormReset must be passed a form that was rendered by React."
+            );
+          },
+          D: noop3,
+          C: noop3,
+          L: noop3,
+          m: noop3,
+          X: noop3,
+          S: noop3,
+          M: noop3
+        },
+        p: 0,
+        findDOMNode: null
+      }, REACT_PORTAL_TYPE = Symbol.for("react.portal"), ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      "function" === typeof Map && null != Map.prototype && "function" === typeof Map.prototype.forEach && "function" === typeof Set && null != Set.prototype && "function" === typeof Set.prototype.clear && "function" === typeof Set.prototype.forEach || console.error(
+        "React depends on Map and Set built-in types. Make sure that you load a polyfill in older browsers. https://reactjs.org/link/react-polyfills"
+      );
+      exports.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = Internals;
+      exports.createPortal = function(children, container) {
+        var key = 2 < arguments.length && void 0 !== arguments[2] ? arguments[2] : null;
+        if (!container || 1 !== container.nodeType && 9 !== container.nodeType && 11 !== container.nodeType)
+          throw Error("Target container is not a DOM element.");
+        return createPortal$1(children, container, null, key);
+      };
+      exports.flushSync = function(fn) {
+        var previousTransition = ReactSharedInternals.T, previousUpdatePriority = Internals.p;
+        try {
+          if (ReactSharedInternals.T = null, Internals.p = 2, fn)
+            return fn();
+        } finally {
+          ReactSharedInternals.T = previousTransition, Internals.p = previousUpdatePriority, Internals.d.f() && console.error(
+            "flushSync was called from inside a lifecycle method. React cannot flush when React is already rendering. Consider moving this call to a scheduler task or micro task."
+          );
+        }
+      };
+      exports.preconnect = function(href, options) {
+        "string" === typeof href && href ? null != options && "object" !== typeof options ? console.error(
+          "ReactDOM.preconnect(): Expected the `options` argument (second) to be an object but encountered %s instead. The only supported option at this time is `crossOrigin` which accepts a string.",
+          getValueDescriptorExpectingEnumForWarning(options)
+        ) : null != options && "string" !== typeof options.crossOrigin && console.error(
+          "ReactDOM.preconnect(): Expected the `crossOrigin` option (second argument) to be a string but encountered %s instead. Try removing this option or passing a string value instead.",
+          getValueDescriptorExpectingObjectForWarning(options.crossOrigin)
+        ) : console.error(
+          "ReactDOM.preconnect(): Expected the `href` argument (first) to be a non-empty string but encountered %s instead.",
+          getValueDescriptorExpectingObjectForWarning(href)
+        );
+        "string" === typeof href && (options ? (options = options.crossOrigin, options = "string" === typeof options ? "use-credentials" === options ? options : "" : void 0) : options = null, Internals.d.C(href, options));
+      };
+      exports.prefetchDNS = function(href) {
+        if ("string" !== typeof href || !href)
+          console.error(
+            "ReactDOM.prefetchDNS(): Expected the `href` argument (first) to be a non-empty string but encountered %s instead.",
+            getValueDescriptorExpectingObjectForWarning(href)
+          );
+        else if (1 < arguments.length) {
+          var options = arguments[1];
+          "object" === typeof options && options.hasOwnProperty("crossOrigin") ? console.error(
+            "ReactDOM.prefetchDNS(): Expected only one argument, `href`, but encountered %s as a second argument instead. This argument is reserved for future options and is currently disallowed. It looks like the you are attempting to set a crossOrigin property for this DNS lookup hint. Browsers do not perform DNS queries using CORS and setting this attribute on the resource hint has no effect. Try calling ReactDOM.prefetchDNS() with just a single string argument, `href`.",
+            getValueDescriptorExpectingEnumForWarning(options)
+          ) : console.error(
+            "ReactDOM.prefetchDNS(): Expected only one argument, `href`, but encountered %s as a second argument instead. This argument is reserved for future options and is currently disallowed. Try calling ReactDOM.prefetchDNS() with just a single string argument, `href`.",
+            getValueDescriptorExpectingEnumForWarning(options)
+          );
+        }
+        "string" === typeof href && Internals.d.D(href);
+      };
+      exports.preinit = function(href, options) {
+        "string" === typeof href && href ? null == options || "object" !== typeof options ? console.error(
+          "ReactDOM.preinit(): Expected the `options` argument (second) to be an object with an `as` property describing the type of resource to be preinitialized but encountered %s instead.",
+          getValueDescriptorExpectingEnumForWarning(options)
+        ) : "style" !== options.as && "script" !== options.as && console.error(
+          'ReactDOM.preinit(): Expected the `as` property in the `options` argument (second) to contain a valid value describing the type of resource to be preinitialized but encountered %s instead. Valid values for `as` are "style" and "script".',
+          getValueDescriptorExpectingEnumForWarning(options.as)
+        ) : console.error(
+          "ReactDOM.preinit(): Expected the `href` argument (first) to be a non-empty string but encountered %s instead.",
+          getValueDescriptorExpectingObjectForWarning(href)
+        );
+        if ("string" === typeof href && options && "string" === typeof options.as) {
+          var as = options.as, crossOrigin = getCrossOriginStringAs(as, options.crossOrigin), integrity = "string" === typeof options.integrity ? options.integrity : void 0, fetchPriority = "string" === typeof options.fetchPriority ? options.fetchPriority : void 0;
+          "style" === as ? Internals.d.S(
+            href,
+            "string" === typeof options.precedence ? options.precedence : void 0,
+            {
+              crossOrigin,
+              integrity,
+              fetchPriority
+            }
+          ) : "script" === as && Internals.d.X(href, {
+            crossOrigin,
+            integrity,
+            fetchPriority,
+            nonce: "string" === typeof options.nonce ? options.nonce : void 0
+          });
+        }
+      };
+      exports.preinitModule = function(href, options) {
+        var encountered = "";
+        "string" === typeof href && href || (encountered += " The `href` argument encountered was " + getValueDescriptorExpectingObjectForWarning(href) + ".");
+        void 0 !== options && "object" !== typeof options ? encountered += " The `options` argument encountered was " + getValueDescriptorExpectingObjectForWarning(options) + "." : options && "as" in options && "script" !== options.as && (encountered += " The `as` option encountered was " + getValueDescriptorExpectingEnumForWarning(options.as) + ".");
+        if (encountered)
+          console.error(
+            "ReactDOM.preinitModule(): Expected up to two arguments, a non-empty `href` string and, optionally, an `options` object with a valid `as` property.%s",
+            encountered
+          );
+        else
+          switch (encountered = options && "string" === typeof options.as ? options.as : "script", encountered) {
+            case "script":
+              break;
+            default:
+              encountered = getValueDescriptorExpectingEnumForWarning(encountered), console.error(
+                'ReactDOM.preinitModule(): Currently the only supported "as" type for this function is "script" but received "%s" instead. This warning was generated for `href` "%s". In the future other module types will be supported, aligning with the import-attributes proposal. Learn more here: (https://github.com/tc39/proposal-import-attributes)',
+                encountered,
+                href
+              );
+          }
+        if ("string" === typeof href)
+          if ("object" === typeof options && null !== options) {
+            if (null == options.as || "script" === options.as)
+              encountered = getCrossOriginStringAs(
+                options.as,
+                options.crossOrigin
+              ), Internals.d.M(href, {
+                crossOrigin: encountered,
+                integrity: "string" === typeof options.integrity ? options.integrity : void 0,
+                nonce: "string" === typeof options.nonce ? options.nonce : void 0
+              });
+          } else null == options && Internals.d.M(href);
+      };
+      exports.preload = function(href, options) {
+        var encountered = "";
+        "string" === typeof href && href || (encountered += " The `href` argument encountered was " + getValueDescriptorExpectingObjectForWarning(href) + ".");
+        null == options || "object" !== typeof options ? encountered += " The `options` argument encountered was " + getValueDescriptorExpectingObjectForWarning(options) + "." : "string" === typeof options.as && options.as || (encountered += " The `as` option encountered was " + getValueDescriptorExpectingObjectForWarning(options.as) + ".");
+        encountered && console.error(
+          'ReactDOM.preload(): Expected two arguments, a non-empty `href` string and an `options` object with an `as` property valid for a `<link rel="preload" as="..." />` tag.%s',
+          encountered
+        );
+        if ("string" === typeof href && "object" === typeof options && null !== options && "string" === typeof options.as) {
+          encountered = options.as;
+          var crossOrigin = getCrossOriginStringAs(
+            encountered,
+            options.crossOrigin
+          );
+          Internals.d.L(href, encountered, {
+            crossOrigin,
+            integrity: "string" === typeof options.integrity ? options.integrity : void 0,
+            nonce: "string" === typeof options.nonce ? options.nonce : void 0,
+            type: "string" === typeof options.type ? options.type : void 0,
+            fetchPriority: "string" === typeof options.fetchPriority ? options.fetchPriority : void 0,
+            referrerPolicy: "string" === typeof options.referrerPolicy ? options.referrerPolicy : void 0,
+            imageSrcSet: "string" === typeof options.imageSrcSet ? options.imageSrcSet : void 0,
+            imageSizes: "string" === typeof options.imageSizes ? options.imageSizes : void 0,
+            media: "string" === typeof options.media ? options.media : void 0
+          });
+        }
+      };
+      exports.preloadModule = function(href, options) {
+        var encountered = "";
+        "string" === typeof href && href || (encountered += " The `href` argument encountered was " + getValueDescriptorExpectingObjectForWarning(href) + ".");
+        void 0 !== options && "object" !== typeof options ? encountered += " The `options` argument encountered was " + getValueDescriptorExpectingObjectForWarning(options) + "." : options && "as" in options && "string" !== typeof options.as && (encountered += " The `as` option encountered was " + getValueDescriptorExpectingObjectForWarning(options.as) + ".");
+        encountered && console.error(
+          'ReactDOM.preloadModule(): Expected two arguments, a non-empty `href` string and, optionally, an `options` object with an `as` property valid for a `<link rel="modulepreload" as="..." />` tag.%s',
+          encountered
+        );
+        "string" === typeof href && (options ? (encountered = getCrossOriginStringAs(
+          options.as,
+          options.crossOrigin
+        ), Internals.d.m(href, {
+          as: "string" === typeof options.as && "script" !== options.as ? options.as : void 0,
+          crossOrigin: encountered,
+          integrity: "string" === typeof options.integrity ? options.integrity : void 0
+        })) : Internals.d.m(href));
+      };
+      exports.requestFormReset = function(form) {
+        Internals.d.r(form);
+      };
+      exports.unstable_batchedUpdates = function(fn, a) {
+        return fn(a);
+      };
+      exports.useFormState = function(action, initialState, permalink) {
+        return resolveDispatcher().useFormState(action, initialState, permalink);
+      };
+      exports.useFormStatus = function() {
+        return resolveDispatcher().useHostTransitionStatus();
+      };
+      exports.version = "19.2.4";
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+    })();
+  }
+});
+
+// node_modules/react-dom/index.js
+var require_react_dom = __commonJS({
+  "node_modules/react-dom/index.js"(exports, module) {
+    "use strict";
+    if (false) {
+      checkDCE();
+      module.exports = null;
+    } else {
+      module.exports = require_react_dom_development();
+    }
+  }
+});
 
 // node_modules/tslib/tslib.es6.mjs
 function __rest(s, e) {
@@ -14852,7 +16116,7 @@ var init_providerPricingSnapshot = __esm({
         _rawData: Array.isArray(pricingData) ? pricingData : []
       };
       for (const item of Array.isArray(pricingData) ? pricingData : []) {
-        const model = String(item?.model_name || item?.model || "").trim();
+        const model = String(item?.model || item?.model_name || "").trim();
         if (!model) continue;
         const perRequestPrice = toNumber2(item?.per_request_price ?? item?.perRequestPrice ?? item?.price_per_image ?? item?.pricePerImage);
         const modelPrice = toNumber2(item?.model_price ?? item?.modelPrice) ?? perRequestPrice;
@@ -14866,6 +16130,8 @@ var init_providerPricingSnapshot = __esm({
         const tokenGroup = typeof item?.token_group === "string" ? item.token_group.trim() : void 0;
         const billingType = typeof item?.billing_type === "string" ? item.billing_type.trim() : void 0;
         const endpointType = typeof item?.endpoint_type === "string" ? item.endpoint_type.trim() : void 0;
+        const endpointUrl = typeof item?.endpoint_url === "string" ? item.endpoint_url.trim() : typeof item?.endpointUrl === "string" ? item.endpointUrl.trim() : void 0;
+        const endpointPath = typeof item?.endpoint_path === "string" ? item.endpoint_path.trim() : typeof item?.endpointPath === "string" ? item.endpointPath.trim() : void 0;
         const currency = typeof item?.currency === "string" ? item.currency.trim() : void 0;
         const billingUnit = typeof item?.pay_unit === "string" ? item.pay_unit.trim() : typeof item?.billing_unit === "string" ? item.billing_unit.trim() : void 0;
         const displayPrice = typeof item?.display_price === "string" ? item.display_price.trim() : void 0;
@@ -14882,6 +16148,8 @@ var init_providerPricingSnapshot = __esm({
           tokenGroup,
           billingType,
           endpointType,
+          endpointUrl,
+          endpointPath,
           modelRatio,
           modelPrice,
           perRequestPrice,
@@ -14907,7 +16175,7 @@ var init_providerPricingSnapshot = __esm({
         if (completionRatio !== void 0) {
           snapshot.completionRatios[model] = completionRatio;
         }
-        if (provider || providerLabel || providerLogo || tags?.length || tokenGroup || billingType || endpointType) {
+        if (provider || providerLabel || providerLogo || tags?.length || tokenGroup || billingType || endpointType || endpointUrl || endpointPath) {
           snapshot.modelMeta[model] = {
             provider,
             providerLabel,
@@ -14915,7 +16183,9 @@ var init_providerPricingSnapshot = __esm({
             tags,
             tokenGroup,
             billingType,
-            endpointType
+            endpointType,
+            endpointUrl,
+            endpointPath
           };
         }
         if (sizeRatio) {
@@ -15002,25 +16272,38 @@ var init_providerPricingSnapshot = __esm({
 });
 
 // src/services/billing/newApiPricingService.ts
-function extractWuyinModelIdFromBaseUrl(baseUrl) {
-  const raw = String(baseUrl || "").trim();
+function extractWuyinAsyncEndpointDetails(value) {
+  const raw = String(value || "").trim();
   if (!raw) return null;
+  const directPathMatch = raw.match(WUYIN_ASYNC_ENDPOINT_RE);
+  if (directPathMatch && !/^detail$/i.test(directPathMatch[1])) {
+    const endpointPath = raw.replace(/\/+$/, "");
+    return {
+      endpointUrl: `${WUYIN_DEFAULT_ROOT_URL}${endpointPath}`,
+      endpointPath,
+      modelId: decodeURIComponent(directPathMatch[1])
+    };
+  }
   const candidates = /^https?:\/\//i.test(raw) ? [raw] : [`https://${raw}`];
   for (const candidate of candidates) {
     try {
       const parsed = new URL(candidate);
-      const pathname = parsed.pathname.replace(/\/+$/, "");
-      if (!/^\/api\//i.test(pathname)) continue;
-      const segments = pathname.split("/").filter(Boolean);
-      const modelId = segments[segments.length - 1];
-      if (modelId && !/^(doc|type)$/i.test(modelId)) {
-        return decodeURIComponent(modelId);
-      }
+      const endpointPath = parsed.pathname.replace(/\/+$/, "");
+      const match = endpointPath.match(WUYIN_ASYNC_ENDPOINT_RE);
+      if (!match || /^detail$/i.test(match[1])) continue;
+      return {
+        endpointUrl: `${parsed.protocol}//${parsed.host}${endpointPath}`,
+        endpointPath,
+        modelId: decodeURIComponent(match[1])
+      };
     } catch {
       continue;
     }
   }
   return null;
+}
+function extractWuyinModelIdFromBaseUrl(baseUrl) {
+  return extractWuyinAsyncEndpointDetails(baseUrl)?.modelId || null;
 }
 function selectWuyinCatalogModels(baseUrl, pricingList) {
   const endpointModelId = extractWuyinModelIdFromBaseUrl(baseUrl);
@@ -15096,7 +16379,9 @@ function toWuyinPricingRows(pricingList) {
     price_per_image: item.inputPrice,
     currency: item.currency,
     pay_unit: item.billingUnit,
-    display_price: item.displayPrice
+    display_price: item.displayPrice,
+    endpoint_url: item.endpointUrl,
+    endpoint_path: item.endpointPath
   }));
 }
 async function fetchRawPricingCatalog(baseUrl, apiKey, format = "auto") {
@@ -15166,7 +16451,8 @@ async function fetchWuyinPricingCatalog(baseUrl) {
   const apiList = Array.isArray(data?.data?.api_list) ? data.data.api_list : [];
   return apiList.map((item) => {
     const { numeric, unit, displayPrice } = extractWuyinDisplayPrice(item);
-    const modelId = String(item?.url || "").trim().split("/").filter(Boolean).pop() || String(item?.name || "").trim() || String(item?.id || "").trim();
+    const endpoint = extractWuyinAsyncEndpointDetails(String(item?.url || "").trim());
+    const modelId = endpoint?.modelId || String(item?.name || "").trim() || String(item?.id || "").trim();
     return {
       modelId,
       modelName: String(item?.name || modelId).trim(),
@@ -15177,11 +16463,13 @@ async function fetchWuyinPricingCatalog(baseUrl) {
       currency: "CNY",
       billingUnit: unit,
       displayPrice,
-      supportsGroups: false
+      supportsGroups: false,
+      endpointUrl: endpoint?.endpointUrl,
+      endpointPath: endpoint?.endpointPath
     };
   }).filter((item) => item.modelId);
 }
-var normalizePricingBaseUrl, createFallbackWuyinCatalogItem, WUYIN_PRICE_API_PATH, normalizeBaseUrl2, stripHtml, toFiniteNumber, extractWuyinDisplayPrice;
+var normalizePricingBaseUrl, WUYIN_DEFAULT_ROOT_URL, WUYIN_ASYNC_ENDPOINT_RE, createFallbackWuyinCatalogItem, WUYIN_PRICE_API_PATH, normalizeBaseUrl2, stripHtml, toFiniteNumber, extractWuyinDisplayPrice;
 var init_newApiPricingService = __esm({
   "src/services/billing/newApiPricingService.ts"() {
     "use strict";
@@ -15189,6 +16477,8 @@ var init_newApiPricingService = __esm({
     init_apiConfig();
     init_providerStrategy();
     normalizePricingBaseUrl = (baseUrl) => baseUrl.replace(/\/+$/, "");
+    WUYIN_DEFAULT_ROOT_URL = "https://api.wuyinkeji.com";
+    WUYIN_ASYNC_ENDPOINT_RE = /^\/api\/async\/([a-z0-9_.-]+)$/i;
     createFallbackWuyinCatalogItem = (modelId) => ({
       modelId,
       modelName: modelId,
@@ -15199,7 +16489,9 @@ var init_newApiPricingService = __esm({
       currency: "CNY",
       billingUnit: "\u6B21",
       displayPrice: "\u5F85\u624B\u52A8\u8BBE\u7F6E",
-      supportsGroups: false
+      supportsGroups: false,
+      endpointUrl: `${WUYIN_DEFAULT_ROOT_URL}/api/async/${modelId}`,
+      endpointPath: `/api/async/${modelId}`
     });
     WUYIN_PRICE_API_PATH = "/themes/DigitalBlue/api?action=api_list";
     normalizeBaseUrl2 = (baseUrl) => baseUrl.replace(/\/$/, "");
@@ -16838,6 +18130,7 @@ async function autoDetectAndConfigureModels(apiKey, baseUrl, preferredFormat) {
 var RATE_LIMIT_COOLDOWN_MS, PROVIDER_PRESETS, STORAGE_KEY4, PROVIDERS_STORAGE_KEY, DEFAULT_MAX_FAILURES, MODEL_MIGRATION_MAP, BLACKLIST_MODELS, DEPRECATED_MODELS, GOOGLE_IMAGE_WHITELIST, VIDEO_MODEL_WHITELIST, ADVANCED_IMAGE_MODEL_WHITELIST, AUDIO_MODEL_WHITELIST, isGoogleOfficialModelId, DEFAULT_GOOGLE_MODELS, GOOGLE_HEADER_NAME, GOOGLE_CHAT_MODELS, GOOGLE_MODEL_METADATA, MODEL_TYPE_MAP, getModelMetadata, inferModelType, KeyManager, keyManager, keyManager_default;
 var init_keyManager = __esm({
   "src/services/auth/keyManager.ts"() {
+    "use strict";
     init_supabase();
     init_apiConfig();
     init_errorClassification();
@@ -19137,32 +20430,3473 @@ var init_keyManager = __esm({
     keyManager_default = keyManager;
   }
 });
-init_keyManager();
-export {
-  ADVANCED_IMAGE_MODEL_WHITELIST,
-  AUDIO_MODEL_WHITELIST,
-  BLACKLIST_MODELS,
-  DEFAULT_GOOGLE_MODELS,
-  DEPRECATED_MODELS,
-  GOOGLE_IMAGE_WHITELIST,
-  KeyManager,
-  MODEL_MIGRATION_MAP,
-  PROVIDER_PRESETS,
-  VIDEO_MODEL_WHITELIST,
-  appendModelVariantLabel,
-  autoDetectAndConfigureModels,
-  categorizeModels,
-  keyManager_default as default,
-  detectApiType,
-  determineKeyType,
-  fetchGeminiCompatModels,
-  fetchGoogleModels,
-  fetchOpenAICompatModels,
-  getModelMetadata,
-  isDeprecatedModel,
-  keyManager,
-  normalizeModelId2 as normalizeModelId,
-  normalizeModelList,
-  parseModelString,
-  parseModelVariantMeta
+
+// node_modules/react/cjs/react-jsx-runtime.development.js
+var require_react_jsx_runtime_development = __commonJS({
+  "node_modules/react/cjs/react-jsx-runtime.development.js"(exports) {
+    "use strict";
+    (function() {
+      function getComponentNameFromType(type) {
+        if (null == type) return null;
+        if ("function" === typeof type)
+          return type.$$typeof === REACT_CLIENT_REFERENCE ? null : type.displayName || type.name || null;
+        if ("string" === typeof type) return type;
+        switch (type) {
+          case REACT_FRAGMENT_TYPE:
+            return "Fragment";
+          case REACT_PROFILER_TYPE:
+            return "Profiler";
+          case REACT_STRICT_MODE_TYPE:
+            return "StrictMode";
+          case REACT_SUSPENSE_TYPE:
+            return "Suspense";
+          case REACT_SUSPENSE_LIST_TYPE:
+            return "SuspenseList";
+          case REACT_ACTIVITY_TYPE:
+            return "Activity";
+        }
+        if ("object" === typeof type)
+          switch ("number" === typeof type.tag && console.error(
+            "Received an unexpected object in getComponentNameFromType(). This is likely a bug in React. Please file an issue."
+          ), type.$$typeof) {
+            case REACT_PORTAL_TYPE:
+              return "Portal";
+            case REACT_CONTEXT_TYPE:
+              return type.displayName || "Context";
+            case REACT_CONSUMER_TYPE:
+              return (type._context.displayName || "Context") + ".Consumer";
+            case REACT_FORWARD_REF_TYPE:
+              var innerType = type.render;
+              type = type.displayName;
+              type || (type = innerType.displayName || innerType.name || "", type = "" !== type ? "ForwardRef(" + type + ")" : "ForwardRef");
+              return type;
+            case REACT_MEMO_TYPE:
+              return innerType = type.displayName || null, null !== innerType ? innerType : getComponentNameFromType(type.type) || "Memo";
+            case REACT_LAZY_TYPE:
+              innerType = type._payload;
+              type = type._init;
+              try {
+                return getComponentNameFromType(type(innerType));
+              } catch (x) {
+              }
+          }
+        return null;
+      }
+      function testStringCoercion(value) {
+        return "" + value;
+      }
+      function checkKeyStringCoercion(value) {
+        try {
+          testStringCoercion(value);
+          var JSCompiler_inline_result = false;
+        } catch (e) {
+          JSCompiler_inline_result = true;
+        }
+        if (JSCompiler_inline_result) {
+          JSCompiler_inline_result = console;
+          var JSCompiler_temp_const = JSCompiler_inline_result.error;
+          var JSCompiler_inline_result$jscomp$0 = "function" === typeof Symbol && Symbol.toStringTag && value[Symbol.toStringTag] || value.constructor.name || "Object";
+          JSCompiler_temp_const.call(
+            JSCompiler_inline_result,
+            "The provided key is an unsupported type %s. This value must be coerced to a string before using it here.",
+            JSCompiler_inline_result$jscomp$0
+          );
+          return testStringCoercion(value);
+        }
+      }
+      function getTaskName(type) {
+        if (type === REACT_FRAGMENT_TYPE) return "<>";
+        if ("object" === typeof type && null !== type && type.$$typeof === REACT_LAZY_TYPE)
+          return "<...>";
+        try {
+          var name = getComponentNameFromType(type);
+          return name ? "<" + name + ">" : "<...>";
+        } catch (x) {
+          return "<...>";
+        }
+      }
+      function getOwner() {
+        var dispatcher = ReactSharedInternals.A;
+        return null === dispatcher ? null : dispatcher.getOwner();
+      }
+      function UnknownOwner() {
+        return Error("react-stack-top-frame");
+      }
+      function hasValidKey(config) {
+        if (hasOwnProperty.call(config, "key")) {
+          var getter = Object.getOwnPropertyDescriptor(config, "key").get;
+          if (getter && getter.isReactWarning) return false;
+        }
+        return void 0 !== config.key;
+      }
+      function defineKeyPropWarningGetter(props, displayName) {
+        function warnAboutAccessingKey() {
+          specialPropKeyWarningShown || (specialPropKeyWarningShown = true, console.error(
+            "%s: `key` is not a prop. Trying to access it will result in `undefined` being returned. If you need to access the same value within the child component, you should pass it as a different prop. (https://react.dev/link/special-props)",
+            displayName
+          ));
+        }
+        warnAboutAccessingKey.isReactWarning = true;
+        Object.defineProperty(props, "key", {
+          get: warnAboutAccessingKey,
+          configurable: true
+        });
+      }
+      function elementRefGetterWithDeprecationWarning() {
+        var componentName = getComponentNameFromType(this.type);
+        didWarnAboutElementRef[componentName] || (didWarnAboutElementRef[componentName] = true, console.error(
+          "Accessing element.ref was removed in React 19. ref is now a regular prop. It will be removed from the JSX Element type in a future release."
+        ));
+        componentName = this.props.ref;
+        return void 0 !== componentName ? componentName : null;
+      }
+      function ReactElement(type, key, props, owner, debugStack, debugTask) {
+        var refProp = props.ref;
+        type = {
+          $$typeof: REACT_ELEMENT_TYPE,
+          type,
+          key,
+          props,
+          _owner: owner
+        };
+        null !== (void 0 !== refProp ? refProp : null) ? Object.defineProperty(type, "ref", {
+          enumerable: false,
+          get: elementRefGetterWithDeprecationWarning
+        }) : Object.defineProperty(type, "ref", { enumerable: false, value: null });
+        type._store = {};
+        Object.defineProperty(type._store, "validated", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: 0
+        });
+        Object.defineProperty(type, "_debugInfo", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: null
+        });
+        Object.defineProperty(type, "_debugStack", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugStack
+        });
+        Object.defineProperty(type, "_debugTask", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugTask
+        });
+        Object.freeze && (Object.freeze(type.props), Object.freeze(type));
+        return type;
+      }
+      function jsxDEVImpl(type, config, maybeKey, isStaticChildren, debugStack, debugTask) {
+        var children = config.children;
+        if (void 0 !== children)
+          if (isStaticChildren)
+            if (isArrayImpl(children)) {
+              for (isStaticChildren = 0; isStaticChildren < children.length; isStaticChildren++)
+                validateChildKeys(children[isStaticChildren]);
+              Object.freeze && Object.freeze(children);
+            } else
+              console.error(
+                "React.jsx: Static children should always be an array. You are likely explicitly calling React.jsxs or React.jsxDEV. Use the Babel transform instead."
+              );
+          else validateChildKeys(children);
+        if (hasOwnProperty.call(config, "key")) {
+          children = getComponentNameFromType(type);
+          var keys = Object.keys(config).filter(function(k) {
+            return "key" !== k;
+          });
+          isStaticChildren = 0 < keys.length ? "{key: someKey, " + keys.join(": ..., ") + ": ...}" : "{key: someKey}";
+          didWarnAboutKeySpread[children + isStaticChildren] || (keys = 0 < keys.length ? "{" + keys.join(": ..., ") + ": ...}" : "{}", console.error(
+            'A props object containing a "key" prop is being spread into JSX:\n  let props = %s;\n  <%s {...props} />\nReact keys must be passed directly to JSX without using spread:\n  let props = %s;\n  <%s key={someKey} {...props} />',
+            isStaticChildren,
+            children,
+            keys,
+            children
+          ), didWarnAboutKeySpread[children + isStaticChildren] = true);
+        }
+        children = null;
+        void 0 !== maybeKey && (checkKeyStringCoercion(maybeKey), children = "" + maybeKey);
+        hasValidKey(config) && (checkKeyStringCoercion(config.key), children = "" + config.key);
+        if ("key" in config) {
+          maybeKey = {};
+          for (var propName in config)
+            "key" !== propName && (maybeKey[propName] = config[propName]);
+        } else maybeKey = config;
+        children && defineKeyPropWarningGetter(
+          maybeKey,
+          "function" === typeof type ? type.displayName || type.name || "Unknown" : type
+        );
+        return ReactElement(
+          type,
+          children,
+          maybeKey,
+          getOwner(),
+          debugStack,
+          debugTask
+        );
+      }
+      function validateChildKeys(node) {
+        isValidElement(node) ? node._store && (node._store.validated = 1) : "object" === typeof node && null !== node && node.$$typeof === REACT_LAZY_TYPE && ("fulfilled" === node._payload.status ? isValidElement(node._payload.value) && node._payload.value._store && (node._payload.value._store.validated = 1) : node._store && (node._store.validated = 1));
+      }
+      function isValidElement(object) {
+        return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
+      }
+      var React2 = require_react(), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
+        return null;
+      };
+      React2 = {
+        react_stack_bottom_frame: function(callStackForError) {
+          return callStackForError();
+        }
+      };
+      var specialPropKeyWarningShown;
+      var didWarnAboutElementRef = {};
+      var unknownOwnerDebugStack = React2.react_stack_bottom_frame.bind(
+        React2,
+        UnknownOwner
+      )();
+      var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
+      var didWarnAboutKeySpread = {};
+      exports.Fragment = REACT_FRAGMENT_TYPE;
+      exports.jsx = function(type, config, maybeKey) {
+        var trackActualOwner = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++;
+        return jsxDEVImpl(
+          type,
+          config,
+          maybeKey,
+          false,
+          trackActualOwner ? Error("react-stack-top-frame") : unknownOwnerDebugStack,
+          trackActualOwner ? createTask(getTaskName(type)) : unknownOwnerDebugTask
+        );
+      };
+      exports.jsxs = function(type, config, maybeKey) {
+        var trackActualOwner = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++;
+        return jsxDEVImpl(
+          type,
+          config,
+          maybeKey,
+          true,
+          trackActualOwner ? Error("react-stack-top-frame") : unknownOwnerDebugStack,
+          trackActualOwner ? createTask(getTaskName(type)) : unknownOwnerDebugTask
+        );
+      };
+    })();
+  }
+});
+
+// node_modules/react/jsx-runtime.js
+var require_jsx_runtime = __commonJS({
+  "node_modules/react/jsx-runtime.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_react_jsx_runtime_development();
+    }
+  }
+});
+
+// src/components/settings/ApiSettingsView.tsx
+var import_react3 = __toESM(require_react(), 1);
+var import_react_dom = __toESM(require_react_dom(), 1);
+
+// node_modules/lucide-react/dist/esm/createLucideIcon.js
+var import_react2 = __toESM(require_react());
+
+// node_modules/lucide-react/dist/esm/shared/src/utils.js
+var toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+var toCamelCase = (string) => string.replace(
+  /^([A-Z])|[\s-_]+(\w)/g,
+  (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
+);
+var toPascalCase = (string) => {
+  const camelCase = toCamelCase(string);
+  return camelCase.charAt(0).toUpperCase() + camelCase.slice(1);
 };
+var mergeClasses = (...classes) => classes.filter((className, index, array) => {
+  return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
+}).join(" ").trim();
+var hasA11yProp = (props) => {
+  for (const prop in props) {
+    if (prop.startsWith("aria-") || prop === "role" || prop === "title") {
+      return true;
+    }
+  }
+};
+
+// node_modules/lucide-react/dist/esm/Icon.js
+var import_react = __toESM(require_react());
+
+// node_modules/lucide-react/dist/esm/defaultAttributes.js
+var defaultAttributes = {
+  xmlns: "http://www.w3.org/2000/svg",
+  width: 24,
+  height: 24,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round"
+};
+
+// node_modules/lucide-react/dist/esm/Icon.js
+var Icon = (0, import_react.forwardRef)(
+  ({
+    color = "currentColor",
+    size = 24,
+    strokeWidth = 2,
+    absoluteStrokeWidth,
+    className = "",
+    children,
+    iconNode,
+    ...rest
+  }, ref) => (0, import_react.createElement)(
+    "svg",
+    {
+      ref,
+      ...defaultAttributes,
+      width: size,
+      height: size,
+      stroke: color,
+      strokeWidth: absoluteStrokeWidth ? Number(strokeWidth) * 24 / Number(size) : strokeWidth,
+      className: mergeClasses("lucide", className),
+      ...!children && !hasA11yProp(rest) && { "aria-hidden": "true" },
+      ...rest
+    },
+    [
+      ...iconNode.map(([tag, attrs]) => (0, import_react.createElement)(tag, attrs)),
+      ...Array.isArray(children) ? children : [children]
+    ]
+  )
+);
+
+// node_modules/lucide-react/dist/esm/createLucideIcon.js
+var createLucideIcon = (iconName, iconNode) => {
+  const Component = (0, import_react2.forwardRef)(
+    ({ className, ...props }, ref) => (0, import_react2.createElement)(Icon, {
+      ref,
+      iconNode,
+      className: mergeClasses(
+        `lucide-${toKebabCase(toPascalCase(iconName))}`,
+        `lucide-${iconName}`,
+        className
+      ),
+      ...props
+    })
+  );
+  Component.displayName = toPascalCase(iconName);
+  return Component;
+};
+
+// node_modules/lucide-react/dist/esm/icons/chevron-down.js
+var __iconNode = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
+var ChevronDown = createLucideIcon("chevron-down", __iconNode);
+
+// node_modules/lucide-react/dist/esm/icons/chevron-up.js
+var __iconNode2 = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
+var ChevronUp = createLucideIcon("chevron-up", __iconNode2);
+
+// node_modules/lucide-react/dist/esm/icons/circle-check.js
+var __iconNode3 = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
+];
+var CircleCheck = createLucideIcon("circle-check", __iconNode3);
+
+// node_modules/lucide-react/dist/esm/icons/circle-x.js
+var __iconNode4 = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["path", { d: "m15 9-6 6", key: "1uzhvr" }],
+  ["path", { d: "m9 9 6 6", key: "z0biqf" }]
+];
+var CircleX = createLucideIcon("circle-x", __iconNode4);
+
+// node_modules/lucide-react/dist/esm/icons/pause.js
+var __iconNode5 = [
+  ["rect", { x: "14", y: "3", width: "5", height: "18", rx: "1", key: "kaeet6" }],
+  ["rect", { x: "5", y: "3", width: "5", height: "18", rx: "1", key: "1wsw3u" }]
+];
+var Pause = createLucideIcon("pause", __iconNode5);
+
+// node_modules/lucide-react/dist/esm/icons/pen-line.js
+var __iconNode6 = [
+  ["path", { d: "M13 21h8", key: "1jsn5i" }],
+  [
+    "path",
+    {
+      d: "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z",
+      key: "1a8usu"
+    }
+  ]
+];
+var PenLine = createLucideIcon("pen-line", __iconNode6);
+
+// node_modules/lucide-react/dist/esm/icons/play.js
+var __iconNode7 = [
+  [
+    "path",
+    {
+      d: "M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z",
+      key: "10ikf1"
+    }
+  ]
+];
+var Play = createLucideIcon("play", __iconNode7);
+
+// node_modules/lucide-react/dist/esm/icons/plus.js
+var __iconNode8 = [
+  ["path", { d: "M5 12h14", key: "1ays0h" }],
+  ["path", { d: "M12 5v14", key: "s699le" }]
+];
+var Plus = createLucideIcon("plus", __iconNode8);
+
+// node_modules/lucide-react/dist/esm/icons/refresh-cw.js
+var __iconNode9 = [
+  ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
+  ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
+  ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
+  ["path", { d: "M8 16H3v5", key: "1cv678" }]
+];
+var RefreshCw = createLucideIcon("refresh-cw", __iconNode9);
+
+// node_modules/lucide-react/dist/esm/icons/save.js
+var __iconNode10 = [
+  [
+    "path",
+    {
+      d: "M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+      key: "1c8476"
+    }
+  ],
+  ["path", { d: "M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7", key: "1ydtos" }],
+  ["path", { d: "M7 3v4a1 1 0 0 0 1 1h7", key: "t51u73" }]
+];
+var Save = createLucideIcon("save", __iconNode10);
+
+// node_modules/lucide-react/dist/esm/icons/search.js
+var __iconNode11 = [
+  ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
+  ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
+];
+var Search = createLucideIcon("search", __iconNode11);
+
+// node_modules/lucide-react/dist/esm/icons/shuffle.js
+var __iconNode12 = [
+  ["path", { d: "m18 14 4 4-4 4", key: "10pe0f" }],
+  ["path", { d: "m18 2 4 4-4 4", key: "pucp1d" }],
+  ["path", { d: "M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22", key: "1ailkh" }],
+  ["path", { d: "M2 6h1.972a4 4 0 0 1 3.6 2.2", key: "km57vx" }],
+  ["path", { d: "M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45", key: "os18l9" }]
+];
+var Shuffle = createLucideIcon("shuffle", __iconNode12);
+
+// node_modules/lucide-react/dist/esm/icons/trash-2.js
+var __iconNode13 = [
+  ["path", { d: "M10 11v6", key: "nco0om" }],
+  ["path", { d: "M14 11v6", key: "outv1u" }],
+  ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
+  ["path", { d: "M3 6h18", key: "d0wm0j" }],
+  ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
+];
+var Trash2 = createLucideIcon("trash-2", __iconNode13);
+
+// src/components/settings/ApiSettingsView.tsx
+init_keyManager();
+init_providerPricingSnapshot();
+init_apiConfig();
+init_providerStrategy();
+init_newApiPricingService();
+
+// src/services/billing/supplierService.ts
+init_apiConfig();
+
+// src/services/api/newApiManagementService.ts
+var DEFAULT_BASE_URL = "https://ai.newapi.pro";
+var NewApiManagementService = class {
+  baseUrl = DEFAULT_BASE_URL;
+  setBaseUrl(url) {
+    this.baseUrl = url.replace(/\/$/, "");
+  }
+  // ==================== Authentication ====================
+  // System Access Token for all management API calls
+  getHeaders(accessToken) {
+    return {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    };
+  }
+  // ==================== Dashboard (Token Verification) ====================
+  /**
+   * Verify System Access Token
+   * GET /api/user/dashboard
+   */
+  async verifyAccessToken(accessToken, baseUrl) {
+    const url = (baseUrl || this.baseUrl).replace(/\/$/, "");
+    try {
+      const response = await fetch(`${url}/api/user/dashboard`, {
+        method: "GET",
+        headers: this.getHeaders(accessToken)
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        return { success: false, error: `Token\u9A8C\u8BC1\u5931\u8D25: ${response.status}` };
+      }
+      const data = await response.json();
+      return { success: true, data: data.data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+  // ==================== Channel Management ====================
+  /**
+   * List all channels
+   * GET /api/channel/
+   */
+  async listChannels(accessToken) {
+    const response = await fetch(`${this.baseUrl}/api/channel/`, {
+      method: "GET",
+      headers: this.getHeaders(accessToken)
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to list channels: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.data || [];
+  }
+  /**
+   * Get channel by ID
+   * GET /api/channel/{id}
+   */
+  async getChannel(accessToken, channelId) {
+    const response = await fetch(`${this.baseUrl}/api/channel/${channelId}`, {
+      method: "GET",
+      headers: this.getHeaders(accessToken)
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.data;
+  }
+  /**
+   * Add new channel
+   * POST /api/channel/
+   */
+  async addChannel(accessToken, channel) {
+    const response = await fetch(`${this.baseUrl}/api/channel/`, {
+      method: "POST",
+      headers: this.getHeaders(accessToken),
+      body: JSON.stringify(channel)
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to add channel: ${error}`);
+    }
+    const data = await response.json();
+    return data.data;
+  }
+  /**
+   * Update channel
+   * PUT /api/channel/
+   */
+  async updateChannel(accessToken, channel) {
+    const response = await fetch(`${this.baseUrl}/api/channel/`, {
+      method: "PUT",
+      headers: this.getHeaders(accessToken),
+      body: JSON.stringify(channel)
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update channel: ${response.status}`);
+    }
+  }
+  /**
+   * Delete channel
+   * DELETE /api/channel/{id}
+   */
+  async deleteChannel(accessToken, channelId) {
+    const response = await fetch(`${this.baseUrl}/api/channel/${channelId}`, {
+      method: "DELETE",
+      headers: this.getHeaders(accessToken)
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete channel: ${response.status}`);
+    }
+  }
+  // ==================== Token Management ====================
+  /**
+   * List all tokens
+   * GET /api/token/
+   */
+  async listTokens(accessToken) {
+    const response = await fetch(`${this.baseUrl}/api/token/`, {
+      method: "GET",
+      headers: this.getHeaders(accessToken)
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to list tokens: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.data || [];
+  }
+  /**
+   * Add new token
+   * POST /api/token/
+   */
+  async addToken(accessToken, token) {
+    const response = await fetch(`${this.baseUrl}/api/token/`, {
+      method: "POST",
+      headers: this.getHeaders(accessToken),
+      body: JSON.stringify(token)
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to add token: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.data;
+  }
+  // ==================== Model & Pricing ====================
+  /**
+   * Get model pricing and settings
+   * GET /api/pricing
+   */
+  async getPricing(accessToken) {
+    const response = await fetch(`${this.baseUrl}/api/pricing`, {
+      method: "GET",
+      headers: this.getHeaders(accessToken)
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to get pricing: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.data || [];
+  }
+  /**
+   * Fetch models with detailed info (for admin)
+   * Combines channel info with pricing
+   */
+  async fetchAdminModels(accessToken, baseUrl) {
+    const url = (baseUrl || this.baseUrl).replace(/\/$/, "");
+    const channelsResponse = await fetch(`${url}/api/channel/`, {
+      method: "GET",
+      headers: this.getHeaders(accessToken)
+    });
+    if (!channelsResponse.ok) {
+      throw new Error(`Failed to fetch channels: ${channelsResponse.status}`);
+    }
+    const channelsData = await channelsResponse.json();
+    const channels = channelsData.data || [];
+    const pricingResponse = await fetch(`${url}/api/pricing`, {
+      method: "GET",
+      headers: this.getHeaders(accessToken)
+    });
+    let pricingData = [];
+    if (pricingResponse.ok) {
+      const p = await pricingResponse.json();
+      pricingData = p.data || [];
+    }
+    const modelMap = /* @__PURE__ */ new Map();
+    channels.forEach((channel) => {
+      const models = channel.models.split(",").map((m) => m.trim()).filter(Boolean);
+      models.forEach((modelId) => {
+        if (!modelMap.has(modelId)) {
+          const pricing = pricingData.find((p) => p.model === modelId);
+          modelMap.set(modelId, {
+            id: modelId,
+            displayName: this.formatModelName(modelId),
+            billingType: pricing?.type === "tokens" ? "token" : pricing?.type === "per_request" ? "per_request" : "token",
+            inputPrice: pricing?.input_price ? pricing.input_price * 1e6 : void 0,
+            outputPrice: pricing?.output_price ? pricing.output_price * 1e6 : void 0,
+            perRequestPrice: pricing?.per_request_price,
+            multiplier: pricing?.multiplier,
+            group: channel.name
+          });
+        }
+      });
+    });
+    return Array.from(modelMap.values());
+  }
+  // ==================== Helper Methods ====================
+  formatModelName(id) {
+    return id.split("/").pop().replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  }
+};
+var newApiManagementService = new NewApiManagementService();
+
+// src/services/billing/supplierService.ts
+init_newApiPricingService();
+init_providerStrategy();
+var SUPPLIERS_STORAGE_KEY = "kk_suppliers_v1";
+var SupplierService = class {
+  suppliers = [];
+  listeners = [];
+  constructor() {
+    this.loadFromStorage();
+  }
+  getAll() {
+    return [...this.suppliers];
+  }
+  getById(id) {
+    return this.suppliers.find((supplier) => supplier.id === id);
+  }
+  clearLegacyStorage() {
+    this.suppliers = [];
+    try {
+      localStorage.removeItem(SUPPLIERS_STORAGE_KEY);
+      console.log("[SupplierService] Cleared legacy storage");
+    } catch (error) {
+      console.error("[SupplierService] Failed to clear legacy storage:", error);
+    }
+    this.notifyListeners();
+  }
+  create(data) {
+    console.log("[SupplierService] Creating supplier:", data.name);
+    const supplier = {
+      ...data,
+      format: normalizeApiProtocolFormat(data.format, "auto"),
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2),
+      models: [],
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    this.suppliers.push(supplier);
+    this.saveToStorage();
+    this.notifyListeners();
+    console.log("[SupplierService] Supplier created:", supplier.id);
+    if (data.systemToken) {
+      this.fetchModelsAsync(supplier.id, data.baseUrl, data.systemToken);
+    }
+    return supplier;
+  }
+  update(id, data) {
+    console.log("[SupplierService] Updating supplier:", id);
+    const index = this.suppliers.findIndex((supplier2) => supplier2.id === id);
+    if (index === -1) return null;
+    const supplier = this.suppliers[index];
+    const shouldRefetch = data.baseUrl && data.baseUrl !== supplier.baseUrl || data.systemToken && data.systemToken !== supplier.systemToken;
+    this.suppliers[index] = {
+      ...supplier,
+      ...data,
+      format: normalizeApiProtocolFormat(data.format ?? supplier.format, "auto"),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    this.saveToStorage();
+    this.notifyListeners();
+    console.log("[SupplierService] Supplier updated:", id);
+    if (shouldRefetch && data.systemToken) {
+      this.fetchModelsAsync(id, data.baseUrl || supplier.baseUrl, data.systemToken);
+    }
+    return this.suppliers[index];
+  }
+  delete(id) {
+    console.log("[SupplierService] Deleting supplier:", id);
+    const index = this.suppliers.findIndex((supplier) => supplier.id === id);
+    if (index === -1) return false;
+    this.suppliers.splice(index, 1);
+    this.saveToStorage();
+    this.notifyListeners();
+    console.log("[SupplierService] Supplier deleted:", id);
+    return true;
+  }
+  async fetchModelsAsync(supplierId, baseUrl, systemToken) {
+    try {
+      console.log("[SupplierService] Fetching models for:", supplierId);
+      const models = await this.fetchModelsFromNewAPI(baseUrl, systemToken);
+      const index = this.suppliers.findIndex((supplier) => supplier.id === supplierId);
+      if (index !== -1) {
+        this.suppliers[index].models = models;
+        this.suppliers[index].updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+        this.saveToStorage();
+        this.notifyListeners();
+        console.log("[SupplierService] Models fetched:", models.length);
+      }
+    } catch (error) {
+      console.error("[SupplierService] Failed to fetch models:", error);
+    }
+  }
+  async fetchModelsFromNewAPI(baseUrl, systemToken) {
+    const runtime = resolveProviderRuntime({ baseUrl, format: "openai" });
+    if (runtime.strategyId === "wuyinkeji") {
+      const pricing = selectWuyinCatalogModels(baseUrl, await fetchWuyinPricingCatalog(baseUrl));
+      return pricing.map((model) => ({
+        id: model.modelId,
+        name: model.modelName,
+        billingType: "per_request",
+        perRequestPrice: model.inputPrice,
+        isActive: true,
+        currency: model.currency,
+        billingUnit: model.billingUnit,
+        displayPrice: model.displayPrice,
+        supportsGroups: false
+      }));
+    }
+    console.log("[SupplierService] Calling NewAPI for models:", baseUrl);
+    const models = await newApiManagementService.fetchAdminModels(systemToken, baseUrl);
+    return models.map((model) => ({
+      id: model.id,
+      name: model.displayName,
+      billingType: model.billingType,
+      inputPrice: model.inputPrice,
+      outputPrice: model.outputPrice,
+      perRequestPrice: model.perRequestPrice,
+      multiplier: model.multiplier,
+      isActive: true,
+      supportsGroups: true
+    }));
+  }
+  async refreshModels(supplierId) {
+    const supplier = this.getById(supplierId);
+    if (!supplier) throw new Error("\u6E1A\u6D98\u7C32\u935F\u55D5\u7B09\u701B\u6A3A\u6E6A");
+    if (!supplier.systemToken) throw new Error("\u93C8\uE048\u53A4\u7F03?System Access Token");
+    const models = await this.fetchModelsFromNewAPI(supplier.baseUrl, supplier.systemToken);
+    const index = this.suppliers.findIndex((item) => item.id === supplierId);
+    if (index !== -1) {
+      this.suppliers[index].models = models;
+      this.suppliers[index].updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+      this.saveToStorage();
+      this.notifyListeners();
+    }
+    return models;
+  }
+  getPricingForCostEstimation() {
+    return this.suppliers.map((supplier) => ({
+      supplierName: supplier.name,
+      supplierId: supplier.id,
+      models: supplier.models.map((model) => ({
+        id: model.id,
+        name: model.name,
+        inputPrice: model.inputPrice,
+        outputPrice: model.outputPrice,
+        perRequestPrice: model.perRequestPrice,
+        multiplier: model.multiplier,
+        billingType: model.billingType
+      }))
+    }));
+  }
+  loadFromStorage() {
+    try {
+      const data = localStorage.getItem(SUPPLIERS_STORAGE_KEY);
+      if (data) {
+        this.suppliers = JSON.parse(data).map((supplier) => ({
+          ...supplier,
+          format: normalizeApiProtocolFormat(supplier.format, "auto")
+        }));
+        console.log("[SupplierService] Loaded from storage:", this.suppliers.length);
+      }
+    } catch (error) {
+      console.error("[SupplierService] Failed to load from storage:", error);
+      this.suppliers = [];
+    }
+  }
+  saveToStorage() {
+    try {
+      localStorage.setItem(SUPPLIERS_STORAGE_KEY, JSON.stringify(this.suppliers));
+      console.log("[SupplierService] Saved to storage:", this.suppliers.length);
+    } catch (error) {
+      console.error("[SupplierService] Failed to save to storage:", error);
+    }
+  }
+  subscribe(callback) {
+    this.listeners.push(callback);
+    return () => {
+      this.listeners = this.listeners.filter((listener) => listener !== callback);
+    };
+  }
+  notifyListeners() {
+    this.listeners.forEach((callback) => callback());
+  }
+};
+var supplierService = new SupplierService();
+
+// src/components/settings/ApiSettingsView.tsx
+init_notificationService();
+init_modelPricing();
+var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
+var defaultOfficialForm = {
+  name: "",
+  key: "",
+  costMode: "unlimited",
+  costValue: 0
+};
+var defaultProviderForm = {
+  name: "",
+  baseUrl: "",
+  apiKey: "",
+  format: "auto",
+  group: "",
+  costMode: "unlimited",
+  costValue: 0,
+  providerColor: "#3B82F6",
+  isActive: true
+};
+var LEGACY_API_SETTINGS_MIGRATION_KEY = "kk_api_settings_legacy_migration_v1";
+var normalizeProviderSignaturePart = (value) => value.trim().replace(/\/+$/, "").toLowerCase();
+var buildProviderSignature = (baseUrl, apiKey) => `${normalizeProviderSignaturePart(baseUrl)}|${apiKey.trim()}`;
+var providerColorPalette = [
+  "#3B82F6",
+  "#6366F1",
+  "#8B5CF6",
+  "#A855F7",
+  "#EC4899",
+  "#F43F5E",
+  "#EF4444",
+  "#F97316",
+  "#F59E0B",
+  "#EAB308",
+  "#22C55E",
+  "#10B981",
+  "#14B8A6",
+  "#06B6D4",
+  "#0EA5E9"
+];
+var elevatedPanelStyle = {
+  borderColor: "var(--border-light)",
+  backgroundColor: "var(--bg-elevated)"
+};
+var overlayPanelStyle = {
+  borderColor: "var(--border-light)",
+  backgroundColor: "var(--bg-overlay)"
+};
+var formFieldStyle = {
+  borderColor: "var(--border-light)",
+  color: "var(--text-primary)",
+  backgroundColor: "var(--bg-elevated)"
+};
+var secondaryButtonStyle = {
+  borderColor: "var(--border-light)",
+  color: "var(--text-primary)",
+  backgroundColor: "var(--bg-elevated)"
+};
+var statusToneStyles = {
+  green: {
+    borderColor: "rgba(16, 185, 129, 0.28)",
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    color: "#10B981"
+  },
+  amber: {
+    borderColor: "rgba(245, 158, 11, 0.28)",
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    color: "#F59E0B"
+  },
+  red: {
+    borderColor: "rgba(239, 68, 68, 0.28)",
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    color: "#EF4444"
+  },
+  slate: {
+    borderColor: "rgba(148, 163, 184, 0.28)",
+    backgroundColor: "rgba(148, 163, 184, 0.12)",
+    color: "#94A3B8"
+  },
+  indigo: {
+    borderColor: "rgba(99, 102, 241, 0.28)",
+    backgroundColor: "rgba(99, 102, 241, 0.12)",
+    color: "#6366F1"
+  },
+  sky: {
+    borderColor: "rgba(14, 165, 233, 0.28)",
+    backgroundColor: "rgba(14, 165, 233, 0.12)",
+    color: "#0EA5E9"
+  }
+};
+var MANUAL_PRICING_SOURCE = "manual";
+var createManualPricingRowId = () => typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+var normalizeProviderColor = (value) => String(value || "").trim().toUpperCase();
+var pickRandomProviderColor = (usedColors = [], currentColor) => {
+  const normalizedUsed = usedColors.map((color) => normalizeProviderColor(color));
+  const normalizedCurrent = normalizeProviderColor(currentColor);
+  const preferred = providerColorPalette.filter((color) => !normalizedUsed.includes(normalizeProviderColor(color)));
+  const fallback = providerColorPalette.filter((color) => normalizeProviderColor(color) !== normalizedCurrent);
+  const candidates = preferred.length > 0 ? preferred : fallback.length > 0 ? fallback : providerColorPalette;
+  return candidates[Math.floor(Math.random() * candidates.length)] || providerColorPalette[0];
+};
+var collectProviderColors = (providers, excludeProviderId) => providers.filter((provider) => provider.id !== excludeProviderId).map((provider) => provider.providerColor || provider.badgeColor || "").filter(Boolean);
+var FormSelect = ({ value, onChange, options, disabled = false }) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "relative", children: [
+  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "select",
+    {
+      className: "h-10 w-full appearance-none rounded-xl border bg-transparent pl-3 pr-10 text-sm outline-none",
+      style: formFieldStyle,
+      value,
+      onChange: (event) => onChange(event.target.value),
+      disabled,
+      children: options.map((option) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: option.value, style: { backgroundColor: "var(--bg-elevated)", color: "var(--text-primary)" }, children: option.label }, option.value))
+    }
+  ),
+  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "pointer-events-none absolute right-3 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-[var(--text-tertiary)]", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronDown, { size: 16 }) })
+] });
+var StatusBadge = ({ label, tone, helper, compact = false }) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+  "span",
+  {
+    className: `inline-flex items-center gap-1 rounded-full border font-medium ${compact ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs"}`,
+    style: statusToneStyles[tone],
+    children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
+      helper ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: `${compact ? "hidden" : "inline"} opacity-75`, children: [
+        "\xB7 ",
+        helper
+      ] }) : null
+    ]
+  }
+);
+var toProviderForm = (provider) => {
+  if (!provider) return defaultProviderForm;
+  return {
+    id: provider.id,
+    name: provider.name,
+    baseUrl: provider.baseUrl,
+    apiKey: provider.apiKey,
+    format: provider.format || "auto",
+    group: provider.group || "",
+    costMode: provider.customCostMode || "unlimited",
+    costValue: Number(provider.customCostValue || 0),
+    providerColor: provider.providerColor || provider.badgeColor || "#3B82F6",
+    isActive: provider.isActive
+  };
+};
+var formatDate = (ts) => {
+  if (!ts) return "-";
+  return new Date(ts).toLocaleString("zh-CN", { hour12: false });
+};
+var formatBudgetInfo = (provider) => {
+  const mode = provider.customCostMode || "unlimited";
+  if (mode === "unlimited") {
+    return {
+      total: "\u221E",
+      used: provider.usage?.totalCost ? `\xA5${provider.usage.totalCost.toFixed(2)}` : "\xA50.00",
+      remaining: "\u221E",
+      unit: ""
+    };
+  }
+  if (mode === "amount") {
+    const total2 = provider.budgetLimit || provider.customCostValue || 0;
+    const used2 = provider.usage?.totalCost || 0;
+    const remaining2 = Math.max(0, total2 - used2);
+    return {
+      total: `\xA5${total2.toFixed(2)}`,
+      used: `\xA5${used2.toFixed(2)}`,
+      remaining: remaining2 > 0 ? `\xA5${remaining2.toFixed(2)}` : "\xA50.00",
+      unit: "\u5143"
+    };
+  }
+  const total = provider.tokenLimit || provider.customCostValue || 0;
+  const used = provider.usage?.totalTokens || 0;
+  const remaining = Math.max(0, total - used);
+  return {
+    total: total.toLocaleString(),
+    used: used.toLocaleString(),
+    remaining: remaining > 0 ? remaining.toLocaleString() : "0",
+    unit: "tokens"
+  };
+};
+var providerHasPricingSnapshot = (provider) => Boolean(provider?.pricingSnapshot?.rows?.length);
+var isWuyinProvider = (baseUrl) => resolveProviderRuntime({ baseUrl, format: "openai" }).strategyId === "wuyinkeji";
+var isWuyinCatalogProvider = (baseUrl) => isWuyinProvider(baseUrl) && !extractWuyinModelIdFromBaseUrl(baseUrl);
+var getProviderStatusMeta = (provider, options = {}) => {
+  const hasPricingSnapshot = options.hasPricingSnapshot ?? providerHasPricingSnapshot(provider);
+  if (!provider) {
+    return hasPricingSnapshot ? { label: "\u5F85\u4FDD\u5B58", tone: "indigo", helper: "\u4EF7\u683C\u5FEB\u7167\u5DF2\u51C6\u5907\u597D" } : { label: "\u8349\u7A3F\u4E2D", tone: "indigo", helper: "\u4FDD\u5B58\u540E\u8FDB\u5165\u4F9B\u5E94\u5546\u961F\u5217" };
+  }
+  if (!provider.isActive) {
+    return { label: "\u5DF2\u505C\u7528", tone: "slate", helper: "\u5F53\u524D\u4E0D\u4F1A\u53C2\u4E0E\u8C03\u5EA6" };
+  }
+  const isCatalogOnlyProvider = isWuyinCatalogProvider(provider.baseUrl);
+  if (provider.status === "error" || provider.lastError) {
+    return {
+      label: "\u5F02\u5E38",
+      tone: "red",
+      helper: isCatalogOnlyProvider ? provider.lastError ? "\u6700\u8FD1\u4E00\u6B21\u76EE\u5F55\u8BFB\u53D6\u5931\u8D25" : "\u8BF7\u91CD\u65B0\u68C0\u67E5\u76EE\u5F55\u5730\u5740\u6216 API \u5BC6\u94A5" : provider.lastError ? "\u6700\u8FD1\u4E00\u6B21\u6821\u9A8C\u5931\u8D25" : "\u9700\u8981\u91CD\u65B0\u68C0\u67E5\u8FDE\u63A5"
+    };
+  }
+  if (provider.status === "checking") {
+    return {
+      label: isCatalogOnlyProvider ? "\u8BFB\u53D6\u4E2D" : "\u6821\u9A8C\u4E2D",
+      tone: "sky",
+      helper: isCatalogOnlyProvider ? "\u6B63\u5728\u8BFB\u53D6\u4EA7\u54C1\u76EE\u5F55" : "\u6B63\u5728\u540C\u6B65\u6A21\u578B\u72B6\u6001"
+    };
+  }
+  if (!hasPricingSnapshot) {
+    return {
+      label: isCatalogOnlyProvider ? "\u5F85\u914D\u7F6E" : "\u5F85\u540C\u6B65",
+      tone: "amber",
+      helper: isCatalogOnlyProvider ? "\u76EE\u5F55\u578B\u4F9B\u5E94\u5546\u9700\u8981\u5148\u7EF4\u62A4\u6A21\u578B\u4EF7\u683C" : "\u5EFA\u8BAE\u62C9\u53D6\u4EF7\u683C\u5FEB\u7167"
+    };
+  }
+  return {
+    label: "\u5DF2\u5C31\u7EEA",
+    tone: "green",
+    helper: isCatalogOnlyProvider ? "\u76EE\u5F55\u4E0E\u624B\u52A8\u4EF7\u683C\u5DF2\u9F50\u5907" : "\u8FDE\u63A5\u3001\u6A21\u578B\u4E0E\u4EF7\u683C\u5DF2\u9F50\u5907"
+  };
+};
+var toFiniteNumber2 = (value) => {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : void 0;
+};
+var normalizeRatioMap2 = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.entries(value).reduce((acc, [key, raw]) => {
+    const num = toFiniteNumber2(raw);
+    if (num !== void 0) {
+      acc[String(key)] = num;
+    }
+    return acc;
+  }, {});
+};
+var normalizeNestedRatioMap2 = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.entries(value).reduce((acc, [key, raw]) => {
+    const ratioMap = normalizeRatioMap2(raw);
+    if (Object.keys(ratioMap).length > 0) {
+      acc[String(key)] = ratioMap;
+    }
+    return acc;
+  }, {});
+};
+var normalizeGroupPriceMap = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.entries(value).reduce((acc, [key, raw]) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return acc;
+    const item = raw;
+    const modelRatio = toFiniteNumber2(item.modelRatio ?? item.model_ratio);
+    const completionRatio = toFiniteNumber2(item.completionRatio ?? item.completion_ratio);
+    const modelPrice = toFiniteNumber2(item.modelPrice ?? item.model_price ?? item.price);
+    if (modelRatio !== void 0 || completionRatio !== void 0 || modelPrice !== void 0) {
+      acc[String(key)] = { modelRatio, completionRatio, modelPrice };
+    }
+    return acc;
+  }, {});
+};
+var formatMoneyDisplay = (value, suffix = "", currency = "USD") => {
+  const num = toFiniteNumber2(value);
+  if (num === void 0) return null;
+  if (currency === "CNY") {
+    return `\xA5${num.toFixed(num >= 1 ? 2 : 3)}${suffix}`;
+  }
+  return `$${num.toFixed(4)}${suffix}`;
+};
+var formatRatioDisplay = (value) => {
+  const num = toFiniteNumber2(value);
+  return num === void 0 ? "-" : `\xD7${num}`;
+};
+var resolveBillingLabel = (billingType, quotaType, perRequestPrice) => {
+  const normalized = String(billingType || "").trim().toLowerCase();
+  if (normalized.includes("request") || normalized.includes("per_request") || normalized.includes("image") || quotaType === 1 || quotaType === "per_request" || perRequestPrice !== void 0) {
+    return "\u6309\u6B21";
+  }
+  return "\u6309\u91CF";
+};
+var sortRatioEntries = (ratioMap) => Object.entries(ratioMap).sort(([left], [right]) => {
+  if (left === "1K") return -1;
+  if (right === "1K") return 1;
+  if (left === "4K") return 1;
+  if (right === "4K") return -1;
+  return left.localeCompare(right, "zh-CN");
+});
+var restorePricingDataFromSnapshot = (snapshot) => {
+  if (!snapshot) return void 0;
+  if (Array.isArray(snapshot._rawData) && snapshot._rawData.length > 0) {
+    return snapshot._rawData;
+  }
+  if (!Array.isArray(snapshot.rows) || snapshot.rows.length === 0) {
+    return void 0;
+  }
+  return snapshot.rows.map((item) => {
+    const model = String(item.model || "").trim();
+    if (!model) return null;
+    return {
+      model,
+      provider: item.provider,
+      provider_label: item.providerLabel,
+      provider_logo: item.providerLogo,
+      tags: item.tags,
+      token_group: item.tokenGroup,
+      billing_type: item.billingType,
+      endpoint_type: item.endpointType,
+      endpoint_url: item.endpointUrl,
+      endpoint_path: item.endpointPath,
+      model_name: model,
+      model_ratio: item.modelRatio,
+      model_price: item.modelPrice,
+      per_request_price: item.perRequestPrice,
+      currency: item.currency,
+      pay_unit: item.billingUnit,
+      display_price: item.displayPrice,
+      completion_ratio: item.completionRatio,
+      quota_type: item.quotaType,
+      size_ratio: item.sizeRatio,
+      group_model_ratio: item.groupModelRatio,
+      group_size_ratio: item.groupSizeRatio,
+      group_model_price: item.groupModelPrice
+    };
+  }).filter(Boolean);
+};
+var guessManualBillingUnit = (modelId) => {
+  const normalized = String(modelId || "").trim().toLowerCase();
+  if (!normalized) return "\u5F20";
+  if (normalized.includes("video") || normalized.includes("digital_humans")) return "\u79D2";
+  if (normalized.includes("audio") || normalized.includes("tts") || normalized.includes("voice")) return "\u6B21";
+  return "\u5F20";
+};
+var createManualPricingRow = (initial = {}) => {
+  const endpointUrl = String(initial.endpointUrl || "").trim();
+  const endpoint = endpointUrl ? extractWuyinAsyncEndpointDetails(endpointUrl) : null;
+  const model = String(initial.model || endpoint?.modelId || "").trim();
+  return {
+    id: initial.id || createManualPricingRowId(),
+    model,
+    modelName: String(initial.modelName || model).trim(),
+    endpointUrl: endpoint?.endpointUrl || endpointUrl || void 0,
+    price: String(initial.price ?? "").trim(),
+    unit: String(initial.unit || guessManualBillingUnit(model)).trim() || "\u5F20",
+    currency: initial.currency === "USD" ? "USD" : "CNY"
+  };
+};
+var getPricingModelId = (item) => String(item?.model || item?.model_name || "").trim();
+var formatPerRequestDisplay = (value, unit, currency = "USD") => {
+  const num = toFiniteNumber2(value);
+  if (num === void 0) return null;
+  if (currency === "CNY") {
+    return `${Number(num.toFixed(6))}\u5143/${unit}`;
+  }
+  return formatMoneyDisplay(num, `/${unit}`, currency) || `${num}/${unit}`;
+};
+var extractPricingModelIds = (pricingData = []) => Array.from(
+  new Set(
+    pricingData.map((item) => getPricingModelId(item)).filter(Boolean)
+  )
+);
+var buildManualPricingEntry = (row) => {
+  const endpoint = row.endpointUrl ? extractWuyinAsyncEndpointDetails(row.endpointUrl) : null;
+  const model = String(row.model || endpoint?.modelId || "").trim();
+  const price = toFiniteNumber2(row.price);
+  if (!model || price === void 0) return null;
+  const unit = String(row.unit || guessManualBillingUnit(model)).trim() || "\u6B21";
+  const currency = row.currency || "CNY";
+  const displayPrice = formatPerRequestDisplay(price, unit, currency) || `${price}/${unit}`;
+  return {
+    source: MANUAL_PRICING_SOURCE,
+    provider: "manual",
+    provider_label: "\u624B\u52A8\u7EF4\u62A4",
+    model,
+    model_name: String(row.modelName || model).trim() || model,
+    billing_type: "per_request",
+    quota_type: "per_request",
+    per_request_price: price,
+    model_price: price,
+    price_per_image: price,
+    currency,
+    pay_unit: unit,
+    display_price: displayPrice,
+    endpoint_url: endpoint?.endpointUrl || row.endpointUrl,
+    endpoint_path: endpoint?.endpointPath
+  };
+};
+var extractManualPricingRowsFromSnapshot = (snapshot) => {
+  const restored = restorePricingDataFromSnapshot(snapshot);
+  if (!Array.isArray(restored) || restored.length === 0) return [];
+  return restored.filter((item) => {
+    const source = String(item?.source || "").trim().toLowerCase();
+    const providerLabel = String(item?.provider_label || "").trim();
+    return source === MANUAL_PRICING_SOURCE || providerLabel === "\u624B\u52A8\u7EF4\u62A4";
+  }).map(
+    (item) => createManualPricingRow({
+      model: getPricingModelId(item),
+      modelName: String(item?.model_name || item?.model || "").trim(),
+      endpointUrl: String(item?.endpoint_url || item?.endpointUrl || "").trim(),
+      price: String(item?.per_request_price ?? item?.model_price ?? item?.price_per_image ?? ""),
+      unit: String(item?.pay_unit || item?.billing_unit || "").trim(),
+      currency: item?.currency === "USD" ? "USD" : "CNY"
+    })
+  ).filter((item) => !!item.model);
+};
+var mergePricingDataByModel = (pricingData = []) => {
+  const merged = /* @__PURE__ */ new Map();
+  pricingData.forEach((item) => {
+    const model = getPricingModelId(item);
+    if (!model) return;
+    merged.set(model.toLowerCase(), {
+      ...merged.get(model.toLowerCase()),
+      ...item,
+      model,
+      model_name: String(item?.model_name || model).trim() || model
+    });
+  });
+  return Array.from(merged.values());
+};
+var costModeText = {
+  unlimited: "\u65E0\u9650",
+  amount: "\u91D1\u989D",
+  tokens: "Tokens"
+};
+var getDefaultGroupRatio2 = (groupRatio) => {
+  if (!groupRatio) return 1;
+  return groupRatio.default ?? groupRatio.Default ?? groupRatio.DEFAULT ?? Object.values(groupRatio).find((value) => Number.isFinite(value)) ?? 1;
+};
+var isNoGroupProvider = (baseUrl) => isWuyinProvider(baseUrl);
+var extractAvailableGroups = (pricingData, groupRatio, baseUrl) => {
+  if (isNoGroupProvider(baseUrl)) return [];
+  const groups = /* @__PURE__ */ new Set();
+  Object.keys(groupRatio || {}).forEach((group) => {
+    if (group) groups.add(String(group).trim());
+  });
+  for (const item of Array.isArray(pricingData) ? pricingData : []) {
+    const enableGroups = Array.isArray(item?.enable_groups) ? item.enable_groups : [];
+    enableGroups.forEach((group) => {
+      const value = String(group || "").trim();
+      if (value) groups.add(value);
+    });
+    const nestedGroupMaps = [
+      item?.group_size_ratio,
+      item?.group_model_price,
+      item?.group_model_ratio
+    ];
+    nestedGroupMaps.forEach((groupMap) => {
+      if (!groupMap || typeof groupMap !== "object" || Array.isArray(groupMap)) return;
+      Object.keys(groupMap).forEach((group) => {
+        const value = String(group || "").trim();
+        if (value) groups.add(value);
+      });
+    });
+  }
+  return Array.from(groups).sort((left, right) => {
+    if (left === "default") return -1;
+    if (right === "default") return 1;
+    return left.localeCompare(right, "zh-CN");
+  });
+};
+var ApiSettingsView = ({ initialSupplier = null }) => {
+  const [tab, setTab] = (0, import_react3.useState)("thirdparty");
+  const [slots, setSlots] = (0, import_react3.useState)([]);
+  const [providers, setProviders] = (0, import_react3.useState)([]);
+  const [officialForm, setOfficialForm] = (0, import_react3.useState)(defaultOfficialForm);
+  const [providerForm, setProviderForm] = (0, import_react3.useState)(defaultProviderForm);
+  const [showOfficialCreateForm, setShowOfficialCreateForm] = (0, import_react3.useState)(false);
+  const [showProviderCreateForm, setShowProviderCreateForm] = (0, import_react3.useState)(false);
+  const [showAdvancedMode, setShowAdvancedMode] = (0, import_react3.useState)(false);
+  const [advancedResult, setAdvancedResult] = (0, import_react3.useState)(null);
+  const [manualPricingRows, setManualPricingRows] = (0, import_react3.useState)([]);
+  const [advancedLoading, setAdvancedLoading] = (0, import_react3.useState)(false);
+  const [providerSearch, setProviderSearch] = (0, import_react3.useState)("");
+  const [pricingSearch, setPricingSearch] = (0, import_react3.useState)("");
+  const providerEditorRef = (0, import_react3.useRef)(null);
+  const providerEditorBodyRef = (0, import_react3.useRef)(null);
+  const appliedInitialSupplierRef = (0, import_react3.useRef)(null);
+  const [detectingProviderId, setDetectingProviderId] = (0, import_react3.useState)(null);
+  const [syncingProviderId, setSyncingProviderId] = (0, import_react3.useState)(null);
+  const [savingProviderId, setSavingProviderId] = (0, import_react3.useState)(null);
+  const [highlightedProviderId, setHighlightedProviderId] = (0, import_react3.useState)(null);
+  const providerListRef = (0, import_react3.useRef)(null);
+  const dedupeProvidersIfNeeded = () => {
+    const seen = /* @__PURE__ */ new Set();
+    const duplicateIds = [];
+    keyManager_default.getProviders().forEach((provider) => {
+      if (!provider.baseUrl || !provider.apiKey) return;
+      const signature = buildProviderSignature(provider.baseUrl, provider.apiKey);
+      if (seen.has(signature)) {
+        duplicateIds.push(provider.id);
+        return;
+      }
+      seen.add(signature);
+    });
+    duplicateIds.forEach((id) => keyManager_default.removeProvider(id));
+    if (duplicateIds.length > 0) {
+      notify.success("\u5DF2\u6E05\u7406\u91CD\u590D\u914D\u7F6E", `\u5DF2\u79FB\u9664 ${duplicateIds.length} \u6761\u65E7\u7248\u91CD\u590D\u4F9B\u5E94\u5546\u3002`);
+    }
+  };
+  const migrateLegacyDataIfNeeded = () => {
+    const legacySuppliers = supplierService.getAll();
+    try {
+      if (localStorage.getItem(LEGACY_API_SETTINGS_MIGRATION_KEY) === "done") {
+        if (legacySuppliers.length > 0) {
+          supplierService.clearLegacyStorage();
+        }
+        return;
+      }
+    } catch (error) {
+      console.warn("[ApiSettingsView] Failed to read migration flag:", error);
+    }
+    const existingProviders = keyManager_default.getProviders();
+    const existingSignature = new Set(
+      existingProviders.map((item) => buildProviderSignature(item.baseUrl, item.apiKey))
+    );
+    let migratedCount = 0;
+    legacySuppliers.forEach((supplier) => {
+      if (!supplier.name || !supplier.baseUrl || !supplier.apiKey) return;
+      const signature = buildProviderSignature(supplier.baseUrl, supplier.apiKey);
+      if (existingSignature.has(signature)) return;
+      keyManager_default.addProvider({
+        name: supplier.name,
+        baseUrl: supplier.baseUrl,
+        apiKey: supplier.apiKey,
+        group: supplier.group || void 0,
+        models: (supplier.models || []).map((model) => model.id).filter(Boolean),
+        format: supplier.format || "auto",
+        isActive: true,
+        providerColor: "#3B82F6",
+        badgeColor: "#3B82F6",
+        identityKey: supplier.systemToken || void 0,
+        pricingSnapshot: supplier.models?.length ? {
+          fetchedAt: Date.now(),
+          note: "\u65E7\u7248\u4F9B\u5E94\u5546\u6570\u636E\u81EA\u52A8\u8FC1\u79FB",
+          rows: supplier.models.map((model) => ({ model: model.id }))
+        } : void 0
+      });
+      existingSignature.add(signature);
+      migratedCount += 1;
+    });
+    const legacySlots = keyManager_default.getSlots().filter((slot) => !!slot.baseUrl && !!slot.key);
+    legacySlots.forEach((slot) => {
+      const name = slot.name || slot.provider || "\u7B2C\u4E09\u65B9\u4F9B\u5E94\u5546";
+      const baseUrl = slot.baseUrl || "";
+      if (!baseUrl) return;
+      const signature = buildProviderSignature(baseUrl, slot.key);
+      if (existingSignature.has(signature)) return;
+      keyManager_default.addProvider({
+        name,
+        baseUrl,
+        apiKey: slot.key,
+        group: slot.group || void 0,
+        models: slot.supportedModels || [],
+        format: slot.format || "auto",
+        isActive: !slot.disabled,
+        providerColor: "#3B82F6",
+        badgeColor: "#3B82F6"
+      });
+      existingSignature.add(signature);
+      migratedCount += 1;
+    });
+    try {
+      localStorage.setItem(LEGACY_API_SETTINGS_MIGRATION_KEY, "done");
+    } catch (error) {
+      console.warn("[ApiSettingsView] Failed to persist migration flag:", error);
+    }
+    if (legacySuppliers.length > 0) {
+      supplierService.clearLegacyStorage();
+    }
+    if (migratedCount > 0) {
+      notify.success("\u5386\u53F2\u6570\u636E\u5DF2\u6062\u590D", `\u5DF2\u81EA\u52A8\u8FC1\u79FB ${migratedCount} \u6761\u65E7\u63A5\u53E3\u914D\u7F6E\u3002`);
+    }
+  };
+  const refresh = () => {
+    setSlots(keyManager_default.getSlots());
+    setProviders(keyManager_default.getProviders());
+  };
+  (0, import_react3.useEffect)(() => {
+    setTab("thirdparty");
+    dedupeProvidersIfNeeded();
+    migrateLegacyDataIfNeeded();
+    refresh();
+    const unsubscribe = keyManager_default.subscribe(() => refresh());
+    return unsubscribe;
+  }, []);
+  (0, import_react3.useEffect)(() => {
+    if (!showProviderCreateForm) return;
+    let frameB = 0;
+    const scrollEditorIntoView = () => {
+      const editorCard = providerEditorRef.current;
+      if (!editorCard) return;
+      providerEditorBodyRef.current?.scrollTo({ top: 0, behavior: "auto" });
+      let scrollParent = editorCard.parentElement;
+      while (scrollParent) {
+        const style = window.getComputedStyle(scrollParent);
+        const canScroll = (style.overflowY === "auto" || style.overflowY === "scroll") && scrollParent.scrollHeight > scrollParent.clientHeight + 8;
+        if (canScroll) {
+          const targetTop = editorCard.getBoundingClientRect().top - scrollParent.getBoundingClientRect().top + scrollParent.scrollTop - 20;
+          scrollParent.scrollTo({
+            top: Math.max(0, targetTop),
+            behavior: "auto"
+          });
+          return;
+        }
+        scrollParent = scrollParent.parentElement;
+      }
+      const absoluteTop = editorCard.getBoundingClientRect().top + window.scrollY - 24;
+      window.scrollTo({ top: Math.max(0, absoluteTop), behavior: "auto" });
+    };
+    const frameA = window.requestAnimationFrame(() => {
+      frameB = window.requestAnimationFrame(scrollEditorIntoView);
+    });
+    return () => {
+      window.cancelAnimationFrame(frameA);
+      if (frameB) {
+        window.cancelAnimationFrame(frameB);
+      }
+    };
+  }, [showProviderCreateForm, providerForm.id]);
+  const officialKeys = (0, import_react3.useMemo)(
+    () => slots.filter((slot) => {
+      if (!slot.key || slot.disabled) return false;
+      if (slot.baseUrl) return false;
+      if (slot.provider === "SystemProxy") return false;
+      return slot.type === "official" || slot.provider === "Google" || slot.provider === "OpenAI";
+    }),
+    [slots]
+  );
+  const summary = (0, import_react3.useMemo)(() => {
+    const activeProviders = providers.filter((item) => item.isActive);
+    const modelCount = providers.reduce((sum, item) => sum + (item.models?.length || 0), 0);
+    const totalTokens = providers.reduce((sum, item) => sum + (item.usage?.totalTokens || 0), 0);
+    const totalCost = providers.reduce((sum, item) => sum + (item.usage?.totalCost || 0), 0);
+    return {
+      officialCount: officialKeys.length,
+      providerCount: providers.length,
+      activeProviderCount: activeProviders.length,
+      modelCount,
+      totalTokens,
+      totalCost
+    };
+  }, [officialKeys.length, providers]);
+  const providerWorkspaceSummary = (0, import_react3.useMemo)(() => {
+    const syncedCount = providers.filter((item) => providerHasPricingSnapshot(item)).length;
+    const errorCount = providers.filter((item) => item.status === "error" || Boolean(item.lastError)).length;
+    const limitedCount = providers.filter((item) => (item.customCostMode || "unlimited") !== "unlimited").length;
+    const pendingSyncCount = providers.filter((item) => item.isActive && !providerHasPricingSnapshot(item)).length;
+    return {
+      syncedCount,
+      errorCount,
+      limitedCount,
+      pendingSyncCount
+    };
+  }, [providers]);
+  const currentEditingProvider = (0, import_react3.useMemo)(
+    () => providers.find((item) => item.id === providerForm.id),
+    [providers, providerForm.id]
+  );
+  const currentProviderRuntime = (0, import_react3.useMemo)(
+    () => resolveProviderRuntime({ baseUrl: providerForm.baseUrl, format: providerForm.format || "auto" }),
+    [providerForm.baseUrl, providerForm.format]
+  );
+  const isCurrentProviderWuyin = currentProviderRuntime.strategyId === "wuyinkeji";
+  const currentWuyinEndpointModelId = (0, import_react3.useMemo)(
+    () => extractWuyinModelIdFromBaseUrl(providerForm.baseUrl),
+    [providerForm.baseUrl]
+  );
+  const isCurrentWuyinCatalogMode = isCurrentProviderWuyin && !currentWuyinEndpointModelId;
+  const manualPricingData = (0, import_react3.useMemo)(
+    () => manualPricingRows.map(buildManualPricingEntry).filter(Boolean),
+    [manualPricingRows]
+  );
+  const effectivePricingData = (0, import_react3.useMemo)(() => {
+    const scannedPricingData = Array.isArray(advancedResult?.pricingData) ? advancedResult.pricingData.filter((item) => String(item?.source || "").trim().toLowerCase() !== MANUAL_PRICING_SOURCE) : [];
+    return mergePricingDataByModel([...scannedPricingData, ...manualPricingData]);
+  }, [advancedResult, manualPricingData]);
+  const effectivePricingModels = (0, import_react3.useMemo)(
+    () => Array.from(
+      new Set(
+        [
+          ...advancedResult?.models || [],
+          ...manualPricingRows.map((item) => item.model)
+        ].map((item) => String(item || "").trim()).filter(Boolean)
+      )
+    ),
+    [advancedResult, manualPricingRows]
+  );
+  const currentProviderSnapshotCount = effectivePricingData.length || currentEditingProvider?.pricingSnapshot?.rows?.length || 0;
+  const currentProviderModelCount = currentEditingProvider?.models?.length || effectivePricingModels.length || 0;
+  const currentProviderSupportsGroups = !isNoGroupProvider(providerForm.baseUrl);
+  const currentProviderGroupCount = currentProviderSupportsGroups ? advancedResult?.availableGroups?.length || (providerForm.group.trim() ? 1 : 0) : 0;
+  const currentProviderLastSync = advancedResult?.fetchedAt || currentEditingProvider?.pricingSnapshot?.fetchedAt;
+  const currentProviderStatus = (0, import_react3.useMemo)(
+    () => getProviderStatusMeta(currentEditingProvider, { hasPricingSnapshot: currentProviderSnapshotCount > 0 }),
+    [currentEditingProvider, currentProviderSnapshotCount]
+  );
+  const hasProviderConnection = Boolean(
+    providerForm.name.trim() && providerForm.baseUrl.trim() && providerForm.apiKey.trim()
+  );
+  const providerWorkflowSteps = (0, import_react3.useMemo)(
+    () => {
+      if (isCurrentWuyinCatalogMode) {
+        return [
+          {
+            key: "connection",
+            label: "\u8FDE\u63A5\u4FE1\u606F",
+            description: hasProviderConnection ? "\u540D\u79F0\u3001\u76EE\u5F55\u5730\u5740\u4E0E API Key \u5DF2\u586B\u5199" : "\u8865\u9F50\u540D\u79F0\u3001\u76EE\u5F55\u5730\u5740\u4E0E API Key",
+            complete: hasProviderConnection
+          },
+          {
+            key: "saved",
+            label: "\u4FDD\u5B58\u914D\u7F6E",
+            description: providerForm.id ? "\u5F53\u524D\u76EE\u5F55\u578B\u4F9B\u5E94\u5546\u5DF2\u4FDD\u5B58" : "\u4FDD\u5B58\u540E\u624D\u4F1A\u51FA\u73B0\u5728\u6B63\u5F0F\u4F9B\u5E94\u5546\u5217\u8868",
+            complete: Boolean(providerForm.id)
+          },
+          {
+            key: "catalog",
+            label: "\u6A21\u578B\u4EF7\u683C",
+            description: currentProviderSnapshotCount > 0 ? `\u5DF2\u51C6\u5907 ${currentProviderSnapshotCount} \u6761\u6A21\u578B\u4EF7\u683C` : manualPricingRows.length > 0 ? `\u5F53\u524D\u5DF2\u624B\u52A8\u7EF4\u62A4 ${manualPricingRows.length} \u4E2A\u6A21\u578B` : "\u4E0B\u65B9\u53EF\u8BFB\u53D6\u4EA7\u54C1\u76EE\u5F55\u6216\u624B\u52A8\u7EF4\u62A4\u6A21\u578B\u4EF7\u683C",
+            complete: currentProviderSnapshotCount > 0 || manualPricingRows.length > 0
+          }
+        ];
+      }
+      return [
+        {
+          key: "connection",
+          label: "\u8FDE\u63A5\u4FE1\u606F",
+          description: hasProviderConnection ? "\u540D\u79F0\u3001\u5730\u5740\u4E0E API Key \u5DF2\u586B\u5199" : "\u8865\u9F50\u540D\u79F0\u3001\u57FA\u7840\u5730\u5740\u4E0E API Key",
+          complete: hasProviderConnection
+        },
+        {
+          key: "saved",
+          label: "\u4FDD\u5B58\u914D\u7F6E",
+          description: providerForm.id ? "\u5F53\u524D\u4F9B\u5E94\u5546\u5DF2\u8FDB\u5165\u8C03\u5EA6\u961F\u5217" : "\u4FDD\u5B58\u540E\u624D\u4F1A\u51FA\u73B0\u5728\u6B63\u5F0F\u4F9B\u5E94\u5546\u5217\u8868",
+          complete: Boolean(providerForm.id)
+        },
+        {
+          key: "models",
+          label: "\u6A21\u578B\u6821\u9A8C",
+          description: currentEditingProvider?.lastChecked ? `\u6700\u8FD1\u6821\u9A8C ${formatDate(currentEditingProvider.lastChecked)}` : currentProviderModelCount > 0 ? `\u5F53\u524D\u5DF2\u8BB0\u5F55 ${currentProviderModelCount} \u4E2A\u6A21\u578B` : "\u4FDD\u5B58\u540E\u53EF\u6267\u884C\u6A21\u578B\u6821\u9A8C",
+          complete: Boolean(currentEditingProvider?.lastChecked || currentProviderModelCount > 0)
+        },
+        {
+          key: "pricing",
+          label: "\u4EF7\u683C\u540C\u6B65",
+          description: currentProviderSnapshotCount > 0 ? `\u5DF2\u51C6\u5907 ${currentProviderSnapshotCount} \u6761\u4EF7\u683C\u8BB0\u5F55` : "\u5EFA\u8BAE\u540C\u6B65\u4EF7\u683C\u5FEB\u7167\u4E0E\u5206\u7EC4\u500D\u7387",
+          complete: currentProviderSnapshotCount > 0
+        }
+      ];
+    },
+    [
+      currentEditingProvider?.lastChecked,
+      currentProviderModelCount,
+      currentProviderSnapshotCount,
+      hasProviderConnection,
+      isCurrentWuyinCatalogMode,
+      manualPricingRows.length,
+      providerForm.id
+    ]
+  );
+  const currentProviderBudgetPreview = (0, import_react3.useMemo)(() => {
+    if (currentEditingProvider) {
+      return formatBudgetInfo(currentEditingProvider);
+    }
+    if (providerForm.costMode === "unlimited") {
+      return {
+        total: "\u221E",
+        used: providerForm.id ? "\xA50.00" : "\u672A\u5F00\u59CB",
+        remaining: "\u221E",
+        unit: ""
+      };
+    }
+    if (providerForm.costMode === "amount") {
+      const value2 = Math.max(0, providerForm.costValue || 0);
+      return {
+        total: `\xA5${value2.toFixed(2)}`,
+        used: "\xA50.00",
+        remaining: `\xA5${value2.toFixed(2)}`,
+        unit: "\u5143"
+      };
+    }
+    const value = Math.max(0, providerForm.costValue || 0);
+    return {
+      total: value.toLocaleString("zh-CN"),
+      used: "0",
+      remaining: value.toLocaleString("zh-CN"),
+      unit: "tokens"
+    };
+  }, [currentEditingProvider, providerForm.costMode, providerForm.costValue, providerForm.id]);
+  const applyRandomProviderColor = (excludeProviderId) => {
+    setProviderForm((prev) => ({
+      ...prev,
+      providerColor: pickRandomProviderColor(collectProviderColors(providers, excludeProviderId), prev.providerColor)
+    }));
+  };
+  const editingProviderName = providerForm.name.trim() || currentEditingProvider?.name || "\u672A\u547D\u540D\u4F9B\u5E94\u5546";
+  const editingProviderBaseUrl = providerForm.baseUrl.trim() || currentEditingProvider?.baseUrl || "";
+  const searchResult = (0, import_react3.useMemo)(() => {
+    const keyword = providerSearch.trim().toLowerCase();
+    if (!keyword) return { providers, highlightId: null };
+    const nameMatches = providers.filter(
+      (provider) => provider.name?.toLowerCase().includes(keyword)
+    );
+    const nameMatchIds = new Set(nameMatches.map((p) => p.id));
+    const urlMatches = providers.filter(
+      (provider) => !nameMatchIds.has(provider.id) && provider.baseUrl?.toLowerCase().includes(keyword)
+    );
+    const result = [...nameMatches, ...urlMatches];
+    const highlightId = result.length > 0 ? result[0].id : null;
+    return { providers: result, highlightId };
+  }, [providerSearch, providers]);
+  const filteredProviders = searchResult.providers;
+  (0, import_react3.useEffect)(() => {
+    if (searchResult.highlightId && providerSearch.trim()) {
+      setHighlightedProviderId(searchResult.highlightId);
+      setTimeout(() => {
+        const element = document.querySelector(`[data-provider-id="${searchResult.highlightId}"]`);
+        if (element && providerListRef.current) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 100);
+      const timer = setTimeout(() => {
+        setHighlightedProviderId(null);
+      }, 3e3);
+      return () => clearTimeout(timer);
+    }
+  }, [searchResult.highlightId, providerSearch]);
+  const advancedPricingRows = (0, import_react3.useMemo)(() => {
+    if (!effectivePricingData.length) return [];
+    return effectivePricingData.map((item) => {
+      const model = getPricingModelId(item);
+      if (!model) return null;
+      return {
+        model,
+        provider: typeof item.provider === "string" ? item.provider.trim() : void 0,
+        providerLabel: typeof item.provider_label === "string" ? item.provider_label.trim() : void 0,
+        tokenGroup: typeof item.token_group === "string" ? item.token_group.trim() : void 0,
+        billingType: typeof item.billing_type === "string" ? item.billing_type.trim() : typeof item.type === "string" ? item.type.trim() : void 0,
+        quotaType: item.quota_type,
+        basePrice: item.model_price,
+        modelRatio: item.model_ratio,
+        completionRatio: item.completion_ratio,
+        inputPrice: toFiniteNumber2(item.input_price ?? item.inputPrice ?? item.input_per_million_tokens),
+        outputPrice: toFiniteNumber2(item.output_price ?? item.outputPrice ?? item.output_per_million_tokens),
+        cacheReadPrice: toFiniteNumber2(item.cache_read_price ?? item.cacheReadPrice ?? item.cached_input_price),
+        cacheCreationPrice: toFiniteNumber2(item.cache_creation_price ?? item.cacheCreationPrice ?? item.cached_output_price),
+        perRequestPrice: toFiniteNumber2(item.per_request_price ?? item.perRequestPrice ?? item.price_per_image ?? item.pricePerImage),
+        groupRatio: toFiniteNumber2(item.group_ratio ?? item.groupMultiplier),
+        currency: typeof item.currency === "string" ? item.currency.trim() : void 0,
+        billingUnit: typeof item.pay_unit === "string" ? item.pay_unit.trim() : void 0,
+        displayPrice: typeof item.display_price === "string" ? item.display_price.trim() : void 0,
+        sizeRatioMap: normalizeRatioMap2(item.size_ratio ?? item.sizeRatio),
+        groupModelRatioMap: normalizeRatioMap2(item.group_model_ratio ?? item.groupModelRatio),
+        groupSizeRatioMap: normalizeNestedRatioMap2(item.group_size_ratio ?? item.groupSizeRatio),
+        groupPriceMap: normalizeGroupPriceMap(item.group_model_price ?? item.groupModelPrice)
+      };
+    }).filter(Boolean);
+  }, [effectivePricingData]);
+  const filteredAdvancedPricingRows = (0, import_react3.useMemo)(() => {
+    const keyword = pricingSearch.trim().toLowerCase();
+    if (!keyword) return advancedPricingRows;
+    return advancedPricingRows.filter((row) => {
+      const haystack = [
+        row.model,
+        row.provider,
+        row.providerLabel,
+        row.tokenGroup,
+        row.billingType,
+        row.quotaType,
+        ...Object.keys(row.sizeRatioMap),
+        ...Object.keys(row.groupModelRatioMap),
+        ...Object.keys(row.groupSizeRatioMap),
+        ...Object.keys(row.groupPriceMap)
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [advancedPricingRows, pricingSearch]);
+  const defaultScannedGroupRatio = getDefaultGroupRatio2(advancedResult?.groupRatio);
+  const renderPricingDetailBadges = (row) => {
+    const billingLabel = resolveBillingLabel(row.billingType, row.quotaType, row.perRequestPrice);
+    const detailBadges = [];
+    if (billingLabel === "\u6309\u91CF") {
+      const directPriceBadges = [
+        row.inputPrice ? { label: "\u8F93\u5165", value: formatMoneyDisplay(row.inputPrice, "/1M Tokens", row.currency) } : null,
+        row.outputPrice ? { label: "\u8865\u5168", value: formatMoneyDisplay(row.outputPrice, "/1M Tokens", row.currency) } : null,
+        row.cacheReadPrice ? { label: "\u7F13\u5B58\u8BFB\u53D6", value: formatMoneyDisplay(row.cacheReadPrice, "/1M Tokens", row.currency) } : null,
+        row.cacheCreationPrice ? { label: "\u7F13\u5B58\u521B\u5EFA", value: formatMoneyDisplay(row.cacheCreationPrice, "/1M Tokens", row.currency) } : null
+      ].filter(Boolean);
+      if (directPriceBadges.length > 0) {
+        return directPriceBadges.filter((item) => Boolean(item.value)).map((item, index) => ({
+          label: item.label,
+          value: item.value,
+          accent: index === 0
+        }));
+      }
+      const activeGroup2 = row.tokenGroup || providerForm.group || "default";
+      const fallbackGroupRatio = row.groupRatio ?? advancedResult?.groupRatio?.[activeGroup2] ?? advancedResult?.groupRatio?.default ?? defaultScannedGroupRatio;
+      const groupOverride = activeGroup2 ? row.groupPriceMap[activeGroup2] : void 0;
+      const effectiveModelRatio = groupOverride?.modelRatio ?? row.modelRatio;
+      const effectiveCompletionRatio = groupOverride?.completionRatio ?? row.completionRatio;
+      if (fallbackGroupRatio !== void 0) {
+        detailBadges.push({
+          label: "\u5206\u7EC4\u500D\u7387",
+          value: `${activeGroup2} ${formatRatioDisplay(fallbackGroupRatio)}`,
+          accent: true
+        });
+      }
+      if (effectiveModelRatio !== void 0) {
+        detailBadges.push({ label: "\u6A21\u578B\u500D\u7387", value: formatRatioDisplay(effectiveModelRatio) });
+      }
+      if (effectiveCompletionRatio !== void 0) {
+        detailBadges.push({ label: "\u8865\u5168\u500D\u7387", value: formatRatioDisplay(effectiveCompletionRatio) });
+      }
+      return detailBadges;
+    }
+    const activeGroup = row.tokenGroup || providerForm.group || "default";
+    const explicitGroupPrice = activeGroup ? row.groupPriceMap[activeGroup]?.modelPrice : void 0;
+    const basePrice = explicitGroupPrice ?? row.perRequestPrice ?? row.basePrice;
+    const scopedGroupSizeRatios = row.groupSizeRatioMap[activeGroup] || row.groupSizeRatioMap.default || row.groupSizeRatioMap.Default || row.groupSizeRatioMap.DEFAULT || {};
+    const mergedSizeRatios = Object.keys(scopedGroupSizeRatios).length > 0 ? scopedGroupSizeRatios : row.sizeRatioMap;
+    const activeSizeRatio = mergedSizeRatios[activeGroup] ?? row.sizeRatioMap[activeGroup];
+    if (basePrice !== void 0) {
+      detailBadges.push({
+        label: "\u57FA\u7840\u5355\u4EF7",
+        value: row.displayPrice || formatMoneyDisplay(basePrice, `/${row.billingUnit || "\u6B21"}`, row.currency) || "-",
+        accent: true
+      });
+    }
+    const ratioEntries = sortRatioEntries(mergedSizeRatios);
+    ratioEntries.forEach(([size, ratio]) => {
+      if (basePrice === void 0) {
+        detailBadges.push({
+          label: size,
+          value: formatRatioDisplay(ratio),
+          accent: size === activeGroup
+        });
+        return;
+      }
+      detailBadges.push({
+        label: size,
+        value: `${formatRatioDisplay(ratio)} = ${formatMoneyDisplay(basePrice * ratio, `/${row.billingUnit || "\u6B21"}`, row.currency)}`,
+        accent: size === activeGroup
+      });
+    });
+    if (!ratioEntries.length && activeSizeRatio !== void 0 && basePrice !== void 0) {
+      detailBadges.push({
+        label: activeGroup,
+        value: `${formatRatioDisplay(activeSizeRatio)} = ${formatMoneyDisplay(basePrice * activeSizeRatio, `/${row.billingUnit || "\u6B21"}`, row.currency)}`,
+        accent: true
+      });
+    }
+    if (!detailBadges.length && row.groupRatio !== void 0) {
+      detailBadges.push({
+        label: "\u5206\u7EC4\u500D\u7387",
+        value: `${activeGroup} ${formatRatioDisplay(row.groupRatio)}`,
+        accent: true
+      });
+    }
+    return detailBadges;
+  };
+  const parseCost = (mode, value) => {
+    if (mode === "unlimited") return { budgetLimit: -1, tokenLimit: -1 };
+    if (mode === "amount") return { budgetLimit: Math.max(0, value), tokenLimit: -1 };
+    return { budgetLimit: -1, tokenLimit: Math.max(0, value) };
+  };
+  const resetOfficialForm = (closeCreate = true) => {
+    setOfficialForm(defaultOfficialForm);
+    if (closeCreate) setShowOfficialCreateForm(false);
+  };
+  const resetThirdPartyForm = (closeCreate = true) => {
+    setProviderForm({
+      ...defaultProviderForm,
+      providerColor: pickRandomProviderColor(collectProviderColors(providers))
+    });
+    setAdvancedResult(null);
+    setManualPricingRows([]);
+    setPricingSearch("");
+    setShowAdvancedMode(false);
+    if (closeCreate) {
+      setShowProviderCreateForm(false);
+    }
+  };
+  (0, import_react3.useEffect)(() => {
+    if (initialSupplier) return;
+    resetThirdPartyForm(true);
+    appliedInitialSupplierRef.current = "";
+  }, [initialSupplier]);
+  const loadOfficialToForm = (slot) => {
+    setOfficialForm({
+      id: slot.id,
+      name: slot.name,
+      key: slot.key,
+      costMode: slot.tokenLimit && slot.tokenLimit > 0 ? "tokens" : slot.budgetLimit && slot.budgetLimit > 0 ? "amount" : "unlimited",
+      costValue: slot.tokenLimit && slot.tokenLimit > 0 ? slot.tokenLimit : slot.budgetLimit && slot.budgetLimit > 0 ? slot.budgetLimit : 0
+    });
+    setShowOfficialCreateForm(true);
+  };
+  const loadProviderToForm = (provider) => {
+    setProviderForm(toProviderForm(provider));
+    setPricingSearch("");
+    const snapshot = provider.pricingSnapshot;
+    setManualPricingRows(extractManualPricingRowsFromSnapshot(snapshot));
+    if (snapshot && snapshot.rows && snapshot.rows.length > 0) {
+      const restoredPricingData = restorePricingDataFromSnapshot(snapshot);
+      const restoredGroupRatio = snapshot.groupRatioMap || (typeof snapshot.groupRatio === "number" ? { default: snapshot.groupRatio } : void 0);
+      const modelNames = restoredPricingData?.length ? extractPricingModelIds(restoredPricingData) : snapshot.rows.map((item) => String(item.model || "").trim()).filter(Boolean);
+      setAdvancedResult({
+        models: modelNames,
+        apiType: provider.format || "auto",
+        pricingHint: snapshot.note || `\u5DF2\u4FDD\u5B58 ${modelNames.length} \u4E2A\u6A21\u578B\u7684\u4EF7\u683C\u914D\u7F6E`,
+        fetchedAt: snapshot.fetchedAt || Date.now(),
+        pricingData: restoredPricingData,
+        groupRatio: restoredGroupRatio,
+        availableGroups: extractAvailableGroups(restoredPricingData, restoredGroupRatio, provider.baseUrl)
+      });
+      setShowAdvancedMode(true);
+    } else {
+      setAdvancedResult(null);
+      setShowAdvancedMode(false);
+    }
+    setShowProviderCreateForm(true);
+  };
+  (0, import_react3.useEffect)(() => {
+    if (!initialSupplier) return;
+    const supplierSignature = [
+      initialSupplier.id,
+      initialSupplier.name,
+      initialSupplier.baseUrl,
+      initialSupplier.apiKey
+    ].join("|");
+    if (appliedInitialSupplierRef.current === supplierSignature) return;
+    setTab("thirdparty");
+    const matchedProvider = providers.find((item) => item.id === initialSupplier.id) || providers.find(
+      (item) => item.baseUrl.trim() === initialSupplier.baseUrl.trim() && item.name.trim() === initialSupplier.name.trim()
+    );
+    appliedInitialSupplierRef.current = supplierSignature;
+    if (matchedProvider) {
+      loadProviderToForm(matchedProvider);
+      return;
+    }
+    setProviderForm({
+      id: void 0,
+      name: initialSupplier.name || "",
+      baseUrl: initialSupplier.baseUrl || "",
+      apiKey: initialSupplier.apiKey || "",
+      format: initialSupplier.format || "auto",
+      group: "",
+      costMode: typeof initialSupplier.budgetLimit === "number" && initialSupplier.budgetLimit > 0 ? "amount" : "unlimited",
+      costValue: typeof initialSupplier.budgetLimit === "number" && initialSupplier.budgetLimit > 0 ? initialSupplier.budgetLimit : 0,
+      providerColor: pickRandomProviderColor(collectProviderColors(providers)),
+      isActive: true
+    });
+    setAdvancedResult(null);
+    setManualPricingRows([]);
+    setPricingSearch("");
+    setShowAdvancedMode(false);
+    setShowProviderCreateForm(true);
+  }, [initialSupplier, providers]);
+  const handleSaveOfficial = async () => {
+    const name = officialForm.name.trim();
+    const key = officialForm.key.trim();
+    if (!name || !key) {
+      notify.error("\u4FDD\u5B58\u5931\u8D25", "\u8BF7\u586B\u5199\u540D\u79F0\u548C API Key\u3002");
+      return;
+    }
+    const { budgetLimit, tokenLimit } = parseCost(officialForm.costMode, officialForm.costValue);
+    try {
+      if (officialForm.id) {
+        await keyManager_default.updateKey(officialForm.id, {
+          name,
+          key,
+          budgetLimit,
+          tokenLimit,
+          disabled: false
+        });
+        notify.success("\u4FDD\u5B58\u6210\u529F", "\u5B98\u65B9\u63A5\u53E3\u5DF2\u66F4\u65B0\u3002");
+      } else {
+        const result = await keyManager_default.addKey(key, {
+          name,
+          provider: "Google",
+          type: "official",
+          budgetLimit,
+          tokenLimit
+        });
+        if (!result.success) {
+          notify.error("\u6DFB\u52A0\u5931\u8D25", result.error || "\u65E0\u6CD5\u4FDD\u5B58\u5B98\u65B9\u63A5\u53E3\u3002");
+          return;
+        }
+        notify.success("\u6DFB\u52A0\u6210\u529F", "\u5B98\u65B9\u63A5\u53E3\u5DF2\u6DFB\u52A0\u3002");
+      }
+      resetOfficialForm(true);
+      refresh();
+    } catch (error) {
+      notify.error("\u4FDD\u5B58\u5931\u8D25", error?.message || "\u65E0\u6CD5\u4FDD\u5B58\u5B98\u65B9\u63A5\u53E3\u3002");
+    }
+  };
+  const fetchPricingFromUrl = async (baseUrl, apiKey) => {
+    const cleanUrl = baseUrl.replace(/\/+$/, "");
+    try {
+      const directPricing = await fetchRawPricingCatalog(cleanUrl, apiKey, providerForm.format || "auto");
+      if (directPricing) {
+        return {
+          models: extractPricingModelIds(directPricing.pricingData),
+          apiType: directPricing.source,
+          pricingHint: directPricing.source === "wuyinkeji" ? `\u5DF2\u4ECE ${directPricing.endpointUrl} \u8BFB\u53D6 ${directPricing.pricingData.length} \u6761\u76EE\u5F55\u4EF7\u683C\u914D\u7F6E\u3002` : `\u5DF2\u4ECE ${directPricing.endpointUrl} \u540C\u6B65 ${directPricing.pricingData.length} \u6761\u4EF7\u683C\u914D\u7F6E\u3002`,
+          fetchedAt: Date.now(),
+          pricingData: directPricing.pricingData,
+          groupRatio: directPricing.groupRatio,
+          availableGroups: directPricing.supportsGroups ? extractAvailableGroups(directPricing.pricingData, directPricing.groupRatio, cleanUrl) : []
+        };
+      }
+    } catch (error) {
+      console.warn("[ApiSettings] direct pricing fetch failed:", error);
+    }
+    if (isNoGroupProvider(cleanUrl)) {
+      try {
+        const pricingList = selectWuyinCatalogModels(cleanUrl, await fetchWuyinPricingCatalog(cleanUrl));
+        return {
+          models: pricingList.map((item) => item.modelId).filter(Boolean),
+          apiType: "wuyinkeji",
+          pricingHint: `\u5DF2\u4ECE\u4E94\u97F3\u79D1\u6280\u4EA7\u54C1\u76EE\u5F55\u8BFB\u53D6 ${pricingList.length} \u4E2A\u8BA1\u8D39\u9879\uFF0C\u6309\u4F9B\u5E94\u5546\u539F\u59CB\u5355\u4F4D\u5C55\u793A\uFF08\u5982 \u5143/\u5F20\u3001\u5143/\u6B21\u3001\u5143/\u79D2\uFF09\u3002`,
+          fetchedAt: Date.now(),
+          pricingData: pricingList.map((item) => ({
+            model: item.modelId,
+            model_name: item.modelName,
+            billing_type: "per_request",
+            quota_type: "per_request",
+            per_request_price: item.inputPrice,
+            price_per_image: item.inputPrice,
+            currency: item.currency,
+            pay_unit: item.billingUnit,
+            display_price: item.displayPrice,
+            endpoint_url: item.endpointUrl,
+            endpoint_path: item.endpointPath
+          })),
+          groupRatio: {},
+          availableGroups: []
+        };
+      } catch (error) {
+        console.warn("[ApiSettings] wuyinkeji pricing fetch failed:", error);
+      }
+    }
+    const runtime = resolveProviderRuntime({ baseUrl: cleanUrl, format: providerForm.format || "auto" });
+    if (runtime.strategyId === "12ai") {
+      return {
+        models: [],
+        apiType: "12ai",
+        pricingHint: "12AI \u5F53\u524D\u6CA1\u6709\u517C\u5BB9 NewAPI \u7684 /api/pricing \u7BA1\u7406\u63A5\u53E3\uFF0C\u4EF7\u683C\u626B\u63CF\u5DF2\u8DF3\u8FC7\u3002\u8FD9\u91CC\u51FA\u73B0 404 \u4E0D\u4EE3\u8868\u751F\u6210\u63A5\u53E3\u914D\u7F6E\u9519\u8BEF\uFF0C\u8BF7\u4EE5\u5B9E\u9645\u751F\u6210\u8BF7\u6C42\u662F\u5426\u6210\u529F\u4E3A\u51C6\u3002",
+        fetchedAt: Date.now(),
+        pricingData: [],
+        groupRatio: {},
+        availableGroups: []
+      };
+    }
+    const endpoints = ["/api/pricing", "/pricing", "/v1/pricing", "/api/price", "/price"];
+    for (const endpoint of endpoints) {
+      try {
+        const headers = {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        };
+        if (apiKey) {
+          const runtime2 = resolveProviderRuntime({ baseUrl: cleanUrl, format: "openai" });
+          headers["Authorization"] = formatAuthorizationHeaderValue(apiKey, runtime2.authorizationValueFormat);
+        }
+        const response = await fetch(`${cleanUrl}${endpoint}`, {
+          method: "GET",
+          headers
+        });
+        if (!response.ok) {
+          console.warn(`[ApiSettings] pricing endpoint ${endpoint} returned ${response.status}`);
+          continue;
+        }
+        const text = await response.text();
+        if (text.trimStart().startsWith("<!") || text.trimStart().startsWith("<html")) {
+          console.warn(`[ApiSettings] pricing endpoint ${endpoint} returned HTML`);
+          continue;
+        }
+        const data = JSON.parse(text);
+        const pricingList = Array.isArray(data.data) ? data.data : Array.isArray(data.prices) ? data.prices : Array.isArray(data.models) ? data.models : [];
+        const groupRatio = data.group_ratio || data.groupRatio || {};
+        if (!pricingList.length) {
+          console.warn(`[ApiSettings] pricing endpoint ${endpoint} returned empty list`);
+          continue;
+        }
+        console.log(`[ApiSettings] Successfully fetched pricing from ${endpoint}: ${pricingList.length} models`);
+        return {
+          models: extractPricingModelIds(pricingList),
+          apiType: "direct",
+          pricingHint: `\u5DF2\u4ECE\u4F9B\u5E94\u5546\u4EF7\u683C\u63A5\u53E3\u6293\u53D6 ${pricingList.length} \u4E2A\u6A21\u578B\u7684\u57FA\u7840\u4EF7\u4E0E\u500D\u7387\u3002`,
+          fetchedAt: Date.now(),
+          pricingData: pricingList,
+          groupRatio,
+          availableGroups: extractAvailableGroups(pricingList, groupRatio, cleanUrl)
+        };
+      } catch (error) {
+        console.warn(`[ApiSettings] pricing endpoint ${endpoint} failed:`, error);
+      }
+    }
+    try {
+      const proxyResponse = await fetch("/api/pricing-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseUrl: cleanUrl, apiKey })
+      });
+      if (proxyResponse.ok) {
+        const proxyData = await proxyResponse.json();
+        if (proxyData.error) return null;
+        const pricingList = Array.isArray(proxyData.data) ? proxyData.data : [];
+        const groupRatio = proxyData.group_ratio || {};
+        if (!pricingList.length) return null;
+        return {
+          models: extractPricingModelIds(pricingList),
+          apiType: "proxy",
+          pricingHint: `\u5DF2\u4ECE\u4F9B\u5E94\u5546\u4EF7\u683C\u9875\u6293\u53D6 ${pricingList.length} \u4E2A\u6A21\u578B\u7684\u57FA\u7840\u4EF7\u4E0E\u500D\u7387\u3002`,
+          fetchedAt: Date.now(),
+          pricingData: pricingList,
+          groupRatio,
+          availableGroups: extractAvailableGroups(pricingList, groupRatio, cleanUrl)
+        };
+      }
+    } catch (error) {
+      console.warn("[ApiSettings] pricing proxy failed", error);
+    }
+    return null;
+  };
+  const handleDetectAdvanced = async () => {
+    const baseUrl = providerForm.baseUrl.trim();
+    if (!baseUrl) {
+      notify.error("\u626B\u63CF\u5931\u8D25", "\u8BF7\u5148\u586B\u5199\u4F9B\u5E94\u5546\u57FA\u7840\u5730\u5740\u3002");
+      return;
+    }
+    setAdvancedLoading(true);
+    try {
+      const result = await fetchPricingFromUrl(baseUrl, providerForm.apiKey);
+      if (!result) {
+        setAdvancedResult({
+          models: [],
+          apiType: "proxy",
+          pricingHint: "\u8BE5\u4F9B\u5E94\u5546\u6682\u672A\u8FD4\u56DE\u4EF7\u683C\u6570\u636E\u3002",
+          fetchedAt: Date.now(),
+          availableGroups: []
+        });
+        notify.error(isCurrentWuyinCatalogMode ? "\u8BFB\u53D6\u5931\u8D25" : "\u626B\u63CF\u5931\u8D25", isCurrentWuyinCatalogMode ? "\u672A\u4ECE\u4EA7\u54C1\u76EE\u5F55\u8BFB\u53D6\u5230\u6709\u6548\u8BA1\u8D39\u9879\u3002" : "\u672A\u4ECE\u4EF7\u683C\u9875\u83B7\u53D6\u5230\u57FA\u7840\u4EF7\u548C\u500D\u7387\u4FE1\u606F\u3002");
+        return;
+      }
+      setAdvancedResult(result);
+      setShowAdvancedMode(true);
+      if (isNoGroupProvider(baseUrl)) {
+        setProviderForm((prev) => ({ ...prev, group: "" }));
+      }
+      notify.success(isCurrentWuyinCatalogMode ? "\u8BFB\u53D6\u6210\u529F" : "\u626B\u63CF\u6210\u529F", isCurrentWuyinCatalogMode ? `\u5DF2\u8BFB\u53D6 ${result.models.length} \u4E2A\u76EE\u5F55\u8BA1\u8D39\u9879\u3002` : `\u5DF2\u8BC6\u522B ${result.models.length} \u4E2A\u6A21\u578B\u4EF7\u683C\u914D\u7F6E\u3002`);
+    } finally {
+      setAdvancedLoading(false);
+    }
+  };
+  const handleAddManualPricingRow = (preset = {}) => {
+    setManualPricingRows((prev) => [...prev, createManualPricingRow(preset)]);
+    setShowAdvancedMode(true);
+  };
+  const handleUseEndpointModelAsManual = () => {
+    if (!currentWuyinEndpointModelId) {
+      notify.error("\u65E0\u6CD5\u63D0\u53D6\u6A21\u578B", "\u5F53\u524D\u63A5\u53E3\u5730\u5740\u91CC\u6CA1\u6709\u8BC6\u522B\u5230\u4E94\u97F3\u6A21\u578B\u8DEF\u5F84\u3002");
+      return;
+    }
+    const matchedPricing = effectivePricingData.find(
+      (item) => getPricingModelId(item).trim().toLowerCase() === currentWuyinEndpointModelId.toLowerCase()
+    );
+    const presetPrice = matchedPricing?.per_request_price ?? matchedPricing?.model_price ?? matchedPricing?.price_per_image;
+    const presetUnit = String(matchedPricing?.pay_unit || matchedPricing?.billing_unit || "").trim();
+    const presetCurrency = matchedPricing?.currency === "USD" ? "USD" : "CNY";
+    setManualPricingRows((prev) => {
+      if (prev.some((item) => item.model.trim().toLowerCase() === currentWuyinEndpointModelId.toLowerCase())) {
+        return prev;
+      }
+      return [
+        ...prev,
+        createManualPricingRow({
+          model: currentWuyinEndpointModelId,
+          modelName: currentWuyinEndpointModelId,
+          endpointUrl: providerForm.baseUrl.trim(),
+          price: presetPrice !== void 0 ? String(presetPrice) : "",
+          unit: presetUnit || guessManualBillingUnit(currentWuyinEndpointModelId),
+          currency: presetCurrency
+        })
+      ];
+    });
+    setShowAdvancedMode(true);
+  };
+  const handleUpdateManualPricingRow = (rowId, patch) => {
+    setManualPricingRows(
+      (prev) => prev.map((item) => {
+        if (item.id !== rowId) return item;
+        const next = { ...item, ...patch, id: item.id };
+        if (typeof patch.endpointUrl === "string") {
+          const endpoint = extractWuyinAsyncEndpointDetails(patch.endpointUrl);
+          if (endpoint) {
+            next.endpointUrl = endpoint.endpointUrl;
+            next.model = endpoint.modelId;
+            next.modelName = endpoint.modelId;
+            if (!String(next.unit || "").trim()) {
+              next.unit = guessManualBillingUnit(endpoint.modelId);
+            }
+          } else if (isCurrentWuyinCatalogMode) {
+            next.model = "";
+            next.modelName = "";
+          }
+        }
+        return createManualPricingRow(next);
+      })
+    );
+  };
+  const handleRemoveManualPricingRow = (rowId) => {
+    setManualPricingRows((prev) => prev.filter((item) => item.id !== rowId));
+  };
+  const injectPricingOverrides = (pricingSnapshot, sourceData) => {
+    const rawPricingData = sourceData || pricingSnapshot?._rawData;
+    if (!rawPricingData?.length) return;
+    const groupRatioMap = pricingSnapshot?.groupRatioMap || {};
+    const defaultGroupRatio = getDefaultGroupRatio2(groupRatioMap) || (typeof pricingSnapshot?.groupRatio === "number" ? pricingSnapshot.groupRatio : 1);
+    const enrichedData = rawPricingData.map((item) => ({
+      ...item,
+      model: getPricingModelId(item),
+      group_ratio: item.group_ratio ?? defaultGroupRatio
+    }));
+    mergeModelPricingOverrides(enrichedData);
+  };
+  const handleSaveProvider = async () => {
+    const name = providerForm.name.trim();
+    const baseUrl = providerForm.baseUrl.trim();
+    const apiKey = providerForm.apiKey.trim();
+    const existingProvider = providerForm.id ? providers.find((item) => item.id === providerForm.id) : void 0;
+    if (!name || !baseUrl || !apiKey) {
+      notify.error("\u4FDD\u5B58\u5931\u8D25", "\u8BF7\u586B\u5199\u4F9B\u5E94\u5546\u540D\u79F0\u3001\u57FA\u7840\u5730\u5740\u548C API Key\u3002");
+      return;
+    }
+    setSavingProviderId(providerForm.id || "new");
+    const { budgetLimit, tokenLimit } = parseCost(providerForm.costMode, providerForm.costValue);
+    let models = [];
+    let pricingModelNames = effectivePricingModels.map((item) => String(item || "").trim()).filter(Boolean);
+    try {
+      const detect = await autoDetectAndConfigureModels(apiKey, baseUrl, providerForm.format);
+      models = detect.models || [];
+    } catch (error) {
+      console.warn("[ApiSettings] detect models before save failed", error);
+      models = existingProvider?.models || [];
+    }
+    if ((!models || models.length === 0) && pricingModelNames.length > 0) {
+      models = pricingModelNames;
+    }
+    if ((!models || models.length === 0) && currentWuyinEndpointModelId) {
+      models = [currentWuyinEndpointModelId];
+    }
+    if ((!models || models.length === 0) && existingProvider?.models?.length) {
+      models = existingProvider.models;
+    }
+    let pricingSnapshot;
+    const sourcePricingData = effectivePricingData;
+    if (sourcePricingData.length) {
+      pricingSnapshot = buildProviderPricingSnapshot(sourcePricingData, advancedResult?.groupRatio, {
+        fetchedAt: advancedResult?.fetchedAt || Date.now(),
+        note: advancedResult?.pricingHint || (manualPricingRows.length > 0 ? `\u5DF2\u624B\u52A8\u7EF4\u62A4 ${manualPricingRows.length} \u4E2A\u6A21\u578B\u4EF7\u683C` : void 0)
+      });
+    }
+    if (!pricingSnapshot && existingProvider?.pricingSnapshot) {
+      pricingSnapshot = existingProvider.pricingSnapshot;
+    }
+    const snapshotModelNames = (pricingSnapshot?.rows || []).map((item) => String(item?.model || "").trim()).filter(Boolean);
+    const mergedModels = Array.from(new Set(
+      [...models, ...pricingModelNames, ...snapshotModelNames].map((item) => String(item || "").trim()).filter(Boolean)
+    ));
+    if (mergedModels.length > 0) {
+      models = mergedModels;
+    }
+    const payload = {
+      name,
+      baseUrl,
+      apiKey,
+      group: currentProviderSupportsGroups ? providerForm.group.trim() || void 0 : void 0,
+      models,
+      format: providerForm.format,
+      isActive: providerForm.isActive,
+      budgetLimit,
+      tokenLimit,
+      customCostMode: providerForm.costMode,
+      customCostValue: providerForm.costValue,
+      providerColor: providerForm.providerColor,
+      badgeColor: providerForm.providerColor,
+      pricingSnapshot
+    };
+    try {
+      let persistedProviderId = providerForm.id;
+      if (providerForm.id) {
+        const ok = keyManager_default.updateProvider(providerForm.id, payload);
+        if (!ok) {
+          notify.error("\u4FDD\u5B58\u5931\u8D25", "\u4F9B\u5E94\u5546\u66F4\u65B0\u5931\u8D25\u3002");
+          return;
+        }
+        notify.success("\u4FDD\u5B58\u6210\u529F", "\u4F9B\u5E94\u5546\u914D\u7F6E\u5DF2\u66F4\u65B0\u3002");
+      } else {
+        const createdProvider = keyManager_default.addProvider(payload);
+        persistedProviderId = createdProvider.id;
+        setHighlightedProviderId(createdProvider.id);
+        window.setTimeout(() => {
+          setHighlightedProviderId((prev) => prev === createdProvider.id ? null : prev);
+        }, 2400);
+        notify.success("\u6DFB\u52A0\u6210\u529F", "\u4F9B\u5E94\u5546\u914D\u7F6E\u5DF2\u4FDD\u5B58\u3002");
+      }
+      injectPricingOverrides(pricingSnapshot, sourcePricingData);
+      refresh();
+      if (persistedProviderId) {
+        const persistedProvider = keyManager_default.getProviders().find((item) => item.id === persistedProviderId);
+        if (persistedProvider) {
+          setProviderForm(toProviderForm(persistedProvider));
+          setShowProviderCreateForm(true);
+        }
+      }
+    } catch (error) {
+      notify.error("\u4FDD\u5B58\u5931\u8D25", error?.message || "\u65E0\u6CD5\u4FDD\u5B58\u4F9B\u5E94\u5546\u914D\u7F6E\u3002");
+    } finally {
+      setSavingProviderId(null);
+    }
+  };
+  const handleDeleteOfficial = (id) => {
+    if (!window.confirm("\u786E\u8BA4\u5220\u9664\u8BE5\u5B98\u65B9\u63A5\u53E3\u5417\uFF1F")) return;
+    keyManager_default.removeKey(id);
+    if (officialForm.id === id) resetOfficialForm(true);
+    notify.success("\u5220\u9664\u6210\u529F", "\u5B98\u65B9\u63A5\u53E3\u5DF2\u5220\u9664\u3002");
+    refresh();
+  };
+  const handleDeleteProvider = (id) => {
+    if (!window.confirm("\u786E\u8BA4\u5220\u9664\u8BE5\u4F9B\u5E94\u5546\u5417\uFF1F")) return;
+    const ok = keyManager_default.removeProvider(id);
+    if (!ok) {
+      notify.error("\u5220\u9664\u5931\u8D25", "\u4F9B\u5E94\u5546\u5220\u9664\u5931\u8D25\u3002");
+      return;
+    }
+    if (providerForm.id === id) resetThirdPartyForm(true);
+    notify.success("\u5220\u9664\u6210\u529F", "\u4F9B\u5E94\u5546\u5DF2\u5220\u9664\u3002");
+    refresh();
+  };
+  const handleToggleProvider = (provider) => {
+    const nextActive = !provider.isActive;
+    keyManager_default.updateProvider(provider.id, { isActive: nextActive });
+    if (providerForm.id === provider.id) {
+      setProviderForm((prev) => ({ ...prev, isActive: nextActive }));
+    }
+    notify.success(provider.isActive ? "\u5DF2\u505C\u7528" : "\u5DF2\u542F\u7528", `${provider.name} \u72B6\u6001\u5DF2\u66F4\u65B0\u3002`);
+    refresh();
+  };
+  const handleValidateProvider = async (provider) => {
+    setDetectingProviderId(provider.id);
+    try {
+      const detect = await autoDetectAndConfigureModels(provider.apiKey, provider.baseUrl, provider.format);
+      if (detect.success) {
+        keyManager_default.updateProvider(provider.id, {
+          models: detect.models,
+          status: "active",
+          lastChecked: Date.now(),
+          lastError: void 0
+        });
+        notify.success("\u6821\u9A8C\u6210\u529F", `\u5DF2\u83B7\u53D6 ${detect.models.length} \u4E2A\u6A21\u578B\u3002`);
+      } else {
+        keyManager_default.updateProvider(provider.id, {
+          status: "error",
+          lastChecked: Date.now(),
+          lastError: "\u6A21\u578B\u83B7\u53D6\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u539F\u6709\u5217\u8868\u3002"
+        });
+        notify.error("\u6821\u9A8C\u5931\u8D25", "\u65E0\u6CD5\u83B7\u53D6\u6A21\u578B\u5217\u8868\uFF0C\u5DF2\u4FDD\u7559\u539F\u6709\u914D\u7F6E\u3002");
+      }
+      refresh();
+    } catch (error) {
+      keyManager_default.updateProvider(provider.id, {
+        status: "error",
+        lastChecked: Date.now(),
+        lastError: error?.message || "\u8FDE\u63A5\u5931\u8D25"
+      });
+      notify.error("\u6821\u9A8C\u5931\u8D25", error?.message || "\u4F9B\u5E94\u5546\u8FDE\u63A5\u5931\u8D25\u3002");
+      refresh();
+    } finally {
+      setDetectingProviderId(null);
+    }
+  };
+  const handleSyncPricing = async (provider) => {
+    setSyncingProviderId(provider.id);
+    try {
+      const result = await fetchPricingFromUrl(provider.baseUrl, provider.apiKey);
+      if (!result?.pricingData?.length) {
+        notify.error("\u540C\u6B65\u5931\u8D25", "\u672A\u4ECE\u4EF7\u683C\u9875\u83B7\u53D6\u5230\u57FA\u7840\u4EF7\u548C\u500D\u7387\u3002\u8BF7\u68C0\u67E5\u4F9B\u5E94\u5546\u5730\u5740\u548C API Key \u662F\u5426\u6B63\u786E\u3002");
+        return;
+      }
+      const pricingSnapshot = buildProviderPricingSnapshot(result.pricingData, result.groupRatio, {
+        fetchedAt: result.fetchedAt,
+        note: result.pricingHint
+      });
+      keyManager_default.updateProvider(provider.id, {
+        pricingSnapshot,
+        models: result.models.length ? result.models : provider.models
+      });
+      injectPricingOverrides(pricingSnapshot, result.pricingData);
+      notify.success("\u540C\u6B65\u6210\u529F", `\u5DF2\u66F4\u65B0 ${result.models.length} \u4E2A\u6A21\u578B\u4EF7\u683C\u3002`);
+      if (providerForm.id === provider.id) {
+        setAdvancedResult(result);
+        setShowAdvancedMode(true);
+        if (isNoGroupProvider(provider.baseUrl)) {
+          setProviderForm((prev) => ({ ...prev, group: "" }));
+        } else if (!providerForm.group && result.availableGroups?.length) {
+          setProviderForm((prev) => ({ ...prev, group: prev.group || result.availableGroups?.[0] || "" }));
+        }
+      }
+      refresh();
+    } finally {
+      setSyncingProviderId(null);
+    }
+  };
+  const handleFetchAndSyncPricing = async () => {
+    if (currentEditingProvider) {
+      await handleSyncPricing(currentEditingProvider);
+      return;
+    }
+    await handleDetectAdvanced();
+  };
+  const renderCostEditor = (costMode, costValue, onModeChange, onValueChange) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid gap-3 md:grid-cols-2", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: "\u8BA1\u8D39\u6A21\u5F0F" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        FormSelect,
+        {
+          value: costMode,
+          onChange: (value) => onModeChange(value),
+          options: [
+            { value: "unlimited", label: "\u65E0\u9650" },
+            { value: "amount", label: "\u91D1\u989D" },
+            { value: "tokens", label: "Tokens" }
+          ]
+        }
+      )
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: costMode === "amount" ? "\u91D1\u989D\u989D\u5EA6" : costMode === "tokens" ? "Token \u989D\u5EA6" : "\u989D\u5EA6" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          className: "h-10 w-full rounded-xl border px-3 text-sm outline-none",
+          style: formFieldStyle,
+          type: "number",
+          min: 0,
+          disabled: costMode === "unlimited",
+          value: costMode === "unlimited" ? 0 : costValue,
+          onChange: (event) => onValueChange(Number(event.target.value || 0))
+        }
+      )
+    ] })
+  ] });
+  const renderOfficialForm = () => {
+    const mode = officialForm.id ? "edit" : "create";
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "settings-section-card p-4", style: elevatedPanelStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-[var(--text-primary)]", children: mode === "edit" ? "\u7F16\u8F91\u5B98\u65B9\u63A5\u53E3" : "\u65B0\u589E\u5B98\u65B9\u63A5\u53E3" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs text-[var(--text-tertiary)]", children: "\u7528\u4E8E\u5B98\u65B9 API Key \u7684\u4FDD\u5B58\u4E0E\u989D\u5EA6\u914D\u7F6E\u3002" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "apple-button-secondary h-8 px-3 text-xs", style: secondaryButtonStyle, onClick: () => resetOfficialForm(true), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleX, { size: 12 }),
+          "\u5173\u95ED"
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid gap-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: "\u540D\u79F0" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: "h-10 w-full rounded-xl border px-3 text-sm outline-none", style: formFieldStyle, value: officialForm.name, onChange: (event) => setOfficialForm((prev) => ({ ...prev, name: event.target.value })), placeholder: "\u4F8B\u5982\uFF1A\u4E3B\u8D26\u53F7" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: "API Key" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: "h-10 w-full rounded-xl border px-3 text-sm outline-none", style: formFieldStyle, value: officialForm.key, onChange: (event) => setOfficialForm((prev) => ({ ...prev, key: event.target.value })), placeholder: "\u8F93\u5165\u5B98\u65B9 API Key" })
+        ] }),
+        renderCostEditor(officialForm.costMode, officialForm.costValue, (costMode) => setOfficialForm((prev) => ({ ...prev, costMode })), (costValue) => setOfficialForm((prev) => ({ ...prev, costValue }))),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "settings-action-row", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "apple-button-primary h-9 px-4 text-sm", onClick: () => void handleSaveOfficial(), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Save, { size: 14 }),
+            mode === "edit" ? "\u4FDD\u5B58\u4FEE\u6539" : "\u6DFB\u52A0\u63A5\u53E3"
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "apple-button-secondary h-9 px-4 text-sm", style: secondaryButtonStyle, onClick: () => resetOfficialForm(true), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleX, { size: 14 }),
+            "\u53D6\u6D88"
+          ] })
+        ] })
+      ] })
+    ] });
+  };
+  const renderProviderForm = () => {
+    const mode = providerForm.id ? "edit" : "create";
+    const canOperateOnCurrentProvider = Boolean(currentEditingProvider);
+    const priceSyncStatus = currentProviderSnapshotCount > 0 ? { label: "\u5DF2\u540C\u6B65\u5FEB\u7167", tone: "green", helper: `${currentProviderSnapshotCount} \u6761\u8BB0\u5F55` } : {
+      label: isCurrentWuyinCatalogMode ? "\u5F85\u914D\u7F6E" : "\u672A\u540C\u6B65",
+      tone: "amber",
+      helper: isCurrentWuyinCatalogMode ? "\u76EE\u5F55\u578B\u4F9B\u5E94\u5546\u53EF\u76F4\u63A5\u624B\u52A8\u7EF4\u62A4\u6A21\u578B\u4EF7\u683C" : "\u5EFA\u8BAE\u5148\u626B\u63CF\u4EF7\u683C"
+    };
+    const nextPendingStep = providerWorkflowSteps.find((step) => !step.complete);
+    const editorSummaryCards = [
+      { label: "\u57FA\u7840\u5730\u5740", value: editingProviderBaseUrl || "\u5F85\u586B\u5199" },
+      {
+        label: isCurrentWuyinCatalogMode ? "\u4F9B\u5E94\u5546\u6A21\u5F0F" : "\u9ED8\u8BA4\u5206\u7EC4",
+        value: isCurrentWuyinCatalogMode ? "\u76EE\u5F55\u578B / \u65E0\u534F\u8BAE\u6821\u9A8C" : providerForm.group.trim() || "\u672A\u8BBE\u7F6E"
+      },
+      { label: "\u6A21\u578B / \u4EF7\u683C", value: `${currentProviderModelCount} / ${currentProviderSnapshotCount}` },
+      {
+        label: isCurrentWuyinCatalogMode ? "\u6700\u8FD1\u76EE\u5F55" : "\u6700\u8FD1\u540C\u6B65",
+        value: currentProviderLastSync ? formatDate(currentProviderLastSync) : isCurrentWuyinCatalogMode ? "\u672A\u8BFB\u53D6" : "\u672A\u540C\u6B65"
+      }
+    ];
+    const syncSummaryRows = [
+      { label: "\u626B\u63CF\u72B6\u6001", value: priceSyncStatus.label },
+      { label: "\u53EF\u7528\u5206\u7EC4", value: String(currentProviderGroupCount) },
+      { label: "\u6700\u8FD1\u626B\u63CF", value: currentProviderLastSync ? formatDate(currentProviderLastSync) : "\u672A\u626B\u63CF" }
+    ];
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "rounded-2xl border p-4", style: overlayPanelStyle, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0 flex-1", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "h-3 w-3 rounded-full", style: { backgroundColor: providerForm.providerColor } }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-lg font-semibold text-[var(--text-primary)]", children: editingProviderName }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusBadge, { label: currentProviderStatus.label, tone: currentProviderStatus.tone, compact: true })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 text-sm leading-6 text-[var(--text-secondary)]", children: isCurrentWuyinCatalogMode ? mode === "edit" ? "\u5F53\u524D\u662F\u4E94\u97F3\u76EE\u5F55\u578B\u4F9B\u5E94\u5546\uFF0C\u53EA\u7EF4\u62A4\u76EE\u5F55\u5730\u5740\u3001API Key\u3001\u6A21\u578B\u4EF7\u683C\u548C\u989D\u5EA6\uFF0C\u4E0D\u663E\u793A\u534F\u8BAE\u3001\u6821\u9A8C\u4E0E\u540C\u6B65\u3002" : "\u5148\u4FDD\u5B58\u4E94\u97F3\u76EE\u5F55\u578B\u4F9B\u5E94\u5546\uFF0C\u518D\u5728\u4E0B\u65B9\u7EF4\u62A4\u5177\u4F53\u6A21\u578B\u4EF7\u683C\uFF1B\u82E5\u9700\u8981\u76F4\u63A5\u751F\u6210\uFF0C\u8BF7\u6539\u586B\u5177\u4F53 async \u63A5\u53E3\u5730\u5740\u3002" : mode === "edit" ? "\u5F53\u524D\u4F9B\u5E94\u5546\u7684\u8FDE\u63A5\u3001\u6821\u9A8C\u548C\u4EF7\u683C\u540C\u6B65\u90FD\u96C6\u4E2D\u5728\u8FD9\u91CC\u5904\u7406\u3002" : "\u5148\u8865\u9F50\u57FA\u7840\u8FDE\u63A5\u5E76\u4FDD\u5B58\uFF0C\u518D\u7EE7\u7EED\u6821\u9A8C\u6A21\u578B\u548C\u540C\u6B65\u4EF7\u683C\u3002" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex flex-wrap gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "rounded-full border px-3 py-1.5 text-xs text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: [
+              "\u989D\u5EA6\u6A21\u5F0F ",
+              costModeText[providerForm.costMode]
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full border px-3 py-1.5 text-xs text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: providerForm.apiKey.trim() ? "API Key \u5DF2\u586B\u5199" : "API Key \u5F85\u586B\u5199" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full border px-3 py-1.5 text-xs text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: providerForm.isActive ? "\u5F53\u524D\u542F\u7528" : "\u5F53\u524D\u505C\u7528" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full border px-3 py-1.5 text-xs text-[var(--text-tertiary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: nextPendingStep ? `\u4E0B\u4E00\u6B65\uFF1A${nextPendingStep.label}` : isCurrentWuyinCatalogMode ? "\u76EE\u5F55\u5730\u5740\u4E0E\u6A21\u578B\u4EF7\u683C\u5DF2\u8865\u9F50" : "\u8FDE\u63A5\u3001\u6821\u9A8C\u4E0E\u4EF7\u683C\u540C\u6B65\u5DF2\u8865\u9F50" })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "grid gap-2 sm:grid-cols-2", children: editorSummaryCards.map((row) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border p-3", style: elevatedPanelStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: row.label }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-sm font-medium text-[var(--text-primary)]", children: row.value })
+        ] }, row.label)) })
+      ] }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-4", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-4", style: overlayPanelStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mb-3", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-[var(--text-primary)]", children: "\u57FA\u7840\u8FDE\u63A5" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs text-[var(--text-tertiary)]", children: "\u540D\u79F0\u3001\u989C\u8272\u3001\u57FA\u7840\u5730\u5740\u548C API Key \u90FD\u5728\u8FD9\u91CC\u7EDF\u4E00\u7EF4\u62A4\u3002" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid gap-3 lg:grid-cols-[minmax(0,1fr),minmax(280px,0.9fr)]", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: "\u4F9B\u5E94\u5546\u540D\u79F0" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: "h-10 w-full rounded-xl border px-3 text-sm outline-none", style: formFieldStyle, value: providerForm.name, onChange: (event) => setProviderForm((prev) => ({ ...prev, name: event.target.value })), placeholder: "\u4F8B\u5982\uFF1A12AI" })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: "\u4F9B\u5E94\u5546\u989C\u8272" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid gap-3 sm:grid-cols-[72px,minmax(0,1fr),auto]", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: "h-10 w-16 rounded-xl border p-1", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, type: "color", value: providerForm.providerColor, onChange: (event) => setProviderForm((prev) => ({ ...prev, providerColor: event.target.value })) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: "h-10 flex-1 rounded-xl border px-3 text-sm outline-none", style: formFieldStyle, value: providerForm.providerColor, onChange: (event) => setProviderForm((prev) => ({ ...prev, providerColor: event.target.value })) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                    "button",
+                    {
+                      type: "button",
+                      className: "inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm",
+                      style: secondaryButtonStyle,
+                      onClick: () => applyRandomProviderColor(providerForm.id),
+                      title: "\u968F\u673A\u5206\u914D\u4E00\u4E2A\u548C\u5176\u4ED6\u4F9B\u5E94\u5546\u5C3D\u91CF\u4E0D\u91CD\u590D\u7684\u989C\u8272",
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Shuffle, { size: 14 }),
+                        "\u968F\u673A"
+                      ]
+                    }
+                  )
+                ] })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 grid gap-3 lg:grid-cols-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "lg:col-span-2", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: "\u57FA\u7840\u5730\u5740" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    className: "h-10 w-full rounded-xl border px-3 text-sm outline-none",
+                    style: formFieldStyle,
+                    value: providerForm.baseUrl,
+                    onChange: (event) => setProviderForm((prev) => ({ ...prev, baseUrl: event.target.value })),
+                    placeholder: isCurrentProviderWuyin ? isCurrentWuyinCatalogMode ? "https://api.wuyinkeji.com" : "https://api.wuyinkeji.com/api/async/image_nanoBanana2" : "https://example.com/v1"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 text-xs leading-5 text-[var(--text-tertiary)]", children: [
+                  isCurrentWuyinCatalogMode ? "\u5F53\u524D\u662F\u4E94\u97F3\u76EE\u5F55\u578B\u5730\u5740\uFF0C\u4E0D\u663E\u793A\u534F\u8BAE\u3001\u6821\u9A8C\u548C\u540C\u6B65\u3002\u4F60\u53EF\u4EE5\u5728\u4E0B\u65B9\u624B\u52A8\u6DFB\u52A0\u6A21\u578B\u5355\u4EF7\uFF1B\u5982\u679C\u8981\u76F4\u63A5\u751F\u6210\uFF0C\u8BF7\u6539\u586B\u5177\u4F53 async \u63A5\u53E3\u5730\u5740\u3002" : isCurrentProviderWuyin ? "\u4E94\u97F3\u79D1\u6280\u53EF\u76F4\u63A5\u586B\u5199\u6839\u5730\u5740\uFF0C\u6216\u586B\u5199\u5177\u4F53\u6A21\u578B\u63A5\u53E3\u5730\u5740\u3002\u82E5\u586B\u5199 async \u63A5\u53E3\u5730\u5740\uFF0C\u7CFB\u7EDF\u4F1A\u4F18\u5148\u6309\u8FD9\u4E2A\u5355\u63A5\u53E3\u8BC6\u522B\u6A21\u578B\u5E76\u53D1\u8D77\u8BF7\u6C42\u3002" : "\u586B\u5199\u4F9B\u5E94\u5546\u7684\u57FA\u7840\u8C03\u7528\u5730\u5740\uFF0C\u4FDD\u5B58\u540E\u7528\u4E8E\u6A21\u578B\u6821\u9A8C\u4E0E\u5B9E\u9645\u751F\u6210\u8BF7\u6C42\u3002",
+                  currentWuyinEndpointModelId ? ` \u5F53\u524D\u5DF2\u8BC6\u522B\u63A5\u53E3\u6A21\u578B\uFF1A${currentWuyinEndpointModelId}\u3002` : ""
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: "API Key" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: "h-10 w-full rounded-xl border px-3 text-sm outline-none", style: formFieldStyle, value: providerForm.apiKey, onChange: (event) => setProviderForm((prev) => ({ ...prev, apiKey: event.target.value })), placeholder: "\u8F93\u5165\u7B2C\u4E09\u65B9\u4F9B\u5E94\u5546 API Key" })
+              ] }),
+              !isCurrentWuyinCatalogMode ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: "\u534F\u8BAE\u683C\u5F0F" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "select",
+                  {
+                    className: "h-10 w-full rounded-xl border px-3 text-sm outline-none",
+                    style: formFieldStyle,
+                    value: providerForm.format,
+                    onChange: (event) => setProviderForm((prev) => ({ ...prev, format: event.target.value })),
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "openai", children: "OpenAI \u517C\u5BB9" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "gemini", children: "Gemini \u539F\u751F" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "auto", children: "\u81EA\u52A8\u68C0\u6D4B" })
+                    ]
+                  }
+                )
+              ] }) : null
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 text-xs text-[var(--text-tertiary)]", children: isCurrentWuyinCatalogMode ? "\u76EE\u5F55\u578B\u5730\u5740\u53EA\u7528\u4E8E\u8BC6\u522B\u4E94\u97F3\u5382\u5546\u548C\u7EF4\u62A4\u6A21\u578B\u4EF7\u683C\uFF0C\u4E0D\u76F4\u63A5\u627F\u62C5\u751F\u6210\u8BF7\u6C42\u3002" : isCurrentProviderWuyin ? "\u4E94\u97F3\u79D1\u6280\u4E3A\u5F02\u6B65\u5382\u5546\uFF1A\u56FE\u7247\u4F1A\u8C03\u7528\u4F60\u586B\u5199\u7684 async \u63A5\u53E3\uFF0C\u7ED3\u679C\u67E5\u8BE2\u56FA\u5B9A\u8D70 `/api/async/detail?id=...`\uFF0C\u4E0D\u4F7F\u7528 `/v1/models` \u6216\u5206\u7EC4\u3002" : "OpenAI \u517C\u5BB9\u4F1A\u8C03\u7528 `/v1/chat/completions`\uFF1BGemini \u539F\u751F\u4F1A\u8C03\u7528 `/v1beta/models/...:generateContent?key=...`\u3002" })
+          ] }),
+          !isCurrentWuyinCatalogMode ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-4", style: overlayPanelStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mb-4 flex flex-wrap items-start justify-between gap-3", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-[var(--text-primary)]", children: "\u6821\u9A8C\u4E0E\u540C\u6B65" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs text-[var(--text-tertiary)]", children: "\u6240\u6709\u626B\u63CF\u548C\u540C\u6B65\u52A8\u4F5C\u90FD\u96C6\u4E2D\u5728\u8FD9\u91CC\uFF0C\u4E0D\u518D\u548C\u72B6\u6001\u8BF4\u660E\u91CD\u590D\u51FA\u73B0\u3002" })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusBadge, { label: priceSyncStatus.label, tone: priceSyncStatus.tone, helper: priceSyncStatus.helper, compact: true })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid gap-2 sm:grid-cols-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60", style: secondaryButtonStyle, onClick: () => void handleFetchAndSyncPricing(), disabled: advancedLoading || syncingProviderId === currentEditingProvider?.id, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { size: 14 }),
+                advancedLoading ? "\u626B\u63CF\u4E2D..." : "\u626B\u63CF\u4EF7\u683C"
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "button",
+                {
+                  className: "inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60",
+                  style: secondaryButtonStyle,
+                  onClick: () => currentEditingProvider && void handleValidateProvider(currentEditingProvider),
+                  disabled: !canOperateOnCurrentProvider || detectingProviderId === currentEditingProvider?.id,
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { size: 14 }),
+                    detectingProviderId === currentEditingProvider?.id ? "\u6821\u9A8C\u4E2D..." : "\u6821\u9A8C\u6A21\u578B"
+                  ]
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "button",
+                {
+                  className: "inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60",
+                  style: secondaryButtonStyle,
+                  onClick: () => currentEditingProvider && void handleSyncPricing(currentEditingProvider),
+                  disabled: !canOperateOnCurrentProvider || syncingProviderId === currentEditingProvider?.id,
+                  hidden: true,
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RefreshCw, { size: 14, className: syncingProviderId === currentEditingProvider?.id ? "animate-spin" : "" }),
+                    syncingProviderId === currentEditingProvider?.id ? "\u540C\u6B65\u4E2D..." : "\u540C\u6B65\u5230\u4F9B\u5E94\u5546"
+                  ]
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "api-settings-summary-list mt-3 rounded-xl border p-3", style: elevatedPanelStyle, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "grid gap-2 sm:grid-cols-3", children: syncSummaryRows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border px-3 py-3", style: overlayPanelStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: row.label }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-sm font-medium text-[var(--text-primary)]", children: row.value })
+            ] }, row.label)) }) }),
+            !canOperateOnCurrentProvider ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-3 rounded-xl border border-dashed px-3 py-3 text-xs leading-5 text-[var(--text-tertiary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: "\u65B0\u4F9B\u5E94\u5546\u5728\u4FDD\u5B58\u524D\u53EF\u4EE5\u5148\u626B\u63CF\u4EF7\u683C\uFF0C\u4F46\u201C\u6821\u9A8C\u6A21\u578B\u201D\u548C\u201C\u540C\u6B65\u5230\u4F9B\u5E94\u5546\u201D\u4F1A\u5728\u4FDD\u5B58\u540E\u89E3\u9501\u3002" }) : currentEditingProvider?.lastError ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 rounded-xl border px-3 py-3 text-xs leading-5 text-red-400", style: { borderColor: "rgba(239, 68, 68, 0.22)", backgroundColor: "rgba(239, 68, 68, 0.06)" }, children: [
+              "\u6700\u8FD1\u9519\u8BEF\uFF1A",
+              currentEditingProvider.lastError
+            ] }) : null
+          ] }) : null
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-4", style: overlayPanelStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mb-4 flex flex-wrap items-start justify-between gap-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-[var(--text-primary)]", children: currentProviderSupportsGroups ? "\u5206\u7EC4\u3001\u989D\u5EA6\u4E0E\u542F\u7528\u72B6\u6001" : "\u989D\u5EA6\u4E0E\u542F\u7528\u72B6\u6001" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs text-[var(--text-tertiary)]", children: currentProviderSupportsGroups ? "\u9ED8\u8BA4\u5206\u7EC4\u3001\u989D\u5EA6\u6A21\u5F0F\u548C\u542F\u7528\u72B6\u6001\u4F1A\u76F4\u63A5\u5F71\u54CD\u8C03\u5EA6\u4E0E\u8BA1\u8D39\u3002" : "\u8BE5\u4F9B\u5E94\u5546\u6CA1\u6709\u5206\u7EC4\u80FD\u529B\uFF0C\u8FD9\u91CC\u53EA\u7EF4\u62A4\u989D\u5EA6\u6A21\u5F0F\u548C\u542F\u7528\u72B6\u6001\u3002" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusBadge, { label: currentProviderStatus.label, tone: currentProviderStatus.tone, compact: true })
+          ] }),
+          currentProviderSupportsGroups ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-1 text-xs text-[var(--text-tertiary)]", children: "\u9ED8\u8BA4\u5206\u7EC4" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  className: "h-10 w-full rounded-xl border px-3 text-sm outline-none",
+                  style: formFieldStyle,
+                  value: providerForm.group,
+                  onChange: (event) => setProviderForm((prev) => ({ ...prev, group: event.target.value })),
+                  placeholder: "\u4F8B\u5982\uFF1Adefault"
+                }
+              )
+            ] }),
+            advancedResult?.availableGroups?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-3 flex flex-wrap gap-2", children: advancedResult.availableGroups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                type: "button",
+                className: `rounded-full border px-3 py-1.5 text-left text-xs ${providerForm.group === group ? "border-indigo-500 bg-indigo-500/10 text-indigo-500" : "border-[var(--border-light)] text-[var(--text-secondary)] hover:border-indigo-400 hover:text-indigo-400"}`,
+                onClick: () => setProviderForm((prev) => ({ ...prev, group })),
+                children: group
+              },
+              group
+            )) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-3 rounded-xl border border-dashed px-3 py-3 text-xs text-[var(--text-tertiary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: "\u6682\u672A\u626B\u63CF\u5230\u53EF\u9009\u5206\u7EC4\uFF0C\u53EF\u4EE5\u5148\u624B\u52A8\u586B\u5199\u9ED8\u8BA4\u5206\u7EC4\u3002" })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "rounded-xl border border-dashed px-3 py-3 text-xs text-[var(--text-tertiary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: "\u5F53\u524D\u4F9B\u5E94\u5546\u4E0D\u4F7F\u7528\u5206\u7EC4\uFF0C\u4FDD\u5B58\u540E\u4F1A\u6309\u5355\u63A5\u53E3\u6216\u624B\u52A8\u6A21\u578B\u4EF7\u683C\u76F4\u63A5\u8BA1\u8D39\u3002" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-4 rounded-xl border p-3", style: elevatedPanelStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mb-3 text-xs text-[var(--text-tertiary)]", children: "\u989D\u5EA6\u8BBE\u7F6E" }),
+            renderCostEditor(providerForm.costMode, providerForm.costValue, (costMode) => setProviderForm((prev) => ({ ...prev, costMode })), (costValue) => setProviderForm((prev) => ({ ...prev, costValue })))
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-4 flex items-center justify-between rounded-xl border px-3 py-3 text-sm text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "h-2.5 w-2.5 rounded-full", style: { backgroundColor: providerForm.isActive ? "#10b981" : "#6b7280" } }),
+              "\u542F\u7528\u8BE5\u4F9B\u5E94\u5546"
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: providerForm.isActive, onChange: (event) => setProviderForm((prev) => ({ ...prev, isActive: event.target.checked })) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-summary-list mt-4 rounded-xl border p-3", style: elevatedPanelStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-summary-item", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-summary-item__label", children: "\u603B\u989D\u5EA6" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-summary-item__value", children: currentProviderBudgetPreview.total })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-summary-item", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-summary-item__label", children: "\u5DF2\u4F7F\u7528" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-summary-item__value text-amber-500", children: currentProviderBudgetPreview.used })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-summary-item", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-summary-item__label", children: "\u5269\u4F59" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-summary-item__value text-emerald-500", children: currentProviderBudgetPreview.remaining })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 rounded-xl border px-3 py-3 text-xs leading-6 text-[var(--text-tertiary)]", style: elevatedPanelStyle, children: [
+            currentProviderStatus.helper,
+            currentProviderBudgetPreview.unit ? ` \u5F53\u524D\u989D\u5EA6\u5355\u4F4D\u4E3A ${currentProviderBudgetPreview.unit}\u3002` : ""
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-4", style: overlayPanelStyle, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "flex w-full items-center justify-between gap-3 text-left", onClick: () => setShowAdvancedMode((prev) => !prev), children: [
+          isCurrentWuyinCatalogMode ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-[var(--text-primary)]", children: "\u6A21\u578B\u4EF7\u683C\u4E0E\u5FEB\u7167" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs text-[var(--text-tertiary)]", children: "\u76EE\u5F55\u578B\u4F9B\u5E94\u5546\u5728\u8FD9\u91CC\u7EF4\u62A4\u6A21\u578B\u5355\u4EF7\u548C\u76EE\u5F55\u5FEB\u7167\uFF0C\u4E0D\u518D\u4F7F\u7528\u901A\u7528\u540C\u6B65\u6D41\u7A0B\u3002" })
+          ] }) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: isCurrentWuyinCatalogMode ? "hidden" : void 0, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-[var(--text-primary)]", children: "\u4EF7\u683C\u540C\u6B65\u4E0E\u5FEB\u7167" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs text-[var(--text-tertiary)]", children: "\u628A\u4EF7\u683C\u626B\u63CF\u3001\u5206\u7EC4\u500D\u7387\u548C\u6700\u7EC8\u4EF7\u683C\u660E\u7EC6\u6536\u5728\u540C\u4E00\u4E2A\u533A\u57DF\uFF0C\u907F\u514D\u5728\u5217\u8868\u548C\u8868\u5355\u4E4B\u95F4\u6765\u56DE\u8DF3\u3002" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              StatusBadge,
+              {
+                label: isCurrentWuyinCatalogMode ? currentProviderSnapshotCount > 0 ? "\u5DF2\u8BFB\u53D6" : "\u5F85\u8BFB\u53D6" : currentProviderSnapshotCount > 0 ? "\u5DF2\u540C\u6B65" : "\u5F85\u626B\u63CF",
+                tone: priceSyncStatus.tone,
+                compact: true
+              }
+            ),
+            showAdvancedMode ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronUp, { size: 16 }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronDown, { size: 16 })
+          ] })
+        ] }),
+        (showAdvancedMode || advancedResult || manualPricingRows.length > 0) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-4 space-y-4", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "inline-flex h-9 items-center gap-1 rounded-xl border px-3 text-sm", style: secondaryButtonStyle, onClick: () => void handleDetectAdvanced(), disabled: advancedLoading, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { size: 14 }),
+              advancedLoading ? isCurrentWuyinCatalogMode ? "\u8BFB\u53D6\u4E2D..." : "\u626B\u63CF\u4E2D..." : isCurrentWuyinCatalogMode ? "\u8BFB\u53D6\u4EA7\u54C1\u76EE\u5F55" : "\u91CD\u65B0\u626B\u63CF\u4EF7\u683C"
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                type: "button",
+                className: "inline-flex h-9 items-center gap-1 rounded-xl border px-3 text-sm",
+                style: secondaryButtonStyle,
+                onClick: () => handleAddManualPricingRow({
+                  model: isCurrentWuyinCatalogMode ? "" : currentWuyinEndpointModelId || "",
+                  modelName: isCurrentWuyinCatalogMode ? "" : currentWuyinEndpointModelId || "",
+                  endpointUrl: isCurrentWuyinCatalogMode ? "" : providerForm.baseUrl.trim(),
+                  unit: guessManualBillingUnit(currentWuyinEndpointModelId || void 0),
+                  currency: "CNY"
+                }),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { size: 14 }),
+                  isCurrentWuyinCatalogMode ? "\u624B\u52A8\u6DFB\u52A0\u63A5\u53E3" : "\u624B\u52A8\u6DFB\u52A0\u6A21\u578B"
+                ]
+              }
+            ),
+            isCurrentProviderWuyin && currentWuyinEndpointModelId ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                type: "button",
+                className: "inline-flex h-9 items-center gap-1 rounded-xl border px-3 text-sm",
+                style: secondaryButtonStyle,
+                onClick: handleUseEndpointModelAsManual,
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PenLine, { size: 14 }),
+                  "\u4F7F\u7528\u5F53\u524D\u63A5\u53E3\u6A21\u578B"
+                ]
+              }
+            ) : null,
+            advancedResult?.fetchedAt ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-xs text-[var(--text-tertiary)]", children: [
+              isCurrentWuyinCatalogMode ? "\u6700\u8FD1\u8BFB\u53D6" : "\u6700\u8FD1\u626B\u63CF",
+              "\uFF1A",
+              formatDate(advancedResult.fetchedAt)
+            ] }) : manualPricingRows.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-xs text-[var(--text-tertiary)]", children: [
+              "\u5F53\u524D\u5DF2\u624B\u52A8\u7EF4\u62A4 ",
+              manualPricingRows.length,
+              " \u4E2A\u6A21\u578B"
+            ] }) : null
+          ] }),
+          advancedResult || manualPricingRows.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-4 rounded-2xl border p-4", style: elevatedPanelStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "rounded-xl border px-3 py-3 text-xs leading-5 text-[var(--text-tertiary)]", style: overlayPanelStyle, children: advancedResult?.pricingHint || (manualPricingRows.length > 0 ? isCurrentWuyinCatalogMode ? `\u5DF2\u7EF4\u62A4 ${manualPricingRows.length} \u4E2A\u63A5\u53E3\u4EF7\u683C\uFF0C\u4FDD\u5B58\u540E\u4F1A\u6309\u5BF9\u5E94 async \u63A5\u53E3\u53D1\u8D77\u751F\u6210\u3002` : `\u5DF2\u624B\u52A8\u7EF4\u62A4 ${manualPricingRows.length} \u4E2A\u6A21\u578B\u4EF7\u683C\uFF0C\u53EF\u76F4\u63A5\u586B\u5199\u6BCF\u5F20\u3001\u6BCF\u79D2\u6216\u6BCF\u6B21\u8D39\u7528\u3002` : "\u5F53\u524D\u6CA1\u6709\u53EF\u5C55\u793A\u7684\u4EF7\u683C\u4FE1\u606F\u3002") }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid gap-3 md:grid-cols-3", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border p-3", style: overlayPanelStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: isCurrentWuyinCatalogMode ? "\u76EE\u5F55\u6765\u6E90" : "\u626B\u63CF\u6765\u6E90" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-sm font-medium text-[var(--text-primary)]", children: advancedResult?.apiType || (isCurrentWuyinCatalogMode ? "catalog" : "manual") })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border p-3", style: overlayPanelStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u6A21\u578B\u6570\u91CF" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-sm font-medium text-[var(--text-primary)]", children: effectivePricingModels.length })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border p-3", style: overlayPanelStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: isCurrentProviderWuyin ? "\u4F9B\u5E94\u5546\u6A21\u5F0F" : "\u9ED8\u8BA4\u5206\u7EC4\u500D\u7387" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-sm font-medium text-[var(--text-primary)]", children: isCurrentProviderWuyin ? "\u65E0\u5206\u7EC4 / \u5F02\u6B65\u5355\u63A5\u53E3" : formatRatioDisplay(defaultScannedGroupRatio) })
+              ] })
+            ] }),
+            currentProviderSupportsGroups && advancedResult?.availableGroups && advancedResult.availableGroups.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border p-3", style: overlayPanelStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-medium text-[var(--text-primary)]", children: "\u626B\u63CF\u5230\u7684\u53EF\u7528\u5206\u7EC4" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 flex flex-wrap gap-2", children: advancedResult.availableGroups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  type: "button",
+                  className: `rounded-full border px-2 py-1 text-[11px] ${providerForm.group === group ? "border-indigo-500 text-indigo-500" : "border-[var(--border-light)] text-[var(--text-secondary)]"}`,
+                  onClick: () => setProviderForm((prev) => ({ ...prev, group })),
+                  children: group
+                },
+                group
+              )) })
+            ] }) : null,
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border p-3", style: overlayPanelStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-medium text-[var(--text-primary)]", children: isCurrentWuyinCatalogMode ? "\u624B\u52A8\u63A5\u53E3\u4EF7\u683C" : "\u624B\u52A8\u6A21\u578B\u5355\u4EF7" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-[11px] text-[var(--text-tertiary)]", children: isCurrentWuyinCatalogMode ? "\u586B\u5199\u4E94\u97F3 async \u63A5\u53E3\u5730\u5740\u3001\u5355\u4EF7\u548C\u5355\u4F4D\u3002\u4FDD\u5B58\u540E\u751F\u6210\u65F6\u4F1A\u4F18\u5148\u6309\u8FD9\u91CC\u8BB0\u5F55\u7684\u63A5\u53E3\u5730\u5740\u8BF7\u6C42\uFF0C\u4E0D\u518D\u4F9D\u8D56\u5199\u6B7B\u6620\u5C04\u3002" : "\u9002\u5408\u4E94\u97F3\u79D1\u6280\u8FD9\u7C7B\u6CA1\u6709\u6807\u51C6 `/v1/models` \u548C\u5206\u7EC4\u63A5\u53E3\u7684\u5382\u5546\u3002\u8FD9\u91CC\u586B\u5199\u540E\uFF0C\u4FDD\u5B58\u65F6\u4F1A\u76F4\u63A5\u5199\u5165\u672C\u5730\u4EF7\u683C\u5FEB\u7167\u3002" })
+                ] }),
+                isCurrentProviderWuyin && currentWuyinEndpointModelId ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "rounded-full border px-2.5 py-1 text-[11px] text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)" }, children: [
+                  "\u5F53\u524D\u63A5\u53E3\u6A21\u578B ",
+                  currentWuyinEndpointModelId
+                ] }) : null
+              ] }),
+              manualPricingRows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-3 rounded-xl border border-dashed p-4 text-xs leading-5 text-[var(--text-tertiary)]", style: { borderColor: "var(--border-light)" }, children: isCurrentWuyinCatalogMode ? "\u8FD8\u6CA1\u6709\u624B\u52A8\u63A5\u53E3\u3002\u4F60\u53EF\u4EE5\u70B9\u51FB\u201C\u624B\u52A8\u6DFB\u52A0\u63A5\u53E3\u201D\uFF0C\u5E76\u586B\u5199\u5B8C\u6574\u7684 async \u63A5\u53E3\u5730\u5740\uFF0C\u4F8B\u5982 https://api.wuyinkeji.com/api/async/image_nanoBanana2\u3002" : "\u8FD8\u6CA1\u6709\u624B\u52A8\u6A21\u578B\u3002\u4F60\u53EF\u4EE5\u70B9\u51FB\u201C\u624B\u52A8\u6DFB\u52A0\u6A21\u578B\u201D\uFF0C\u6216\u8005\u5728\u586B\u5199\u4E94\u97F3 async \u63A5\u53E3\u5730\u5740\u540E\u70B9\u51FB\u201C\u4F7F\u7528\u5F53\u524D\u63A5\u53E3\u6A21\u578B\u201D\u3002" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-3 space-y-3", children: manualPricingRows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "div",
+                {
+                  className: `grid gap-3 rounded-xl border p-3 ${isCurrentWuyinCatalogMode ? "md:grid-cols-[minmax(0,1.8fr),120px,120px,110px,96px]" : "md:grid-cols-[minmax(0,1.2fr),minmax(0,1.1fr),120px,120px,96px]"}`,
+                  style: elevatedPanelStyle,
+                  children: [
+                    isCurrentWuyinCatalogMode ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-1", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "input",
+                        {
+                          className: "h-10 rounded-xl border px-3 text-sm outline-none",
+                          style: formFieldStyle,
+                          value: row.endpointUrl || "",
+                          onChange: (event) => handleUpdateManualPricingRow(row.id, { endpointUrl: event.target.value }),
+                          placeholder: "\u5B8C\u6574 async \u63A5\u53E3\u5730\u5740\uFF0C\u4F8B\u5982 https://api.wuyinkeji.com/api/async/image_nanoBanana2"
+                        }
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `text-[11px] ${row.model ? "text-[var(--text-tertiary)]" : "text-amber-500"}`, children: row.model ? `\u6A21\u578B ID: ${row.model}` : "\u5C06\u4ECE\u63A5\u53E3\u5730\u5740\u81EA\u52A8\u8BC6\u522B\u6A21\u578B ID" })
+                    ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "input",
+                      {
+                        className: "h-10 rounded-xl border px-3 text-sm outline-none",
+                        style: formFieldStyle,
+                        value: row.model,
+                        onChange: (event) => handleUpdateManualPricingRow(row.id, {
+                          model: event.target.value,
+                          modelName: row.modelName || event.target.value,
+                          unit: row.unit || guessManualBillingUnit(event.target.value)
+                        }),
+                        placeholder: "\u6A21\u578B ID\uFF0C\u4F8B\u5982 image_nanoBanana2"
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "input",
+                      {
+                        className: "h-10 rounded-xl border px-3 text-sm outline-none",
+                        style: formFieldStyle,
+                        value: row.price,
+                        onChange: (event) => handleUpdateManualPricingRow(row.id, { price: event.target.value }),
+                        placeholder: "\u5355\u4EF7\uFF0C\u4F8B\u5982 0.1"
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "input",
+                      {
+                        className: "h-10 rounded-xl border px-3 text-sm outline-none",
+                        style: formFieldStyle,
+                        value: row.unit,
+                        onChange: (event) => handleUpdateManualPricingRow(row.id, { unit: event.target.value }),
+                        placeholder: "\u5355\u4F4D\uFF1A\u5F20 / \u79D2 / \u6B21"
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                      "select",
+                      {
+                        className: "h-10 rounded-xl border px-3 text-sm outline-none",
+                        style: formFieldStyle,
+                        value: row.currency,
+                        onChange: (event) => handleUpdateManualPricingRow(row.id, { currency: event.target.value }),
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "CNY", children: "CNY" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "USD", children: "USD" })
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                      "button",
+                      {
+                        type: "button",
+                        className: "apple-button-danger h-10 px-3 text-xs",
+                        onClick: () => handleRemoveManualPricingRow(row.id),
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 12 }),
+                          "\u5220\u9664"
+                        ]
+                      }
+                    )
+                  ]
+                },
+                row.id
+              )) })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-3", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-medium text-[var(--text-primary)]", children: "\u4EF7\u683C\u660E\u7EC6" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-[11px] text-[var(--text-tertiary)]", children: "\u53EA\u5C55\u793A\u54C1\u724C\u4F9B\u5E94\u5546\u3001\u5206\u7EC4\u3001\u8BA1\u8D39\u65B9\u5F0F\uFF0C\u4EE5\u53CA\u6700\u7EC8\u4EF7\u683C\u6216\u500D\u7387\u3002" })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "relative w-full sm:w-80", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "pointer-events-none absolute left-3 top-1/2 flex -translate-y-1/2 items-center justify-center text-[var(--text-tertiary)]", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { size: 15 }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "input",
+                    {
+                      value: pricingSearch,
+                      onChange: (event) => setPricingSearch(event.target.value),
+                      placeholder: "\u641C\u7D22\u6A21\u578B / \u5206\u7EC4 / \u4F9B\u5E94\u5546",
+                      className: "h-9 w-full rounded-xl border pl-9 pr-3 text-xs text-[var(--text-primary)] outline-none transition focus:border-indigo-500",
+                      style: formFieldStyle
+                    }
+                  )
+                ] })
+              ] }),
+              filteredAdvancedPricingRows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "rounded-xl border border-dashed border-[var(--border-light)] p-4 text-xs text-[var(--text-tertiary)]", children: "\u5F53\u524D\u6CA1\u6709\u53EF\u5C55\u793A\u7684\u4EF7\u683C\u660E\u7EC6\u3002" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "space-y-3", children: filteredAdvancedPricingRows.map((row) => {
+                const billingLabel = resolveBillingLabel(row.billingType, row.quotaType, row.perRequestPrice);
+                const detailBadges = renderPricingDetailBadges(row);
+                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border p-4", style: overlayPanelStyle, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-[var(--text-primary)]", children: row.model }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap gap-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "rounded-full border px-2.5 py-1 text-[11px] text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)" }, children: [
+                          "\u54C1\u724C ",
+                          row.providerLabel || row.provider || "\u672A\u6807\u6CE8"
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "rounded-full border px-2.5 py-1 text-[11px] text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)" }, children: [
+                          "\u5206\u7EC4 ",
+                          row.tokenGroup || providerForm.group || "default"
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "rounded-full border px-2.5 py-1 text-[11px] text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)" }, children: [
+                          "\u8BA1\u8D39 ",
+                          billingLabel
+                        ] })
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-medium", style: { backgroundColor: `${providerForm.providerColor}22`, color: providerForm.providerColor }, children: providerForm.group || row.tokenGroup || "default" })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-3 flex flex-wrap gap-2", children: detailBadges.length > 0 ? detailBadges.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                    "div",
+                    {
+                      className: "rounded-full border px-3 py-1.5 text-[11px]",
+                      style: {
+                        borderColor: item.accent ? `${providerForm.providerColor}55` : "var(--border-light)",
+                        backgroundColor: item.accent ? `${providerForm.providerColor}12` : "var(--bg-elevated)",
+                        color: item.accent ? providerForm.providerColor : "var(--text-secondary)"
+                      },
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "mr-1 opacity-70", children: item.label }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-medium", children: item.value })
+                      ]
+                    },
+                    `${row.model}-${item.label}-${item.value}`
+                  )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "rounded-full border px-3 py-1.5 text-[11px] text-[var(--text-tertiary)]", style: { borderColor: "var(--border-light)" }, children: "\u5F53\u524D\u6A21\u578B\u672A\u8FD4\u56DE\u53EF\u76F4\u63A5\u5C55\u793A\u7684\u4EF7\u683C\u5B57\u6BB5" }) })
+                ] }, row.model);
+              }) })
+            ] })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "rounded-xl border border-dashed p-4 text-sm leading-6 text-[var(--text-tertiary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: "\u626B\u63CF\u4EF7\u683C\u540E\uFF0C\u8FD9\u91CC\u4F1A\u5C55\u793A\u4F9B\u5E94\u5546\u8FD4\u56DE\u7684\u54C1\u724C\u3001\u5206\u7EC4\u3001\u8BA1\u8D39\u65B9\u5F0F\u548C\u6700\u7EC8\u4EF7\u683C\uFF0C\u65B9\u4FBF\u4F60\u76F4\u63A5\u786E\u8BA4\u540C\u6B65\u5185\u5BB9\u3002" })
+        ] })
+      ] })
+    ] });
+  };
+  const renderProviderEditorCard = () => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: providerEditorRef, className: "api-settings-editor-card overflow-hidden rounded-[24px] border scroll-mt-6", style: elevatedPanelStyle, children: showProviderCreateForm ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-b px-5 py-4", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-surface)" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-col gap-4", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0 flex-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-base font-semibold text-[var(--text-primary)]", children: providerForm.id ? `\u6B63\u5728\u7F16\u8F91\uFF1A${editingProviderName}` : "\u65B0\u589E\u4F9B\u5E94\u5546" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs leading-5 text-[var(--text-tertiary)]", children: providerForm.id ? editingProviderBaseUrl || "\u8BF7\u5B8C\u5584\u4F9B\u5E94\u5546\u57FA\u7840\u5730\u5740\uFF0C\u4FDD\u5B58\u540E\u4F1A\u4F5C\u4E3A\u5F53\u524D\u4F9B\u5E94\u5546\u7684\u8BC6\u522B\u5730\u5740\u3002" : "\u586B\u5199\u540D\u79F0\u3001\u57FA\u7840\u5730\u5740\u548C API Key \u540E\u5373\u53EF\u4FDD\u5B58\u4E3A\u65B0\u7684\u7B2C\u4E09\u65B9\u4F9B\u5E94\u5546\u3002" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-editor-toolbar flex flex-wrap gap-2 overflow-visible pb-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "button",
+          {
+            className: "apple-button-primary h-9 px-4 text-sm transition-all active:scale-95 disabled:opacity-70 whitespace-nowrap",
+            onClick: () => void handleSaveProvider(),
+            disabled: savingProviderId === (providerForm.id || "new"),
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Save, { size: 14 }),
+              savingProviderId === (providerForm.id || "new") ? "\u4FDD\u5B58\u4E2D..." : providerForm.id ? "\u4FDD\u5B58\u4F9B\u5E94\u5546" : "\u6DFB\u52A0\u4F9B\u5E94\u5546"
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "apple-button-secondary h-9 px-4 text-sm transition-all active:scale-95 whitespace-nowrap", style: secondaryButtonStyle, onClick: () => resetThirdPartyForm(true), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleX, { size: 14 }),
+          "\u5173\u95ED"
+        ] }),
+        currentEditingProvider ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              className: "apple-button-secondary h-8 px-3 text-xs transition-all active:scale-95 whitespace-nowrap",
+              style: secondaryButtonStyle,
+              onClick: () => handleToggleProvider(currentEditingProvider),
+              children: [
+                currentEditingProvider.isActive ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pause, { size: 12 }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Play, { size: 12 }),
+                currentEditingProvider.isActive ? "\u505C\u7528" : "\u542F\u7528"
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "apple-button-danger h-8 px-3 text-xs transition-all active:scale-95 whitespace-nowrap", onClick: () => handleDeleteProvider(currentEditingProvider.id), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 12 }),
+            "\u5220\u9664"
+          ] })
+        ] }) : null
+      ] })
+    ] }) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: providerEditorBodyRef, className: "p-5", children: renderProviderForm() })
+  ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "border-b px-5 py-4", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-surface)" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-base font-semibold text-[var(--text-primary)]", children: "\u4F9B\u5E94\u5546\u5DE5\u4F5C\u533A" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs leading-5 text-[var(--text-tertiary)]", children: "\u5148\u4ECE\u961F\u5217\u4E2D\u9009\u4E2D\u4E00\u4E2A\u4F9B\u5E94\u5546\uFF0C\u518D\u5728\u8FD9\u91CC\u8FDE\u7EED\u5904\u7406\u8FDE\u63A5\u914D\u7F6E\u3001\u6A21\u578B\u6821\u9A8C\u548C\u4EF7\u683C\u540C\u6B65\u3002" })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "p-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-5", style: overlayPanelStyle, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-[var(--text-primary)]", children: "\u5148\u9009\u62E9\uFF0C\u518D\u5904\u7406" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 text-sm leading-6 text-[var(--text-secondary)]", children: "\u5217\u8868\u5361\u7247\u53EA\u8D1F\u8D23\u5E2E\u4F60\u5FEB\u901F\u5B9A\u4F4D\u5BF9\u8C61\uFF0C\u5177\u4F53\u7F16\u8F91\u548C\u540C\u6B65\u52A8\u4F5C\u7EDF\u4E00\u653E\u5728\u5DE5\u4F5C\u533A\u91CC\uFF0C\u9875\u9762\u5C42\u7EA7\u4F1A\u66F4\u6E05\u6670\u3002" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-5 space-y-3", children: [
+          { title: "1. \u9009\u62E9\u4F9B\u5E94\u5546", description: "\u4ECE\u5DE6\u4FA7\u961F\u5217\u70B9\u9009\u4F9B\u5E94\u5546\uFF0C\u5DE5\u4F5C\u533A\u4F1A\u81EA\u52A8\u5207\u6362\u5230\u5F53\u524D\u5BF9\u8C61\u3002" },
+          { title: "2. \u8865\u9F50\u8FDE\u63A5\u4FE1\u606F", description: "\u7EDF\u4E00\u4FEE\u6539\u540D\u79F0\u3001\u5730\u5740\u3001API Key\u3001\u9ED8\u8BA4\u5206\u7EC4\u548C\u989D\u5EA6\u6A21\u5F0F\u3002" },
+          { title: "3. \u5B8C\u6210\u6821\u9A8C\u540C\u6B65", description: "\u4FDD\u5B58\u540E\u7EE7\u7EED\u505A\u6A21\u578B\u6821\u9A8C\u3001\u4EF7\u683C\u626B\u63CF\u4E0E\u6B63\u5F0F\u540C\u6B65\u3002" }
+        ].map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border p-4", style: elevatedPanelStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-medium text-[var(--text-primary)]", children: item.title }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs leading-5 text-[var(--text-tertiary)]", children: item.description })
+        ] }, item.title)) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid gap-4 sm:grid-cols-2 xl:grid-cols-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-4", style: overlayPanelStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u5F53\u524D\u961F\u5217" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-2xl font-semibold text-[var(--text-primary)]", children: summary.providerCount }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-1 text-xs text-[var(--text-tertiary)]", children: [
+            "\u5DF2\u542F\u7528 ",
+            summary.activeProviderCount
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-4", style: overlayPanelStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u5F85\u5904\u7406" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-2xl font-semibold text-[var(--text-primary)]", children: providerWorkspaceSummary.pendingSyncCount + providerWorkspaceSummary.errorCount }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs text-[var(--text-tertiary)]", children: "\u4EF7\u683C\u5F85\u540C\u6B65\u6216\u5B58\u5728\u5F02\u5E38" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "button",
+          {
+            className: "apple-button-primary h-10 w-full text-sm",
+            onClick: () => {
+              setShowProviderCreateForm(true);
+              resetThirdPartyForm(false);
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { size: 14 }),
+              "\u65B0\u589E\u4F9B\u5E94\u5546"
+            ]
+          }
+        )
+      ] })
+    ] }) })
+  ] }) });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-view space-y-4 pb-8", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid grid-cols-1 gap-4 lg:grid-cols-[1fr,minmax(auto,580px)] xl:grid-cols-[1fr,minmax(auto,620px)]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "rounded-[24px] border p-5 md:p-6", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-tertiary)" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { className: "text-2xl font-semibold text-[var(--text-primary)]", children: "API \u7BA1\u7406" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]", children: "\u7EDF\u4E00\u7BA1\u7406\u5B98\u65B9\u63A5\u53E3\u4E0E\u7B2C\u4E09\u65B9\u4F9B\u5E94\u5546\u3002\u5728\u6B64\u53EF\u4EE5\u914D\u7F6E API \u5BC6\u94A5\u3001\u540C\u6B65\u6A21\u578B\u4EF7\u683C\u4EE5\u53CA\u7BA1\u7406\u4F9B\u5E94\u5546\u961F\u5217\u3002" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex flex-wrap gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full border px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: "\u5DE6\u4FA7\u961F\u5217" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full border px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: "\u53F3\u4FA7\u8FDE\u7EED\u5DE5\u4F5C\u533A" })
+        ] })
+      ] }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "rounded-[24px] border p-5 md:p-6", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-tertiary)" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "apple-pill-group self-start", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              className: `apple-pill-button ${tab === "thirdparty" ? "active" : ""}`,
+              onClick: () => setTab("thirdparty"),
+              children: [
+                "\u7B2C\u4E09\u65B9\u4F9B\u5E94\u5546",
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full border px-2 py-0.5 text-[10px]", style: { borderColor: "currentColor" }, children: summary.providerCount })
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              className: `apple-pill-button ${tab === "official" ? "active" : ""}`,
+              onClick: () => setTab("official"),
+              children: [
+                "\u5B98\u65B9\u63A5\u53E3",
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full border px-2 py-0.5 text-[10px]", style: { borderColor: "currentColor" }, children: summary.officialCount })
+              ]
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid grid-cols-2 gap-2 xl:grid-cols-4", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-3", style: elevatedPanelStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u4F9B\u5E94\u5546" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-lg font-semibold text-[var(--text-primary)]", children: summary.providerCount }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-0.5 text-[10px] text-[var(--text-tertiary)]", children: [
+              "\u542F\u7528 ",
+              summary.activeProviderCount
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-3", style: elevatedPanelStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u5DF2\u540C\u6B65" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-lg font-semibold text-[var(--text-primary)]", children: providerWorkspaceSummary.syncedCount }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-0.5 text-[10px] text-[var(--text-tertiary)]", children: [
+              "\u5F85\u529E ",
+              providerWorkspaceSummary.pendingSyncCount
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-3", style: elevatedPanelStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u5F02\u5E38" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-lg font-semibold text-[var(--text-primary)]", children: providerWorkspaceSummary.errorCount }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-0.5 text-[10px] text-[var(--text-tertiary)]", children: [
+              "\u53D7\u9650 ",
+              providerWorkspaceSummary.limitedCount
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border p-3", style: elevatedPanelStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u7D2F\u8BA1\u6210\u672C" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-1 text-lg font-semibold text-[var(--text-primary)]", children: [
+              "$",
+              summary.totalCost.toFixed(2)
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-0.5 text-[10px] text-[var(--text-tertiary)]", children: [
+              "Tk ",
+              summary.totalTokens.toLocaleString("zh-CN")
+            ] })
+          ] })
+        ] })
+      ] }) })
+    ] }),
+    tab === "thirdparty" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `api-settings-layout ${showProviderCreateForm ? "is-editing" : "is-browsing"}`, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("aside", { className: "api-settings-list-panel min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "div",
+        {
+          className: "overflow-hidden rounded-[24px] border",
+          style: elevatedPanelStyle,
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-b px-4 py-4 md:px-5 md:py-5", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-surface)" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-4", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--text-tertiary)]", children: "Provider Queue" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 text-base font-semibold text-[var(--text-primary)]", children: "\u4F9B\u5E94\u5546\u961F\u5217" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-xs leading-5 text-[var(--text-tertiary)]", children: showProviderCreateForm ? "\u8FD9\u91CC\u8D1F\u8D23\u68C0\u7D22\u3001\u7B5B\u9009\u548C\u5207\u6362\u4F9B\u5E94\u5546\u5BF9\u8C61\uFF0C\u53F3\u4FA7\u5DE5\u4F5C\u533A\u4E13\u6CE8\u4E8E\u7F16\u8F91\u3001\u6821\u9A8C\u548C\u4EF7\u683C\u540C\u6B65\u3002" : "\u8FD9\u91CC\u5148\u6D4F\u89C8\u548C\u9009\u62E9\u4F9B\u5E94\u5546\u5361\u7247\uFF0C\u8FDB\u5165\u7F16\u8F91\u540E\u53F3\u4FA7\u624D\u4F1A\u5C55\u5F00\u5BF9\u5E94\u5DE5\u4F5C\u533A\u3002" })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center gap-2 self-start", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full border px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)]", style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-elevated)" }, children: providerSearch.trim() ? `${filteredProviders.length}/${providers.length}` : providers.length }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                    "button",
+                    {
+                      className: "apple-button-primary h-9 px-4 text-sm",
+                      onClick: () => {
+                        setShowProviderCreateForm(true);
+                        resetThirdPartyForm(false);
+                      },
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { size: 14 }),
+                        "\u65B0\u589E\u4F9B\u5E94\u5546"
+                      ]
+                    }
+                  )
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `grid gap-2 ${showProviderCreateForm ? "lg:grid-cols-[minmax(0,1fr),auto] lg:items-start" : ""}`, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "grid gap-2 sm:grid-cols-3", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border px-3 py-3", style: elevatedPanelStyle, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u5F85\u540C\u6B65" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-sm font-semibold text-[var(--text-primary)]", children: providerWorkspaceSummary.pendingSyncCount })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border px-3 py-3", style: elevatedPanelStyle, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u5F02\u5E38" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-sm font-semibold text-[var(--text-primary)]", children: providerWorkspaceSummary.errorCount })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border px-3 py-3", style: elevatedPanelStyle, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u53D7\u9650\u989D\u5EA6" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-sm font-semibold text-[var(--text-primary)]", children: providerWorkspaceSummary.limitedCount })
+                  ] })
+                ] }),
+                showProviderCreateForm ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-2xl border px-3 py-3 lg:min-w-[220px]", style: overlayPanelStyle, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[11px] text-[var(--text-tertiary)]", children: "\u5F53\u524D\u5DE5\u4F5C\u533A" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-sm font-semibold text-[var(--text-primary)]", children: providerForm.id ? editingProviderName : "\u65B0\u589E\u4F9B\u5E94\u5546" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]", children: providerForm.id ? editingProviderBaseUrl || "\u6B63\u5728\u5B8C\u5584\u8FDE\u63A5\u4FE1\u606F" : "\u51C6\u5907\u521B\u5EFA\u65B0\u7684\u7B2C\u4E09\u65B9\u4F9B\u5E94\u5546" })
+                ] }) : null
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "relative", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "pointer-events-none absolute inset-y-0 left-3 flex items-center justify-center text-[var(--text-tertiary)]", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { size: 15 }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: providerSearch,
+                    onChange: (event) => setProviderSearch(event.target.value),
+                    placeholder: "\u641C\u7D22\u4F9B\u5E94\u5546\u540D\u79F0\u6216\u5730\u5740...",
+                    className: "h-11 w-full rounded-xl border pl-10 pr-3 text-sm text-[var(--text-primary)] outline-none",
+                    style: formFieldStyle
+                  }
+                )
+              ] })
+            ] }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: providerListRef, className: "api-settings-provider-list space-y-3 p-3 md:p-4", children: filteredProviders.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "apple-empty-state rounded-2xl border border-dashed p-6 text-left text-sm text-[var(--text-tertiary)]", style: { borderColor: "var(--border-light)" }, children: providers.length === 0 ? "\u6682\u65E0\u7B2C\u4E09\u65B9\u4F9B\u5E94\u5546\u914D\u7F6E\uFF0C\u70B9\u51FB\u53F3\u4E0A\u89D2\u201C\u65B0\u589E\u4F9B\u5E94\u5546\u201D\u5F00\u59CB\u6DFB\u52A0\u3002" : "\u6CA1\u6709\u5339\u914D\u5230\u4F9B\u5E94\u5546\uFF0C\u8BF7\u6362\u4E2A\u5173\u952E\u8BCD\u8BD5\u8BD5\u3002" }) : filteredProviders.map((provider) => {
+              const isSelected = providerForm.id === provider.id;
+              const isHighlighted = highlightedProviderId === provider.id;
+              const isWuyinCatalogMode = isWuyinCatalogProvider(provider.baseUrl);
+              const providerColor = provider.providerColor || provider.badgeColor || "#3B82F6";
+              const providerStatus = getProviderStatusMeta(provider);
+              const providerPricingCount = provider.pricingSnapshot?.rows?.length || 0;
+              const budget = formatBudgetInfo(provider);
+              const isLimited = provider.customCostMode !== "unlimited";
+              const latestActivity = provider.pricingSnapshot?.fetchedAt || provider.lastChecked;
+              const latestActivityLabel = isWuyinCatalogMode ? latestActivity ? `\u6700\u8FD1\u76EE\u5F55 ${formatDate(latestActivity)}` : "\u672A\u8BFB\u53D6\u76EE\u5F55" : latestActivity ? `\u6700\u8FD1 ${formatDate(latestActivity)}` : "\u672A\u6821\u9A8C";
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_react3.default.Fragment, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "article",
+                {
+                  "data-provider-id": provider.id,
+                  role: "button",
+                  tabIndex: 0,
+                  className: `api-settings-provider-item w-full cursor-pointer overflow-hidden rounded-2xl border p-4 text-left transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 ${isHighlighted ? "animate-pulse-highlight" : ""}`,
+                  style: isSelected ? {
+                    borderColor: `${providerColor}88`,
+                    backgroundColor: `${providerColor}12`,
+                    boxShadow: `0 0 0 1px ${providerColor}33`
+                  } : isHighlighted ? {
+                    borderColor: "rgba(34,197,94,0.8)",
+                    backgroundColor: "rgba(34,197,94,0.15)",
+                    boxShadow: "0 0 0 2px rgba(34,197,94,0.4), 0 0 20px rgba(34,197,94,0.2)"
+                  } : {
+                    borderColor: "var(--border-light)",
+                    backgroundColor: "var(--bg-surface)"
+                  },
+                  onClick: () => loadProviderToForm(provider),
+                  onKeyDown: (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      loadProviderToForm(provider);
+                    }
+                  },
+                  "aria-label": `\u7F16\u8F91\u4F9B\u5E94\u5546 ${provider.name}`,
+                  children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-3", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-start justify-between gap-3", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "min-w-0 flex-1", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center gap-2", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "h-2.5 w-2.5 shrink-0 rounded-full", style: { backgroundColor: providerColor } }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-provider-name text-sm font-semibold text-[var(--text-primary)]", children: provider.name }),
+                          isSelected ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "shrink-0 rounded-full px-2 py-1 text-[10px] font-medium", style: { backgroundColor: `${providerColor}18`, color: providerColor }, children: "\u5DE5\u4F5C\u533A\u4E2D" }) : null
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "api-settings-provider-url mt-1 text-xs leading-5 text-[var(--text-tertiary)]", children: provider.baseUrl })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusBadge, { label: providerStatus.label, tone: providerStatus.tone, compact: true })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-provider-meta", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                          "\u6A21\u578B ",
+                          provider.models?.length || 0
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                          "\u4EF7\u683C ",
+                          providerPricingCount
+                        ] }),
+                        !isNoGroupProvider(provider.baseUrl) && provider.group ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                          "\u5206\u7EC4 ",
+                          provider.group
+                        ] }) : null,
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: latestActivityLabel })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-provider-action-row", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                          "button",
+                          {
+                            type: "button",
+                            className: "apple-button-secondary h-8 px-3 text-xs transition-all active:scale-95",
+                            style: secondaryButtonStyle,
+                            onClick: (event) => {
+                              event.stopPropagation();
+                              handleToggleProvider(provider);
+                            },
+                            children: [
+                              provider.isActive ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pause, { size: 12 }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Play, { size: 12 }),
+                              provider.isActive ? "\u6682\u505C\u5237\u65B0" : "\u6062\u590D\u5237\u65B0"
+                            ]
+                          }
+                        ),
+                        !isWuyinCatalogMode ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                          "button",
+                          {
+                            type: "button",
+                            className: "apple-button-secondary h-8 px-3 text-xs transition-all active:scale-95",
+                            style: secondaryButtonStyle,
+                            onClick: (event) => {
+                              event.stopPropagation();
+                              void handleSyncPricing(provider);
+                            },
+                            children: [
+                              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RefreshCw, { size: 12, className: syncingProviderId === provider.id ? "animate-spin" : "" }),
+                              "\u4EF7\u683C\u67E5\u8BE2"
+                            ]
+                          }
+                        ) : null,
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                          "button",
+                          {
+                            type: "button",
+                            className: "apple-button-danger h-8 px-3 text-xs transition-all active:scale-95",
+                            onClick: (event) => {
+                              event.stopPropagation();
+                              handleDeleteProvider(provider.id);
+                            },
+                            children: [
+                              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 12 }),
+                              "\u5220\u9664"
+                            ]
+                          }
+                        )
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded-xl border p-3", style: elevatedPanelStyle, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mb-2 flex items-center justify-between gap-2 text-[11px] text-[var(--text-tertiary)]", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                          costModeText[provider.customCostMode || "unlimited"],
+                          "\u989D\u5EA6"
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: provider.isActive ? "\u53C2\u4E0E\u8C03\u5EA6\u4E2D" : "\u5F53\u524D\u505C\u7528" })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-provider-budget mt-0", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-provider-budget-item", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-provider-budget-item__label", children: "\u603B\u989D\u5EA6" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `api-settings-provider-budget-item__value tabular-nums ${isLimited ? "text-[var(--text-primary)]" : "text-emerald-500"}`, children: budget.total })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-provider-budget-item", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-provider-budget-item__label", children: "\u5DF2\u4F7F\u7528" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-provider-budget-item__value tabular-nums text-amber-500", children: budget.used })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "api-settings-provider-budget-item", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-provider-budget-item__label", children: "\u5269\u4F59" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "api-settings-provider-budget-item__value tabular-nums text-emerald-500", children: budget.remaining })
+                        ] })
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-3 text-[11px]", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--text-tertiary)" }, children: providerStatus.helper }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "font-medium", style: { color: isSelected ? providerColor : "var(--text-secondary)" }, children: isSelected ? "\u6B63\u5728\u7F16\u8F91" : "\u70B9\u51FB\u8FDB\u5165\u5DE5\u4F5C\u533A" })
+                    ] })
+                  ] })
+                }
+              ) }, provider.id);
+            }) })
+          ]
+        }
+      ) }),
+      showProviderCreateForm ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("aside", { className: "api-settings-editor-panel min-w-0", children: renderProviderEditorCard() }) : null
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "settings-action-row justify-end", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "apple-button-primary h-9 px-4 text-sm", onClick: () => {
+        setShowOfficialCreateForm(true);
+        setOfficialForm(defaultOfficialForm);
+      }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { size: 14 }),
+        "\u65B0\u589E\u5B98\u65B9\u63A5\u53E3"
+      ] }) }),
+      showOfficialCreateForm && renderOfficialForm(),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "grid gap-3", children: officialKeys.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "apple-empty-state rounded-2xl border border-dashed p-6 text-sm text-[var(--text-tertiary)]", style: { borderColor: "var(--border-light)" }, children: "\u6682\u65E0\u5B98\u65B9\u63A5\u53E3\u914D\u7F6E\u3002" }) : officialKeys.map((slot) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "settings-section-card p-4", style: elevatedPanelStyle, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-wrap items-start justify-between gap-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-sm font-semibold text-[var(--text-primary)]", children: slot.name }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-1 text-xs text-[var(--text-tertiary)]", children: [
+            slot.provider,
+            " \xB7 ",
+            costModeText[slot.tokenLimit && slot.tokenLimit > 0 ? "tokens" : slot.budgetLimit && slot.budgetLimit > 0 ? "amount" : "unlimited"]
+          ] }),
+          (() => {
+            const mode = slot.tokenLimit && slot.tokenLimit > 0 ? "tokens" : slot.budgetLimit && slot.budgetLimit > 0 ? "amount" : "unlimited";
+            const isUnlimited = mode === "unlimited";
+            const isTokenMode = mode === "tokens";
+            const total = isTokenMode ? slot.tokenLimit || 0 : slot.budgetLimit || 0;
+            const used = isTokenMode ? slot.usedTokens || 0 : slot.totalCost || 0;
+            const remaining = isUnlimited ? Infinity : Math.max(0, total - used);
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 space-y-1.5 rounded-lg bg-[var(--bg-overlay)] p-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-4", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[10px] text-[var(--text-tertiary)]", children: isTokenMode ? "\u603BToken" : "\u603B\u989D\u5EA6" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `text-xs font-semibold tabular-nums ${isUnlimited ? "text-emerald-500" : "text-[var(--text-secondary)]"}`, children: isUnlimited ? "\u221E" : isTokenMode ? total.toLocaleString() : `\xA5${total.toFixed(2)}` })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-4", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[10px] text-[var(--text-tertiary)]", children: "\u5DF2\u4F7F\u7528" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-xs font-semibold tabular-nums text-amber-500", children: isTokenMode ? used.toLocaleString() : `\xA5${used.toFixed(2)}` })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex items-center justify-between gap-4", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "text-[10px] text-[var(--text-tertiary)]", children: "\u5269\u4F59" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `text-xs font-semibold tabular-nums ${remaining === 0 ? "text-red-500" : "text-emerald-500"}`, children: isUnlimited ? "\u221E" : isTokenMode ? remaining.toLocaleString() : `\xA5${remaining.toFixed(2)}` })
+              ] })
+            ] });
+          })()
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "settings-action-row", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "apple-button-secondary h-8 px-3 text-xs", style: secondaryButtonStyle, onClick: () => loadOfficialToForm(slot), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PenLine, { size: 12 }),
+            "\u7F16\u8F91"
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: "apple-button-danger h-8 px-3 text-xs", onClick: () => handleDeleteOfficial(slot.id), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 12 }),
+            "\u5220\u9664"
+          ] })
+        ] })
+      ] }) }, slot.id)) })
+    ] })
+  ] });
+};
+var ApiSettingsView_default = ApiSettingsView;
+export {
+  ApiSettingsView_default as default
+};
+/*! Bundled license information:
+
+react/cjs/react.development.js:
+  (**
+   * @license React
+   * react.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+react-dom/cjs/react-dom.development.js:
+  (**
+   * @license React
+   * react-dom.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+react/cjs/react-jsx-runtime.development.js:
+  (**
+   * @license React
+   * react-jsx-runtime.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+lucide-react/dist/esm/shared/src/utils.js:
+lucide-react/dist/esm/defaultAttributes.js:
+lucide-react/dist/esm/Icon.js:
+lucide-react/dist/esm/createLucideIcon.js:
+lucide-react/dist/esm/icons/chevron-down.js:
+lucide-react/dist/esm/icons/chevron-up.js:
+lucide-react/dist/esm/icons/circle-check.js:
+lucide-react/dist/esm/icons/circle-x.js:
+lucide-react/dist/esm/icons/pause.js:
+lucide-react/dist/esm/icons/pen-line.js:
+lucide-react/dist/esm/icons/play.js:
+lucide-react/dist/esm/icons/plus.js:
+lucide-react/dist/esm/icons/refresh-cw.js:
+lucide-react/dist/esm/icons/save.js:
+lucide-react/dist/esm/icons/search.js:
+lucide-react/dist/esm/icons/shuffle.js:
+lucide-react/dist/esm/icons/trash-2.js:
+lucide-react/dist/esm/lucide-react.js:
+  (**
+   * @license lucide-react v0.562.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   *)
+*/

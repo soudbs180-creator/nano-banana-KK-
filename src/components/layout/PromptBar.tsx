@@ -142,7 +142,9 @@ const ReferenceThumbnail: React.FC<{
     }
 
     // Robust Src Construction
-    const src = (data.startsWith('data:') || data.startsWith('blob:')) ? data : `data:${image.mimeType || 'image/png'};base64,${data}`;
+    const src = (data.startsWith('data:') || data.startsWith('blob:') || data.startsWith('http'))
+        ? data
+        : `data:${image.mimeType || 'image/png'};base64,${data}`;
 
     return (
         <div
@@ -1043,7 +1045,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                 id: (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2),
                 mimeType: file.type || 'image/png',
                 data: '',
-                url: URL.createObjectURL(file)
+                url: (((file as File & { __kkSourceUrl?: string }).__kkSourceUrl || '').trim() || URL.createObjectURL(file))
             }));
 
             setConfig(prev => ({
@@ -1214,6 +1216,7 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                                 })
                                 .then(blob => {
                                     const file = new File([blob], "pasted_image.png", { type: blob.type });
+                                    (file as File & { __kkSourceUrl?: string }).__kkSourceUrl = url;
                                     processFiles([file]);
                                 })
                                 .catch(() => { });
@@ -1649,6 +1652,9 @@ const PromptBar: React.FC<PromptBarProps> = ({ config, setConfig, onGenerate, is
                     .then(res => res.blob())
                     .then(blob => {
                         const file = new File([blob], "dropped_image.png", { type: blob.type });
+                        if (url.startsWith('http')) {
+                            (file as File & { __kkSourceUrl?: string }).__kkSourceUrl = url;
+                        }
                         processFiles([file]);
                     })
                     .catch(err => {

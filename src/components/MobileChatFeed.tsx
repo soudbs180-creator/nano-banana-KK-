@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { ChevronRight, Download, Loader2, Sparkles, Trash2 } from 'lucide-react';
-import { GeneratedImage, GenerationMode, PromptNode } from '../types';
+import { GeneratedImage, GenerationMode, ImageSize, PromptNode } from '../types';
 import { getModelDisplayName } from '../services/model/modelCapabilities';
 import { getModelCredits, isCreditBasedModel } from '../services/model/modelPricing';
+import { calculateCost } from '../services/billing/costService';
 import { notify } from '../services/system/notificationService';
 import { generateTagColor } from '../utils/colorUtils';
 
@@ -162,12 +163,32 @@ const getMediaExtension = (image: GeneratedImage, source: string | null, blobTyp
     .replace('quicktime', 'mov');
 };
 
+const getDisplayCost = (image: GeneratedImage): number => {
+  if (typeof image.cost === 'number' && Number.isFinite(image.cost)) {
+    return image.cost;
+  }
+
+  try {
+    const estimate = calculateCost(
+      image.model || '',
+      image.imageSize || ImageSize.SIZE_1K,
+      1,
+      image.prompt?.length || 0,
+      0,
+      image.keySlotId
+    );
+    return estimate.cost;
+  } catch {
+    return 0;
+  }
+};
+
 const getImageAmountLabel = (image: GeneratedImage): string => {
   if (isCreditBasedModel(image.model || '', image.provider)) {
     return `${COPY.pointsPrefix} ${getModelCredits(image.model || '', image.imageSize)}`;
   }
 
-  return `${COPY.amountPrefix} $${(image.cost || 0).toFixed(4)}`;
+  return `${COPY.amountPrefix} $${getDisplayCost(image).toFixed(4)}`;
 };
 
 const getImageParameterLabel = (image: GeneratedImage): string => {

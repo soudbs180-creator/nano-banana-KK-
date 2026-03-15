@@ -1,10 +1,8 @@
 ﻿import { LLMAdapter, ChatOptions, ImageGenerationOptions, ImageGenerationResult, VideoGenerationOptions, VideoGenerationResult, AudioGenerationOptions, AudioGenerationResult, ProviderConfig } from './LLMAdapter';
 import { GenerationMode } from '../../types';
-import { GoogleAdapter } from './GoogleAdapter';
+import { GeminiNativeAdapter } from './GeminiNativeAdapter';
 import { OpenAICompatibleAdapter } from './OpenAICompatibleAdapter';
-import { AliyunAdapter } from './AliyunAdapter';
-import { TencentAdapter } from './TencentAdapter';
-import { VolcengineAdapter } from './VolcengineAdapter';
+import { ClaudeNativeAdapter } from './ClaudeNativeAdapter';
 import { VideoCompatibleAdapter } from './VideoCompatibleAdapter';
 import { AudioCompatibleAdapter } from './AudioCompatibleAdapter';
 import { KeyManager, KeySlot, getModelMetadata } from '../auth/keyManager';
@@ -14,35 +12,23 @@ import { logWarning } from '../system/systemLogService';
 import { ImageSize, Provider } from '../../types';
 import { getProviderCapability, modelSupportedByProvider, ProviderCapabilityProfile } from './providerCapabilities';
 import { callSecureSystemProxyChat, callSecureSystemProxyImage, callSecureSystemProxyVideo, callSecureSystemProxyAudio, checkSecureSystemProxyTaskStatus } from '../model/secureModelProxy';
+import { resolveProviderRuntime } from '../api/providerStrategy';
 
 export class LLMService {
     private static instance: LLMService;
-    private adapters: Map<string, LLMAdapter> = new Map(); // Keyed by Provider string
-    private defaultAdapter: LLMAdapter;
+    private openAICompatibleAdapter: OpenAICompatibleAdapter;
+    private geminiNativeAdapter: GeminiNativeAdapter;
+    private claudeNativeAdapter: ClaudeNativeAdapter;
     private videoAdapter: VideoCompatibleAdapter;
     private audioAdapter: AudioCompatibleAdapter;
 
     private constructor() {
-        // Initialize Adapters
-        this.registerAdapter(new GoogleAdapter());
-
-        const openaiAdapter = new OpenAICompatibleAdapter();
-        this.registerAdapter(openaiAdapter);
-        this.defaultAdapter = openaiAdapter;
-
-        this.registerAdapter(new AliyunAdapter());
-        this.registerAdapter(new TencentAdapter());
-        this.registerAdapter(new VolcengineAdapter());
+        this.geminiNativeAdapter = new GeminiNativeAdapter();
+        this.openAICompatibleAdapter = new OpenAICompatibleAdapter();
+        this.claudeNativeAdapter = new ClaudeNativeAdapter();
 
         this.videoAdapter = new VideoCompatibleAdapter();
         this.audioAdapter = new AudioCompatibleAdapter();
-
-        // Alias Logic
-        // We map specific provider strings to the OpenAI adapter instance
-        this.adapters.set('SiliconFlow', openaiAdapter);
-        this.adapters.set('Custom', openaiAdapter);
-        this.adapters.set('OpenAI', openaiAdapter);
-        this.adapters.set('Anthropic', openaiAdapter);
     }
 
     public static getInstance(): LLMService {
@@ -52,17 +38,26 @@ export class LLMService {
         return LLMService.instance;
     }
 
-    private registerAdapter(adapter: LLMAdapter) {
-        this.adapters.set(adapter.provider, adapter);
-    }
+    private getAdapterForSlot(keySlot: KeySlot, modelId?: string): LLMAdapter {
+        const runtime = resolveProviderRuntime({
+            provider: keySlot.provider,
+            baseUrl: keySlot.baseUrl,
+            format: keySlot.format,
+            authMethod: keySlot.authMethod,
+            headerName: keySlot.headerName,
+            compatibilityMode: keySlot.compatibilityMode,
+            modelId,
+        });
 
-    private getAdapter(provider: string): LLMAdapter {
-        // 馃殌 STRICT ROUTING: No more magic sniffing of 'imagen-' or 'veo-'.
-        // The KeySlot provider determines the adapter. 
-        // If you want to use a Proxy for Imagen, set Provider to 'Custom' or 'OpenAI'.
-        // If you want to use Google Official, set Provider to 'Google'.
+        if (runtime.protocolFamily === 'claude-native') {
+            return this.claudeNativeAdapter;
+        }
 
-        return this.adapters.get(provider) || this.defaultAdapter;
+        if (runtime.protocolFamily === 'gemini-native') {
+            return this.geminiNativeAdapter;
+        }
+
+        return this.openAICompatibleAdapter;
     }
 
     private resolveSystemBaseModelId(modelId: string): string {
@@ -113,10 +108,10 @@ export class LLMService {
                     return response.content;
                 }
 
-                const adapter = this.getAdapter(keySlot.provider);
+                const adapter = this.getAdapterForSlot(keySlot, options.modelId);
 
-                if (!this.canProviderHandleModel(keySlot.provider, options.modelId)) {
-                    throw new Error(`Provider ${keySlot.provider} does not match model ${options.modelId} `);
+                if (!adapter.supports(options.modelId)) {
+                    throw new Error(`Channel ${keySlot.name} cannot handle model ${options.modelId} under its configured protocol.`);
                 }
 
                 const baseModelId = options.modelId.split('@')[0];
@@ -197,10 +192,10 @@ export class LLMService {
             }
 
             try {
-                const adapter = this.getAdapter(keySlot.provider);
+                const adapter = this.getAdapterForSlot(keySlot, options.modelId);
 
-                if (!this.canProviderHandleModel(keySlot.provider, options.modelId)) {
-                    throw new Error(`Provider ${keySlot.provider} does not match model ${options.modelId} `);
+                if (!adapter.supports(options.modelId)) {
+                    throw new Error(`Channel ${keySlot.name} cannot handle model ${options.modelId} under its configured protocol.`);
                 }
 
                 // 𨱅?Suffix Stripping for API Call
@@ -291,23 +286,36 @@ export class LLMService {
         if (isSystemRoute) {
             // For system credit models, return a virtual slot
             // The actual API key will be fetched by the adapter using modelCaller
+            const now = Date.now();
             return {
                 id: 'system_proxy_slot',
                 key: 'system_proxy_key', // Placeholder, will be replaced by adapter
                 name: 'System Proxy',
                 provider: 'SystemProxy' as Provider,
+                type: 'proxy',
+                format: 'openai',
                 baseUrl: '', // Will be determined by adapter
-                status: 'valid',
+                compatibilityMode: 'chat',
                 supportedModels: [modelId.split('@')[0]],
                 authMethod: 'header',
                 headerName: 'Authorization',
+                status: 'valid',
+                failCount: 0,
+                successCount: 0,
+                lastUsed: null,
+                lastError: null,
                 disabled: false,
-            } as KeySlot;
+                createdAt: now,
+                totalCost: 0,
+                budgetLimit: -1,
+                tokenLimit: -1,
+                updatedAt: now,
+            };
         }
 
         const keyData = keyManager.getNextKey(modelId, preferredKeyId);
         if (!keyData) return null;
-        return keyData as KeySlot;
+        return keyData;
     }
 
     public async generateVideo(options: VideoGenerationOptions, onTaskId?: (id: string) => void): Promise<VideoGenerationResult> {
@@ -351,7 +359,7 @@ export class LLMService {
             }
 
             try {
-                const adapter = this.getAdapter(keySlot.provider);
+                const adapter = this.getAdapterForSlot(keySlot, options.modelId);
                 const targetAdapter = adapter.generateVideo ? adapter : this.videoAdapter;
 
                 // 𨱅?Suffix Stripping for API Call
@@ -422,7 +430,7 @@ export class LLMService {
             }
 
             try {
-                const adapter = this.getAdapter(keySlot.provider);
+                const adapter = this.getAdapterForSlot(keySlot, options.modelId);
                 const targetAdapter = adapter.generateAudio ? adapter : this.audioAdapter;
 
                 // 𨱅?Suffix Stripping for API Call
@@ -486,7 +494,7 @@ export class LLMService {
         const keySlot = keyManager.getKey(nextKey.id);
         if (!keySlot) throw new Error("No API key available to check task status");
 
-        const adapter = this.getAdapter(keySlot.provider);
+        const adapter = this.getAdapterForSlot(keySlot);
         if (!adapter.checkTaskStatus) {
             throw new Error(`Adapter for ${keySlot.provider} does not support task polling`);
         }

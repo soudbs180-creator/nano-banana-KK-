@@ -110,13 +110,14 @@ class ChatService {
                     role: m.role === 'user' ? 'user' : 'model',
                     parts: [{ text: m.content }]
                 }));
+            const authMethod = keyData.authMethod || 'query';
 
             // Call Gemini API with dynamic URL (supports proxies)
             const response = await fetch(
-                buildApiUrl(keyData.baseUrl, model, 'generateContent', keyData.authMethod, keyData.key),
+                buildApiUrl(keyData.baseUrl, model, 'generateContent', authMethod, keyData.key),
                 {
                     method: 'POST',
-                    headers: buildHeaders(keyData.authMethod, keyData.key, keyData.headerName),
+                    headers: buildHeaders(authMethod, keyData.key, keyData.headerName),
                     body: JSON.stringify({
                         contents: history,
                         generationConfig: {

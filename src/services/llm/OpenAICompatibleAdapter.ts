@@ -20,6 +20,12 @@ type WuyinImageRoute = {
     aliases: string[];
 };
 
+type WuyinResolvedRoute = {
+    endpointPath: string;
+    endpointModelId: string;
+    endpointUrl?: string;
+};
+
 const WUYIN_DEFAULT_BASE_URL = 'https://api.wuyinkeji.com';
 const WUYIN_DETAIL_PATH = '/api/async/detail';
 const WUYIN_IMAGE_ROUTES: WuyinImageRoute[] = [
@@ -459,6 +465,26 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         }
     }
 
+    private extractWuyinDirectEndpointPath(baseUrl: string): string | null {
+        const raw = String(baseUrl || '').trim();
+        if (!raw) return null;
+
+        const candidates = /^https?:\/\//i.test(raw) ? [raw] : [`https://${raw}`];
+        for (const candidate of candidates) {
+            try {
+                const parsed = new URL(candidate);
+                const pathname = parsed.pathname.replace(/\/+$/, '');
+                if (/^\/api\/async\/[a-z0-9_.-]+$/i.test(pathname)) {
+                    return pathname;
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
     private normalizeWuyinAlias(value: string): string {
         return String(value || '')
             .trim()
@@ -469,7 +495,75 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             .replace(/[^a-z0-9]+/g, '');
     }
 
-    private resolveWuyinImageEndpoint(modelId: string): { endpointPath: string; endpointModelId: string } {
+    private normalizeProviderLinkValue(value: string | undefined | null): string {
+        return String(value || '').trim().replace(/\/+$/, '').toLowerCase();
+    }
+
+    private findLinkedWuyinProvider(keySlot: KeySlot) {
+        const directProvider = keyManager.getProvider?.(keySlot.id);
+        if (directProvider) {
+            return directProvider;
+        }
+
+        const slotBaseUrl = this.normalizeProviderLinkValue(keySlot.baseUrl);
+        const slotKey = String(keySlot.key || '').trim();
+        const slotName = this.normalizeProviderLinkValue(keySlot.name);
+        const providers = keyManager.getProviders().filter((provider) => provider.isActive);
+
+        const exactMatch = providers.find((provider) => {
+            if (this.normalizeProviderLinkValue(provider.baseUrl) !== slotBaseUrl) return false;
+            const providerKey = String(provider.apiKey || '').trim();
+            const providerName = this.normalizeProviderLinkValue(provider.name);
+            return (slotKey && providerKey === slotKey) || (slotName && providerName === slotName);
+        });
+        if (exactMatch) {
+            return exactMatch;
+        }
+
+        const sameBaseProviders = providers.filter((provider) => this.normalizeProviderLinkValue(provider.baseUrl) === slotBaseUrl);
+        return sameBaseProviders.length === 1 ? sameBaseProviders[0] : null;
+    }
+
+    private resolveWuyinSnapshotRoute(keySlot: KeySlot, modelId: string): WuyinResolvedRoute | null {
+        const provider = this.findLinkedWuyinProvider(keySlot);
+        if (!provider?.pricingSnapshot) return null;
+
+        const rawModelId = String(modelId || '').trim().split('@')[0].split('|')[0].trim();
+        const normalizedTarget = rawModelId.toLowerCase();
+        const normalizedAlias = this.normalizeWuyinAlias(rawModelId);
+        const pricingEntries = [
+            ...(Array.isArray(provider.pricingSnapshot._rawData) ? provider.pricingSnapshot._rawData : []),
+            ...(Array.isArray(provider.pricingSnapshot.rows) ? provider.pricingSnapshot.rows : []),
+        ];
+
+        for (const entry of pricingEntries) {
+            const endpointUrl = String((entry as any)?.endpoint_url ?? (entry as any)?.endpointUrl ?? '').trim();
+            const endpointPath =
+                String((entry as any)?.endpoint_path ?? (entry as any)?.endpointPath ?? '').trim() ||
+                this.extractWuyinDirectEndpointPath(endpointUrl) ||
+                '';
+            if (!endpointPath) continue;
+
+            const entryModel = String((entry as any)?.model ?? (entry as any)?.model_name ?? '').trim();
+            const endpointModelId = endpointPath.split('/').filter(Boolean).pop() || entryModel || rawModelId;
+            const modelCandidates = [entryModel, endpointModelId].filter(Boolean);
+            const matched = modelCandidates.some((candidate) => {
+                const normalizedCandidate = candidate.toLowerCase();
+                return normalizedCandidate === normalizedTarget || this.normalizeWuyinAlias(candidate) === normalizedAlias;
+            });
+            if (!matched) continue;
+
+            return {
+                endpointPath,
+                endpointModelId,
+                endpointUrl: endpointUrl || undefined,
+            };
+        }
+
+        return null;
+    }
+
+    private resolveWuyinImageEndpoint(modelId: string): WuyinResolvedRoute {
         const rawModelId = String(modelId || '').trim().split('@')[0].split('|')[0].trim();
         const endpointModelId = rawModelId.replace(/^\/+/, '');
         const normalized = this.normalizeWuyinAlias(rawModelId);
@@ -533,6 +627,25 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         throw new Error(`Wuyin provider does not know how to route image model "${modelId}". Please use the exact Wuyin model ID from the catalog, such as image_nanoBanana2.`);
     }
 
+    private resolveWuyinRequestRoute(baseUrl: string, modelId: string, keySlot?: KeySlot): WuyinResolvedRoute {
+        const directEndpointPath = this.extractWuyinDirectEndpointPath(baseUrl);
+        if (directEndpointPath) {
+            return {
+                endpointPath: directEndpointPath,
+                endpointModelId: directEndpointPath.split('/').filter(Boolean).pop() || modelId,
+            };
+        }
+
+        if (keySlot) {
+            const snapshotRoute = this.resolveWuyinSnapshotRoute(keySlot, modelId);
+            if (snapshotRoute) {
+                return snapshotRoute;
+            }
+        }
+
+        return this.resolveWuyinImageEndpoint(modelId);
+    }
+
     private normalizeWuyinImageSize(raw: string | undefined): '1K' | '2K' | '4K' {
         const normalized = String(raw || '').trim().toUpperCase();
         if (normalized.includes('4K') || normalized.includes('HD')) return '4K';
@@ -543,6 +656,51 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
     private normalizeWuyinAspectRatio(raw: string | undefined): string {
         const normalized = String(raw || '').trim() || AspectRatio.AUTO;
         return WUYIN_SUPPORTED_ASPECT_RATIOS.has(normalized) ? normalized : AspectRatio.AUTO;
+    }
+
+    private normalizeWuyinReferenceImage(
+        ref: string | { data: string; mimeType: string; url?: string },
+        index: number
+    ): { value: string; kind: 'url' | 'base64' } {
+        const sourceUrl = typeof (ref as { url?: string })?.url === 'string'
+            ? String((ref as { url?: string }).url || '').trim()
+            : '';
+        if (/^https?:\/\//i.test(sourceUrl)) {
+            return { value: sourceUrl, kind: 'url' };
+        }
+
+        const { data } = extractRefImageData(ref);
+        const raw = String(data || '').trim();
+        if (!raw) {
+            throw new Error(`五音参考图 ${index + 1} 为空，请重新上传后再试`);
+        }
+
+        if (/^https?:\/\//i.test(raw)) {
+            return { value: raw, kind: 'url' };
+        }
+
+        if (/^blob:/i.test(raw)) {
+            throw new Error(`五音参考图 ${index + 1} 仍是本地预览地址（blob），请等待图片处理完成后再试`);
+        }
+
+        if (/^data:/i.test(raw)) {
+            const commaIndex = raw.indexOf(',');
+            if (commaIndex === -1) {
+                throw new Error(`五音参考图 ${index + 1} 不是有效的 Base64 数据`);
+            }
+            const base64 = raw.slice(commaIndex + 1).replace(/\s+/g, '');
+            if (!base64) {
+                throw new Error(`五音参考图 ${index + 1} 的 Base64 数据为空`);
+            }
+            return { value: base64, kind: 'base64' };
+        }
+
+        const cleaned = raw.replace(/\s+/g, '');
+        if (!cleaned) {
+            throw new Error(`五音参考图 ${index + 1} 不是有效的 URL 或 Base64 数据`);
+        }
+
+        return { value: cleaned, kind: 'base64' };
     }
 
     private extractWuyinTaskId(payload: any): string {
@@ -726,8 +884,8 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         keySlot: KeySlot
     ): Promise<ImageGenerationResult> {
         const cleanBase = this.normalizeWuyinBaseUrl(keySlot.baseUrl || '');
-        const route = this.resolveWuyinImageEndpoint(options.modelId);
-        const url = `${cleanBase}${route.endpointPath}`;
+        const route = this.resolveWuyinRequestRoute(keySlot.baseUrl || '', options.modelId, keySlot);
+        const url = route.endpointUrl || `${cleanBase}${route.endpointPath}`;
         const requestPath = route.endpointPath;
         const body: Record<string, any> = {
             prompt: options.prompt,
@@ -736,16 +894,15 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
         };
 
         if (options.referenceImages?.length) {
-            body.urls = options.referenceImages.map((ref) => {
-                const { data, mimeType } = extractRefImageData(ref);
-                if (/^https?:\/\//i.test(data)) {
-                    return data;
-                }
-                if (/^data:/i.test(data)) {
-                    return data;
-                }
-                return `data:${mimeType || 'image/png'};base64,${data}`;
-            });
+            const normalizedRefs = options.referenceImages.map((ref, index) =>
+                this.normalizeWuyinReferenceImage(ref as { data: string; mimeType: string; url?: string }, index)
+            );
+            body.urls = normalizedRefs.map((item) => item.value);
+
+            const remoteRefCount = normalizedRefs.filter((item) => item.kind === 'url').length;
+            console.log(
+                `[OpenAICompatibleAdapter] Wuyin refs prepared -> total=${normalizedRefs.length}, remote=${remoteRefCount}, base64=${normalizedRefs.length - remoteRefCount}`
+            );
         }
 
         const headers = this.buildImageRequestHeaders(keySlot, true);

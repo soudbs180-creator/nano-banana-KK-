@@ -1,12 +1,1317 @@
+var __create = Object.create;
 var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// node_modules/react/cjs/react.development.js
+var require_react_development = __commonJS({
+  "node_modules/react/cjs/react.development.js"(exports, module) {
+    "use strict";
+    (function() {
+      function defineDeprecationWarning(methodName, info) {
+        Object.defineProperty(Component.prototype, methodName, {
+          get: function() {
+            console.warn(
+              "%s(...) is deprecated in plain JavaScript React classes. %s",
+              info[0],
+              info[1]
+            );
+          }
+        });
+      }
+      function getIteratorFn(maybeIterable) {
+        if (null === maybeIterable || "object" !== typeof maybeIterable)
+          return null;
+        maybeIterable = MAYBE_ITERATOR_SYMBOL && maybeIterable[MAYBE_ITERATOR_SYMBOL] || maybeIterable["@@iterator"];
+        return "function" === typeof maybeIterable ? maybeIterable : null;
+      }
+      function warnNoop(publicInstance, callerName) {
+        publicInstance = (publicInstance = publicInstance.constructor) && (publicInstance.displayName || publicInstance.name) || "ReactClass";
+        var warningKey = publicInstance + "." + callerName;
+        didWarnStateUpdateForUnmountedComponent[warningKey] || (console.error(
+          "Can't call %s on a component that is not yet mounted. This is a no-op, but it might indicate a bug in your application. Instead, assign to `this.state` directly or define a `state = {};` class property with the desired state in the %s component.",
+          callerName,
+          publicInstance
+        ), didWarnStateUpdateForUnmountedComponent[warningKey] = true);
+      }
+      function Component(props, context, updater) {
+        this.props = props;
+        this.context = context;
+        this.refs = emptyObject;
+        this.updater = updater || ReactNoopUpdateQueue;
+      }
+      function ComponentDummy() {
+      }
+      function PureComponent(props, context, updater) {
+        this.props = props;
+        this.context = context;
+        this.refs = emptyObject;
+        this.updater = updater || ReactNoopUpdateQueue;
+      }
+      function noop3() {
+      }
+      function testStringCoercion(value) {
+        return "" + value;
+      }
+      function checkKeyStringCoercion(value) {
+        try {
+          testStringCoercion(value);
+          var JSCompiler_inline_result = false;
+        } catch (e) {
+          JSCompiler_inline_result = true;
+        }
+        if (JSCompiler_inline_result) {
+          JSCompiler_inline_result = console;
+          var JSCompiler_temp_const = JSCompiler_inline_result.error;
+          var JSCompiler_inline_result$jscomp$0 = "function" === typeof Symbol && Symbol.toStringTag && value[Symbol.toStringTag] || value.constructor.name || "Object";
+          JSCompiler_temp_const.call(
+            JSCompiler_inline_result,
+            "The provided key is an unsupported type %s. This value must be coerced to a string before using it here.",
+            JSCompiler_inline_result$jscomp$0
+          );
+          return testStringCoercion(value);
+        }
+      }
+      function getComponentNameFromType(type) {
+        if (null == type) return null;
+        if ("function" === typeof type)
+          return type.$$typeof === REACT_CLIENT_REFERENCE ? null : type.displayName || type.name || null;
+        if ("string" === typeof type) return type;
+        switch (type) {
+          case REACT_FRAGMENT_TYPE:
+            return "Fragment";
+          case REACT_PROFILER_TYPE:
+            return "Profiler";
+          case REACT_STRICT_MODE_TYPE:
+            return "StrictMode";
+          case REACT_SUSPENSE_TYPE:
+            return "Suspense";
+          case REACT_SUSPENSE_LIST_TYPE:
+            return "SuspenseList";
+          case REACT_ACTIVITY_TYPE:
+            return "Activity";
+        }
+        if ("object" === typeof type)
+          switch ("number" === typeof type.tag && console.error(
+            "Received an unexpected object in getComponentNameFromType(). This is likely a bug in React. Please file an issue."
+          ), type.$$typeof) {
+            case REACT_PORTAL_TYPE:
+              return "Portal";
+            case REACT_CONTEXT_TYPE:
+              return type.displayName || "Context";
+            case REACT_CONSUMER_TYPE:
+              return (type._context.displayName || "Context") + ".Consumer";
+            case REACT_FORWARD_REF_TYPE:
+              var innerType = type.render;
+              type = type.displayName;
+              type || (type = innerType.displayName || innerType.name || "", type = "" !== type ? "ForwardRef(" + type + ")" : "ForwardRef");
+              return type;
+            case REACT_MEMO_TYPE:
+              return innerType = type.displayName || null, null !== innerType ? innerType : getComponentNameFromType(type.type) || "Memo";
+            case REACT_LAZY_TYPE:
+              innerType = type._payload;
+              type = type._init;
+              try {
+                return getComponentNameFromType(type(innerType));
+              } catch (x) {
+              }
+          }
+        return null;
+      }
+      function getTaskName(type) {
+        if (type === REACT_FRAGMENT_TYPE) return "<>";
+        if ("object" === typeof type && null !== type && type.$$typeof === REACT_LAZY_TYPE)
+          return "<...>";
+        try {
+          var name = getComponentNameFromType(type);
+          return name ? "<" + name + ">" : "<...>";
+        } catch (x) {
+          return "<...>";
+        }
+      }
+      function getOwner() {
+        var dispatcher = ReactSharedInternals.A;
+        return null === dispatcher ? null : dispatcher.getOwner();
+      }
+      function UnknownOwner() {
+        return Error("react-stack-top-frame");
+      }
+      function hasValidKey(config) {
+        if (hasOwnProperty.call(config, "key")) {
+          var getter = Object.getOwnPropertyDescriptor(config, "key").get;
+          if (getter && getter.isReactWarning) return false;
+        }
+        return void 0 !== config.key;
+      }
+      function defineKeyPropWarningGetter(props, displayName) {
+        function warnAboutAccessingKey() {
+          specialPropKeyWarningShown || (specialPropKeyWarningShown = true, console.error(
+            "%s: `key` is not a prop. Trying to access it will result in `undefined` being returned. If you need to access the same value within the child component, you should pass it as a different prop. (https://react.dev/link/special-props)",
+            displayName
+          ));
+        }
+        warnAboutAccessingKey.isReactWarning = true;
+        Object.defineProperty(props, "key", {
+          get: warnAboutAccessingKey,
+          configurable: true
+        });
+      }
+      function elementRefGetterWithDeprecationWarning() {
+        var componentName = getComponentNameFromType(this.type);
+        didWarnAboutElementRef[componentName] || (didWarnAboutElementRef[componentName] = true, console.error(
+          "Accessing element.ref was removed in React 19. ref is now a regular prop. It will be removed from the JSX Element type in a future release."
+        ));
+        componentName = this.props.ref;
+        return void 0 !== componentName ? componentName : null;
+      }
+      function ReactElement(type, key, props, owner, debugStack, debugTask) {
+        var refProp = props.ref;
+        type = {
+          $$typeof: REACT_ELEMENT_TYPE,
+          type,
+          key,
+          props,
+          _owner: owner
+        };
+        null !== (void 0 !== refProp ? refProp : null) ? Object.defineProperty(type, "ref", {
+          enumerable: false,
+          get: elementRefGetterWithDeprecationWarning
+        }) : Object.defineProperty(type, "ref", { enumerable: false, value: null });
+        type._store = {};
+        Object.defineProperty(type._store, "validated", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: 0
+        });
+        Object.defineProperty(type, "_debugInfo", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: null
+        });
+        Object.defineProperty(type, "_debugStack", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugStack
+        });
+        Object.defineProperty(type, "_debugTask", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugTask
+        });
+        Object.freeze && (Object.freeze(type.props), Object.freeze(type));
+        return type;
+      }
+      function cloneAndReplaceKey(oldElement, newKey) {
+        newKey = ReactElement(
+          oldElement.type,
+          newKey,
+          oldElement.props,
+          oldElement._owner,
+          oldElement._debugStack,
+          oldElement._debugTask
+        );
+        oldElement._store && (newKey._store.validated = oldElement._store.validated);
+        return newKey;
+      }
+      function validateChildKeys(node) {
+        isValidElement(node) ? node._store && (node._store.validated = 1) : "object" === typeof node && null !== node && node.$$typeof === REACT_LAZY_TYPE && ("fulfilled" === node._payload.status ? isValidElement(node._payload.value) && node._payload.value._store && (node._payload.value._store.validated = 1) : node._store && (node._store.validated = 1));
+      }
+      function isValidElement(object) {
+        return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
+      }
+      function escape(key) {
+        var escaperLookup = { "=": "=0", ":": "=2" };
+        return "$" + key.replace(/[=:]/g, function(match) {
+          return escaperLookup[match];
+        });
+      }
+      function getElementKey(element, index) {
+        return "object" === typeof element && null !== element && null != element.key ? (checkKeyStringCoercion(element.key), escape("" + element.key)) : index.toString(36);
+      }
+      function resolveThenable(thenable) {
+        switch (thenable.status) {
+          case "fulfilled":
+            return thenable.value;
+          case "rejected":
+            throw thenable.reason;
+          default:
+            switch ("string" === typeof thenable.status ? thenable.then(noop3, noop3) : (thenable.status = "pending", thenable.then(
+              function(fulfilledValue) {
+                "pending" === thenable.status && (thenable.status = "fulfilled", thenable.value = fulfilledValue);
+              },
+              function(error) {
+                "pending" === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+              }
+            )), thenable.status) {
+              case "fulfilled":
+                return thenable.value;
+              case "rejected":
+                throw thenable.reason;
+            }
+        }
+        throw thenable;
+      }
+      function mapIntoArray(children, array, escapedPrefix, nameSoFar, callback) {
+        var type = typeof children;
+        if ("undefined" === type || "boolean" === type) children = null;
+        var invokeCallback = false;
+        if (null === children) invokeCallback = true;
+        else
+          switch (type) {
+            case "bigint":
+            case "string":
+            case "number":
+              invokeCallback = true;
+              break;
+            case "object":
+              switch (children.$$typeof) {
+                case REACT_ELEMENT_TYPE:
+                case REACT_PORTAL_TYPE:
+                  invokeCallback = true;
+                  break;
+                case REACT_LAZY_TYPE:
+                  return invokeCallback = children._init, mapIntoArray(
+                    invokeCallback(children._payload),
+                    array,
+                    escapedPrefix,
+                    nameSoFar,
+                    callback
+                  );
+              }
+          }
+        if (invokeCallback) {
+          invokeCallback = children;
+          callback = callback(invokeCallback);
+          var childKey = "" === nameSoFar ? "." + getElementKey(invokeCallback, 0) : nameSoFar;
+          isArrayImpl(callback) ? (escapedPrefix = "", null != childKey && (escapedPrefix = childKey.replace(userProvidedKeyEscapeRegex, "$&/") + "/"), mapIntoArray(callback, array, escapedPrefix, "", function(c) {
+            return c;
+          })) : null != callback && (isValidElement(callback) && (null != callback.key && (invokeCallback && invokeCallback.key === callback.key || checkKeyStringCoercion(callback.key)), escapedPrefix = cloneAndReplaceKey(
+            callback,
+            escapedPrefix + (null == callback.key || invokeCallback && invokeCallback.key === callback.key ? "" : ("" + callback.key).replace(
+              userProvidedKeyEscapeRegex,
+              "$&/"
+            ) + "/") + childKey
+          ), "" !== nameSoFar && null != invokeCallback && isValidElement(invokeCallback) && null == invokeCallback.key && invokeCallback._store && !invokeCallback._store.validated && (escapedPrefix._store.validated = 2), callback = escapedPrefix), array.push(callback));
+          return 1;
+        }
+        invokeCallback = 0;
+        childKey = "" === nameSoFar ? "." : nameSoFar + ":";
+        if (isArrayImpl(children))
+          for (var i = 0; i < children.length; i++)
+            nameSoFar = children[i], type = childKey + getElementKey(nameSoFar, i), invokeCallback += mapIntoArray(
+              nameSoFar,
+              array,
+              escapedPrefix,
+              type,
+              callback
+            );
+        else if (i = getIteratorFn(children), "function" === typeof i)
+          for (i === children.entries && (didWarnAboutMaps || console.warn(
+            "Using Maps as children is not supported. Use an array of keyed ReactElements instead."
+          ), didWarnAboutMaps = true), children = i.call(children), i = 0; !(nameSoFar = children.next()).done; )
+            nameSoFar = nameSoFar.value, type = childKey + getElementKey(nameSoFar, i++), invokeCallback += mapIntoArray(
+              nameSoFar,
+              array,
+              escapedPrefix,
+              type,
+              callback
+            );
+        else if ("object" === type) {
+          if ("function" === typeof children.then)
+            return mapIntoArray(
+              resolveThenable(children),
+              array,
+              escapedPrefix,
+              nameSoFar,
+              callback
+            );
+          array = String(children);
+          throw Error(
+            "Objects are not valid as a React child (found: " + ("[object Object]" === array ? "object with keys {" + Object.keys(children).join(", ") + "}" : array) + "). If you meant to render a collection of children, use an array instead."
+          );
+        }
+        return invokeCallback;
+      }
+      function mapChildren(children, func, context) {
+        if (null == children) return children;
+        var result = [], count = 0;
+        mapIntoArray(children, result, "", "", function(child) {
+          return func.call(context, child, count++);
+        });
+        return result;
+      }
+      function lazyInitializer(payload) {
+        if (-1 === payload._status) {
+          var ioInfo = payload._ioInfo;
+          null != ioInfo && (ioInfo.start = ioInfo.end = performance.now());
+          ioInfo = payload._result;
+          var thenable = ioInfo();
+          thenable.then(
+            function(moduleObject) {
+              if (0 === payload._status || -1 === payload._status) {
+                payload._status = 1;
+                payload._result = moduleObject;
+                var _ioInfo = payload._ioInfo;
+                null != _ioInfo && (_ioInfo.end = performance.now());
+                void 0 === thenable.status && (thenable.status = "fulfilled", thenable.value = moduleObject);
+              }
+            },
+            function(error) {
+              if (0 === payload._status || -1 === payload._status) {
+                payload._status = 2;
+                payload._result = error;
+                var _ioInfo2 = payload._ioInfo;
+                null != _ioInfo2 && (_ioInfo2.end = performance.now());
+                void 0 === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+              }
+            }
+          );
+          ioInfo = payload._ioInfo;
+          if (null != ioInfo) {
+            ioInfo.value = thenable;
+            var displayName = thenable.displayName;
+            "string" === typeof displayName && (ioInfo.name = displayName);
+          }
+          -1 === payload._status && (payload._status = 0, payload._result = thenable);
+        }
+        if (1 === payload._status)
+          return ioInfo = payload._result, void 0 === ioInfo && console.error(
+            "lazy: Expected the result of a dynamic import() call. Instead received: %s\n\nYour code should look like: \n  const MyComponent = lazy(() => import('./MyComponent'))\n\nDid you accidentally put curly braces around the import?",
+            ioInfo
+          ), "default" in ioInfo || console.error(
+            "lazy: Expected the result of a dynamic import() call. Instead received: %s\n\nYour code should look like: \n  const MyComponent = lazy(() => import('./MyComponent'))",
+            ioInfo
+          ), ioInfo.default;
+        throw payload._result;
+      }
+      function resolveDispatcher() {
+        var dispatcher = ReactSharedInternals.H;
+        null === dispatcher && console.error(
+          "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
+        );
+        return dispatcher;
+      }
+      function releaseAsyncTransition() {
+        ReactSharedInternals.asyncTransitions--;
+      }
+      function enqueueTask(task) {
+        if (null === enqueueTaskImpl)
+          try {
+            var requireString = ("require" + Math.random()).slice(0, 7);
+            enqueueTaskImpl = (module && module[requireString]).call(
+              module,
+              "timers"
+            ).setImmediate;
+          } catch (_err) {
+            enqueueTaskImpl = function(callback) {
+              false === didWarnAboutMessageChannel && (didWarnAboutMessageChannel = true, "undefined" === typeof MessageChannel && console.error(
+                "This browser does not have a MessageChannel implementation, so enqueuing tasks via await act(async () => ...) will fail. Please file an issue at https://github.com/facebook/react/issues if you encounter this warning."
+              ));
+              var channel = new MessageChannel();
+              channel.port1.onmessage = callback;
+              channel.port2.postMessage(void 0);
+            };
+          }
+        return enqueueTaskImpl(task);
+      }
+      function aggregateErrors(errors) {
+        return 1 < errors.length && "function" === typeof AggregateError ? new AggregateError(errors) : errors[0];
+      }
+      function popActScope(prevActQueue, prevActScopeDepth) {
+        prevActScopeDepth !== actScopeDepth - 1 && console.error(
+          "You seem to have overlapping act() calls, this is not supported. Be sure to await previous act() calls before making a new one. "
+        );
+        actScopeDepth = prevActScopeDepth;
+      }
+      function recursivelyFlushAsyncActWork(returnValue, resolve, reject) {
+        var queue = ReactSharedInternals.actQueue;
+        if (null !== queue)
+          if (0 !== queue.length)
+            try {
+              flushActQueue(queue);
+              enqueueTask(function() {
+                return recursivelyFlushAsyncActWork(returnValue, resolve, reject);
+              });
+              return;
+            } catch (error) {
+              ReactSharedInternals.thrownErrors.push(error);
+            }
+          else ReactSharedInternals.actQueue = null;
+        0 < ReactSharedInternals.thrownErrors.length ? (queue = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, reject(queue)) : resolve(returnValue);
+      }
+      function flushActQueue(queue) {
+        if (!isFlushing) {
+          isFlushing = true;
+          var i = 0;
+          try {
+            for (; i < queue.length; i++) {
+              var callback = queue[i];
+              do {
+                ReactSharedInternals.didUsePromise = false;
+                var continuation = callback(false);
+                if (null !== continuation) {
+                  if (ReactSharedInternals.didUsePromise) {
+                    queue[i] = callback;
+                    queue.splice(0, i);
+                    return;
+                  }
+                  callback = continuation;
+                } else break;
+              } while (1);
+            }
+            queue.length = 0;
+          } catch (error) {
+            queue.splice(0, i + 1), ReactSharedInternals.thrownErrors.push(error);
+          } finally {
+            isFlushing = false;
+          }
+        }
+      }
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+      var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, didWarnStateUpdateForUnmountedComponent = {}, ReactNoopUpdateQueue = {
+        isMounted: function() {
+          return false;
+        },
+        enqueueForceUpdate: function(publicInstance) {
+          warnNoop(publicInstance, "forceUpdate");
+        },
+        enqueueReplaceState: function(publicInstance) {
+          warnNoop(publicInstance, "replaceState");
+        },
+        enqueueSetState: function(publicInstance) {
+          warnNoop(publicInstance, "setState");
+        }
+      }, assign = Object.assign, emptyObject = {};
+      Object.freeze(emptyObject);
+      Component.prototype.isReactComponent = {};
+      Component.prototype.setState = function(partialState, callback) {
+        if ("object" !== typeof partialState && "function" !== typeof partialState && null != partialState)
+          throw Error(
+            "takes an object of state variables to update or a function which returns an object of state variables."
+          );
+        this.updater.enqueueSetState(this, partialState, callback, "setState");
+      };
+      Component.prototype.forceUpdate = function(callback) {
+        this.updater.enqueueForceUpdate(this, callback, "forceUpdate");
+      };
+      var deprecatedAPIs = {
+        isMounted: [
+          "isMounted",
+          "Instead, make sure to clean up subscriptions and pending requests in componentWillUnmount to prevent memory leaks."
+        ],
+        replaceState: [
+          "replaceState",
+          "Refactor your code to use setState instead (see https://github.com/facebook/react/issues/3236)."
+        ]
+      };
+      for (fnName in deprecatedAPIs)
+        deprecatedAPIs.hasOwnProperty(fnName) && defineDeprecationWarning(fnName, deprecatedAPIs[fnName]);
+      ComponentDummy.prototype = Component.prototype;
+      deprecatedAPIs = PureComponent.prototype = new ComponentDummy();
+      deprecatedAPIs.constructor = PureComponent;
+      assign(deprecatedAPIs, Component.prototype);
+      deprecatedAPIs.isPureReactComponent = true;
+      var isArrayImpl = Array.isArray, REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = {
+        H: null,
+        A: null,
+        T: null,
+        S: null,
+        actQueue: null,
+        asyncTransitions: 0,
+        isBatchingLegacy: false,
+        didScheduleLegacyUpdate: false,
+        didUsePromise: false,
+        thrownErrors: [],
+        getCurrentStack: null,
+        recentlyCreatedOwnerStacks: 0
+      }, hasOwnProperty = Object.prototype.hasOwnProperty, createTask = console.createTask ? console.createTask : function() {
+        return null;
+      };
+      deprecatedAPIs = {
+        react_stack_bottom_frame: function(callStackForError) {
+          return callStackForError();
+        }
+      };
+      var specialPropKeyWarningShown, didWarnAboutOldJSXRuntime;
+      var didWarnAboutElementRef = {};
+      var unknownOwnerDebugStack = deprecatedAPIs.react_stack_bottom_frame.bind(
+        deprecatedAPIs,
+        UnknownOwner
+      )();
+      var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
+      var didWarnAboutMaps = false, userProvidedKeyEscapeRegex = /\/+/g, reportGlobalError = "function" === typeof reportError ? reportError : function(error) {
+        if ("object" === typeof window && "function" === typeof window.ErrorEvent) {
+          var event = new window.ErrorEvent("error", {
+            bubbles: true,
+            cancelable: true,
+            message: "object" === typeof error && null !== error && "string" === typeof error.message ? String(error.message) : String(error),
+            error
+          });
+          if (!window.dispatchEvent(event)) return;
+        } else if ("object" === typeof process && "function" === typeof process.emit) {
+          process.emit("uncaughtException", error);
+          return;
+        }
+        console.error(error);
+      }, didWarnAboutMessageChannel = false, enqueueTaskImpl = null, actScopeDepth = 0, didWarnNoAwaitAct = false, isFlushing = false, queueSeveralMicrotasks = "function" === typeof queueMicrotask ? function(callback) {
+        queueMicrotask(function() {
+          return queueMicrotask(callback);
+        });
+      } : enqueueTask;
+      deprecatedAPIs = Object.freeze({
+        __proto__: null,
+        c: function(size) {
+          return resolveDispatcher().useMemoCache(size);
+        }
+      });
+      var fnName = {
+        map: mapChildren,
+        forEach: function(children, forEachFunc, forEachContext) {
+          mapChildren(
+            children,
+            function() {
+              forEachFunc.apply(this, arguments);
+            },
+            forEachContext
+          );
+        },
+        count: function(children) {
+          var n = 0;
+          mapChildren(children, function() {
+            n++;
+          });
+          return n;
+        },
+        toArray: function(children) {
+          return mapChildren(children, function(child) {
+            return child;
+          }) || [];
+        },
+        only: function(children) {
+          if (!isValidElement(children))
+            throw Error(
+              "React.Children.only expected to receive a single React element child."
+            );
+          return children;
+        }
+      };
+      exports.Activity = REACT_ACTIVITY_TYPE;
+      exports.Children = fnName;
+      exports.Component = Component;
+      exports.Fragment = REACT_FRAGMENT_TYPE;
+      exports.Profiler = REACT_PROFILER_TYPE;
+      exports.PureComponent = PureComponent;
+      exports.StrictMode = REACT_STRICT_MODE_TYPE;
+      exports.Suspense = REACT_SUSPENSE_TYPE;
+      exports.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = ReactSharedInternals;
+      exports.__COMPILER_RUNTIME = deprecatedAPIs;
+      exports.act = function(callback) {
+        var prevActQueue = ReactSharedInternals.actQueue, prevActScopeDepth = actScopeDepth;
+        actScopeDepth++;
+        var queue = ReactSharedInternals.actQueue = null !== prevActQueue ? prevActQueue : [], didAwaitActCall = false;
+        try {
+          var result = callback();
+        } catch (error) {
+          ReactSharedInternals.thrownErrors.push(error);
+        }
+        if (0 < ReactSharedInternals.thrownErrors.length)
+          throw popActScope(prevActQueue, prevActScopeDepth), callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
+        if (null !== result && "object" === typeof result && "function" === typeof result.then) {
+          var thenable = result;
+          queueSeveralMicrotasks(function() {
+            didAwaitActCall || didWarnNoAwaitAct || (didWarnNoAwaitAct = true, console.error(
+              "You called act(async () => ...) without await. This could lead to unexpected testing behaviour, interleaving multiple act calls and mixing their scopes. You should - await act(async () => ...);"
+            ));
+          });
+          return {
+            then: function(resolve, reject) {
+              didAwaitActCall = true;
+              thenable.then(
+                function(returnValue) {
+                  popActScope(prevActQueue, prevActScopeDepth);
+                  if (0 === prevActScopeDepth) {
+                    try {
+                      flushActQueue(queue), enqueueTask(function() {
+                        return recursivelyFlushAsyncActWork(
+                          returnValue,
+                          resolve,
+                          reject
+                        );
+                      });
+                    } catch (error$0) {
+                      ReactSharedInternals.thrownErrors.push(error$0);
+                    }
+                    if (0 < ReactSharedInternals.thrownErrors.length) {
+                      var _thrownError = aggregateErrors(
+                        ReactSharedInternals.thrownErrors
+                      );
+                      ReactSharedInternals.thrownErrors.length = 0;
+                      reject(_thrownError);
+                    }
+                  } else resolve(returnValue);
+                },
+                function(error) {
+                  popActScope(prevActQueue, prevActScopeDepth);
+                  0 < ReactSharedInternals.thrownErrors.length ? (error = aggregateErrors(
+                    ReactSharedInternals.thrownErrors
+                  ), ReactSharedInternals.thrownErrors.length = 0, reject(error)) : reject(error);
+                }
+              );
+            }
+          };
+        }
+        var returnValue$jscomp$0 = result;
+        popActScope(prevActQueue, prevActScopeDepth);
+        0 === prevActScopeDepth && (flushActQueue(queue), 0 !== queue.length && queueSeveralMicrotasks(function() {
+          didAwaitActCall || didWarnNoAwaitAct || (didWarnNoAwaitAct = true, console.error(
+            "A component suspended inside an `act` scope, but the `act` call was not awaited. When testing React components that depend on asynchronous data, you must await the result:\n\nawait act(() => ...)"
+          ));
+        }), ReactSharedInternals.actQueue = null);
+        if (0 < ReactSharedInternals.thrownErrors.length)
+          throw callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
+        return {
+          then: function(resolve, reject) {
+            didAwaitActCall = true;
+            0 === prevActScopeDepth ? (ReactSharedInternals.actQueue = queue, enqueueTask(function() {
+              return recursivelyFlushAsyncActWork(
+                returnValue$jscomp$0,
+                resolve,
+                reject
+              );
+            })) : resolve(returnValue$jscomp$0);
+          }
+        };
+      };
+      exports.cache = function(fn) {
+        return function() {
+          return fn.apply(null, arguments);
+        };
+      };
+      exports.cacheSignal = function() {
+        return null;
+      };
+      exports.captureOwnerStack = function() {
+        var getCurrentStack = ReactSharedInternals.getCurrentStack;
+        return null === getCurrentStack ? null : getCurrentStack();
+      };
+      exports.cloneElement = function(element, config, children) {
+        if (null === element || void 0 === element)
+          throw Error(
+            "The argument must be a React element, but you passed " + element + "."
+          );
+        var props = assign({}, element.props), key = element.key, owner = element._owner;
+        if (null != config) {
+          var JSCompiler_inline_result;
+          a: {
+            if (hasOwnProperty.call(config, "ref") && (JSCompiler_inline_result = Object.getOwnPropertyDescriptor(
+              config,
+              "ref"
+            ).get) && JSCompiler_inline_result.isReactWarning) {
+              JSCompiler_inline_result = false;
+              break a;
+            }
+            JSCompiler_inline_result = void 0 !== config.ref;
+          }
+          JSCompiler_inline_result && (owner = getOwner());
+          hasValidKey(config) && (checkKeyStringCoercion(config.key), key = "" + config.key);
+          for (propName in config)
+            !hasOwnProperty.call(config, propName) || "key" === propName || "__self" === propName || "__source" === propName || "ref" === propName && void 0 === config.ref || (props[propName] = config[propName]);
+        }
+        var propName = arguments.length - 2;
+        if (1 === propName) props.children = children;
+        else if (1 < propName) {
+          JSCompiler_inline_result = Array(propName);
+          for (var i = 0; i < propName; i++)
+            JSCompiler_inline_result[i] = arguments[i + 2];
+          props.children = JSCompiler_inline_result;
+        }
+        props = ReactElement(
+          element.type,
+          key,
+          props,
+          owner,
+          element._debugStack,
+          element._debugTask
+        );
+        for (key = 2; key < arguments.length; key++)
+          validateChildKeys(arguments[key]);
+        return props;
+      };
+      exports.createContext = function(defaultValue) {
+        defaultValue = {
+          $$typeof: REACT_CONTEXT_TYPE,
+          _currentValue: defaultValue,
+          _currentValue2: defaultValue,
+          _threadCount: 0,
+          Provider: null,
+          Consumer: null
+        };
+        defaultValue.Provider = defaultValue;
+        defaultValue.Consumer = {
+          $$typeof: REACT_CONSUMER_TYPE,
+          _context: defaultValue
+        };
+        defaultValue._currentRenderer = null;
+        defaultValue._currentRenderer2 = null;
+        return defaultValue;
+      };
+      exports.createElement = function(type, config, children) {
+        for (var i = 2; i < arguments.length; i++)
+          validateChildKeys(arguments[i]);
+        i = {};
+        var key = null;
+        if (null != config)
+          for (propName in didWarnAboutOldJSXRuntime || !("__self" in config) || "key" in config || (didWarnAboutOldJSXRuntime = true, console.warn(
+            "Your app (or one of its dependencies) is using an outdated JSX transform. Update to the modern JSX transform for faster performance: https://react.dev/link/new-jsx-transform"
+          )), hasValidKey(config) && (checkKeyStringCoercion(config.key), key = "" + config.key), config)
+            hasOwnProperty.call(config, propName) && "key" !== propName && "__self" !== propName && "__source" !== propName && (i[propName] = config[propName]);
+        var childrenLength = arguments.length - 2;
+        if (1 === childrenLength) i.children = children;
+        else if (1 < childrenLength) {
+          for (var childArray = Array(childrenLength), _i = 0; _i < childrenLength; _i++)
+            childArray[_i] = arguments[_i + 2];
+          Object.freeze && Object.freeze(childArray);
+          i.children = childArray;
+        }
+        if (type && type.defaultProps)
+          for (propName in childrenLength = type.defaultProps, childrenLength)
+            void 0 === i[propName] && (i[propName] = childrenLength[propName]);
+        key && defineKeyPropWarningGetter(
+          i,
+          "function" === typeof type ? type.displayName || type.name || "Unknown" : type
+        );
+        var propName = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++;
+        return ReactElement(
+          type,
+          key,
+          i,
+          getOwner(),
+          propName ? Error("react-stack-top-frame") : unknownOwnerDebugStack,
+          propName ? createTask(getTaskName(type)) : unknownOwnerDebugTask
+        );
+      };
+      exports.createRef = function() {
+        var refObject = { current: null };
+        Object.seal(refObject);
+        return refObject;
+      };
+      exports.forwardRef = function(render) {
+        null != render && render.$$typeof === REACT_MEMO_TYPE ? console.error(
+          "forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...))."
+        ) : "function" !== typeof render ? console.error(
+          "forwardRef requires a render function but was given %s.",
+          null === render ? "null" : typeof render
+        ) : 0 !== render.length && 2 !== render.length && console.error(
+          "forwardRef render functions accept exactly two parameters: props and ref. %s",
+          1 === render.length ? "Did you forget to use the ref parameter?" : "Any additional parameter will be undefined."
+        );
+        null != render && null != render.defaultProps && console.error(
+          "forwardRef render functions do not support defaultProps. Did you accidentally pass a React component?"
+        );
+        var elementType = { $$typeof: REACT_FORWARD_REF_TYPE, render }, ownName;
+        Object.defineProperty(elementType, "displayName", {
+          enumerable: false,
+          configurable: true,
+          get: function() {
+            return ownName;
+          },
+          set: function(name) {
+            ownName = name;
+            render.name || render.displayName || (Object.defineProperty(render, "name", { value: name }), render.displayName = name);
+          }
+        });
+        return elementType;
+      };
+      exports.isValidElement = isValidElement;
+      exports.lazy = function(ctor) {
+        ctor = { _status: -1, _result: ctor };
+        var lazyType = {
+          $$typeof: REACT_LAZY_TYPE,
+          _payload: ctor,
+          _init: lazyInitializer
+        }, ioInfo = {
+          name: "lazy",
+          start: -1,
+          end: -1,
+          value: null,
+          owner: null,
+          debugStack: Error("react-stack-top-frame"),
+          debugTask: console.createTask ? console.createTask("lazy()") : null
+        };
+        ctor._ioInfo = ioInfo;
+        lazyType._debugInfo = [{ awaited: ioInfo }];
+        return lazyType;
+      };
+      exports.memo = function(type, compare) {
+        null == type && console.error(
+          "memo: The first argument must be a component. Instead received: %s",
+          null === type ? "null" : typeof type
+        );
+        compare = {
+          $$typeof: REACT_MEMO_TYPE,
+          type,
+          compare: void 0 === compare ? null : compare
+        };
+        var ownName;
+        Object.defineProperty(compare, "displayName", {
+          enumerable: false,
+          configurable: true,
+          get: function() {
+            return ownName;
+          },
+          set: function(name) {
+            ownName = name;
+            type.name || type.displayName || (Object.defineProperty(type, "name", { value: name }), type.displayName = name);
+          }
+        });
+        return compare;
+      };
+      exports.startTransition = function(scope) {
+        var prevTransition = ReactSharedInternals.T, currentTransition = {};
+        currentTransition._updatedFibers = /* @__PURE__ */ new Set();
+        ReactSharedInternals.T = currentTransition;
+        try {
+          var returnValue = scope(), onStartTransitionFinish = ReactSharedInternals.S;
+          null !== onStartTransitionFinish && onStartTransitionFinish(currentTransition, returnValue);
+          "object" === typeof returnValue && null !== returnValue && "function" === typeof returnValue.then && (ReactSharedInternals.asyncTransitions++, returnValue.then(releaseAsyncTransition, releaseAsyncTransition), returnValue.then(noop3, reportGlobalError));
+        } catch (error) {
+          reportGlobalError(error);
+        } finally {
+          null === prevTransition && currentTransition._updatedFibers && (scope = currentTransition._updatedFibers.size, currentTransition._updatedFibers.clear(), 10 < scope && console.warn(
+            "Detected a large number of updates inside startTransition. If this is due to a subscription please re-write it to use React provided hooks. Otherwise concurrent mode guarantees are off the table."
+          )), null !== prevTransition && null !== currentTransition.types && (null !== prevTransition.types && prevTransition.types !== currentTransition.types && console.error(
+            "We expected inner Transitions to have transferred the outer types set and that you cannot add to the outer Transition while inside the inner.This is a bug in React."
+          ), prevTransition.types = currentTransition.types), ReactSharedInternals.T = prevTransition;
+        }
+      };
+      exports.unstable_useCacheRefresh = function() {
+        return resolveDispatcher().useCacheRefresh();
+      };
+      exports.use = function(usable) {
+        return resolveDispatcher().use(usable);
+      };
+      exports.useActionState = function(action, initialState, permalink) {
+        return resolveDispatcher().useActionState(
+          action,
+          initialState,
+          permalink
+        );
+      };
+      exports.useCallback = function(callback, deps) {
+        return resolveDispatcher().useCallback(callback, deps);
+      };
+      exports.useContext = function(Context) {
+        var dispatcher = resolveDispatcher();
+        Context.$$typeof === REACT_CONSUMER_TYPE && console.error(
+          "Calling useContext(Context.Consumer) is not supported and will cause bugs. Did you mean to call useContext(Context) instead?"
+        );
+        return dispatcher.useContext(Context);
+      };
+      exports.useDebugValue = function(value, formatterFn) {
+        return resolveDispatcher().useDebugValue(value, formatterFn);
+      };
+      exports.useDeferredValue = function(value, initialValue) {
+        return resolveDispatcher().useDeferredValue(value, initialValue);
+      };
+      exports.useEffect = function(create, deps) {
+        null == create && console.warn(
+          "React Hook useEffect requires an effect callback. Did you forget to pass a callback to the hook?"
+        );
+        return resolveDispatcher().useEffect(create, deps);
+      };
+      exports.useEffectEvent = function(callback) {
+        return resolveDispatcher().useEffectEvent(callback);
+      };
+      exports.useId = function() {
+        return resolveDispatcher().useId();
+      };
+      exports.useImperativeHandle = function(ref, create, deps) {
+        return resolveDispatcher().useImperativeHandle(ref, create, deps);
+      };
+      exports.useInsertionEffect = function(create, deps) {
+        null == create && console.warn(
+          "React Hook useInsertionEffect requires an effect callback. Did you forget to pass a callback to the hook?"
+        );
+        return resolveDispatcher().useInsertionEffect(create, deps);
+      };
+      exports.useLayoutEffect = function(create, deps) {
+        null == create && console.warn(
+          "React Hook useLayoutEffect requires an effect callback. Did you forget to pass a callback to the hook?"
+        );
+        return resolveDispatcher().useLayoutEffect(create, deps);
+      };
+      exports.useMemo = function(create, deps) {
+        return resolveDispatcher().useMemo(create, deps);
+      };
+      exports.useOptimistic = function(passthrough, reducer) {
+        return resolveDispatcher().useOptimistic(passthrough, reducer);
+      };
+      exports.useReducer = function(reducer, initialArg, init) {
+        return resolveDispatcher().useReducer(reducer, initialArg, init);
+      };
+      exports.useRef = function(initialValue) {
+        return resolveDispatcher().useRef(initialValue);
+      };
+      exports.useState = function(initialState) {
+        return resolveDispatcher().useState(initialState);
+      };
+      exports.useSyncExternalStore = function(subscribe, getSnapshot, getServerSnapshot) {
+        return resolveDispatcher().useSyncExternalStore(
+          subscribe,
+          getSnapshot,
+          getServerSnapshot
+        );
+      };
+      exports.useTransition = function() {
+        return resolveDispatcher().useTransition();
+      };
+      exports.version = "19.2.4";
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+    })();
+  }
+});
+
+// node_modules/react/index.js
+var require_react = __commonJS({
+  "node_modules/react/index.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_react_development();
+    }
+  }
+});
+
+// node_modules/react-dom/cjs/react-dom.development.js
+var require_react_dom_development = __commonJS({
+  "node_modules/react-dom/cjs/react-dom.development.js"(exports) {
+    "use strict";
+    (function() {
+      function noop3() {
+      }
+      function testStringCoercion(value) {
+        return "" + value;
+      }
+      function createPortal$1(children, containerInfo, implementation) {
+        var key = 3 < arguments.length && void 0 !== arguments[3] ? arguments[3] : null;
+        try {
+          testStringCoercion(key);
+          var JSCompiler_inline_result = false;
+        } catch (e) {
+          JSCompiler_inline_result = true;
+        }
+        JSCompiler_inline_result && (console.error(
+          "The provided key is an unsupported type %s. This value must be coerced to a string before using it here.",
+          "function" === typeof Symbol && Symbol.toStringTag && key[Symbol.toStringTag] || key.constructor.name || "Object"
+        ), testStringCoercion(key));
+        return {
+          $$typeof: REACT_PORTAL_TYPE,
+          key: null == key ? null : "" + key,
+          children,
+          containerInfo,
+          implementation
+        };
+      }
+      function getCrossOriginStringAs(as, input) {
+        if ("font" === as) return "";
+        if ("string" === typeof input)
+          return "use-credentials" === input ? input : "";
+      }
+      function getValueDescriptorExpectingObjectForWarning(thing) {
+        return null === thing ? "`null`" : void 0 === thing ? "`undefined`" : "" === thing ? "an empty string" : 'something with type "' + typeof thing + '"';
+      }
+      function getValueDescriptorExpectingEnumForWarning(thing) {
+        return null === thing ? "`null`" : void 0 === thing ? "`undefined`" : "" === thing ? "an empty string" : "string" === typeof thing ? JSON.stringify(thing) : "number" === typeof thing ? "`" + thing + "`" : 'something with type "' + typeof thing + '"';
+      }
+      function resolveDispatcher() {
+        var dispatcher = ReactSharedInternals.H;
+        null === dispatcher && console.error(
+          "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
+        );
+        return dispatcher;
+      }
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+      var React10 = require_react(), Internals = {
+        d: {
+          f: noop3,
+          r: function() {
+            throw Error(
+              "Invalid form element. requestFormReset must be passed a form that was rendered by React."
+            );
+          },
+          D: noop3,
+          C: noop3,
+          L: noop3,
+          m: noop3,
+          X: noop3,
+          S: noop3,
+          M: noop3
+        },
+        p: 0,
+        findDOMNode: null
+      }, REACT_PORTAL_TYPE = Symbol.for("react.portal"), ReactSharedInternals = React10.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      "function" === typeof Map && null != Map.prototype && "function" === typeof Map.prototype.forEach && "function" === typeof Set && null != Set.prototype && "function" === typeof Set.prototype.clear && "function" === typeof Set.prototype.forEach || console.error(
+        "React depends on Map and Set built-in types. Make sure that you load a polyfill in older browsers. https://reactjs.org/link/react-polyfills"
+      );
+      exports.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = Internals;
+      exports.createPortal = function(children, container) {
+        var key = 2 < arguments.length && void 0 !== arguments[2] ? arguments[2] : null;
+        if (!container || 1 !== container.nodeType && 9 !== container.nodeType && 11 !== container.nodeType)
+          throw Error("Target container is not a DOM element.");
+        return createPortal$1(children, container, null, key);
+      };
+      exports.flushSync = function(fn) {
+        var previousTransition = ReactSharedInternals.T, previousUpdatePriority = Internals.p;
+        try {
+          if (ReactSharedInternals.T = null, Internals.p = 2, fn)
+            return fn();
+        } finally {
+          ReactSharedInternals.T = previousTransition, Internals.p = previousUpdatePriority, Internals.d.f() && console.error(
+            "flushSync was called from inside a lifecycle method. React cannot flush when React is already rendering. Consider moving this call to a scheduler task or micro task."
+          );
+        }
+      };
+      exports.preconnect = function(href, options) {
+        "string" === typeof href && href ? null != options && "object" !== typeof options ? console.error(
+          "ReactDOM.preconnect(): Expected the `options` argument (second) to be an object but encountered %s instead. The only supported option at this time is `crossOrigin` which accepts a string.",
+          getValueDescriptorExpectingEnumForWarning(options)
+        ) : null != options && "string" !== typeof options.crossOrigin && console.error(
+          "ReactDOM.preconnect(): Expected the `crossOrigin` option (second argument) to be a string but encountered %s instead. Try removing this option or passing a string value instead.",
+          getValueDescriptorExpectingObjectForWarning(options.crossOrigin)
+        ) : console.error(
+          "ReactDOM.preconnect(): Expected the `href` argument (first) to be a non-empty string but encountered %s instead.",
+          getValueDescriptorExpectingObjectForWarning(href)
+        );
+        "string" === typeof href && (options ? (options = options.crossOrigin, options = "string" === typeof options ? "use-credentials" === options ? options : "" : void 0) : options = null, Internals.d.C(href, options));
+      };
+      exports.prefetchDNS = function(href) {
+        if ("string" !== typeof href || !href)
+          console.error(
+            "ReactDOM.prefetchDNS(): Expected the `href` argument (first) to be a non-empty string but encountered %s instead.",
+            getValueDescriptorExpectingObjectForWarning(href)
+          );
+        else if (1 < arguments.length) {
+          var options = arguments[1];
+          "object" === typeof options && options.hasOwnProperty("crossOrigin") ? console.error(
+            "ReactDOM.prefetchDNS(): Expected only one argument, `href`, but encountered %s as a second argument instead. This argument is reserved for future options and is currently disallowed. It looks like the you are attempting to set a crossOrigin property for this DNS lookup hint. Browsers do not perform DNS queries using CORS and setting this attribute on the resource hint has no effect. Try calling ReactDOM.prefetchDNS() with just a single string argument, `href`.",
+            getValueDescriptorExpectingEnumForWarning(options)
+          ) : console.error(
+            "ReactDOM.prefetchDNS(): Expected only one argument, `href`, but encountered %s as a second argument instead. This argument is reserved for future options and is currently disallowed. Try calling ReactDOM.prefetchDNS() with just a single string argument, `href`.",
+            getValueDescriptorExpectingEnumForWarning(options)
+          );
+        }
+        "string" === typeof href && Internals.d.D(href);
+      };
+      exports.preinit = function(href, options) {
+        "string" === typeof href && href ? null == options || "object" !== typeof options ? console.error(
+          "ReactDOM.preinit(): Expected the `options` argument (second) to be an object with an `as` property describing the type of resource to be preinitialized but encountered %s instead.",
+          getValueDescriptorExpectingEnumForWarning(options)
+        ) : "style" !== options.as && "script" !== options.as && console.error(
+          'ReactDOM.preinit(): Expected the `as` property in the `options` argument (second) to contain a valid value describing the type of resource to be preinitialized but encountered %s instead. Valid values for `as` are "style" and "script".',
+          getValueDescriptorExpectingEnumForWarning(options.as)
+        ) : console.error(
+          "ReactDOM.preinit(): Expected the `href` argument (first) to be a non-empty string but encountered %s instead.",
+          getValueDescriptorExpectingObjectForWarning(href)
+        );
+        if ("string" === typeof href && options && "string" === typeof options.as) {
+          var as = options.as, crossOrigin = getCrossOriginStringAs(as, options.crossOrigin), integrity = "string" === typeof options.integrity ? options.integrity : void 0, fetchPriority = "string" === typeof options.fetchPriority ? options.fetchPriority : void 0;
+          "style" === as ? Internals.d.S(
+            href,
+            "string" === typeof options.precedence ? options.precedence : void 0,
+            {
+              crossOrigin,
+              integrity,
+              fetchPriority
+            }
+          ) : "script" === as && Internals.d.X(href, {
+            crossOrigin,
+            integrity,
+            fetchPriority,
+            nonce: "string" === typeof options.nonce ? options.nonce : void 0
+          });
+        }
+      };
+      exports.preinitModule = function(href, options) {
+        var encountered = "";
+        "string" === typeof href && href || (encountered += " The `href` argument encountered was " + getValueDescriptorExpectingObjectForWarning(href) + ".");
+        void 0 !== options && "object" !== typeof options ? encountered += " The `options` argument encountered was " + getValueDescriptorExpectingObjectForWarning(options) + "." : options && "as" in options && "script" !== options.as && (encountered += " The `as` option encountered was " + getValueDescriptorExpectingEnumForWarning(options.as) + ".");
+        if (encountered)
+          console.error(
+            "ReactDOM.preinitModule(): Expected up to two arguments, a non-empty `href` string and, optionally, an `options` object with a valid `as` property.%s",
+            encountered
+          );
+        else
+          switch (encountered = options && "string" === typeof options.as ? options.as : "script", encountered) {
+            case "script":
+              break;
+            default:
+              encountered = getValueDescriptorExpectingEnumForWarning(encountered), console.error(
+                'ReactDOM.preinitModule(): Currently the only supported "as" type for this function is "script" but received "%s" instead. This warning was generated for `href` "%s". In the future other module types will be supported, aligning with the import-attributes proposal. Learn more here: (https://github.com/tc39/proposal-import-attributes)',
+                encountered,
+                href
+              );
+          }
+        if ("string" === typeof href)
+          if ("object" === typeof options && null !== options) {
+            if (null == options.as || "script" === options.as)
+              encountered = getCrossOriginStringAs(
+                options.as,
+                options.crossOrigin
+              ), Internals.d.M(href, {
+                crossOrigin: encountered,
+                integrity: "string" === typeof options.integrity ? options.integrity : void 0,
+                nonce: "string" === typeof options.nonce ? options.nonce : void 0
+              });
+          } else null == options && Internals.d.M(href);
+      };
+      exports.preload = function(href, options) {
+        var encountered = "";
+        "string" === typeof href && href || (encountered += " The `href` argument encountered was " + getValueDescriptorExpectingObjectForWarning(href) + ".");
+        null == options || "object" !== typeof options ? encountered += " The `options` argument encountered was " + getValueDescriptorExpectingObjectForWarning(options) + "." : "string" === typeof options.as && options.as || (encountered += " The `as` option encountered was " + getValueDescriptorExpectingObjectForWarning(options.as) + ".");
+        encountered && console.error(
+          'ReactDOM.preload(): Expected two arguments, a non-empty `href` string and an `options` object with an `as` property valid for a `<link rel="preload" as="..." />` tag.%s',
+          encountered
+        );
+        if ("string" === typeof href && "object" === typeof options && null !== options && "string" === typeof options.as) {
+          encountered = options.as;
+          var crossOrigin = getCrossOriginStringAs(
+            encountered,
+            options.crossOrigin
+          );
+          Internals.d.L(href, encountered, {
+            crossOrigin,
+            integrity: "string" === typeof options.integrity ? options.integrity : void 0,
+            nonce: "string" === typeof options.nonce ? options.nonce : void 0,
+            type: "string" === typeof options.type ? options.type : void 0,
+            fetchPriority: "string" === typeof options.fetchPriority ? options.fetchPriority : void 0,
+            referrerPolicy: "string" === typeof options.referrerPolicy ? options.referrerPolicy : void 0,
+            imageSrcSet: "string" === typeof options.imageSrcSet ? options.imageSrcSet : void 0,
+            imageSizes: "string" === typeof options.imageSizes ? options.imageSizes : void 0,
+            media: "string" === typeof options.media ? options.media : void 0
+          });
+        }
+      };
+      exports.preloadModule = function(href, options) {
+        var encountered = "";
+        "string" === typeof href && href || (encountered += " The `href` argument encountered was " + getValueDescriptorExpectingObjectForWarning(href) + ".");
+        void 0 !== options && "object" !== typeof options ? encountered += " The `options` argument encountered was " + getValueDescriptorExpectingObjectForWarning(options) + "." : options && "as" in options && "string" !== typeof options.as && (encountered += " The `as` option encountered was " + getValueDescriptorExpectingObjectForWarning(options.as) + ".");
+        encountered && console.error(
+          'ReactDOM.preloadModule(): Expected two arguments, a non-empty `href` string and, optionally, an `options` object with an `as` property valid for a `<link rel="modulepreload" as="..." />` tag.%s',
+          encountered
+        );
+        "string" === typeof href && (options ? (encountered = getCrossOriginStringAs(
+          options.as,
+          options.crossOrigin
+        ), Internals.d.m(href, {
+          as: "string" === typeof options.as && "script" !== options.as ? options.as : void 0,
+          crossOrigin: encountered,
+          integrity: "string" === typeof options.integrity ? options.integrity : void 0
+        })) : Internals.d.m(href));
+      };
+      exports.requestFormReset = function(form) {
+        Internals.d.r(form);
+      };
+      exports.unstable_batchedUpdates = function(fn, a) {
+        return fn(a);
+      };
+      exports.useFormState = function(action, initialState, permalink) {
+        return resolveDispatcher().useFormState(action, initialState, permalink);
+      };
+      exports.useFormStatus = function() {
+        return resolveDispatcher().useHostTransitionStatus();
+      };
+      exports.version = "19.2.4";
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+    })();
+  }
+});
+
+// node_modules/react-dom/index.js
+var require_react_dom = __commonJS({
+  "node_modules/react-dom/index.js"(exports, module) {
+    "use strict";
+    if (false) {
+      checkDCE();
+      module.exports = null;
+    } else {
+      module.exports = require_react_dom_development();
+    }
+  }
+});
+
+// src/types.ts
+var AspectRatio, ImageSize, VIDEO_RESOLUTION_DURATION_MAP;
+var init_types = __esm({
+  "src/types.ts"() {
+    "use strict";
+    AspectRatio = /* @__PURE__ */ ((AspectRatio2) => {
+      AspectRatio2["AUTO"] = "auto";
+      AspectRatio2["SQUARE"] = "1:1";
+      AspectRatio2["PORTRAIT_1_8"] = "1:8";
+      AspectRatio2["PORTRAIT_1_4"] = "1:4";
+      AspectRatio2["PORTRAIT_3_4"] = "3:4";
+      AspectRatio2["PORTRAIT_4_5"] = "4:5";
+      AspectRatio2["PORTRAIT_9_16"] = "9:16";
+      AspectRatio2["PORTRAIT_9_21"] = "9:21";
+      AspectRatio2["PORTRAIT_2_3"] = "2:3";
+      AspectRatio2["LANDSCAPE_4_3"] = "4:3";
+      AspectRatio2["LANDSCAPE_5_4"] = "5:4";
+      AspectRatio2["LANDSCAPE_16_9"] = "16:9";
+      AspectRatio2["LANDSCAPE_21_9"] = "21:9";
+      AspectRatio2["LANDSCAPE_4_1"] = "4:1";
+      AspectRatio2["LANDSCAPE_8_1"] = "8:1";
+      AspectRatio2["LANDSCAPE_3_2"] = "3:2";
+      AspectRatio2["STANDARD_2_3"] = "2:3";
+      AspectRatio2["STANDARD_3_2"] = "3:2";
+      return AspectRatio2;
+    })(AspectRatio || {});
+    ImageSize = /* @__PURE__ */ ((ImageSize2) => {
+      ImageSize2["SIZE_05K"] = "0.5K";
+      ImageSize2["SIZE_1K"] = "1K";
+      ImageSize2["SIZE_2K"] = "2K";
+      ImageSize2["SIZE_4K"] = "4K";
+      return ImageSize2;
+    })(ImageSize || {});
+    VIDEO_RESOLUTION_DURATION_MAP = {
+      "720p": ["4s", "6s", "8s"],
+      "1080p": ["8s"],
+      "4k": ["8s"]
+    };
+  }
+});
 
 // node_modules/tslib/tslib.es6.mjs
 function __rest(s, e) {
@@ -67,7 +1372,7 @@ var init_helper = __esm({
 
 // node_modules/@supabase/functions-js/dist/module/types.js
 var FunctionsError, FunctionsFetchError, FunctionsRelayError, FunctionsHttpError, FunctionRegion;
-var init_types = __esm({
+var init_types2 = __esm({
   "node_modules/@supabase/functions-js/dist/module/types.js"() {
     FunctionsError = class extends Error {
       constructor(message, name = "FunctionsError", context) {
@@ -117,7 +1422,7 @@ var init_FunctionsClient = __esm({
   "node_modules/@supabase/functions-js/dist/module/FunctionsClient.js"() {
     init_tslib_es6();
     init_helper();
-    init_types();
+    init_types2();
     FunctionsClient = class {
       /**
        * Creates a new Functions client bound to an Edge Functions URL.
@@ -8634,7 +9939,7 @@ var init_fetch = __esm({
 
 // node_modules/@supabase/auth-js/dist/module/lib/types.js
 var SIGN_OUT_SCOPES;
-var init_types2 = __esm({
+var init_types3 = __esm({
   "node_modules/@supabase/auth-js/dist/module/lib/types.js"() {
     SIGN_OUT_SCOPES = ["global", "local", "others"];
   }
@@ -8647,7 +9952,7 @@ var init_GoTrueAdminApi = __esm({
     init_tslib_es6();
     init_fetch();
     init_helpers();
-    init_types2();
+    init_types3();
     init_errors();
     GoTrueAdminApi = class {
       /**
@@ -12907,7 +14212,7 @@ var init_module3 = __esm({
     init_GoTrueClient();
     init_AuthAdminApi();
     init_AuthClient();
-    init_types2();
+    init_types3();
     init_errors();
     init_locks();
   }
@@ -14852,7 +16157,7 @@ var init_providerPricingSnapshot = __esm({
         _rawData: Array.isArray(pricingData) ? pricingData : []
       };
       for (const item of Array.isArray(pricingData) ? pricingData : []) {
-        const model = String(item?.model_name || item?.model || "").trim();
+        const model = String(item?.model || item?.model_name || "").trim();
         if (!model) continue;
         const perRequestPrice = toNumber2(item?.per_request_price ?? item?.perRequestPrice ?? item?.price_per_image ?? item?.pricePerImage);
         const modelPrice = toNumber2(item?.model_price ?? item?.modelPrice) ?? perRequestPrice;
@@ -14866,6 +16171,8 @@ var init_providerPricingSnapshot = __esm({
         const tokenGroup = typeof item?.token_group === "string" ? item.token_group.trim() : void 0;
         const billingType = typeof item?.billing_type === "string" ? item.billing_type.trim() : void 0;
         const endpointType = typeof item?.endpoint_type === "string" ? item.endpoint_type.trim() : void 0;
+        const endpointUrl = typeof item?.endpoint_url === "string" ? item.endpoint_url.trim() : typeof item?.endpointUrl === "string" ? item.endpointUrl.trim() : void 0;
+        const endpointPath = typeof item?.endpoint_path === "string" ? item.endpoint_path.trim() : typeof item?.endpointPath === "string" ? item.endpointPath.trim() : void 0;
         const currency = typeof item?.currency === "string" ? item.currency.trim() : void 0;
         const billingUnit = typeof item?.pay_unit === "string" ? item.pay_unit.trim() : typeof item?.billing_unit === "string" ? item.billing_unit.trim() : void 0;
         const displayPrice = typeof item?.display_price === "string" ? item.display_price.trim() : void 0;
@@ -14882,6 +16189,8 @@ var init_providerPricingSnapshot = __esm({
           tokenGroup,
           billingType,
           endpointType,
+          endpointUrl,
+          endpointPath,
           modelRatio,
           modelPrice,
           perRequestPrice,
@@ -14907,7 +16216,7 @@ var init_providerPricingSnapshot = __esm({
         if (completionRatio !== void 0) {
           snapshot.completionRatios[model] = completionRatio;
         }
-        if (provider || providerLabel || providerLogo || tags?.length || tokenGroup || billingType || endpointType) {
+        if (provider || providerLabel || providerLogo || tags?.length || tokenGroup || billingType || endpointType || endpointUrl || endpointPath) {
           snapshot.modelMeta[model] = {
             provider,
             providerLabel,
@@ -14915,7 +16224,9 @@ var init_providerPricingSnapshot = __esm({
             tags,
             tokenGroup,
             billingType,
-            endpointType
+            endpointType,
+            endpointUrl,
+            endpointPath
           };
         }
         if (sizeRatio) {
@@ -15002,25 +16313,38 @@ var init_providerPricingSnapshot = __esm({
 });
 
 // src/services/billing/newApiPricingService.ts
-function extractWuyinModelIdFromBaseUrl(baseUrl) {
-  const raw = String(baseUrl || "").trim();
+function extractWuyinAsyncEndpointDetails(value) {
+  const raw = String(value || "").trim();
   if (!raw) return null;
+  const directPathMatch = raw.match(WUYIN_ASYNC_ENDPOINT_RE);
+  if (directPathMatch && !/^detail$/i.test(directPathMatch[1])) {
+    const endpointPath = raw.replace(/\/+$/, "");
+    return {
+      endpointUrl: `${WUYIN_DEFAULT_ROOT_URL}${endpointPath}`,
+      endpointPath,
+      modelId: decodeURIComponent(directPathMatch[1])
+    };
+  }
   const candidates = /^https?:\/\//i.test(raw) ? [raw] : [`https://${raw}`];
   for (const candidate of candidates) {
     try {
       const parsed = new URL(candidate);
-      const pathname = parsed.pathname.replace(/\/+$/, "");
-      if (!/^\/api\//i.test(pathname)) continue;
-      const segments = pathname.split("/").filter(Boolean);
-      const modelId = segments[segments.length - 1];
-      if (modelId && !/^(doc|type)$/i.test(modelId)) {
-        return decodeURIComponent(modelId);
-      }
+      const endpointPath = parsed.pathname.replace(/\/+$/, "");
+      const match = endpointPath.match(WUYIN_ASYNC_ENDPOINT_RE);
+      if (!match || /^detail$/i.test(match[1])) continue;
+      return {
+        endpointUrl: `${parsed.protocol}//${parsed.host}${endpointPath}`,
+        endpointPath,
+        modelId: decodeURIComponent(match[1])
+      };
     } catch {
       continue;
     }
   }
   return null;
+}
+function extractWuyinModelIdFromBaseUrl(baseUrl) {
+  return extractWuyinAsyncEndpointDetails(baseUrl)?.modelId || null;
 }
 function selectWuyinCatalogModels(baseUrl, pricingList) {
   const endpointModelId = extractWuyinModelIdFromBaseUrl(baseUrl);
@@ -15096,7 +16420,9 @@ function toWuyinPricingRows(pricingList) {
     price_per_image: item.inputPrice,
     currency: item.currency,
     pay_unit: item.billingUnit,
-    display_price: item.displayPrice
+    display_price: item.displayPrice,
+    endpoint_url: item.endpointUrl,
+    endpoint_path: item.endpointPath
   }));
 }
 async function fetchRawPricingCatalog(baseUrl, apiKey, format = "auto") {
@@ -15166,7 +16492,8 @@ async function fetchWuyinPricingCatalog(baseUrl) {
   const apiList = Array.isArray(data?.data?.api_list) ? data.data.api_list : [];
   return apiList.map((item) => {
     const { numeric, unit, displayPrice } = extractWuyinDisplayPrice(item);
-    const modelId = String(item?.url || "").trim().split("/").filter(Boolean).pop() || String(item?.name || "").trim() || String(item?.id || "").trim();
+    const endpoint = extractWuyinAsyncEndpointDetails(String(item?.url || "").trim());
+    const modelId = endpoint?.modelId || String(item?.name || "").trim() || String(item?.id || "").trim();
     return {
       modelId,
       modelName: String(item?.name || modelId).trim(),
@@ -15177,11 +16504,13 @@ async function fetchWuyinPricingCatalog(baseUrl) {
       currency: "CNY",
       billingUnit: unit,
       displayPrice,
-      supportsGroups: false
+      supportsGroups: false,
+      endpointUrl: endpoint?.endpointUrl,
+      endpointPath: endpoint?.endpointPath
     };
   }).filter((item) => item.modelId);
 }
-var normalizePricingBaseUrl, createFallbackWuyinCatalogItem, WUYIN_PRICE_API_PATH, normalizeBaseUrl2, stripHtml, toFiniteNumber, extractWuyinDisplayPrice;
+var normalizePricingBaseUrl, WUYIN_DEFAULT_ROOT_URL, WUYIN_ASYNC_ENDPOINT_RE, createFallbackWuyinCatalogItem, WUYIN_PRICE_API_PATH, normalizeBaseUrl2, stripHtml, toFiniteNumber, extractWuyinDisplayPrice;
 var init_newApiPricingService = __esm({
   "src/services/billing/newApiPricingService.ts"() {
     "use strict";
@@ -15189,6 +16518,8 @@ var init_newApiPricingService = __esm({
     init_apiConfig();
     init_providerStrategy();
     normalizePricingBaseUrl = (baseUrl) => baseUrl.replace(/\/+$/, "");
+    WUYIN_DEFAULT_ROOT_URL = "https://api.wuyinkeji.com";
+    WUYIN_ASYNC_ENDPOINT_RE = /^\/api\/async\/([a-z0-9_.-]+)$/i;
     createFallbackWuyinCatalogItem = (modelId) => ({
       modelId,
       modelName: modelId,
@@ -15199,7 +16530,9 @@ var init_newApiPricingService = __esm({
       currency: "CNY",
       billingUnit: "\u6B21",
       displayPrice: "\u5F85\u624B\u52A8\u8BBE\u7F6E",
-      supportsGroups: false
+      supportsGroups: false,
+      endpointUrl: `${WUYIN_DEFAULT_ROOT_URL}/api/async/${modelId}`,
+      endpointPath: `/api/async/${modelId}`
     });
     WUYIN_PRICE_API_PATH = "/themes/DigitalBlue/api?action=api_list";
     normalizeBaseUrl2 = (baseUrl) => baseUrl.replace(/\/$/, "");
@@ -15227,13 +16560,6 @@ var init_newApiPricingService = __esm({
   }
 });
 
-// src/types.ts
-var init_types3 = __esm({
-  "src/types.ts"() {
-    "use strict";
-  }
-});
-
 // src/services/model/modelPricing.ts
 var modelPricing_exports = {};
 __export(modelPricing_exports, {
@@ -15250,7 +16576,7 @@ var STORAGE_KEY2, DEFAULT_REF_IMAGE_TOKENS, BUILTIN_PRICING, FALLBACK_IMAGE_TOKE
 var init_modelPricing = __esm({
   "src/services/model/modelPricing.ts"() {
     "use strict";
-    init_types3();
+    init_types();
     init_keyManager();
     init_adminModelService();
     STORAGE_KEY2 = "kk_model_pricing_overrides";
@@ -16188,6 +17514,23 @@ function addLog(level, source, message, details, stack) {
   }
   console.log(`[${source}] ${message}`, details);
 }
+function logError(source, error, context) {
+  const err = error instanceof Error ? error : new Error(String(error));
+  const details = [
+    `\u6765\u6E90\uFF1A${source}`,
+    `\u4E0A\u4E0B\u6587\uFF1A${context || "\u672A\u63D0\u4F9B"}`,
+    `\u9519\u8BEF\u540D\u79F0\uFF1A${err.name}`,
+    `\u9519\u8BEF\u4FE1\u606F\uFF1A${err.message}`,
+    `\u5806\u6808\uFF1A${err.stack || "\u65E0\u5806\u6808\u4FE1\u606F"}`
+  ].join("\n");
+  addLog("ERROR" /* ERROR */, source, err.message, details, err.stack);
+}
+function logWarning(source, message, details) {
+  addLog("WARNING" /* WARNING */, source, message, details || message);
+}
+function logInfo(source, message, details) {
+  addLog("INFO" /* INFO */, source, message, details || message);
+}
 var STORAGE_KEY3, MAX_ENTRIES, listeners;
 var init_systemLogService = __esm({
   "src/services/system/systemLogService.ts"() {
@@ -16838,6 +18181,7 @@ async function autoDetectAndConfigureModels(apiKey, baseUrl, preferredFormat) {
 var RATE_LIMIT_COOLDOWN_MS, PROVIDER_PRESETS, STORAGE_KEY4, PROVIDERS_STORAGE_KEY, DEFAULT_MAX_FAILURES, MODEL_MIGRATION_MAP, BLACKLIST_MODELS, DEPRECATED_MODELS, GOOGLE_IMAGE_WHITELIST, VIDEO_MODEL_WHITELIST, ADVANCED_IMAGE_MODEL_WHITELIST, AUDIO_MODEL_WHITELIST, isGoogleOfficialModelId, DEFAULT_GOOGLE_MODELS, GOOGLE_HEADER_NAME, GOOGLE_CHAT_MODELS, GOOGLE_MODEL_METADATA, MODEL_TYPE_MAP, getModelMetadata, inferModelType, KeyManager, keyManager, keyManager_default;
 var init_keyManager = __esm({
   "src/services/auth/keyManager.ts"() {
+    "use strict";
     init_supabase();
     init_apiConfig();
     init_errorClassification();
@@ -19137,32 +20481,8897 @@ var init_keyManager = __esm({
     keyManager_default = keyManager;
   }
 });
+
+// node_modules/react/cjs/react-jsx-runtime.development.js
+var require_react_jsx_runtime_development = __commonJS({
+  "node_modules/react/cjs/react-jsx-runtime.development.js"(exports) {
+    "use strict";
+    (function() {
+      function getComponentNameFromType(type) {
+        if (null == type) return null;
+        if ("function" === typeof type)
+          return type.$$typeof === REACT_CLIENT_REFERENCE ? null : type.displayName || type.name || null;
+        if ("string" === typeof type) return type;
+        switch (type) {
+          case REACT_FRAGMENT_TYPE:
+            return "Fragment";
+          case REACT_PROFILER_TYPE:
+            return "Profiler";
+          case REACT_STRICT_MODE_TYPE:
+            return "StrictMode";
+          case REACT_SUSPENSE_TYPE:
+            return "Suspense";
+          case REACT_SUSPENSE_LIST_TYPE:
+            return "SuspenseList";
+          case REACT_ACTIVITY_TYPE:
+            return "Activity";
+        }
+        if ("object" === typeof type)
+          switch ("number" === typeof type.tag && console.error(
+            "Received an unexpected object in getComponentNameFromType(). This is likely a bug in React. Please file an issue."
+          ), type.$$typeof) {
+            case REACT_PORTAL_TYPE:
+              return "Portal";
+            case REACT_CONTEXT_TYPE:
+              return type.displayName || "Context";
+            case REACT_CONSUMER_TYPE:
+              return (type._context.displayName || "Context") + ".Consumer";
+            case REACT_FORWARD_REF_TYPE:
+              var innerType = type.render;
+              type = type.displayName;
+              type || (type = innerType.displayName || innerType.name || "", type = "" !== type ? "ForwardRef(" + type + ")" : "ForwardRef");
+              return type;
+            case REACT_MEMO_TYPE:
+              return innerType = type.displayName || null, null !== innerType ? innerType : getComponentNameFromType(type.type) || "Memo";
+            case REACT_LAZY_TYPE:
+              innerType = type._payload;
+              type = type._init;
+              try {
+                return getComponentNameFromType(type(innerType));
+              } catch (x) {
+              }
+          }
+        return null;
+      }
+      function testStringCoercion(value) {
+        return "" + value;
+      }
+      function checkKeyStringCoercion(value) {
+        try {
+          testStringCoercion(value);
+          var JSCompiler_inline_result = false;
+        } catch (e) {
+          JSCompiler_inline_result = true;
+        }
+        if (JSCompiler_inline_result) {
+          JSCompiler_inline_result = console;
+          var JSCompiler_temp_const = JSCompiler_inline_result.error;
+          var JSCompiler_inline_result$jscomp$0 = "function" === typeof Symbol && Symbol.toStringTag && value[Symbol.toStringTag] || value.constructor.name || "Object";
+          JSCompiler_temp_const.call(
+            JSCompiler_inline_result,
+            "The provided key is an unsupported type %s. This value must be coerced to a string before using it here.",
+            JSCompiler_inline_result$jscomp$0
+          );
+          return testStringCoercion(value);
+        }
+      }
+      function getTaskName(type) {
+        if (type === REACT_FRAGMENT_TYPE) return "<>";
+        if ("object" === typeof type && null !== type && type.$$typeof === REACT_LAZY_TYPE)
+          return "<...>";
+        try {
+          var name = getComponentNameFromType(type);
+          return name ? "<" + name + ">" : "<...>";
+        } catch (x) {
+          return "<...>";
+        }
+      }
+      function getOwner() {
+        var dispatcher = ReactSharedInternals.A;
+        return null === dispatcher ? null : dispatcher.getOwner();
+      }
+      function UnknownOwner() {
+        return Error("react-stack-top-frame");
+      }
+      function hasValidKey(config) {
+        if (hasOwnProperty.call(config, "key")) {
+          var getter = Object.getOwnPropertyDescriptor(config, "key").get;
+          if (getter && getter.isReactWarning) return false;
+        }
+        return void 0 !== config.key;
+      }
+      function defineKeyPropWarningGetter(props, displayName) {
+        function warnAboutAccessingKey() {
+          specialPropKeyWarningShown || (specialPropKeyWarningShown = true, console.error(
+            "%s: `key` is not a prop. Trying to access it will result in `undefined` being returned. If you need to access the same value within the child component, you should pass it as a different prop. (https://react.dev/link/special-props)",
+            displayName
+          ));
+        }
+        warnAboutAccessingKey.isReactWarning = true;
+        Object.defineProperty(props, "key", {
+          get: warnAboutAccessingKey,
+          configurable: true
+        });
+      }
+      function elementRefGetterWithDeprecationWarning() {
+        var componentName = getComponentNameFromType(this.type);
+        didWarnAboutElementRef[componentName] || (didWarnAboutElementRef[componentName] = true, console.error(
+          "Accessing element.ref was removed in React 19. ref is now a regular prop. It will be removed from the JSX Element type in a future release."
+        ));
+        componentName = this.props.ref;
+        return void 0 !== componentName ? componentName : null;
+      }
+      function ReactElement(type, key, props, owner, debugStack, debugTask) {
+        var refProp = props.ref;
+        type = {
+          $$typeof: REACT_ELEMENT_TYPE,
+          type,
+          key,
+          props,
+          _owner: owner
+        };
+        null !== (void 0 !== refProp ? refProp : null) ? Object.defineProperty(type, "ref", {
+          enumerable: false,
+          get: elementRefGetterWithDeprecationWarning
+        }) : Object.defineProperty(type, "ref", { enumerable: false, value: null });
+        type._store = {};
+        Object.defineProperty(type._store, "validated", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: 0
+        });
+        Object.defineProperty(type, "_debugInfo", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: null
+        });
+        Object.defineProperty(type, "_debugStack", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugStack
+        });
+        Object.defineProperty(type, "_debugTask", {
+          configurable: false,
+          enumerable: false,
+          writable: true,
+          value: debugTask
+        });
+        Object.freeze && (Object.freeze(type.props), Object.freeze(type));
+        return type;
+      }
+      function jsxDEVImpl(type, config, maybeKey, isStaticChildren, debugStack, debugTask) {
+        var children = config.children;
+        if (void 0 !== children)
+          if (isStaticChildren)
+            if (isArrayImpl(children)) {
+              for (isStaticChildren = 0; isStaticChildren < children.length; isStaticChildren++)
+                validateChildKeys(children[isStaticChildren]);
+              Object.freeze && Object.freeze(children);
+            } else
+              console.error(
+                "React.jsx: Static children should always be an array. You are likely explicitly calling React.jsxs or React.jsxDEV. Use the Babel transform instead."
+              );
+          else validateChildKeys(children);
+        if (hasOwnProperty.call(config, "key")) {
+          children = getComponentNameFromType(type);
+          var keys = Object.keys(config).filter(function(k) {
+            return "key" !== k;
+          });
+          isStaticChildren = 0 < keys.length ? "{key: someKey, " + keys.join(": ..., ") + ": ...}" : "{key: someKey}";
+          didWarnAboutKeySpread[children + isStaticChildren] || (keys = 0 < keys.length ? "{" + keys.join(": ..., ") + ": ...}" : "{}", console.error(
+            'A props object containing a "key" prop is being spread into JSX:\n  let props = %s;\n  <%s {...props} />\nReact keys must be passed directly to JSX without using spread:\n  let props = %s;\n  <%s key={someKey} {...props} />',
+            isStaticChildren,
+            children,
+            keys,
+            children
+          ), didWarnAboutKeySpread[children + isStaticChildren] = true);
+        }
+        children = null;
+        void 0 !== maybeKey && (checkKeyStringCoercion(maybeKey), children = "" + maybeKey);
+        hasValidKey(config) && (checkKeyStringCoercion(config.key), children = "" + config.key);
+        if ("key" in config) {
+          maybeKey = {};
+          for (var propName in config)
+            "key" !== propName && (maybeKey[propName] = config[propName]);
+        } else maybeKey = config;
+        children && defineKeyPropWarningGetter(
+          maybeKey,
+          "function" === typeof type ? type.displayName || type.name || "Unknown" : type
+        );
+        return ReactElement(
+          type,
+          children,
+          maybeKey,
+          getOwner(),
+          debugStack,
+          debugTask
+        );
+      }
+      function validateChildKeys(node) {
+        isValidElement(node) ? node._store && (node._store.validated = 1) : "object" === typeof node && null !== node && node.$$typeof === REACT_LAZY_TYPE && ("fulfilled" === node._payload.status ? isValidElement(node._payload.value) && node._payload.value._store && (node._payload.value._store.validated = 1) : node._store && (node._store.validated = 1));
+      }
+      function isValidElement(object) {
+        return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
+      }
+      var React10 = require_react(), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = React10.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
+        return null;
+      };
+      React10 = {
+        react_stack_bottom_frame: function(callStackForError) {
+          return callStackForError();
+        }
+      };
+      var specialPropKeyWarningShown;
+      var didWarnAboutElementRef = {};
+      var unknownOwnerDebugStack = React10.react_stack_bottom_frame.bind(
+        React10,
+        UnknownOwner
+      )();
+      var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
+      var didWarnAboutKeySpread = {};
+      exports.Fragment = REACT_FRAGMENT_TYPE;
+      exports.jsx = function(type, config, maybeKey) {
+        var trackActualOwner = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++;
+        return jsxDEVImpl(
+          type,
+          config,
+          maybeKey,
+          false,
+          trackActualOwner ? Error("react-stack-top-frame") : unknownOwnerDebugStack,
+          trackActualOwner ? createTask(getTaskName(type)) : unknownOwnerDebugTask
+        );
+      };
+      exports.jsxs = function(type, config, maybeKey) {
+        var trackActualOwner = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++;
+        return jsxDEVImpl(
+          type,
+          config,
+          maybeKey,
+          true,
+          trackActualOwner ? Error("react-stack-top-frame") : unknownOwnerDebugStack,
+          trackActualOwner ? createTask(getTaskName(type)) : unknownOwnerDebugTask
+        );
+      };
+    })();
+  }
+});
+
+// node_modules/react/jsx-runtime.js
+var require_jsx_runtime = __commonJS({
+  "node_modules/react/jsx-runtime.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_react_jsx_runtime_development();
+    }
+  }
+});
+
+// src/services/storage/fileSystemService.ts
+function normalizeStoredFileId(filename) {
+  const baseName = filename.replace(/\.[^.]+$/, "");
+  return /^\d{6}_/.test(baseName) ? baseName.slice(7) : baseName;
+}
+function getFileExtension(filename, fallback) {
+  const match = filename.match(/\.([^.]+)$/);
+  return (match?.[1] || fallback).toLowerCase();
+}
+function extensionFromMimeType(mimeType, fallback) {
+  const normalizedMimeType = (mimeType || "").toLowerCase();
+  if (normalizedMimeType.includes("png")) return "png";
+  if (normalizedMimeType.includes("jpeg") || normalizedMimeType.includes("jpg")) return "jpg";
+  if (normalizedMimeType.includes("webp")) return "webp";
+  if (normalizedMimeType.includes("gif")) return "gif";
+  if (normalizedMimeType.includes("bmp")) return "bmp";
+  if (normalizedMimeType.includes("mp4")) return "mp4";
+  if (normalizedMimeType.includes("webm")) return "webm";
+  if (normalizedMimeType.includes("quicktime") || normalizedMimeType.includes("mov")) return "mov";
+  return fallback;
+}
+function matchesStoredFileId(filename, id) {
+  const normalizedId = normalizeStoredFileId(filename);
+  const baseName = filename.replace(/\.[^.]+$/, "");
+  return normalizedId === id || baseName === id || filename.startsWith(`${id}.`);
+}
+async function findExistingFileNameByStoredId(dirHandle, id, pattern) {
+  for await (const entry of dirHandle.values()) {
+    if (entry.kind === "file" && pattern.test(entry.name) && matchesStoredFileId(entry.name, id)) {
+      return entry.name;
+    }
+  }
+  return null;
+}
+async function copyFileBetweenDirectories(sourceDirHandle, sourceFilename, targetDirHandle, targetFilename) {
+  const sourceFileHandle = await sourceDirHandle.getFileHandle(sourceFilename);
+  const file = await sourceFileHandle.getFile();
+  const targetFileHandle = await targetDirHandle.getFileHandle(targetFilename, { create: true });
+  const writable = await targetFileHandle.createWritable();
+  await writable.write(file);
+  await writable.close();
+}
+async function removeEntryIfExists(dirHandle, entryName, recursive = false) {
+  try {
+    if (recursive) {
+      await dirHandle.removeEntry(entryName, { recursive: true });
+    } else {
+      await dirHandle.removeEntry(entryName);
+    }
+  } catch {
+  }
+}
+async function isDirectoryEmpty(dirHandle) {
+  for await (const _ of dirHandle.values()) {
+    return false;
+  }
+  return true;
+}
+function sanitizeCanvasesForProjectFile(canvases) {
+  return canvases.map((canvas) => ({
+    ...canvas,
+    imageNodes: (canvas.imageNodes || []).map((imageNode) => ({
+      ...imageNode,
+      url: "",
+      originalUrl: "",
+      requestBodyPreview: void 0,
+      pythonSnippet: void 0,
+      fileName: imageNode.fileName || imageNode.storageId || imageNode.id
+    })),
+    promptNodes: (canvas.promptNodes || []).map((promptNode) => ({
+      ...promptNode,
+      referenceImages: (promptNode.referenceImages || []).map((ref) => ({
+        ...ref,
+        storageId: ref.storageId || ref.id,
+        data: "",
+        url: void 0
+      })),
+      errorDetails: promptNode.errorDetails ? {
+        code: promptNode.errorDetails.code,
+        status: promptNode.errorDetails.status,
+        requestPath: promptNode.errorDetails.requestPath,
+        provider: promptNode.errorDetails.provider,
+        model: promptNode.errorDetails.model,
+        timestamp: promptNode.errorDetails.timestamp
+      } : void 0
+    }))
+  }));
+}
+var PROJECT_FILE, DIRS, ROOT_CANONICAL_DIRS, ROOT_LEGACY_DIRS, ALL_MANAGED_ROOT_DIRS, MEDIA_EXTENSIONS, THUMBNAIL_EXTENSIONS, consolidatedWorkspaceHandles, globalHandle, fileSystemService;
+var init_fileSystemService = __esm({
+  "src/services/storage/fileSystemService.ts"() {
+    "use strict";
+    init_systemLogService();
+    init_supabase();
+    PROJECT_FILE = "project.json";
+    DIRS = {
+      ORIGINALS: "originals",
+      THUMBNAILS: "thumbnails",
+      REFS: "refs",
+      PICTURE: "picture",
+      VIDEO: "video",
+      SETTINGS: "settings",
+      TAGS: "tags",
+      CACHE: "cache",
+      LEGACY: "images"
+    };
+    ROOT_CANONICAL_DIRS = /* @__PURE__ */ new Set([
+      DIRS.ORIGINALS,
+      DIRS.THUMBNAILS,
+      DIRS.REFS
+    ]);
+    ROOT_LEGACY_DIRS = /* @__PURE__ */ new Set([
+      DIRS.PICTURE,
+      DIRS.VIDEO,
+      DIRS.SETTINGS,
+      DIRS.TAGS,
+      DIRS.CACHE,
+      DIRS.LEGACY
+    ]);
+    ALL_MANAGED_ROOT_DIRS = /* @__PURE__ */ new Set([
+      ...Array.from(ROOT_CANONICAL_DIRS),
+      ...Array.from(ROOT_LEGACY_DIRS)
+    ]);
+    MEDIA_EXTENSIONS = /\.(png|jpe?g|webp|gif|bmp|mp4|webm|mov)$/i;
+    THUMBNAIL_EXTENSIONS = /\.(png|jpe?g|webp)$/i;
+    consolidatedWorkspaceHandles = /* @__PURE__ */ new WeakSet();
+    globalHandle = null;
+    fileSystemService = {
+      /**
+       * Set global handle for auto-saving
+       */
+      setGlobalHandle(handle) {
+        globalHandle = handle;
+      },
+      /**
+       * [重构版] - 模拟文档夹重命名逻辑（因浏览器无原生 API 支持，采用全息克隆转移方案）
+       * 传入工作区根 handle，旧名字和新名字
+       */
+      async renameProjectFolder(handle, oldName, newName) {
+        try {
+          const safeOldName = oldName.trim().replace(/[\\/:*?"<>|]/g, "_");
+          const safeNewName = newName.trim().replace(/[\\/:*?"<>|]/g, "_");
+          if (safeOldName === safeNewName) return true;
+          let oldDirHandle;
+          try {
+            oldDirHandle = await handle.getDirectoryHandle(safeOldName);
+          } catch (e) {
+            console.log(`[FileSystem] \u65E7\u6587\u6863\u5939 ${safeOldName} \u4E0D\u5B58\u5728\uFF0C\u65E0\u9700\u91CD\u547D\u540D\uFF0C\u5C06\u5728\u4E0B\u6B21\u4FDD\u5B58\u65F6\u5EFA\u65B0\u7ED3\u6784`);
+            return true;
+          }
+          const { data: { session } } = await supabase.auth.getSession();
+          const ownerId = session?.user?.id || "local_user";
+          let finalNewName = safeNewName;
+          let isOwner = true;
+          try {
+            const newDirHandle2 = await handle.getDirectoryHandle(finalNewName);
+            const pFile = await newDirHandle2.getFileHandle(PROJECT_FILE);
+            const pText = await (await pFile.getFile()).text();
+            if (JSON.parse(pText).metadata?.ownerId !== ownerId) {
+              isOwner = false;
+            }
+          } catch (e) {
+          }
+          if (!isOwner) {
+            let suffix = 1;
+            while (!isOwner) {
+              finalNewName = `${safeNewName} (${suffix})`;
+              try {
+                const newDirHandle2 = await handle.getDirectoryHandle(finalNewName);
+                const pFile = await newDirHandle2.getFileHandle(PROJECT_FILE);
+                const pText = await (await pFile.getFile()).text();
+                if (JSON.parse(pText).metadata?.ownerId !== ownerId) suffix++;
+                else isOwner = true;
+              } catch (e) {
+                isOwner = true;
+              }
+            }
+          }
+          console.log(`[FileSystem] \u5F00\u59CB\u91CD\u547D\u540D\u6D41\u8F6C\u79FB\uFF1A${safeOldName} -> ${finalNewName}`);
+          const newDirHandle = await handle.getDirectoryHandle(finalNewName, { create: true });
+          const copyDir = async (srcHandle, destHandle) => {
+            for await (const entry of srcHandle.values()) {
+              if (entry.kind === "file") {
+                const file = await entry.getFile();
+                const newFile = await destHandle.getFileHandle(entry.name, { create: true });
+                const writable = await newFile.createWritable();
+                await writable.write(file);
+                await writable.close();
+              } else if (entry.kind === "directory") {
+                const newSubDir = await destHandle.getDirectoryHandle(entry.name, { create: true });
+                const oldSubDir = await srcHandle.getDirectoryHandle(entry.name);
+                await copyDir(oldSubDir, newSubDir);
+              }
+            }
+          };
+          await copyDir(oldDirHandle, newDirHandle);
+          try {
+            const pFile = await newDirHandle.getFileHandle(PROJECT_FILE);
+            const pText = await (await pFile.getFile()).text();
+            const pData = JSON.parse(pText);
+            if (pData.canvas) {
+              pData.canvas.name = newName;
+            }
+            const writable = await pFile.createWritable();
+            await writable.write(JSON.stringify(pData, null, 2));
+            await writable.close();
+          } catch (e) {
+          }
+          await handle.removeEntry(safeOldName, { recursive: true });
+          console.log(`[FileSystem] \u76EE\u5F55\u91CD\u547D\u540D\u540C\u6B65\u6210\u529F\uFF01`);
+          return true;
+        } catch (e) {
+          console.error("[FileSystem] \u53D1\u751F\u91CD\u547D\u540D\u8F6C\u79FB\u81F4\u547D\u9519\u8BEF", e);
+          return false;
+        }
+      },
+      /**
+       * 获取全局句柄
+       */
+      getGlobalHandle() {
+        return globalHandle;
+      },
+      /**
+       * Request user to select a directory
+       */
+      async selectDirectory() {
+        const handle = await window.showDirectoryPicker({
+          mode: "readwrite"
+        });
+        logInfo("FileSystem", `\u7528\u6237\u9009\u62E9\u4E86\u6587\u6863\u5939`, `directory: ${handle.name}`);
+        return handle;
+      },
+      /**
+       * Verify we have permission to read/write
+       */
+      async verifyPermission(handle) {
+        const options = { mode: "readwrite" };
+        if (await handle.queryPermission(options) === "granted") {
+          return true;
+        }
+        if (await handle.requestPermission(options) === "granted") {
+          return true;
+        }
+        return false;
+      },
+      /**
+       * Load project from directory with Thumbnail Generation
+       * [重构版] - 支持工作区（多项目子文档夹）分层架构与无缝老工程迁移
+       */
+      async loadProjectWithThumbs(handle) {
+        this.setGlobalHandle(handle);
+        const images = /* @__PURE__ */ new Map();
+        let canvases = [];
+        let activeCanvasId = null;
+        let rootProjectData = null;
+        logInfo("FileSystem", "Loading workspace", `folder: ${handle.name}`);
+        const { data: { session } } = await supabase.auth.getSession();
+        const ownerId = session?.user?.id || "local_user";
+        let hasRootConfig = false;
+        const canvasMap = /* @__PURE__ */ new Map();
+        const mergeCanvasList = (incoming, overwrite = true) => {
+          (incoming || []).forEach((canvas) => {
+            if (!canvas?.id) return;
+            if (!overwrite && canvasMap.has(canvas.id)) return;
+            canvasMap.set(canvas.id, canvas);
+          });
+        };
+        const registerOriginalMedia = async (dirHandle) => {
+          for await (const mediaEntry of dirHandle.values()) {
+            if (mediaEntry.kind !== "file" || !MEDIA_EXTENSIONS.test(mediaEntry.name)) continue;
+            const id = normalizeStoredFileId(mediaEntry.name);
+            try {
+              const file = await mediaEntry.getFile();
+              const url = URL.createObjectURL(file);
+              const current = images.get(id);
+              images.set(id, {
+                url: current?.url || url,
+                originalUrl: url,
+                filename: mediaEntry.name
+              });
+            } catch {
+            }
+          }
+        };
+        const registerThumbnailMedia = async (dirHandle) => {
+          for await (const mediaEntry of dirHandle.values()) {
+            if (mediaEntry.kind !== "file" || !THUMBNAIL_EXTENSIONS.test(mediaEntry.name)) continue;
+            const id = normalizeStoredFileId(mediaEntry.name);
+            try {
+              const file = await mediaEntry.getFile();
+              const url = URL.createObjectURL(file);
+              const current = images.get(id);
+              images.set(id, {
+                url,
+                originalUrl: current?.originalUrl || current?.url,
+                filename: current?.filename || mediaEntry.name
+              });
+            } catch {
+            }
+          }
+        };
+        const scanDirectoryMedia = async (baseHandle, dirName, mode) => {
+          try {
+            const dirHandle = await baseHandle.getDirectoryHandle(dirName);
+            if (mode === "thumbnail") {
+              await registerThumbnailMedia(dirHandle);
+            } else {
+              await registerOriginalMedia(dirHandle);
+            }
+          } catch {
+          }
+        };
+        try {
+          const rootFile = await handle.getFileHandle(PROJECT_FILE);
+          const text = await (await rootFile.getFile()).text();
+          rootProjectData = JSON.parse(text);
+          if (rootProjectData?.canvases || rootProjectData?.canvas) {
+            if (rootProjectData.canvases) {
+              mergeCanvasList(rootProjectData.canvases);
+            } else if (rootProjectData.canvas) {
+              mergeCanvasList([rootProjectData.canvas]);
+            }
+            activeCanvasId = rootProjectData.activeCanvasId || null;
+            hasRootConfig = true;
+            logInfo("FileSystem", "Loaded root project metadata", `activeCanvas: ${activeCanvasId || "none"}`);
+          } else {
+            logInfo("FileSystem", "No canvas data in root project.json", JSON.stringify(rootProjectData).slice(0, 200));
+          }
+        } catch (e) {
+          logWarning("FileSystem", "Failed to parse root project.json, fallback to legacy recovery", e instanceof Error ? e.message : "unknown");
+        }
+        await scanDirectoryMedia(handle, DIRS.ORIGINALS, "original");
+        await scanDirectoryMedia(handle, DIRS.THUMBNAILS, "thumbnail");
+        await scanDirectoryMedia(handle, DIRS.PICTURE, "original");
+        await scanDirectoryMedia(handle, DIRS.VIDEO, "original");
+        await scanDirectoryMedia(handle, DIRS.LEGACY, "original");
+        for await (const entry of handle.values()) {
+          if (entry.kind !== "directory" || entry.name.startsWith(".")) continue;
+          if (ALL_MANAGED_ROOT_DIRS.has(entry.name)) continue;
+          const projectDirHandle = await handle.getDirectoryHandle(entry.name);
+          try {
+            await scanDirectoryMedia(projectDirHandle, DIRS.ORIGINALS, "original");
+            await scanDirectoryMedia(projectDirHandle, DIRS.THUMBNAILS, "thumbnail");
+            await scanDirectoryMedia(projectDirHandle, DIRS.PICTURE, "original");
+            await scanDirectoryMedia(projectDirHandle, DIRS.VIDEO, "original");
+            await scanDirectoryMedia(projectDirHandle, DIRS.LEGACY, "original");
+            try {
+              const pFile = await projectDirHandle.getFileHandle(PROJECT_FILE);
+              const pText = await (await pFile.getFile()).text();
+              const pData = JSON.parse(pText);
+              if (pData.canvas) {
+                if (!pData.metadata?.ownerId || pData.metadata.ownerId === ownerId) {
+                  mergeCanvasList([pData.canvas], !hasRootConfig);
+                }
+              } else if (pData.canvases && Array.isArray(pData.canvases)) {
+                mergeCanvasList(pData.canvases, !hasRootConfig);
+              }
+            } catch {
+            }
+          } catch {
+          }
+        }
+        canvases = Array.from(canvasMap.values());
+        if (canvases.length === 0) {
+          logInfo("FileSystem", "Workspace contains no recoverable canvases", "project.json not found");
+          canvases = [];
+        } else if (!activeCanvasId || !canvases.some((canvas) => canvas.id === activeCanvasId)) {
+          activeCanvasId = canvases[0]?.id || null;
+        }
+        logInfo("FileSystem", `Loaded ${canvases.length} canvases and ${images.size} media files`, hasRootConfig ? "root+legacy merged" : "legacy recovered");
+        if (!consolidatedWorkspaceHandles.has(handle)) {
+          try {
+            await this.consolidateWorkspaceLayout(handle, canvases, activeCanvasId);
+            consolidatedWorkspaceHandles.add(handle);
+          } catch (e) {
+            logWarning("FileSystem", "Workspace consolidation skipped after failure", e instanceof Error ? e.message : "unknown");
+          }
+        }
+        return { canvases, images, activeCanvasId };
+      },
+      async consolidateWorkspaceLayout(handle, canvases = [], activeCanvasId = null) {
+        const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
+        const thumbnailsDir = await handle.getDirectoryHandle(DIRS.THUMBNAILS, { create: true });
+        const refsDir = await handle.getDirectoryHandle(DIRS.REFS, { create: true });
+        let movedFiles = 0;
+        let cleanedFolders = 0;
+        let wroteRootProject = false;
+        const moveManagedFiles = async (baseHandle, sourceDirName, kind) => {
+          try {
+            const sourceDirHandle = await baseHandle.getDirectoryHandle(sourceDirName);
+            for await (const entry of sourceDirHandle.values()) {
+              if (entry.kind !== "file") continue;
+              const normalizedId = normalizeStoredFileId(entry.name);
+              if (!normalizedId) continue;
+              let targetDirHandle = originalsDir;
+              let targetFilename = entry.name;
+              let allowedPattern = MEDIA_EXTENSIONS;
+              if (kind === "thumbnail") {
+                allowedPattern = THUMBNAIL_EXTENSIONS;
+                if (!allowedPattern.test(entry.name)) continue;
+                targetDirHandle = thumbnailsDir;
+                const ext = getFileExtension(entry.name, "webp");
+                targetFilename = `${normalizedId}.${ext}`;
+              } else if (kind === "ref") {
+                allowedPattern = /\.(png|jpe?g|webp|gif|bmp)$/i;
+                if (!allowedPattern.test(entry.name)) continue;
+                targetDirHandle = refsDir;
+                const ext = getFileExtension(entry.name, "jpg");
+                targetFilename = `${normalizedId}.${ext}`;
+              } else {
+                if (!allowedPattern.test(entry.name)) continue;
+                targetDirHandle = originalsDir;
+                const ext = getFileExtension(entry.name, "png");
+                targetFilename = `${normalizedId}.${ext}`;
+              }
+              const isAlreadyCanonicalLocation = baseHandle === handle && (kind === "original" && sourceDirName === DIRS.ORIGINALS || kind === "thumbnail" && sourceDirName === DIRS.THUMBNAILS || kind === "ref" && sourceDirName === DIRS.REFS) && entry.name === targetFilename;
+              if (!isAlreadyCanonicalLocation) {
+                const existingFileName = await findExistingFileNameByStoredId(targetDirHandle, normalizedId, allowedPattern);
+                if (!existingFileName) {
+                  await copyFileBetweenDirectories(sourceDirHandle, entry.name, targetDirHandle, targetFilename);
+                  movedFiles++;
+                }
+                await removeEntryIfExists(sourceDirHandle, entry.name);
+              }
+            }
+            if (sourceDirName !== DIRS.ORIGINALS && sourceDirName !== DIRS.THUMBNAILS && sourceDirName !== DIRS.REFS && await isDirectoryEmpty(sourceDirHandle)) {
+              await removeEntryIfExists(baseHandle, sourceDirName, true);
+              cleanedFolders++;
+            }
+          } catch {
+          }
+        };
+        await moveManagedFiles(handle, DIRS.ORIGINALS, "original");
+        await moveManagedFiles(handle, DIRS.PICTURE, "original");
+        await moveManagedFiles(handle, DIRS.VIDEO, "original");
+        await moveManagedFiles(handle, DIRS.LEGACY, "original");
+        await moveManagedFiles(handle, DIRS.THUMBNAILS, "thumbnail");
+        await moveManagedFiles(handle, DIRS.REFS, "ref");
+        const nestedFolderNames = [];
+        for await (const entry of handle.values()) {
+          if (entry.kind !== "directory" || entry.name.startsWith(".")) continue;
+          if (ALL_MANAGED_ROOT_DIRS.has(entry.name) || ROOT_CANONICAL_DIRS.has(entry.name)) continue;
+          nestedFolderNames.push(entry.name);
+          try {
+            const projectDirHandle = await handle.getDirectoryHandle(entry.name);
+            await moveManagedFiles(projectDirHandle, DIRS.ORIGINALS, "original");
+            await moveManagedFiles(projectDirHandle, DIRS.PICTURE, "original");
+            await moveManagedFiles(projectDirHandle, DIRS.VIDEO, "original");
+            await moveManagedFiles(projectDirHandle, DIRS.LEGACY, "original");
+            await moveManagedFiles(projectDirHandle, DIRS.THUMBNAILS, "thumbnail");
+            await moveManagedFiles(projectDirHandle, DIRS.REFS, "ref");
+          } catch {
+          }
+        }
+        const sanitizedCanvases = sanitizeCanvasesForProjectFile(canvases);
+        if (sanitizedCanvases.length > 0) {
+          const { data: { session } } = await supabase.auth.getSession();
+          const ownerId = session?.user?.id || "local_user";
+          const consolidatedState = {
+            metadata: {
+              version: "4.0",
+              lastSaved: Date.now(),
+              ownerId,
+              mode: "single_file_workspace"
+            },
+            activeCanvasId: activeCanvasId || sanitizedCanvases[0]?.id || null,
+            canvases: sanitizedCanvases
+          };
+          const projectFile = await handle.getFileHandle(PROJECT_FILE, { create: true });
+          const writable = await projectFile.createWritable();
+          await writable.write(JSON.stringify(consolidatedState, null, 2));
+          await writable.close();
+          wroteRootProject = true;
+        }
+        for (const nestedFolderName of nestedFolderNames) {
+          try {
+            const projectDirHandle = await handle.getDirectoryHandle(nestedFolderName);
+            const removeChildDirIfEmpty = async (dirName) => {
+              try {
+                const childDirHandle = await projectDirHandle.getDirectoryHandle(dirName);
+                if (await isDirectoryEmpty(childDirHandle)) {
+                  await removeEntryIfExists(projectDirHandle, dirName, true);
+                }
+              } catch {
+              }
+            };
+            if (wroteRootProject) {
+              await removeEntryIfExists(projectDirHandle, PROJECT_FILE);
+            }
+            await removeChildDirIfEmpty(DIRS.PICTURE);
+            await removeChildDirIfEmpty(DIRS.VIDEO);
+            await removeChildDirIfEmpty(DIRS.ORIGINALS);
+            await removeChildDirIfEmpty(DIRS.LEGACY);
+            await removeChildDirIfEmpty(DIRS.THUMBNAILS);
+            await removeChildDirIfEmpty(DIRS.REFS);
+            await removeEntryIfExists(projectDirHandle, DIRS.SETTINGS, true);
+            await removeEntryIfExists(projectDirHandle, DIRS.TAGS, true);
+            await removeEntryIfExists(projectDirHandle, DIRS.CACHE, true);
+            if (wroteRootProject && await isDirectoryEmpty(projectDirHandle)) {
+              await removeEntryIfExists(handle, nestedFolderName, true);
+              cleanedFolders++;
+            }
+          } catch {
+          }
+        }
+        const removeRootDirIfEmpty = async (dirName) => {
+          try {
+            const childDirHandle = await handle.getDirectoryHandle(dirName);
+            if (await isDirectoryEmpty(childDirHandle)) {
+              await removeEntryIfExists(handle, dirName, true);
+            }
+          } catch {
+          }
+        };
+        await removeRootDirIfEmpty(DIRS.PICTURE);
+        await removeRootDirIfEmpty(DIRS.VIDEO);
+        await removeRootDirIfEmpty(DIRS.LEGACY);
+        await removeEntryIfExists(handle, DIRS.SETTINGS, true);
+        await removeEntryIfExists(handle, DIRS.TAGS, true);
+        await removeEntryIfExists(handle, DIRS.CACHE, true);
+        logInfo(
+          "FileSystem",
+          "Workspace consolidated",
+          `movedFiles=${movedFiles}, cleanedFolders=${cleanedFolders}, wroteRootProject=${wroteRootProject}`
+        );
+      },
+      /**
+       * Get usage of images folder in bytes (Recursive)
+       * [重构版] - 考虑到多项目架构，自动对所有子文档夹包含的内容进行统计
+       */
+      async getFolderUsage(handle) {
+        let totalSize = 0;
+        let fileCount = 0;
+        const processHandle = async (currentHandle, depth) => {
+          if (depth > 4) return;
+          try {
+            for await (const entry of currentHandle.values()) {
+              if (entry.kind === "file") {
+                try {
+                  const file = await entry.getFile();
+                  totalSize += file.size;
+                  fileCount++;
+                } catch (e) {
+                }
+              } else if (entry.kind === "directory") {
+                if (!entry.name.startsWith(".")) {
+                  const subHandle = await currentHandle.getDirectoryHandle(entry.name);
+                  await processHandle(subHandle, depth + 1);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn(`Failed to read directory at depth ${depth}`, e);
+          }
+        };
+        await processHandle(handle, 0);
+        logInfo("FileSystem", `\u5DF2\u8BA1\u7B97\u5DE5\u4F5C\u533A\u5927\u5C0F`, `${fileCount} \u4E2A\u6587\u6863, ${totalSize} \u5B57\u8282`);
+        return { size: totalSize, count: fileCount };
+      },
+      /**
+       * 快速获取本地媒体 ID 集合（仅遍历文档名，不读取文档内容）
+       * [重构版] - 作用域仅限于传入的句柄（如果传项目子文档夹，则扫子文档夹；如果传工作区根目录，会扫描一层深度的子文档夹）
+       */
+      async getLocalMediaIds(handle) {
+        const ids = /* @__PURE__ */ new Set();
+        const scanDirectory = async (dirHandle, depth) => {
+          if (depth > 2) return;
+          try {
+            for await (const entry of dirHandle.values()) {
+              if (entry.kind === "file") {
+                if (/\.(png|jpg|jpeg|webp|mp4|webm|mov)$/i.test(entry.name)) {
+                  let id = entry.name.substring(0, entry.name.lastIndexOf("."));
+                  if (/^\d{6}_/.test(id)) id = id.substring(7);
+                  if (id) ids.add(id);
+                }
+              } else if (entry.kind === "directory" && !entry.name.startsWith(".")) {
+                const subHandle = await dirHandle.getDirectoryHandle(entry.name);
+                await scanDirectory(subHandle, depth + 1);
+              }
+            }
+          } catch {
+          }
+        };
+        await scanDirectory(handle, 0);
+        return ids;
+      },
+      /**
+       * Load a single original image from disk by ID
+       */
+      async loadOriginalFromDisk(handle, id) {
+        try {
+          const readFromDirectories = async (baseHandle, dirNames) => {
+            for (const dirName of dirNames) {
+              try {
+                const dirHandle = await baseHandle.getDirectoryHandle(dirName);
+                const existingFileName = await findExistingFileNameByStoredId(dirHandle, id, MEDIA_EXTENSIONS);
+                if (!existingFileName) continue;
+                const fileHandle = await dirHandle.getFileHandle(existingFileName);
+                return await fileHandle.getFile();
+              } catch {
+              }
+            }
+            return null;
+          };
+          const rootFile = await readFromDirectories(handle, [
+            DIRS.ORIGINALS,
+            DIRS.PICTURE,
+            DIRS.VIDEO,
+            DIRS.LEGACY
+          ]);
+          if (rootFile) return rootFile;
+          for await (const entry of handle.values()) {
+            if (entry.kind !== "directory" || entry.name.startsWith(".")) continue;
+            if (ALL_MANAGED_ROOT_DIRS.has(entry.name) || ROOT_CANONICAL_DIRS.has(entry.name)) continue;
+            try {
+              const projectDirHandle = await handle.getDirectoryHandle(entry.name);
+              const nestedFile = await readFromDirectories(projectDirHandle, [
+                DIRS.ORIGINALS,
+                DIRS.PICTURE,
+                DIRS.VIDEO,
+                DIRS.LEGACY
+              ]);
+              if (nestedFile) return nestedFile;
+            } catch {
+            }
+          }
+          return null;
+        } catch (e) {
+          console.error("Failed to load original from disk", e);
+          return null;
+        }
+      },
+      /**
+       * Cleanup local folder: Just remove thumbnails
+       */
+      async cleanupLocalFolder(handle) {
+        try {
+          await handle.removeEntry(DIRS.THUMBNAILS, { recursive: true });
+        } catch (e) {
+        }
+        return { count: 0, savedBytes: 0 };
+      },
+      /**
+       * Move project data from one folder to another (Cut & Paste)
+       */
+      async moveProject(sourceHandle, targetHandle) {
+        try {
+          try {
+            const projectFile = await sourceHandle.getFileHandle(PROJECT_FILE);
+            const file = await projectFile.getFile();
+            const content = await file.text();
+            const newProjectFile = await targetHandle.getFileHandle(PROJECT_FILE, { create: true });
+            const writable = await newProjectFile.createWritable();
+            await writable.write(content);
+            await writable.close();
+            await sourceHandle.removeEntry(PROJECT_FILE);
+          } catch (e) {
+            console.warn("Project JSON not found or failed to move", e);
+          }
+          const copyDirRecursive = async (sourceDir, targetDir) => {
+            for await (const entry of sourceDir.values()) {
+              if (entry.kind === "file") {
+                const file = await entry.getFile();
+                const newFileHandle = await targetDir.getFileHandle(entry.name, { create: true });
+                const writable = await newFileHandle.createWritable();
+                await writable.write(file);
+                await writable.close();
+              } else if (entry.kind === "directory") {
+                const subSource = await sourceDir.getDirectoryHandle(entry.name);
+                const subTarget = await targetDir.getDirectoryHandle(entry.name, { create: true });
+                await copyDirRecursive(subSource, subTarget);
+              }
+            }
+          };
+          const moveDir = async (dirName) => {
+            try {
+              const sourceDir = await sourceHandle.getDirectoryHandle(dirName);
+              const targetDir = await targetHandle.getDirectoryHandle(dirName, { create: true });
+              await copyDirRecursive(sourceDir, targetDir);
+              await sourceHandle.removeEntry(dirName, { recursive: true });
+            } catch (e) {
+            }
+          };
+          await moveDir(DIRS.PICTURE);
+          await moveDir(DIRS.VIDEO);
+          await moveDir(DIRS.REFS);
+          await moveDir(DIRS.SETTINGS);
+          await moveDir(DIRS.ORIGINALS);
+          await moveDir(DIRS.LEGACY);
+        } catch (error) {
+          console.error("Failed to move project:", error);
+          throw new Error("Migration failed: " + error.message);
+        }
+      },
+      /**
+       * Store new generated image as Blob
+       * [重构版] - 统一写入根目录 originals/，不再拆分到子项目目录
+       */
+      async saveImageToHandle(handle, id, blob, isVideo = false, canvasDirName) {
+        try {
+          const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
+          const existingFileName = await findExistingFileNameByStoredId(originalsDir, id, MEDIA_EXTENSIONS);
+          if (existingFileName) {
+            return existingFileName;
+          }
+          const ext = extensionFromMimeType(blob.type, isVideo ? "mp4" : "png");
+          const filename = `${id}.${ext}`;
+          const fileHandle = await originalsDir.getFileHandle(filename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          logInfo(
+            "FileSystem",
+            `\u5DF2\u4FDD\u5B58${isVideo ? "\u89C6\u9891" : "\u56FE\u7247"}`,
+            `${filename} (${Math.round(blob.size / 1024)}KB)${canvasDirName ? `, source=${canvasDirName}` : ""}`
+          );
+          return filename;
+        } catch (e) {
+          console.error("Failed to save image to handle", e);
+          throw e;
+        }
+      },
+      async saveThumbnailToHandle(handle, id, blob) {
+        try {
+          const thumbnailsDir = await handle.getDirectoryHandle(DIRS.THUMBNAILS, { create: true });
+          const existingFileName = await findExistingFileNameByStoredId(thumbnailsDir, id, THUMBNAIL_EXTENSIONS);
+          if (existingFileName) {
+            return existingFileName;
+          }
+          const ext = extensionFromMimeType(blob.type, "webp");
+          const filename = `${id}.${ext}`;
+          const fileHandle = await thumbnailsDir.getFileHandle(filename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          logInfo("FileSystem", "\u5DF2\u4FDD\u5B58\u7F29\u7565\u56FE", `${filename} (${Math.round(blob.size / 1024)}KB)`);
+          return filename;
+        } catch (e) {
+          console.error("Failed to save thumbnail to handle", e);
+          throw e;
+        }
+      },
+      /**
+       * 🚀 从本地文档夹彻底删除图片或视频文档
+       * [重构版] - 考虑到多项目结构体系，自动深入到所有可能的画板子文档夹进行全局清除
+       */
+      async deleteImageFromHandle(handle, id) {
+        let deleted = false;
+        const processHandle = async (currentHandle, depth) => {
+          if (depth > 4) return;
+          try {
+            for await (const entry of currentHandle.values()) {
+              if (entry.kind === "file" && entry.name.includes(id)) {
+                try {
+                  await currentHandle.removeEntry(entry.name);
+                  logInfo("FileSystem", `\u5DF2\u4ECE\u672C\u5730\u5220\u9664\u6587\u6863`, `${currentHandle.name}/${entry.name}`);
+                  deleted = true;
+                } catch (e) {
+                  console.error(`Failed to delete ${entry.name}`, e);
+                }
+              } else if (entry.kind === "directory" && !entry.name.startsWith(".")) {
+                const subHandle = await currentHandle.getDirectoryHandle(entry.name);
+                await processHandle(subHandle, depth + 1);
+              }
+            }
+          } catch (e) {
+          }
+        };
+        try {
+          await processHandle(handle, 0);
+        } catch (e) {
+          console.error("Failed to run recursive delete image from handle", e);
+        }
+        return deleted;
+      },
+      /**
+       * 🚀 向后兼容：保存到旧版 originals/ 目录
+       */
+      async saveImageToOriginalsLegacy(handle, id, blob) {
+        try {
+          const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
+          const filename = `${id}.png`;
+          try {
+            await originalsDir.getFileHandle(filename);
+            return;
+          } catch {
+          }
+          const fileHandle = await originalsDir.getFileHandle(filename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        } catch (e) {
+          console.error("Failed to save image to originals", e);
+        }
+      },
+      /**
+       * 🚀 保存参考图到 refs/ 目录（压缩为 50% JPEG）
+       * 使用 storageId 作为文档名，自动去重
+       */
+      async saveReferenceImage(handle, storageId, base64Data, mimeType = "image/jpeg") {
+        try {
+          const refsDir = await handle.getDirectoryHandle(DIRS.REFS, { create: true });
+          const existingFileName = await findExistingFileNameByStoredId(refsDir, storageId, /\.(png|jpe?g|webp|gif|bmp)$/i);
+          if (existingFileName) {
+            console.log(`[FileSystem] \u53C2\u8003\u56FE\u5DF2\u5B58\u5728: ${storageId}`);
+            return;
+          }
+          const filename = `${storageId}.jpg`;
+          const compressedBlob = await this.compressImage(base64Data, mimeType, 0.5);
+          const fileHandle = await refsDir.getFileHandle(filename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(compressedBlob);
+          await writable.close();
+          logInfo("FileSystem", `\u5DF2\u4FDD\u5B58\u53C2\u8003\u56FE`, `${storageId} (${Math.round(compressedBlob.size / 1024)}KB)`);
+        } catch (e) {
+          logError("FileSystem", e, `\u4FDD\u5B58\u53C2\u8003\u56FE\u5931\u8D25: ${storageId}`);
+        }
+      },
+      /**
+       * 🚀 从 refs/ 目录加载参考图
+       */
+      async loadReferenceImage(handle, storageId) {
+        try {
+          const refsDir = await handle.getDirectoryHandle(DIRS.REFS);
+          const filename = await findExistingFileNameByStoredId(refsDir, storageId, /\.(png|jpe?g|webp|gif|bmp)$/i);
+          if (!filename) {
+            return null;
+          }
+          const fileHandle = await refsDir.getFileHandle(filename);
+          const file = await fileHandle.getFile();
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const result = reader.result;
+              const base64 = result.split(",")[1];
+              resolve(base64);
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+          });
+        } catch (e) {
+          return null;
+        }
+      },
+      /**
+       * Save the entire project state and new images
+       * [重构版] - 统一写入根目录 project.json，卡片位置全部存一份
+       */
+      async saveProject(handle, state, imagesToSave) {
+        try {
+          if (!state.canvases || state.canvases.length === 0) {
+            console.error("[FileSystem] \u{1F6A8} Aborting save: state.canvases is empty! This would corrupt project.json");
+            throw new Error("Cannot save empty project: canvases array is empty");
+          }
+          const { data: { session } } = await supabase.auth.getSession();
+          const ownerId = session?.user?.id || "local_user";
+          let finalCanvases = [...state.canvases];
+          let existingCanvases = [];
+          try {
+            const rootFile = await handle.getFileHandle(PROJECT_FILE);
+            const text = await (await rootFile.getFile()).text();
+            const rootData = JSON.parse(text);
+            existingCanvases = rootData.canvases || (rootData.canvas ? [rootData.canvas] : []);
+            if (existingCanvases.length > 0 && state.canvases.length < existingCanvases.length / 2) {
+              console.warn("[FileSystem] \u26A0\uFE0F Memory has significantly fewer canvases than disk:", {
+                memory: state.canvases.length,
+                disk: existingCanvases.length
+              });
+            }
+            const mergedMap = /* @__PURE__ */ new Map();
+            existingCanvases.forEach((c) => mergedMap.set(c.id, c));
+            finalCanvases.forEach((c) => mergedMap.set(c.id, c));
+            finalCanvases = Array.from(mergedMap.values());
+          } catch (e) {
+            console.log("[FileSystem] No existing project.json found, creating new one");
+          }
+          if (finalCanvases.length === 0) {
+            console.error("[FileSystem] \u{1F6A8} CRITICAL: finalCanvases is empty after merge! Aborting save to prevent data loss.");
+            throw new Error("Cannot save: final canvases array is empty after merge");
+          }
+          const sanitizedCanvases = sanitizeCanvasesForProjectFile(finalCanvases);
+          const consolidatedState = {
+            metadata: {
+              version: "4.0",
+              lastSaved: Date.now(),
+              ownerId,
+              mode: "single_file_workspace"
+            },
+            activeCanvasId: state.activeCanvasId || sanitizedCanvases[0]?.id || null,
+            canvases: sanitizedCanvases
+          };
+          const projectFile = await handle.getFileHandle(PROJECT_FILE, { create: true });
+          const writable = await projectFile.createWritable();
+          await writable.write(JSON.stringify(consolidatedState, null, 2));
+          await writable.close();
+          if (imagesToSave.size > 0) {
+            const originalsDir = await handle.getDirectoryHandle(DIRS.ORIGINALS, { create: true });
+            for (const [id, blob] of imagesToSave.entries()) {
+              const existingFileName = await findExistingFileNameByStoredId(originalsDir, id, MEDIA_EXTENSIONS);
+              if (existingFileName) continue;
+              await this.saveImageToHandle(handle, id, blob, false);
+            }
+          }
+        } catch (error) {
+          console.error("[FileSystem] Consolidated Project Save Error:", error);
+          throw error;
+        }
+      },
+      /**
+       * 🚀 加载所有参考图映射（storageId -> base64）
+       */
+      async loadAllReferenceImages(handle) {
+        const refs = /* @__PURE__ */ new Map();
+        try {
+          const refsDir = await handle.getDirectoryHandle(DIRS.REFS);
+          for await (const entry of refsDir.values()) {
+            if (entry.kind === "file" && /\.(png|jpe?g|webp|gif|bmp)$/i.test(entry.name)) {
+              const storageId = normalizeStoredFileId(entry.name);
+              try {
+                const file = await entry.getFile();
+                const url = URL.createObjectURL(file);
+                refs.set(storageId, url);
+              } catch (e) {
+                logWarning("FileSystem", `\u52A0\u8F7D\u53C2\u8003\u56FE\u5931\u8D25: ${storageId}`, "");
+              }
+            }
+          }
+          logInfo("FileSystem", `\u5DF2\u52A0\u8F7D ${refs.size} \u5F20\u53C2\u8003\u56FE`, "from refs/");
+        } catch (e) {
+        }
+        return refs;
+      },
+      /**
+       * 🚀 压缩图片工具函数
+       */
+      async compressImage(base64Data, mimeType, quality) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              reject(new Error("Failed to get canvas context"));
+              return;
+            }
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob(
+              (blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error("Failed to compress image"));
+              },
+              "image/jpeg",
+              quality
+            );
+          };
+          img.onerror = () => reject(new Error("Failed to load image"));
+          img.src = `data:${mimeType};base64,${base64Data}`;
+        });
+      },
+      /**
+       * 🚀 创建标签快捷链接
+       * 在 picture/tags/{tagName}/ 或 video/tags/{tagName}/ 下创建指向原文档的.url快捷方式
+       */
+      async createTagShortcut(handle, tag, filename, isVideo = false) {
+        logInfo("FileSystem", "\u8DF3\u8FC7\u6807\u7B7E\u5FEB\u6377\u65B9\u5F0F", `${tag}/${filename}`);
+      },
+      /**
+       * 🚀 删除标签快捷链接
+       */
+      async removeTagShortcut(handle, tag, filename, isVideo = false) {
+        logInfo("FileSystem", "\u8DF3\u8FC7\u5220\u9664\u6807\u7B7E\u5FEB\u6377\u65B9\u5F0F", `${tag}/${filename}`);
+      },
+      /**
+       * 🚀 清理空的标签文档夹
+       */
+      async cleanupEmptyTagFolder(handle, tag, isVideo = false) {
+        logInfo("FileSystem", "\u8DF3\u8FC7\u6807\u7B7E\u76EE\u5F55\u6E05\u7406", tag);
+      },
+      /**
+       * 🚀 为文档的所有标签创建快捷链接
+       */
+      async syncFileTagShortcuts(handle, filename, tags, isVideo = false) {
+        logInfo("FileSystem", "\u8DF3\u8FC7\u6279\u91CF\u6807\u7B7E\u5FEB\u6377\u65B9\u5F0F", `${filename} (${tags.length})`);
+      },
+      /**
+       * 🚀 保存布局和设置到 settings/ 目录
+       */
+      async saveSettings(handle, settings) {
+        logInfo("FileSystem", "\u8DF3\u8FC7\u6587\u4EF6\u7CFB\u7EDF\u8BBE\u7F6E\u4FDD\u5B58", Object.keys(settings || {}).join(","));
+      },
+      /**
+       * 🚀 加载布局和设置
+       */
+      async loadSettings(handle) {
+        return null;
+      },
+      /**
+       * 🚀 迁移旧文档到新目录结构
+       * 将 originals/ 和 images/ 中的文档移动到 picture/ 或 video/
+       * 并重命名为 YYYYMM_{id}.{ext} 格式
+       * @returns 迁移的文档数量和ID映射
+       */
+      async migrateLegacyFiles(handle) {
+        const idMapping = /* @__PURE__ */ new Map();
+        let count = 0;
+        const migrateFromDir = async (dirName) => {
+          try {
+            const legacyDir = await handle.getDirectoryHandle(dirName);
+            const now = /* @__PURE__ */ new Date();
+            const datePrefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+            for await (const entry of legacyDir.values()) {
+              if (entry.kind !== "file") continue;
+              const ext = entry.name.split(".").pop()?.toLowerCase() || "";
+              const isVideo = ["mp4", "webm", "mov"].includes(ext);
+              const isImage = ["png", "jpg", "jpeg", "webp"].includes(ext);
+              if (!isVideo && !isImage) continue;
+              const oldId = entry.name.replace(/\.[^.]+$/, "");
+              const newFilename = `${datePrefix}_${oldId}.${isVideo ? "mp4" : "png"}`;
+              const file = await entry.getFile();
+              const targetDirName = isVideo ? DIRS.VIDEO : DIRS.PICTURE;
+              const targetDir = await handle.getDirectoryHandle(targetDirName, { create: true });
+              try {
+                await targetDir.getFileHandle(newFilename);
+                idMapping.set(oldId, newFilename);
+                continue;
+              } catch {
+              }
+              const newFileHandle = await targetDir.getFileHandle(newFilename, { create: true });
+              const writable = await newFileHandle.createWritable();
+              await writable.write(file);
+              await writable.close();
+              await legacyDir.removeEntry(entry.name);
+              idMapping.set(oldId, newFilename);
+              count++;
+              logInfo("FileSystem", `\u5DF2\u8FC1\u79FB\u6587\u6863`, `${entry.name} -> ${targetDirName}/${newFilename}`);
+            }
+            let isEmpty = true;
+            for await (const _ of legacyDir.values()) {
+              isEmpty = false;
+              break;
+            }
+            if (isEmpty) {
+              await handle.removeEntry(dirName);
+              logInfo("FileSystem", `\u5DF2\u5220\u9664\u65E7\u76EE\u5F55`, dirName);
+            }
+          } catch (e) {
+          }
+        };
+        await migrateFromDir(DIRS.ORIGINALS);
+        await migrateFromDir(DIRS.LEGACY);
+        if (count > 0) {
+          logInfo("FileSystem", `\u8FC1\u79FB\u5B8C\u6210`, `\u5171\u8FC1\u79FB ${count} \u4E2A\u6587\u6863`);
+        }
+        return { count, idMapping };
+      }
+    };
+  }
+});
+
+// src/services/image/imageQuality.ts
+async function compressImageToQuality(imageData, config) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let width = img.width;
+        let height = img.height;
+        if (config.maxSize > 0) {
+          const maxDim = Math.max(width, height);
+          if (maxDim > config.maxSize) {
+            const scale = config.maxSize / maxDim;
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Failed to get canvas context"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL(config.format, config.quality);
+        console.log(`[ImageQuality] Compressed: ${img.width}x${img.height} \u2192 ${width}x${height}, ${(imageData.length / 1024).toFixed(1)}KB \u2192 ${(compressed.length / 1024).toFixed(1)}KB`);
+        resolve(compressed);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    img.onerror = () => reject(new Error("Failed to load image"));
+    img.src = imageData;
+  });
+}
+async function generateAllQualities(originalData) {
+  const results = {};
+  results["original" /* ORIGINAL */] = originalData;
+  results["micro" /* MICRO */] = await compressImageToQuality(
+    originalData,
+    QUALITY_CONFIGS["micro" /* MICRO */]
+  );
+  results["thumb" /* THUMBNAIL */] = results["micro" /* MICRO */];
+  results["preview" /* PREVIEW */] = results["original" /* ORIGINAL */];
+  return results;
+}
+function getQualityStorageId(imageId, quality) {
+  if (quality === "original" /* ORIGINAL */) {
+    return imageId;
+  }
+  return `${imageId}_${quality}`;
+}
+var ImageQuality, QUALITY_CONFIGS;
+var init_imageQuality = __esm({
+  "src/services/image/imageQuality.ts"() {
+    "use strict";
+    ImageQuality = /* @__PURE__ */ ((ImageQuality2) => {
+      ImageQuality2["MICRO"] = "micro";
+      ImageQuality2["THUMBNAIL"] = "thumb";
+      ImageQuality2["PREVIEW"] = "preview";
+      ImageQuality2["ORIGINAL"] = "original";
+      return ImageQuality2;
+    })(ImageQuality || {});
+    QUALITY_CONFIGS = {
+      ["micro" /* MICRO */]: {
+        maxSize: 150,
+        // 极小尺寸
+        quality: 0.5,
+        // 较低质量
+        format: "image/jpeg"
+      },
+      ["thumb" /* THUMBNAIL */]: {
+        maxSize: 300,
+        quality: 0.7,
+        format: "image/jpeg"
+      },
+      ["preview" /* PREVIEW */]: {
+        maxSize: 1024,
+        quality: 0.85,
+        format: "image/jpeg"
+      },
+      ["original" /* ORIGINAL */]: {
+        maxSize: 0,
+        // 0表示不压缩
+        quality: 1,
+        format: "image/jpeg"
+      }
+    };
+  }
+});
+
+// src/services/storage/blobUtils.ts
+var blobUtils_exports = {};
+__export(blobUtils_exports, {
+  blobToDataURL: () => blobToDataURL,
+  createBlobURL: () => createBlobURL,
+  dataURLToBlob: () => dataURLToBlob,
+  revokeBlobURL: () => revokeBlobURL
+});
+async function dataURLToBlob(dataURL) {
+  if (dataURL.startsWith("blob:")) {
+    try {
+      const response = await fetch(dataURL);
+      if (response.ok) {
+        return response.blob();
+      }
+    } catch (e) {
+      console.warn("[blobUtils] Blob URL invalid or expired:", dataURL.slice(0, 50));
+    }
+    return null;
+  }
+  if (dataURL.startsWith("data:")) {
+    try {
+      const [header, payload] = dataURL.split(",");
+      if (!payload) {
+        console.warn("[blobUtils] Invalid data URL format");
+        return null;
+      }
+      const mimeMatch = header.match(/data:([^;]+)/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+      if (!/;base64/i.test(header)) {
+        const decoded = decodeURIComponent(payload);
+        return new Blob([decoded], { type: mimeType });
+      }
+      if (/^(blob:|https?:\/\/)/i.test(payload.trim())) {
+        console.debug("[blobUtils] Nested URL payload detected, skipping blob conversion.");
+        return null;
+      }
+      const normalizedBase64 = payload.replace(/[\s\r\n]+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+      if (!normalizedBase64 || /[^A-Za-z0-9+/=]/.test(normalizedBase64)) {
+        console.debug("[blobUtils] Invalid base64 payload detected, skipping blob conversion.");
+        return null;
+      }
+      const paddedBase64 = normalizedBase64.padEnd(
+        normalizedBase64.length + (4 - normalizedBase64.length % 4) % 4,
+        "="
+      );
+      const byteString = atob(paddedBase64);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type: mimeType });
+    } catch (e) {
+      console.debug("[blobUtils] Failed to parse data URL:", e);
+      return null;
+    }
+  }
+  console.warn("[blobUtils] Unknown URL format:", dataURL.slice(0, 50));
+  return null;
+}
+async function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+function createBlobURL(blob) {
+  return URL.createObjectURL(blob);
+}
+function revokeBlobURL(url) {
+  if (url && url.startsWith("blob:")) {
+    URL.revokeObjectURL(url);
+  }
+}
+var init_blobUtils = __esm({
+  "src/services/storage/blobUtils.ts"() {
+    "use strict";
+  }
+});
+
+// src/services/storage/imageStorage.ts
+var imageStorage_exports = {};
+__export(imageStorage_exports, {
+  cleanupImagesOlderThan: () => cleanupImagesOlderThan,
+  cleanupOriginals: () => cleanupOriginals,
+  clearAllImages: () => clearAllImages,
+  clearMemoryCache: () => clearMemoryCache,
+  deleteImage: () => deleteImage,
+  deleteImageAllQualities: () => deleteImageAllQualities,
+  generateImageId: () => generateImageId,
+  getAllImageIds: () => getAllImageIds,
+  getAllImages: () => getAllImages,
+  getCacheStats: () => getCacheStats,
+  getImage: () => getImage,
+  getImageByQuality: () => getImageByQuality,
+  getImageCount: () => getImageCount,
+  getImageMetadata: () => getImageMetadata,
+  getImagesPage: () => getImagesPage,
+  getOriginalImage: () => getOriginalImage,
+  getStorageUsage: () => getStorageUsage,
+  getStrictOriginalImage: () => getStrictOriginalImage,
+  saveImage: () => saveImage,
+  saveImageWithQualities: () => saveImageWithQualities,
+  saveOriginalImage: () => saveOriginalImage
+});
+async function toBlobFromAnyUrl(dataURL) {
+  try {
+    if (!dataURL) return null;
+    if (dataURL.startsWith("data:")) {
+      const { dataURLToBlob: dataURLToBlob2 } = await Promise.resolve().then(() => (init_blobUtils(), blobUtils_exports));
+      const blob = await dataURLToBlob2(dataURL);
+      return blob?.size && blob.size > 0 ? blob : null;
+    }
+    if (dataURL.startsWith("blob:") || dataURL.startsWith("http://") || dataURL.startsWith("https://")) {
+      let res;
+      try {
+        res = await fetch(dataURL);
+      } catch (fetchErr) {
+        if (dataURL.startsWith("http")) {
+          console.warn(`[ImageStorage] \u76F4\u63A5\u4E0B\u8F7D\u5931\u8D25\uFF0C\u5C1D\u8BD5\u4F7F\u7528 CORS \u4EE3\u7406\u4E0B\u8F7D: ${dataURL.substring(0, 50)}...`, fetchErr);
+          res = await fetch(`https://corsproxy.io/?${encodeURIComponent(dataURL)}`);
+        } else {
+          throw fetchErr;
+        }
+      }
+      if (!res || !res.ok) return null;
+      const blob = await res.blob();
+      return blob.size > 1024 ? blob : null;
+    }
+    return null;
+  } catch (err) {
+    if (dataURL.startsWith("http")) {
+      throw new Error("FETCH_FAILED");
+    }
+    return null;
+  }
+}
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => {
+      console.error("Failed to open IndexedDB:", request.error);
+      reject(request.error);
+    };
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(IMAGES_STORE)) {
+        db.createObjectStore(IMAGES_STORE, { keyPath: "id" });
+      }
+    };
+  });
+  return dbPromise;
+}
+function generateImageId() {
+  const timestamp = Date.now().toString(16);
+  const random = Math.random().toString(16).slice(2, 8);
+  return `img_${timestamp}_${random}`;
+}
+async function saveImage(id, dataURL) {
+  try {
+    let saveObject = {
+      id,
+      timestamp: Date.now()
+    };
+    try {
+      const blob = await toBlobFromAnyUrl(dataURL);
+      if (blob) {
+        saveObject.blob = blob;
+      } else {
+        console.debug(`[ImageStorage] Cannot save ${id}: invalid or expired URL`);
+        memoryCache.set(id, dataURL);
+        return;
+      }
+    } catch (err) {
+      if (err.message === "FETCH_FAILED") {
+        console.log(`[ImageStorage] \u{1F310} Cannot convert ${id} to Blob due to CORS, saving raw URL instead`);
+        saveObject.url = dataURL;
+      } else {
+        throw err;
+      }
+    }
+    if (saveObject.blob) {
+      const blobURL = URL.createObjectURL(saveObject.blob);
+      memoryCache.set(id, blobURL);
+    } else if (saveObject.url) {
+      memoryCache.set(id, saveObject.url);
+    }
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readwrite");
+    const store = transaction.objectStore(IMAGES_STORE);
+    await new Promise((resolve, reject) => {
+      const request = store.put(saveObject);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    console.debug(`[ImageStorage] Saved ${id} to IndexedDB`);
+  } catch (error) {
+    console.error("[ImageStorage] Failed to save image:", error);
+    memoryCache.set(id, dataURL);
+  }
+}
+async function getImage(id) {
+  if (memoryCache.has(id)) {
+    const url = memoryCache.get(id);
+    return url;
+  }
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readonly");
+    const store = transaction.objectStore(IMAGES_STORE);
+    const result = await new Promise((resolve, reject) => {
+      const request = store.get(id);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    if (!result) {
+      console.debug(`[ImageStorage] ${id} not found in IndexedDB. Attempting local recovery...`);
+      const globalHandle2 = fileSystemService.getGlobalHandle();
+      if (globalHandle2) {
+        try {
+          const blob = await fileSystemService.loadOriginalFromDisk(globalHandle2, id);
+          if (blob) {
+            const blobURL = URL.createObjectURL(blob);
+            memoryCache.set(id, blobURL);
+            saveImage(id, blobURL).catch((error) => {
+              console.warn("[ImageStorage] Failed to restore local image back to IndexedDB:", error);
+            });
+            console.log(`[ImageStorage] Recovered ${id} from local storage fallback`);
+            return blobURL;
+          }
+        } catch (error) {
+          console.warn(`[ImageStorage] Failed local recovery for ${id}:`, error);
+        }
+      }
+      return null;
+    }
+    if (result.blob) {
+      if (result.blob.size === 0) {
+        console.warn(`[ImageStorage] Invalid empty blob detected for ${id}, ignoring corrupted cache`);
+        return null;
+      }
+      const blobURL = URL.createObjectURL(result.blob);
+      memoryCache.set(id, blobURL);
+      console.debug(`[ImageStorage] Loaded ${id} as Blob URL`);
+      return blobURL;
+    }
+    if (result.url) {
+      console.warn(`[ImageStorage] ${id} is old Base64 format`);
+      memoryCache.set(id, result.url);
+      return result.url;
+    }
+    return null;
+  } catch (error) {
+    console.error("[ImageStorage] Failed to get from IndexedDB:", error);
+    return null;
+  }
+}
+async function deleteImage(id) {
+  memoryCache.delete(id);
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readwrite");
+    const store = transaction.objectStore(IMAGES_STORE);
+    await new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("[ImageStorage] Failed to delete from IndexedDB:", error);
+  }
+}
+async function getAllImages() {
+  const images = /* @__PURE__ */ new Map();
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readonly");
+    const store = transaction.objectStore(IMAGES_STORE);
+    await new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const results = request.result || [];
+        results.forEach((item) => {
+          images.set(item.id, item.url);
+          memoryCache.set(item.id, item.url);
+        });
+        resolve();
+      };
+      request.onerror = () => reject(request.error);
+    });
+    console.log(`[ImageStorage] Loaded ${images.size} images from IndexedDB to memory`);
+  } catch (error) {
+    console.error("[ImageStorage] Failed to get all images from IndexedDB:", error);
+  }
+  return images;
+}
+async function getImageCount() {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readonly");
+    const store = transaction.objectStore(IMAGES_STORE);
+    return new Promise((resolve, reject) => {
+      const request = store.count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("[ImageStorage] Failed to count images:", error);
+    return 0;
+  }
+}
+async function getImagesPage(offset, limit) {
+  const images = /* @__PURE__ */ new Map();
+  let hasMore = false;
+  let total = 0;
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readonly");
+    const store = transaction.objectStore(IMAGES_STORE);
+    total = await new Promise((resolve, reject) => {
+      const countRequest = store.count();
+      countRequest.onsuccess = () => resolve(countRequest.result);
+      countRequest.onerror = () => reject(countRequest.error);
+    });
+    await new Promise((resolve, reject) => {
+      const request = store.openCursor();
+      let currentIndex = 0;
+      let loaded = 0;
+      request.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        if (currentIndex < offset) {
+          currentIndex++;
+          cursor.continue();
+          return;
+        }
+        if (loaded < limit) {
+          const { id, url, blob } = cursor.value;
+          const finalUrl = blob ? URL.createObjectURL(blob) : url;
+          if (finalUrl) {
+            images.set(id, finalUrl);
+            memoryCache.set(id, finalUrl);
+            loaded++;
+          }
+          currentIndex++;
+          cursor.continue();
+        } else {
+          hasMore = true;
+          resolve();
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+    console.log(`[ImageStorage] Loaded page: offset=${offset}, limit=${limit}, got=${images.size}, total=${total}`);
+  } catch (error) {
+    console.error("[ImageStorage] Failed to get images page:", error);
+  }
+  return { images, hasMore, total };
+}
+async function clearAllImages() {
+  memoryCache.clear();
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readwrite");
+    const store = transaction.objectStore(IMAGES_STORE);
+    await new Promise((resolve, reject) => {
+      const request = store.clear();
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    console.log("[ImageStorage] Cleared all images from memory and IndexedDB");
+  } catch (error) {
+    console.error("[ImageStorage] Failed to clear IndexedDB:", error);
+  }
+}
+async function getStorageUsage() {
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const estimate = await navigator.storage.estimate();
+      return estimate.usage || 0;
+    }
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readonly");
+    const store = transaction.objectStore(IMAGES_STORE);
+    return new Promise((resolve, reject) => {
+      let totalSize = 0;
+      const request = store.openCursor();
+      request.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (cursor) {
+          const value = cursor.value;
+          if (value.url) {
+            totalSize += value.url.length;
+          }
+          cursor.continue();
+        } else {
+          resolve(totalSize);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("[ImageStorage] Failed to calculate storage usage:", error);
+    return 0;
+  }
+}
+function clearMemoryCache() {
+  memoryCache.clear();
+  console.log("[ImageStorage] Memory cache cleared");
+}
+function getCacheStats() {
+  return {
+    count: memoryCache.keys().length,
+    ids: memoryCache.keys()
+  };
+}
+async function cleanupOriginals() {
+  const MAX_THUMB_SIZE = 300;
+  const SIZE_THRESHOLD = 50 * 1024;
+  let count = 0;
+  let savedBytes = 0;
+  try {
+    const BATCH_SIZE = 10;
+    const totalImages = await getImageCount();
+    const db = await openDB();
+    console.log(`[compressLargeImages] Processing ${totalImages} images in batches of ${BATCH_SIZE}`);
+    for (let offset = 0; offset < totalImages; offset += BATCH_SIZE) {
+      const { images } = await getImagesPage(offset, BATCH_SIZE);
+      for (const [id, url] of images.entries()) {
+        if (url.length < SIZE_THRESHOLD) continue;
+        try {
+          const compressedUrl = await compressImage(url, MAX_THUMB_SIZE);
+          if (compressedUrl.length < url.length) {
+            await saveImage(id, compressedUrl);
+            savedBytes += url.length - compressedUrl.length;
+            count++;
+          }
+        } catch (err) {
+          console.warn(`[compressLargeImages] Failed to compress ${id}`, err);
+        }
+      }
+      console.log(`[compressLargeImages] Processed batch ${Math.floor(offset / BATCH_SIZE) + 1}/${Math.ceil(totalImages / BATCH_SIZE)}`);
+    }
+  } catch (error) {
+    console.error("[ImageStorage] Cleanup failed:", error);
+    throw error;
+  }
+  return { count, savedBytes };
+}
+function compressImage(dataUrl, maxDimension) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+      if (width > height) {
+        if (width > maxDimension) {
+          height *= maxDimension / width;
+          width = maxDimension;
+        }
+      } else {
+        if (height > maxDimension) {
+          width *= maxDimension / height;
+          height = maxDimension;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas context not available"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.7));
+    };
+    img.onerror = () => reject(new Error("Failed to load image"));
+    img.src = dataUrl;
+  });
+}
+async function saveImageWithQualities(id, originalUrl) {
+  try {
+    console.log(`[ImageQuality] Generating qualities for ${id}...`);
+    const qualities = await generateAllQualities(originalUrl);
+    const savePromises = Object.entries(qualities).map(([quality, data]) => {
+      const storageId = getQualityStorageId(id, quality);
+      return saveImage(storageId, data);
+    });
+    await Promise.all(savePromises);
+    console.log(`[ImageQuality] Saved ${id} with all quality levels`);
+  } catch (error) {
+    console.error(`[ImageQuality] Failed to save qualities for ${id}:`, error);
+    await saveImage(id, originalUrl);
+  }
+}
+async function getImageByQuality(id, quality = "original" /* ORIGINAL */) {
+  const storageId = getQualityStorageId(id, quality);
+  const image = await getImage(storageId);
+  if (!image && quality !== "original" /* ORIGINAL */) {
+    console.debug(`[ImageQuality] Quality ${quality} not found for ${id}, using original`);
+    return getImage(id);
+  }
+  return image;
+}
+async function deleteImageAllQualities(id) {
+  const deletePromises = Object.values(ImageQuality).map((quality) => {
+    const storageId = getQualityStorageId(id, quality);
+    return deleteImage(storageId);
+  });
+  await Promise.all(deletePromises);
+}
+async function saveOriginalImage(id, dataURL, isVideo = false) {
+  const MAX_RETRIES = 3;
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    try {
+      let saveObject = {
+        id,
+        quality: "original",
+        timestamp: Date.now(),
+        protected: true
+        // 🔒 受保护标记
+      };
+      try {
+        const blob = await toBlobFromAnyUrl(dataURL);
+        if (blob) {
+          saveObject.blob = blob;
+        } else {
+          console.warn(`[ImageStorage] Cannot save original ${id}: invalid or expired URL`);
+          return;
+        }
+      } catch (err) {
+        if (err.message === "FETCH_FAILED") {
+          console.log(`[ImageStorage] \u{1F310} Cannot convert original ${id} to Blob due to CORS, saving raw URL instead`);
+          saveObject.url = dataURL;
+        } else {
+          throw err;
+        }
+      }
+      if (saveObject.blob) {
+        const blobURL = URL.createObjectURL(saveObject.blob);
+        memoryCache.set(id, blobURL);
+      } else if (saveObject.url) {
+        memoryCache.set(id, saveObject.url);
+      }
+      const db = await openDB();
+      const transaction = db.transaction(IMAGES_STORE, "readwrite");
+      const store = transaction.objectStore(IMAGES_STORE);
+      await new Promise((resolve, reject) => {
+        const request = store.put(saveObject);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+      console.log(`[ImageStorage] \u{1F512} Original image saved successfully to IDB (attempt ${i + 1}/${MAX_RETRIES})`);
+      return;
+    } catch (error) {
+      console.warn(`[ImageStorage] \u{1F512} Save retry ${i + 1}/${MAX_RETRIES}:`, error);
+      if (i === MAX_RETRIES - 1) {
+        console.error("[ImageStorage] \u{1F512} All retries failed, saving to memory only");
+        memoryCache.set(id, dataURL);
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100 * (i + 1)));
+    }
+  }
+}
+async function getOriginalImage(id) {
+  if (memoryCache.has(id)) {
+    const cached = memoryCache.get(id);
+    console.log(`[ImageStorage] \u{1F512} Original found in memory cache: ${id}`);
+    return cached;
+  }
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readonly");
+    const store = transaction.objectStore(IMAGES_STORE);
+    const result = await new Promise((resolve, reject) => {
+      const request = store.get(id);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    if (!result) {
+      console.debug(`[ImageStorage] Original not found in IndexedDB: ${id}. Attempting disk recovery...`);
+      const globalHandle2 = fileSystemService.getGlobalHandle();
+      if (globalHandle2) {
+        try {
+          const blob = await fileSystemService.loadOriginalFromDisk(globalHandle2, id);
+          if (blob) {
+            const blobURL = URL.createObjectURL(blob);
+            memoryCache.set(id, blobURL);
+            saveOriginalImage(id, blobURL).catch(
+              (e) => console.warn("[ImageStorage] Failed to restore fallback image to DB", e)
+            );
+            console.log(`[ImageStorage] \u{1F512} Recovered ${id} from local disk fallback`);
+            return blobURL;
+          }
+        } catch (e) {
+          console.warn(`[ImageStorage] Failed to load from local disk fallback: ${id}`, e);
+        }
+      }
+      return null;
+    }
+    if (result.blob) {
+      if (result.blob.size === 0) {
+        console.warn(`[ImageStorage] \u{1F512} Empty blob detected for original ${id}, treating as missing`);
+        return null;
+      }
+      const blobURL = URL.createObjectURL(result.blob);
+      memoryCache.set(id, blobURL);
+      console.log(`[ImageStorage] \u{1F512} Original loaded from IndexedDB (Blob): ${id}`);
+      return blobURL;
+    }
+    if (result.url) {
+      memoryCache.set(id, result.url);
+      console.log(`[ImageStorage] \u{1F512} Original loaded from IndexedDB (data URL): ${id}`);
+      return result.url;
+    }
+    console.warn(`[ImageStorage] \u{1F512} Original record exists but no data: ${id}`);
+    return null;
+  } catch (error) {
+    console.error("[ImageStorage] \u{1F512} Failed to get original from IndexedDB:", error);
+    return null;
+  }
+}
+async function getStrictOriginalImage(id) {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readonly");
+    const store = transaction.objectStore(IMAGES_STORE);
+    const result = await new Promise((resolve, reject) => {
+      const request = store.get(id);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const isProtectedOriginal = !!result && (result.protected === true || result.quality === "original");
+    if (isProtectedOriginal && result?.blob) {
+      if (result.blob.size === 0) {
+        return null;
+      }
+      const blobURL = URL.createObjectURL(result.blob);
+      memoryCache.set(id, blobURL);
+      return blobURL;
+    }
+    if (isProtectedOriginal && result?.url) {
+      memoryCache.set(id, result.url);
+      return result.url;
+    }
+    const globalHandle2 = fileSystemService.getGlobalHandle();
+    if (globalHandle2) {
+      try {
+        const blob = await fileSystemService.loadOriginalFromDisk(globalHandle2, id);
+        if (blob) {
+          const blobURL = URL.createObjectURL(blob);
+          memoryCache.set(id, blobURL);
+          saveOriginalImage(id, blobURL).catch(() => {
+          });
+          return blobURL;
+        }
+      } catch {
+      }
+    }
+  } catch {
+  }
+  return null;
+}
+async function cleanupImagesOlderThan(days) {
+  if (!Number.isFinite(days) || days <= 0) {
+    throw new Error("INVALID_CLEANUP_RANGE");
+  }
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1e3;
+  const ids = await getAllImageIds();
+  let count = 0;
+  let savedBytes = 0;
+  for (const id of ids) {
+    try {
+      const metadata = await getImageMetadata(id);
+      if (!metadata?.timestamp || metadata.timestamp > cutoff || metadata.protected) {
+        continue;
+      }
+      const url = await getImage(id);
+      if (url) {
+        savedBytes += url.length;
+      }
+      await deleteImage(id);
+      count += 1;
+    } catch (error) {
+      console.warn(`[ImageStorage] Failed to cleanup expired image ${id}`, error);
+    }
+  }
+  return { count, savedBytes };
+}
+async function getAllImageIds() {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readonly");
+    const store = transaction.objectStore(IMAGES_STORE);
+    const keys = await new Promise((resolve, reject) => {
+      const request = store.getAllKeys();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const ids = keys.map((k) => k.toString());
+    console.log(`[ImageStorage] \u{1F512} Found ${ids.length} images in IndexedDB`);
+    return ids;
+  } catch (error) {
+    console.error("[ImageStorage] \u{1F512} Failed to get all image IDs:", error);
+    return [];
+  }
+}
+async function getImageMetadata(id) {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(IMAGES_STORE, "readonly");
+    const store = transaction.objectStore(IMAGES_STORE);
+    const result = await new Promise((resolve, reject) => {
+      const request = store.get(id);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    if (!result) return null;
+    return {
+      timestamp: result.timestamp,
+      quality: result.quality,
+      protected: result.protected
+    };
+  } catch (error) {
+    console.error("[ImageStorage] Failed to get metdata:", error);
+    return null;
+  }
+}
+var DB_NAME, DB_VERSION, IMAGES_STORE, ImageMemoryCache, memoryCache, dbPromise;
+var init_imageStorage = __esm({
+  "src/services/storage/imageStorage.ts"() {
+    "use strict";
+    init_fileSystemService();
+    init_imageQuality();
+    DB_NAME = "kk_studio_db";
+    DB_VERSION = 1;
+    IMAGES_STORE = "images";
+    ImageMemoryCache = class {
+      cache = /* @__PURE__ */ new Map();
+      maxSizeMB;
+      constructor(maxSizeMB = 100) {
+        this.maxSizeMB = maxSizeMB;
+      }
+      // 获取缓存的图片
+      get(id) {
+        return this.cache.get(id) || null;
+      }
+      // 设置缓存图片
+      set(id, url) {
+        const oldUrl = this.cache.get(id);
+        if (oldUrl && oldUrl !== url && oldUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(oldUrl);
+        }
+        this.cache.set(id, url);
+        if (this.getApproximateSizeMB() > this.maxSizeMB) {
+          this.cleanupOldest(0.5);
+        }
+      }
+      // 删除缓存图片
+      delete(id) {
+        const url = this.cache.get(id);
+        if (url && url.startsWith("blob:")) {
+          URL.revokeObjectURL(url);
+        }
+        this.cache.delete(id);
+      }
+      // 检查是否存在
+      has(id) {
+        return this.cache.has(id);
+      }
+      // 清空所有缓存
+      clear() {
+        this.cache.forEach((url) => {
+          if (url.startsWith("blob:")) {
+            URL.revokeObjectURL(url);
+          }
+        });
+        this.cache.clear();
+      }
+      // 获取所有ID
+      keys() {
+        return Array.from(this.cache.keys());
+      }
+      // 获取缓存大小（近似MB）
+      getApproximateSizeMB() {
+        let totalBytes = 0;
+        this.cache.forEach((url) => {
+          totalBytes += url.length;
+        });
+        return totalBytes / (1024 * 1024);
+      }
+      // 清理最旧的N%缓存（简单FIFO策略）
+      cleanupOldest(percentage) {
+        const keysToRemove = Math.floor(this.cache.size * percentage);
+        const keys = Array.from(this.cache.keys());
+        for (let i = 0; i < keysToRemove; i++) {
+          const id = keys[i];
+          const url = this.cache.get(id);
+          if (url && url.startsWith("blob:")) {
+            URL.revokeObjectURL(url);
+          }
+          this.cache.delete(id);
+        }
+        console.log(`[ImageCache] Cleaned up ${keysToRemove} oldest entries`);
+      }
+    };
+    memoryCache = new ImageMemoryCache(100);
+    dbPromise = null;
+  }
+});
+
+// src/components/layout/PromptBar.tsx
+var import_react11 = __toESM(require_react(), 1);
+var import_react_dom2 = __toESM(require_react_dom(), 1);
+init_types();
 init_keyManager();
-export {
-  ADVANCED_IMAGE_MODEL_WHITELIST,
-  AUDIO_MODEL_WHITELIST,
-  BLACKLIST_MODELS,
-  DEFAULT_GOOGLE_MODELS,
-  DEPRECATED_MODELS,
-  GOOGLE_IMAGE_WHITELIST,
-  KeyManager,
-  MODEL_MIGRATION_MAP,
-  PROVIDER_PRESETS,
-  VIDEO_MODEL_WHITELIST,
-  appendModelVariantLabel,
-  autoDetectAndConfigureModels,
-  categorizeModels,
-  keyManager_default as default,
-  detectApiType,
-  determineKeyType,
-  fetchGeminiCompatModels,
-  fetchGoogleModels,
-  fetchOpenAICompatModels,
-  getModelMetadata,
-  isDeprecatedModel,
-  keyManager,
-  normalizeModelId2 as normalizeModelId,
-  normalizeModelList,
-  parseModelString,
-  parseModelVariantMeta
+
+// src/services/model/modelCapabilities.ts
+init_types();
+
+// src/utils/modelBadge.ts
+var MODEL_TEXT_PALETTE = [
+  "text-purple-400",
+  "text-yellow-400",
+  "text-red-400",
+  "text-green-400",
+  "text-pink-400",
+  "text-indigo-400",
+  "text-teal-400",
+  "text-orange-400"
+];
+var PROVIDER_PALETTE = [
+  "bg-blue-600/20 text-blue-400 border-blue-500/30",
+  "bg-yellow-600/20 text-yellow-400 border-yellow-500/30",
+  "bg-green-600/20 text-green-400 border-green-500/30",
+  "bg-purple-600/20 text-purple-400 border-purple-500/30",
+  "bg-pink-600/20 text-pink-400 border-pink-500/30",
+  "bg-indigo-600/20 text-indigo-400 border-indigo-500/30"
+];
+var MODEL_COLOR_MAP_KEY = "kk_model_color_map_v1";
+var PROVIDER_COLOR_MAP_KEY = "kk_provider_color_map_v1";
+var PROVIDERS_STORAGE_KEY2 = "kk_studio_third_party_providers";
+var modelColorMapCache = null;
+var providerColorMapCache = null;
+var configuredProviderColorCache = null;
+var configuredProviderColorRaw = "";
+function hashString(str) {
+  let hash = 2166136261;
+  for (let index = 0; index < str.length; index += 1) {
+    hash = (hash ^ str.charCodeAt(index)) * 16777619;
+  }
+  return Math.abs(hash);
+}
+function readMap(key) {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function writeMap(key, map) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(map));
+  } catch {
+    return;
+  }
+}
+function normalizeModelKey(id, label) {
+  const raw = (id || label || "").toLowerCase().trim();
+  const withoutProvider = raw.split("@")[0];
+  return withoutProvider.replace(/-\d{8}$/i, "").replace(/-(16[x-]9|9[x-]16|1[x-]1|4[x-]3|3[x-]4|21[x-]9|9[x-]21|3[x-]2|2[x-]3|4[x-]5|5[x-]4)$/i, "").replace(/-(4k|2k|1k|high|hd|ultra|medium|low|standard)$/i, "").trim();
+}
+function normalizeProviderKey(provider) {
+  return (provider || "unknown").toLowerCase().trim();
+}
+function normalizeHexColor(input) {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  if (/^#[A-Fa-f0-9]{3,8}$/.test(trimmed)) return trimmed;
+  if (/^[A-Fa-f0-9]{3,8}$/.test(trimmed)) return `#${trimmed}`;
+  return null;
+}
+function hexToRgba(hex, alpha) {
+  const normalized = hex.replace("#", "");
+  const expanded = normalized.length === 3 ? normalized.split("").map((item) => item + item).join("") : normalized.slice(0, 6);
+  const red = parseInt(expanded.slice(0, 2), 16);
+  const green = parseInt(expanded.slice(2, 4), 16);
+  const blue = parseInt(expanded.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+function getStableClass(key, palette, storageKey, cacheRef) {
+  let map = cacheRef === "model" ? modelColorMapCache : providerColorMapCache;
+  if (!map) {
+    map = readMap(storageKey);
+    if (cacheRef === "model") modelColorMapCache = map;
+    else providerColorMapCache = map;
+  }
+  if (map[key]) return map[key];
+  const used = new Set(Object.values(map));
+  const available = palette.find((item) => !used.has(item));
+  const resolved = available || palette[hashString(key) % palette.length];
+  map[key] = resolved;
+  writeMap(storageKey, map);
+  return resolved;
+}
+function extractTextColor(badgeClass) {
+  const match = badgeClass.match(/text-\S+/);
+  return match ? match[0] : "text-gray-400";
+}
+function getConfiguredProviderColor(provider) {
+  if (typeof window === "undefined" || !provider) return null;
+  const raw = localStorage.getItem(PROVIDERS_STORAGE_KEY2) || "";
+  if (configuredProviderColorCache && raw === configuredProviderColorRaw) {
+    return configuredProviderColorCache[normalizeProviderKey(provider)] || null;
+  }
+  configuredProviderColorRaw = raw;
+  configuredProviderColorCache = {};
+  try {
+    const providers = JSON.parse(raw);
+    if (Array.isArray(providers)) {
+      providers.forEach((item) => {
+        if (!item || typeof item !== "object") return;
+        const key = normalizeProviderKey(String(item.name || item.provider || ""));
+        if (!key) return;
+        const color = normalizeHexColor(item.providerColor || item.badgeColor);
+        if (color) {
+          configuredProviderColorCache[key] = color;
+        }
+      });
+    }
+  } catch {
+    configuredProviderColorCache = {};
+  }
+  return configuredProviderColorCache[normalizeProviderKey(provider)] || null;
+}
+function getProviderBadgeColor(provider) {
+  const providerLower = provider?.toLowerCase() || "";
+  if (providerLower.includes("official") || providerLower.includes("google")) {
+    return "bg-green-500/20 text-green-400 border-green-500/30";
+  }
+  if (providerLower.includes("custom")) {
+    return "bg-gray-500/20 text-gray-400 border-gray-500/30";
+  }
+  if (!provider) return PROVIDER_PALETTE[0];
+  return getStableClass(normalizeProviderKey(provider), PROVIDER_PALETTE, PROVIDER_COLOR_MAP_KEY, "provider");
+}
+function getProviderBadgeStyle(provider) {
+  const configuredColor = getConfiguredProviderColor(provider);
+  if (!configuredColor) return void 0;
+  return {
+    color: configuredColor,
+    backgroundColor: hexToRgba(configuredColor, 0.18),
+    borderColor: hexToRgba(configuredColor, 0.36)
+  };
+}
+function getModelBadgeInfo(model) {
+  const id = model.id ?? "";
+  const text = model.label ?? id;
+  if (model.colorStart || model.colorEnd) {
+    return {
+      colorClass: model.textColor === "black" ? "text-slate-900" : "text-white",
+      text
+    };
+  }
+  const modelKey = normalizeModelKey(id, text);
+  const providerBadge = getProviderBadgeColor(model.provider);
+  const fallbackTextColor = extractTextColor(providerBadge);
+  const colorClass = getStableClass(modelKey, MODEL_TEXT_PALETTE, MODEL_COLOR_MAP_KEY, "model") || fallbackTextColor;
+  return { colorClass, text };
+}
+
+// src/services/model/modelCapabilities.ts
+init_keyManager();
+init_adminModelService();
+init_adminModelQuality();
+var BUILTIN_MODEL_CAPABILITIES = {
+  // ============================================
+  // Gemini 3.1 Flash Image Preview (Nano Banana 2)
+  // 11 Ratios, up to 4K
+  // ============================================
+  "gemini-3.1-flash-image-preview": {
+    supportedRatios: [
+      "auto" /* AUTO */,
+      "1:1" /* SQUARE */,
+      "1:4" /* PORTRAIT_1_4 */,
+      "1:8" /* PORTRAIT_1_8 */,
+      "2:3" /* PORTRAIT_2_3 */,
+      "3:2" /* LANDSCAPE_3_2 */,
+      "3:4" /* PORTRAIT_3_4 */,
+      "4:1" /* LANDSCAPE_4_1 */,
+      "4:3" /* LANDSCAPE_4_3 */,
+      "4:5" /* PORTRAIT_4_5 */,
+      "5:4" /* LANDSCAPE_5_4 */,
+      "8:1" /* LANDSCAPE_8_1 */,
+      "9:16" /* PORTRAIT_9_16 */,
+      "16:9" /* LANDSCAPE_16_9 */,
+      "21:9" /* LANDSCAPE_21_9 */
+    ],
+    supportedSizes: ["0.5K" /* SIZE_05K */, "1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */],
+    supportsGrounding: true,
+    supportsThinking: true,
+    // 🚀 开启思考模式支持
+    supportsImageSearch: true,
+    // 🚀 开启图片搜索支持
+    maxRefImages: 14
+    // 🚀 Update: Gemini 3.1 Flash specifies up to 14 reference images
+  },
+  // ============================================
+  // Gemini 3 Pro Image / Nano Banana Pro
+  // 11 Ratios, up to 4K
+  // ============================================
+  "gemini-3-pro-image-preview": {
+    supportedRatios: [
+      "auto" /* AUTO */,
+      "1:1" /* SQUARE */,
+      "2:3" /* PORTRAIT_2_3 */,
+      "3:2" /* LANDSCAPE_3_2 */,
+      "3:4" /* PORTRAIT_3_4 */,
+      "4:3" /* LANDSCAPE_4_3 */,
+      "4:5" /* PORTRAIT_4_5 */,
+      "5:4" /* LANDSCAPE_5_4 */,
+      "9:16" /* PORTRAIT_9_16 */,
+      "16:9" /* LANDSCAPE_16_9 */,
+      "21:9" /* LANDSCAPE_21_9 */
+    ],
+    supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */],
+    supportsGrounding: true,
+    supportsThinking: true,
+    // 🚀 Gemini 3 Pro 也支持思考模式
+    supportsImageSearch: false,
+    // 🚀 3 Pro 不支持图片搜索，仅 3.1 Flash 支持
+    maxRefImages: 14
+    // 🚀 Update: Gemini 3 Pro specifies up to 14 reference images
+  },
+  // ============================================
+  // Gemini 2.5 Flash Image / Nano Banana
+  // 10 Ratios (no 1:4, 1:8, 4:1, 8:1), up to 4K, NO grounding support
+  // ============================================
+  "gemini-2.5-flash-image": {
+    supportedRatios: [
+      "auto" /* AUTO */,
+      "1:1" /* SQUARE */,
+      "2:3" /* PORTRAIT_2_3 */,
+      "3:2" /* LANDSCAPE_3_2 */,
+      "3:4" /* PORTRAIT_3_4 */,
+      "4:3" /* LANDSCAPE_4_3 */,
+      "4:5" /* PORTRAIT_4_5 */,
+      "5:4" /* LANDSCAPE_5_4 */,
+      "9:16" /* PORTRAIT_9_16 */,
+      "16:9" /* LANDSCAPE_16_9 */,
+      "21:9" /* LANDSCAPE_21_9 */
+    ],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    // 文档：仅支持 1024 像素
+    supportsGrounding: false,
+    // Tools not supported, causes timeout
+    maxRefImages: 14
+    // 🚀 Update: Support up to 14 reference images (Matches Gemini 2.0/3.1 capabilities)
+  },
+  // ============================================
+  // Imagen 4 Series
+  // No ultra-wide (21:9), up to 2K
+  // ============================================
+  "imagen-4.0-generate-001": {
+    supportedRatios: [
+      "auto" /* AUTO */,
+      "1:1" /* SQUARE */,
+      "3:4" /* PORTRAIT_3_4 */,
+      "4:3" /* LANDSCAPE_4_3 */,
+      "9:16" /* PORTRAIT_9_16 */,
+      "16:9" /* LANDSCAPE_16_9 */
+    ],
+    supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+    supportsGrounding: false,
+    maxRefImages: 0
+    // 🚀 Imagen 4.0 does not support Reference Images
+  },
+  "imagen-4.0-ultra-generate-001": {
+    supportedRatios: [
+      "auto" /* AUTO */,
+      "1:1" /* SQUARE */,
+      "3:4" /* PORTRAIT_3_4 */,
+      "4:3" /* LANDSCAPE_4_3 */,
+      "9:16" /* PORTRAIT_9_16 */,
+      "16:9" /* LANDSCAPE_16_9 */
+    ],
+    supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+    supportsGrounding: false,
+    maxRefImages: 0
+    // 🚀 Imagen 4.0 Ultra does not support Reference Images
+  },
+  "imagen-4.0-fast-generate-001": {
+    supportedRatios: [
+      "auto" /* AUTO */,
+      "1:1" /* SQUARE */,
+      "3:4" /* PORTRAIT_3_4 */,
+      "4:3" /* LANDSCAPE_4_3 */,
+      "9:16" /* PORTRAIT_9_16 */,
+      "16:9" /* LANDSCAPE_16_9 */
+    ],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false,
+    maxRefImages: 0
+    // 🚀 Imagen 4.0 Fast does not support Reference Images
+  },
+  // ============================================
+  // Imagen 3 Series (Legacy)
+  // ============================================
+  "imagen-3.0-generate-002": {
+    supportedRatios: [
+      "auto" /* AUTO */,
+      "1:1" /* SQUARE */,
+      "3:4" /* PORTRAIT_3_4 */,
+      "4:3" /* LANDSCAPE_4_3 */,
+      "9:16" /* PORTRAIT_9_16 */,
+      "16:9" /* LANDSCAPE_16_9 */
+    ],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false,
+    maxRefImages: 0
+    // 🚀 Imagen 3.0 does not support Reference Images
+  },
+  "imagen-3.0-generate-001": {
+    supportedRatios: [
+      "auto" /* AUTO */,
+      "1:1" /* SQUARE */,
+      "3:4" /* PORTRAIT_3_4 */,
+      "4:3" /* LANDSCAPE_4_3 */,
+      "9:16" /* PORTRAIT_9_16 */,
+      "16:9" /* LANDSCAPE_16_9 */
+    ],
+    supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+    supportsGrounding: false,
+    maxRefImages: 5
+    // Allow for Proxy Chat Mode
+  },
+  // ============================================
+  // Veo Video Series (Limited ratio support)
+  // ============================================
+  "veo-3.1-generate-preview": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false,
+    maxRefImages: 0,
+    // Veo 3不支持参考图
+    supportsReferenceImages: false,
+    // Veo 3不支持referenceImages参数
+    supportsVideoExtension: false
+    // Veo 3不支持video参数（视频扩展）
+  },
+  "veo-3.1-fast-generate-preview": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false,
+    maxRefImages: 0,
+    // Veo 3 Fast不支持参考图
+    supportsReferenceImages: false,
+    // Veo 3 Fast不支持referenceImages参数
+    supportsVideoExtension: false
+    // Veo 3 Fast不支持video参数
+  },
+  "veo-3.0-generate-001": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false,
+    maxRefImages: 0,
+    // Veo 3不支持参考图
+    supportsReferenceImages: false,
+    // Veo 3不支持referenceImages参数
+    supportsVideoExtension: false
+    // Veo 3不支持video参数
+  },
+  "veo-3.0-fast-generate-001": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false,
+    maxRefImages: 0,
+    // Veo 3 Fast不支持参考图
+    supportsReferenceImages: false,
+    // Veo 3 Fast不支持referenceImages参数
+    supportsVideoExtension: false
+    // Veo 3 Fast不支持video参数
+  },
+  "veo-2.0-generate-001": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false,
+    maxRefImages: 3,
+    // Veo 2支持最多3张参考图: 首帧/尾帧/参考图
+    supportsReferenceImages: true,
+    // Veo 2支持referenceImages参数
+    supportsVideoExtension: true
+    // Veo 2支持video参数（视频扩展）
+  },
+  // ============================================
+  // Gemini Chat Models (for grounding check)
+  // ============================================
+  "gemini-2.5-pro": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: true
+  },
+  "gemini-2.5-flash": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: true
+  },
+  "gemini-2.5-flash-lite": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: true
+  },
+  "gemini-3-pro-preview": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: true
+  },
+  "gemini-3-flash-preview": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: true
+  },
+  // ============================================
+  // 🚀 Audio/Music Generation Models
+  // ============================================
+  "suno-v4": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: false,
+    audioCapability: {
+      supportedDurations: [30, 60, 120, 180, 240],
+      maxDuration: 240,
+      formats: ["mp3", "wav"],
+      supportsCustomLyrics: true,
+      supportsInstrumental: true,
+      supportsContinuation: true,
+      supportsStyleTags: true,
+      supportsVoiceSelection: false,
+      supportsSpeedControl: false
+    }
+  },
+  "suno-v3.5": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: false,
+    audioCapability: {
+      supportedDurations: [30, 60, 120, 180],
+      maxDuration: 180,
+      formats: ["mp3", "wav"],
+      supportsCustomLyrics: true,
+      supportsInstrumental: true,
+      supportsContinuation: true,
+      supportsStyleTags: true,
+      supportsVoiceSelection: false,
+      supportsSpeedControl: false
+    }
+  },
+  "suno-v3": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: false,
+    audioCapability: {
+      supportedDurations: [30, 60, 120],
+      maxDuration: 120,
+      formats: ["mp3"],
+      supportsCustomLyrics: true,
+      supportsInstrumental: true,
+      supportsContinuation: true,
+      supportsStyleTags: true,
+      supportsVoiceSelection: false,
+      supportsSpeedControl: false
+    }
+  },
+  "udio-v1": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: false,
+    audioCapability: {
+      supportedDurations: [30, 60, 120],
+      maxDuration: 120,
+      formats: ["mp3", "wav"],
+      supportsCustomLyrics: true,
+      supportsInstrumental: true,
+      supportsContinuation: true,
+      supportsStyleTags: true,
+      supportsVoiceSelection: false,
+      supportsSpeedControl: false
+    }
+  },
+  "riffusion": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: false,
+    audioCapability: {
+      supportedDurations: [10, 20, 30],
+      maxDuration: 30,
+      formats: ["mp3"],
+      supportsCustomLyrics: false,
+      supportsInstrumental: true,
+      supportsContinuation: false,
+      supportsStyleTags: true,
+      supportsVoiceSelection: false,
+      supportsSpeedControl: false
+    }
+  },
+  "minimax-tts": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: false,
+    audioCapability: {
+      supportedDurations: [30, 60, 120, 300, 600],
+      maxDuration: 600,
+      formats: ["mp3", "wav"],
+      supportsCustomLyrics: false,
+      supportsInstrumental: false,
+      supportsContinuation: false,
+      supportsStyleTags: false,
+      supportsVoiceSelection: true,
+      supportsSpeedControl: true
+    }
+  },
+  "minimax-music": {
+    supportedRatios: [],
+    supportedSizes: [],
+    supportsGrounding: false,
+    audioCapability: {
+      supportedDurations: [30, 60, 120],
+      maxDuration: 120,
+      formats: ["mp3"],
+      supportsCustomLyrics: true,
+      supportsInstrumental: true,
+      supportsContinuation: false,
+      supportsStyleTags: true,
+      supportsVoiceSelection: false,
+      supportsSpeedControl: false
+    }
+  },
+  // ============================================
+  // Common Proxy Models Constraints
+  // ============================================
+  "grok-video": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false
+  },
+  "grok-imagine-video": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false
+  },
+  "vidu-q3": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "1:1" /* SQUARE */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false
+  },
+  "vidu-q3-pro": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "1:1" /* SQUARE */],
+    supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+    supportsGrounding: false
+  },
+  "ray-3": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false
+  },
+  "runway-gen-4.5": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "1:1" /* SQUARE */],
+    supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+    supportsGrounding: false
+  },
+  "kling-2.5": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "1:1" /* SQUARE */],
+    supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+    supportsGrounding: false
+  },
+  "kling-2.6": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "1:1" /* SQUARE */],
+    supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+    supportsGrounding: false
+  },
+  "hailuo-02": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "1:1" /* SQUARE */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false
+  },
+  "wan-2.6-video": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false
+  },
+  "pixverse-v5.5": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "1:1" /* SQUARE */],
+    supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */],
+    supportsGrounding: false
+  },
+  "seedance-1.5": {
+    supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false
+  },
+  // Quick Flux variants (usually square or landscape)
+  "flux-schnell": {
+    supportedRatios: ["1:1" /* SQUARE */, "16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+    supportedSizes: ["1K" /* SIZE_1K */],
+    supportsGrounding: false
+  }
 };
+function getModelCapabilities(modelId) {
+  if (BUILTIN_MODEL_CAPABILITIES[modelId]) {
+    return BUILTIN_MODEL_CAPABILITIES[modelId];
+  }
+  const lowerModelId = modelId.toLowerCase();
+  if (lowerModelId.includes("gemini-3-pro") || lowerModelId.includes("nano-banana-pro")) {
+    return BUILTIN_MODEL_CAPABILITIES["gemini-3-pro-image-preview"];
+  }
+  if (lowerModelId.includes("gemini-3.1-flash") || lowerModelId.includes("nano-banana-2")) {
+    return BUILTIN_MODEL_CAPABILITIES["gemini-3.1-flash-image-preview"];
+  }
+  if (lowerModelId.includes("gemini-2.5-flash-image") || lowerModelId.includes("nano-banana")) {
+    return BUILTIN_MODEL_CAPABILITIES["gemini-2.5-flash-image"];
+  }
+  if (lowerModelId.includes("imagen")) {
+    return BUILTIN_MODEL_CAPABILITIES["imagen-4.0-generate-001"];
+  }
+  if (lowerModelId.includes("veo")) {
+    return BUILTIN_MODEL_CAPABILITIES["veo-3.0-generate-001"];
+  }
+  let fallbackCapabilities = null;
+  const ALL_IMAGE_RATIOS = ["auto" /* AUTO */, "1:1" /* SQUARE */, "16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "4:3" /* LANDSCAPE_4_3 */, "3:4" /* PORTRAIT_3_4 */];
+  const VIDEO_RATIOS = ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "1:1" /* SQUARE */];
+  if (lowerModelId.includes("midjourney") || lowerModelId.startsWith("mj-")) {
+    fallbackCapabilities = {
+      supportedRatios: ["1:1" /* SQUARE */, "16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */, "4:3" /* LANDSCAPE_4_3 */, "3:4" /* PORTRAIT_3_4 */, "21:9" /* LANDSCAPE_21_9 */],
+      supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+      supportsGrounding: false
+    };
+  } else if (lowerModelId.includes("flux")) {
+    let sizes = ["1K" /* SIZE_1K */];
+    if (lowerModelId.includes("max")) sizes = ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */];
+    else if (lowerModelId.includes("pro")) sizes = ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */];
+    fallbackCapabilities = {
+      supportedRatios: ALL_IMAGE_RATIOS,
+      supportedSizes: sizes,
+      supportsGrounding: false
+    };
+  } else if (lowerModelId.includes("kling")) {
+    fallbackCapabilities = {
+      supportedRatios: VIDEO_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+      supportsGrounding: false,
+      supportsVideoAudio: true
+    };
+  } else if (lowerModelId.includes("runway") || lowerModelId.includes("gen-3") || lowerModelId.includes("gen-4")) {
+    fallbackCapabilities = {
+      supportedRatios: VIDEO_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+      supportsGrounding: false,
+      supportsVideoAudio: true
+    };
+  } else if (lowerModelId.includes("luma") || lowerModelId.includes("dream-machine")) {
+    fallbackCapabilities = {
+      supportedRatios: VIDEO_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */],
+      supportsGrounding: false,
+      supportsVideoAudio: true
+    };
+  } else if (lowerModelId.includes("ideogram")) {
+    fallbackCapabilities = {
+      supportedRatios: ALL_IMAGE_RATIOS,
+      supportedSizes: lowerModelId.includes("v3") ? ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */] : ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+      supportsGrounding: false
+    };
+  } else if (lowerModelId.includes("wan")) {
+    fallbackCapabilities = {
+      supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+      supportedSizes: ["1K" /* SIZE_1K */],
+      supportsGrounding: false,
+      supportsVideoAudio: true
+    };
+  } else if (lowerModelId.includes("pixverse")) {
+    fallbackCapabilities = {
+      supportedRatios: VIDEO_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */],
+      supportsGrounding: false,
+      supportsVideoAudio: true
+    };
+  } else if (lowerModelId.includes("recraft")) {
+    fallbackCapabilities = {
+      supportedRatios: ALL_IMAGE_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */],
+      supportsGrounding: false
+    };
+  } else if (lowerModelId.includes("cogvideo")) {
+    fallbackCapabilities = {
+      supportedRatios: ["16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+      supportedSizes: ["1K" /* SIZE_1K */],
+      supportsGrounding: false,
+      supportsVideoAudio: true
+    };
+  } else if (lowerModelId.includes("minimax") || lowerModelId.includes("hailuo")) {
+    fallbackCapabilities = {
+      supportedRatios: VIDEO_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */],
+      supportsGrounding: false,
+      supportsVideoAudio: true
+    };
+  } else if (lowerModelId.includes("seedance") || lowerModelId.includes("vidu") || lowerModelId.includes("ray-") || lowerModelId.includes("jimeng")) {
+    fallbackCapabilities = {
+      supportedRatios: VIDEO_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */],
+      supportsGrounding: false,
+      supportsVideoAudio: true
+    };
+  } else if (lowerModelId.includes("dall-e") || lowerModelId.includes("dalle")) {
+    fallbackCapabilities = {
+      supportedRatios: ["1:1" /* SQUARE */, "16:9" /* LANDSCAPE_16_9 */, "9:16" /* PORTRAIT_9_16 */],
+      supportedSizes: ["1K" /* SIZE_1K */],
+      supportsGrounding: false
+    };
+  } else if (lowerModelId.includes("pika") || lowerModelId.includes("viggle") || lowerModelId.includes("higgsfield")) {
+    fallbackCapabilities = {
+      supportedRatios: VIDEO_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */],
+      supportsGrounding: false,
+      supportsVideoAudio: true
+    };
+  } else if (lowerModelId.includes("sora")) {
+    fallbackCapabilities = {
+      supportedRatios: VIDEO_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */],
+      supportsGrounding: false,
+      supportsVideoAudio: lowerModelId.includes("sora-2")
+    };
+  } else if (lowerModelId.includes("seedream") || lowerModelId.includes("imagen")) {
+    fallbackCapabilities = {
+      supportedRatios: ALL_IMAGE_RATIOS,
+      supportedSizes: lowerModelId.includes("4.0") || lowerModelId.includes("4") ? ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */] : ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */],
+      supportsGrounding: false
+    };
+  } else if (lowerModelId.includes("qwen-image") || lowerModelId.includes("gemini") || lowerModelId.includes("sdxl") || lowerModelId.includes("stable-diffusion") || lowerModelId.includes("gpt-4o") || lowerModelId.includes("gpt-image")) {
+    fallbackCapabilities = {
+      supportedRatios: ALL_IMAGE_RATIOS,
+      supportedSizes: ["1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */],
+      supportsGrounding: false
+    };
+  } else if (lowerModelId.includes("nano-banana")) {
+    if (lowerModelId.includes("2")) {
+      fallbackCapabilities = Object.assign({}, BUILTIN_MODEL_CAPABILITIES["gemini-3.1-flash-image-preview"]);
+    } else if (lowerModelId.includes("pro")) {
+      fallbackCapabilities = Object.assign({}, BUILTIN_MODEL_CAPABILITIES["gemini-3-pro-image-preview"]);
+    } else {
+      fallbackCapabilities = Object.assign({}, BUILTIN_MODEL_CAPABILITIES["gemini-2.5-flash-image"]);
+    }
+  }
+  if (!fallbackCapabilities) {
+    const proxyModels = keyManager.getAvailableProxyModels();
+    const proxyModel = proxyModels.find((m) => m.id === modelId);
+    if (proxyModel) {
+      fallbackCapabilities = {
+        supportedRatios: proxyModel.supportedAspectRatios,
+        supportedSizes: proxyModel.supportedSizes,
+        supportsGrounding: proxyModel.supportsGrounding
+      };
+    } else {
+      fallbackCapabilities = {
+        supportedRatios: Object.values(AspectRatio),
+        supportedSizes: Object.values(ImageSize),
+        supportsGrounding: false
+      };
+    }
+  }
+  if (lowerModelId.includes("-4k") || lowerModelId.endsWith("4k")) {
+    fallbackCapabilities.supportedSizes = ["4K" /* SIZE_4K */];
+  } else if (lowerModelId.includes("-2k") || lowerModelId.endsWith("2k")) {
+    fallbackCapabilities.supportedSizes = ["2K" /* SIZE_2K */];
+  } else if (lowerModelId.includes("-1k") || lowerModelId.endsWith("1k")) {
+    fallbackCapabilities.supportedSizes = ["1K" /* SIZE_1K */];
+  }
+  return fallbackCapabilities;
+}
+function modelSupportsGrounding(modelId) {
+  const caps = getModelCapabilities(modelId);
+  return caps?.supportsGrounding ?? false;
+}
+function getModelDisplayName(modelId, customLabel, provider) {
+  const lowerModelId = modelId.toLowerCase();
+  const isSystem = lowerModelId.includes("@system") || lowerModelId.includes("@12ai") || lowerModelId.includes("@systemproxy") || lowerModelId.includes("@google") || lowerModelId.includes("@openai") || lowerModelId.includes("@anthropic");
+  const baseId = lowerModelId.split("@")[0];
+  if (customLabel) return customLabel;
+  if (lowerModelId.includes("@")) {
+    const exactGlobalModel = keyManager.getGlobalModelList().find((model) => model.id === modelId);
+    if (exactGlobalModel?.name && exactGlobalModel.name.trim()) {
+      return exactGlobalModel.name.trim();
+    }
+    const exactAdminModel = adminModelService.getModel(modelId);
+    if (exactAdminModel?.displayName && exactAdminModel.displayName.trim()) {
+      return exactAdminModel.displayName.trim();
+    }
+  }
+  if (baseId.includes("gemini-3.1-flash-image") || baseId.includes("nano-banana-2")) return "Nano Banana 2";
+  if (baseId.includes("gemini-3-pro-image") || baseId.includes("nano-banana-pro")) return "Nano Banana Pro";
+  if (baseId.includes("gemini-2.5-flash-image") || baseId.includes("nano-banana") && !baseId.includes("chat")) return "Nano Banana";
+  if (isSystem && baseId.includes("gemini-2.5-flash")) return "Nano Banana Chat";
+  let cleanName = baseId;
+  if (baseId.includes("gemini-3.1-flash")) cleanName = "Gemini 3.1 Flash";
+  else if (baseId.includes("gemini-3-pro")) cleanName = "Gemini 3 Pro";
+  else if (baseId.includes("gemini-3-flash")) cleanName = "Gemini 3 Flash";
+  else if (baseId.includes("gemini-2.5-flash-image")) cleanName = "Gemini 2.5 Flash (Image)";
+  else if (baseId.includes("gemini-2.5-flash")) cleanName = "Gemini 2.5 Flash";
+  else if (baseId.includes("gemini-2.5-pro")) cleanName = "Gemini 2.5 Pro";
+  else if (baseId.includes("gemini-2.0") || baseId.includes("gemini-2-")) cleanName = "Gemini 2.0 Flash";
+  else if (lowerModelId.includes("imagen-4") && lowerModelId.includes("ultra")) cleanName = "Imagen 4 Ultra";
+  else if (lowerModelId.includes("imagen-4") && lowerModelId.includes("fast")) cleanName = "Imagen 4 Fast";
+  else if (lowerModelId.includes("imagen-4")) cleanName = "Imagen 4.0";
+  else if (lowerModelId.includes("imagen-3")) cleanName = "Imagen 3";
+  else if (lowerModelId.includes("veo-3.1") && lowerModelId.includes("fast")) cleanName = "Veo 3.1 Fast";
+  else if (lowerModelId.includes("veo-3.1")) cleanName = "Veo 3.1";
+  else if (lowerModelId.includes("veo-3") && lowerModelId.includes("fast")) cleanName = "Veo 3 Fast";
+  else if (lowerModelId.includes("veo-3")) cleanName = "Veo 3";
+  else if (lowerModelId.includes("veo-2") || lowerModelId.includes("veo")) cleanName = "Veo 2";
+  else cleanName = modelId.split("@")[0];
+  return cleanName.trim();
+}
+function getModelThemeColor(modelId) {
+  const lowerId = modelId.toLowerCase().split("@")[0];
+  if (lowerId.includes("gemini-3-pro")) return "text-purple-400 border-purple-400";
+  if (lowerId.includes("gemini-3-flash")) return "text-cyan-400 border-cyan-400";
+  if (lowerId.includes("gemini-2.5-pro")) return "text-amber-400 border-amber-400";
+  if (lowerId.includes("gemini-2.5-flash")) return "text-yellow-400 border-yellow-400";
+  if (lowerId.includes("gemini-1.5-pro")) return "text-indigo-400 border-indigo-400";
+  if (lowerId.includes("gemini-1.5-flash")) return "text-lime-400 border-lime-400";
+  if (lowerId.includes("imagen-4") && lowerId.includes("ultra")) return "text-rose-400 border-rose-400";
+  if (lowerId.includes("imagen")) return "text-blue-400 border-blue-400";
+  if (lowerId.includes("veo-3")) return "text-fuchsia-400 border-fuchsia-400";
+  if (lowerId.includes("veo")) return "text-violet-400 border-violet-400";
+  const palette = [
+    "text-red-400 border-red-400",
+    "text-orange-400 border-orange-400",
+    "text-amber-400 border-amber-400",
+    "text-yellow-400 border-yellow-400",
+    "text-lime-400 border-lime-400",
+    "text-green-400 border-green-400",
+    "text-emerald-400 border-emerald-400",
+    "text-teal-400 border-teal-400",
+    "text-cyan-400 border-cyan-400",
+    "text-sky-400 border-sky-400",
+    "text-blue-400 border-blue-400",
+    "text-indigo-400 border-indigo-400",
+    "text-violet-400 border-violet-400",
+    "text-purple-400 border-purple-400",
+    "text-fuchsia-400 border-fuchsia-400",
+    "text-pink-400 border-pink-400",
+    "text-rose-400 border-rose-400"
+  ];
+  let hash = 0;
+  for (let i = 0; i < lowerId.length; i += 1) {
+    hash = lowerId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return palette[Math.abs(hash) % palette.length];
+  return "text-slate-300 border-white/15";
+}
+function getModelDisplayInfo(model) {
+  const { id, name, label, provider, custom } = model;
+  const [baseId, suffix] = id.split("@");
+  const normalizedSuffix = String(suffix || "").trim().toLowerCase();
+  const isSystemRoute = normalizedSuffix === "system" || normalizedSuffix.startsWith("system_");
+  const decodedSuffix = (() => {
+    try {
+      return decodeURIComponent(String(suffix || ""));
+    } catch {
+      return String(suffix || "");
+    }
+  })();
+  let sourceType = "custom";
+  if (provider === "Google" && !suffix && !custom) {
+    sourceType = "official";
+  } else if (suffix) {
+    sourceType = "proxy";
+  } else if (baseId.includes("gemini") || baseId.includes("imagen") || baseId.includes("veo") || baseId.includes("nano-banana")) {
+    sourceType = "proxy";
+  }
+  let badgeText = "\u7B2C\u4E09\u65B9";
+  const themeColor = getModelThemeColor(baseId);
+  let badgeColor = themeColor;
+  let badgeStyle;
+  let nameStyle;
+  const configuredProviderColor = getConfiguredProviderColor(provider || decodedSuffix);
+  if (configuredProviderColor) {
+    badgeStyle = {
+      color: configuredProviderColor,
+      backgroundColor: hexToRgba(configuredProviderColor, 0.16),
+      borderColor: hexToRgba(configuredProviderColor, 0.32)
+    };
+  }
+  if (sourceType === "official") {
+    badgeText = "\u5B98\u65B9";
+  } else if (sourceType === "proxy") {
+    badgeText = isSystemRoute ? normalizedSuffix === "system" ? "\u6DF7\u5408" : provider && provider !== "SystemProxy" ? provider : decodedSuffix.replace(/^system_/i, "") : decodedSuffix || "\u4EE3\u7406";
+  }
+  let displayName;
+  const hasValidCustomLabel = label && label !== id && label !== baseId && label.toLowerCase() !== baseId.toLowerCase();
+  const hasValidCustomName = name && name !== id && name !== baseId && name.toLowerCase() !== baseId.toLowerCase();
+  if (hasValidCustomLabel) {
+    displayName = label;
+  } else if (hasValidCustomName) {
+    displayName = name;
+  } else {
+    const lowerBaseId = baseId.toLowerCase();
+    if (lowerBaseId.includes("gemini-3.1-flash-image") || lowerBaseId.includes("nano-banana-2")) {
+      displayName = "Nano Banana 2";
+    } else if (lowerBaseId.includes("gemini-3-pro-image") || lowerBaseId.includes("nano-banana-pro")) {
+      displayName = "Nano Banana Pro";
+    } else if (lowerBaseId.includes("gemini-2.5-flash-image") || lowerBaseId.includes("nano-banana") && !lowerBaseId.includes("chat")) {
+      displayName = "Nano Banana";
+    } else {
+      displayName = baseId;
+    }
+  }
+  return { displayName, sourceType, badgeText, badgeColor, badgeStyle, nameStyle };
+}
+var MODEL_DESCRIPTIONS = {
+  // ===== 一、最强综合大脑 (LLM 文本与推理) =====
+  "claude-opus-4": {
+    category: "LLM",
+    description: "\u4EE3\u7801\u4E0E\u590D\u6742\u903B\u8F91\u63A8\u7406\u80FD\u529B\u7684\u884C\u4E1A\u5929\u82B1\u677F",
+    rank: "Artificial Analysis Intelligence Index"
+  },
+  "claude-4-5-opus": {
+    category: "LLM",
+    description: "\u4EE3\u7801\u4E0E\u590D\u6742\u903B\u8F91\u63A8\u7406\u80FD\u529B\u7684\u884C\u4E1A\u5929\u82B1\u677F",
+    rank: "Artificial Analysis Intelligence Index"
+  },
+  "claude-4-6-opus": {
+    category: "LLM",
+    description: "\u4EE3\u7801\u4E0E\u590D\u6742\u903B\u8F91\u63A8\u7406\u80FD\u529B\u7684\u884C\u4E1A\u5929\u82B1\u677F",
+    rank: "Artificial Analysis Intelligence Index"
+  },
+  "gpt-5": {
+    category: "LLM",
+    description: "OpenAI \u6700\u65B0\u65D7\u8230\uFF0C\u7EFC\u5408\u80FD\u529B\u6700\u5F3A\uFF0C\u901A\u7528\u4EFB\u52A1\u8868\u73B0\u6781\u7A33",
+    rank: "GPT-5.2 Series"
+  },
+  "gpt-5.2": {
+    category: "LLM",
+    description: "OpenAI \u6700\u65B0\u65D7\u8230\uFF0C\u7EFC\u5408\u80FD\u529B\u6700\u5F3A\uFF0C\u901A\u7528\u4EFB\u52A1\u8868\u73B0\u6781\u7A33",
+    rank: "GPT-5.2 Series"
+  },
+  "gemini-3-pro": {
+    category: "LLM",
+    description: "\u5168\u7403\u9886\u5148\u7684\u591A\u6A21\u6001\u7406\u89E3\u3001\u667A\u80FD\u4F53\u529F\u80FD\u548C\u6C1B\u56F4\u7F16\u7A0B\u6A21\u578B",
+    rank: "Gemini 3 Pro"
+  },
+  "gemini-3-pro-preview": {
+    category: "LLM",
+    description: "\u5168\u7403\u9886\u5148\u7684\u591A\u6A21\u6001\u7406\u89E3\u3001\u667A\u80FD\u4F53\u529F\u80FD\u548C\u6C1B\u56F4\u7F16\u7A0B\u6A21\u578B",
+    rank: "Gemini 3 Pro"
+  },
+  "gemini-3.1-pro-preview": {
+    category: "LLM",
+    description: "\u6700\u9002\u5408\u9700\u8981\u5E7F\u6CDB\u7684\u4E16\u754C\u77E5\u8BC6\u548C\u8DE8\u6A21\u6001\u9AD8\u7EA7\u63A8\u7406\u7684\u590D\u6742\u4EFB\u52A1",
+    rank: "Gemini 3.1 Pro"
+  },
+  "kimi-k2.5": {
+    category: "LLM",
+    description: "\u64C5\u957F\u6DF1\u5EA6\u601D\u8003\u4E0E\u957F\u6587\u672C\u5206\u6790",
+    rank: "Kimi K2.5"
+  },
+  "glm-4.7": {
+    category: "LLM",
+    description: "\u6307\u4EE4\u9075\u5FAA\u5EA6\u9AD8\uFF0C\u4E2D\u6587\u8BED\u5883\u7406\u89E3\u4F73",
+    rank: "GLM-4.7"
+  },
+  "deepseek-v3.2": {
+    category: "LLM",
+    description: "\u6781\u5177\u6027\u4EF7\u6BD4\uFF0C\u63A8\u7406\u901F\u5EA6\u5FEB",
+    rank: "DeepSeek V3.2 / R1"
+  },
+  "deepseek-r1": {
+    category: "LLM",
+    description: "\u6781\u5177\u6027\u4EF7\u6BD4\uFF0C\u63A8\u7406\u6DF1\u5EA6\u5F3A",
+    rank: "DeepSeek V3.2 / R1"
+  },
+  "qwen-3-max": {
+    category: "LLM",
+    description: "\u6570\u5B66\u4E0E\u7F16\u7A0B\u5F3A\u5316",
+    rank: "Qwen 3 Max"
+  },
+  "grok-4": {
+    category: "LLM",
+    description: "\u5B9E\u65F6\u6027\u5F3A\uFF0C\u98CE\u683C\u7280\u5229",
+    rank: "Grok 4"
+  },
+  "minimax-m2.1": {
+    category: "LLM",
+    description: "\u5404\u65B9\u9762\u6027\u80FD\u5747\u8861\uFF0C\u54CD\u5E94\u8FC5\u901F",
+    rank: "MiniMax-M2.1"
+  },
+  "nova-2.0": {
+    category: "LLM",
+    description: "AWS \u751F\u6001\uFF0C\u9002\u5408\u4F01\u4E1A\u7EA7",
+    rank: "Nova 2.0"
+  },
+  "nova-2.0-pro": {
+    category: "LLM",
+    description: "AWS \u751F\u6001\uFF0C\u9002\u5408\u4F01\u4E1A\u7EA7",
+    rank: "Nova 2.0 Pro"
+  },
+  "nova-2.0-lite": {
+    category: "LLM",
+    description: "AWS \u751F\u6001\uFF0C\u9002\u5408\u4F01\u4E1A\u7EA7",
+    rank: "Nova 2.0 Lite"
+  },
+  "mimo-v2": {
+    category: "LLM",
+    description: "\u6781\u901F\u8F7B\u91CF\uFF0C\u8D85\u4F4E\u4EF7\u683C",
+    rank: "MiMo-V2"
+  },
+  "doubao-seed-code": {
+    category: "LLM",
+    description: "\u4E13\u6CE8\u4E8E\u4EE3\u7801\u751F\u6210\uFF0C\u6781\u4F4E\u6210\u672C",
+    rank: "Doubao Seed Code"
+  },
+  "ernie-5.0": {
+    category: "LLM",
+    description: "\u5177\u5907\u6DF1\u5EA6\u601D\u8003\u80FD\u529B",
+    rank: "ERNIE 5.0"
+  },
+  "gemini-3-flash": {
+    category: "LLM",
+    description: "\u5177\u6709\u4E13\u4E1A\u7EA7\u667A\u80FD\uFF0C\u4F46\u901F\u5EA6\u548C\u4EF7\u683C\u4E0E Flash \u76F8\u5F53",
+    rank: "Gemini 3 Flash"
+  },
+  "gemini-3-flash-preview": {
+    category: "LLM",
+    description: "\u5177\u6709\u4E13\u4E1A\u7EA7\u667A\u80FD\uFF0C\u4F46\u901F\u5EA6\u548C\u4EF7\u683C\u4E0E Flash \u76F8\u5F53",
+    rank: "Gemini 3 Flash"
+  },
+  "qwen-3": {
+    category: "LLM",
+    description: "\u6570\u5B66\u4E0E\u7F16\u7A0B\u80FD\u529B\u5F3A",
+    rank: "Qwen 3 \u7CFB\u5217"
+  },
+  "qwen-3-32b": {
+    category: "LLM",
+    description: "\u6570\u5B66\u4E0E\u7F16\u7A0B\u80FD\u529B\u5F3A",
+    rank: "Qwen 3 32B"
+  },
+  // ===== 二、视觉设计 (图片生成) =====
+  "gpt-image-1.5": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u6781\u5F3A\u8BED\u4E49\u7406\u89E3\uFF0C\u7CBE\u51C6\u8FD8\u539F\u8BBE\u8BA1",
+    rank: "Elo Score"
+  },
+  "gemini-3-pro-image-preview": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u6700\u9AD8\u54C1\u8D28\u751F\u56FE\uFF0C\u5229\u7528\u9AD8\u7EA7\u63A8\u7406\u9075\u5FAA\u590D\u6742\u7684\u6307\u4EE4\u5E76\u5448\u73B0\u9AD8\u4FDD\u771F\u6587\u672C",
+    rank: "Nano Banana Pro"
+  },
+  "nano-banana-pro": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u6700\u9AD8\u54C1\u8D28\u751F\u56FE\uFF0C\u5229\u7528\u9AD8\u7EA7\u63A8\u7406\u9075\u5FAA\u590D\u6742\u7684\u6307\u4EE4\u5E76\u5448\u73B0\u9AD8\u4FDD\u771F\u6587\u672C",
+    rank: "Nano Banana Pro"
+  },
+  "gemini-3.1-flash-image-preview": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u9488\u5BF9\u901F\u5EA6\u548C\u9AD8\u7528\u91CF\u4F18\u5316\uFF0C\u9AD8\u6548\u7387\u3001\u4EF7\u683C\u66F4\u4F4E",
+    rank: "Nano Banana 2"
+  },
+  "hunyuan-image-3": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u64C5\u957F\u4E1C\u65B9\u5BA1\u7F8E\u4E0E\u4E2D\u6587\u8BED\u4E49",
+    rank: "HunyuanImage 3.0"
+  },
+  "seedream-4.5": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u9AD8\u901F\u751F\u6210\uFF0C\u753B\u9762\u7A33\u5B9A\u4E30\u5BCC",
+    rank: "Seedream 4.5"
+  },
+  "flux.2-pro": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u5199\u5B9E\u5149\u5F71\u4E0E\u4EBA\u4F53\u7ED3\u6784\u6807\u6746",
+    rank: "FLUX.2 (Pro/Max)"
+  },
+  "flux.2-max": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u5199\u5B9E\u5149\u5F71\u4E0E\u4EBA\u4F53\u7ED3\u6784\u6807\u6746",
+    rank: "FLUX.2 (Pro/Max)"
+  },
+  "wan-2.6-image": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u64C5\u957F\u7535\u5546\u573A\u666F\u4E0E\u4EBA\u7269\u5C55\u793A",
+    rank: "Wan 2.6 Image"
+  },
+  "gemini-2.5-flash-image": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u4E13\u4E3A\u901F\u5EA6\u548C\u6548\u7387\u8BBE\u8BA1\uFF0C\u53EF\u5904\u7406\u9AD8\u6570\u636E\u91CF\u3001\u4F4E\u5EF6\u8FDF\u4EFB\u52A1",
+    rank: "Nano Banana"
+  },
+  "nano-banana": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u4E13\u4E3A\u901F\u5EA6\u548C\u6548\u7387\u8BBE\u8BA1\uFF0C\u53EF\u5904\u7406\u9AD8\u6570\u636E\u91CF\u3001\u4F4E\u5EF6\u8FDF\u4EFB\u52A1",
+    rank: "Nano Banana"
+  },
+  "reve-v1": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u7EFC\u5408\u80FD\u529B\u4F73\uFF0C\u8D28\u611F\u4F18\u79C0",
+    rank: "Reve V1"
+  },
+  "eigen-image": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u5C0F\u4F17\u9AD8\u5206\uFF0C\u7279\u5B9A\u98CE\u683C\u7A81\u51FA",
+    rank: "Eigen Image"
+  },
+  "qwen-image-edit": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u4E13\u7CBE\u56FE\u50CF\u5C40\u90E8\u91CD\u7ED8\u4E0E\u4FEE\u6539",
+    rank: "Qwen Image Edit"
+  },
+  "vidu-q2": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u5177\u5907\u89C6\u9891\u7EA7\u7684\u52A8\u6001\u6355\u6349\u611F",
+    rank: "Vidu Q2"
+  },
+  "imagen-4.0-ultra-generate-001": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "Google \u7684\u9AD8\u4FDD\u771F\u56FE\u7247\u751F\u6210\u6A21\u578B (Ultra)",
+    rank: "Imagen 4 Ultra"
+  },
+  "imagen-4.0-generate-001": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "Google \u7684\u9AD8\u4FDD\u771F\u56FE\u7247\u751F\u6210\u6A21\u578B (\u6807\u51C6)",
+    rank: "Imagen 4 Standard"
+  },
+  "imagen-4.0-fast-generate-001": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "Google \u7684\u9AD8\u4FDD\u771F\u56FE\u7247\u751F\u6210\u6A21\u578B (\u5FEB\u901F)",
+    rank: "Imagen 4 Fast"
+  },
+  "imagineart-1.5": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u827A\u672F\u98CE\u683C\u5F3A\u70C8\uFF0C\u9002\u5408\u63D2\u753B",
+    rank: "ImagineArt 1.5"
+  },
+  "firefly-image-5": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u65E0\u7248\u6743\u4E89\u8BAE\u5B89\u5168\u6A21\u578B",
+    rank: "Firefly Image 5"
+  },
+  "seedream-4.0": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u9AD8\u6027\u4EF7\u6BD4\u5FEB\u901F\u751F\u6210",
+    rank: "Seedream 4.0"
+  },
+  // ===== 三、动态视界 (视频生成) =====
+  "grok-video": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u52A8\u6001\u8FDE\u8D2F\u6027\u60CA\u8273\uFF0C\u699C\u5355\u7B2C\u4E00",
+    rank: "Grok Video"
+  },
+  "vidu-q3-pro": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u753B\u9762\u6D41\u7545\u5EA6\u9AD8\uFF0C\u751F\u6210\u901F\u5EA6\u5FEB",
+    rank: "Vidu Q3 Pro"
+  },
+  "runway-gen-4.5": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u4E13\u4E1A\u8FD0\u955C\u4E0E\u7B14\u5237\u63A7\u5236",
+    rank: "Runway Gen-4.5"
+  },
+  "kling-2.6": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u7269\u7406\u6A21\u62DF\u771F\u5B9E\uFF0C\u52A8\u4F5C\u6781\u5EA6\u8FDE\u8D2F",
+    rank: "Kling 2.6 (\u53EF\u7075)"
+  },
+  "veo-3": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u5B98\u65B9\u6309\u79D2\u8BA1\u8D39\uFF0C\u652F\u6301\u539F\u751F\u97F3\u6548",
+    rank: "Veo 3"
+  },
+  "veo-3.1-generate-preview": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u5B98\u65B9\u6309\u79D2\u8BA1\u8D39\uFF0C\u652F\u6301\u539F\u751F\u97F3\u6548",
+    rank: "Veo 3"
+  },
+  "veo-3.1-fast-generate-preview": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u5B98\u65B9\u6309\u79D2\u8BA1\u8D39\uFF0C\u652F\u6301\u539F\u751F\u97F3\u6548",
+    rank: "Veo 3 Fast"
+  },
+  "sora-2": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u957F\u89C6\u9891\u5927\u573A\u666F\u4E00\u81F4\u6027\u5F3A",
+    rank: "Sora 2"
+  },
+  "ray-3": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u64C5\u957F\u9AD8\u52A8\u6001\u4E0E\u5FEB\u8282\u594F\u955C\u5934",
+    rank: "Ray 3"
+  },
+  "grok-imagine-video": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u52A8\u6001\u8FDE\u8D2F\uFF0C\u591A\u9879\u699C\u5355\u7B2C\u4E00",
+    rank: "Grok Video"
+  },
+  "kling-2.5": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u7269\u7406\u6A21\u62DF\u771F\u5B9E\uFF0C\u4EBA\u7269\u52A8\u4F5C\u81EA\u7136",
+    rank: "Kling 2.5"
+  },
+  "seedance-1.5": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u8D85\u4F4E\u6210\u672C\uFF0C\u9002\u5408\u77ED\u89C6\u9891",
+    rank: "Seedance 1.5"
+  },
+  "hailuo-02": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u4EBA\u7269\u52A8\u6001\u751F\u6210\u6781\u5EA6\u81EA\u7136",
+    rank: "Hailuo 02"
+  },
+  "wan-2.6-video": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u9002\u5408\u7535\u5546\u6A21\u7279\u7EC6\u8282\u5C55\u793A",
+    rank: "Wan 2.6 Video"
+  },
+  "pixverse-v5.5": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u793E\u533A\u6D3B\u8DC3\uFF0C\u98CE\u683C\u5316\u591A\u6837",
+    rank: "PixVerse V5.5"
+  },
+  "vidu-q3": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u6D41\u7545\u5EA6\u4E0E\u6027\u4EF7\u6BD4\u5747\u8861\u63A8\u8350",
+    rank: "Vidu Q3"
+  },
+  // ===== GPT-Best DALL-E 格式绘图扩展 =====
+  "gpt-image-1": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u652F\u6301 Mask \u5C40\u90E8\u91CD\u7ED8\u4E0E\u9AD8\u7EA7\u4FEE\u590D",
+    rank: "GPT Image 1"
+  },
+  "gpt-4o-image": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u539F\u751F\u56FE\u50CF\u751F\u6210\u5F3A\u608D\u7406\u89E3",
+    rank: "GPT-4o Image"
+  },
+  "flux-kontext-pro": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u9AD8\u753B\u8D28\u53C2\u8003\u56FE\u751F\u6210\uFF0C\u98CE\u683C\u8FC1\u79FB\u5F3A",
+    rank: "Flux Kontext Pro"
+  },
+  "flux-kontext-max": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u6700\u9AD8\u753B\u8D28\u53C2\u8003\u56FE\u751F\u6210\uFF0C\u9876\u7EA7\u98CE\u683C\u8FC1\u79FB",
+    rank: "Flux Kontext Max"
+  },
+  "doubao-seedream-4-0-250828": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u652F\u6301\u591A\u53C2\u8003\u56FE\u5E76\u884C\uFF0C\u9AD8\u901F\u751F\u6210",
+    rank: "Doubao Seedream 4.0"
+  },
+  "doubao-seededit-3-0-i2i-250628": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u4E13\u7CBE\u56FE\u751F\u56FE\u7F16\u8F91\u6A21\u5F0F",
+    rank: "Doubao SeedEdit 3.0"
+  },
+  "qwen-image-edit-2509": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u652F\u6301\u591A\u56FE\u7EC4\u5408\u8F93\u5165\u7F16\u8F91",
+    rank: "Qwen Image Edit 2509"
+  },
+  "dall-e-3": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u6587\u672C\u7406\u89E3\u597D\uFF0C\u98CE\u683C\u591A\u6837\u5316",
+    rank: "DALL-E 3"
+  },
+  "recraftv3": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u77E2\u91CF\u56FE/\u56FE\u6807/\u6392\u7248\u7248\u5F0F\u4E13\u5BB6",
+    rank: "Recraft V3"
+  },
+  "ideogram-3.0": {
+    category: "\u56FE\u50CF\u751F\u6210",
+    description: "\u6392\u7248\u4E0E\u6781\u96BE\u6587\u672C\u5D4C\u5165\u6807\u6746",
+    rank: "Ideogram 3.0"
+  },
+  // ===== GPT-Best 视频模型扩展 =====
+  "seedance-1.0": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u5165\u95E8\u7EA7\u4F4E\u6210\u672C\u9996\u9009",
+    rank: "Seedance 1.0"
+  },
+  "higgsfield": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u652F\u6301\u52A8\u4F5C\u6A21\u677F\u4E0E\u9AD8\u7EA7\u9884\u8BBE",
+    rank: "Higgsfield"
+  },
+  "minimax-video": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u652F\u6301\u6587/\u5355\u56FE/\u591A\u9891\u53C2\u8003\u9891\u751F\u6210",
+    rank: "MiniMax Video"
+  },
+  "cogvideo": {
+    category: "\u89C6\u9891\u751F\u6210",
+    description: "\u56FD\u4EA7\u9AD8\u8D28\u91CF\u4E32\u884C\u6A21\u578B",
+    rank: "CogVideo"
+  },
+  // ===== GPT-Best 音频模型 =====
+  "suno-v4": {
+    category: "\u97F3\u9891\u751F\u6210",
+    description: "\u652F\u6301\u7247\u6BB5\u7EED\u5199\u3001\u98CE\u683C\u8FC1\u79FB\u7B49\u5168\u573A\u666F",
+    rank: "Suno V4"
+  },
+  "suno-v3.5": {
+    category: "\u97F3\u9891\u751F\u6210",
+    description: "\u9AD8\u6027\u4EF7\u6BD4\u6D41\u6D3E\u97F3\u4E50\u751F\u6210",
+    rank: "Suno V3.5"
+  },
+  "suno-v3": {
+    category: "\u97F3\u9891\u751F\u6210",
+    description: "\u5165\u95E8\u7EA7\u97F3\u4E50\u751F\u6210",
+    rank: "Suno V3"
+  },
+  "udio-v1": {
+    category: "\u97F3\u9891\u751F\u6210",
+    description: "\u9AD8\u4FDD\u771F\u97F3\u4E50\u751F\u6210\uFF0C\u652F\u6301\u591A\u79CD\u98CE\u683C",
+    rank: "Udio V1"
+  },
+  "riffusion": {
+    category: "\u97F3\u9891\u751F\u6210",
+    description: "\u57FA\u4E8E\u6269\u6563\u6A21\u578B\u7684\u97F3\u4E50\u751F\u6210",
+    rank: "Riffusion"
+  },
+  "minimax-tts": {
+    category: "\u97F3\u9891\u751F\u6210",
+    description: "\u591A\u8BED\u79CD\u9AD8\u8D28\u91CF\u4EBA\u58F0\u914D\u97F3",
+    rank: "MiniMax TTS"
+  },
+  "minimax-music": {
+    category: "\u97F3\u9891\u751F\u6210",
+    description: "MiniMax \u97F3\u4E50\u751F\u6210",
+    rank: "MiniMax Music"
+  },
+  "gemini-2.0-flash-audio": {
+    category: "\u97F3\u9891\u751F\u6210",
+    description: "Google Gemini \u591A\u6A21\u6001\u8BED\u97F3\u751F\u6210",
+    rank: "Gemini 2.0 Audio"
+  },
+  "lyria-realtime-v1": {
+    category: "\u97F3\u9891\u751F\u6210",
+    description: "Google Lyria \u5B9E\u65F6\u97F3\u4E50\u751F\u6210",
+    rank: "Lyria Music"
+  }
+};
+function getModelDescription(modelId) {
+  if (MODEL_DESCRIPTIONS[modelId]) {
+    return MODEL_DESCRIPTIONS[modelId];
+  }
+  const baseId = modelId.split("@")[0];
+  if (MODEL_DESCRIPTIONS[baseId]) {
+    return MODEL_DESCRIPTIONS[baseId];
+  }
+  return void 0;
+}
+
+// src/components/common/ModelLogo.tsx
+var import_react2 = __toESM(require_react(), 1);
+
+// src/assets/icons/google-gemini.svg
+var google_gemini_default = 'data:image/svg+xml,<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" transform="scale(-1, 1)"><path d="M119.22 95.12c-1.14 2.36-5.91 2.21-8.54 1.38c-6.72-2.12-10.9-7.9-10.9-7.9L65.14 73.9l-10.61-5.57s-2.06-3.5 2.06-6.17s7.01-2.87 7.01-2.87l11.94 7.6s7.71-6 15.54-6.91c7.48-.86 16.79 5.22 19.24 16.7c1.99 9.31 5.14 12.59 6.09 13.8c.95 1.22 3.79 2.62 2.81 4.64z" fill="%23ff8e00"></path><path d="M77.72 32.15C74.65 21.99 70.77 10.1 64.91 6.03c-5.19-3.6-10.24-2.95-12.64-1.38c0 0-4.33 1.77-5.47 6.24c-1.88 7.34.59 16.15 2.2 25.25c1.61 9.1 2.45 15.36 3.18 22.67c.07.66 12.16 22.18 12.16 22.18l9.65 5.17s7.37-15.94 7.26-18.19c-.1-2.26-1.29-28.4-3.53-35.82z" fill="%23ffe4b4"></path><path d="M52.55 66.94c-.13 2.43 5.73 21.8 5.73 21.8L74 86.14s11.15-6.6 11.46-18.57c.48-18.05-2.61-26.55-4.85-33.97c-3.08-10.14-9.94-23.5-15.75-27.64c-3.41-2.43-7.19-2.79-8.74-2.49c0 0 10.32 8.08 15.54 21.9s6.45 29.79 6.45 29.79s-3.84 2.83-12.9 4.13c-7 1.01-13.04-.7-13.04-.7s.55 5.27.38 8.35z" fill="%23ffe265"></path><path d="M85.33 83.75l-6.29-13.14l.34-4.68s1.34-3.93-7.03 2.42c-3.88 2.94-6.22 8.36-6.22 8.36s-1.18-2.92-5.32-6.78c-3.68-3.42-8.63-5.08-8.63-5.08s-10.28-2-11.4-1.13c-7.25 5.66-12.55 12.55-12.55 12.55L22.9 96.42l-8.86 5.43s2.42 3.54 5.92 2.22c2.73-1.03 6.11-4.12 7.93-8.01c2.5-5.35 7.75-15.47 10.42-18.67c5.16-6.16 10.22-8.41 13.99-6.62c4.29 2.03.86 22.29.86 22.29l-27.58 23.21l-.47 3.16s4.01 3.85 15.06 3.49s25.83-4.45 35.18-17.2c8.25-11.24 9.98-21.97 9.98-21.97z" fill="%23ffa726"></path><path d="M63.58 84.96c.24 5.55-3.22 13.96-11.22 20.97c-7.99 7.01-16.43 9.33-21.67 9.73c-3.8.29-4.93-1.88-4.93-1.88s7.66-7.05 13.35-12.7c5.4-5.37 11.28-16.65 12.56-21.84c1.28-5.19.12-8.68.12-8.68s2.48.69 6.13 4.35c3.54 3.55 5.53 6.97 5.66 10.05z" fill="%23ffb803"></path><path d="M29.45 118.74c-.83 1.93-3.68 2.01-4.92.94c-1.17-1.01-2.31-3.02-1.13-5.27c.78-1.48 3.34-1.89 4.78-.74s2.02 3.32 1.27 5.07z" fill="%23875b54"></path><path d="M23.76 97.84c-3.28 4.55-6.57 5.24-7.93 5.39c-1.19.14-2.49-1.38-2.34-2.78c.15-1.4 2.45-3.37 2.73-7.67c.28-4.3-.06-20.07 8.69-29.13c6.17-6.38 13.73-4.18 18.61-2.49c5.5 1.9 8.67 3.7 8.67 3.7s-4.5-.31-12.26 5.81c-4.51 3.56-7.16 8.45-9.66 14.06c-1.8 4.06-4.2 9.91-6.51 13.11z" fill="%23fee4b4"></path><path d="M111 109.58c-.92 1.84-3.17 2.98-5.16 2.89c-4.21-.18-8.05-2.35-12.3-7.83c-6.01-7.76-11.24-26.38-15.16-31.34c-2.65-3.35-5.95-5.01-5.95-5.01s1.82-1.54 3.64-2.49c1.82-.95 6.22-.5 6.22-.5l18.78 30.18l9.93 14.1z" fill="%23feb804"></path><path d="M100.39 68.46c4.12 5.89 4.66 11.06 5.28 16.34c.56 4.77 1.71 14.8 3.44 18.07c1.74 3.27 3.43 5.4 1.56 7.39s-7.37 1.28-11.32-3.02c-3.18-3.47-4.94-7.25-7.33-12.8c-2.39-5.55-5.91-18.65-10.48-24.57c-2.92-3.78-5.83-3.89-5.83-3.89s3.85-3.14 11.2-3.22c6.59-.07 10.05.8 13.48 5.7z" fill="%23ffe4b4"></path></svg>%0D%0A';
+
+// src/context/ThemeContext.tsx
+var import_react = __toESM(require_react(), 1);
+var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
+var ThemeContext = (0, import_react.createContext)(void 0);
+var useTheme = () => {
+  const context = (0, import_react.useContext)(ThemeContext);
+  if (context === void 0) {
+    throw new Error("useTheme must be used within a ThemeProvider");
+  }
+  return context;
+};
+
+// src/components/common/ModelLogo.tsx
+var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+var BRAND_LOGOS = [
+  {
+    match: ["gemini", "google", "nano-banana"],
+    descriptor: {
+      background: "linear-gradient(135deg, rgba(66,133,244,0.14), rgba(52,168,83,0.18))",
+      borderColor: "rgba(66,133,244,0.24)",
+      color: "#4285F4",
+      imageSrc: google_gemini_default,
+      label: "GM"
+    }
+  },
+  {
+    match: ["gpt", "openai", "o1", "o3", "o4"],
+    descriptor: {
+      background: "#111827",
+      borderColor: "rgba(17,24,39,0.35)",
+      color: "#FFFFFF",
+      label: "AI"
+    }
+  },
+  {
+    match: ["claude", "anthropic"],
+    descriptor: {
+      background: "#D97757",
+      borderColor: "rgba(217,119,87,0.35)",
+      color: "#FFF7ED",
+      label: "CL"
+    }
+  },
+  {
+    match: ["deepseek"],
+    descriptor: {
+      background: "#2563EB",
+      borderColor: "rgba(37,99,235,0.3)",
+      color: "#EFF6FF",
+      label: "DS"
+    }
+  },
+  {
+    match: ["qwen", "tongyi", "alibaba", "dashscope"],
+    descriptor: {
+      background: "#7C3AED",
+      borderColor: "rgba(124,58,237,0.28)",
+      color: "#F5F3FF",
+      label: "QW"
+    }
+  },
+  {
+    match: ["grok", "xai"],
+    descriptor: {
+      background: "#0F172A",
+      borderColor: "rgba(15,23,42,0.35)",
+      color: "#E2E8F0",
+      label: "GX"
+    }
+  },
+  {
+    match: ["llama", "meta"],
+    descriptor: {
+      background: "#2563EB",
+      borderColor: "rgba(37,99,235,0.3)",
+      color: "#DBEAFE",
+      label: "MT"
+    }
+  },
+  {
+    match: ["doubao"],
+    descriptor: {
+      background: "#0F766E",
+      borderColor: "rgba(15,118,110,0.28)",
+      color: "#CCFBF1",
+      label: "DB"
+    }
+  },
+  {
+    match: ["kimi", "moonshot"],
+    descriptor: {
+      background: "#DB2777",
+      borderColor: "rgba(219,39,119,0.25)",
+      color: "#FCE7F3",
+      label: "KM"
+    }
+  },
+  {
+    match: ["mistral"],
+    descriptor: {
+      background: "#EA580C",
+      borderColor: "rgba(234,88,12,0.25)",
+      color: "#FFF7ED",
+      label: "MS"
+    }
+  },
+  {
+    match: ["flux", "fal"],
+    descriptor: {
+      background: "#4F46E5",
+      borderColor: "rgba(79,70,229,0.3)",
+      color: "#EEF2FF",
+      label: "FX"
+    }
+  }
+];
+function getInitials(value) {
+  const cleaned = value.replace(/[@/_-]+/g, " ").replace(/[^a-zA-Z0-9 ]/g, " ").trim();
+  if (!cleaned) return "AI";
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+  }
+  return cleaned.slice(0, 2).toUpperCase();
+}
+function getFallbackDescriptor(modelId, provider) {
+  const source = (provider || modelId || "AI").trim();
+  const hueSeed = source.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360;
+  return {
+    background: `linear-gradient(135deg, hsla(${hueSeed}, 78%, 48%, 0.92), hsla(${(hueSeed + 36) % 360}, 72%, 42%, 0.92))`,
+    borderColor: `hsla(${hueSeed}, 78%, 48%, 0.24)`,
+    color: "#FFFFFF",
+    label: getInitials(source),
+    title: source
+  };
+}
+function neutralizeDescriptor(theme, descriptor) {
+  return {
+    ...descriptor,
+    background: theme === "light" ? "#F3F4F6" : "#1F2937",
+    borderColor: theme === "light" ? "rgba(209,213,219,0.9)" : "rgba(75,85,99,0.9)",
+    color: theme === "light" ? "#4B5563" : "#D1D5DB"
+  };
+}
+function resolveLogoDescriptor(modelId, provider) {
+  const lowerModelId = modelId.toLowerCase();
+  const lowerProvider = (provider || "").toLowerCase();
+  for (const item of BRAND_LOGOS) {
+    if (item.match.some((keyword) => lowerModelId.includes(keyword) || lowerProvider.includes(keyword))) {
+      return {
+        ...item.descriptor,
+        title: provider || modelId
+      };
+    }
+  }
+  return getFallbackDescriptor(modelId, provider);
+}
+var ModelLogo = ({
+  modelId,
+  provider,
+  size = 18,
+  active = true,
+  className = ""
+}) => {
+  const { resolvedTheme } = useTheme();
+  const descriptor = (0, import_react2.useMemo)(() => {
+    const resolved = resolveLogoDescriptor(modelId, provider);
+    const shouldUseBrandStyle = resolvedTheme === "dark" || active;
+    return shouldUseBrandStyle ? resolved : neutralizeDescriptor(resolvedTheme, resolved);
+  }, [active, modelId, provider, resolvedTheme]);
+  const innerSize = Math.max(10, Math.round(size * 0.72));
+  const textSize = Math.max(9, Math.round(size * 0.42));
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    "span",
+    {
+      title: descriptor.title,
+      className: `inline-flex items-center justify-center overflow-hidden transition-all duration-200 ${active ? "" : "opacity-50"} ${className}`,
+      style: {
+        width: size,
+        height: size,
+        borderRadius: Math.max(6, Math.round(size * 0.34)),
+        background: descriptor.background,
+        border: `1px solid ${descriptor.borderColor}`,
+        color: descriptor.color,
+        boxShadow: resolvedTheme === "dark" ? "0 6px 18px rgba(15, 23, 42, 0.18)" : "0 4px 14px rgba(15, 23, 42, 0.08)"
+      },
+      children: descriptor.imageSrc ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "img",
+        {
+          src: descriptor.imageSrc,
+          alt: descriptor.title,
+          style: { width: innerSize, height: innerSize },
+          className: "object-contain"
+        }
+      ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "span",
+        {
+          style: {
+            fontSize: textSize,
+            fontWeight: 700,
+            letterSpacing: "0.02em",
+            lineHeight: 1
+          },
+          children: descriptor.label
+        }
+      )
+    }
+  );
+};
+var ModelLogo_default = ModelLogo;
+
+// src/utils/imageUtils.ts
+async function calculateImageHash(data) {
+  if (typeof crypto !== "undefined" && crypto.subtle && crypto.subtle.digest) {
+    try {
+      const msgBuffer = new TextEncoder().encode(data);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (error) {
+      console.warn("[imageUtils] crypto.subtle.digest failed, falling back", error);
+    }
+  }
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    const char = data.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return (hash >>> 0).toString(16) + "_" + data.length.toString(16);
+}
+async function compressImageFile(file, maxDimension = 2048, quality = 0.85) {
+  if (file.type === "image/gif" || file.type === "image/svg+xml") {
+    return file;
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width <= maxDimension && height <= maxDimension && file.size < 2 * 1024 * 1024) {
+          resolve(file);
+          return;
+        }
+        if (width > height) {
+          if (width > maxDimension) {
+            height = Math.round(height * maxDimension / width);
+            width = maxDimension;
+          }
+        } else {
+          if (height > maxDimension) {
+            width = Math.round(width * maxDimension / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const outMime = file.type === "image/png" && file.size < 3 * 1024 * 1024 ? "image/png" : "image/jpeg";
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const newFile = new File([blob], file.name || "compressed_image.jpg", {
+                type: blob.type,
+                lastModified: Date.now()
+              });
+              resolve(newFile);
+            } else {
+              resolve(file);
+            }
+          },
+          outMime,
+          quality
+        );
+      };
+      img.onerror = () => resolve(file);
+      if (e.target?.result) {
+        img.src = e.target.result;
+      } else {
+        resolve(file);
+      }
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
+// src/components/layout/PromptBar.tsx
+init_imageStorage();
+init_fileSystemService();
+init_notificationService();
+
+// src/components/image/ImageOptionsPanel.tsx
+var import_react5 = __toESM(require_react(), 1);
+init_types();
+
+// node_modules/lucide-react/dist/esm/createLucideIcon.js
+var import_react4 = __toESM(require_react());
+
+// node_modules/lucide-react/dist/esm/shared/src/utils.js
+var toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+var toCamelCase = (string) => string.replace(
+  /^([A-Z])|[\s-_]+(\w)/g,
+  (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
+);
+var toPascalCase = (string) => {
+  const camelCase = toCamelCase(string);
+  return camelCase.charAt(0).toUpperCase() + camelCase.slice(1);
+};
+var mergeClasses = (...classes) => classes.filter((className, index, array) => {
+  return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
+}).join(" ").trim();
+var hasA11yProp = (props) => {
+  for (const prop in props) {
+    if (prop.startsWith("aria-") || prop === "role" || prop === "title") {
+      return true;
+    }
+  }
+};
+
+// node_modules/lucide-react/dist/esm/Icon.js
+var import_react3 = __toESM(require_react());
+
+// node_modules/lucide-react/dist/esm/defaultAttributes.js
+var defaultAttributes = {
+  xmlns: "http://www.w3.org/2000/svg",
+  width: 24,
+  height: 24,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round"
+};
+
+// node_modules/lucide-react/dist/esm/Icon.js
+var Icon = (0, import_react3.forwardRef)(
+  ({
+    color = "currentColor",
+    size = 24,
+    strokeWidth = 2,
+    absoluteStrokeWidth,
+    className = "",
+    children,
+    iconNode,
+    ...rest
+  }, ref) => (0, import_react3.createElement)(
+    "svg",
+    {
+      ref,
+      ...defaultAttributes,
+      width: size,
+      height: size,
+      stroke: color,
+      strokeWidth: absoluteStrokeWidth ? Number(strokeWidth) * 24 / Number(size) : strokeWidth,
+      className: mergeClasses("lucide", className),
+      ...!children && !hasA11yProp(rest) && { "aria-hidden": "true" },
+      ...rest
+    },
+    [
+      ...iconNode.map(([tag, attrs]) => (0, import_react3.createElement)(tag, attrs)),
+      ...Array.isArray(children) ? children : [children]
+    ]
+  )
+);
+
+// node_modules/lucide-react/dist/esm/createLucideIcon.js
+var createLucideIcon = (iconName, iconNode) => {
+  const Component = (0, import_react4.forwardRef)(
+    ({ className, ...props }, ref) => (0, import_react4.createElement)(Icon, {
+      ref,
+      iconNode,
+      className: mergeClasses(
+        `lucide-${toKebabCase(toPascalCase(iconName))}`,
+        `lucide-${iconName}`,
+        className
+      ),
+      ...props
+    })
+  );
+  Component.displayName = toPascalCase(iconName);
+  return Component;
+};
+
+// node_modules/lucide-react/dist/esm/icons/arrow-up.js
+var __iconNode = [
+  ["path", { d: "m5 12 7-7 7 7", key: "hav0vg" }],
+  ["path", { d: "M12 19V5", key: "x0mq9r" }]
+];
+var ArrowUp = createLucideIcon("arrow-up", __iconNode);
+
+// node_modules/lucide-react/dist/esm/icons/camera.js
+var __iconNode2 = [
+  [
+    "path",
+    {
+      d: "M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z",
+      key: "18u6gg"
+    }
+  ],
+  ["circle", { cx: "12", cy: "13", r: "3", key: "1vg3eu" }]
+];
+var Camera = createLucideIcon("camera", __iconNode2);
+
+// node_modules/lucide-react/dist/esm/icons/eraser.js
+var __iconNode3 = [
+  [
+    "path",
+    {
+      d: "M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21",
+      key: "g5wo59"
+    }
+  ],
+  ["path", { d: "m5.082 11.09 8.828 8.828", key: "1wx5vj" }]
+];
+var Eraser = createLucideIcon("eraser", __iconNode3);
+
+// node_modules/lucide-react/dist/esm/icons/fullscreen.js
+var __iconNode4 = [
+  ["path", { d: "M3 7V5a2 2 0 0 1 2-2h2", key: "aa7l1z" }],
+  ["path", { d: "M17 3h2a2 2 0 0 1 2 2v2", key: "4qcy5o" }],
+  ["path", { d: "M21 17v2a2 2 0 0 1-2 2h-2", key: "6vwrx8" }],
+  ["path", { d: "M7 21H5a2 2 0 0 1-2-2v-2", key: "ioqczr" }],
+  ["rect", { width: "10", height: "8", x: "7", y: "8", rx: "1", key: "vys8me" }]
+];
+var Fullscreen = createLucideIcon("fullscreen", __iconNode4);
+
+// node_modules/lucide-react/dist/esm/icons/layout-dashboard.js
+var __iconNode5 = [
+  ["rect", { width: "7", height: "9", x: "3", y: "3", rx: "1", key: "10lvy0" }],
+  ["rect", { width: "7", height: "5", x: "14", y: "3", rx: "1", key: "16une8" }],
+  ["rect", { width: "7", height: "9", x: "14", y: "12", rx: "1", key: "1hutg5" }],
+  ["rect", { width: "7", height: "5", x: "3", y: "16", rx: "1", key: "ldoo1y" }]
+];
+var LayoutDashboard = createLucideIcon("layout-dashboard", __iconNode5);
+
+// node_modules/lucide-react/dist/esm/icons/loader-circle.js
+var __iconNode6 = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+var LoaderCircle = createLucideIcon("loader-circle", __iconNode6);
+
+// node_modules/lucide-react/dist/esm/icons/mic.js
+var __iconNode7 = [
+  ["path", { d: "M12 19v3", key: "npa21l" }],
+  ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
+  ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
+];
+var Mic = createLucideIcon("mic", __iconNode7);
+
+// node_modules/lucide-react/dist/esm/icons/pen-tool.js
+var __iconNode8 = [
+  [
+    "path",
+    {
+      d: "M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z",
+      key: "nt11vn"
+    }
+  ],
+  [
+    "path",
+    {
+      d: "m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18",
+      key: "15qc1e"
+    }
+  ],
+  ["path", { d: "m2.3 2.3 7.286 7.286", key: "1wuzzi" }],
+  ["circle", { cx: "11", cy: "11", r: "2", key: "xmgehs" }]
+];
+var PenTool = createLucideIcon("pen-tool", __iconNode8);
+
+// node_modules/lucide-react/dist/esm/icons/redo-2.js
+var __iconNode9 = [
+  ["path", { d: "m15 14 5-5-5-5", key: "12vg1m" }],
+  ["path", { d: "M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13", key: "6uklza" }]
+];
+var Redo2 = createLucideIcon("redo-2", __iconNode9);
+
+// node_modules/lucide-react/dist/esm/icons/sparkles.js
+var __iconNode10 = [
+  [
+    "path",
+    {
+      d: "M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z",
+      key: "1s2grr"
+    }
+  ],
+  ["path", { d: "M20 2v4", key: "1rf3ol" }],
+  ["path", { d: "M22 4h-4", key: "gwowj6" }],
+  ["circle", { cx: "4", cy: "20", r: "2", key: "6kqj1y" }]
+];
+var Sparkles = createLucideIcon("sparkles", __iconNode10);
+
+// node_modules/lucide-react/dist/esm/icons/square.js
+var __iconNode11 = [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
+];
+var Square = createLucideIcon("square", __iconNode11);
+
+// node_modules/lucide-react/dist/esm/icons/undo-2.js
+var __iconNode12 = [
+  ["path", { d: "M9 14 4 9l5-5", key: "102s5s" }],
+  ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11", key: "f3b9sd" }]
+];
+var Undo2 = createLucideIcon("undo-2", __iconNode12);
+
+// node_modules/lucide-react/dist/esm/icons/video.js
+var __iconNode13 = [
+  [
+    "path",
+    {
+      d: "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5",
+      key: "ftymec"
+    }
+  ],
+  ["rect", { x: "2", y: "6", width: "14", height: "12", rx: "2", key: "158x01" }]
+];
+var Video = createLucideIcon("video", __iconNode13);
+
+// node_modules/lucide-react/dist/esm/icons/volume-off.js
+var __iconNode14 = [
+  ["path", { d: "M16 9a5 5 0 0 1 .95 2.293", key: "1fgyg8" }],
+  ["path", { d: "M19.364 5.636a9 9 0 0 1 1.889 9.96", key: "l3zxae" }],
+  ["path", { d: "m2 2 20 20", key: "1ooewy" }],
+  [
+    "path",
+    {
+      d: "m7 7-.587.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298V11",
+      key: "1gbwow"
+    }
+  ],
+  ["path", { d: "M9.828 4.172A.686.686 0 0 1 11 4.657v.686", key: "s2je0y" }]
+];
+var VolumeOff = createLucideIcon("volume-off", __iconNode14);
+
+// node_modules/lucide-react/dist/esm/icons/volume-2.js
+var __iconNode15 = [
+  [
+    "path",
+    {
+      d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",
+      key: "uqj9uw"
+    }
+  ],
+  ["path", { d: "M16 9a5 5 0 0 1 0 6", key: "1q6k2b" }],
+  ["path", { d: "M19.364 18.364a9 9 0 0 0 0-12.728", key: "ijwkga" }]
+];
+var Volume2 = createLucideIcon("volume-2", __iconNode15);
+
+// node_modules/lucide-react/dist/esm/icons/wand-sparkles.js
+var __iconNode16 = [
+  [
+    "path",
+    {
+      d: "m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72",
+      key: "ul74o6"
+    }
+  ],
+  ["path", { d: "m14 7 3 3", key: "1r5n42" }],
+  ["path", { d: "M5 6v4", key: "ilb8ba" }],
+  ["path", { d: "M19 14v4", key: "blhpug" }],
+  ["path", { d: "M10 2v2", key: "7u0qdc" }],
+  ["path", { d: "M7 8H3", key: "zfb6yr" }],
+  ["path", { d: "M21 16h-4", key: "1cnmox" }],
+  ["path", { d: "M11 3H9", key: "1obp7u" }]
+];
+var WandSparkles = createLucideIcon("wand-sparkles", __iconNode16);
+
+// node_modules/lucide-react/dist/esm/icons/x.js
+var __iconNode17 = [
+  ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
+  ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
+];
+var X = createLucideIcon("x", __iconNode17);
+
+// node_modules/lucide-react/dist/esm/icons/zoom-in.js
+var __iconNode18 = [
+  ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }],
+  ["line", { x1: "21", x2: "16.65", y1: "21", y2: "16.65", key: "13gj7c" }],
+  ["line", { x1: "11", x2: "11", y1: "8", y2: "14", key: "1vmskp" }],
+  ["line", { x1: "8", x2: "14", y1: "11", y2: "11", key: "durymu" }]
+];
+var ZoomIn = createLucideIcon("zoom-in", __iconNode18);
+
+// node_modules/lucide-react/dist/esm/icons/zoom-out.js
+var __iconNode19 = [
+  ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }],
+  ["line", { x1: "21", x2: "16.65", y1: "21", y2: "16.65", key: "13gj7c" }],
+  ["line", { x1: "8", x2: "14", y1: "11", y2: "11", key: "durymu" }]
+];
+var ZoomOut = createLucideIcon("zoom-out", __iconNode19);
+
+// src/components/image/ImageOptionsPanel.tsx
+var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
+var SECTION_STYLE = {
+  background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-tertiary) 92%, transparent) 0%, color-mix(in srgb, var(--bg-secondary) 88%, transparent) 100%)",
+  borderColor: "var(--border-default)"
+};
+var TITLE_STYLE = {
+  color: "var(--text-secondary)"
+};
+var PANEL_STYLE = {
+  background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-overlay) 94%, transparent) 0%, color-mix(in srgb, var(--bg-base) 96%, transparent) 100%)",
+  borderColor: "var(--border-default)",
+  boxShadow: "var(--shadow-lg), inset 0 1px 0 color-mix(in srgb, var(--text-primary) 8%, transparent)"
+};
+var SEGMENT_STYLE = {
+  backgroundColor: "color-mix(in srgb, var(--bg-input) 76%, transparent)"
+};
+var ACTIVE_BUTTON_STYLE = {
+  borderColor: "var(--border-strong)",
+  backgroundColor: "color-mix(in srgb, var(--bg-hover) 88%, transparent)",
+  color: "var(--text-primary)"
+};
+var INACTIVE_BUTTON_STYLE = {
+  borderColor: "var(--border-subtle)",
+  backgroundColor: "color-mix(in srgb, var(--bg-secondary) 72%, transparent)",
+  color: "var(--text-secondary)"
+};
+var getRatioDimensions = (ratio) => {
+  const maxSize = 14;
+  const ratioMap = {
+    ["1:1" /* SQUARE */]: [1, 1],
+    ["1:8" /* PORTRAIT_1_8 */]: [1, 8],
+    ["1:4" /* PORTRAIT_1_4 */]: [1, 4],
+    ["2:3" /* PORTRAIT_2_3 */]: [2, 3],
+    ["3:4" /* PORTRAIT_3_4 */]: [3, 4],
+    ["4:5" /* PORTRAIT_4_5 */]: [4, 5],
+    ["9:16" /* PORTRAIT_9_16 */]: [9, 16],
+    ["9:21" /* PORTRAIT_9_21 */]: [9, 21],
+    ["3:2" /* LANDSCAPE_3_2 */]: [3, 2],
+    ["4:3" /* LANDSCAPE_4_3 */]: [4, 3],
+    ["5:4" /* LANDSCAPE_5_4 */]: [5, 4],
+    ["16:9" /* LANDSCAPE_16_9 */]: [16, 9],
+    ["21:9" /* LANDSCAPE_21_9 */]: [21, 9],
+    ["4:1" /* LANDSCAPE_4_1 */]: [4, 1],
+    ["8:1" /* LANDSCAPE_8_1 */]: [8, 1]
+  };
+  const [w, h] = ratioMap[ratio] || [1, 1];
+  if (w > h) {
+    return { width: maxSize, height: maxSize * h / w };
+  }
+  return { height: maxSize, width: maxSize * w / h };
+};
+var getRatioIcon = (ratio) => {
+  const dimensions = getRatioDimensions(ratio);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "flex items-center justify-center", style: { width: 14, height: 14 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+    "div",
+    {
+      className: "rounded-[2px] border-[1.5px] border-current",
+      style: { width: dimensions.width, height: dimensions.height }
+    }
+  ) });
+};
+var ImageOptionsPanel = ({
+  aspectRatio,
+  imageSize,
+  networkOptions = [],
+  showThinkingMode = false,
+  thinkingMode = "minimal",
+  onThinkingModeChange,
+  onAspectRatioChange,
+  onImageSizeChange,
+  availableRatios = Object.values(AspectRatio),
+  availableSizes = Object.values(ImageSize)
+}) => {
+  const uniqueRatios = (0, import_react5.useMemo)(() => Array.from(new Set(availableRatios)), [availableRatios]);
+  const gridRatios = (0, import_react5.useMemo)(() => {
+    const explicitRatios = uniqueRatios.filter((ratio) => ratio !== "auto" /* AUTO */);
+    return explicitRatios.sort((left, right) => {
+      const [leftWidth, leftHeight] = left.split(":").map(Number);
+      const [rightWidth, rightHeight] = right.split(":").map(Number);
+      const leftRatio = leftWidth / leftHeight;
+      const rightRatio = rightWidth / rightHeight;
+      return rightRatio - leftRatio;
+    });
+  }, [uniqueRatios]);
+  const displaySizes = (0, import_react5.useMemo)(() => {
+    const sizeOrder = ["0.5K" /* SIZE_05K */, "1K" /* SIZE_1K */, "2K" /* SIZE_2K */, "4K" /* SIZE_4K */];
+    return sizeOrder.filter((size, index) => availableSizes.includes(size) && sizeOrder.indexOf(size) === index);
+  }, [availableSizes]);
+  const scrollContainerRef = (0, import_react5.useRef)(null);
+  const handleWheel = (event) => {
+    if (scrollContainerRef.current && event.deltaY !== 0) {
+      scrollContainerRef.current.scrollLeft += event.deltaY;
+    }
+  };
+  const sizeSlide = (0, import_react5.useMemo)(() => {
+    if (displaySizes.length === 0) {
+      return { left: "0%", width: "0%" };
+    }
+    const index = displaySizes.indexOf(imageSize);
+    if (index === -1) {
+      return { left: "2px", width: `calc(${100 / displaySizes.length}% - 4px)` };
+    }
+    const buttonWidthPercent = 100 / displaySizes.length;
+    return {
+      left: `calc(${buttonWidthPercent * index}% + 2px)`,
+      width: `calc(${buttonWidthPercent}% - 4px)`
+    };
+  }, [displaySizes, imageSize]);
+  const hasAuto = uniqueRatios.includes("auto" /* AUTO */);
+  const isOddCount = gridRatios.length % 2 !== 0;
+  const autoInGrid = hasAuto && isOddCount;
+  const totalGridItems = autoInGrid ? gridRatios.length + 1 : gridRatios.length;
+  const useDoubleRow = totalGridItems > 3 || hasAuto && !autoInGrid;
+  const columns = useDoubleRow ? Math.ceil(totalGridItems / 2) : Math.max(1, totalGridItems);
+  const needsScroll = useDoubleRow ? columns > 5 : columns > 4;
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+    "div",
+    {
+      className: "custom-scrollbar overflow-y-auto rounded-[28px] border p-4",
+      style: {
+        width: "min(420px, calc(100vw - 24px))",
+        maxHeight: "min(60vh, 520px)",
+        ...PANEL_STYLE
+      },
+      children: [
+        networkOptions.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("section", { className: "mb-3 rounded-2xl border p-3", style: SECTION_STYLE, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "mb-2 text-sm font-medium", style: TITLE_STYLE, children: "\u641C\u7D22\u589E\u5F3A" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "grid grid-cols-1 gap-2", children: networkOptions.map((option) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+            "button",
+            {
+              type: "button",
+              onClick: option.onToggle,
+              className: "flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition-colors",
+              style: option.active ? ACTIVE_BUTTON_STYLE : INACTIVE_BUTTON_STYLE,
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: option.label }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "text-xs", children: option.active ? "\u5DF2\u5F00\u542F" : "\u672A\u5F00\u542F" })
+              ]
+            },
+            option.id
+          )) })
+        ] }) : null,
+        showThinkingMode ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("section", { className: "mb-3 rounded-2xl border p-3", style: SECTION_STYLE, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "mb-2 text-sm font-medium", style: TITLE_STYLE, children: "\u601D\u8003\u6A21\u5F0F" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "grid grid-cols-2 gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => onThinkingModeChange?.("minimal"),
+                className: "rounded-xl border px-3 py-2 text-sm transition-colors",
+                style: thinkingMode === "minimal" ? ACTIVE_BUTTON_STYLE : {
+                  ...INACTIVE_BUTTON_STYLE,
+                  color: "var(--text-tertiary)"
+                },
+                children: "\u5FEB\u901F (minimal)"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => onThinkingModeChange?.("high"),
+                className: "rounded-xl border px-3 py-2 text-sm transition-colors",
+                style: thinkingMode === "high" ? ACTIVE_BUTTON_STYLE : {
+                  ...INACTIVE_BUTTON_STYLE,
+                  color: "var(--text-tertiary)"
+                },
+                children: "\u6DF1\u5165 (high)"
+              }
+            )
+          ] })
+        ] }) : null,
+        displaySizes.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("section", { className: "mb-3 rounded-2xl border p-3", style: SECTION_STYLE, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "mb-2 text-sm font-medium", style: TITLE_STYLE, children: "\u753B\u8D28" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "relative flex rounded-xl p-0.5", style: SEGMENT_STYLE, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "div",
+              {
+                className: "absolute bottom-0.5 top-0.5 rounded-[10px] transition-all duration-200 ease-out",
+                style: {
+                  backgroundColor: "color-mix(in srgb, var(--bg-hover) 92%, transparent)",
+                  left: sizeSlide.left,
+                  width: sizeSlide.width
+                }
+              }
+            ),
+            displaySizes.map((size) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => onImageSizeChange(size),
+                className: "relative z-10 flex-1 rounded-[10px] px-2 py-2 text-sm transition-colors duration-200",
+                style: {
+                  color: imageSize === size ? "var(--text-primary)" : "var(--text-tertiary)"
+                },
+                children: size
+              },
+              size
+            ))
+          ] })
+        ] }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("section", { className: "rounded-2xl border p-3", style: SECTION_STYLE, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "mb-2 text-sm font-medium", style: TITLE_STYLE, children: "\u6BD4\u4F8B" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+            "div",
+            {
+              className: "flex gap-1.5 overflow-hidden rounded-xl p-1.5",
+              style: SEGMENT_STYLE,
+              children: [
+                hasAuto && !autoInGrid ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => onAspectRatioChange("auto" /* AUTO */),
+                    className: "flex shrink-0 flex-col items-center justify-center gap-1 rounded-xl transition-all duration-200",
+                    style: {
+                      width: "58px",
+                      height: useDoubleRow ? "100px" : "48px",
+                      color: aspectRatio === "auto" /* AUTO */ ? "var(--text-primary)" : "var(--text-tertiary)",
+                      backgroundColor: aspectRatio === "auto" /* AUTO */ ? "color-mix(in srgb, var(--bg-hover) 92%, transparent)" : "transparent"
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Fullscreen, { size: 18 }),
+                      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "text-xs", children: "\u81EA\u9002\u5E94" })
+                    ]
+                  }
+                ) : null,
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+                  "div",
+                  {
+                    ref: scrollContainerRef,
+                    onWheel: handleWheel,
+                    className: `grid min-w-0 flex-1 overflow-y-hidden ${needsScroll ? "custom-scrollbar overflow-x-auto" : "overflow-x-hidden"}`,
+                    style: {
+                      gridTemplateColumns: needsScroll ? `repeat(${columns}, minmax(54px, 1fr))` : `repeat(${columns}, minmax(0, 1fr))`,
+                      gridTemplateRows: useDoubleRow ? "repeat(2, 48px)" : "48px",
+                      gap: "4px",
+                      paddingBottom: needsScroll ? "4px" : "0",
+                      WebkitOverflowScrolling: "touch",
+                      overscrollBehaviorX: "contain"
+                    },
+                    children: [
+                      autoInGrid ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+                        "button",
+                        {
+                          type: "button",
+                          onClick: () => onAspectRatioChange("auto" /* AUTO */),
+                          className: "flex flex-col items-center justify-center gap-1 rounded-xl transition-all duration-200",
+                          style: {
+                            height: "46px",
+                            padding: "4px",
+                            color: aspectRatio === "auto" /* AUTO */ ? "var(--text-primary)" : "var(--text-tertiary)",
+                            backgroundColor: aspectRatio === "auto" /* AUTO */ ? "color-mix(in srgb, var(--bg-hover) 92%, transparent)" : "transparent"
+                          },
+                          children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Fullscreen, { size: 14 }),
+                            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "whitespace-nowrap text-[10px] leading-none", children: "\u81EA\u9002\u5E94" })
+                          ]
+                        }
+                      ) : null,
+                      gridRatios.map((ratio) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+                        "button",
+                        {
+                          type: "button",
+                          onClick: () => onAspectRatioChange(ratio),
+                          className: "flex flex-col items-center justify-center gap-1.5 rounded-xl transition-all duration-200",
+                          style: {
+                            height: "46px",
+                            padding: "4px",
+                            color: aspectRatio === ratio ? "var(--text-primary)" : "var(--text-tertiary)",
+                            backgroundColor: aspectRatio === ratio ? "color-mix(in srgb, var(--bg-hover) 92%, transparent)" : "transparent"
+                          },
+                          children: [
+                            getRatioIcon(ratio),
+                            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "whitespace-nowrap text-[10px] leading-none", children: ratio })
+                          ]
+                        },
+                        ratio
+                      ))
+                    ]
+                  }
+                )
+              ]
+            }
+          )
+        ] })
+      ]
+    }
+  );
+};
+var ImageOptionsPanel_default = ImageOptionsPanel;
+
+// src/components/video/VideoOptionsPanel.tsx
+var import_react6 = __toESM(require_react(), 1);
+init_types();
+var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+var VideoOptionsPanel = ({
+  aspectRatio,
+  resolution,
+  duration,
+  audio,
+  onAspectRatioChange,
+  onResolutionChange,
+  onDurationChange,
+  onAudioChange,
+  availableRatios = [
+    "auto" /* AUTO */,
+    "16:9" /* LANDSCAPE_16_9 */,
+    "4:3" /* LANDSCAPE_4_3 */,
+    "1:1" /* SQUARE */,
+    "3:4" /* PORTRAIT_3_4 */,
+    "9:16" /* PORTRAIT_9_16 */
+  ],
+  supportsAudio = false
+}) => {
+  const resolutions = ["720p", "1080p", "4k"];
+  const availableDurations = (0, import_react6.useMemo)(() => {
+    return VIDEO_RESOLUTION_DURATION_MAP[resolution] || ["4s", "6s", "8s"];
+  }, [resolution]);
+  (0, import_react6.useEffect)(() => {
+    if (!availableDurations.includes(duration)) {
+      onDurationChange(availableDurations[0]);
+    }
+  }, [resolution, duration, availableDurations, onDurationChange]);
+  const getRatioDimensions3 = (ratio) => {
+    const maxSize = 14;
+    const ratioMap = {
+      ["1:1" /* SQUARE */]: [1, 1],
+      ["9:16" /* PORTRAIT_9_16 */]: [9, 16],
+      ["16:9" /* LANDSCAPE_16_9 */]: [16, 9],
+      ["3:4" /* PORTRAIT_3_4 */]: [3, 4],
+      ["4:3" /* LANDSCAPE_4_3 */]: [4, 3]
+    };
+    const [w, h] = ratioMap[ratio] || [1, 1];
+    if (w > h) {
+      return { width: maxSize, height: maxSize * h / w };
+    } else {
+      return { height: maxSize, width: maxSize * w / h };
+    }
+  };
+  const getRatioIcon3 = (ratio) => {
+    const dims = getRatioDimensions3(ratio);
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex items-center justify-center", style: { width: 14, height: 14 }, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+      "div",
+      {
+        className: "border-[1.5px] border-current rounded-[2px]",
+        style: { width: dims.width, height: dims.height }
+      }
+    ) });
+  };
+  const gridRatios = (0, import_react6.useMemo)(
+    () => availableRatios.filter((r) => r !== "auto" /* AUTO */),
+    [availableRatios]
+  );
+  const resolutionSlide = (0, import_react6.useMemo)(() => {
+    const index = resolutions.indexOf(resolution);
+    const buttonWidthPercent = 100 / resolutions.length;
+    return {
+      left: `calc(${buttonWidthPercent * index}% + 2px)`,
+      width: `calc(${buttonWidthPercent}% - 4px)`
+    };
+  }, [resolution, resolutions]);
+  const durationSlide = (0, import_react6.useMemo)(() => {
+    const allDurations = ["4s", "6s", "8s"];
+    const index = allDurations.indexOf(duration);
+    const buttonWidthPercent = 100 / allDurations.length;
+    return {
+      left: `calc(${buttonWidthPercent * index}% + 2px)`,
+      width: `calc(${buttonWidthPercent}% - 4px)`
+    };
+  }, [duration]);
+  const audioSlide = (0, import_react6.useMemo)(() => {
+    const index = audio ? 0 : 1;
+    const buttonWidthPercent = 50;
+    return {
+      left: `calc(${buttonWidthPercent * index}% + 2px)`,
+      width: `calc(${buttonWidthPercent}% - 4px)`
+    };
+  }, [audio]);
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+    "div",
+    {
+      className: "p-4 rounded-xl border shadow-2xl max-w-[90vw]",
+      style: {
+        width: "min(380px, calc(100vw - 24px))",
+        backgroundColor: "var(--bg-secondary)",
+        backdropFilter: "blur(8px)",
+        borderColor: "var(--border-light)"
+      },
+      children: [
+        supportsAudio && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "mb-4 last:mb-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "text-sm font-medium mb-2", style: { color: "var(--text-secondary)" }, children: "\u97F3\u9891" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+            "div",
+            {
+              className: "relative flex rounded-lg p-0.5",
+              style: { backgroundColor: "var(--bg-tertiary)" },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "div",
+                  {
+                    className: "absolute top-0.5 bottom-0.5 rounded-md transition-all duration-200 ease-out",
+                    style: {
+                      backgroundColor: "var(--bg-secondary)",
+                      left: audioSlide.left,
+                      width: audioSlide.width
+                    }
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+                  "button",
+                  {
+                    onClick: () => onAudioChange(true),
+                    className: "relative z-10 flex-1 flex items-center justify-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)]",
+                    style: {
+                      color: audio ? "var(--text-primary)" : "var(--text-tertiary)"
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Volume2, { size: 16 }),
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: "\u5F00\u542F" })
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+                  "button",
+                  {
+                    onClick: () => onAudioChange(false),
+                    className: "relative z-10 flex-1 flex items-center justify-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)]",
+                    style: {
+                      color: !audio ? "var(--text-primary)" : "var(--text-tertiary)"
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(VolumeOff, { size: 16 }),
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: "\u5173\u95ED" })
+                    ]
+                  }
+                )
+              ]
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "mb-4 last:mb-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "text-sm font-medium mb-2", style: { color: "var(--text-secondary)" }, children: "\u6BD4\u4F8B" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+            "div",
+            {
+              className: "flex gap-1.5 rounded-lg p-1",
+              style: { backgroundColor: "var(--bg-tertiary)" },
+              children: [
+                availableRatios.includes("auto" /* AUTO */) && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+                  "button",
+                  {
+                    onClick: () => onAspectRatioChange("auto" /* AUTO */),
+                    className: "flex flex-col items-center justify-center rounded-md transition-all duration-200 gap-1 hover:text-[var(--text-secondary)]",
+                    style: {
+                      width: "64px",
+                      // ≤5个比例时单排高度48px，>5个时双排高度100px
+                      height: gridRatios.length <= 5 ? "48px" : "100px",
+                      color: aspectRatio === "auto" /* AUTO */ ? "var(--text-primary)" : "var(--text-tertiary)",
+                      backgroundColor: aspectRatio === "auto" /* AUTO */ ? "var(--bg-secondary)" : "transparent"
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Fullscreen, { size: 20 }),
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-xs", children: "\u81EA\u9002\u5E94" })
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "div",
+                  {
+                    className: "grid gap-1 flex-1 min-w-0",
+                    style: {
+                      gridTemplateColumns: "repeat(auto-fit, minmax(44px, 1fr))"
+                    },
+                    children: gridRatios.map((ratio) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+                      "button",
+                      {
+                        onClick: () => onAspectRatioChange(ratio),
+                        className: "flex flex-col items-center justify-center rounded-md transition-all duration-200 gap-1 hover:text-[var(--text-secondary)]",
+                        style: {
+                          width: "100%",
+                          height: "48px",
+                          padding: "4px",
+                          color: aspectRatio === ratio ? "var(--text-primary)" : "var(--text-tertiary)",
+                          backgroundColor: aspectRatio === ratio ? "var(--bg-secondary)" : "transparent"
+                        },
+                        children: [
+                          getRatioIcon3(ratio),
+                          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-[10px] leading-none", children: ratio })
+                        ]
+                      },
+                      ratio
+                    ))
+                  }
+                )
+              ]
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "mb-4 last:mb-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "text-sm font-medium mb-2", style: { color: "var(--text-secondary)" }, children: "\u6E05\u6670\u5EA6" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+            "div",
+            {
+              className: "relative flex rounded-lg p-0.5",
+              style: { backgroundColor: "var(--bg-tertiary)" },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "div",
+                  {
+                    className: "absolute top-0.5 bottom-0.5 rounded-md transition-all duration-200 ease-out",
+                    style: {
+                      backgroundColor: "var(--bg-secondary)",
+                      left: resolutionSlide.left,
+                      width: resolutionSlide.width
+                    }
+                  }
+                ),
+                resolutions.map((res) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "button",
+                  {
+                    onClick: () => onResolutionChange(res),
+                    className: "relative z-10 flex-1 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)]",
+                    style: {
+                      color: resolution === res ? "var(--text-primary)" : "var(--text-tertiary)"
+                    },
+                    children: res
+                  },
+                  res
+                ))
+              ]
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "mb-4 last:mb-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "text-sm font-medium mb-2", style: { color: "var(--text-secondary)" }, children: "\u751F\u6210\u65F6\u957F" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+            "div",
+            {
+              className: "relative flex rounded-lg p-0.5",
+              style: { backgroundColor: "var(--bg-tertiary)" },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "div",
+                  {
+                    className: "absolute top-0.5 bottom-0.5 rounded-md transition-all duration-200 ease-out",
+                    style: {
+                      backgroundColor: "var(--bg-secondary)",
+                      left: durationSlide.left,
+                      width: durationSlide.width
+                    }
+                  }
+                ),
+                ["4s", "6s", "8s"].map((dur) => {
+                  const isAvailable = availableDurations.includes(dur);
+                  return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                    "button",
+                    {
+                      onClick: () => isAvailable && onDurationChange(dur),
+                      disabled: !isAvailable,
+                      className: "relative z-10 flex-1 px-2 py-1.5 rounded-md text-sm transition-colors duration-200 hover:text-[var(--text-secondary)] disabled:opacity-40 disabled:cursor-not-allowed",
+                      style: {
+                        color: duration === dur && isAvailable ? "var(--text-primary)" : "var(--text-tertiary)"
+                      },
+                      children: dur
+                    },
+                    dur
+                  );
+                })
+              ]
+            }
+          )
+        ] })
+      ]
+    }
+  );
+};
+var VideoOptionsPanel_default = VideoOptionsPanel;
+
+// src/components/image/ImagePreview.tsx
+var import_react7 = __toESM(require_react(), 1);
+var import_react_dom = __toESM(require_react_dom(), 1);
+var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
+var ImagePreview = ({ imageUrl, originRect, onClose }) => {
+  const [isAnimating, setIsAnimating] = (0, import_react7.useState)(true);
+  const [isClosing, setIsClosing] = (0, import_react7.useState)(false);
+  const [imageSize, setImageSize] = (0, import_react7.useState)(null);
+  (0, import_react7.useEffect)(() => {
+    const timer = setTimeout(() => setIsAnimating(false), 400);
+    return () => clearTimeout(timer);
+  }, []);
+  (0, import_react7.useEffect)(() => {
+    let active = true;
+    const image = new window.Image();
+    image.onload = () => {
+      if (!active) return;
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+        setImageSize({ width: image.naturalWidth, height: image.naturalHeight });
+      }
+    };
+    image.src = imageUrl;
+    return () => {
+      active = false;
+    };
+  }, [imageUrl]);
+  (0, import_react7.useEffect)(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        handleClose();
+      }
+    };
+    const handleDragStart = () => {
+      handleClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("kk-drag-start", handleDragStart);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("kk-drag-start", handleDragStart);
+    };
+  });
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+    }, 350);
+  };
+  const scale = 3;
+  const maxTargetWidth = originRect.width * scale;
+  const maxTargetHeight = originRect.height * scale;
+  const aspectRatio = imageSize && imageSize.width > 0 && imageSize.height > 0 ? imageSize.width / imageSize.height : originRect.width / Math.max(originRect.height, 1);
+  let targetWidth = maxTargetWidth;
+  let targetHeight = targetWidth / aspectRatio;
+  if (targetHeight > maxTargetHeight) {
+    targetHeight = maxTargetHeight;
+    targetWidth = targetHeight * aspectRatio;
+  }
+  const targetLeft = originRect.left + originRect.width / 2 - targetWidth / 2;
+  const targetTop = originRect.top - targetHeight + originRect.height;
+  const currentLeft = isClosing ? originRect.left : isAnimating ? originRect.left : targetLeft;
+  const currentTop = isClosing ? originRect.top : isAnimating ? originRect.top : targetTop;
+  const currentWidth = isClosing ? originRect.width : isAnimating ? originRect.width : targetWidth;
+  const currentHeight = isClosing ? originRect.height : isAnimating ? originRect.height : targetHeight;
+  const currentOpacity = isClosing ? 0 : 1;
+  return import_react_dom.default.createPortal(
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(import_jsx_runtime5.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { className: "fixed inset-0 z-[9998]", onClick: handleClose }),
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+        "div",
+        {
+          className: "fixed z-[9999]",
+          style: {
+            left: currentLeft,
+            top: currentTop,
+            width: currentWidth,
+            height: currentHeight,
+            opacity: currentOpacity,
+            transition: isClosing ? "all 350ms cubic-bezier(0.4, 0, 0.2, 1)" : "all 400ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+            transformOrigin: "bottom center",
+            pointerEvents: "none"
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+            "img",
+            {
+              src: imageUrl,
+              alt: "\u653E\u5927\u67E5\u770B",
+              className: "w-full h-full object-contain rounded-xl shadow-2xl",
+              style: {
+                border: "3px solid rgba(99, 102, 241, 0.6)",
+                boxShadow: "0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1)",
+                pointerEvents: "auto",
+                cursor: "pointer",
+                background: "rgba(6, 10, 20, 0.88)"
+              },
+              onClick: handleClose
+            }
+          )
+        }
+      )
+    ] }),
+    document.body
+  );
+};
+var ImagePreview_default = ImagePreview;
+
+// src/utils/modelSorting.ts
+var PINNED_MODELS_KEY = "kk_pinned_models";
+var getPinnedModels = () => {
+  try {
+    const stored = localStorage.getItem(PINNED_MODELS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+var toggleModelPin = (modelId) => {
+  const pinned = getPinnedModels();
+  const index = pinned.indexOf(modelId);
+  if (index === -1) {
+    pinned.push(modelId);
+  } else {
+    pinned.splice(index, 1);
+  }
+  localStorage.setItem(PINNED_MODELS_KEY, JSON.stringify(pinned));
+  window.dispatchEvent(new Event("model-pinned-change"));
+};
+var filterAndSortModels = (models, searchText, customizations) => {
+  if (!searchText) {
+    return sortModels(models);
+  }
+  const lowerSearch = searchText.toLowerCase();
+  const searchTokens = lowerSearch.split(/\s+/).filter((t) => t.length > 0);
+  if (searchTokens.length === 0) return sortModels(models);
+  const scoredModels = models.map((model) => {
+    const custom = customizations[model.id] || {};
+    const id = model.id.toLowerCase();
+    const alias = (custom.alias || model.name || model.label || "").toLowerCase();
+    const provider = (model.provider || "").toLowerCase();
+    const desc = (custom.description || model.description || "").toLowerCase();
+    let score = 0;
+    let matchedTokensCount = 0;
+    const scoreField = (text, weight) => {
+      let fieldScore = 0;
+      if (text === lowerSearch) fieldScore += 1e3 * weight;
+      else if (text.startsWith(lowerSearch)) fieldScore += 500 * weight;
+      else if (text.includes(lowerSearch)) fieldScore += 200 * weight;
+      return fieldScore;
+    };
+    score += scoreField(id, 2);
+    score += scoreField(alias, 1.5);
+    score += scoreField(provider, 1);
+    searchTokens.forEach((token) => {
+      let tokenMatched = false;
+      if (id.includes(token)) {
+        score += 50;
+        if (id.startsWith(token)) score += 30;
+        if (id.split(/[-_.]/).includes(token)) score += 50;
+        tokenMatched = true;
+      }
+      if (alias.includes(token)) {
+        score += 40;
+        if (alias.startsWith(token)) score += 20;
+        if (alias.split(/\s+/).includes(token)) score += 40;
+        tokenMatched = true;
+      }
+      if (provider.includes(token)) {
+        score += 30;
+        tokenMatched = true;
+      }
+      if (desc.includes(token)) {
+        score += 5;
+        tokenMatched = true;
+      }
+      if (tokenMatched) matchedTokensCount++;
+    });
+    if (matchedTokensCount === searchTokens.length) {
+      score += 500;
+      const searchContentLength = searchTokens.join("").length;
+      const idContentLength = id.replace(/[-_.]/g, "").length;
+      const excessLength = Math.max(0, idContentLength - searchContentLength);
+      score -= excessLength * 15;
+    } else if (matchedTokensCount > 0) {
+    }
+    return { model, score, matchedTokensCount };
+  });
+  const filtered = scoredModels.filter((item) => item.score > 0);
+  filtered.sort((a, b) => {
+    if (a.matchedTokensCount !== b.matchedTokensCount) {
+      return b.matchedTokensCount - a.matchedTokensCount;
+    }
+    if (a.score !== b.score) {
+      return b.score - a.score;
+    }
+    return a.model.id.localeCompare(b.model.id);
+  });
+  return filtered.map((item) => item.model);
+};
+var sortModels = (models) => {
+  const pinned = getPinnedModels();
+  const pinnedOrder = new Map(pinned.map((id, index) => [id, index]));
+  const sorted = [...models].sort((a, b) => {
+    const idA = typeof a === "string" ? a : a.id;
+    const idB = typeof b === "string" ? b : b.id;
+    const providerA = (typeof a === "string" ? "" : a.provider || "").toLowerCase();
+    const providerB = (typeof b === "string" ? "" : b.provider || "").toLowerCase();
+    const isPinnedA = pinnedOrder.has(idA);
+    const isPinnedB = pinnedOrder.has(idB);
+    if (isPinnedA && isPinnedB) {
+      return (pinnedOrder.get(idA) || 0) - (pinnedOrder.get(idB) || 0);
+    }
+    if (isPinnedA) return -1;
+    if (isPinnedB) return 1;
+    const isSystemA = typeof a !== "string" && a.isSystemInternal;
+    const isSystemB = typeof b !== "string" && b.isSystemInternal;
+    if (isSystemA && !isSystemB) return -1;
+    if (!isSystemA && isSystemB) return 1;
+    if (providerA !== providerB) {
+      return providerA.localeCompare(providerB);
+    }
+    const nameA = (typeof a === "string" ? a : a.name || a.label || a.id || "").toLowerCase();
+    const nameB = (typeof b === "string" ? b : b.name || b.label || b.id || "").toLowerCase();
+    return nameB.localeCompare(nameA);
+  });
+  return sorted;
+};
+
+// src/components/image/InpaintModal.tsx
+var import_react8 = __toESM(require_react(), 1);
+var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+var MASK_COLOR = "rgb(86, 165, 255)";
+var MASK_COLOR_RECT = "rgb(86, 165, 255)";
+var InpaintModal = ({ imageUrl, onSave, onCancel }) => {
+  console.log("[InpaintModal] Received imageUrl:", imageUrl ? imageUrl.substring(0, 50) + "..." : "null");
+  const containerRef = (0, import_react8.useRef)(null);
+  const canvasRef = (0, import_react8.useRef)(null);
+  const edgeCanvasRef = (0, import_react8.useRef)(null);
+  const imgRef = (0, import_react8.useRef)(null);
+  const antPatternRef = (0, import_react8.useRef)(null);
+  const antPhaseRef = (0, import_react8.useRef)(0);
+  const outlineCanvasRef = (0, import_react8.useRef)(null);
+  const [tool, setTool] = (0, import_react8.useState)("brush");
+  const [brushSize, setBrushSize] = (0, import_react8.useState)(40);
+  const [scale, setScale] = (0, import_react8.useState)(1);
+  const [offset, setOffset] = (0, import_react8.useState)({ x: 0, y: 0 });
+  const [imgSize, setImgSize] = (0, import_react8.useState)({ w: 0, h: 0 });
+  const [imageLoaded, setImageLoaded] = (0, import_react8.useState)(false);
+  const [inpaintPrompt, setInpaintPrompt] = (0, import_react8.useState)("");
+  const [isDrawing, setIsDrawing] = (0, import_react8.useState)(false);
+  const [isPanning, setIsPanning] = (0, import_react8.useState)(false);
+  const [lastPos, setLastPos] = (0, import_react8.useState)({ x: 0, y: 0 });
+  const [rectStart, setRectStart] = (0, import_react8.useState)(null);
+  const [rectEnd, setRectEnd] = (0, import_react8.useState)(null);
+  const [isRectDrawing, setIsRectDrawing] = (0, import_react8.useState)(false);
+  const historyRef = (0, import_react8.useRef)([]);
+  const historyIndexRef = (0, import_react8.useRef)(-1);
+  const saveHistory2 = (0, import_react8.useCallback)(() => {
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx || !canvasRef.current) return;
+    const data = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+    historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+    historyRef.current.push(data);
+    historyIndexRef.current = historyRef.current.length - 1;
+    if (historyRef.current.length > 50) {
+      historyRef.current.shift();
+      historyIndexRef.current--;
+    }
+  }, []);
+  const undo = (0, import_react8.useCallback)(() => {
+    if (historyIndexRef.current <= 0) return;
+    historyIndexRef.current--;
+    const ctx = canvasRef.current?.getContext("2d");
+    if (ctx) ctx.putImageData(historyRef.current[historyIndexRef.current], 0, 0);
+  }, []);
+  const redo = (0, import_react8.useCallback)(() => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current++;
+    const ctx = canvasRef.current?.getContext("2d");
+    if (ctx) ctx.putImageData(historyRef.current[historyIndexRef.current], 0, 0);
+  }, []);
+  const createAntPattern = (0, import_react8.useCallback)(() => {
+    if (antPatternRef.current) return antPatternRef.current;
+    const p = document.createElement("canvas");
+    p.width = 14;
+    p.height = 14;
+    const pctx = p.getContext("2d");
+    pctx.imageSmoothingEnabled = false;
+    pctx.fillStyle = "rgba(0,0,0,0.85)";
+    pctx.fillRect(0, 0, 14, 14);
+    pctx.strokeStyle = "white";
+    pctx.lineWidth = 8;
+    pctx.lineCap = "butt";
+    pctx.beginPath();
+    pctx.moveTo(-7, 7);
+    pctx.lineTo(7, -7);
+    pctx.moveTo(0, 14);
+    pctx.lineTo(14, 0);
+    pctx.moveTo(7, 21);
+    pctx.lineTo(21, 7);
+    pctx.stroke();
+    antPatternRef.current = p;
+    return p;
+  }, []);
+  const updateOutline = (0, import_react8.useCallback)(() => {
+    const maskCanvas = canvasRef.current;
+    if (!maskCanvas) return;
+    if (!outlineCanvasRef.current) {
+      outlineCanvasRef.current = document.createElement("canvas");
+    }
+    const oc = outlineCanvasRef.current;
+    oc.width = maskCanvas.width;
+    oc.height = maskCanvas.height;
+    const octx = oc.getContext("2d");
+    octx.clearRect(0, 0, oc.width, oc.height);
+    const temp = document.createElement("canvas");
+    temp.width = oc.width;
+    temp.height = oc.height;
+    const tctx = temp.getContext("2d");
+    tctx.drawImage(maskCanvas, 0, 0);
+    const imgData = tctx.getImageData(0, 0, temp.width, temp.height);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i + 3] = data[i + 3] > 100 ? 255 : 0;
+    }
+    tctx.putImageData(imgData, 0, 0);
+    octx.globalCompositeOperation = "source-over";
+    const off = 1.2 / (scale || 1);
+    octx.drawImage(temp, off, 0);
+    octx.drawImage(temp, -off, 0);
+    octx.drawImage(temp, 0, off);
+    octx.drawImage(temp, 0, -off);
+    octx.drawImage(temp, off, off);
+    octx.drawImage(temp, -off, -off);
+    octx.globalCompositeOperation = "destination-out";
+    octx.drawImage(temp, 0, 0);
+  }, [scale]);
+  const renderMaskEdge = (0, import_react8.useCallback)(() => {
+    const edgeCanvas = edgeCanvasRef.current;
+    const oc = outlineCanvasRef.current;
+    if (!edgeCanvas || !oc) return;
+    if (edgeCanvas.width !== oc.width || edgeCanvas.height !== oc.height) {
+      edgeCanvas.width = oc.width;
+      edgeCanvas.height = oc.height;
+    }
+    const edgeCtx = edgeCanvas.getContext("2d");
+    if (!edgeCtx) return;
+    edgeCtx.clearRect(0, 0, edgeCanvas.width, edgeCanvas.height);
+    edgeCtx.globalCompositeOperation = "source-over";
+    const pattern = edgeCtx.createPattern(createAntPattern(), "repeat");
+    if (pattern) {
+      edgeCtx.save();
+      const pScale = 1 / (scale || 1);
+      const matrix = new DOMMatrix().scale(pScale).translate(-(antPhaseRef.current % 14), 0);
+      pattern.setTransform(matrix);
+      edgeCtx.fillStyle = pattern;
+      edgeCtx.drawImage(oc, 0, 0);
+      edgeCtx.globalCompositeOperation = "source-in";
+      edgeCtx.fillRect(0, 0, edgeCanvas.width, edgeCanvas.height);
+      edgeCtx.restore();
+    }
+  }, [createAntPattern, scale]);
+  const maskHasContent = (0, import_react8.useCallback)(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return false;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return false;
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 10) return true;
+    }
+    return false;
+  }, []);
+  (0, import_react8.useEffect)(() => {
+    const timer = window.setInterval(() => {
+      antPhaseRef.current = (antPhaseRef.current + 1.68) % 14;
+      renderMaskEdge();
+    }, 60);
+    return () => window.clearInterval(timer);
+  }, [renderMaskEdge]);
+  (0, import_react8.useEffect)(() => {
+    updateOutline();
+    renderMaskEdge();
+  }, [scale, updateOutline, renderMaskEdge]);
+  const handleImageLoad = (0, import_react8.useCallback)(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    console.log("[InpaintModal] \u56FE\u7247\u52A0\u8F7D\u5B8C\u6210:", w, "x", h);
+    setImgSize({ w, h });
+    setImageLoaded(true);
+    if (canvasRef.current) {
+      canvasRef.current.width = w;
+      canvasRef.current.height = h;
+      const ctx = canvasRef.current.getContext("2d");
+      if (ctx) ctx.clearRect(0, 0, w, h);
+    }
+    if (edgeCanvasRef.current) {
+      edgeCanvasRef.current.width = w;
+      edgeCanvasRef.current.height = h;
+      const ectx = edgeCanvasRef.current.getContext("2d");
+      if (ectx) ectx.clearRect(0, 0, w, h);
+    }
+    if (containerRef.current) {
+      const container = containerRef.current;
+      const topBar = 56;
+      const bottomBar = 80;
+      const padding = 60;
+      const usableW = container.clientWidth;
+      const usableH = container.clientHeight - topBar - bottomBar;
+      const sx = (usableW - padding) / w;
+      const sy = (usableH - padding) / h;
+      const s = Math.min(sx, sy, 1);
+      setScale(s);
+      setOffset({
+        x: (usableW - w * s) / 2,
+        y: topBar + (usableH - h * s) / 2
+      });
+    }
+    setTimeout(() => saveHistory2(), 50);
+  }, [imageUrl, saveHistory2]);
+  (0, import_react8.useEffect)(() => {
+    if (imageLoaded && canvasRef.current && imgSize.w > 0) {
+      if (canvasRef.current.width !== imgSize.w || canvasRef.current.height !== imgSize.h) {
+        canvasRef.current.width = imgSize.w;
+        canvasRef.current.height = imgSize.h;
+        const ctx = canvasRef.current.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, imgSize.w, imgSize.h);
+        if (edgeCanvasRef.current) {
+          edgeCanvasRef.current.width = imgSize.w;
+          edgeCanvasRef.current.height = imgSize.h;
+          const ectx = edgeCanvasRef.current.getContext("2d");
+          if (ectx) ectx.clearRect(0, 0, imgSize.w, imgSize.h);
+        }
+        if (historyRef.current.length === 0) {
+          setTimeout(() => saveHistory2(), 50);
+        }
+      }
+    }
+  }, [imageLoaded, imgSize, saveHistory2]);
+  (0, import_react8.useEffect)(() => {
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (e) => {
+      if (e.target instanceof HTMLInputElement) return;
+      if (e.key === "b" || e.key === "B") setTool("brush");
+      if (e.key === "r" || e.key === "R") setTool("rect");
+      if (e.key === "e" || e.key === "E") setTool("erase");
+      if (e.key === "[") setBrushSize((v) => Math.max(5, v - 4));
+      if (e.key === "]") setBrushSize((v) => Math.min(150, v + 4));
+      if (e.key === "Escape") onCancel();
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        undo();
+        updateOutline();
+        setTimeout(() => renderMaskEdge(), 0);
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.shiftKey && e.key.toLowerCase() === "z")) {
+        e.preventDefault();
+        redo();
+        updateOutline();
+        setTimeout(() => renderMaskEdge(), 0);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onCancel, redo, renderMaskEdge, undo]);
+  const screenToImage = (0, import_react8.useCallback)((cx, cy) => {
+    if (!containerRef.current) return { x: 0, y: 0 };
+    const r = containerRef.current.getBoundingClientRect();
+    return { x: (cx - r.left - offset.x) / scale, y: (cy - r.top - offset.y) / scale };
+  }, [offset, scale]);
+  const handlePointerDown = (e) => {
+    if (!imageLoaded) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    if (e.button === 1 || e.button === 2) {
+      setIsPanning(true);
+      setLastPos({ x: e.clientX, y: e.clientY });
+      return;
+    }
+    const pos = screenToImage(e.clientX, e.clientY);
+    if (tool === "rect") {
+      setIsRectDrawing(true);
+      setRectStart(pos);
+      setRectEnd(pos);
+    } else {
+      saveHistory2();
+      setIsDrawing(true);
+      setLastPos(pos);
+      draw(pos, pos);
+    }
+  };
+  const handlePointerMove = (e) => {
+    if (isPanning) {
+      setOffset((p) => ({ x: p.x + e.clientX - lastPos.x, y: p.y + e.clientY - lastPos.y }));
+      setLastPos({ x: e.clientX, y: e.clientY });
+      return;
+    }
+    if (tool === "rect" && isRectDrawing) {
+      setRectEnd(screenToImage(e.clientX, e.clientY));
+      return;
+    }
+    if (!isDrawing) return;
+    const pos = screenToImage(e.clientX, e.clientY);
+    draw(lastPos, pos);
+    setLastPos(pos);
+  };
+  const handlePointerUp = (e) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    if (isRectDrawing && rectStart && rectEnd) {
+      saveHistory2();
+      const ctx = canvasRef.current?.getContext("2d");
+      if (ctx) {
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = MASK_COLOR_RECT;
+        const x = Math.min(rectStart.x, rectEnd.x), y = Math.min(rectStart.y, rectEnd.y);
+        const w = Math.abs(rectEnd.x - rectStart.x), h = Math.abs(rectEnd.y - rectStart.y);
+        if (w > 2 && h > 2) {
+          ctx.save();
+          ctx.filter = "blur(0.8px)";
+          ctx.fillRect(x, y, w, h);
+          ctx.restore();
+        }
+        saveHistory2();
+      }
+      setIsRectDrawing(false);
+      setRectStart(null);
+      setRectEnd(null);
+    } else if (isDrawing) {
+      saveHistory2();
+    }
+    updateOutline();
+    renderMaskEdge();
+    setIsDrawing(false);
+    setIsPanning(false);
+  };
+  const handleWheel = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ns = Math.min(Math.max(scale - e.deltaY * 1e-3 * scale, 0.1), 5);
+    const r = containerRef.current?.getBoundingClientRect();
+    if (r) {
+      const mx = e.clientX - r.left, my = e.clientY - r.top, ratio = ns / scale;
+      setOffset({ x: mx - (mx - offset.x) * ratio, y: my - (my - offset.y) * ratio });
+    }
+    setScale(ns);
+  };
+  const draw = (start, end) => {
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.lineWidth = brushSize / scale;
+    if (tool === "erase") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = MASK_COLOR;
+      ctx.shadowBlur = 0;
+    }
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+  };
+  const exportMask = () => {
+    if (!canvasRef.current) return "";
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = canvasRef.current.width;
+    exportCanvas.height = canvasRef.current.height;
+    const exportCtx = exportCanvas.getContext("2d");
+    const srcCtx = canvasRef.current.getContext("2d");
+    const srcData = srcCtx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+    const px = srcData.data;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] > 10) {
+        px[i] = px[i + 1] = px[i + 2] = px[i + 3] = 255;
+      } else {
+        px[i + 3] = 0;
+      }
+    }
+    exportCtx.putImageData(srcData, 0, 0);
+    return exportCanvas.toDataURL("image/png");
+  };
+  const handleGenerate = () => {
+    let maskBase64 = "";
+    if (maskHasContent()) {
+      maskBase64 = exportMask();
+    }
+    onSave(maskBase64, inpaintPrompt || void 0);
+  };
+  const getRectScreen = () => {
+    if (!rectStart || !rectEnd || !containerRef.current) return null;
+    const r = containerRef.current.getBoundingClientRect();
+    const x1 = rectStart.x * scale + offset.x + r.left, y1 = rectStart.y * scale + offset.y + r.top;
+    const x2 = rectEnd.x * scale + offset.x + r.left, y2 = rectEnd.y * scale + offset.y + r.top;
+    return { left: Math.min(x1, x2), top: Math.min(y1, y2), width: Math.abs(x2 - x1), height: Math.abs(y2 - y1) };
+  };
+  const rectScreen = isRectDrawing ? getRectScreen() : null;
+  const imageTitle = (() => {
+    try {
+      const clean = imageUrl.split("?")[0].split("#")[0];
+      const name = decodeURIComponent(clean.split("/").pop() || "\u7F16\u8F91\u56FE\u50CF");
+      if (!name || name.startsWith("data:image")) return "\u7F16\u8F91\u56FE\u50CF";
+      return name;
+    } catch {
+      return "\u7F16\u8F91\u56FE\u50CF";
+    }
+  })();
+  const toolBtnClass = (active) => `h-8 w-8 rounded-lg flex items-center justify-center transition-colors ${active ? "bg-white/16 text-white" : "text-white/70 hover:text-white hover:bg-white/10"}`;
+  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+    "div",
+    {
+      className: "fixed inset-0 z-[99999] flex flex-col font-sans select-none",
+      onClick: (e) => e.stopPropagation(),
+      onMouseDown: (e) => e.stopPropagation(),
+      onPointerDown: (e) => e.stopPropagation(),
+      onDoubleClick: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "absolute inset-0 z-0", style: {
+          background: "radial-gradient(1200px 700px at 50% 45%, rgba(56,64,82,0.22) 0%, rgba(17,20,28,0.82) 55%, rgba(8,9,12,0.95) 100%)",
+          backdropFilter: "blur(38px) saturate(0.6) brightness(0.5)",
+          WebkitBackdropFilter: "blur(38px) saturate(0.6) brightness(0.5)"
+        } }),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+          "div",
+          {
+            className: "absolute top-0 left-0 right-0 h-14 px-4 flex items-center justify-between z-50 relative",
+            style: { background: "linear-gradient(180deg, rgba(14,16,21,0.84) 0%, rgba(14,16,21,0.36) 55%, rgba(14,16,21,0) 100%)" },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "flex items-center gap-2 min-w-0", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { onClick: onCancel, className: "p-1.5 rounded-md text-white/75 hover:text-white hover:bg-white/10 transition-colors", title: "\u5173\u95ED (Esc)", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(X, { size: 16 }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "text-sm text-white/90 truncate max-w-[38vw]", children: imageTitle })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "flex items-center gap-1", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    "button",
+                    {
+                      onClick: () => {
+                        undo();
+                        updateOutline();
+                        setTimeout(() => renderMaskEdge(), 0);
+                      },
+                      className: "p-1.5 rounded-md text-white/70 hover:text-white hover:bg-white/10 transition-colors",
+                      title: "\u64A4\u9500 (Ctrl+Z)",
+                      children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Undo2, { size: 15 })
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    "button",
+                    {
+                      onClick: () => {
+                        redo();
+                        updateOutline();
+                        setTimeout(() => renderMaskEdge(), 0);
+                      },
+                      className: "p-1.5 rounded-md text-white/70 hover:text-white hover:bg-white/10 transition-colors",
+                      title: "\u91CD\u505A (Ctrl+Y)",
+                      children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Redo2, { size: 15 })
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { onClick: onCancel, className: "px-2.5 py-1.5 rounded-md text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors", children: "\u53D6\u6D88" })
+              ] })
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "absolute top-3 left-0 right-0 z-50 pointer-events-none flex flex-col items-center gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "text-sm text-white/80 font-medium whitespace-nowrap", style: { transform: "translateX(2px)" }, children: "\u7F16\u8F91\u6240\u9009\u5185\u5BB9" }),
+          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+            "div",
+            {
+              className: "pointer-events-auto flex items-center gap-1 px-2 py-1.5 rounded-xl border border-white/10",
+              style: { background: "rgba(27,30,38,0.82)", backdropFilter: "blur(12px)" },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { onClick: () => setTool("brush"), className: toolBtnClass(tool === "brush"), title: "\u753B\u7B14 (B)", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(PenTool, { size: 15 }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { onClick: () => setTool("rect"), className: toolBtnClass(tool === "rect"), title: "\u77E9\u5F62 (R)", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Square, { size: 15 }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { onClick: () => setTool("erase"), className: toolBtnClass(tool === "erase"), title: "\u6A61\u76AE\u64E6 (E)", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Eraser, { size: 15 }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "w-px h-5 bg-white/10 mx-1" }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { onClick: () => setScale((s) => Math.max(0.1, s - 0.1)), className: toolBtnClass(false), title: "\u7F29\u5C0F", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(ZoomOut, { size: 15 }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { className: "w-10 text-center text-[11px] text-white/70 tabular-nums", children: [
+                  Math.round(scale * 100),
+                  "%"
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { onClick: () => setScale((s) => Math.min(5, s + 0.1)), className: toolBtnClass(false), title: "\u653E\u5927", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(ZoomIn, { size: 15 }) }),
+                tool !== "rect" && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "w-px h-5 bg-white/10 mx-1" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    "input",
+                    {
+                      type: "range",
+                      min: "5",
+                      max: "150",
+                      value: brushSize,
+                      onChange: (e) => setBrushSize(parseInt(e.target.value, 10)),
+                      className: "w-20 accent-indigo-400"
+                    }
+                  )
+                ] })
+              ]
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+          "div",
+          {
+            ref: containerRef,
+            className: "flex-1 relative overflow-hidden z-10",
+            onPointerDown: handlePointerDown,
+            onPointerMove: handlePointerMove,
+            onPointerUp: handlePointerUp,
+            onPointerLeave: handlePointerUp,
+            onWheel: handleWheel,
+            style: { cursor: isPanning ? "grabbing" : "crosshair" },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+                "div",
+                {
+                  className: "absolute origin-top-left",
+                  style: {
+                    transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                    width: imgSize.w || "auto",
+                    height: imgSize.h || "auto"
+                  },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                      "img",
+                      {
+                        ref: imgRef,
+                        src: imageUrl,
+                        alt: "",
+                        className: "block pointer-events-none",
+                        draggable: false,
+                        referrerPolicy: "no-referrer",
+                        onLoad: handleImageLoad,
+                        onError: (e) => {
+                          console.error("[InpaintModal] Original image load failed. URL:", imageUrl.substring(0, 100) + "...");
+                          setImageLoaded(false);
+                        },
+                        style: imgSize.w > 0 ? { width: imgSize.w, height: imgSize.h } : {}
+                      }
+                    ),
+                    imageLoaded && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "absolute inset-0 bg-black/8 pointer-events-none" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("canvas", { ref: canvasRef, className: "absolute inset-0 w-full h-full", style: { touchAction: "none", opacity: 0.45, filter: "drop-shadow(0 0 10px rgba(255,255,255,0.72)) drop-shadow(0 0 24px rgba(255,255,255,0.4))" } }),
+                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("canvas", { ref: edgeCanvasRef, className: "absolute inset-0 w-full h-full pointer-events-none" })
+                    ] }),
+                    imageLoaded && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "absolute inset-0 ring-1 ring-white/12 rounded-sm pointer-events-none" })
+                  ]
+                }
+              ),
+              !imageLoaded && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "absolute inset-0 flex items-center justify-center pointer-events-none", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "flex flex-col items-center gap-3", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(LoaderCircle, { size: 24, className: "text-white/40 animate-spin" }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "text-sm text-white/30", children: "\u52A0\u8F7D\u56FE\u7247..." })
+              ] }) }),
+              rectScreen && rectScreen.width > 2 && rectScreen.height > 2 && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+                "svg",
+                {
+                  className: "fixed pointer-events-none",
+                  style: {
+                    left: rectScreen.left,
+                    top: rectScreen.top,
+                    width: rectScreen.width,
+                    height: rectScreen.height,
+                    overflow: "visible"
+                  },
+                  width: rectScreen.width,
+                  height: rectScreen.height,
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                      "rect",
+                      {
+                        x: 0,
+                        y: 0,
+                        width: rectScreen.width,
+                        height: rectScreen.height,
+                        rx: 4,
+                        ry: 4,
+                        fill: "rgba(86, 165, 255, 0.40)"
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                      "rect",
+                      {
+                        x: 0.5,
+                        y: 0.5,
+                        width: Math.max(0, rectScreen.width - 1),
+                        height: Math.max(0, rectScreen.height - 1),
+                        rx: 4,
+                        ry: 4,
+                        fill: "none",
+                        stroke: "rgba(255,255,255,0.95)",
+                        strokeWidth: 1.2,
+                        strokeDasharray: "8 6",
+                        strokeLinecap: "round",
+                        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("animate", { attributeName: "stroke-dashoffset", from: "0", to: "-28", dur: "1s", repeatCount: "indefinite" })
+                      }
+                    )
+                  ]
+                }
+              )
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "absolute bottom-9 left-0 right-0 w-full flex justify-center pointer-events-none z-50", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "w-full max-w-[560px] px-4 pointer-events-auto", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+          "div",
+          {
+            className: "flex items-center gap-2 py-2 px-3 rounded-2xl border border-white/10",
+            style: { background: "rgba(31,34,42,0.72)", backdropFilter: "blur(14px)", boxShadow: "0 10px 35px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08)" },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                "button",
+                {
+                  type: "button",
+                  onClick: (e) => {
+                    e.stopPropagation();
+                    setTool("brush");
+                  },
+                  className: "w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors",
+                  title: "\u753B\u7B14\u6A21\u5F0F",
+                  children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "text-lg leading-none", children: "+" })
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                "input",
+                {
+                  type: "text",
+                  value: inpaintPrompt,
+                  onChange: (e) => setInpaintPrompt(e.target.value),
+                  onPointerDown: (e) => e.stopPropagation(),
+                  onClick: (e) => e.stopPropagation(),
+                  onKeyDown: (e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleGenerate();
+                    }
+                  },
+                  placeholder: "\u63CF\u8FF0\u7F16\u8F91",
+                  className: "flex-1 bg-transparent text-sm text-white/92 placeholder-white/35 outline-none py-1.5"
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                "button",
+                {
+                  type: "button",
+                  onPointerDown: (e) => e.stopPropagation(),
+                  className: "w-8 h-8 rounded-full flex items-center justify-center text-white/65 hover:text-white hover:bg-white/10 transition-colors",
+                  title: "\u8BED\u97F3\u8F93\u5165",
+                  children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Mic, { size: 15 })
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                "button",
+                {
+                  onClick: handleGenerate,
+                  className: "w-8 h-8 rounded-full flex items-center justify-center bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-105",
+                  title: "\u63D0\u4EA4\u7F16\u8F91",
+                  children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(ArrowUp, { size: 15 })
+                }
+              )
+            ]
+          }
+        ) }) })
+      ]
+    }
+  );
+};
+
+// src/config/promptLibrary.ts
+var BUILTIN_PROMPT_LIBRARY = [
+  {
+    id: "opt_auto_commercial",
+    title: "\u4F18\u5316\uFF1A\u5546\u4E1A\u8D28\u611F",
+    category: "general",
+    source: "KK Optimizer",
+    prompt: "\u5C06\u7528\u6237\u539F\u59CB\u9700\u6C42\u91CD\u5199\u4E3A\u9002\u5408\u5546\u4E1A\u6D77\u62A5\u4E0E\u54C1\u724C\u89C6\u89C9\u7684\u9AD8\u8D28\u91CF\u56FE\u50CF\u63D0\u793A\u8BCD\u3002",
+    useMode: "optimize",
+    optimizerPrompt: "Prioritize commercial appeal, premium art direction, polished campaign aesthetics, clean composition, and client-ready visual language while staying faithful to the user intent.",
+    shortHint: "\u66F4\u9002\u5408\u6D77\u62A5\u3001KV\u3001\u7535\u5546\u4E3B\u89C6\u89C9"
+  },
+  {
+    id: "opt_auto_photoreal",
+    title: "\u4F18\u5316\uFF1A\u5199\u5B9E\u6444\u5F71",
+    category: "general",
+    source: "KK Optimizer",
+    prompt: "\u5C06\u63D0\u793A\u8BCD\u4F18\u5316\u6210\u66F4\u5F3A\u771F\u5B9E\u611F\u3001\u6444\u5F71\u611F\u3001\u955C\u5934\u611F\u7684\u65B9\u5411\u3002",
+    useMode: "optimize",
+    optimizerPrompt: "Optimize toward photorealism, realistic materials, natural lighting, believable lens language, cinematic camera details, and authentic spatial depth. Avoid over-stylization unless explicitly requested.",
+    shortHint: "\u66F4\u771F\u5B9E\u3001\u66F4\u50CF\u6444\u5F71\u4F5C\u54C1"
+  },
+  {
+    id: "opt_auto_style_consistency",
+    title: "\u4F18\u5316\uFF1A\u98CE\u683C\u7EDF\u4E00",
+    category: "general",
+    source: "KK Optimizer",
+    prompt: "\u9002\u5408\u7CFB\u5217\u56FE\u3001\u591A\u56FE\u5E76\u884C\u3001\u9700\u8981\u7EDF\u4E00\u98CE\u683C\u7684\u573A\u666F\u3002",
+    useMode: "optimize",
+    optimizerPrompt: "Emphasize style consistency, repeatable visual language, stable palette, unified composition logic, and coherent subject description so multiple outputs stay in the same family.",
+    shortHint: "\u9002\u5408\u6279\u91CF\u56FE\u3001\u7CFB\u5217\u56FE"
+  },
+  {
+    id: "opt_auto_reference_first",
+    title: "\u4F18\u5316\uFF1A\u53C2\u8003\u56FE\u4F18\u5148",
+    category: "general",
+    source: "KK Optimizer",
+    prompt: "\u4F18\u5148\u5438\u6536\u53C2\u8003\u56FE\u4E2D\u7684\u4E3B\u4F53\u3001\u98CE\u683C\u3001\u914D\u8272\u548C\u6784\u56FE\u4FE1\u606F\u3002",
+    useMode: "optimize",
+    optimizerPrompt: "When reference images are present, prioritize subject identity, color palette, composition, material cues, and style consistency from the references while still respecting the user prompt.",
+    shortHint: "\u66F4\u9002\u5408\u5E26\u53C2\u8003\u56FE\u751F\u6210"
+  },
+  {
+    id: "nbp_flyer_ukiyoe_v2",
+    title: "\u6D6E\u4E16\u7ED8\u95EA\u5361 (Pro)",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u5185\u6838\u6307\u4EE4\u3011 \u4E00\u5F20\u65E5\u5F0F\u6D6E\u4E16\u7ED8\u98CE\u683C\u7684\u6536\u85CF\u7EA7\u96C6\u6362\u5F0F\u5361\u724C\u8BBE\u8BA1\uFF0C\u7AD6\u6784\u56FE\u3002\u63D2\u753B\u98CE\u683C\u6A21\u4EFF\u300A\u9B3C\u706D\u4E4B\u5203\u300B\u89C6\u89C9\u7F8E\u5B66\uFF1A\u7C97\u7EC6\u53D8\u5316\u7684\u58A8\u7B14\u8F6E\u5ED3\u7EBF\u3001\u4F20\u7EDF\u6728\u7248\u753B\u914D\u8272\u3001\u620F\u5267\u6027\u52A8\u6001\u6784\u56FE\u3002\n\n\u3010\u4E3B\u4F53\u63CF\u8FF0\u3011 \u89D2\u8272\uFF1A{\u89D2\u8272\u540D\u5B57}\uFF08\u79F0\u53F7\uFF1A{\u67F1\u540D/\u79F0\u53F7}\uFF09\uFF0C\u5904\u4E8E\u52A8\u6001\u6218\u6597\u59FF\u52BF\uFF0C\u624B\u6301 {\u6B66\u5668\u63CF\u8FF0}\u3002\u6B63\u5728\u65BD\u5C55 {\u547C\u5438\u6CD5\u62DB\u5F0F\u540D\u79F0}\uFF0C\u5468\u56F4\u73AF\u7ED5\u7740 {\u89C6\u89C9\u7279\u6548\u63CF\u8FF0}\uFF08\u4F8B\u5982\uFF1A\u5DE8\u5927\u7684\u706B\u7130/\u6C34\u9F99/\u65CB\u98CE\uFF09\uFF0C\u4EE5\u4F20\u7EDF\u65E5\u5F0F\u6C34\u58A8\u753B\uFF08Sumi-e\uFF09\u98CE\u683C\u5448\u73B0\u3002\n\n\u3010\u7EC6\u8282\u4E0E\u8FB9\u6846\u3011 \u80CC\u666F\u878D\u5408\u7EB9\u7406\u5316\u956D\u5C04\u95EA\u5361\uFF08Holographic Foil\uFF09\u6548\u679C\u3002\u56DB\u5468\u52A0\u5165\u88C5\u9970\u6027\u8FB9\u6846\uFF08\u5982\u9752\u6D77\u6CE2\u7EB9\uFF09\u3002\u5E95\u90E8\u6709\u98CE\u683C\u5316\u6A2A\u5E45\uFF0C\u5199\u7740\u201C{\u65E5\u6587\u540D\u5B57}\u201D\u3002"
+  },
+  {
+    id: "nbp_clones_room",
+    title: "\u5206\u8EAB\u672F\uFF1A\u767E\u53D8\u5267\u573A",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u573A\u666F\u63CF\u8FF0\u3011 \u57FA\u4E8E\u4E0A\u4F20\u7684\u53C2\u8003\u89D2\u8272\uFF0C\u5728\u540C\u4E00\u5BA4\u5185\u7A7A\u95F4\uFF08\u5982\uFF1A\u4E1C\u4EAC\u516C\u5BD3/\u8D5B\u535A\u5B9E\u9A8C\u5BA4\uFF09\u751F\u6210\u7EA6\u4E09\u5341\u4E2A\u76F8\u540C\u7684\u89D2\u8272\u3002\u8981\u6C42\u900F\u89C6\u51C6\u786E\u3001\u906E\u6321\u5173\u7CFB\u81EA\u7136\u3001\u5149\u7EBF\u7EDF\u4E00\u3002\n\n\u3010\u7A7A\u95F4\u5E03\u5C40\u3011 \u5305\u542B\u5F3A\u70C8\u7684\u666F\u6DF1\uFF1A\n- \u524D\u666F\uFF1A\u7531\u4E8E\u9760\u8FD1\u955C\u5934\u4EA7\u751F\u7684\u52A8\u6001\u6A21\u7CCA\u6216\u90E8\u5206\u906E\u6321\uFF08\u5982\u7A7F\u8FC7\u955C\u5934\u3001\u5728\u690D\u7269\u540E\u7AA5\u89C6\uFF09\u3002\n- \u4E2D\u666F\uFF1A\u4E3B\u8981\u6D3B\u52A8\u533A\u3002\u89D2\u8272\u6B63\u5728\u8FDB\u884C\u5404\u79CD\u65E5\u5E38\u4E92\u52A8\uFF08\u5982\u6574\u7406\u3001\u67E5\u770B\u624B\u673A\u3001\u5728\u955C\u5B50\u524D\u3001\u9605\u8BFB\uFF09\u3002\n- \u80CC\u666F\uFF1A\u9760\u8FD1\u95E8\u53E3\u6216\u8D70\u5ECA\uFF0C\u89D2\u8272\u7EC6\u5C0F\u4E14\u5E26\u900F\u89C6\u8870\u51CF\u3002\n\n\u3010\u98CE\u683C\u878D\u5408\u3011 \u5C06\u4EBA\u7269\u7F6E\u4E8E\u4E0E\u63D2\u753B\u59FF\u52BF\u5339\u914D\u7684\u5B9E\u666F\u80CC\u666F\u4E2D\uFF0C\u8FD0\u7528\u903C\u771F\u7684\u5149\u6548\u548C\u666F\u6DF1\uFF0C\u4F7F\u63D2\u753B\u611F\u4E0E\u771F\u5B9E\u73AF\u5883\u65E0\u7F1D\u8854\u63A5\u3002"
+  },
+  {
+    id: "nbp_fashion_explode",
+    title: "\u65F6\u5C1A\u7A7F\u642D\u5206\u89E3\u56FE",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u6784\u56FE\u3011 \u624B\u7ED8\u98CE\u683C\u7684\u65F6\u5C1A\u6982\u5FF5\u5206\u89E3\u56FE\u3002\u4E2D\u5FC3\u4E3A\u4E00\u4F4D\u65F6\u5C1A\u81EA\u4FE1\u5973\u6027\u89D2\u8272\u7684\u5168\u8EAB\u50CF\uFF0C\u59FF\u6001\u81EA\u7136\u3002\n\n\u3010\u7ED3\u6784\u5316\u8981\u7D20\u3011 \u5468\u56F4\u73AF\u7ED5\u5173\u952E\u5143\u7D20\u7684\u5206\u89E3\u6A21\u5757\uFF1A\n- \u670D\u88C5\u5C42\u6B21\uFF1A\u5C55\u793A\u5916\u5957\u3001\u5185\u8863\u3001\u914D\u9970\u53CA\u5176\u7EC6\u8282\u653E\u5927\u3002\n- \u8868\u60C5\u5305\uFF1A\u5C55\u793A 3-4 \u79CD\u52A8\u6001\u9762\u90E8\u8868\u60C5\u3002\n- \u7279\u5199\uFF1A\u5C55\u793A\u9762\u6599\u8936\u76B1\u3001\u624B\u52BF\u4E0E\u808C\u80A4\u8D28\u611F\u3002\n- \u968F\u8EAB\u7269\uFF1A\u4E00\u4E2A\u6253\u5F00\u7684\u5305\uFF0C\u5C55\u793A\u53E3\u7EA2\u3001\u9999\u6C34\u3001\u65E5\u8BB0\u672C\u7B49\u7269\u54C1\u3002\n- \u6307\u793A\u7EBF\uFF1A\u624B\u5199\u98CE\u683C\u6807\u6CE8\uFF08\u5982\u201C\u67D4\u6ED1\u9762\u6599\u201D\u3001\u201C\u8272\u53F7#FF0000\u201D\uFF09\u3002\n\n\u3010\u80CC\u666F\u3011 \u67D4\u548C\u7684\u7C73\u8272\u7F8A\u76AE\u7EB8\u7EB9\u7406\u8349\u56FE\u80CC\u666F\uFF0C4K \u6E05\u6670\u5EA6\uFF0C\u517C\u5177\u65F6\u5C1A\u611F\u4E0E\u8BBE\u8BA1\u611F\u3002"
+  },
+  {
+    id: "nbp_crystal_macro",
+    title: "\u6C34\u6676/\u900F\u660E\u6750\u8D28\u5EFA\u6A21",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u4E3B\u4F53\u3011 \u4EE5\u6E05\u6F88\u3001\u629B\u5149\u5EA6\u6781\u9AD8\u7684\u900F\u660E\u6C34\u6676/\u73BB\u7483\u6750\u8D28\u6E32\u67D3 [\u4E00\u53F0\u76F8\u673A/\u4E00\u4EF6\u827A\u672F\u54C1]\u3002\u673A\u8EAB\u5177\u6709\u660E\u663E\u7684\u539A\u5EA6\u4E0E\u7ACB\u4F53\u6DF1\u5EA6\uFF0C\u51E0\u4F55\u7ED3\u6784\u7CBE\u786E\uFF0C\u65E0\u9700\u56FE\u6848\u5373\u53EF\u8FA8\u8BA4\u9020\u578B\u3002\n\n\u3010\u5149\u5F71\u8868\u73B0\u3011 \u91CD\u70B9\u7A81\u51FA\u6298\u5C04\u4E0E\u955C\u9762\u53CD\u5C04\u3002\u5012\u89D2\u8FB9\u7F18\u5448\u73B0\u9510\u5229\u9AD8\u5149\u3002\u5149\u7EBF\u7A7F\u900F\u6750\u8D28\u5185\u90E8\u4EA7\u751F\u5FAE\u5999\u7684\u5F2F\u66F2\u4E0E\u5C40\u90E8\u5931\u771F\u6548\u679C\u3002\u5E95\u90E8\u6709\u67D4\u548C\u6F2B\u6563\u7684\u9634\u5F71\u3002\n\n\u3010\u6574\u4F53\u98CE\u683C\u3011 \u6781\u7B80\u73B0\u4EE3\u7684\u7CBE\u54C1\u6444\u5F71\u98CE\u683C\u3002\u9AD8\u8C03\u5149\u611F\uFF0C\u80CC\u666F\u5E72\u51C0\u865A\u5316\u3002\u6574\u4F53\u89C6\u89C9\u6781\u5EA6\u5254\u900F\u5962\u534E\u3002"
+  },
+  {
+    id: "nbp_cyber_card",
+    title: "\u8D5B\u535A\u5168\u606F\u540D\u7247",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u4E3B\u89C6\u56FE\u3011 \u903C\u771F\u7684\u8D5B\u535A\u670B\u514B\u65F6\u5C1A\u5927\u7247\u611F\uFF1A\u5DE6\u624B\u62FF\u4E00\u5F20\u6A2A\u5411\u4E9A\u514B\u529B\u65E0\u8FB9\u6846\u540D\u7247\uFF0C\u51E0\u4E4E\u5360\u636E\u6574\u4E2A\u753B\u9762\u3002\u540D\u7247\u8FB9\u7F18\u5706\u6DA6\uFF0C\u6563\u53D1\u51FA\u9713\u8679\u5FAE\u5149\uFF08\u84DD/\u7C89/\u7D2B\u6E10\u53D8\uFF09\u3002\n\n\u3010\u6392\u7248\u5E03\u5C40\u3011 \u540D\u7247\u8868\u9762\u6587\u672C\u5982\u540C\u7CBE\u7EC6\u96D5\u523B\u7684\u5168\u606F\u6295\u5F71\u3002\u80CC\u666F\u6DF1\u8272\u865A\u5316\uFF0C\u63E1\u4F4F\u540D\u7247\u7684\u6307\u5C16\u53CD\u5C04\u51FA\u7535\u5F71\u611F\u5149\u5F71\u3002\n\n\u3010\u5B57\u6BB5\u4FE1\u606F\u3011 \u5305\u542B\uFF1A\n- \u59D3\u540D\uFF1A[\u586B\u5199\u59D3\u540D]\n- \u804C\u4F4D\uFF1A[\u586B\u5199\u804C\u4F4D]\n- \u793E\u4EA4\u8054\u7CFB\u65B9\u5F0F\uFF08\u5E26\u56FE\u6807\uFF09\n\n\u3010\u89C6\u89C9\u6548\u679C\u3011 \u7EBF\u6761\u7B80\u6D01\uFF0C\u5BCC\u6709\u672A\u6765\u79D1\u6280\u611F\uFF0C\u9002\u5408\u4E13\u4E1A\u5C55\u793A\u3002"
+  },
+  {
+    id: "nbp_isometric_cube_room",
+    title: "3D\u7B49\u8DDD\u7ACB\u65B9\u4F53\u623F\u95F4",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u6784\u56FE\u3011 \u4E00\u4E2A\u7B49\u8DDD 3D \u7ACB\u4F53\u5207\u9762\u623F\u95F4\uFF0C\u6240\u6709\u7269\u54C1\u4E25\u683C\u5305\u542B\u5728\u7ACB\u65B9\u4F53\u5185\uFF0C\u56DB\u5206\u4E4B\u4E09\u504F\u4E0A\u65B9\u89C6\u89D2\u3002\u623F\u95F4\u4E3B\u9898\uFF1A[\u4E3B\u9898\u63CF\u8FF0]\u3002\n\n\u3010\u4EBA\u7269\u4E0E\u6750\u8D28\u3011 \u623F\u95F4\u5185\u653E\u7F6E Q \u7248\u624B\u529E\u98CE\u683C\u4EBA\u7269\uFF0C\u6B63\u5728\u8FDB\u884C [\u6D3B\u52A8\u63CF\u8FF0]\u3002\u4EBA\u7269\u5448\u73B0\u54D1\u5149 PVC \u6750\u8D28\u611F\uFF0C\u8868\u60C5\u751F\u52A8\u3002\u80CC\u666F\u4E3A\u7EAF\u51C0\u7684\u4E2D\u6027\u5E95\uFF0C\u53CD\u5C04\u4E0E\u6295\u5F71\u7EC6\u8282\u4E30\u5BCC\u3002\n\n\u3010\u5149\u7167\u3011 \u6C1B\u56F4\u5149\uFF1A[\u5982\uFF1A\u6696\u5348\u540E\u5149/\u68A6\u5E7B\u6781\u5149]\uFF0C\u5149\u5F71\u5E26\u6709\u9C9C\u660E\u7684\u989C\u8272\u503E\u5411\uFF0C\u5BF9\u6BD4\u5EA6\u660E\u5FEB\u3002"
+  },
+  {
+    id: "nbp_city_kaiju",
+    title: "\u57CE\u5E02\u5DE8\u517D\uFF08\u6444\u5F71+\u63D2\u753B\u6DF7\u5408\uFF09",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u5E95\u56FE\u3011 \u4F7F\u7528\u4E0A\u4F20\u7684\u57CE\u5E02\u7167\u7247\u3002\u4FDD\u6301\u5EFA\u7B51\u3001\u8857\u9053\u3001\u4EBA\u7269\u7684\u771F\u5B9E\u6027\u3002\n\n\u3010\u521B\u610F\u53E0\u52A0\u3011 \u5728\u5929\u7A7A\u4E2D\u6DFB\u52A0\u4E00\u4E2A\u5DE8\u5927\u7684\u6241\u5E73\u5316\u63D2\u753B\u751F\u7269\uFF0C\u6B63\u4FEF\u77B0\u57CE\u5E02\u3002\u751F\u7269\u8F6E\u5ED3\u6E05\u6670\uFF0C\u4F7F\u7528\u9713\u8679\u8272\u8C03\uFF08\u5982\uFF1A\u67D4\u548C\u7EFF/\u6A59\uFF09\u3002\n\n\u3010\u878D\u5408\u89C4\u5219\u3011 \u751F\u7269\u90E8\u5206\u9690\u6CA1\u5728\u5EFA\u7B51\u7269\u8FB9\u7F18\u540E\u65B9\uFF0C\u5F62\u6210\u51C6\u786E\u7684\u906E\u6321\u5173\u7CFB\u3002\u5728\u5EFA\u7B51\u7269\u4E0A\u7559\u6709\u6781\u5176\u5FAE\u5999\u7684\u751F\u7269\u53CD\u5C04\u5149\u5F71\u6216\u6295\u5F71\u3002\u8425\u9020\u4E00\u79CD\u771F\u5B9E\u4E16\u754C\u4E0E\u73B0\u4EE3\u63D2\u753B\u65E0\u7F1D\u878D\u5408\u7684\u8D85\u73B0\u5B9E\u7F8E\u611F\u3002"
+  },
+  {
+    id: "nbp_doc_to_flow_v2",
+    title: "\u4E13\u4E1A\u6587\u6863\u8F6C\u6D41\u7A0B\u56FE",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u6307\u4EE4\u3011 \u6839\u636E\u6211\u4E0A\u4F20\u7684\u6587\u6863\u5185\u5BB9\uFF0C\u63D0\u53D6\u5185\u6838\u903B\u8F91\u5E76\u751F\u6210\u4E13\u4E1A\u4E14\u76F4\u89C2\u7684\u6D41\u7A0B\u56FE\u6D77\u62A5\u3002\n\n\u3010\u7ED3\u6784\u3011 \u5305\u542B\u6807\u9898\u533A\u3001\u4E3B\u6D41\u7A0B\u94FE\u8DEF\u3001\u5F02\u5E38\u5224\u65AD\u5206\u652F\u3001\u4FA7\u8FB9\u56FE\u4F8B\u8BF4\u660E\u3002\u8981\u6C42\u8282\u70B9\u95F4\u8DDD\u5747\u5300\uFF0C\u7BAD\u5934\u52A8\u7EBF\u6E05\u6670\u3002\u5B57\u4F53\u53EF\u8BFB\uFF0C\u5C42\u7EA7\u5206\u660E\u3002\n\n\u3010\u914D\u8272\u3011 \u91C7\u7528\u7ED3\u6784\u5316\u914D\u8272\u65B9\u6848\uFF0C\u4E3B\u4F53\u8272\u7EDF\u4E00\uFF0C\u903B\u8F91\u8282\u70B9\u5DEE\u5F02\u5316\u663E\u793A\u3002\u98CE\u683C\u5EFA\u8BAE\uFF1A\u7B80\u6D01\u4FE1\u606F\u56FE\u98CE\u683C\u3002"
+  },
+  {
+    id: "nb_character_sheet_pro",
+    title: "\u5168\u65B9\u4F4D\u89D2\u8272\u8BBE\u5B9A\u96C6",
+    category: "banana",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u6307\u4EE4\u3011 \u4E3A\u6211\u751F\u6210\u4E00\u4EFD\u5B8C\u6574\u7684\u89D2\u8272\u8BBE\u8BA1\u624B\u518C\uFF08Character Design Sheet\uFF09\u3002\n\n\u3010\u5185\u5BB9\u6A21\u5757\u3011\n- \u6BD4\u4F8B\u8BBE\u5B9A\uFF1A\u4E0D\u540C\u8EAB\u9AD8\u5BF9\u6BD4\u56FE\uFF0C\u6807\u51C6\u5934\u8EAB\u6BD4\u53C2\u8003\u3002\n- \u4E09\u89C6\u56FE\uFF1A\u6B63\u3001\u4FA7\u3001\u80CC\u9762\u5168\u8EAB\u7ACB\u7ED8\u3002\n- \u8868\u60C5\u5305\uFF1A3-5 \u79CD\u5185\u6838\u60C5\u7EEA\uFF08\u559C\u3001\u6012\u3001\u54C0\u3001\u4E50\uFF09\u3002\n- \u52A8\u4F5C\u9875\uFF1A\u5404\u79CD\u4EE3\u8868\u6027\u7684\u52A8\u6001\u59FF\u52BF\uFF08Pose Sheet\uFF09\u3002\n- \u670D\u88C5\u53CA\u914D\u4EF6\uFF1A\u7EC6\u8282\u5DEE\u5206\u5C55\u793A\u3002\u4FDD\u6301\u89D2\u8272\u5728\u6240\u6709\u89C6\u89D2\u4E0B\u7684\u7279\u5F81\uFF08\u5982\uFF1A\u53D1\u8272\u3001\u77B3\u5B54\u3001\u9970\u54C1\uFF09\u9AD8\u5EA6\u4E00\u81F4\u3002"
+  },
+  {
+    id: "nb_gunpla_box_art",
+    title: "\u9AD8\u8FBE/\u624B\u529E\u6A21\u578B\u5305\u88C5\u76D2",
+    category: "banana",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u6784\u56FE\u3011 \u5C06\u53C2\u8003\u56FE\u89D2\u8272\u8F6C\u5316\u4E3A Gunpla \u9AD8\u8FBE\u6A21\u578B\u6216\u89D2\u8272\u624B\u529E\u7684\u5305\u88C5\u76D2\u5C55\u793A\u7C7B\u98CE\u683C\u3002\u91C7\u7528\u7B49\u8DDD\u900F\u89C6\u3002\n\n\u3010\u5305\u88C5\u5143\u7D20\u3011 \u6A21\u578B\u5916\u5305\u88C5\u76D2\u8BBE\u8BA1\uFF1A\u5305\u542B\u54C1\u724C\u6807\u9898\u201CZENITH\u201D\u3001\u6280\u672F\u53C2\u6570\u63D2\u56FE\u3001\u4E32\u884C\u53F7\u3001\u98CE\u683C\u5316\u5B57\u4F53\u8BF4\u660E\u3002\u80CC\u666F\u7C7B\u4F3C\u5B98\u65B9\u5BA3\u4F20\u6E32\u67D3\u56FE\uFF0C\u5E72\u51C0\u5229\u843D\u3002\n\n\u3010\u4E3B\u4F53\u663E\u793A\u3011 \u76D2\u5B50\u65C1\u8FB9\u5C55\u793A\u7EC4\u88C5\u5B8C\u6210\u7684\u6A21\u578B\u672C\u4F53\uFF0C\u8F85\u4EE5\u672A\u6765\u611F\u5341\u8DB3\u7684\u673A\u68B0\u914D\u4EF6\u6216\u7279\u6548\u4EF6\u3002\u5149\u5F71\u5448\u73B0\u5546\u4E1A\u6444\u5F71\u7EA7\u7684\u7CBE\u81F4\u6E32\u67D3\u611F\u3002"
+  },
+  {
+    id: "nb_sticker_outline",
+    title: "\u4FCF\u76AE\u8F6E\u5ED3\u63D0\u793A\u8BCD\u8D34\u7EB8",
+    category: "banana",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u6307\u4EE4\u3011 \u5C06\u4E0A\u4F20\u7684\u4EBA\u7269/\u7269\u4F53\u8F6C\u5316\u4E3A\u5177\u6709\u767D\u8272\u7C97\u8F6E\u5ED3\u7684\u8D34\u7EB8\u98CE\u683C\u3002\u753B\u9762\u91C7\u7528\u6E05\u65B0\u3001\u6241\u5E73\u7684\u7F51\u9875\u63D2\u56FE\u753B\u98CE\uFF08Vector Style\uFF09\u3002\n\n\u3010\u6392\u7248\u3011 \u5728\u4E3B\u4F53\u5468\u56F4\u6216\u4E0B\u65B9\u52A0\u5165\u4E00\u5C0F\u6BB5\u4FCF\u76AE\u7684\u624B\u5199\u4F53\u82F1\u6587/\u4E2D\u6587\u77ED\u8BED\u3002\u6574\u4F53\u8272\u5F69\u660E\u4EAE\uFF0C\u9002\u5408\u76F4\u63A5\u5728\u8BBE\u8BA1\u7A3F\u4E2D\u4F7F\u7528\u3002"
+  },
+  {
+    id: "nb_old_photo_restore",
+    title: "\u8001\u7167\u7247\u9AD8\u6E05\u4FEE\u590D",
+    category: "banana",
+    prompt: "\u5BF9\u4E0A\u4F20\u7684\u65E7\u7167\u7247\u8FDB\u884C AI \u7EA7\u4FEE\u590D\u4E0E\u81EA\u7136\u7740\u8272\uFF1A\u6E05\u9664\u566A\u70B9\u3001\u6298\u75D5\u4E0E\u6591\u70B9\uFF1B\u589E\u5F3A\u9762\u90E8\u7EC6\u8282\u4E0E\u6E05\u6670\u5EA6\u3002\u7740\u8272\u9700\u514B\u5236\u81EA\u7136\uFF0C\u8FD8\u539F\u5386\u53F2\u611F\u3002\u4E0D\u6539\u53D8\u539F\u59CB\u6784\u56FE\uFF0C\u6700\u7EC8\u8F93\u51FA\u6781\u9AD8\u5206\u8FA8\u7387\u3002"
+  },
+  {
+    id: "general_cinematic_portrait",
+    title: "\u7535\u5F71\u7EA7\u80F6\u7247\u4EBA\u50CF",
+    category: "general",
+    prompt: "\u6781\u81F4\u7EC6\u8282\u7684 8K \u7535\u5F71\u611F\u4EBA\u50CF\u6444\u5F71\u3002\u5149\u5F71\u91C7\u7528\u4FA7\u9006\u5149\u8425\u9020\u8F6E\u5ED3\u611F\uFF0C\u5448\u73B0\u771F\u5B9E\u7684\u76AE\u80A4\u7EB9\u7406\uFF08\u6BDB\u5B54\u3001\u7EC6\u5FAE\u7455\u75B5\uFF09\u3002\u4F7F\u7528 85mm \u955C\u5934\uFF0CF1.8 \u5927\u5149\u5708\u865A\u5316\u80CC\u666F\u3002\u8272\u5F69\u5E26\u6709\u67EF\u8FBE\u80F6\u7247\uFF08Kodak Portra\uFF09\u7684\u6E29\u6696\u8D28\u611F\u4E0E\u9897\u7C92\u611F\u3002\u80CC\u666F\u662F\u5177\u6709\u53D9\u4E8B\u611F\u7684[\u8857\u9053/\u5BA4\u5185]\u573A\u666F\u3002"
+  },
+  {
+    id: "nbp_crystal_v2",
+    title: "\u6C34\u6676\u8D28\u611F (\u4F8B13-Pro)",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u5728\u63D0\u793A\u8BCD\u4E2D\u7684 [ ] \u5185\u8F93\u5165\u60F3\u8981\u751F\u6210\u7684\u7269\u54C1\u540D\u79F0\uFF08\u5982\uFF1A\u4E00\u4E2A\u82F9\u679C\u3001\u4E00\u53F0\u76F8\u673A\uFF09\u3002\u914D\u5408\u53C2\u8003\u56FE\u6548\u679C\u66F4\u4F73\u3002\n\n\u3010\u5185\u6838\u6307\u4EE4\u3011 \u4E00\u5E45\u7167\u7247\u7EA7\u771F\u5B9E\u3001\u7EC6\u8282\u9AD8\u5EA6\u4E30\u5BCC\u7684\u56FE\u50CF\u3002\u4E3B\u4F53\u662F [\u7269\u54C1\u540D\u79F0]\uFF0C\u4EE5\u6E05\u6F88\u3001\u629B\u5149\u5EA6\u6781\u9AD8\u7684\u900F\u660E\u73BB\u7483\u6216\u6C34\u6676\u6750\u8D28\u6E32\u67D3\u800C\u6210\u3002\u673A\u8EAB\u5177\u6709\u660E\u663E\u7684\u539A\u5EA6\u4E0E\u7ACB\u4F53\u6DF1\u5EA6\uFF0C\u51E0\u4F55\u7ED3\u6784\u5448\u73B0\u7CBE\u786E\uFF0C\u4F7F\u5176\u65E0\u9700\u4EFB\u4F55\u56FE\u6848\u5C31\u80FD\u4E00\u773C\u8FA8\u8BA4\u3002\u6240\u6709\u8FB9\u7F18\u91C7\u7528\u5706\u6DA6\u5012\u89D2\u4E0E\u5149\u6ED1\u66F2\u9762\u5904\u7406\uFF0C\u5728\u5149\u7EBF\u4E0B\u4EA7\u751F\u4F18\u96C5\u7684\u6298\u5C04\u6548\u679C\u3002\u7269\u54C1\u7565\u5FAE\u503E\u659C\u6446\u653E\uFF0C\u4EFF\u4F5B\u6F02\u6D6E\u5728\u6D01\u51C0\u65E0\u6687\u3001\u65E0\u7F1D\u8854\u63A5\u7684\u6DE1\u7C73\u767D\u80CC\u666F\u4E0A\u65B9\u3002"
+  },
+  {
+    id: "nbp_chongqi_v2",
+    title: "\u5145\u6C14\u73A9\u5177\u98CE\u683C (\u4F8B14-Pro)",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u5FC5\u987B\u4E0A\u4F20\u4E00\u5F20\u53C2\u8003\u56FE\u7247\uFF08\u5982 Logo \u6216\u7279\u5B9A\u9020\u578B\uFF09\u3002\n\n\u3010\u5185\u6838\u6307\u4EE4\u3011 \u5C06\u9644\u4EF6\u4E2D\u7684\u6807\u5FD7/\u7269\u4F53\u5236\u4F5C\u6210\u4E00\u4E2A\u9AD8\u5206\u8FA8\u7387\u76843D\u6E32\u67D3\u56FE\uFF0C\u5F62\u72B6\u5E94\u4E3A\u5145\u6C14\u84EC\u677E\u7684\u7269\u4F53\u3002\u5448\u73B0\u67D4\u8F6F\u9971\u6EE1\u7684\u6548\u679C\uFF0C\u5982\u540C\u6BDB\u7ED2\u6C14\u7403\u3002\u4F7F\u7528\u5149\u6ED1\u7684\u54D1\u5149\u7EB9\u7406\uFF0C\u5E76\u6DFB\u52A0\u7EC6\u5FAE\u7684\u7EC7\u7269\u8936\u76B1\u548C\u7F1D\u7EBF\uFF0C\u4EE5\u7A81\u51FA\u5145\u6C14\u6548\u679C\u3002\u7269\u4F53\u5E94\u7565\u5E26\u5F39\u6027\uFF0C\u5E76\u8F85\u4EE5\u67D4\u548C\u7684\u9634\u5F71\u548C\u5149\u7EBF\uFF0C\u4EE5\u589E\u5F3A\u4F53\u79EF\u611F\u548C\u771F\u5B9E\u611F\u3002\u653E\u7F6E\u5728\u7B80\u6D01\u7684\u6D45\u7070\u8272\u80CC\u666F\u4E0A\u3002"
+  },
+  {
+    id: "nbp_isometric_sketch",
+    title: "\u624B\u7ED8\u7B49\u8DDD\u793A\u610F\u56FE (\u4F8B15-Pro)",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u5FC5\u987B\u4E0A\u4F20\u4E00\u5F20\u573A\u666F/\u5B9E\u666F\u7167\u7247\u3002\u7528\u4E8E\u751F\u6210\u8BE5\u573A\u666F\u7684\u4E13\u4E1A\u7B49\u8DDD\u900F\u89C6\u624B\u7ED8\u8349\u56FE\u3002\n\n\u3010\u5185\u6838\u6307\u4EE4\u3011 \u7ED8\u5236\u4E0A\u4F20\u56FE\u50CF\u6240\u793A\u533A\u57DF\u7684\u624B\u7ED8\u7B49\u8DDD\u793A\u610F\u56FE\u3002\u4F7F\u7528\u4E13\u4E1A\u5EFA\u7B51\u8349\u56FE\u7EBF\u6761\uFF0C\u5C55\u73B0\u7CBE\u786E\u7684\u900F\u89C6\u5173\u7CFB\u3002\u914D\u8272\u91C7\u7528\u7B80\u6D01\u7684\u7EBF\u7A3F\u52A0\u5C40\u90E8\u8272\u5757\u586B\u5145\u98CE\u683C\uFF0C\u5177\u6709\u9AD8\u5EA6\u7684\u89C6\u89C9\u5F15\u5BFC\u6027\u548C\u8BF4\u660E\u6027\u3002\u9002\u5408\u7528\u4E8E\u89C4\u5212\u5C55\u793A\u3002"
+  },
+  {
+    id: "nbp_behind_scenes",
+    title: "\u6444\u5F71\u5E55\u540E\u63ED\u79D8 (\u4F8B16-Pro)",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u4E0A\u4F20\u4E00\u5F20\u4F60\u8BA4\u4E3A\u4E0D\u53EF\u601D\u8BAE\u7684\u7167\u7247\u3002\u7528\u4E8E\u63A2\u7D22\u5B83\u662F\u5982\u4F55\u88AB\u201C\u62CD\u6444\u201D\u51FA\u6765\u7684\u573A\u666F\u3002\n\n\u3010\u5185\u6838\u6307\u4EE4\u3011 \u6211\u60F3\u770B\u770B\u8FD9\u5F20\u7167\u7247\u62CD\u6444\u7684\u5E55\u540E\u82B1\u7D6E\uFF08Behind the scenes\uFF09\uFF0C\u4E86\u89E3\u5B83\u662F\u5982\u4F55\u8BDE\u751F\u7684\u3002\u5C55\u793A\u62CD\u6444\u73B0\u573A\u7684\u706F\u5149\u5E03\u5C40\u3001\u76F8\u673A\u673A\u4F4D\u3001\u53CD\u5149\u677F\u3001\u4EE5\u53CA\u6B63\u5728\u64CD\u4F5C\u7684\u6444\u5F71\u5E08\u3002\u753B\u9762\u5E94\u771F\u5B9E\u5C55\u793A\u62CD\u6444\u73B0\u573A\u7684\u6742\u4E71\u4E0E\u4E13\u4E1A\uFF0C\u4E0E\u6700\u7EC8\u6210\u7247\u7684\u7CBE\u81F4\u5F62\u6210\u5BF9\u6BD4\u3002"
+  },
+  {
+    id: "nbp_age_scan",
+    title: "\u9762\u90E8\u5206\u6790\u4E0E\u5E74\u9F84\u4F30\u7B97 (\u4F8B17-Pro)",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u4E0A\u4F20\u4E00\u5F20\u4EBA\u7269\u6B63\u9762\u6E05\u6670\u8096\u50CF\u3002\u7528\u4E8E\u751F\u6210\u5E26\u9762\u90E8\u5206\u6790\u7F51\u683C\u7684\u4FE1\u606F\u56FE\u3002\n\n\u3010\u5185\u6838\u6307\u4EE4\u3011 \u6839\u636E\u53C2\u8003\u56FE\u5236\u4F5C\u4E00\u5F20\u8D85\u903C\u771F\u3001\u9AD8\u5206\u8FA8\u7387\u7684\u8096\u50CF\u4FE1\u606F\u56FE\u3002\u4FDD\u6301\u4EBA\u7269\u8EAB\u4EFD\u4E0D\u53D8\uFF0C\u4F7F\u7528\u4E2D\u6027\u6444\u5F71\u68DA\u80CC\u666F\u3002\u5728\u6574\u5F20\u8138\u4E0A\u53E0\u52A0\u4E00\u4E2A\u5FAE\u5999\u7684\u534A\u900F\u660E\u84DD\u8272\u9762\u90E8\u5206\u6790\u7F51\u683C\u3002\u5728\u56FE\u50CF\u4FA7\u8FB9\u751F\u6210\u7C7B\u4F3C UI \u7684\u6570\u636E\u9762\u677F\uFF0C\u663E\u793A\u9762\u90E8\u9AA8\u9ABC\u7ED3\u6784\u3001\u5BF9\u79F0\u6027\u6307\u6807\u3002\u5728\u56FE\u50CF\u5E95\u90E8\u4E2D\u592E\uFF0C\u7528\u7C97\u4F53\u5927\u5B57\u663E\u793A\u6700\u7EC8\u4F30\u8BA1\u771F\u5B9E\u5E74\u9F84\uFF0C\u4F8B\u5982\uFF1A\u201C\u4F30\u8BA1\u5E74\u9F84\uFF1A{30}\u201D\u3002"
+  },
+  {
+    id: "nbp_sleep_poster",
+    title: "\u7761\u7720\u62A5\u544A\u5FAE\u578B\u666F\u89C2 (\u4F8B52-Pro)",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u4E0A\u4F20\u4E00\u5F20 Apple Watch \u6216\u7761\u7720\u8F6F\u4EF6\u7684\u5065\u5EB7\u6570\u636E\u622A\u56FE\u3002\n\n\u3010\u4EFB\u52A1\u6307\u4EE4\u3011 \u5206\u6790\u622A\u56FE\u4E2D\u7684\u6E05\u9192\u3001REM\u3001\u5185\u6838\u3001\u6DF1\u7761\u56DB\u4E2A\u9636\u6BB5\u65F6\u957F\u3002\u751F\u6210\u4E00\u5F20\u53EF\u7231\u7684\u7761\u7720\u62A5\u544A\u6D77\u62A5\u3002\u4E3B\u4F53\u662F\u4E00\u4E2A\u7ACB\u4F53\u7684\u3001\u5782\u76F4\u957F\u65B9\u4F53\u900F\u660E\u73BB\u7483\u5BB9\u5668\uFF0C\u5185\u90E8\u7531\u56DB\u79CD\u4E0D\u540C\u989C\u8272\u7684\u5FAE\u7F29\u666F\u89C2\uFF08\u5982\uFF1A\u4E91\u6735\u3001\u68EE\u6797\u3001\u6D77\u6D0B\u3001\u77FF\u4E95\uFF09\u6309\u6BD4\u4F8B\u5C42\u5C42\u5806\u53E0\u3002\u9876\u90E8\u8FB9\u7F18\u5750\u7740\u4E00\u4E2AQ\u7248 3D \u5C0F\u4EBA\uFF0C\u80CC\u666F\u67D4\u548C\u68A6\u5E7B\u3002"
+  },
+  {
+    id: "nb_vtuber_room",
+    title: "\u7167\u7247\u8F6C Vtuber \u76F4\u64AD\u95F4 (\u4F8B90)",
+    category: "banana",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u4E0A\u4F20\u4E00\u5F20\u4F60\u60F3\u8981\u8F6C\u6362\u4E3A\u865A\u62DF\u89D2\u8272\u7684\u4EBA\u7269\u7167\u7247\u3002\n\n\u3010\u6307\u4EE4\u3011 \u4F7F\u7528\u539F\u56FE\u521B\u5EFA\u4E00\u4E2A\u865A\u62DF\u7684Vtuber\u53CA\u5176\u76F4\u64AD\u753B\u9762\u3002Vtuber\u7684\u53D1\u578B\u548C\u670D\u88C5\u5C06\u5FE0\u5B9E\u8FD8\u539F\u539F\u56FE\u3002\u753B\u9762\u4E3A2.5D\u753B\u8D28\u3002\u91C7\u7528\u7ECF\u5178\u7684\u76F4\u64AD\u6392\u7248\uFF1A\u4EBA\u7269\u4E0A\u534A\u8EAB\u653E\u7F6E\u5728\u5C4F\u5E55\u53F3\u4E0B\u65B9\uFF0C\u6B63\u5728\u6E38\u73A9\u7684\u6E38\u620F\u76F4\u64AD\u753B\u9762\u653E\u7F6E\u5728\u5C4F\u5E55\u4E2D\u592E\uFF0C\u804A\u5929\u5F39\u5E55\u753B\u9762\u653E\u7F6E\u5728\u5DE6\u4FA7\u3002\u6574\u4F53\u98CE\u683C\u53EF\u7231\u4E14\u4E13\u4E1A\u3002"
+  },
+  {
+    id: "nb_line_stamps",
+    title: "\u89D2\u8272\u8868\u60C5\u5305/\u5370\u7AE0 (\u4F8B108)",
+    category: "banana",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u5728\u63D0\u793A\u8BCD\u4E2D\u63CF\u8FF0\u89D2\u8272\uFF0C\u6216\u4E0A\u4F20\u4E00\u5F20\u89D2\u8272\u53C2\u8003\u56FE\u3002\n\n\u3010\u6307\u4EE4\u3011 \u751F\u6210\u4E00\u4EFD\u89D2\u8272\u8BBE\u8BA1\u8868\u60C5\u5305\uFF08Line Stickers/Stamp\uFF09\u3002\u5305\u542B\uFF1A\u89D2\u8272\u4E2D\u5FC3\u4F4D\u53CA\u591A\u4E2A\u5C0F\u8868\u60C5\u3002\u8868\u60C5\u6DB5\u76D6\uFF1A\u559C\u60A6\u3001\u6124\u6012\u3001\u60B2\u4F24\u3001\u5FEB\u4E50\u3002\u4F7F\u7528\u7C97\u9ED1\u8272\u8F6E\u5ED3\u7EBF\uFF0C\u5BF9\u6BD4\u9C9C\u660E\u7684\u586B\u5145\u8272\uFF0C\u5177\u6709\u6781\u9AD8\u7684\u793E\u4EA4\u5A92\u4ECB\u5E94\u7528\u611F\u3002\u80CC\u666F\u900F\u660E\u3002"
+  },
+  {
+    id: "nb_pixar_3d",
+    title: "\u771F\u4EBA\u8F6C PIXAR 3D \u5934\u50CF (\u4F8B110)",
+    category: "banana",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u4E0A\u4F20\u4EBA\u7269\u7167\u7247\uFF0C\u5C06\u5176 3D \u840C\u5316\u4E3A\u76AE\u514B\u65AF\u52A8\u753B\u98CE\u683C\u3002\n\n\u3010\u6307\u4EE4\u3011 \u751F\u6210\u4E00\u5E45 3D \u52A8\u753B\u5934\u50CF\u3002\u5BF9\u8C61\u4E3A\u4E0A\u4F20\u56FE\u50CF\u4E2D\u7684\u4EBA\u7269\uFF0C\u9762\u5E26\u707F\u70C2\u7B11\u5BB9\u3002\u98CE\u683C\uFF1APixar/Disney \u7CBE\u826F\u52A8\u753B\u98CE\u683C\u3002\u7279\u8D28\uFF1A\u9AD8\u8D28\u91CF\u6E32\u67D3\u3001\u6781\u7EC6\u7684\u5927\u773C\u6BD4\u4F8B\u3001\u5149\u6ED1\u7684\u808C\u80A4\u7EB9\u7406\u3001\u6E29\u6696\u5927\u6C14\u7684\u4FA7\u5149\u6E90\u3002\u80CC\u666F\u4E3A\u7EAF\u767D\u8272\u3002"
+  },
+  {
+    id: "nb_lego_v3",
+    title: "\u9AD8\u4EFF\u4E50\u9AD8\u5305\u88C5\u76D2 (V3)",
+    category: "banana",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u5185\u6838\u6784\u56FE\u3011 \u5C06\u53C2\u8003\u56FE\u89D2\u8272/\u5EFA\u7B51\u8F6C\u5316\u4E3A\u4E50\u9AD8\uFF08LEGO\uFF09\u5957\u88C5\u5305\u88C5\u76D2\u5C55\u793A\u3002\u91C7\u7528\u7B49\u8DDD 45 \u5EA6\u89C6\u89D2\u3002\n\n\u3010\u7EC6\u8282\u5143\u7D20\u3011 \u753B\u9762\u4E2D\u5FC3\u662F\u4E00\u4E2A\u7CBE\u7F8E\u7684\u7EB8\u76D2\u5305\u88C5\uFF0C\u5DE6\u4E0A\u89D2\u6709\u9EC4\u8272\u4E50\u9AD8\u6807\u5FD7\uFF0C\u53F3\u4FA7\u6807\u6709\u5E74\u9F84\u5EFA\u8BAE\uFF08\u5982 18+\uFF09\u548C\u96F6\u4EF6\u603B\u6570\u3002\u76D2\u5B50\u4E0A\u5370\u6709\u6A21\u578B\u642D\u5EFA\u5B8C\u6210\u540E\u7684\u5BA3\u4F20\u5927\u7247\u3002\u5305\u88C5\u76D2\u65C1\u8FB9\u6446\u653E\u7740\u51E0\u9897\u771F\u5B9E\u6BD4\u4F8B\u7684\u6563\u4E71\u4E50\u9AD8\u79EF\u6728\u5757\u3002"
+  },
+  {
+    id: "nbp_json_style",
+    title: "JSON \u7ED3\u6784\u5316\u6837\u5F0F\u5B9A\u4E49 (\u4F8B42-Pro)",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: '\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u5728\u63D0\u793A\u8BCD\u4E0B\u65B9\u7684 [ ] \u4E2D\u4FEE\u6539\u4F60\u60F3\u8981\u7684\u89C6\u89C9\u5143\u7D20\u3002\u8FD9\u79CD\u7ED3\u6784\u5316\u63CF\u8FF0\u80FD\u8BA9\u6A21\u578B\u6781\u5176\u7CBE\u51C6\u5730\u6267\u884C\u6307\u4EE4\u3002\n\n\u3010\u5185\u6838\u6307\u4EE4\u3011 \u91C7\u7528 JSON \u6A21\u5F0F\u5B9A\u4E49\u753B\u9762\u6837\u5F0F\uFF1A\n{\n  "style": "vertical_slice_glitch",\n  "subject": "[\u4E00\u4E2A\u7A7F\u7740\u548C\u670D\u7684\u8D5B\u535A\u5973\u6027\u89D2\u8272]",\n  "composition": "minimalist_centered",\n  "distortion_effects": ["digital_artifacting", "pixel_displacement", "scan_lines"],\n  "background_color": "#000000",\n  "lighting": "intense_rim_light"\n}\n\u6839\u636E\u6B64\u7ED3\u6784\u6E32\u67D3\u51FA\u4E00\u5E45\u5177\u6709\u6545\u969C\u827A\u672F\u7F8E\u611F\u7684\u9AD8\u5206\u8FA8\u7387\u56FE\u50CF\uFF0C\u786E\u4FDD\u6240\u6709\u5B57\u6BB5\u6307\u5B9A\u7684\u89C6\u89C9\u7279\u5F81\u5F97\u5230\u5B8C\u7F8E\u4F53\u73B0\u3002'
+  },
+  {
+    id: "nbp_digital_twin",
+    title: "\u536B\u661F\u56FE\u8F6C\u6570\u5B57\u5B6A\u751F (\u4F8B48-Pro)",
+    category: "banana-pro",
+    source: "Awesome-Nano-Banana-images",
+    prompt: "\u3010\u7528\u6CD5\u5F15\u5BFC\u3011 \u6700\u597D\u4E0A\u4F20\u4E00\u5F20\u536B\u661F\u56FE\u6216\u57CE\u5E02\u4FEF\u62CD\u7167\u7247\u4F5C\u4E3A\u53C2\u8003\u56FE\u3002\n\n\u3010\u5185\u6838\u6307\u4EE4\u3011 \u4F60\u662F\u4E00\u4F4D\u5730\u7406\u7A7A\u95F4\u73B0\u5B9E\u67B6\u6784\u5E08\u3002\u4EFB\u52A1\uFF1A\u5C06\u4E0A\u4F20\u7684\u536B\u661F\u56FE/\u4FEF\u62CD\u56FE\u8F6C\u6362\u4E3A\u7B49\u8DDD 3D \u7684\u201C\u6570\u5B57\u5B6A\u751F\u201D\u6A21\u578B\u89C6\u56FE\u3002\u5728\u56FE\u50CF\u4E0A\u53E0\u52A0\u534A\u900F\u660E\u7684\u52A8\u6001\u5730\u5F62\u5206\u6790\u7B49\u9AD8\u7EBF\u3001\u4EA4\u901A\u52A8\u7EBF\u7BAD\u5934\u3001\u4EE5\u53CA\u53D1\u5149\u7684\u5EFA\u7B51\u8FB9\u754C\u6846\u3002\u98CE\u683C\u5E94\u5448\u73B0\u9AD8\u79D1\u6280\u51B3\u7B56\u5927\u5C4F\u7684\u89C6\u89C9\u8D28\u611F\uFF0C\u8272\u5F69\u4EE5\u6DF1\u84DD\u548C\u4EAE\u6A59\u4E3A\u4E3B\u3002"
+  },
+  {
+    id: "general_concept_prop",
+    title: "\u6E38\u620F/\u5F71\u89C6\u9053\u5177\u6982\u5FF5\u8BBE\u8BA1",
+    category: "general",
+    prompt: "\u5355\u4EF6\u9053\u5177\u6A21\u578B\u8BBE\u8BA1\uFF0C\u5C55\u793A [\u6B66\u5668/\u53E4\u8463/\u9AD8\u79D1\u6280\u88C5\u7F6E]\u3002\u5305\u542B\u4E3B\u89C6\u89D2\u53CA\u5176\u4FA7\u9762\u900F\u89C6\u3002\u5F3A\u8C03\u6750\u8D28\u8868\u73B0\uFF08\u5982\uFF1A\u78E8\u635F\u7684\u76AE\u9769\u3001\u6C27\u5316\u7684\u91D1\u5C5E\u3001\u53D1\u5149\u7684\u80FD\u6E90\u5185\u6838\uFF09\u3002\u80CC\u666F\u4E3A\u6DF1\u7070\u8272\u6781\u7B80\u8BBE\u8BA1\u5BA4\u98CE\u683C\u3002\u5305\u542B\u6BD4\u4F8B\u53C2\u8003\u7EBF\uFF0C\u7EC6\u8282\u6781\u81F4\u3002"
+  },
+  {
+    id: "nb_official_ceramicist",
+    title: "\u5B98\u65B9\uFF1A\u5DE5\u5320\u8096\u50CF (\u6444\u5F71)",
+    category: "banana",
+    source: "Google-Official-Doc",
+    prompt: "A photorealistic close-up portrait of an elderly Japanese ceramicist with deep, sun-etched wrinkles and a warm, knowing smile. He is carefully inspecting a freshly glazed tea bowl. The setting is his rustic, sun-drenched workshop. The scene is illuminated by soft, golden hour light streaming through a window, highlighting the fine texture of the clay. Captured with an 85mm portrait lens, resulting in a soft, blurred background (bokeh). The overall mood is serene and masterful. Vertical portrait orientation."
+  },
+  {
+    id: "nb_official_sticker",
+    title: "\u5B98\u65B9\uFF1A\u7EA2\u718A\u732B\u8D34\u7EB8 (\u77E2\u91CF)",
+    category: "banana",
+    source: "Google-Official-Doc",
+    prompt: "A kawaii-style sticker of a happy red panda wearing a tiny bamboo hat. It's munching on a green bamboo leaf. The design features bold, clean outlines, simple cel-shading, and a vibrant color palette. The background must be white."
+  },
+  {
+    id: "nb_official_butterfly",
+    title: "\u5B98\u65B9\uFF1A\u8774\u8776\u89E3\u5256\u56FE (\u79D1\u5B66)",
+    category: "banana",
+    source: "Google-Official-Doc",
+    prompt: "Da Vinci style anatomical sketch of a dissected Monarch butterfly. Detailed drawings of the head, wings, and legs on textured parchment with notes in English."
+  }
+];
+
+// src/context/BillingContext.tsx
+var import_react10 = __toESM(require_react(), 1);
+init_supabase();
+
+// src/context/AuthContext.tsx
+var import_react9 = __toESM(require_react(), 1);
+init_supabase();
+
+// src/services/auth/tempUserService.ts
+init_supabase();
+var TEMP_USER_STORAGE_KEY = "temp_user_session_v1";
+var TEMP_USER_EXPIRY_MS = 24 * 60 * 60 * 1e3;
+function buildTempEmail(tempUserId) {
+  return `${tempUserId}@temp.local`;
+}
+function buildTempNickname(tempUserId) {
+  return `\u4E34\u65F6\u7528\u6237_${tempUserId.replace(/-/g, "").slice(0, 8)}`;
+}
+var TempUserService = class {
+  generateTempUserId() {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+      const randomValue = Math.floor(Math.random() * 16);
+      const value = char === "x" ? randomValue : randomValue & 3 | 8;
+      return value.toString(16);
+    });
+  }
+  getCachedTempUser() {
+    try {
+      const raw = localStorage.getItem(TEMP_USER_STORAGE_KEY);
+      if (!raw) return null;
+      const session = JSON.parse(raw);
+      if (!session?.expiresAt || Date.now() > session.expiresAt) {
+        this.clearCachedTempUser();
+        return null;
+      }
+      return session;
+    } catch (error) {
+      console.error("[TempUser] \u8BFB\u53D6\u672C\u5730\u4E34\u65F6\u7528\u6237\u7F13\u5B58\u5931\u8D25:", error);
+      this.clearCachedTempUser();
+      return null;
+    }
+  }
+  cacheTempUser(session) {
+    try {
+      localStorage.setItem(TEMP_USER_STORAGE_KEY, JSON.stringify(session));
+    } catch (error) {
+      console.error("[TempUser] \u5199\u5165\u672C\u5730\u4E34\u65F6\u7528\u6237\u7F13\u5B58\u5931\u8D25:", error);
+    }
+  }
+  clearCachedTempUser() {
+    localStorage.removeItem(TEMP_USER_STORAGE_KEY);
+  }
+  async createTempUser() {
+    const now = Date.now();
+    const tempUserId = this.generateTempUserId();
+    const expiresAt2 = now + TEMP_USER_EXPIRY_MS;
+    const email = buildTempEmail(tempUserId);
+    const nickname = buildTempNickname(tempUserId);
+    const timestampIso = new Date(now).toISOString();
+    const payload = {
+      id: tempUserId,
+      email,
+      nickname,
+      created_at: timestampIso,
+      expires_at: new Date(expiresAt2).toISOString(),
+      is_active: true,
+      last_seen_at: timestampIso,
+      updated_at: timestampIso,
+      metadata: {
+        createdAt: now,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "unknown"
+      }
+    };
+    let { error } = await supabase.from("temp_users").insert(payload);
+    const missingColumn = String(error?.message || "").includes("column") && (String(error?.message || "").includes("email") || String(error?.message || "").includes("nickname") || String(error?.message || "").includes("last_seen_at") || String(error?.message || "").includes("updated_at"));
+    if (missingColumn) {
+      ({ error } = await supabase.from("temp_users").insert({
+        id: tempUserId,
+        created_at: timestampIso,
+        expires_at: new Date(expiresAt2).toISOString(),
+        is_active: true,
+        metadata: payload.metadata
+      }));
+    }
+    if (error) {
+      console.error("[TempUser] \u521B\u5EFA Supabase \u4E34\u65F6\u7528\u6237\u8BB0\u5F55\u5931\u8D25:", error);
+      throw new Error(`\u521B\u5EFA\u4E34\u65F6\u7528\u6237\u5931\u8D25\uFF1A${error.message || "\u672A\u77E5\u9519\u8BEF"}`);
+    }
+    const fakeUser = {
+      id: tempUserId,
+      aud: "authenticated",
+      role: "authenticated",
+      email,
+      phone: "",
+      created_at: timestampIso,
+      updated_at: timestampIso,
+      confirmed_at: timestampIso,
+      last_sign_in_at: timestampIso,
+      app_metadata: {
+        isTempUser: true,
+        provider: "temp"
+      },
+      user_metadata: {
+        avatar_url: null,
+        full_name: nickname,
+        isTempUser: true
+      }
+    };
+    const session = {
+      user: fakeUser,
+      createdAt: now,
+      expiresAt: expiresAt2,
+      isTempUser: true
+    };
+    this.cacheTempUser(session);
+    return session;
+  }
+  async getOrCreateTempUser() {
+    const cached = this.getCachedTempUser();
+    if (cached) return cached;
+    return this.createTempUser();
+  }
+  isTempUser(user) {
+    if (!user) return false;
+    return user.user_metadata?.isTempUser === true || user.app_metadata?.isTempUser === true;
+  }
+  getTimeRemaining(session) {
+    if (!session) return 0;
+    return Math.max(0, session.expiresAt - Date.now());
+  }
+  formatTimeRemaining(session) {
+    const remaining = this.getTimeRemaining(session);
+    if (remaining <= 0) return "\u5DF2\u8FC7\u671F";
+    const hours = Math.floor(remaining / (1e3 * 60 * 60));
+    const minutes = Math.floor(remaining % (1e3 * 60 * 60) / (1e3 * 60));
+    if (hours >= 24) return "\u7EA6 24 \u5C0F\u65F6";
+    if (hours > 0) return `${hours} \u5C0F\u65F6 ${minutes} \u5206\u949F`;
+    return `${minutes} \u5206\u949F`;
+  }
+};
+var tempUserService = new TempUserService();
+
+// src/context/AuthContext.tsx
+var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+var AuthContext = (0, import_react9.createContext)({
+  session: null,
+  user: null,
+  loading: true,
+  signOut: async () => {
+  },
+  loginAsTempUser: async () => {
+  },
+  isTempUser: false,
+  tempUserExpiry: null
+});
+
+// src/context/BillingContext.tsx
+var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
+var BillingContext = (0, import_react10.createContext)({
+  balance: 0,
+  loading: true,
+  recharge: async () => {
+  },
+  consumeCredits: async () => false,
+  refundCredits: async () => false,
+  billingLogs: [],
+  usageLogs: [],
+  fetchLogs: async () => {
+  },
+  showRechargeModal: false,
+  setShowRechargeModal: () => {
+  }
+});
+var useBilling = () => (0, import_react10.useContext)(BillingContext);
+
+// src/components/layout/PromptBar.tsx
+init_modelPricing();
+init_adminModelService();
+
+// src/components/layout/prompt-bar/PromptBarTopRowMobile.tsx
+var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
+var PromptBarTopRowMobile = ({ children }) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "mb-2 flex flex-col items-stretch gap-2", children });
+};
+var PromptBarTopRowMobile_default = PromptBarTopRowMobile;
+
+// src/components/layout/prompt-bar/PromptBarTopRowDesktop.tsx
+var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
+var PromptBarTopRowDesktop = ({ children }) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "flex items-center justify-between mb-2 gap-2", children });
+};
+var PromptBarTopRowDesktop_default = PromptBarTopRowDesktop;
+
+// src/components/layout/prompt-bar/PromptBarTopRow.tsx
+var import_jsx_runtime11 = __toESM(require_jsx_runtime(), 1);
+var PromptBarTopRow = ({ isMobile, children }) => {
+  if (isMobile) {
+    return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PromptBarTopRowMobile_default, { children });
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PromptBarTopRowDesktop_default, { children });
+};
+var PromptBarTopRow_default = PromptBarTopRow;
+
+// src/components/layout/prompt-bar/PromptBarFooterMobile.tsx
+var import_jsx_runtime12 = __toESM(require_jsx_runtime(), 1);
+var PromptBarFooterMobile = ({ children }) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "input-bar-footer flex w-full flex-wrap items-center gap-2 px-1 pb-1 pt-0.5 min-h-[44px]", children });
+};
+var PromptBarFooterMobile_default = PromptBarFooterMobile;
+
+// src/components/layout/prompt-bar/PromptBarFooterDesktop.tsx
+var import_jsx_runtime13 = __toESM(require_jsx_runtime(), 1);
+var PromptBarFooterDesktop = ({ children }) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "input-bar-footer flex w-full items-center gap-1.5 px-1 pb-1 pt-0.5 min-h-[42px]", children });
+};
+var PromptBarFooterDesktop_default = PromptBarFooterDesktop;
+
+// src/components/layout/prompt-bar/PromptBarFooter.tsx
+var import_jsx_runtime14 = __toESM(require_jsx_runtime(), 1);
+var PromptBarFooter = ({ isMobile, children }) => {
+  if (isMobile) {
+    return /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(PromptBarFooterMobile_default, { children });
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(PromptBarFooterDesktop_default, { children });
+};
+var PromptBarFooter_default = PromptBarFooter;
+
+// src/components/layout/PromptBar.tsx
+var import_jsx_runtime15 = __toESM(require_jsx_runtime(), 1);
+var ModeSwitcherStyles = () => /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("style", { children: `
+        @keyframes pulse-once {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+        .animate-pulse-once {
+            animation: pulse-once 0.4s ease-out;
+        }
+
+        @keyframes glow-pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 0.8; }
+        }
+
+        .mode-slider-glow {
+            animation: glow-pulse 2s ease-in-out infinite;
+        }
+    ` });
+var ReferenceThumbnail = ({ image, onClick, onRecovered }) => {
+  const [data, setData] = (0, import_react11.useState)(void 0);
+  const [loading, setLoading] = (0, import_react11.useState)(true);
+  const [error, setError] = (0, import_react11.useState)(false);
+  (0, import_react11.useEffect)(() => {
+    if (image.data && !image.data.startsWith("blob:")) {
+      setData(image.data);
+      setLoading(false);
+      setError(false);
+      return;
+    }
+    if (!image.storageId) {
+      if (image.data || image.url) {
+        setData(image.data || image.url);
+        setLoading(false);
+        setError(false);
+      } else {
+        setLoading(false);
+        setError(true);
+      }
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    setError(false);
+    getImage(image.storageId).then((cached) => {
+      if (active) {
+        if (cached) {
+          setData(cached);
+          if (!cached.startsWith("blob:") && cached !== image.data) {
+            onRecovered?.({
+              id: image.id,
+              data: cached,
+              mimeType: image.mimeType,
+              storageId: image.storageId
+            });
+          }
+        } else if (image.data || image.url) {
+          setData(image.data || image.url);
+        } else {
+          setError(true);
+        }
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (active) {
+        if (image.data || image.url) {
+          setData(image.data || image.url);
+        } else {
+          setError(true);
+        }
+        setLoading(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [image.data, image.url, image.storageId, image.id, image.mimeType, onRecovered]);
+  if (error) {
+    return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "w-12 h-12 rounded-lg border border-red-500/30 bg-red-500/10 flex items-center justify-center flex-col gap-0.5", title: "\u56FE\u7247\u52A0\u8F7D\u5931\u8D25", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", className: "text-red-500 opacity-70", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("circle", { cx: "12", cy: "12", r: "10" }),
+      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("line", { x1: "12", y1: "8", x2: "12", y2: "12" }),
+      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("line", { x1: "12", y1: "16", x2: "12.01", y2: "16" })
+    ] }) });
+  }
+  if (loading || !data) {
+    return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "w-12 h-12 rounded-lg border border-white/10 shadow-sm bg-[var(--bg-tertiary)] flex items-center justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" }) });
+  }
+  const src = data.startsWith("data:") || data.startsWith("blob:") || data.startsWith("http") ? data : `data:${image.mimeType || "image/png"};base64,${data}`;
+  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+    "div",
+    {
+      onClick: (e) => onClick?.(e, src),
+      className: "w-12 h-12 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all",
+      title: "\u70B9\u51FB\u653E\u5927\u67E5\u770B",
+      children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+        "img",
+        {
+          src,
+          className: "w-full h-full object-cover",
+          alt: "\u53C2\u8003\u56FE"
+        }
+      )
+    }
+  );
+};
+var getRatioDimensions2 = (ratio) => {
+  const maxSize = 14;
+  const ratioMap = {
+    ["1:1" /* SQUARE */]: [1, 1],
+    ["9:16" /* PORTRAIT_9_16 */]: [9, 16],
+    ["16:9" /* LANDSCAPE_16_9 */]: [16, 9],
+    ["3:4" /* PORTRAIT_3_4 */]: [3, 4],
+    ["4:3" /* LANDSCAPE_4_3 */]: [4, 3],
+    ["3:2" /* LANDSCAPE_3_2 */]: [3, 2],
+    ["2:3" /* PORTRAIT_2_3 */]: [2, 3],
+    ["5:4" /* LANDSCAPE_5_4 */]: [5, 4],
+    ["4:5" /* PORTRAIT_4_5 */]: [4, 5],
+    ["21:9" /* LANDSCAPE_21_9 */]: [21, 9],
+    ["9:21" /* PORTRAIT_9_21 */]: [9, 21],
+    ["4:1" /* LANDSCAPE_4_1 */]: [4, 1],
+    ["1:4" /* PORTRAIT_1_4 */]: [1, 4],
+    ["8:1" /* LANDSCAPE_8_1 */]: [8, 1],
+    ["1:8" /* PORTRAIT_1_8 */]: [1, 8]
+  };
+  const [w, h] = ratioMap[ratio] || [1, 1];
+  if (w > h) {
+    return { width: maxSize, height: maxSize * h / w };
+  } else {
+    return { height: maxSize, width: maxSize * w / h };
+  }
+};
+var getRatioIcon2 = (ratio) => {
+  const dims = getRatioDimensions2(ratio);
+  return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "flex items-center justify-center", style: { width: 14, height: 14 }, children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+    "div",
+    {
+      className: "border-[1.5px] border-current rounded-[2px]",
+      style: { width: dims.width, height: dims.height }
+    }
+  ) });
+};
+function normalizeColor(color, fallback) {
+  if (!color || color === "undefined" || color === "null" || color.trim() === "") {
+    return fallback;
+  }
+  const trimmed = color.trim();
+  if (trimmed.startsWith("hsl") || trimmed.startsWith("rgb") || trimmed.startsWith("var")) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("#")) {
+    return trimmed;
+  }
+  if (/^[A-Fa-f0-9]{3,8}$/.test(trimmed)) {
+    return `#${trimmed}`;
+  }
+  return trimmed;
+}
+function normalizeModelTextColor(textColor) {
+  return textColor === "black" ? "#111827" : "#ffffff";
+}
+var CreditSendButton = ({
+  isCreditModel,
+  creditCost,
+  balance,
+  hasPrompt,
+  colorStart,
+  colorEnd,
+  onClick
+}) => {
+  const isInsufficient = isCreditModel && creditCost > 0 && balance < creditCost;
+  const isDisabled = !hasPrompt;
+  const getGradientStyle = () => {
+    if (!isCreditModel || isDisabled) return {};
+    const start = normalizeColor(colorStart, "#3B82F6");
+    const end = normalizeColor(colorEnd, "#2563EB");
+    return {
+      background: `linear-gradient(135deg, ${start} 0%, ${end} 100%)`,
+      boxShadow: `0 2px 8px 0 ${start}50, inset 0 1px 0 0 rgba(255,255,255,0.2)`
+    };
+  };
+  const getDefaultStyle = () => {
+    if (isDisabled) {
+      return { className: "bg-gray-100 dark:bg-zinc-800/50 cursor-not-allowed opacity-50" };
+    }
+    if (isInsufficient) {
+      return { className: "bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20" };
+    }
+    if (colorStart || colorEnd) {
+      const start = normalizeColor(colorStart, "#3B82F6");
+      const end = normalizeColor(colorEnd, "#2563EB");
+      return {
+        className: "text-white shadow-md hover:shadow-lg transition-shadow border border-white/20 backdrop-blur-xl",
+        style: {
+          background: `linear-gradient(135deg, color-mix(in srgb, ${start} 72%, rgba(255,255,255,0.18)) 0%, color-mix(in srgb, ${end} 82%, rgba(255,255,255,0.08)) 100%)`,
+          boxShadow: `0 16px 32px -18px ${start}85, inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(255,255,255,0.08)`
+        }
+      };
+    }
+    return {
+      className: "text-white shadow-md hover:shadow-lg transition-shadow border border-white/20 backdrop-blur-xl",
+      style: {
+        background: "linear-gradient(135deg, rgba(96, 165, 250, 0.92) 0%, rgba(59, 130, 246, 0.88) 45%, rgba(29, 78, 216, 0.82) 100%)",
+        boxShadow: "0 16px 32px -18px rgba(37, 99, 235, 0.88), inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(255,255,255,0.08)"
+      }
+    };
+  };
+  const arrowAnimStyle = `
+        @keyframes arrow-slide-right {
+            0% { transform: translateX(-3px); opacity: 0.4; }
+            50% { transform: translateX(2px); opacity: 1; }
+            100% { transform: translateX(-3px); opacity: 0.4; }
+        }
+
+        @keyframes send-button-glow {
+            0%, 100% { box-shadow: 0 14px 30px -18px rgba(37, 99, 235, 0.7), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(255,255,255,0.08); }
+            50% { box-shadow: 0 18px 38px -18px rgba(96, 165, 250, 0.88), 0 0 0 1px rgba(255,255,255,0.12), inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -1px 0 rgba(255,255,255,0.12); }
+        }
+
+        @keyframes send-button-sheen {
+            0% { transform: translateX(-130%); opacity: 0; }
+            18% { opacity: 0.9; }
+            48% { transform: translateX(160%); opacity: 0; }
+            100% { transform: translateX(160%); opacity: 0; }
+        }
+    `;
+  if (isCreditModel && hasPrompt && !isInsufficient) {
+    return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(import_jsx_runtime15.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("style", { children: arrowAnimStyle }),
+      /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+        "button",
+        {
+          onClick,
+          className: "group relative h-10 pl-3.5 pr-1 rounded-full flex items-center gap-2 ml-auto transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] hover:-translate-y-0.5",
+          style: getGradientStyle(),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center gap-1 text-white/95", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(Sparkles, { size: 14, className: "animate-pulse", fill: "currentColor" }),
+              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "text-sm font-bold tabular-nums", children: creditCost })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "w-px h-4 bg-white/25" }),
+            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "w-7 h-7 rounded-full bg-white/25 flex items-center justify-center transition-all duration-200 group-hover:bg-white/35 group-hover:scale-105 backdrop-blur-sm overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2.5", strokeLinecap: "round", strokeLinejoin: "round", className: "text-white transition-transform duration-300 group-hover:translate-x-0.5", style: { animation: "arrow-slide-right 1.5s ease-in-out infinite" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("line", { x1: "5", y1: "12", x2: "19", y2: "12" }),
+              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("polyline", { points: "12 5 19 12 12 19" })
+            ] }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "absolute -top-10 left-0 right-0 flex justify-center pointer-events-none", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "px-3 py-1.5 bg-black/85 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap scale-95 group-hover:scale-100", children: [
+              "\u6D88\u8017 ",
+              creditCost,
+              " \u79EF\u5206\u751F\u6210",
+              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-black/85 rotate-45" })
+            ] }) })
+          ]
+        }
+      )
+    ] });
+  }
+  const defaultStyleProps = getDefaultStyle();
+  return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(import_jsx_runtime15.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("style", { children: arrowAnimStyle }),
+    /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+      "button",
+      {
+        onClick,
+        disabled: isDisabled,
+        className: `
+                    group relative h-10 px-1 py-1 rounded-full flex flex-row items-center whitespace-nowrap shrink-0 ml-auto overflow-hidden
+                    transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none
+                    ${!isDisabled && !isInsufficient ? "hover:translate-x-[1px] hover:scale-[1.025] active:translate-x-0 active:scale-[0.985] focus-visible:ring-2 focus-visible:ring-blue-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent" : ""}
+                    ${defaultStyleProps.className || ""}
+                `,
+        style: {
+          paddingRight: "4px",
+          ...defaultStyleProps.style || {},
+          animation: !isDisabled && !isInsufficient ? "send-button-glow 2.2s ease-in-out infinite" : void 0
+        },
+        children: [
+          !isDisabled && !isInsufficient && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(import_jsx_runtime15.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.28)_0%,rgba(255,255,255,0.08)_34%,rgba(255,255,255,0.03)_58%,rgba(255,255,255,0.12)_100%)] opacity-95" }),
+            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "pointer-events-none absolute inset-x-[10px] top-[3px] h-[42%] rounded-full bg-white/18 blur-[3px]" }),
+            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+              "div",
+              {
+                className: "pointer-events-none absolute inset-y-0 -left-1/3 w-1/2 skew-x-[-20deg] bg-[linear-gradient(90deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.42)_50%,rgba(255,255,255,0)_100%)]",
+                style: { animation: "send-button-sheen 3.4s ease-in-out infinite" }
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "relative z-[1] flex items-center gap-2 px-3", children: isCreditModel && creditCost > 0 ? /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(Sparkles, { size: 14, fill: "currentColor", className: isDisabled ? "text-gray-400" : isInsufficient ? "text-red-500" : "text-white" }),
+            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: `text-sm font-bold ${isDisabled ? "text-gray-400" : isInsufficient ? "text-red-500" : "text-white"}`, children: isInsufficient ? "\u79EF\u5206\u4E0D\u8DB3" : creditCost })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: `text-sm font-bold tracking-[0.01em] ${isDisabled ? "text-gray-400" : isInsufficient ? "text-red-500" : "text-white drop-shadow-[0_1px_10px_rgba(255,255,255,0.28)]"}`, children: "\u53D1\u9001" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: `
+                    relative z-[1] w-8 h-8 rounded-full flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden
+                    ${isDisabled ? "bg-gray-300 dark:bg-zinc-700 text-gray-500" : isInsufficient ? "bg-red-500 text-white" : "border border-white/20 bg-white/22 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.36),inset_0_-1px_0_rgba(255,255,255,0.08),0_6px_14px_rgba(15,23,42,0.14)] backdrop-blur-md group-hover:scale-[1.08] group-hover:translate-x-[1px] group-hover:bg-white/30"}
+                `, children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+            "svg",
+            {
+              width: "18",
+              height: "18",
+              viewBox: "0 0 24 24",
+              fill: "none",
+              stroke: "currentColor",
+              strokeWidth: "2.5",
+              strokeLinecap: "round",
+              strokeLinejoin: "round",
+              className: "transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:translate-x-[1.5px]",
+              style: !isDisabled ? { animation: "arrow-slide-right 1.5s ease-in-out infinite" } : void 0,
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("line", { x1: "5", y1: "12", x2: "19", y2: "12" }),
+                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("polyline", { points: "12 5 19 12 12 19" })
+              ]
+            }
+          ) })
+        ]
+      }
+    )
+  ] });
+};
+var PromptBar = ({ config, setConfig, onGenerate, isGenerating, onFilesDrop, activeSourceImage, onClearSource, onCancel, isMobile = false, onOpenSettings, onInteract, onFocus, onBlur, onOpenMore }) => {
+  const fileInputRef = (0, import_react11.useRef)(null);
+  const textareaRef = (0, import_react11.useRef)(null);
+  const [activeMenu, setActiveMenu] = (0, import_react11.useState)(null);
+  const [modelSearch, setModelSearch] = (0, import_react11.useState)("");
+  const [contextMenu, setContextMenu] = (0, import_react11.useState)(null);
+  const [modelSettingsModal, setModelSettingsModal] = (0, import_react11.useState)(null);
+  const [modelCustomizations, setModelCustomizations] = (0, import_react11.useState)(() => {
+    try {
+      const stored = localStorage.getItem("kk_model_customizations");
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+  const saveModelCustomization = (modelId, alias, description) => {
+    const newCustomizations = {
+      ...modelCustomizations,
+      [modelId]: { alias: alias.trim() || void 0, description: description.trim() || void 0 }
+    };
+    if (!newCustomizations[modelId].alias && !newCustomizations[modelId].description) {
+      delete newCustomizations[modelId];
+    }
+    setModelCustomizations(newCustomizations);
+    localStorage.setItem("kk_model_customizations", JSON.stringify(newCustomizations));
+  };
+  const [dragSourceId, setDragSourceId] = (0, import_react11.useState)(null);
+  const [dropTargetIndex, setDropTargetIndex] = (0, import_react11.useState)(null);
+  const [flyingImage, setFlyingImage] = (0, import_react11.useState)(null);
+  const [previewImage, setPreviewImage] = (0, import_react11.useState)(null);
+  const [inpaintImage, setInpaintImage] = (0, import_react11.useState)(null);
+  const refContainerRef = (0, import_react11.useRef)(null);
+  const optionsPanelRef = (0, import_react11.useRef)(null);
+  const [showOptionsPanel, setShowOptionsPanel] = (0, import_react11.useState)(false);
+  const [showPromptLibrary, setShowPromptLibrary] = (0, import_react11.useState)(false);
+  const [showPptOutlinePanel, setShowPptOutlinePanel] = (0, import_react11.useState)(false);
+  const [pptOutlineDraft, setPptOutlineDraft] = (0, import_react11.useState)("");
+  const [pptDragIndex, setPptDragIndex] = (0, import_react11.useState)(null);
+  const [pptDropIndex, setPptDropIndex] = (0, import_react11.useState)(null);
+  const [promptLibrarySearch, setPromptLibrarySearch] = (0, import_react11.useState)("");
+  const [promptLibraryCategory, setPromptLibraryCategory] = (0, import_react11.useState)("all");
+  const [favoritePromptIds, setFavoritePromptIds] = (0, import_react11.useState)(() => {
+    try {
+      const raw = localStorage.getItem("kk_prompt_library_favorites");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isInputAreaHovered, setIsInputAreaHovered] = (0, import_react11.useState)(false);
+  const [uploadingCount, setUploadingCount] = (0, import_react11.useState)(0);
+  const { balance, recharge, loading: billingLoading, showRechargeModal, setShowRechargeModal } = useBilling();
+  const [isModelManuallyLocked, setIsModelManuallyLocked] = (0, import_react11.useState)(() => {
+    try {
+      return localStorage.getItem("kk_model_manually_locked") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [pinnedVersion, setPinnedVersion] = (0, import_react11.useState)(0);
+  (0, import_react11.useEffect)(() => {
+    const handlePinChange = () => setPinnedVersion((v) => v + 1);
+    window.addEventListener("model-pinned-change", handlePinChange);
+    return () => window.removeEventListener("model-pinned-change", handlePinChange);
+  }, []);
+  const setModelManualLock = (locked) => {
+    setIsModelManuallyLocked(locked);
+    localStorage.setItem("kk_model_manually_locked", locked ? "true" : "false");
+  };
+  const hoverTimerRef = (0, import_react11.useRef)(null);
+  const touchStartY = (0, import_react11.useRef)(null);
+  const modelDropdownRef = (0, import_react11.useRef)(null);
+  const modelListScrollRef = (0, import_react11.useRef)(null);
+  const modelListScrollPos = (0, import_react11.useRef)(0);
+  (0, import_react11.useEffect)(() => {
+    if (!showOptionsPanel) return;
+    const handleClickOutside = (e) => {
+      const target = e.target;
+      if (optionsPanelRef.current && !optionsPanelRef.current.contains(target)) {
+        const toggleButton = document.querySelector("[data-options-toggle]");
+        if (toggleButton && (toggleButton.contains(target) || toggleButton === target)) {
+          return;
+        }
+        setShowOptionsPanel(false);
+      }
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showOptionsPanel]);
+  (0, import_react11.useEffect)(() => {
+    const closeMenu = () => setContextMenu(null);
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
+  }, []);
+  (0, import_react11.useEffect)(() => {
+    if (activeMenu !== "model") return;
+    const handleClickOutside = (e) => {
+      const target = e.target;
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(target)) {
+        const triggerButton = document.getElementById("models-dropdown-trigger");
+        if (triggerButton && (triggerButton.contains(target) || triggerButton === target)) {
+          return;
+        }
+        setActiveMenu(null);
+      }
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+      if (modelListScrollRef.current && modelListScrollPos.current > 0) {
+        modelListScrollRef.current.scrollTop = modelListScrollPos.current;
+      }
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [activeMenu]);
+  (0, import_react11.useEffect)(() => {
+    if (config.mode !== "ppt" /* PPT */) {
+      setShowPptOutlinePanel(false);
+      return;
+    }
+    const slides = (config.pptSlides || []).map((s) => String(s || "").trim()).filter(Boolean);
+    if (slides.length > 0) {
+      setPptOutlineDraft(slides.join("\n"));
+      return;
+    }
+    const fromPrompt = (config.prompt || "").split("\n").map((line) => line.trim()).filter(Boolean).map((line) => line.replace(/^[-*\d.)、\s]+/, "").trim()).filter(Boolean);
+    setPptOutlineDraft(fromPrompt.join("\n"));
+  }, [config.mode, config.pptSlides, config.prompt]);
+  (0, import_react11.useEffect)(() => {
+    if (config.mode !== "ppt" /* PPT */) return;
+    if ((config.pptSlides || []).length > 0) return;
+    const desiredCount = Math.min(20, Math.max(1, Number(config.parallelCount) || 1));
+    if (desiredCount <= 1) return;
+    const currentDraftSlides = pptOutlineDraft.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 20);
+    if (currentDraftSlides.length > 1) return;
+    const topic = String(config.prompt || "").trim() || "\u4E3B\u9898\u6F14\u793A";
+    const basePool = [
+      `\u80CC\u666F\u4E0E\u95EE\u9898\u5B9A\u4E49\uFF1A${topic}`,
+      `\u884C\u4E1A\u8D8B\u52BF\u4E0E\u673A\u4F1A\uFF1A${topic}`,
+      `\u76EE\u6807\u7528\u6237\u4E0E\u6838\u5FC3\u573A\u666F\uFF1A${topic}`,
+      `\u89E3\u51B3\u65B9\u6848\u6982\u89C8\uFF1A${topic}`,
+      `\u6838\u5FC3\u80FD\u529B\u4E0E\u5DEE\u5F02\u5316\uFF1A${topic}`,
+      `\u5173\u952E\u6570\u636E\u4E0E\u8BC1\u636E\uFF1A${topic}`,
+      `\u5178\u578B\u6848\u4F8B\u4E0E\u5E94\u7528\u793A\u4F8B\uFF1A${topic}`,
+      `\u843D\u5730\u8DEF\u5F84\u4E0E\u5B9E\u65BD\u6B65\u9AA4\uFF1A${topic}`,
+      `\u98CE\u9669\u8BC4\u4F30\u4E0E\u5E94\u5BF9\u7B56\u7565\uFF1A${topic}`,
+      `\u91CC\u7A0B\u7891\u4E0E\u8DEF\u7EBF\u56FE\uFF1A${topic}`,
+      `\u8D44\u6E90\u9700\u6C42\u4E0E\u534F\u540C\u673A\u5236\uFF1A${topic}`,
+      `\u9884\u671F\u6536\u76CA\u4E0E\u8BC4\u4F30\u6307\u6807\uFF1A${topic}`
+    ];
+    const nextSlides = [`\u5C01\u9762\uFF1A${topic}`];
+    if (desiredCount >= 3) {
+      nextSlides.push(`\u76EE\u5F55\uFF1A${topic} \u7684\u6838\u5FC3\u7AE0\u8282`);
+    }
+    const remainForMiddle = Math.max(0, desiredCount - 1 - nextSlides.length);
+    for (let i = 0; i < remainForMiddle; i++) {
+      nextSlides.push(basePool[i % basePool.length]);
+    }
+    if (nextSlides.length < desiredCount) {
+      nextSlides.push(`\u603B\u7ED3\u4E0E\u884C\u52A8\u5EFA\u8BAE\uFF1A${topic}`);
+    }
+    const nextDraft = nextSlides.join("\n");
+    if (nextDraft !== pptOutlineDraft) {
+      setPptOutlineDraft(nextDraft);
+    }
+  }, [config.mode, config.parallelCount, config.pptSlides, config.prompt, pptOutlineDraft]);
+  (0, import_react11.useEffect)(() => {
+    return () => {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
+  const handleTouchStart = (e) => {
+    touchStartY.current = e.touches[0].clientY;
+    onInteract?.();
+  };
+  const handleTouchEnd = (e) => {
+    if (touchStartY.current === null) return;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+    if (deltaY < -20) {
+      onInteract?.();
+    }
+    touchStartY.current = null;
+  };
+  const [globalModels, setGlobalModels] = (0, import_react11.useState)(keyManager.getGlobalModelList());
+  (0, import_react11.useEffect)(() => {
+    const refreshModels = async () => {
+      try {
+        console.log("[PromptBar] Loading admin models...");
+        await adminModelService.forceLoadAdminModels?.();
+        await new Promise((r) => setTimeout(r, 100));
+        const newModels = keyManager.getGlobalModelList();
+        console.log("[PromptBar] Loaded models:", newModels.length);
+        const creditModels = newModels.filter((m) => m.isSystemInternal);
+        creditModels.forEach((m) => {
+          console.log(`[PromptBar] Credit model: ${m.id}, color: ${m.colorStart} -> ${m.colorEnd}`);
+        });
+        setGlobalModels(newModels);
+      } catch (err) {
+        console.error("[PromptBar] Failed to load models:", err);
+      }
+    };
+    refreshModels();
+    const unsubscribeKeyManager = keyManager.subscribe(() => {
+      const newModels = keyManager.getGlobalModelList();
+      setGlobalModels(newModels);
+    });
+    return () => {
+      unsubscribeKeyManager();
+    };
+  }, []);
+  const availableModels = (0, import_react11.useMemo)(() => {
+    const step1 = globalModels.filter((m) => m.type !== "chat");
+    const step2 = step1.map((m) => {
+      const lowerId = m.id.toLowerCase();
+      const isVideo = lowerId.includes("video") || lowerId.includes("veo") || lowerId.includes("kling") || lowerId.includes("luma") || lowerId.includes("gen-3") || lowerId.includes("gen-2") || lowerId.includes("hailuo") || lowerId.includes("vidu");
+      const isImage = lowerId.includes("image") || lowerId.includes("imagen") || lowerId.includes("flux") || lowerId.includes("midjourney") || lowerId.includes("dall-e") || lowerId.includes("sd-") || lowerId.includes("stable-diffusion") || lowerId.includes("ideogram");
+      let inferredType = m.type || (isVideo ? "video" : isImage ? "image" : "chat");
+      const resolvedSystemDisplay = m.isSystemInternal ? adminModelService.getModelDisplayInfo(m.id, config.imageSize) : null;
+      const resolvedProviderLabel = resolvedSystemDisplay?.providerName || resolvedSystemDisplay?.provider || m.providerLabel || m.provider;
+      return {
+        id: m.id,
+        label: resolvedSystemDisplay?.displayName || m.name || m.id,
+        provider: m.isSystemInternal ? "SystemProxy" : m.provider,
+        providerLabel: resolvedProviderLabel,
+        isSystemInternal: m.isSystemInternal,
+        sourceScope: m.isSystemInternal ? "system" : "user",
+        sourceLabel: m.isSystemInternal ? "\u7CFB\u7EDF\u6A21\u578B" : "\u7528\u6237 API",
+        type: inferredType,
+        enabled: true,
+        description: m.description,
+        creditCost: resolvedSystemDisplay?.creditCost ?? m.creditCost,
+        colorStart: resolvedSystemDisplay?.colorStart || m.colorStart,
+        colorEnd: resolvedSystemDisplay?.colorEnd || m.colorEnd,
+        colorSecondary: resolvedSystemDisplay?.colorSecondary || m.colorSecondary,
+        textColor: resolvedSystemDisplay?.textColor || m.textColor
+      };
+    });
+    const filteredModels = step2.filter((m) => {
+      const type = m.type || "image";
+      if (config.mode === "image" /* IMAGE */) return type === "image" || type === "image+chat";
+      if (config.mode === "ppt" /* PPT */) return type === "image" || type === "image+chat";
+      if (config.mode === "video" /* VIDEO */) return type === "video";
+      if (config.mode === "audio" /* AUDIO */) return type === "audio";
+      return type === config.mode;
+    });
+    const displayGroupedModels = /* @__PURE__ */ new Map();
+    filteredModels.forEach((model) => {
+      const displayName = String(getModelDisplayInfo(model).displayName || model.label || model.id || "").trim().toLowerCase();
+      const visibleProvider = String(model.provider || model.providerLabel || "").trim().toLowerCase();
+      const groupKey = `${model.isSystemInternal ? "system" : "user"}:${displayName}:${visibleProvider}`;
+      const existing = displayGroupedModels.get(groupKey);
+      if (!existing) {
+        displayGroupedModels.set(groupKey, model);
+        return;
+      }
+      const existingDescription = String(existing.description || "").trim();
+      const nextDescription = String(model.description || "").trim();
+      if (!existingDescription && nextDescription) {
+        displayGroupedModels.set(groupKey, model);
+        return;
+      }
+      if (nextDescription.length > existingDescription.length) {
+        displayGroupedModels.set(groupKey, model);
+      }
+    });
+    return Array.from(displayGroupedModels.values());
+  }, [globalModels, config.mode, config.imageSize]);
+  const sortedAvailableModels = (0, import_react11.useMemo)(() => {
+    return filterAndSortModels(availableModels, "", modelCustomizations);
+  }, [availableModels, modelCustomizations, pinnedVersion]);
+  const getDefaultImageSizeForModel = (0, import_react11.useCallback)((modelId) => {
+    const caps = getModelCapabilities(modelId);
+    const supported = caps?.supportedSizes;
+    if (!supported || supported.length === 0) return "1K" /* SIZE_1K */;
+    if (supported.includes("1K" /* SIZE_1K */)) return "1K" /* SIZE_1K */;
+    return supported[0];
+  }, []);
+  const getDefaultAspectForModel = (0, import_react11.useCallback)((modelId) => {
+    const caps = getModelCapabilities(modelId);
+    const supported = caps?.supportedRatios;
+    if (!supported || supported.length === 0) return "auto" /* AUTO */;
+    if (supported.includes("auto" /* AUTO */)) return "auto" /* AUTO */;
+    return supported[0];
+  }, []);
+  (0, import_react11.useEffect)(() => {
+    if (sortedAvailableModels.length === 0) return;
+    const currentModelValid = sortedAvailableModels.find((m) => m.id === config.model);
+    const firstModelId = sortedAvailableModels[0].id;
+    const isInitialSelectInMode = !isModelManuallyLocked && config.model !== firstModelId;
+    const shouldResetToFirst = !currentModelValid || isInitialSelectInMode;
+    if (shouldResetToFirst) {
+      setConfig((prev) => {
+        const newModel = firstModelId;
+        const newModelCaps = getModelCapabilities(newModel);
+        const supportedSizes = newModelCaps?.supportedSizes?.length ? newModelCaps.supportedSizes : Object.values(ImageSize);
+        const supportedRatios = newModelCaps?.supportedRatios?.length ? newModelCaps.supportedRatios : Object.values(AspectRatio);
+        const newImageSize = supportedSizes.includes(prev.imageSize) ? prev.imageSize : getDefaultImageSizeForModel(newModel);
+        const newAspectRatio = supportedRatios.includes(prev.aspectRatio) ? prev.aspectRatio : getDefaultAspectForModel(newModel);
+        return { ...prev, model: newModel, imageSize: newImageSize, aspectRatio: newAspectRatio };
+      });
+    }
+  }, [config.mode, sortedAvailableModels, setConfig, getDefaultImageSizeForModel, getDefaultAspectForModel]);
+  const modelCaps = (0, import_react11.useMemo)(() => {
+    return getModelCapabilities(config.model);
+  }, [config.model]);
+  const availableRatios = (0, import_react11.useMemo)(() => {
+    const ratios = modelCaps?.supportedRatios;
+    return ratios && ratios.length > 0 ? ratios : Object.values(AspectRatio);
+  }, [modelCaps]);
+  const availableSizes = (0, import_react11.useMemo)(() => {
+    const sizes = modelCaps?.supportedSizes;
+    return sizes && sizes.length > 0 ? sizes : Object.values(ImageSize);
+  }, [modelCaps]);
+  const groundingSupported = (0, import_react11.useMemo)(() => {
+    return modelSupportsGrounding(config.model);
+  }, [config.model]);
+  const thinkingSupported = (0, import_react11.useMemo)(() => {
+    return !!modelCaps?.supportsThinking;
+  }, [modelCaps]);
+  const imageSearchSupported = (0, import_react11.useMemo)(() => {
+    return !!modelCaps?.supportsImageSearch;
+  }, [modelCaps]);
+  const estimatedCredits = 0;
+  (0, import_react11.useEffect)(() => {
+    if (!availableRatios.includes(config.aspectRatio) && availableRatios.length > 0) {
+      setConfig((prev) => ({ ...prev, aspectRatio: availableRatios[0] }));
+    }
+  }, [availableRatios, config.aspectRatio, setConfig]);
+  (0, import_react11.useEffect)(() => {
+    if (!availableSizes.includes(config.imageSize) && availableSizes.length > 0) {
+      setConfig((prev) => ({ ...prev, imageSize: availableSizes[0] }));
+    }
+  }, [availableSizes, config.imageSize, setConfig]);
+  (0, import_react11.useEffect)(() => {
+    const currentModelId = config.model || "";
+    if (!currentModelId || currentModelId.includes("@")) return;
+    const existsAsIs = availableModels.some((m) => m.id === currentModelId);
+    if (!existsAsIs) {
+      const systemId = `${currentModelId}@system`;
+      const existsWithSystem = availableModels.some((m) => m.id === systemId);
+      if (existsWithSystem) {
+        setConfig((prev) => ({ ...prev, model: systemId }));
+      }
+    }
+  }, [availableModels, config.model, setConfig]);
+  const handleInput = (0, import_react11.useCallback)((e) => {
+    setConfig((prev) => ({ ...prev, prompt: e.target.value }));
+    e.target.style.height = "auto";
+    const lineHeight = 22.5;
+    const maxHeight = lineHeight * 6;
+    const newHeight = Math.max(36, Math.min(e.target.scrollHeight, maxHeight));
+    e.target.style.height = `${newHeight}px`;
+  }, [setConfig]);
+  (0, import_react11.useEffect)(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      if (config.prompt) {
+        const newHeight = Math.max(36, Math.min(textareaRef.current.scrollHeight, 200));
+        textareaRef.current.style.height = `${newHeight}px`;
+      } else {
+        textareaRef.current.style.height = "36px";
+      }
+    }
+  }, [config.prompt]);
+  const processFiles = (0, import_react11.useCallback)(async (files) => {
+    const modelCaps2 = getModelCapabilities(config.model);
+    const maxRefImages = modelCaps2?.maxRefImages ?? 5;
+    if (config.referenceImages.length >= maxRefImages) {
+      notify.warning("\u53C2\u8003\u56FE\u6570\u91CF\u9650\u5236", `\u6700\u591A\u53EA\u80FD\u4E0A\u4F20 ${maxRefImages} \u5F20\u53C2\u8003\u56FE`);
+      return;
+    }
+    const remainingSlots = maxRefImages - config.referenceImages.length;
+    const fileArray = Array.from(files).filter((f) => {
+      if (config.mode === "video" /* VIDEO */) {
+        return f.type.startsWith("video/");
+      }
+      return f.type.startsWith("image/");
+    });
+    if (fileArray.length > remainingSlots) {
+      notify.info("\u53C2\u8003\u56FE\u5DF2\u8C03\u6574", `\u6700\u591A\u53EA\u80FD\u4E0A\u4F20 ${maxRefImages} \u5F20\u53C2\u8003\u56FE\uFF0C\u5DF2\u81EA\u52A8\u5FFD\u7565 ${fileArray.length - remainingSlots} \u5F20`);
+    }
+    const filesToProcess = fileArray.slice(0, remainingSlots);
+    if (filesToProcess.length === 0) return;
+    const existingStorageIds = new Set(
+      config.referenceImages.map((img) => img.storageId).filter((value) => Boolean(value))
+    );
+    let duplicateCount = 0;
+    setUploadingCount((prev) => prev + filesToProcess.length);
+    try {
+      const placeholders = filesToProcess.map((file) => ({
+        id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2),
+        mimeType: file.type || "image/png",
+        data: "",
+        url: (file.__kkSourceUrl || "").trim() || URL.createObjectURL(file)
+      }));
+      setConfig((prev) => ({
+        ...prev,
+        referenceImages: [...prev.referenceImages, ...placeholders]
+      }));
+      const readAsDataUrl = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      await Promise.allSettled(placeholders.map(async (placeholder, index) => {
+        let file = filesToProcess[index];
+        try {
+          if (file.type.startsWith("image/")) {
+            file = await compressImageFile(file);
+          }
+          const result = await readAsDataUrl(file);
+          const commaIdx = result.indexOf(",");
+          if (commaIdx === -1) {
+            throw new Error("INVALID_IMAGE_DATA_FORMAT");
+          }
+          const header = result.substring(0, commaIdx);
+          const data = result.substring(commaIdx + 1);
+          let mimeType = "image/png";
+          const mimeMatch = header.match(/^data:([^;]+);base64$/i);
+          if (mimeMatch && mimeMatch[1]) {
+            mimeType = mimeMatch[1];
+          }
+          const storageId = await calculateImageHash(data);
+          const fullDataUrl = `data:${mimeType};base64,${data}`;
+          if (existingStorageIds.has(storageId)) {
+            duplicateCount += 1;
+            if (placeholder.url.startsWith("blob:")) {
+              URL.revokeObjectURL(placeholder.url);
+            }
+            setConfig((prev) => ({
+              ...prev,
+              referenceImages: prev.referenceImages.filter((img) => img.id !== placeholder.id)
+            }));
+            return;
+          }
+          existingStorageIds.add(storageId);
+          setConfig((prev) => ({
+            ...prev,
+            referenceImages: prev.referenceImages.map(
+              (img) => img.id === placeholder.id ? { ...img, storageId, mimeType, data } : img
+            )
+          }));
+          if (placeholder.url.startsWith("blob:")) {
+            URL.revokeObjectURL(placeholder.url);
+          }
+          saveImage(storageId, fullDataUrl).catch((err) => {
+            console.error("[PromptBar] Failed to save image to IndexedDB:", err);
+          });
+          const handle = fileSystemService.getGlobalHandle();
+          if (handle) {
+            fileSystemService.saveReferenceImage(handle, storageId, data, mimeType).catch(
+              (err) => console.error("[PromptBar] Failed to save reference to file system:", err)
+            );
+          }
+        } catch (err) {
+          console.error("[PromptBar] Failed to process reference image:", err);
+          notify.error("\u53C2\u8003\u56FE\u5904\u7406\u5931\u8D25", String(err));
+          if (placeholder.url.startsWith("blob:")) {
+            URL.revokeObjectURL(placeholder.url);
+          }
+          setConfig((prev) => ({
+            ...prev,
+            referenceImages: prev.referenceImages.filter((img) => img.id !== placeholder.id)
+          }));
+        } finally {
+          setUploadingCount((prev) => Math.max(0, prev - 1));
+        }
+      }));
+      if (duplicateCount > 0) {
+        notify.info("\u5DF2\u8DF3\u8FC7\u91CD\u590D\u53C2\u8003\u56FE", `\u68C0\u6D4B\u5230 ${duplicateCount} \u5F20\u91CD\u590D\u56FE\u7247\uFF0C\u672A\u91CD\u590D\u6DFB\u52A0\u3002`);
+      }
+    } finally {
+    }
+  }, [config.referenceImages, setConfig]);
+  const toggleMenu = (0, import_react11.useCallback)((menu) => {
+    setShowOptionsPanel(false);
+    setActiveMenu((prev) => prev === menu ? null : menu);
+  }, []);
+  const removeReferenceImage = (0, import_react11.useCallback)((id) => {
+    setConfig((prev) => ({
+      ...prev,
+      referenceImages: prev.referenceImages.filter((img) => {
+        const shouldKeep = img.id !== id;
+        if (!shouldKeep && img.url?.startsWith("blob:")) {
+          URL.revokeObjectURL(img.url);
+        }
+        return shouldKeep;
+      })
+    }));
+  }, [setConfig]);
+  const handleKeyDown = (0, import_react11.useCallback)((e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onGenerate();
+    }
+  }, [onGenerate]);
+  const handlePaste = (0, import_react11.useCallback)((e) => {
+    const imageFiles = [];
+    let hasImage = false;
+    if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
+      for (let i = 0; i < e.clipboardData.files.length; i++) {
+        const file = e.clipboardData.files[i];
+        if (file.type.startsWith("image/")) {
+          imageFiles.push(file);
+          hasImage = true;
+        }
+      }
+    }
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith("image/")) {
+          const file = items[i].getAsFile();
+          if (file && !imageFiles.some((f) => f.name === file.name && f.size === file.size)) {
+            imageFiles.push(file);
+            hasImage = true;
+          }
+        } else if (!hasImage && items[i].type === "text/plain") {
+          items[i].getAsString((text) => {
+            const url = text.trim();
+            if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) || url.startsWith("http")) {
+              fetch(url).then((res) => {
+                if (!res.ok) throw new Error("Fetch failed");
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.startsWith("image/")) {
+                  return res.blob();
+                }
+                throw new Error("Not an image");
+              }).then((blob) => {
+                const file = new File([blob], "pasted_image.png", { type: blob.type });
+                file.__kkSourceUrl = url;
+                processFiles([file]);
+              }).catch(() => {
+              });
+            }
+          });
+        }
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      processFiles(imageFiles);
+    }
+  }, [processFiles]);
+  const dragCounter = (0, import_react11.useRef)(0);
+  const [isDragging, setIsDragging] = (0, import_react11.useState)(false);
+  const dragSafetyTimer = (0, import_react11.useRef)(null);
+  const resetDragSafetyTimer = (0, import_react11.useCallback)(() => {
+    if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
+    dragSafetyTimer.current = setTimeout(() => {
+      console.warn("[PromptBar] Drag timeout - resetting state");
+      setIsDragging(false);
+      dragCounter.current = 0;
+    }, 4e3);
+  }, []);
+  (0, import_react11.useEffect)(() => {
+    const handleClickOutside = (event) => {
+      const target = event.target;
+      if (!target.closest(".input-bar-inner")) {
+        setActiveMenu(null);
+        setShowPromptLibrary(false);
+        setShowPptOutlinePanel(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
+    };
+  }, []);
+  const saveFavoritePromptIds = (0, import_react11.useCallback)((ids) => {
+    setFavoritePromptIds(ids);
+    localStorage.setItem("kk_prompt_library_favorites", JSON.stringify(ids));
+  }, []);
+  const togglePromptFavorite = (0, import_react11.useCallback)((id) => {
+    if (favoritePromptIds.includes(id)) {
+      saveFavoritePromptIds(favoritePromptIds.filter((item) => item !== id));
+      return;
+    }
+    saveFavoritePromptIds([id, ...favoritePromptIds]);
+  }, [favoritePromptIds, saveFavoritePromptIds]);
+  const applyPromptTemplate = (0, import_react11.useCallback)((templatePrompt) => {
+    const current = (config.prompt || "").trim();
+    const nextPrompt = current ? `${config.prompt.replace(/\s+$/, "")}
+${templatePrompt}` : templatePrompt;
+    setConfig((prev) => ({ ...prev, prompt: nextPrompt }));
+    setShowPromptLibrary(false);
+    notify.success("\u63D0\u793A\u8BCD\u5DF2\u63D2\u5165", "\u5DF2\u8FFD\u52A0\u5230\u8F93\u5165\u6846\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91\u540E\u53D1\u9001");
+  }, [config.prompt, setConfig]);
+  const parsePptSlides = (0, import_react11.useCallback)((text) => {
+    return text.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 20);
+  }, []);
+  const generatePptOutlineByTopic = (0, import_react11.useCallback)(() => {
+    const topic = (config.prompt || "").trim() || "\u4E3B\u9898\u6F14\u793A";
+    const total = Math.min(20, Math.max(1, Number(config.parallelCount) || 1));
+    const pages = Array.from({ length: total }).map((_, idx) => {
+      const pageNo = idx + 1;
+      if (pageNo === 1) return `\u5C01\u9762\uFF1A${topic}`;
+      if (pageNo === total) return `\u603B\u7ED3\u4E0E\u884C\u52A8\u5EFA\u8BAE\uFF1A${topic}`;
+      return `${topic} - \u7B2C${pageNo}\u9875\u5185\u6838\u5185\u5BB9`;
+    });
+    setPptOutlineDraft(pages.join("\n"));
+  }, [config.parallelCount, config.prompt]);
+  const applyPptOutlineDraft = (0, import_react11.useCallback)(() => {
+    const slides = parsePptSlides(pptOutlineDraft);
+    const nextCount = Math.max(1, Math.min(20, slides.length || Number(config.parallelCount) || 1));
+    setConfig((prev) => ({
+      ...prev,
+      pptSlides: slides,
+      parallelCount: nextCount
+    }));
+    notify.success("PPT\u9875\u7EB2\u5DF2\u5E94\u7528", `\u5DF2\u8BBE\u7F6E ${nextCount} \u9875\uFF0C\u751F\u6210\u65F6\u5C06\u6309\u56FE1~\u56FE${nextCount}\u8F93\u51FA`);
+  }, [config.parallelCount, parsePptSlides, pptOutlineDraft, setConfig]);
+  const exportPptOutlineJson = (0, import_react11.useCallback)(() => {
+    const slides = parsePptSlides(pptOutlineDraft);
+    const payload = {
+      topic: (config.prompt || "").trim(),
+      pageCount: slides.length,
+      pages: slides.map((text, idx) => ({ page: idx + 1, text })),
+      exportedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ppt-outline-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [config.prompt, parsePptSlides, pptOutlineDraft]);
+  const movePptSlide = (0, import_react11.useCallback)((index, direction) => {
+    const slides = parsePptSlides(pptOutlineDraft);
+    const target = index + direction;
+    if (target < 0 || target >= slides.length) return;
+    const next = [...slides];
+    const tmp = next[index];
+    next[index] = next[target];
+    next[target] = tmp;
+    setPptOutlineDraft(next.join("\n"));
+  }, [parsePptSlides, pptOutlineDraft]);
+  const removePptSlide = (0, import_react11.useCallback)((index) => {
+    const slides = parsePptSlides(pptOutlineDraft);
+    const next = slides.filter((_, i) => i !== index);
+    setPptOutlineDraft(next.join("\n"));
+  }, [parsePptSlides, pptOutlineDraft]);
+  const insertPptSlideAfter = (0, import_react11.useCallback)((index) => {
+    const slides = parsePptSlides(pptOutlineDraft);
+    if (slides.length >= 20) return;
+    const next = [...slides];
+    next.splice(index + 1, 0, `\u65B0\u9875\u9762 ${Math.min(20, index + 2)}`);
+    setPptOutlineDraft(next.slice(0, 20).join("\n"));
+  }, [parsePptSlides, pptOutlineDraft]);
+  const appendPptTemplateSlide = (0, import_react11.useCallback)((template) => {
+    const slides = parsePptSlides(pptOutlineDraft);
+    if (slides.length >= 20) return;
+    const topic = (config.prompt || "").trim() || "\u4E3B\u9898\u6F14\u793A";
+    const text = template === "cover" ? `\u5C01\u9762\uFF1A${topic}` : template === "agenda" ? `\u76EE\u5F55\u9875\uFF1A${topic} \u5185\u6838\u8BAE\u9898\u4E0E\u7AE0\u8282\u5B89\u6392` : template === "section" ? `\u7AE0\u8282\u8FC7\u6E21\u9875\uFF1A${topic} - \u9636\u6BB5\u91CD\u70B9` : `\u603B\u7ED3\u9875\uFF1A${topic} \u7ED3\u8BBA\u4E0E\u4E0B\u4E00\u6B65\u884C\u52A8`;
+    setPptOutlineDraft([...slides, text].join("\n"));
+  }, [config.prompt, parsePptSlides, pptOutlineDraft]);
+  const dropPptSlide = (0, import_react11.useCallback)(() => {
+    if (pptDragIndex === null || pptDropIndex === null) return;
+    const slides = parsePptSlides(pptOutlineDraft);
+    if (pptDragIndex < 0 || pptDragIndex >= slides.length) return;
+    const target = Math.max(0, Math.min(slides.length - 1, pptDropIndex));
+    if (target === pptDragIndex) return;
+    const next = [...slides];
+    const [moved] = next.splice(pptDragIndex, 1);
+    next.splice(target, 0, moved);
+    setPptOutlineDraft(next.join("\n"));
+    setPptDragIndex(null);
+    setPptDropIndex(null);
+  }, [parsePptSlides, pptDragIndex, pptDropIndex, pptOutlineDraft]);
+  (0, import_react11.useEffect)(() => {
+    if (config.mode !== "ppt" /* PPT */) return;
+    const slides = parsePptSlides(pptOutlineDraft);
+    const current = (config.pptSlides || []).map((s) => String(s || "").trim()).filter(Boolean);
+    const draftKey = slides.join("\n");
+    const currentKey = current.join("\n");
+    if (draftKey === currentKey) return;
+    setConfig((prev) => ({
+      ...prev,
+      pptSlides: slides,
+      parallelCount: slides.length > 0 ? Math.max(Math.max(1, prev.parallelCount || 1), Math.min(20, slides.length)) : Math.max(1, prev.parallelCount || 1)
+    }));
+  }, [config.mode, config.pptSlides, parsePptSlides, pptOutlineDraft, setConfig]);
+  const filteredPromptLibrary = (0, import_react11.useMemo)(() => {
+    const keyword = promptLibrarySearch.trim().toLowerCase();
+    const isFavoriteOnly = promptLibraryCategory === "all" && keyword === "fav";
+    const base = BUILTIN_PROMPT_LIBRARY.filter((item) => {
+      if (promptLibraryCategory !== "all" && item.category !== promptLibraryCategory) return false;
+      if (isFavoriteOnly && !favoritePromptIds.includes(item.id)) return false;
+      if (!keyword || keyword === "fav") return true;
+      return item.title.toLowerCase().includes(keyword) || item.prompt.toLowerCase().includes(keyword) || (item.source || "").toLowerCase().includes(keyword);
+    });
+    return base.sort((a, b) => {
+      const aFav = favoritePromptIds.includes(a.id) ? 1 : 0;
+      const bFav = favoritePromptIds.includes(b.id) ? 1 : 0;
+      return bFav - aFav;
+    });
+  }, [favoritePromptIds, promptLibraryCategory, promptLibrarySearch]);
+  const modeOptions = (0, import_react11.useMemo)(() => [
+    {
+      mode: "image" /* IMAGE */,
+      label: "\u56FE\u7247",
+      icon: Camera,
+      color: "#8b5cf6",
+      activeBg: "rgba(139,92,246,0.18)",
+      onSelect: () => setConfig((prev) => ({ ...prev, mode: "image" /* IMAGE */, parallelCount: Math.min(4, Math.max(1, prev.parallelCount || 1)) }))
+    },
+    {
+      mode: "video" /* VIDEO */,
+      label: "\u89C6\u9891",
+      icon: Video,
+      color: "#a855f7",
+      activeBg: "rgba(168,85,247,0.18)",
+      onSelect: () => setConfig((prev) => ({ ...prev, mode: "video" /* VIDEO */, parallelCount: Math.min(4, Math.max(1, prev.parallelCount || 1)) }))
+    },
+    {
+      mode: "audio" /* AUDIO */,
+      label: "\u97F3\u4E50",
+      icon: Mic,
+      color: "#ec4899",
+      activeBg: "rgba(236,72,153,0.18)",
+      onSelect: () => setConfig((prev) => ({ ...prev, mode: "audio" /* AUDIO */, parallelCount: Math.min(4, Math.max(1, prev.parallelCount || 1)) }))
+    },
+    {
+      mode: "ppt" /* PPT */,
+      label: "PPT",
+      icon: LayoutDashboard,
+      color: "#0ea5e9",
+      activeBg: "rgba(14,165,233,0.18)",
+      onSelect: () => setConfig((prev) => ({ ...prev, mode: "ppt" /* PPT */, parallelCount: Math.min(20, Math.max(1, prev.parallelCount || 6)), pptStyleLocked: prev.pptStyleLocked !== false }))
+    }
+  ], [setConfig]);
+  const activeModeIndex = (0, import_react11.useMemo)(() => {
+    const idx = modeOptions.findIndex((item) => item.mode === config.mode);
+    return idx >= 0 ? idx : 0;
+  }, [config.mode, modeOptions]);
+  const handleDragEnter = (0, import_react11.useCallback)((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
+    resetDragSafetyTimer();
+    if (dragSourceId) return;
+    if (e.dataTransfer.types && e.dataTransfer.types.includes("Files")) {
+      setIsDragging(true);
+    }
+  }, [dragSourceId, resetDragSafetyTimer]);
+  const handleDragOver = (0, import_react11.useCallback)((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resetDragSafetyTimer();
+  }, [resetDragSafetyTimer]);
+  const handleDragLeave = (0, import_react11.useCallback)((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+      if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
+    }
+  }, []);
+  const handleDrop = (0, import_react11.useCallback)((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    if (dragSafetyTimer.current) clearTimeout(dragSafetyTimer.current);
+    const promptTemplate = e.dataTransfer.getData("application/x-kk-prompt-template");
+    if (promptTemplate) {
+      applyPromptTemplate(promptTemplate);
+      return;
+    }
+    const internalRefData = e.dataTransfer.getData("application/x-kk-image-ref");
+    if (internalRefData) {
+      try {
+        const { storageId, mimeType, data } = JSON.parse(internalRefData);
+        if (storageId) {
+          setConfig((prev) => {
+            if (prev.referenceImages.some((img) => img.storageId === storageId)) return prev;
+            const modelCaps2 = getModelCapabilities(config.model);
+            const maxRefImages = modelCaps2?.maxRefImages ?? 5;
+            if (prev.referenceImages.length >= maxRefImages) {
+              notify.warning("\u53C2\u8003\u56FE\u6570\u91CF\u9650\u5236", `\u6700\u591A\u53EA\u80FD\u4E0A\u4F20 ${maxRefImages} \u5F20\u53C2\u8003\u56FE`);
+              return prev;
+            }
+            let finalData = "";
+            if (data) {
+              if (data.startsWith("data:")) {
+                const matches = data.match(/^data:(.+);base64,(.+)$/);
+                if (matches && matches[2]) {
+                  finalData = matches[2];
+                } else {
+                  finalData = data;
+                }
+              } else {
+                finalData = data;
+              }
+            }
+            const newRef = {
+              id: Date.now() + Math.random().toString(),
+              storageId,
+              mimeType: mimeType || "image/png",
+              data: finalData
+              // Use pure data if available, else empty (triggers healing)
+            };
+            if (!finalData && storageId) {
+              Promise.resolve().then(() => (init_imageStorage(), imageStorage_exports)).then(({ getImage: getImage2 }) => {
+                getImage2(storageId).then((loadedData) => {
+                  if (loadedData) {
+                    setConfig((curr) => ({
+                      ...curr,
+                      referenceImages: curr.referenceImages.map(
+                        (img) => img.id === newRef.id ? { ...img, data: loadedData } : img
+                      )
+                    }));
+                  } else {
+                    const url2 = e.dataTransfer.getData("text/plain");
+                    if (url2 && (url2.startsWith("data:") || url2.startsWith("blob:"))) {
+                      fetch(url2).then((res) => res.blob()).then((blob) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          const result = reader.result;
+                          const matches = result.match(/^data:(.+);base64,(.+)$/);
+                          if (matches) {
+                            const base64Data = matches[2];
+                            saveImage(storageId, result).catch(() => {
+                            });
+                            setConfig((curr) => ({
+                              ...curr,
+                              referenceImages: curr.referenceImages.map(
+                                (img) => img.id === newRef.id ? { ...img, data: base64Data, mimeType: matches[1] } : img
+                              )
+                            }));
+                          }
+                        };
+                        reader.readAsDataURL(blob);
+                      }).catch((err) => console.error("[PromptBar] Failed to fetch image from URL:", err));
+                    }
+                  }
+                });
+              });
+            }
+            return {
+              ...prev,
+              referenceImages: [...prev.referenceImages, newRef]
+            };
+          });
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to parse internal image ref", err);
+      }
+    }
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+      return;
+    }
+    const url = e.dataTransfer.getData("text/plain");
+    if (url) {
+      if (url.startsWith("data:")) {
+        const matches = url.match(/^data:(.+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const data = matches[2];
+          fetch(url).then((res) => res.blob()).then((blob) => {
+            const file = new File([blob], "dropped_image.png", { type: mimeType });
+            processFiles([file]);
+          });
+          return;
+        }
+      }
+      if (url.startsWith("http") || url.startsWith("blob:")) {
+        fetch(url).then((res) => res.blob()).then((blob) => {
+          const file = new File([blob], "dropped_image.png", { type: blob.type });
+          if (url.startsWith("http")) {
+            file.__kkSourceUrl = url;
+          }
+          processFiles([file]);
+        }).catch((err) => {
+          console.error("\u5904\u7406\u62D6\u62FD URL \u5931\u8D25:", err);
+        });
+      }
+    }
+  }, [applyPromptTemplate, processFiles]);
+  const isModelListEmpty = availableModels.length === 0;
+  const currentModel = availableModels.find((m) => m.id === config.model);
+  const isNanoBanana2 = !!currentModel?.isSystemInternal;
+  const currentCreditCost = isModelListEmpty ? 0 : currentModel?.isSystemInternal ? getModelCredits((currentModel?.id || "").split("@")[0], config.imageSize) : currentModel?.creditCost !== void 0 ? currentModel.creditCost : getModelCredits((currentModel?.id || "").split("@")[0], config.imageSize);
+  const totalCreditCost = currentCreditCost * (config.parallelCount || 1);
+  const resolvedCurrentSystemDisplay = currentModel?.isSystemInternal ? adminModelService.getModelDisplayInfo(currentModel.id, config.imageSize) : null;
+  const currentModelPrimaryColor = normalizeColor(
+    resolvedCurrentSystemDisplay?.colorStart || currentModel?.colorStart,
+    "#3B82F6"
+  );
+  const currentModelSecondaryColor = normalizeColor(
+    resolvedCurrentSystemDisplay?.colorSecondary || resolvedCurrentSystemDisplay?.colorEnd || currentModel?.colorSecondary || currentModel?.colorEnd,
+    "#2563EB"
+  );
+  const currentModelTextColor = normalizeModelTextColor(
+    resolvedCurrentSystemDisplay?.textColor || currentModel?.textColor
+  );
+  let currentModelName = isModelListEmpty ? "\u65E0\u53EF\u7528\u6A21\u578B" : resolvedCurrentSystemDisplay?.displayName || currentModel?.label || getModelDisplayName(currentModel?.id || "") || currentModel?.id || "\u672A\u9009\u62E9\u6A21\u578B";
+  if (typeof currentModelName === "string") {
+    currentModelName = currentModelName.replace(/\s*[（\(].*?[）\)]\s*/g, "");
+  }
+  const modelDisplayInfo = currentModel ? {
+    ...getModelDisplayInfo(currentModel),
+    providerName: resolvedCurrentSystemDisplay?.providerName || currentModel?.providerLabel || currentModel?.provider,
+    sourceScope: currentModel?.sourceScope,
+    sourceLabel: currentModel?.sourceLabel
+  } : null;
+  const truncateModelLabel = (0, import_react11.useCallback)((label, max = 25) => {
+    if (label.length <= max) return label;
+    return label.slice(0, max - 1) + "\u2026";
+  }, []);
+  const truncateProviderLabel = (0, import_react11.useCallback)((label) => {
+    const max = 5;
+    if (label.length <= max) return label;
+    return label.slice(0, max - 1) + "\u2026";
+  }, []);
+  const displayModelLabel = (0, import_react11.useMemo)(() => {
+    return truncateModelLabel(currentModelName, 25);
+  }, [currentModelName, truncateModelLabel]);
+  const mobileStyle = isMobile ? {
+    position: "fixed",
+    bottom: "calc(env(safe-area-inset-bottom, 0px) + var(--mobile-tabbar-height, 72px) + var(--mobile-tabbar-floating-offset, 12px) + var(--mobile-prompt-gap, 12px))",
+    left: "50%",
+    transform: "translateX(-50%) translateZ(0)",
+    width: "calc(100vw - 20px)",
+    maxWidth: "min(960px, calc(100vw - 20px))",
+    margin: 0,
+    borderRadius: "22px",
+    border: "1px solid var(--mobile-glass-border, rgba(255,255,255,0.16))",
+    zIndex: 960,
+    padding: 0,
+    WebkitBackdropFilter: "blur(26px) saturate(170%)",
+    backdropFilter: "blur(26px) saturate(170%)",
+    background: "var(--mobile-glass-bg, rgba(20, 20, 23, 0.84))",
+    boxShadow: "0 24px 56px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.15)",
+    willChange: "transform",
+    contain: "layout style paint"
+  } : {
+    // Desktop floating style handling...
+  };
+  const mobileFloatingSheetBottom = "calc(env(safe-area-inset-bottom, 0px) + var(--mobile-tabbar-total-height) + var(--mobile-floating-sheet-clearance))";
+  const mobileFloatingSheetMaxHeight = "min(62vh, calc(100vh - var(--mobile-content-top-inset) - env(safe-area-inset-bottom, 0px) - var(--mobile-tabbar-total-height) - var(--mobile-floating-sheet-clearance) - 18px))";
+  const wrapperTouchStartY = (0, import_react11.useRef)(null);
+  const handleContainerTouchStart = (e) => {
+    wrapperTouchStartY.current = e.touches[0].clientY;
+    handleTouchStart(e);
+  };
+  const handleContainerTouchEnd = (e) => {
+    if (wrapperTouchStartY.current !== null) {
+      const touchEndY = e.changedTouches[0].clientY;
+      const deltaY = touchEndY - wrapperTouchStartY.current;
+      if (deltaY < -30) {
+        onInteract?.();
+      }
+      wrapperTouchStartY.current = null;
+    }
+    handleTouchEnd(e);
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(import_jsx_runtime15.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(ModeSwitcherStyles, {}),
+    /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+      "div",
+      {
+        id: "prompt-bar-container",
+        className: `input-bar ${isMobile ? "ios-mobile-prompt" : ""} transition-all duration-300 !overflow-visible w-[calc(100vw-32px)] sm:w-[min(95vw,960px)] md:w-[min(93vw,1080px)] lg:w-[min(92vw,1200px)] ${isDragging ? "ring-2 ring-indigo-500" : ""}`,
+        onDragEnter: handleDragEnter,
+        onDragOver: handleDragOver,
+        onDragLeave: handleDragLeave,
+        onDrop: handleDrop,
+        style: isMobile ? mobileStyle : { bottom: "32px" },
+        children: [
+          isDragging && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "absolute inset-0 z-50 bg-indigo-500/20 backdrop-blur-md rounded-[inherit] flex items-center justify-center animate-fadeIn pointer-events-none", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "font-bold text-sm text-white drop-shadow-md", children: "\u91CA\u653E\u6DFB\u52A0\u53C2\u8003\u56FE" }) }),
+          flyingImage && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+            "div",
+            {
+              className: "fixed z-[9999] w-12 h-12 rounded-lg border-2 border-indigo-500 shadow-xl overflow-hidden pointer-events-none transition-all ease-in-out duration-500",
+              style: {
+                left: 0,
+                top: 0,
+                backgroundImage: `url(${flyingImage.url})`,
+                backgroundSize: "cover",
+                transform: `translate(${flyingImage.targetX}px, ${flyingImage.targetY}px) scale(1)`,
+                animation: `flyToTarget 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards`
+              },
+              children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("style", { children: `
+@keyframes flyToTarget {
+    0% { transform: translate(${flyingImage.x}px, ${flyingImage.y}px) scale(1); opacity: 0.8; }
+    50% { opacity: 1; scale: 1.2; }
+    100% { transform: translate(${flyingImage.targetX}px, ${flyingImage.targetY}px) scale(1); opacity: 0; }
+}
+` })
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+            "div",
+            {
+              className: "input-bar-inner !overflow-visible",
+              style: {
+                position: "relative"
+                // Mobile: No capsule wrapper - keep it clean and flat
+              },
+              children: [
+                activeSourceImage && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                  "div",
+                  {
+                    className: "flex items-center gap-3 px-3 py-2.5 mb-2 rounded-xl border transition-all animate-in slide-in-from-bottom-2 group",
+                    style: {
+                      backgroundColor: "rgba(245, 158, 11, 0.1)",
+                      borderColor: "rgba(245, 158, 11, 0.2)"
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                        "img",
+                        {
+                          src: activeSourceImage.url,
+                          alt: "\u6E90\u56FE",
+                          className: "w-10 h-10 object-cover rounded-lg shadow-sm"
+                        }
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex-1 min-w-0", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-xs font-semibold text-amber-600 dark:text-amber-500", children: "\u4ECE\u6B64\u56FE\u7EE7\u7EED\u521B\u4F5C" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-xs text-[var(--text-tertiary)] truncate", children: activeSourceImage.prompt })
+                      ] }),
+                      !isMobile && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                        "button",
+                        {
+                          onClick: onClearSource,
+                          className: "\n                                    flex items-center justify-center w-7 h-7 rounded-lg\n                                    bg-amber-500/10 hover:bg-amber-500/20\n                                    text-amber-600 dark:text-amber-500\n                                    transition-all duration-200\n                                    hover:scale-110 active:scale-95\n                                    opacity-80 hover:opacity-100\n                                ",
+                          title: "\u53D6\u6D88\u7EE7\u7EED\u521B\u4F5C",
+                          children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(X, { size: 14 })
+                        }
+                      )
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(PromptBarTopRow_default, { isMobile, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: isMobile ? "w-full overflow-x-auto scrollbar-none pb-0.5" : "flex items-center gap-2", children: (() => {
+                    const MODE_SLOT_WIDTH = isMobile ? 72 : 82;
+                    const sliderWidth = isMobile ? 64 : 74;
+                    const sliderLeft = 4 + activeModeIndex * MODE_SLOT_WIDTH + (MODE_SLOT_WIDTH - sliderWidth) / 2;
+                    return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                      "div",
+                      {
+                        className: `
+                                        relative inline-flex items-center p-1 rounded-xl border
+                                        ${isMobile ? "min-w-max" : ""}
+                                        backdrop-blur-sm
+                                    `,
+                        style: {
+                          backgroundColor: "var(--bg-tertiary)",
+                          borderColor: "var(--border-light)",
+                          boxShadow: `
+                                                0 1px 2px rgba(0,0,0,0.05),
+                                                0 0 0 1px rgba(255,255,255,0.02) inset
+                                            `
+                        },
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                            "div",
+                            {
+                              className: "absolute top-1 h-[calc(100%-8px)] rounded-lg transition-all duration-500",
+                              style: {
+                                width: `${sliderWidth}px`,
+                                left: `${sliderLeft}px`,
+                                backgroundColor: modeOptions[activeModeIndex]?.activeBg || "rgba(99,102,241,0.16)",
+                                boxShadow: `
+                                                    0 0 20px ${modeOptions[activeModeIndex]?.color || "#818cf8"}30,
+                                                    0 2px 8px rgba(0,0,0,0.15) inset,
+                                                    0 1px 0 rgba(255,255,255,0.1) inset
+                                                `,
+                                transitionTimingFunction: "cubic-bezier(0.34, 1.56, 0.64, 1)"
+                              }
+                            }
+                          ),
+                          [1, 2, 3].map((splitIndex) => {
+                            const dividerCenter = 4 + splitIndex * MODE_SLOT_WIDTH;
+                            const sliderCenter = sliderLeft + sliderWidth / 2;
+                            const distance = Math.abs(dividerCenter - sliderCenter);
+                            const maxDistance = MODE_SLOT_WIDTH;
+                            const opacity = Math.max(0.04, 0.12 - distance / maxDistance * 0.08);
+                            const scaleY = Math.max(0.5, 1 - distance / maxDistance * 0.5);
+                            return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "span",
+                              {
+                                className: "absolute inset-y-0 my-auto w-px pointer-events-none transition-all duration-500",
+                                style: {
+                                  left: `${dividerCenter}px`,
+                                  height: `${50 * scaleY}%`,
+                                  backgroundColor: `rgba(255,255,255,${opacity})`,
+                                  transitionTimingFunction: "cubic-bezier(0.34, 1.56, 0.64, 1)"
+                                }
+                              },
+                              `split-${splitIndex}`
+                            );
+                          }),
+                          modeOptions.map((item) => {
+                            const isActive = config.mode === item.mode;
+                            const Icon2 = item.icon;
+                            return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "relative z-10", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: `
+                                                            px-2 py-1.5 rounded-lg font-medium
+                                                            ${isMobile ? "w-[72px] text-[12px]" : "w-[82px] text-sm"}
+                                                            transition-all duration-300 ease-out
+                                                            hover:scale-105 active:scale-95
+                                                            ${isActive ? "scale-105" : "hover:text-[var(--text-primary)]"}
+                                                        `,
+                                style: {
+                                  color: isActive ? item.color : "var(--text-secondary)",
+                                  textShadow: isActive ? `0 0 12px ${item.color}40` : "none"
+                                },
+                                onClick: item.onSelect,
+                                children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("span", { className: "inline-flex items-center gap-1.5", children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                    Icon2,
+                                    {
+                                      size: isActive ? 14 : 13,
+                                      className: `
+                                                                    transition-all duration-300 ease-out
+                                                                    ${isActive ? "animate-pulse-once" : ""}
+                                                                `,
+                                      style: {
+                                        filter: isActive ? `drop-shadow(0 0 6px ${item.color})` : "none"
+                                      }
+                                    }
+                                  ),
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: `
+                                                                transition-all duration-300
+                                                                ${isActive ? "font-semibold tracking-wide" : ""}
+                                                            `, children: item.label })
+                                ] })
+                              }
+                            ) }, item.mode);
+                          })
+                        ]
+                      }
+                    );
+                  })() }),
+                  /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: `relative flex items-center gap-1 ${isMobile ? "flex-wrap" : ""}`, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                      "button",
+                      {
+                        className: "flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0",
+                        style: {
+                          backgroundColor: showPromptLibrary ? "rgba(59,130,246,0.14)" : "var(--bg-tertiary)",
+                          color: showPromptLibrary ? "#60a5fa" : "var(--text-secondary)",
+                          borderColor: showPromptLibrary ? "rgba(96,165,250,0.35)" : "var(--border-light)"
+                        },
+                        onMouseDown: (e) => e.stopPropagation(),
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          setShowPromptLibrary((prev) => !prev);
+                          setShowPptOutlinePanel(false);
+                          setActiveMenu(null);
+                        },
+                        title: "\u6253\u5F00\u63D0\u793A\u8BCD\u5E93",
+                        children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { children: "\u63D0\u793A\u8BCD\u5E93" })
+                      }
+                    ),
+                    config.mode === "ppt" /* PPT */ && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                      "button",
+                      {
+                        className: "flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0",
+                        style: {
+                          backgroundColor: showPptOutlinePanel ? "rgba(14,165,233,0.14)" : "var(--bg-tertiary)",
+                          color: showPptOutlinePanel ? "#38bdf8" : "var(--text-secondary)",
+                          borderColor: showPptOutlinePanel ? "rgba(56,189,248,0.35)" : "var(--border-light)"
+                        },
+                        onMouseDown: (e) => e.stopPropagation(),
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          setShowPptOutlinePanel((prev) => !prev);
+                          setShowPromptLibrary(false);
+                          setActiveMenu(null);
+                        },
+                        title: "\u7F16\u8F91PPT\u9875\u7EB2",
+                        children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { children: "\u9875\u7EB2" })
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                      "button",
+                      {
+                        className: `flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all text-[11px] font-medium whitespace-nowrap flex-shrink-0 ${config.enablePromptOptimization ? "bg-green-500/15 text-green-500 border-green-500/30" : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-[var(--border-medium)]"}`,
+                        style: {
+                          opacity: config.mode === "image" /* IMAGE */ || config.mode === "ppt" /* PPT */ ? 1 : 0.45,
+                          pointerEvents: config.mode === "image" /* IMAGE */ || config.mode === "ppt" /* PPT */ ? "auto" : "none"
+                        },
+                        onClick: () => setConfig((prev) => ({ ...prev, enablePromptOptimization: !prev.enablePromptOptimization })),
+                        title: config.mode === "image" /* IMAGE */ || config.mode === "ppt" /* PPT */ ? "\u5F00\u542F\u540E\u5148\u4F18\u5316\u63D0\u793A\u8BCD\uFF0C\u518D\u53D1\u9001\u751F\u6210" : "\u4EC5\u56FE\u7247/PPT\u6A21\u5F0F\u652F\u6301\u63D0\u793A\u8BCD\u4F18\u5316",
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(WandSparkles, { className: `w-3 h-3 ${config.enablePromptOptimization ? "animate-pulse" : ""}` }),
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "font-bold", children: "\u4F18\u5316\u63D0\u793A\u8BCD" })
+                        ]
+                      }
+                    ),
+                    showPromptLibrary && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                      "div",
+                      {
+                        className: isMobile ? "fixed left-3 right-3 z-[1005] ios-mobile-floating-sheet rounded-[30px] p-3 shadow-2xl overflow-hidden" : "absolute bottom-full right-0 mb-2 z-40 rounded-2xl border shadow-xl p-2 max-w-[calc(100vw-24px)]",
+                        style: isMobile ? {
+                          bottom: mobileFloatingSheetBottom,
+                          maxHeight: mobileFloatingSheetMaxHeight,
+                          overscrollBehavior: "contain"
+                        } : {
+                          width: "min(34rem, calc(100vw - 24px))",
+                          backgroundColor: "var(--bg-secondary)",
+                          borderColor: "var(--border-medium)"
+                        },
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: `mb-2 gap-1 ${isMobile ? "flex flex-wrap items-center" : "flex items-center"}`, children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: `px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === "all" ? "text-blue-400 border-blue-400/40 bg-blue-500/10" : "text-[var(--text-secondary)] border-[var(--border-light)]"}`,
+                                onClick: () => setPromptLibraryCategory("all"),
+                                children: "\u5168\u90E8"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: `px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === "banana-pro" ? "text-blue-400 border-blue-400/40 bg-blue-500/10" : "text-[var(--text-secondary)] border-[var(--border-light)]"}`,
+                                onClick: () => setPromptLibraryCategory("banana-pro"),
+                                children: "Banana Pro"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: `px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === "banana" ? "text-blue-400 border-blue-400/40 bg-blue-500/10" : "text-[var(--text-secondary)] border-[var(--border-light)]"}`,
+                                onClick: () => setPromptLibraryCategory("banana"),
+                                children: "Banana"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: `px-2 py-1 rounded-md text-[11px] border ${promptLibraryCategory === "general" ? "text-blue-400 border-blue-400/40 bg-blue-500/10" : "text-[var(--text-secondary)] border-[var(--border-light)]"}`,
+                                onClick: () => setPromptLibraryCategory("general"),
+                                children: "\u901A\u7528"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "input",
+                              {
+                                value: promptLibrarySearch,
+                                onChange: (e) => setPromptLibrarySearch(e.target.value),
+                                placeholder: "\u641C\u7D22\u6807\u9898/\u5185\u5BB9",
+                                className: `bg-[var(--bg-tertiary)] text-[11px] rounded-md px-2 py-1 border border-[var(--border-light)] outline-none ${isMobile ? "w-full basis-full mt-1" : "ml-auto w-40"}`
+                              }
+                            )
+                          ] }),
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "max-h-64 overflow-y-auto space-y-1 pr-1", children: [
+                            filteredPromptLibrary.map((item) => {
+                              const isFavorite = favoritePromptIds.includes(item.id);
+                              return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                                "div",
+                                {
+                                  className: "rounded-lg border p-2",
+                                  style: { borderColor: "var(--border-light)", backgroundColor: "var(--bg-tertiary)" },
+                                  draggable: true,
+                                  onDragStart: (e) => {
+                                    e.dataTransfer.setData("application/x-kk-prompt-template", item.prompt);
+                                    e.dataTransfer.setData("text/plain", item.prompt);
+                                    e.dataTransfer.effectAllowed = "copy";
+                                  },
+                                  children: [
+                                    /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
+                                      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-xs font-medium text-[var(--text-primary)] truncate", children: item.title }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center gap-1", children: [
+                                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                          "button",
+                                          {
+                                            className: "text-[10px] px-2 py-1 rounded-md border border-[var(--border-light)] hover:bg-white/5",
+                                            style: { color: "var(--text-secondary)" },
+                                            onClick: () => applyPromptTemplate(item.prompt),
+                                            children: "\u63D2\u5165"
+                                          }
+                                        ),
+                                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                          "button",
+                                          {
+                                            className: "text-[11px] px-2 py-1 rounded-md border border-[var(--border-light)] hover:bg-white/5",
+                                            style: { color: isFavorite ? "#fbbf24" : "var(--text-secondary)" },
+                                            onClick: () => togglePromptFavorite(item.id),
+                                            title: isFavorite ? "\u53D6\u6D88\u6536\u85CF" : "\u6536\u85CF",
+                                            children: "\u2605"
+                                          }
+                                        )
+                                      ] })
+                                    ] }),
+                                    item.source && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "text-[10px] mt-1 text-[var(--text-tertiary)]", children: [
+                                      "\u6765\u6E90: ",
+                                      item.source
+                                    ] }),
+                                    /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-[11px] mt-1 text-[var(--text-secondary)] max-h-8 overflow-hidden", children: item.prompt })
+                                  ]
+                                },
+                                item.id
+                              );
+                            }),
+                            filteredPromptLibrary.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-xs text-[var(--text-tertiary)] text-center py-4", children: "\u6CA1\u6709\u5339\u914D\u9879" })
+                          ] }),
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-[10px] mt-2 text-[var(--text-tertiary)]", children: "\u652F\u6301\u62D6\u62FD\u5230\u8F93\u5165\u533A\u76F4\u63A5\u63D2\u5165\uFF1B\u6536\u85CF\u4F1A\u4FDD\u5B58\u5728\u672C\u5730\u3002" })
+                        ]
+                      }
+                    ),
+                    showPptOutlinePanel && config.mode === "ppt" /* PPT */ && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "absolute bottom-full right-0 mb-2 z-40 w-[min(38rem,92vw)] rounded-2xl border shadow-xl p-2", style: { backgroundColor: "var(--bg-secondary)", borderColor: "var(--border-medium)" }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center justify-between gap-2 mb-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-xs font-semibold text-[var(--text-primary)]", children: "PPT\u9875\u7EB2\uFF08\u6BCF\u884C\u4E00\u9875\uFF09" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "text-[10px] text-[var(--text-tertiary)]", children: [
+                          Math.min(20, parsePptSlides(pptOutlineDraft).length),
+                          " / 20 \u9875\uFF0C\u751F\u6210\u7ED3\u679C\u6309\u56FE1~\u56FEN\u547D\u540D"
+                        ] })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center gap-2 mb-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                          "button",
+                          {
+                            className: `px-2 py-1 rounded-md text-[11px] border ${config.pptStyleLocked !== false ? "border-sky-500/40 bg-sky-500/10 text-sky-300" : "border-[var(--border-light)] text-[var(--text-secondary)]"}`,
+                            onClick: () => setConfig((prev) => ({ ...prev, pptStyleLocked: !(prev.pptStyleLocked !== false) })),
+                            title: "\u9501\u5B9A\u6574\u5957PPT\u89C6\u89C9\u98CE\u683C\u4E00\u81F4\u6027",
+                            children: [
+                              "\u98CE\u683C\u9501\u5B9A ",
+                              config.pptStyleLocked !== false ? "ON" : "OFF"
+                            ]
+                          }
+                        ),
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-[10px] text-[var(--text-tertiary)]", children: "ON \u66F4\u504F\u5411\u6574\u5957\u89C6\u89C9\u4E00\u81F4\uFF0COFF \u5141\u8BB8\u5355\u9875\u53D8\u5316" })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center gap-1 mb-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("button", { className: "px-2 py-1 rounded-md text-[10px] border border-[var(--border-light)] text-[var(--text-secondary)] hover:bg-white/5", onClick: () => appendPptTemplateSlide("cover"), children: "+\u5C01\u9762" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("button", { className: "px-2 py-1 rounded-md text-[10px] border border-[var(--border-light)] text-[var(--text-secondary)] hover:bg-white/5", onClick: () => appendPptTemplateSlide("agenda"), children: "+\u76EE\u5F55" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("button", { className: "px-2 py-1 rounded-md text-[10px] border border-[var(--border-light)] text-[var(--text-secondary)] hover:bg-white/5", onClick: () => appendPptTemplateSlide("section"), children: "+\u7AE0\u8282" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("button", { className: "px-2 py-1 rounded-md text-[10px] border border-[var(--border-light)] text-[var(--text-secondary)] hover:bg-white/5", onClick: () => appendPptTemplateSlide("summary"), children: "+\u603B\u7ED3" })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                        "textarea",
+                        {
+                          value: pptOutlineDraft,
+                          onChange: (e) => setPptOutlineDraft(e.target.value),
+                          className: "w-full h-44 rounded-lg border p-2 text-xs outline-none resize-none",
+                          style: { backgroundColor: "var(--bg-tertiary)", borderColor: "var(--border-light)", color: "var(--text-primary)" },
+                          placeholder: "\u793A\u4F8B\uFF1A\\n\u5C01\u9762\uFF1AAI\u4EA7\u54C1\u5B63\u5EA6\u6C47\u62A5\\n\u5E02\u573A\u6D1E\u5BDF\\n\u4EA7\u54C1\u8DEF\u7EBF\u56FE\\n\u5173\u952E\u6848\u4F8B\\n\u603B\u7ED3\u4E0E\u4E0B\u4E00\u6B65"
+                        }
+                      ),
+                      parsePptSlides(pptOutlineDraft).length > 0 && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "mt-2 max-h-36 overflow-y-auto space-y-1 pr-1", children: parsePptSlides(pptOutlineDraft).map((line, idx) => /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                        "div",
+                        {
+                          className: "relative flex items-center gap-1 rounded-md border px-2 py-1",
+                          style: {
+                            borderColor: pptDropIndex === idx && pptDragIndex !== null && pptDragIndex !== idx ? "rgba(56,189,248,0.45)" : "var(--border-light)",
+                            backgroundColor: pptDropIndex === idx && pptDragIndex !== null && pptDragIndex !== idx ? "rgba(14,165,233,0.12)" : "var(--bg-tertiary)",
+                            opacity: pptDragIndex === idx ? 0.65 : 1
+                          },
+                          draggable: true,
+                          onDragStart: () => {
+                            setPptDragIndex(idx);
+                            setPptDropIndex(idx);
+                          },
+                          onDragOver: (e) => {
+                            e.preventDefault();
+                            setPptDropIndex(idx);
+                          },
+                          onDrop: (e) => {
+                            e.preventDefault();
+                            setPptDropIndex(idx);
+                            setTimeout(() => dropPptSlide(), 0);
+                          },
+                          onDragEnd: () => {
+                            setPptDragIndex(null);
+                            setPptDropIndex(null);
+                          },
+                          children: [
+                            pptDropIndex === idx && pptDragIndex !== null && pptDragIndex !== idx && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "absolute left-1 right-1 -top-[1px] h-[2px] rounded-full bg-sky-400/80 pointer-events-none" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "text-[10px] w-4 shrink-0 text-[var(--text-tertiary)] cursor-grab", children: "\u22EE" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("span", { className: "text-[10px] text-sky-400 w-8 shrink-0", children: [
+                              "\u56FE",
+                              idx + 1
+                            ] }),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "text-[11px] text-[var(--text-secondary)] truncate flex-1", title: line, children: line }),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: "text-[10px] px-1 py-0.5 rounded border border-[var(--border-light)]",
+                                style: { color: "var(--text-secondary)" },
+                                onClick: () => movePptSlide(idx, -1),
+                                title: "\u4E0A\u79FB",
+                                children: "\u2191"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: "text-[10px] px-1 py-0.5 rounded border border-[var(--border-light)]",
+                                style: { color: "var(--text-secondary)" },
+                                onClick: () => movePptSlide(idx, 1),
+                                title: "\u4E0B\u79FB",
+                                children: "\u2193"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: "text-[10px] px-1 py-0.5 rounded border border-red-500/30",
+                                style: { color: "#fca5a5" },
+                                onClick: () => removePptSlide(idx),
+                                title: "\u5220\u9664\u6B64\u9875",
+                                children: "\u5220"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: "text-[10px] px-1 py-0.5 rounded border border-sky-500/30",
+                                style: { color: "#7dd3fc" },
+                                onClick: () => insertPptSlideAfter(idx),
+                                title: "\u5728\u540E\u65B9\u63D2\u5165\u65B0\u9875",
+                                children: "+"
+                              }
+                            )
+                          ]
+                        },
+                        `${idx}-${line}`
+                      )) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center gap-1 mt-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                          "button",
+                          {
+                            className: "px-2 py-1 rounded-md text-[11px] border border-[var(--border-light)] hover:bg-white/5",
+                            style: { color: "var(--text-secondary)" },
+                            onClick: generatePptOutlineByTopic,
+                            children: "\u6309\u4E3B\u9898\u62C6\u9875"
+                          }
+                        ),
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                          "button",
+                          {
+                            className: "px-2 py-1 rounded-md text-[11px] border border-[var(--border-light)] hover:bg-white/5",
+                            style: { color: "var(--text-secondary)" },
+                            onClick: exportPptOutlineJson,
+                            children: "\u5BFC\u51FAJSON"
+                          }
+                        ),
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                          "button",
+                          {
+                            className: "px-2 py-1 rounded-md text-[11px] border border-[var(--border-light)] hover:bg-white/5",
+                            style: { color: "var(--text-secondary)" },
+                            onClick: () => setPptOutlineDraft(""),
+                            children: "\u6E05\u7A7A"
+                          }
+                        ),
+                        /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                          "button",
+                          {
+                            className: "ml-auto px-2 py-1 rounded-md text-[11px] border border-sky-400/40 bg-sky-500/10",
+                            style: { color: "#38bdf8" },
+                            onClick: applyPptOutlineDraft,
+                            children: "\u5E94\u7528\u9875\u7EB2"
+                          }
+                        )
+                      ] })
+                    ] })
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                  "div",
+                  {
+                    onMouseEnter: () => {
+                      if (hoverTimerRef.current) {
+                        clearTimeout(hoverTimerRef.current);
+                      }
+                      hoverTimerRef.current = setTimeout(() => {
+                        setIsInputAreaHovered(true);
+                      }, 500);
+                    },
+                    onMouseLeave: () => {
+                      if (hoverTimerRef.current) {
+                        clearTimeout(hoverTimerRef.current);
+                        hoverTimerRef.current = null;
+                      }
+                      setIsInputAreaHovered(false);
+                    },
+                    children: [
+                      (config.referenceImages && config.referenceImages.length > 0 || uploadingCount > 0) && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                        "div",
+                        {
+                          ref: refContainerRef,
+                          className: "flex flex-nowrap items-center gap-2 transition-all p-2 px-3 mt-1 rounded-lg overflow-x-auto overflow-y-hidden scrollbar-thin",
+                          style: {
+                            WebkitOverflowScrolling: "touch",
+                            overscrollBehaviorX: "contain",
+                            touchAction: "pan-x"
+                          },
+                          onDragOver: (e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            if (refContainerRef.current) {
+                              const children = Array.from(refContainerRef.current.children).filter((c) => !c.id.includes("spacer"));
+                              let insertIndex = children.length;
+                              for (let i = 0; i < children.length; i++) {
+                                const rect = children[i].getBoundingClientRect();
+                                const centerX = rect.left + rect.width / 2;
+                                if (e.clientX < centerX) {
+                                  insertIndex = i;
+                                  break;
+                                }
+                              }
+                              if (dragSourceId) {
+                                const sourceIndex = config.referenceImages.findIndex((img) => img.id === dragSourceId);
+                                if (insertIndex === sourceIndex || insertIndex === sourceIndex + 1) {
+                                  setDropTargetIndex(null);
+                                  return;
+                                }
+                              }
+                              setDropTargetIndex(insertIndex);
+                            }
+                          },
+                          onDragLeave: (e) => {
+                            if (refContainerRef.current && !refContainerRef.current.contains(e.relatedTarget)) {
+                              setDropTargetIndex(null);
+                            }
+                          },
+                          onDrop: (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDropTargetIndex(null);
+                            if (dragSourceId) {
+                              if (dropTargetIndex !== null) {
+                                setConfig((prev) => {
+                                  const newImages = [...prev.referenceImages];
+                                  const sourceIndex = newImages.findIndex((i) => i.id === dragSourceId);
+                                  if (sourceIndex === -1) return prev;
+                                  const [moved] = newImages.splice(sourceIndex, 1);
+                                  let finalTargetIndex = dropTargetIndex;
+                                  if (sourceIndex < finalTargetIndex) {
+                                    finalTargetIndex -= 1;
+                                  }
+                                  newImages.splice(finalTargetIndex, 0, moved);
+                                  return { ...prev, referenceImages: newImages };
+                                });
+                              }
+                              setDragSourceId(null);
+                              return;
+                            }
+                          },
+                          children: [
+                            config.referenceImages.map((img, index) => {
+                              const isSource = dragSourceId === img.id;
+                              const showSpacer = dropTargetIndex === index;
+                              return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(import_react11.default.Fragment, { children: [
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                  "div",
+                                  {
+                                    id: "spacer",
+                                    className: `transition-all duration-300 ease-[cubic-bezier(0.25, 1, 0.5, 1)] rounded-lg overflow-hidden ${showSpacer ? "w-12 opacity-100 mr-2" : "w-0 opacity-0 mr-0"}`,
+                                    style: { height: showSpacer ? "48px" : "0px" },
+                                    children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "w-12 h-12 rounded-lg border-2 border-dashed border-indigo-500/30 bg-indigo-500/5" })
+                                  }
+                                ),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                                  "div",
+                                  {
+                                    className: `relative group cursor-move transition-all duration-300 ${isSource ? "opacity-0 w-0 overflow-hidden m-0 p-0 scale-0" : "hover:scale-105"} ${!isSource ? "w-12" : ""}`,
+                                    draggable: true,
+                                    onDragStart: (e) => {
+                                      e.stopPropagation();
+                                      setDragSourceId(img.id);
+                                      e.dataTransfer.setData("text/plain", img.id);
+                                      e.dataTransfer.effectAllowed = "move";
+                                    },
+                                    onDragEnd: () => {
+                                      setDragSourceId(null);
+                                      setDropTargetIndex(null);
+                                    },
+                                    children: [
+                                      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                        ReferenceThumbnail,
+                                        {
+                                          image: img,
+                                          onRecovered: (payload) => {
+                                            setConfig((curr) => ({
+                                              ...curr,
+                                              referenceImages: curr.referenceImages.map(
+                                                (ref) => ref.id === payload.id ? {
+                                                  ...ref,
+                                                  data: payload.data,
+                                                  mimeType: payload.mimeType || ref.mimeType,
+                                                  storageId: payload.storageId || ref.storageId
+                                                } : ref
+                                              )
+                                            }));
+                                          },
+                                          onClick: (e, resolvedSrc) => {
+                                            e.stopPropagation();
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            setPreviewImage({ url: resolvedSrc, originRect: rect });
+                                          }
+                                        }
+                                      ),
+                                      config.maskUrl && config.editMode === "inpaint" && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "absolute inset-0 border-2 border-indigo-500 rounded-lg pointer-events-none" }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                        "button",
+                                        {
+                                          onClick: (e) => {
+                                            e.stopPropagation();
+                                            removeReferenceImage(img.id);
+                                            if (config.maskUrl) {
+                                              setConfig((prev) => ({ ...prev, maskUrl: void 0, editMode: void 0 }));
+                                            }
+                                          },
+                                          onMouseDown: (e) => e.stopPropagation(),
+                                          className: "absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity transform hover:scale-110 z-10",
+                                          children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { width: "12", height: "12", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2.5", children: [
+                                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("line", { x1: "18", y1: "6", x2: "6", y2: "18" }),
+                                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("line", { x1: "6", y1: "6", x2: "18", y2: "18" })
+                                          ] })
+                                        }
+                                      )
+                                    ]
+                                  }
+                                )
+                              ] }, img.id);
+                            }),
+                            Array.from({ length: uploadingCount }).map((_, idx) => /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "relative w-12 h-12 rounded-lg border-2 border-dashed border-gray-400/30 dark:border-zinc-500/30 flex items-center justify-center bg-gray-100/50 dark:bg-zinc-800/50 overflow-hidden flex-shrink-0 animate-pulse", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", className: "animate-spin text-gray-500 dark:text-zinc-400", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M21 12a9 9 0 1 1-6.219-8.56" }) }) }, `uploading-${idx}`)),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "div",
+                              {
+                                id: "spacer",
+                                className: `transition-all duration-300 ease-[cubic-bezier(0.25, 1, 0.5, 1)] rounded-lg overflow-hidden ${dropTargetIndex === config.referenceImages.length ? "w-12 opacity-100 h-12" : "w-0 opacity-0 h-0"}`,
+                                children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "w-12 h-12 rounded-lg border-2 border-dashed border-indigo-500/30 bg-indigo-500/5" })
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: "w-12 h-12 rounded-md transition-all duration-200 border hover:bg-white/5 flex items-center justify-center flex-shrink-0 opacity-60 hover:opacity-100",
+                                style: {
+                                  backgroundColor: "var(--bg-tertiary)",
+                                  color: "var(--text-secondary)",
+                                  borderColor: "var(--border-light)"
+                                },
+                                onClick: () => fileInputRef.current?.click(),
+                                title: "\u4E0A\u4F20\u53C2\u8003\u56FE",
+                                children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }),
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("polyline", { points: "17 8 12 3 7 8" }),
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("line", { x1: "12", y1: "3", x2: "12", y2: "15" })
+                                ] })
+                              }
+                            )
+                          ]
+                        }
+                      ),
+                      config.referenceImages.length === 0 && uploadingCount === 0 && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "flex items-center p-2 px-3 mt-1", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                        "button",
+                        {
+                          className: "w-12 h-12 rounded-lg transition-all border-2 border-dashed hover:bg-white/5 flex items-center justify-center flex-shrink-0 opacity-40 hover:opacity-80",
+                          style: {
+                            color: "var(--text-secondary)",
+                            borderColor: "var(--border-light)"
+                          },
+                          onClick: () => fileInputRef.current?.click(),
+                          title: "\u4E0A\u4F20\u53C2\u8003\u56FE",
+                          children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("polyline", { points: "17 8 12 3 7 8" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("line", { x1: "12", y1: "3", x2: "12", y2: "15" })
+                          ] })
+                        }
+                      ) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                        "textarea",
+                        {
+                          ref: textareaRef,
+                          value: config.prompt,
+                          onChange: handleInput,
+                          onKeyDown: handleKeyDown,
+                          onPaste: handlePaste,
+                          onFocus: () => {
+                            setActiveMenu(null);
+                            onFocus?.();
+                          },
+                          onBlur: () => {
+                            onBlur?.();
+                          },
+                          placeholder: config.mode === "video" /* VIDEO */ ? "\u63CF\u8FF0\u4F60\u60F3\u8981\u751F\u6210\u7684\u89C6\u9891..." : config.mode === "audio" /* AUDIO */ ? "\u63CF\u8FF0\u4F60\u60F3\u8981\u751F\u6210\u7684\u97F3\u4E50\u98CE\u683C\u3001\u6B4C\u8BCD\u6216\u65CB\u5F8B..." : config.mode === "ppt" /* PPT */ ? "\u8F93\u5165PPT\u4E3B\u9898\uFF0C\u5C06\u6279\u91CF\u751F\u6210\u56FE1~\u56FEN\u9875\u9762..." : "\u63CF\u8FF0\u4F60\u60F3\u8981\u751F\u6210\u7684\u56FE\u7247...",
+                          className: "input-bar-textarea w-full max-w-full bg-transparent border-none outline-none text-[15px] resize-none mt-1 py-1 px-3 box-border overflow-y-auto",
+                          style: {
+                            color: "var(--text-primary)",
+                            // 使用 CSS 变量适配主题
+                            minHeight: "36px",
+                            maxHeight: "135px",
+                            // 6 lines * 22.5px line-height
+                            lineHeight: "1.5"
+                          },
+                          rows: 1
+                        }
+                      )
+                    ]
+                  }
+                ),
+                " ",
+                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(PromptBarFooter_default, { isMobile, children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: `flex min-w-0 items-center ${isMobile ? "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2" : "flex-1 gap-1.5"}`, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: `relative inline-flex min-w-0 ${isMobile ? "col-span-2" : "flex-shrink-0"}`, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                      "button",
+                      {
+                        id: "models-dropdown-trigger",
+                        className: `input-bar-model flex w-full max-w-full items-center flex-nowrap justify-center gap-1.5 md:gap-2 px-2 md:px-3 h-10 rounded-lg border transition-all duration-300 min-w-0 overflow-hidden ${isModelListEmpty ? "bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] cursor-not-allowed border-[var(--border-light)]" : currentModel?.colorStart && currentModel?.colorEnd ? "border-white/20 !opacity-100 shadow-sm" : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-opacity-50"}`,
+                        style: !isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd ? {
+                          background: `linear-gradient(180deg, ${currentModelSecondaryColor} 0%, ${currentModelSecondaryColor} 100%)`,
+                          border: `1px solid ${currentModelPrimaryColor}`,
+                          boxShadow: `0 0 0 1px ${currentModelPrimaryColor} inset`
+                        } : {},
+                        onMouseDown: (e) => e.stopPropagation(),
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          if (isModelListEmpty) {
+                            onOpenSettings?.("api-management");
+                          } else {
+                            toggleMenu("model");
+                          }
+                        },
+                        children: [
+                          (() => {
+                            const badgeInfo = getModelBadgeInfo({ id: currentModel?.id ?? "", label: currentModel?.label ?? "", provider: currentModel?.provider });
+                            return /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "span",
+                              {
+                                className: `font-bold truncate flex items-center gap-1 min-w-0 ${isMobile ? "text-[13px]" : "text-sm"} ${!isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd ? "" : badgeInfo.colorClass}`,
+                                style: !isModelListEmpty && currentModel?.colorStart && currentModel?.colorEnd ? { color: currentModelTextColor } : void 0,
+                                title: currentModelName,
+                                children: currentModelName
+                              }
+                            );
+                          })(),
+                          !isModelListEmpty && !isMobile && (currentModel?.isSystemInternal ? (
+                            // 积分模型：仅显示 ✨积分，不显示供应商
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                              "span",
+                              {
+                                className: "text-[10px] px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-200 border border-sky-300/25 font-semibold flex-shrink-0",
+                                style: { marginLeft: "6px" },
+                                title: "\u7CFB\u7EDF\u79EF\u5206\u6A21\u578B",
+                                children: [
+                                  "\u2728",
+                                  Math.max(1, currentCreditCost)
+                                ]
+                              }
+                            )
+                          ) : currentModel?.provider ? (
+                            // 用户API模型：显示Provider标签
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "span",
+                              {
+                                className: `text-[9px] px-1.5 py-0.5 rounded border flex-shrink-0 ${getProviderBadgeColor(currentModel.provider)}`,
+                                style: { marginLeft: "6px", ...getProviderBadgeStyle(currentModel.provider) },
+                                title: currentModel.provider,
+                                children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "whitespace-nowrap", children: truncateProviderLabel(currentModel.provider) })
+                              }
+                            )
+                          ) : null)
+                        ]
+                      }
+                    ),
+                    !isModelListEmpty && activeMenu === "model" && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                      "div",
+                      {
+                        ref: modelDropdownRef,
+                        className: isMobile ? "fixed left-3 right-3 z-[1005] ios-mobile-floating-sheet p-2 animate-scaleIn origin-bottom overflow-hidden" : "absolute bottom-full mb-3 z-50 animate-scaleIn origin-bottom",
+                        style: isMobile ? { bottom: mobileFloatingSheetBottom, maxHeight: mobileFloatingSheetMaxHeight, overscrollBehavior: "contain" } : { left: "50%", transform: "translateX(-50%)" },
+                        children: [
+                          sortedAvailableModels.length > 1 && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "mb-2 p-2.5 bg-[var(--bg-secondary)] border border-[var(--border-medium)] rounded-2xl shadow-xl animate-scaleIn origin-bottom max-w-[calc(100vw-24px)]", style: { width: "min(22rem, calc(100vw - 24px))" }, children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "relative flex items-center", children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("svg", { className: "absolute left-2 w-3.5 h-3.5 text-[var(--text-tertiary)]", fill: "none", viewBox: "0 0 24 24", stroke: "currentColor", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" }) }),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "input",
+                              {
+                                type: "text",
+                                value: modelSearch,
+                                onChange: (e) => setModelSearch(e.target.value),
+                                onClick: (e) => e.stopPropagation(),
+                                placeholder: "\u641C\u7D22\u6A21\u578B...",
+                                className: "w-full bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-xs rounded-xl py-1.5 pl-7 pr-2 outline-none border border-transparent focus:border-indigo-500/50 placeholder-[var(--text-tertiary)]",
+                                autoFocus: true
+                              }
+                            ),
+                            modelSearch && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                onClick: (e) => {
+                                  e.stopPropagation();
+                                  setModelSearch("");
+                                },
+                                className: "absolute right-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
+                                children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("svg", { className: "w-3 h-3", fill: "none", viewBox: "0 0 24 24", stroke: "currentColor", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M6 18L18 6M6 6l12 12" }) })
+                              }
+                            )
+                          ] }) }),
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                            "div",
+                            {
+                              ref: modelListScrollRef,
+                              className: "dropdown static w-[min(22rem,calc(100vw-24px))] max-w-[calc(100vw-24px)] max-h-[50vh] overflow-y-auto scrollbar-thin animate-scaleIn origin-bottom p-4 flex flex-col gap-2",
+                              style: { backgroundColor: "var(--bg-secondary)", borderColor: "var(--border-medium)", boxShadow: "var(--shadow-xl)", borderRadius: "1rem" },
+                              onScroll: (e) => {
+                                modelListScrollPos.current = e.currentTarget.scrollTop;
+                              },
+                              children: (() => {
+                                const rawModels = filterAndSortModels(availableModels, modelSearch, modelCustomizations);
+                                const getModelDisplayGroupKey = (model) => {
+                                  const displayName = String(getModelDisplayInfo(model).displayName || model.label || model.id || "").trim().toLowerCase();
+                                  const providerKey = String(model.provider || model.providerLabel || "").trim().toLowerCase();
+                                  return `${model.isSystemInternal ? "system" : "user"}:${displayName}:${providerKey}`;
+                                };
+                                const pickPreferredDisplayModel = (current, candidate) => {
+                                  const currentDescription = String(current?.description || "").trim();
+                                  const candidateDescription = String(candidate?.description || "").trim();
+                                  const currentProviderLabel = String(current?.providerLabel || current?.provider || "").trim();
+                                  const candidateProviderLabel = String(candidate?.providerLabel || candidate?.provider || "").trim();
+                                  if (!currentDescription && candidateDescription) return candidate;
+                                  if (candidateDescription.length > currentDescription.length) return candidate;
+                                  if (!currentProviderLabel && candidateProviderLabel) return candidate;
+                                  return current;
+                                };
+                                const uniqueModelMap = /* @__PURE__ */ new Map();
+                                rawModels.forEach((model) => {
+                                  const groupKey = getModelDisplayGroupKey(model);
+                                  const existing = uniqueModelMap.get(groupKey);
+                                  uniqueModelMap.set(groupKey, existing ? pickPreferredDisplayModel(existing, model) : model);
+                                });
+                                let uniqueModels = Array.from(uniqueModelMap.values());
+                                const getIsExclusive = (m) => {
+                                  return !!m.isSystemInternal;
+                                };
+                                uniqueModels.sort((a, b) => {
+                                  const aExclusive = getIsExclusive(a);
+                                  const bExclusive = getIsExclusive(b);
+                                  if (aExclusive && !bExclusive) return -1;
+                                  if (!aExclusive && bExclusive) return 1;
+                                  const pinnedModels = getPinnedModels();
+                                  const aPinned = pinnedModels.includes(a.id);
+                                  const bPinned = pinnedModels.includes(b.id);
+                                  if (aPinned && !bPinned) return -1;
+                                  if (!aPinned && bPinned) return 1;
+                                  return 0;
+                                });
+                                return uniqueModels.map((model, index) => {
+                                  const isLast = index === uniqueModels.length - 1;
+                                  const lowerId = model.id.toLowerCase();
+                                  const custom = modelCustomizations[model.id] || {};
+                                  const baseName = custom.alias || (model.label || model.id);
+                                  const isExclusive = getIsExclusive(model);
+                                  const isSystemCreditModel = isExclusive;
+                                  const isUserApiModel = !isExclusive && (model.provider === "Google" || model.provider === "Custom" || model.provider === "OpenAI");
+                                  const getFallbackDescription = (m) => {
+                                    if (m.provider) return `\u7531 ${m.provider} \u4FE1\u9053\u63D0\u4F9B\u7684\u53EF\u7528\u6A21\u578B`;
+                                    if (m.group) return `\u96B6\u5C5E\u4E8E ${m.group} \u5206\u7EC4\u7684\u5F15\u64CE\u6A21\u578B`;
+                                    return "\u5916\u90E8\u96C6\u6210\u7684\u7B2C\u4E09\u65B9\u8BED\u8A00\u6A21\u578B";
+                                  };
+                                  const advantage = custom.description || model.description || getFallbackDescription(model);
+                                  const isPinned = getPinnedModels().includes(model.id);
+                                  const isActive = config.model === model.id;
+                                  const colorStart = normalizeColor(model.colorStart, "#60a5fa");
+                                  const colorEnd = normalizeColor(model.colorEnd, "#2563eb");
+                                  const isModelActive = config.model === model.id;
+                                  const inactiveGradientStyle = {
+                                    background: `linear-gradient(180deg, rgba(75, 85, 99, 0.4) 0%, rgba(55, 65, 81, 0.4) 100%)`
+                                  };
+                                  const activeGradientStyle = {
+                                    background: `linear-gradient(180deg, ${colorEnd} 0%, ${colorEnd} 100%)`,
+                                    border: `1px solid ${colorStart}`,
+                                    boxShadow: `0 0 0 1px ${colorStart} inset`
+                                  };
+                                  return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                                    "button",
+                                    {
+                                      className: `group w-full transition-all duration-300 mx-auto cursor-pointer
+                                                            ${isExclusive ? `h-14 px-5 flex items-center justify-between rounded-full flex-shrink-0 text-white shadow-md active:scale-[0.98] ${isLast ? "" : "mb-3"} ${isModelActive ? "ring-2 ring-white/50 shadow-lg scale-[1.02]" : "hover:scale-[1.02] hover:shadow-lg opacity-80 hover:opacity-100 grayscale-[0.8] hover:grayscale-0"}` : `px-3 py-2.5 text-left flex flex-col gap-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-all border-2 ${isModelActive ? "bg-blue-50 dark:bg-white/10 ring-2 ring-blue-500 dark:ring-white/40 border-blue-500 dark:border-white/20 shadow-md" : "border-transparent opacity-80 hover:opacity-100 grayscale-[0.8] hover:grayscale-0"}`}
+                                                            `,
+                                      style: isExclusive ? isModelActive ? activeGradientStyle : inactiveGradientStyle : void 0,
+                                      onMouseEnter: (e) => {
+                                        if (isExclusive && !isModelActive) {
+                                          e.currentTarget.style.background = activeGradientStyle.background;
+                                          e.currentTarget.style.border = activeGradientStyle.border || "";
+                                          e.currentTarget.style.boxShadow = activeGradientStyle.boxShadow || "";
+                                        }
+                                      },
+                                      onMouseLeave: (e) => {
+                                        if (isExclusive && !isModelActive) {
+                                          e.currentTarget.style.background = inactiveGradientStyle.background;
+                                          e.currentTarget.style.border = "";
+                                          e.currentTarget.style.boxShadow = "";
+                                        }
+                                      },
+                                      onClick: () => {
+                                        setModelManualLock(true);
+                                        setConfig((prev) => {
+                                          const newModelCaps = getModelCapabilities(model.id);
+                                          const supportedSizes = newModelCaps?.supportedSizes?.length ? newModelCaps.supportedSizes : Object.values(ImageSize);
+                                          const supportedRatios = newModelCaps?.supportedRatios?.length ? newModelCaps.supportedRatios : Object.values(AspectRatio);
+                                          const newImageSize = supportedSizes.includes(prev.imageSize) ? prev.imageSize : getDefaultImageSizeForModel(model.id);
+                                          const newAspectRatio = supportedRatios.includes(prev.aspectRatio) ? prev.aspectRatio : getDefaultAspectForModel(model.id);
+                                          return { ...prev, model: model.id, imageSize: newImageSize, aspectRatio: newAspectRatio };
+                                        });
+                                        setActiveMenu(null);
+                                        setModelSearch("");
+                                      },
+                                      onContextMenu: (e) => {
+                                        if (isExclusive) {
+                                          e.preventDefault();
+                                          return;
+                                        }
+                                        e.preventDefault();
+                                        setContextMenu({ x: e.clientX, y: e.clientY, modelId: model.id });
+                                      },
+                                      children: [
+                                        (() => {
+                                          const displayInfo = getModelDisplayInfo(model);
+                                          const badgeInfo = getModelBadgeInfo({ id: model.id, label: model.label, provider: model.provider });
+                                          const displayName = displayInfo.displayName;
+                                          if (isExclusive) {
+                                            return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center justify-between w-full h-full", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center gap-3 min-w-0 flex-1", children: [
+                                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "flex-shrink-0 flex items-center justify-center w-6 h-6", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                                  ModelLogo_default,
+                                                  {
+                                                    modelId: model.id,
+                                                    provider: model.provider,
+                                                    size: 20,
+                                                    active: isActive
+                                                  }
+                                                ) }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "text-sm font-semibold truncate text-white text-left", children: displayName })
+                                              ] }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "flex items-center gap-1.5 flex-shrink-0 ml-3", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("span", { className: "text-xs px-2.5 py-1 rounded-full bg-white/25 text-white border border-white/30 font-semibold flex items-center gap-1", children: [
+                                                "\u2728",
+                                                model.isSystemInternal ? getModelCredits((model.id || "").split("@")[0], config.imageSize) : model.creditCost !== void 0 ? model.creditCost : getModelCredits((model.id || "").split("@")[0], config.imageSize)
+                                              ] }) })
+                                            ] });
+                                          }
+                                          return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center justify-between w-full", children: [
+                                            /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex items-center gap-3 min-w-0 flex-1", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "flex-shrink-0 flex items-center justify-center w-5 h-5", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                                ModelLogo_default,
+                                                {
+                                                  modelId: model.id,
+                                                  provider: model.provider,
+                                                  size: 16,
+                                                  active: isActive
+                                                }
+                                              ) }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: `text-sm font-medium ${badgeInfo.colorClass} break-all text-left`, title: displayInfo.displayName, children: displayName })
+                                            ] }),
+                                            model.provider && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                              "span",
+                                              {
+                                                className: `text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 whitespace-nowrap overflow-hidden ${getProviderBadgeColor(model.provider)}`,
+                                                title: model.provider,
+                                                style: { maxWidth: "40%", textOverflow: "ellipsis", ...getProviderBadgeStyle(model.provider) },
+                                                children: model.provider.length > 10 ? model.provider.substring(0, 9) + "\u2026" : model.provider
+                                              }
+                                            )
+                                          ] });
+                                        })(),
+                                        !isExclusive && (() => {
+                                          const modelDesc = getModelDescription(model.id);
+                                          const description = modelDesc?.description || advantage;
+                                          return /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex justify-between items-start mt-1 gap-2", children: [
+                                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "flex flex-col gap-1 flex-1 min-w-0", children: description && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "text-[11px] text-[var(--text-secondary)] leading-relaxed", children: description }) }),
+                                            isPinned && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "text-[12px] opacity-80 flex-shrink-0 mr-1 mt-0.5", children: "\u{1F4CC}" })
+                                          ] });
+                                        })()
+                                      ]
+                                    },
+                                    model.id
+                                  );
+                                });
+                              })()
+                            }
+                          )
+                        ]
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: `relative inline-flex min-w-0 ${isMobile ? "row-start-2 min-w-0" : "flex-shrink-0"}`, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                      "button",
+                      {
+                        "data-options-toggle": true,
+                        className: `flex w-full items-center justify-center gap-1.5 h-10 rounded-lg border transition-all text-xs font-medium whitespace-nowrap min-w-0 ${isMobile ? "px-2.5 max-w-none" : "px-3 flex-shrink-0"}`,
+                        style: {
+                          backgroundColor: showOptionsPanel ? "var(--bg-hover)" : "var(--bg-tertiary)",
+                          color: "var(--text-secondary)",
+                          borderColor: showOptionsPanel ? "var(--border-medium)" : "var(--border-light)"
+                        },
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          setActiveMenu(null);
+                          setShowOptionsPanel((prev) => !prev);
+                        },
+                        title: "\u56FE\u7247/\u89C6\u9891\u9009\u9879",
+                        children: [
+                          config.mode === "audio" /* AUDIO */ ? /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(import_jsx_runtime15.Fragment, { children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M9 18V5l12-2v13" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("circle", { cx: "6", cy: "18", r: "3" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("circle", { cx: "18", cy: "16", r: "3" })
+                            ] }),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { children: config.audioDuration || "\u81EA\u52A8" })
+                          ] }) : config.mode === "image" /* IMAGE */ || config.mode === "ppt" /* PPT */ ? /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(import_jsx_runtime15.Fragment, { children: [
+                            config.aspectRatio === "auto" /* AUTO */ ? /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M3 7V5a2 2 0 0 1 2-2h2" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M17 3h2a2 2 0 0 1 2 2v2" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M21 17v2a2 2 0 0 1-2 2h-2" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M7 21H5a2 2 0 0 1-2-2v-2" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("rect", { width: "10", height: "8", x: "7", y: "8", rx: "1" })
+                            ] }) : getRatioIcon2(config.aspectRatio),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("span", { className: "min-w-0 truncate", children: [
+                              config.aspectRatio === "auto" /* AUTO */ ? "\u81EA\u9002\u5E94" : config.aspectRatio,
+                              " \xB7 ",
+                              config.imageSize
+                            ] })
+                          ] }) : /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(import_jsx_runtime15.Fragment, { children: [
+                            config.aspectRatio === "auto" /* AUTO */ ? /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M3 7V5a2 2 0 0 1 2-2h2" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M17 3h2a2 2 0 0 1 2 2v2" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M21 17v2a2 2 0 0 1-2 2h-2" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M7 21H5a2 2 0 0 1-2-2v-2" }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("rect", { width: "10", height: "8", x: "7", y: "8", rx: "1" })
+                            ] }) : getRatioIcon2(config.aspectRatio),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("span", { className: "min-w-0 truncate", children: [
+                              config.aspectRatio === "auto" /* AUTO */ ? "\u81EA\u9002\u5E94" : config.aspectRatio,
+                              " \xB7 ",
+                              config.videoResolution || "720p"
+                            ] })
+                          ] }),
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("svg", { className: `w-3 h-3 transition-transform ${showOptionsPanel ? "rotate-180" : ""}`, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M6 9l6 6 6-6" }) })
+                        ]
+                      }
+                    ),
+                    showOptionsPanel && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                      "div",
+                      {
+                        className: isMobile ? "fixed left-3 right-3 z-[1005] ios-mobile-floating-sheet p-2 animate-scaleIn origin-bottom overflow-hidden" : "absolute bottom-full mb-2 z-30",
+                        style: isMobile ? { bottom: mobileFloatingSheetBottom, maxHeight: mobileFloatingSheetMaxHeight, overscrollBehavior: "contain" } : { left: "50%", transform: "translateX(-50%)" },
+                        children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { ref: optionsPanelRef, children: config.mode === "audio" /* AUDIO */ ? (
+                          /* 音频选项面板 - 时长选择 */
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "w-56 p-3 rounded-xl border shadow-xl animate-scaleIn origin-bottom", style: { backgroundColor: "var(--bg-secondary)", borderColor: "var(--border-medium)" }, children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-xs font-medium text-[var(--text-secondary)] mb-2", children: "\u97F3\u9891\u65F6\u957F" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "flex flex-wrap gap-1.5", children: ["\u81EA\u52A8", "30s", "60s", "120s", "240s"].map((dur) => /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                className: `px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${(config.audioDuration || "\u81EA\u52A8") === dur ? "bg-pink-500/20 text-pink-400 border-pink-500/30" : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-light)] hover:border-pink-500/30"}`,
+                                onClick: () => setConfig((prev) => ({ ...prev, audioDuration: dur === "\u81EA\u52A8" ? void 0 : dur })),
+                                children: dur
+                              },
+                              dur
+                            )) })
+                          ] })
+                        ) : config.mode === "image" /* IMAGE */ || config.mode === "ppt" /* PPT */ ? /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                          ImageOptionsPanel_default,
+                          {
+                            aspectRatio: config.aspectRatio,
+                            imageSize: config.imageSize,
+                            networkOptions: [
+                              ...groundingSupported ? [{
+                                id: "grounding",
+                                label: "\u8054\u7F51\u641C\u7D22",
+                                active: !!config.enableGrounding,
+                                onToggle: () => setConfig((prev) => ({ ...prev, enableGrounding: !prev.enableGrounding }))
+                              }] : [],
+                              ...imageSearchSupported ? [{
+                                id: "image-search",
+                                label: "\u56FE\u7247\u641C\u7D22",
+                                active: !!config.enableImageSearch,
+                                onToggle: () => setConfig((prev) => ({ ...prev, enableImageSearch: !prev.enableImageSearch }))
+                              }] : []
+                            ],
+                            showThinkingMode: thinkingSupported,
+                            thinkingMode: config.thinkingMode || "minimal",
+                            onThinkingModeChange: (mode) => setConfig((prev) => ({ ...prev, thinkingMode: mode })),
+                            onAspectRatioChange: (ratio) => setConfig((prev) => ({ ...prev, aspectRatio: ratio })),
+                            onImageSizeChange: (size) => setConfig((prev) => ({ ...prev, imageSize: size })),
+                            availableRatios,
+                            availableSizes
+                          }
+                        ) : /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                          VideoOptionsPanel_default,
+                          {
+                            aspectRatio: config.aspectRatio,
+                            resolution: config.videoResolution || "720p",
+                            duration: config.videoDuration || "4s",
+                            audio: config.videoAudio || false,
+                            onAspectRatioChange: (ratio) => setConfig((prev) => ({ ...prev, aspectRatio: ratio })),
+                            onResolutionChange: (res) => setConfig((prev) => ({ ...prev, videoResolution: res })),
+                            onDurationChange: (dur) => setConfig((prev) => ({ ...prev, videoDuration: dur })),
+                            onAudioChange: (audio) => setConfig((prev) => ({ ...prev, videoAudio: audio })),
+                            availableRatios,
+                            supportsAudio: !!getModelCapabilities(config.model)?.supportsVideoAudio
+                          }
+                        ) })
+                      }
+                    )
+                  ] }),
+                  !isMobile && (groundingSupported || imageSearchSupported) && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "flex items-center gap-1.5 flex-shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                    "div",
+                    {
+                      className: "flex items-center gap-1.5 px-1 py-0.5 rounded-lg h-10 transition-all duration-200 border border-[var(--border-light)] bg-[var(--bg-tertiary)]",
+                      style: {
+                        opacity: config.mode === "video" /* VIDEO */ || config.mode === "audio" /* AUDIO */ ? 0 : 1,
+                        visibility: config.mode === "video" /* VIDEO */ || config.mode === "audio" /* AUDIO */ ? "hidden" : "visible",
+                        pointerEvents: config.mode === "video" /* VIDEO */ || config.mode === "audio" /* AUDIO */ ? "none" : "auto"
+                      },
+                      children: [
+                        groundingSupported && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                          "button",
+                          {
+                            className: `flex items-center gap-1.5 px-2 h-full rounded-md transition-all text-[11px] font-medium whitespace-nowrap ${config.enableGrounding ? "bg-indigo-500/15 text-indigo-500 shadow-sm" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]"}`,
+                            onClick: () => setConfig((prev) => ({ ...prev, enableGrounding: !prev.enableGrounding })),
+                            title: "Google \u641C\u7D22 (\u5B9E\u65F6\u4FE1\u606F)",
+                            children: [
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { className: "w-3.5 h-3.5 flex-shrink-0", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M2 8.8a15 15 0 0 1 20 0" }),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M5 12.5a10 10 0 0 1 14 0" }),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M8.5 16.3a5 5 0 0 1 7 0" }),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("line", { x1: "12", y1: "20", x2: "12.01", y2: "20" })
+                              ] }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { children: "\u8C37\u6B4C\u641C\u7D22" })
+                            ]
+                          }
+                        ),
+                        groundingSupported && imageSearchSupported && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "w-[1px] h-4 bg-[var(--border-light)] mx-0.5" }),
+                        imageSearchSupported && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                          "button",
+                          {
+                            className: `flex items-center gap-1.5 px-2 h-full rounded-md transition-all text-[11px] font-medium whitespace-nowrap ${config.enableImageSearch ? "bg-indigo-500/15 text-indigo-500 shadow-sm" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--toolbar-hover)]"}`,
+                            onClick: () => setConfig((prev) => ({ ...prev, enableImageSearch: !prev.enableImageSearch })),
+                            title: "\u56FE\u7247\u641C\u7D22 (\u53C2\u8003\u7F51\u7EDC\u56FE\u7247)",
+                            children: [
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("svg", { className: "w-3.5 h-3.5 flex-shrink-0", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", ry: "2" }),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("circle", { cx: "8.5", cy: "8.5", r: "1.5" }),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M21 15l-5-5L5 21" })
+                              ] }),
+                              /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { children: "\u56FE\u7247\u641C\u7D22" })
+                            ]
+                          }
+                        )
+                      ]
+                    }
+                  ) }),
+                  !isMobile && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "flex items-center gap-0.5 p-0.5 rounded-lg border h-10 shrink-0", style: { backgroundColor: "var(--bg-tertiary)", borderColor: "var(--border-light)" }, children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "relative h-full", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                      "button",
+                      {
+                        className: "flex items-center gap-1.5 px-3 h-full rounded-md transition-all whitespace-nowrap text-[11px] font-medium hover:bg-white/5",
+                        style: { color: "var(--text-secondary)" },
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          toggleMenu("count");
+                        },
+                        title: "\u5E76\u53D1\u6570\u91CF",
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("span", { className: "text-[11px] font-medium", children: [
+                            config.parallelCount,
+                            " \u5F20"
+                          ] }),
+                          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("svg", { className: `w-2.5 h-2.5 opacity-50 flex-shrink-0 transition-transform duration-200 ${activeMenu === "count" ? "rotate-180" : ""}`, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("path", { d: "M6 9l6 6 6-6" }) })
+                        ]
+                      }
+                    ),
+                    activeMenu === "count" && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "absolute bottom-full mb-2 z-20", style: { left: "50%", transform: "translateX(-50%)" }, children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "dropdown static w-24 animate-scaleIn origin-bottom p-1 flex flex-col gap-1", style: { backgroundColor: "var(--bg-secondary)", borderColor: "var(--border-medium)", boxShadow: "var(--shadow-lg)" }, children: (config.mode === "ppt" /* PPT */ ? Array.from({ length: 20 }, (_, i) => i + 1) : [1, 2, 3, 4]).map((count) => /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("button", { className: `dropdown-item justify-between rounded-md ${config.parallelCount === count ? "active" : ""}`, onClick: () => {
+                      setConfig((prev) => ({ ...prev, parallelCount: count }));
+                      setActiveMenu(null);
+                    }, children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("span", { children: [
+                      count,
+                      " \u5F20"
+                    ] }) }, count)) }) }),
+                    contextMenu && import_react_dom2.default.createPortal(
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                        "div",
+                        {
+                          className: "fixed z-[10010] bg-[#2a2a2e] border border-white/10 rounded-lg shadow-xl py-1 w-32 backdrop-blur-md",
+                          style: { top: contextMenu.y, left: contextMenu.x },
+                          children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                onClick: (e) => {
+                                  e.stopPropagation();
+                                  toggleModelPin(contextMenu.modelId);
+                                  setContextMenu(null);
+                                },
+                                className: "w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2",
+                                children: getPinnedModels().includes(contextMenu.modelId) ? "\u274C \u53D6\u6D88\u7F6E\u9876" : "\u{1F4CC} \u7F6E\u9876\u6A21\u578B"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                              "button",
+                              {
+                                onClick: (e) => {
+                                  e.stopPropagation();
+                                  const custom = modelCustomizations[contextMenu.modelId] || {};
+                                  setModelSettingsModal({
+                                    modelId: contextMenu.modelId,
+                                    alias: custom.alias || "",
+                                    description: custom.description || ""
+                                  });
+                                  setContextMenu(null);
+                                },
+                                className: "w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2",
+                                children: "\u2699\uFE0F \u8BBE\u7F6E"
+                              }
+                            )
+                          ]
+                        }
+                      ),
+                      document.body
+                    ),
+                    modelSettingsModal && import_react_dom2.default.createPortal(
+                      /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                        "div",
+                        {
+                          className: "fixed inset-0 z-[10020] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4",
+                          onClick: () => setModelSettingsModal(null),
+                          children: /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
+                            "div",
+                            {
+                              className: "bg-[#1e1e20] w-full max-w-md rounded-2xl border border-white/10 shadow-2xl p-5 space-y-4",
+                              onClick: (e) => e.stopPropagation(),
+                              children: [
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex justify-between items-center", children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("h3", { className: "text-lg font-bold text-white", children: "\u6A21\u578B\u8BBE\u7F6E" }),
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("button", { onClick: () => setModelSettingsModal(null), className: "text-gray-500 dark:text-zinc-400 hover:text-gray-800 dark:hover:text-white", children: "\u2715" })
+                                ] }),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "text-xs text-gray-500 dark:text-zinc-500 font-mono break-all", children: [
+                                  "ID: ",
+                                  modelSettingsModal.modelId
+                                ] }),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("label", { className: "block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5", children: "\u663E\u793A\u522B\u540D" }),
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                    "input",
+                                    {
+                                      value: modelSettingsModal.alias,
+                                      onChange: (e) => setModelSettingsModal({ ...modelSettingsModal, alias: e.target.value }),
+                                      placeholder: "\u7559\u7A7A\u5219\u4F7F\u7528\u9ED8\u8BA4\u540D\u79F0",
+                                      className: "w-full bg-gray-100 dark:bg-zinc-900 border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                                    }
+                                  )
+                                ] }),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("label", { className: "block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5", children: "\u6A21\u578B\u4ECB\u7ECD" }),
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                    "textarea",
+                                    {
+                                      value: modelSettingsModal.description,
+                                      onChange: (e) => setModelSettingsModal({ ...modelSettingsModal, description: e.target.value }),
+                                      placeholder: "\u7559\u7A7A\u5219\u4F7F\u7528\u9ED8\u8BA4\u4ECB\u7ECD",
+                                      rows: 2,
+                                      className: "w-full bg-gray-100 dark:bg-zinc-900 border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                                    }
+                                  )
+                                ] }),
+                                /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "flex justify-end gap-2 pt-2", children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                    "button",
+                                    {
+                                      onClick: () => setModelSettingsModal(null),
+                                      className: "px-4 py-2 rounded-lg text-sm text-gray-500 dark:text-zinc-400 hover:text-gray-800 dark:hover:text-white hover:bg-white/5",
+                                      children: "\u53D6\u6D88"
+                                    }
+                                  ),
+                                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                                    "button",
+                                    {
+                                      onClick: () => {
+                                        setModelSettingsModal(null);
+                                      },
+                                      className: "px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white",
+                                      children: "\u4FDD\u5B58"
+                                    }
+                                  )
+                                ] })
+                              ]
+                            }
+                          )
+                        }
+                      ),
+                      document.body
+                    )
+                  ] }) }),
+                  "                            ",
+                  /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+                    CreditSendButton,
+                    {
+                      isCreditModel: isNanoBanana2,
+                      creditCost: totalCreditCost,
+                      balance,
+                      hasPrompt: !!config.prompt,
+                      colorStart: availableModels.find((m) => m.id === config.model)?.colorStart,
+                      colorEnd: availableModels.find((m) => m.id === config.model)?.colorEnd,
+                      onClick: () => {
+                        if (isNanoBanana2 && totalCreditCost > 0 && balance < totalCreditCost) {
+                          notify.error("\u79EF\u5206\u4E0D\u8DB3", `\u4F7F\u7528\u5F53\u524D\u914D\u7F6E\u9700\u8981 ${totalCreditCost} \u79EF\u5206\uFF0C\u5F53\u524D\u4F59\u989D: ${balance}\uFF0C\u8BF7\u5145\u503C\u3002`);
+                          return;
+                        }
+                        onGenerate();
+                      }
+                    }
+                  )
+                ] }) })
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("input", { type: "file", ref: fileInputRef, className: "hidden", multiple: true, accept: "image/*", onChange: (e) => e.target.files && processFiles(e.target.files) }),
+          previewImage && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+            ImagePreview_default,
+            {
+              imageUrl: previewImage.url,
+              originRect: previewImage.originRect,
+              onClose: () => setPreviewImage(null)
+            }
+          ),
+          inpaintImage && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)(
+            InpaintModal,
+            {
+              imageUrl: inpaintImage.url,
+              onCancel: () => setInpaintImage(null),
+              onSave: (maskBase64) => {
+                setConfig((prev) => ({
+                  ...prev,
+                  maskUrl: maskBase64,
+                  editMode: "inpaint"
+                }));
+                setInpaintImage(null);
+              }
+            }
+          )
+        ]
+      }
+    )
+  ] });
+};
+var PromptBar_default = PromptBar;
+export {
+  PromptBar_default as default
+};
+/*! Bundled license information:
+
+react/cjs/react.development.js:
+  (**
+   * @license React
+   * react.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+react-dom/cjs/react-dom.development.js:
+  (**
+   * @license React
+   * react-dom.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+react/cjs/react-jsx-runtime.development.js:
+  (**
+   * @license React
+   * react-jsx-runtime.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+lucide-react/dist/esm/shared/src/utils.js:
+lucide-react/dist/esm/defaultAttributes.js:
+lucide-react/dist/esm/Icon.js:
+lucide-react/dist/esm/createLucideIcon.js:
+lucide-react/dist/esm/icons/arrow-up.js:
+lucide-react/dist/esm/icons/camera.js:
+lucide-react/dist/esm/icons/eraser.js:
+lucide-react/dist/esm/icons/fullscreen.js:
+lucide-react/dist/esm/icons/layout-dashboard.js:
+lucide-react/dist/esm/icons/loader-circle.js:
+lucide-react/dist/esm/icons/mic.js:
+lucide-react/dist/esm/icons/pen-tool.js:
+lucide-react/dist/esm/icons/redo-2.js:
+lucide-react/dist/esm/icons/sparkles.js:
+lucide-react/dist/esm/icons/square.js:
+lucide-react/dist/esm/icons/undo-2.js:
+lucide-react/dist/esm/icons/video.js:
+lucide-react/dist/esm/icons/volume-off.js:
+lucide-react/dist/esm/icons/volume-2.js:
+lucide-react/dist/esm/icons/wand-sparkles.js:
+lucide-react/dist/esm/icons/x.js:
+lucide-react/dist/esm/icons/zoom-in.js:
+lucide-react/dist/esm/icons/zoom-out.js:
+lucide-react/dist/esm/lucide-react.js:
+  (**
+   * @license lucide-react v0.562.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   *)
+*/

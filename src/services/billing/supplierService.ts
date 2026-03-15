@@ -8,7 +8,7 @@
 
 import { type ApiProtocolFormat, normalizeApiProtocolFormat } from '../api/apiConfig';
 import { newApiManagementService } from '../api/newApiManagementService';
-import { fetchWuyinPricingCatalog } from './newApiPricingService';
+import { fetchWuyinPricingCatalog, selectWuyinCatalogModels } from './newApiPricingService';
 import { resolveProviderRuntime } from '../api/providerStrategy';
 
 export interface Supplier {
@@ -164,7 +164,7 @@ class SupplierService {
   async fetchModelsFromNewAPI(baseUrl: string, systemToken: string): Promise<SupplierModel[]> {
     const runtime = resolveProviderRuntime({ baseUrl, format: 'openai' });
     if (runtime.strategyId === 'wuyinkeji') {
-      const pricing = await fetchWuyinPricingCatalog(baseUrl);
+      const pricing = selectWuyinCatalogModels(baseUrl, await fetchWuyinPricingCatalog(baseUrl));
       return pricing.map((model) => ({
         id: model.modelId,
         name: model.modelName,

@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  ArrowLeft,
   Calculator,
   ChevronRight,
   DollarSign,
@@ -47,6 +48,7 @@ import {
   SETTINGS_WARNING_STYLE,
   SettingsActionButton,
   SettingsBadge,
+  SettingsDangerZone,
   SettingsHero,
   SettingsMetricCard,
   SettingsSection,
@@ -80,12 +82,12 @@ const navSections: Array<{ id: NavSectionId; label: string }> = [
 ];
 
 const navItems: NavItem[] = [
-  { id: 'dashboard', label: '仪表盘', description: '查看接口、模型、费用和运行概况。', icon: LayoutDashboard, section: 'workspace' },
-  { id: 'api-management', label: 'API管理', description: '统一管理官方接口和第三方供应商。', icon: Key, section: 'workspace' },
-  { id: 'cost-estimation', label: '价格估算', description: '快速查看不同模型和分辨率的成本。', icon: Calculator, section: 'workspace' },
-  { id: 'storage-settings', label: '存储设置', description: '切换存储模式并检查本地占用。', icon: HardDrive, section: 'system' },
-  { id: 'system-logs', label: '系统日志', description: '排查运行日志和错误信息。', icon: ScrollText, section: 'system' },
-  { id: 'admin-system', label: '管理员后台', description: '处理后台配置、权限和系统操作。', icon: Shield, section: 'system' },
+  { id: 'dashboard', label: '仪表盘', description: '查看当前状态与待处理事项。', icon: LayoutDashboard, section: 'workspace' },
+  { id: 'api-management', label: 'API管理', description: '管理接口来源、供应商与价格同步。', icon: Key, section: 'workspace' },
+  { id: 'cost-estimation', label: '价格估算', description: '快速比对模型成本与分辨率。', icon: Calculator, section: 'workspace' },
+  { id: 'storage-settings', label: '存储设置', description: '管理图片存储位置与空间占用。', icon: HardDrive, section: 'system' },
+  { id: 'system-logs', label: '系统日志', description: '集中查看告警、错误与运行记录。', icon: ScrollText, section: 'system' },
+  { id: 'admin-system', label: '管理员后台', description: '处理权限、后台维护与系统操作。', icon: Shield, section: 'system' },
 ];
 
 type DashboardTone = 'indigo' | 'emerald' | 'sky' | 'amber' | 'rose' | 'slate' | 'neutral';
@@ -142,16 +144,16 @@ const dashboardToneStyles: Record<DashboardTone, { iconStyle: React.CSSPropertie
   },
   slate: {
     iconStyle: {
-      border: '1px solid var(--border-light)',
-      backgroundColor: 'var(--bg-overlay)',
+      border: '1px solid var(--settings-border-subtle)',
+      backgroundColor: 'var(--settings-surface-overlay)',
       color: 'var(--text-secondary)',
     },
     meterColor: 'var(--text-secondary)',
   },
   neutral: {
     iconStyle: {
-      border: '1px solid var(--border-light)',
-      backgroundColor: 'var(--bg-overlay)',
+      border: '1px solid var(--settings-border-subtle)',
+      backgroundColor: 'var(--settings-surface-overlay)',
       color: 'var(--text-secondary)',
     },
     meterColor: 'var(--text-secondary)',
@@ -1165,7 +1167,7 @@ const StorageSettingsView: React.FC = () => {
               </SettingsActionButton>
             </div>
 
-            <div className="mt-5 border-t pt-5" style={{ borderColor: 'var(--border-light)' }}>
+            <div className="mt-5 border-t pt-5" style={{ borderColor: 'var(--settings-border-subtle)' }}>
               <div className="space-y-2">
                 <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   清理错误卡片
@@ -1276,9 +1278,6 @@ const SystemLogsView: React.FC = () => {
             <SettingsActionButton icon={ScrollText} onClick={() => void handleExport()}>
               导出日志
             </SettingsActionButton>
-            <SettingsActionButton icon={Trash2} tone="danger" onClick={handleClear}>
-              清空日志
-            </SettingsActionButton>
           </>
         }
         metrics={
@@ -1324,7 +1323,7 @@ const SystemLogsView: React.FC = () => {
         {importantLogs.length === 0 ? (
           <div
             className="rounded-2xl border border-dashed px-5 py-10 text-center"
-            style={{ borderColor: 'var(--border-light)', color: 'var(--text-tertiary)' }}
+            style={{ borderColor: 'var(--settings-border-subtle)', color: 'var(--text-tertiary)' }}
           >
             今日暂无重要日志，当前系统状态稳定。
           </div>
@@ -1359,6 +1358,22 @@ const SystemLogsView: React.FC = () => {
           </div>
         )}
       </SettingsSection>
+
+      <SettingsSection
+        eyebrow="DANGER ZONE"
+        title="危险操作"
+        description="清空动作只影响今天的系统日志，执行后无法恢复。"
+      >
+        <SettingsDangerZone
+          title="清空今日日志"
+          description="建议先导出日志再清空，避免排查问题时丢失上下文。"
+          action={(
+            <SettingsActionButton icon={Trash2} tone="danger" onClick={handleClear}>
+              清空日志
+            </SettingsActionButton>
+          )}
+        />
+      </SettingsSection>
     </SettingsViewShell>
   );
 };
@@ -1372,6 +1387,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [activeView, setActiveView] = useState<SettingsView>(initialView);
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
   const [navQuery, setNavQuery] = useState('');
+  const [mobileShowNav, setMobileShowNav] = useState(() => initialView === 'dashboard');
   const activeNavItem = useMemo(() => navItems.find((item) => item.id === activeView) || navItems[0], [activeView]);
   const filteredNavItems = useMemo(() => {
     const keyword = navQuery.trim().toLowerCase();
@@ -1398,6 +1414,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     if (isOpen) {
       setActiveView(initialView);
       setNavQuery('');
+      setMobileShowNav(initialView === 'dashboard');
     }
   }, [initialView, isOpen]);
 
@@ -1420,6 +1437,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   if (!isOpen) return null;
 
+  const handleSelectView = (view: SettingsView) => {
+    setActiveView(view);
+    if (isMobile) {
+      setMobileShowNav(false);
+    }
+  };
+
   const lazyFallback = (
     <div className="flex min-h-[280px] items-center justify-center">
       <div className="settings-shell-loading-card">
@@ -1435,7 +1459,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   );
 
   const renderBody = () => {
-    if (activeView === 'dashboard') return <DashboardView onNavigate={setActiveView} />;
+    if (activeView === 'dashboard') return <DashboardView onNavigate={handleSelectView} />;
     if (activeView === 'api-management') {
       return (
         <Suspense fallback={lazyFallback}>
@@ -1459,6 +1483,40 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     );
   };
 
+  const navList = groupedNavItems.length === 0 ? (
+    <div className="settings-shell-empty">
+      没有匹配到设置项，请换个关键词试试。
+    </div>
+  ) : (
+    groupedNavItems.map((section) => (
+      <div key={section.id} className="settings-shell-nav__group">
+        <div className="settings-shell-nav__group-label">{section.label}</div>
+        <div className="settings-shell-nav__group-list">
+          {section.items.map((item) => {
+            const Icon = item.icon;
+            const active = activeView === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleSelectView(item.id)}
+                className={`settings-sidebar-item ${active ? 'active' : ''}`}
+              >
+                <span className="settings-sidebar-item__icon">
+                  <Icon size={16} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">{item.label}</span>
+                  <span className="settings-sidebar-item__desc mt-1 block text-xs leading-5">{item.description}</span>
+                </span>
+                <ChevronRight size={15} className="settings-sidebar-item__arrow" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    ))
+  );
+
   return (
     <div
       className={`settings-panel settings-shell-backdrop fixed inset-0 z-[10001] flex justify-center ${isMobile ? 'items-end px-2 pb-0 pt-8' : 'items-center px-3 py-3'}`}
@@ -1474,13 +1532,23 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
 
           <div className="settings-shell-mobile__topbar">
-            <div className="settings-shell-mobile__title-wrap">
-              <div className="settings-shell-kicker">Settings</div>
-              <div className="mt-2 text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-                高级设置
-              </div>
-              <div className="mt-1 text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
-                统一管理接口、费用、存储和系统维护。
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              {!mobileShowNav ? (
+                <button
+                  onClick={() => setMobileShowNav(true)}
+                  className="apple-icon-button h-10 w-10 shrink-0 rounded-2xl"
+                >
+                  <ArrowLeft size={16} />
+                </button>
+              ) : null}
+              <div className="settings-shell-mobile__title-wrap">
+                <div className="settings-shell-kicker">{mobileShowNav ? 'Settings' : activeSectionLabel}</div>
+                <div className="mt-2 text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {mobileShowNav ? '高级设置' : activeNavItem.label}
+                </div>
+                <div className="mt-1 text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
+                  {mobileShowNav ? '先选择一个设置项，再进入对应详情。' : activeNavItem.description}
+                </div>
               </div>
             </div>
             <button
@@ -1491,42 +1559,59 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </button>
           </div>
 
-          <aside className="settings-shell-mobile__tabs">
-            <div className="settings-shell-mobile__tab-list flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const active = activeView === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveView(item.id)}
-                    className={`apple-pill-button settings-shell-mobile__tab min-w-[96px] shrink-0 justify-center px-3 py-3 sm:min-w-[106px] ${active ? 'active' : ''}`}
-                  >
-                    <Icon size={15} />
-                    <span className="text-[11px] leading-none">{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </aside>
-
-          <section className="settings-shell-main min-h-0 flex-1 overflow-hidden">
-            <main className="settings-shell-page settings-shell-page--mobile h-full overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] pt-4">
-              {renderBody()}
-            </main>
-          </section>
+          {mobileShowNav ? (
+            <section className="settings-shell-main min-h-0 flex-1 overflow-hidden">
+              <div className="px-3 pb-3 pt-2">
+                <label className="settings-shell-nav__search">
+                  <Search size={15} />
+                  <input
+                    value={navQuery}
+                    onChange={(event) => setNavQuery(event.target.value)}
+                    placeholder="搜索设置项"
+                  />
+                </label>
+              </div>
+              <main className="settings-shell-page settings-shell-page--mobile h-full overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+20px)]">
+                <div className="settings-shell-content space-y-4">
+                  <div className="rounded-[20px] border p-4" style={SETTINGS_PANEL_STYLE}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                          设置分组
+                        </div>
+                        <div className="mt-1 text-xs leading-5" style={{ color: 'var(--text-tertiary)' }}>
+                          共 {navItems.length} 个入口，按工作台与系统维护整理。
+                        </div>
+                      </div>
+                      <SettingsBadge tone="neutral">列表模式</SettingsBadge>
+                    </div>
+                  </div>
+                  <div className="space-y-4 pb-4">{navList}</div>
+                </div>
+              </main>
+            </section>
+          ) : (
+            <section className="settings-shell-main min-h-0 flex-1 overflow-hidden">
+              <main className="settings-shell-page settings-shell-page--mobile h-full overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] pt-4">
+                {renderBody()}
+              </main>
+            </section>
+          )}
         </div>
       ) : (
         <div
-          className="settings-shell-desktop flex h-[88vh] max-h-[960px] w-full max-w-[1280px] items-stretch gap-5"
+          className="settings-shell-desktop flex h-[88vh] max-h-[960px] w-full max-w-[1360px] items-stretch gap-5"
           onClick={(e) => e.stopPropagation()}
         >
-          <aside className="w-[292px] flex-shrink-0">
+          <aside className="w-[286px] flex-shrink-0">
             <div className="settings-panel apple-glass-card settings-shell-nav flex h-full flex-col rounded-[32px] p-4 shadow-2xl">
               <div className="settings-shell-nav__title">
                 <div className="settings-shell-kicker">Settings</div>
                 <div className="mt-1.5 text-[22px] font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>
                   高级设置
+                </div>
+                <div className="mt-2 text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
+                  用统一的层级整理接口、存储、日志和后台维护。
                 </div>
               </div>
 
@@ -1540,39 +1625,24 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </label>
 
               <div className="settings-shell-nav__list flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-                {groupedNavItems.length === 0 ? (
-                  <div className="settings-shell-empty">
-                    没有匹配到设置项，请换个关键词试试。
-                  </div>
-                ) : (
-                  groupedNavItems.map((section) => (
-                    <div key={section.id} className="settings-shell-nav__group">
-                      <div className="settings-shell-nav__group-label">{section.label}</div>
-                      <div className="settings-shell-nav__group-list">
-                        {section.items.map((item) => {
-                          const Icon = item.icon;
-                          const active = activeView === item.id;
-                          return (
-                            <button
-                              key={item.id}
-                              onClick={() => setActiveView(item.id)}
-                              className={`settings-sidebar-item ${active ? 'active' : ''}`}
-                            >
-                              <span className="settings-sidebar-item__icon">
-                                <Icon size={16} />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block text-sm font-semibold">{item.label}</span>
-                                <span className="settings-sidebar-item__desc mt-1 block text-xs leading-5">{item.description}</span>
-                              </span>
-                              <ChevronRight size={15} className="settings-sidebar-item__arrow" />
-                            </button>
-                          );
-                        })}
-                      </div>
+                {navList}
+              </div>
+
+              <div className="rounded-[20px] border p-4" style={SETTINGS_ELEVATED_STYLE}>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--text-tertiary)' }}>
+                  Current View
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {activeNavItem.label}
                     </div>
-                  ))
-                )}
+                    <div className="mt-1 text-xs leading-5" style={{ color: 'var(--text-tertiary)' }}>
+                      {activeNavItem.description}
+                    </div>
+                  </div>
+                  <SettingsBadge tone="neutral">{activeSectionLabel}</SettingsBadge>
+                </div>
               </div>
             </div>
           </aside>
@@ -1591,12 +1661,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 </div>
               </div>
 
-              <button
-                onClick={onClose}
-                className="apple-icon-button h-10 w-10 rounded-2xl"
-              >
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                <SettingsBadge tone="neutral">{activeSectionLabel}</SettingsBadge>
+                <button
+                  onClick={onClose}
+                  className="apple-icon-button h-10 w-10 rounded-2xl"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
             <main className="settings-shell-page settings-shell-page--desktop min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-5 md:px-6 md:pb-7">

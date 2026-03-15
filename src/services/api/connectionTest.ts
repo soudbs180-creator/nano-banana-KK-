@@ -8,6 +8,8 @@
 import {
   type ApiProtocolFormat,
   type AuthMethod,
+  buildClaudeEndpoint,
+  buildClaudeHeaders,
   buildGeminiHeaders,
   buildGeminiEndpoint,
   buildGeminiModelsEndpoint,
@@ -15,11 +17,13 @@ import {
   buildProxyHeaders,
   normalizeProxyBaseUrl,
 } from './apiConfig';
+import type { ChannelConfig } from './channelConfig';
 import {
   buildUserFacingApiErrorMessage,
   classifyApiFailure,
 } from './errorClassification';
 import { resolveProviderRuntime } from './providerStrategy';
+import keyManager from '../auth/keyManager';
 
 export interface TestResult {
   success: boolean;
@@ -29,33 +33,53 @@ export interface TestResult {
 }
 
 export interface ConnectionConfig {
-  apiKey: string;
-  baseUrl: string;
+  apiKey?: string;
+  baseUrl?: string;
   model?: string;
-  provider: string;
+  provider?: string;
   format?: ApiProtocolFormat;
   authMethod?: AuthMethod;
   headerName?: string;
   compatibilityMode?: 'standard' | 'chat';
+  channelId?: string;
+  channelConfig?: ChannelConfig;
 }
 
 function getCleanBaseUrl(baseUrl: string): string {
   return normalizeProxyBaseUrl(baseUrl) || String(baseUrl || '').replace(/\/$/, '');
 }
 
+function resolveConfig(config: ConnectionConfig): Required<Pick<ConnectionConfig, 'apiKey' | 'baseUrl' | 'provider'>> & ConnectionConfig {
+  const channel = config.channelConfig || (config.channelId ? keyManager.getChannelConfig(config.channelId) : undefined);
+  return {
+    ...config,
+    apiKey: config.apiKey || channel?.apiKey || '',
+    baseUrl: config.baseUrl || channel?.baseUrl || '',
+    provider: config.provider || String(channel?.provider || channel?.name || 'Custom'),
+    format: config.format || channel?.protocolHint || 'auto',
+    authMethod: config.authMethod || channel?.authProfile?.authMethod,
+    headerName: config.headerName || channel?.authProfile?.headerName,
+    compatibilityMode: config.compatibilityMode || channel?.compatibilityMode,
+    channelConfig: channel || config.channelConfig,
+  };
+}
+
 function getModelId(config: ConnectionConfig): string {
-  return String(config.model || 'gemini-2.5-flash').trim();
+  const resolved = resolveConfig(config);
+  const fallback = resolved.format === 'claude' ? 'claude-3-5-sonnet-latest' : 'gemini-2.5-flash';
+  return String(resolved.model || resolved.channelConfig?.supportedModels?.[0] || fallback).trim();
 }
 
 function resolveConnectionRuntime(config: ConnectionConfig, cleanBase: string) {
+  const resolved = resolveConfig(config);
   return resolveProviderRuntime({
-    provider: config.provider,
+    provider: resolved.provider,
     baseUrl: cleanBase,
-    format: config.format,
-    authMethod: config.authMethod,
-    headerName: config.headerName,
-    compatibilityMode: config.compatibilityMode,
-    modelId: getModelId(config),
+    format: resolved.format,
+    authMethod: resolved.authMethod,
+    headerName: resolved.headerName,
+    compatibilityMode: resolved.compatibilityMode,
+    modelId: getModelId(resolved),
   });
 }
 
@@ -98,15 +122,23 @@ async function runGeminiGenerateContentTest(
   cleanBase: string,
   config: ConnectionConfig,
 ): Promise<Response> {
+  const resolved = resolveConfig(config);
   const requestedModel = getModelId(config);
   const testModel = requestedModel.toLowerCase().startsWith('gemini-') ? requestedModel : 'gemini-2.5-flash';
-  const runtime = resolveConnectionRuntime(config, cleanBase);
+  const runtime = resolveConnectionRuntime(resolved, cleanBase);
   const authMethod = runtime.authMethod as AuthMethod;
-  const apiUrl = buildGeminiEndpoint(cleanBase, testModel, 'generateContent', config.apiKey, authMethod, config.provider);
+  const apiUrl = buildGeminiEndpoint(
+    cleanBase,
+    testModel,
+    'generateContent',
+    resolved.apiKey,
+    authMethod,
+    resolved.provider
+  );
 
   return fetch(apiUrl, {
     method: 'POST',
-    headers: buildGeminiHeaders(authMethod, config.apiKey, runtime.headerName, runtime.authorizationValueFormat),
+    headers: buildGeminiHeaders(authMethod, resolved.apiKey, runtime.headerName, runtime.authorizationValueFormat),
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: 'Test connection' }] }],
     }),
@@ -115,15 +147,16 @@ async function runGeminiGenerateContentTest(
 }
 
 async function runOpenAIChatTest(cleanBase: string, config: ConnectionConfig): Promise<Response> {
+  const resolved = resolveConfig(config);
   const base = cleanBase || 'https://api.openai.com';
   const apiUrl = buildOpenAIEndpoint(base, '/chat/completions');
-  const runtime = resolveConnectionRuntime(config, cleanBase);
+  const runtime = resolveConnectionRuntime(resolved, cleanBase);
 
   return fetch(apiUrl, {
     method: 'POST',
-    headers: buildProxyHeaders(runtime.authMethod as AuthMethod, config.apiKey, runtime.headerName, undefined, runtime.authorizationValueFormat),
+    headers: buildProxyHeaders(runtime.authMethod as AuthMethod, resolved.apiKey, runtime.headerName, undefined, runtime.authorizationValueFormat),
     body: JSON.stringify({
-      model: getModelId(config),
+      model: getModelId(resolved),
       stream: false,
       messages: [
         {
@@ -137,6 +170,33 @@ async function runOpenAIChatTest(cleanBase: string, config: ConnectionConfig): P
   });
 }
 
+async function runClaudeMessagesTest(cleanBase: string, config: ConnectionConfig): Promise<Response> {
+  const resolved = resolveConfig(config);
+  const runtime = resolveConnectionRuntime(resolved, cleanBase);
+  const apiUrl = buildClaudeEndpoint(cleanBase || 'https://api.anthropic.com', '/messages');
+
+  return fetch(apiUrl, {
+    method: 'POST',
+    headers: buildClaudeHeaders(
+      runtime.authMethod as AuthMethod,
+      resolved.apiKey,
+      runtime.headerName,
+      runtime.authorizationValueFormat,
+    ),
+    body: JSON.stringify({
+      model: getModelId(resolved),
+      max_tokens: 16,
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Test connection' }],
+        },
+      ],
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+}
+
 /**
  * Tests the active protocol path without creating billed image/video jobs.
  */
@@ -144,14 +204,16 @@ export async function testCherryConnection(config: ConnectionConfig): Promise<Te
   const startTime = Date.now();
 
   try {
-    const cleanBase = getCleanBaseUrl(config.baseUrl);
-    const modelId = getModelId(config);
-    const runtime = resolveConnectionRuntime(config, cleanBase);
-    const nativeGemini = runtime.geminiNative;
+    const resolved = resolveConfig(config);
+    const cleanBase = getCleanBaseUrl(resolved.baseUrl);
+    const modelId = getModelId(resolved);
+    const runtime = resolveConnectionRuntime(resolved, cleanBase);
+    const nativeGemini = runtime.protocolFamily === 'gemini-native';
+    const nativeClaude = runtime.protocolFamily === 'claude-native';
     const responseTime = () => Date.now() - startTime;
 
     if (isVideoModel(modelId)) {
-      const listTest = await testModelsList(config);
+      const listTest = await testModelsList(resolved);
       return {
         ...listTest,
         message: listTest.success
@@ -168,7 +230,7 @@ export async function testCherryConnection(config: ConnectionConfig): Promise<Te
     }
 
     if (nativeGemini && isImageOnlyNativeModel(modelId)) {
-      const listTest = await testModelsList(config);
+      const listTest = await testModelsList(resolved);
       return {
         ...listTest,
         message: listTest.success
@@ -184,8 +246,8 @@ export async function testCherryConnection(config: ConnectionConfig): Promise<Te
       };
     }
 
-    if (!nativeGemini && config.compatibilityMode === 'standard') {
-      const listTest = await testModelsList(config);
+    if (!nativeGemini && !nativeClaude && resolved.compatibilityMode === 'standard') {
+      const listTest = await testModelsList(resolved);
       return {
         ...listTest,
         message: listTest.success
@@ -202,8 +264,10 @@ export async function testCherryConnection(config: ConnectionConfig): Promise<Te
     }
 
     const response = nativeGemini
-      ? await runGeminiGenerateContentTest(cleanBase, config)
-      : await runOpenAIChatTest(cleanBase, config);
+      ? await runGeminiGenerateContentTest(cleanBase, resolved)
+      : nativeClaude
+        ? await runClaudeMessagesTest(cleanBase, resolved)
+        : await runOpenAIChatTest(cleanBase, resolved);
 
     const elapsed = responseTime();
     const responseText = await response.text();
@@ -234,6 +298,26 @@ export async function testCherryConnection(config: ConnectionConfig): Promise<Te
           model: modelId,
           responseFormat: 'generate-content',
           responsePreview: textPreview ? `${textPreview}...` : 'Native generateContent responded successfully.',
+        },
+        responseTime: elapsed,
+      };
+    }
+
+    if (nativeClaude) {
+      const preview = Array.isArray(result.content)
+        ? result.content
+            .map((block: any) => block?.text || '')
+            .join(' ')
+            .slice(0, 100)
+        : String(result.content || '').slice(0, 100);
+
+      return {
+        success: true,
+        message: 'Claude Native 链路连接成功',
+        details: {
+          model: modelId,
+          responseFormat: 'claude-messages',
+          responsePreview: preview ? `${preview}...` : 'Claude messages responded successfully.',
         },
         responseTime: elapsed,
       };
@@ -274,15 +358,21 @@ export async function testModelsList(config: ConnectionConfig): Promise<TestResu
   const startTime = Date.now();
 
   try {
-    const cleanBase = getCleanBaseUrl(config.baseUrl);
-    const runtime = resolveConnectionRuntime(config, cleanBase);
-    const nativeGemini = runtime.geminiNative;
+    const resolved = resolveConfig(config);
+    const cleanBase = getCleanBaseUrl(resolved.baseUrl);
+    const runtime = resolveConnectionRuntime(resolved, cleanBase);
+    const nativeGemini = runtime.protocolFamily === 'gemini-native';
+    const nativeClaude = runtime.protocolFamily === 'claude-native';
     const listUrl = nativeGemini
-      ? buildGeminiModelsEndpoint(cleanBase, config.apiKey, runtime.authMethod as AuthMethod, config.provider)
+      ? buildGeminiModelsEndpoint(cleanBase, resolved.apiKey, runtime.authMethod as AuthMethod, resolved.provider)
+      : nativeClaude
+        ? buildClaudeEndpoint(cleanBase || 'https://api.anthropic.com', '/models')
       : buildOpenAIEndpoint(cleanBase || 'https://api.openai.com', '/models');
     const headers = nativeGemini
-      ? buildGeminiHeaders(runtime.authMethod as AuthMethod, config.apiKey, runtime.headerName, runtime.authorizationValueFormat)
-      : buildProxyHeaders(runtime.authMethod as AuthMethod, config.apiKey, runtime.headerName, undefined, runtime.authorizationValueFormat);
+      ? buildGeminiHeaders(runtime.authMethod as AuthMethod, resolved.apiKey, runtime.headerName, runtime.authorizationValueFormat)
+      : nativeClaude
+        ? buildClaudeHeaders(runtime.authMethod as AuthMethod, resolved.apiKey, runtime.headerName, runtime.authorizationValueFormat)
+        : buildProxyHeaders(runtime.authMethod as AuthMethod, resolved.apiKey, runtime.headerName, undefined, runtime.authorizationValueFormat);
 
     const response = await fetch(listUrl, {
       method: 'GET',

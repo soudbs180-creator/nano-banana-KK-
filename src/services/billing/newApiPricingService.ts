@@ -29,6 +29,8 @@ export interface ModelPricingInfo {
     billingUnit?: string;
     displayPrice?: string;
     supportsGroups?: boolean;
+    endpointUrl?: string;
+    endpointPath?: string;
 }
 
 export interface NewApiProviderConfig {
@@ -46,6 +48,90 @@ export interface RawPricingCatalogResult {
 }
 
 const normalizePricingBaseUrl = (baseUrl: string) => baseUrl.replace(/\/+$/, '');
+const WUYIN_DEFAULT_ROOT_URL = 'https://api.wuyinkeji.com';
+const WUYIN_ASYNC_ENDPOINT_RE = /^\/api\/async\/([a-z0-9_.-]+)$/i;
+
+export type WuyinAsyncEndpointDetails = {
+    endpointUrl: string;
+    endpointPath: string;
+    modelId: string;
+};
+
+export function extractWuyinAsyncEndpointDetails(value: string): WuyinAsyncEndpointDetails | null {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    const directPathMatch = raw.match(WUYIN_ASYNC_ENDPOINT_RE);
+    if (directPathMatch && !/^detail$/i.test(directPathMatch[1])) {
+        const endpointPath = raw.replace(/\/+$/, '');
+        return {
+            endpointUrl: `${WUYIN_DEFAULT_ROOT_URL}${endpointPath}`,
+            endpointPath,
+            modelId: decodeURIComponent(directPathMatch[1]),
+        };
+    }
+
+    const candidates = /^https?:\/\//i.test(raw) ? [raw] : [`https://${raw}`];
+    for (const candidate of candidates) {
+        try {
+            const parsed = new URL(candidate);
+            const endpointPath = parsed.pathname.replace(/\/+$/, '');
+            const match = endpointPath.match(WUYIN_ASYNC_ENDPOINT_RE);
+            if (!match || /^detail$/i.test(match[1])) continue;
+
+            return {
+                endpointUrl: `${parsed.protocol}//${parsed.host}${endpointPath}`,
+                endpointPath,
+                modelId: decodeURIComponent(match[1]),
+            };
+        } catch {
+            continue;
+        }
+    }
+
+    return null;
+}
+
+const createFallbackWuyinCatalogItem = (modelId: string): ModelPricingInfo => ({
+    modelId,
+    modelName: modelId,
+    inputPrice: 0,
+    outputPrice: 0,
+    isPerToken: false,
+    groupRatio: 1,
+    currency: 'CNY',
+    billingUnit: '次',
+    displayPrice: '待手动设置',
+    supportsGroups: false,
+    endpointUrl: `${WUYIN_DEFAULT_ROOT_URL}/api/async/${modelId}`,
+    endpointPath: `/api/async/${modelId}`,
+});
+
+export function extractWuyinModelIdFromBaseUrl(baseUrl: string): string | null {
+    return extractWuyinAsyncEndpointDetails(baseUrl)?.modelId || null;
+}
+
+export function selectWuyinCatalogModels(baseUrl: string, pricingList: ModelPricingInfo[]): ModelPricingInfo[] {
+    const endpointModelId = extractWuyinModelIdFromBaseUrl(baseUrl);
+    if (!endpointModelId) {
+        return pricingList;
+    }
+
+    const normalizedTarget = endpointModelId.trim().toLowerCase();
+    const filtered = pricingList.filter((item) => {
+        const candidateIds = [
+            String(item.modelId || '').trim().toLowerCase(),
+            String(item.modelName || '').trim().toLowerCase(),
+        ].filter(Boolean);
+        return candidateIds.includes(normalizedTarget);
+    });
+
+    if (filtered.length > 0) {
+        return filtered;
+    }
+
+    return [createFallbackWuyinCatalogItem(endpointModelId)];
+}
 
 export function buildPricingEndpointCandidates(baseUrl: string): string[] {
     const cleanUrl = normalizePricingBaseUrl(baseUrl);
@@ -127,6 +213,8 @@ function toWuyinPricingRows(pricingList: ModelPricingInfo[]): any[] {
         currency: item.currency,
         pay_unit: item.billingUnit,
         display_price: item.displayPrice,
+        endpoint_url: item.endpointUrl,
+        endpoint_path: item.endpointPath,
     }));
 }
 
@@ -140,7 +228,7 @@ export async function fetchRawPricingCatalog(
 
     const runtime = resolveProviderRuntime({ baseUrl: cleanUrl, format });
     if (runtime.strategyId === 'wuyinkeji') {
-        const pricingList = await fetchWuyinPricingCatalog(cleanUrl);
+        const pricingList = selectWuyinCatalogModels(cleanUrl, await fetchWuyinPricingCatalog(cleanUrl));
         const rootUrl = runtime.host === 'api.wuyinkeji.com' ? 'https://api.wuyinkeji.com' : cleanUrl;
         return {
             endpointUrl: `${rootUrl}${WUYIN_PRICE_API_PATH}`,
@@ -205,7 +293,7 @@ export async function fetchProviderPricing(
     try {
         const runtime = resolveProviderRuntime({ baseUrl, format: 'openai' });
         if (runtime.strategyId === 'wuyinkeji') {
-            return fetchWuyinPricingCatalog(baseUrl);
+            return selectWuyinCatalogModels(baseUrl, await fetchWuyinPricingCatalog(baseUrl));
         }
 
         // NewAPI Pro pricing endpoint
@@ -263,7 +351,7 @@ export async function fetchProviderModels(
             format: resolvedFormat === 'gemini' ? 'gemini' : format,
         });
         if (runtime.strategyId === 'wuyinkeji') {
-            const catalog = await fetchWuyinPricingCatalog(baseUrl);
+            const catalog = selectWuyinCatalogModels(baseUrl, await fetchWuyinPricingCatalog(baseUrl));
             return catalog.map((item) => item.modelId).filter(Boolean);
         }
         const geminiAuthMethod = runtime.authMethod as 'query' | 'header';
@@ -371,8 +459,9 @@ export async function fetchWuyinPricingCatalog(baseUrl: string): Promise<ModelPr
 
     return apiList.map((item) => {
         const { numeric, unit, displayPrice } = extractWuyinDisplayPrice(item);
+        const endpoint = extractWuyinAsyncEndpointDetails(String(item?.url || '').trim());
         const modelId =
-            String(item?.url || '').trim().split('/').filter(Boolean).pop() ||
+            endpoint?.modelId ||
             String(item?.name || '').trim() ||
             String(item?.id || '').trim();
 
@@ -387,6 +476,8 @@ export async function fetchWuyinPricingCatalog(baseUrl: string): Promise<ModelPr
             billingUnit: unit,
             displayPrice,
             supportsGroups: false,
+            endpointUrl: endpoint?.endpointUrl,
+            endpointPath: endpoint?.endpointPath,
         };
     }).filter((item) => item.modelId);
 }

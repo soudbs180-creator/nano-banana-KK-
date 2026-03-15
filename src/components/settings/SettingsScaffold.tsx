@@ -92,35 +92,36 @@ const toneStyles: Record<Tone, { iconStyle: CSSProperties; badgeStyle: CSSProper
 
 const buttonToneStyles: Record<'secondary' | 'primary' | 'danger', CSSProperties> = {
   secondary: {
-    borderColor: 'var(--border-light)',
-    backgroundColor: 'var(--bg-base)',
-    color: 'var(--text-primary)',
+    borderColor: 'var(--settings-button-secondary-border)',
+    backgroundColor: 'var(--settings-button-secondary-bg)',
+    color: 'var(--settings-button-secondary-text)',
   },
   primary: {
-    borderColor: 'rgb(var(--settings-accent-rgb) / 0.16)',
-    backgroundColor: 'rgb(var(--settings-accent-rgb) / 0.1)',
-    color: 'rgb(var(--settings-accent-rgb))',
+    borderColor: 'transparent',
+    background: 'var(--settings-button-primary-bg)',
+    color: 'var(--settings-button-primary-text)',
+    boxShadow: 'var(--settings-button-primary-shadow)',
   },
   danger: {
-    borderColor: 'var(--state-danger-border)',
-    backgroundColor: 'var(--state-danger-bg)',
-    color: 'var(--state-danger-text)',
+    borderColor: 'var(--settings-button-danger-border)',
+    backgroundColor: 'var(--settings-button-danger-bg)',
+    color: 'var(--settings-button-danger-text)',
   },
 };
 
 export const SETTINGS_PANEL_STYLE = {
-  borderColor: 'var(--border-light)',
-  backgroundColor: 'var(--bg-tertiary)',
+  borderColor: 'var(--settings-border-subtle)',
+  backgroundColor: 'var(--settings-section-bg)',
 } as const;
 
 export const SETTINGS_ELEVATED_STYLE = {
-  borderColor: 'var(--border-light)',
-  backgroundColor: 'var(--bg-elevated)',
+  borderColor: 'var(--settings-border-subtle)',
+  backgroundColor: 'var(--settings-surface-elevated)',
 } as const;
 
 export const SETTINGS_OVERLAY_STYLE = {
-  borderColor: 'var(--border-light)',
-  backgroundColor: 'var(--bg-overlay)',
+  borderColor: 'var(--settings-border-subtle)',
+  backgroundColor: 'var(--settings-surface-overlay)',
 } as const;
 
 export const SETTINGS_SUCCESS_STYLE = {
@@ -139,7 +140,7 @@ export const SETTINGS_DANGER_STYLE = {
 } as const;
 
 export const SETTINGS_INPUT_CLASSNAME =
-  'w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-elevated)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition focus:border-sky-400/50 focus:ring-2 focus:ring-sky-500/15 disabled:cursor-not-allowed disabled:opacity-60';
+  'w-full rounded-xl border border-[var(--settings-input-border)] bg-[var(--settings-input-bg)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--settings-focus-border)] focus:ring-2 focus:ring-[var(--settings-focus-ring)] disabled:cursor-not-allowed disabled:opacity-60';
 
 export const SETTINGS_LABEL_CLASSNAME =
   'text-[11px] font-medium tracking-[0.03em] text-[var(--text-tertiary)]';
@@ -331,11 +332,43 @@ export const SettingsActionButton: React.FC<SettingsActionButtonProps> = ({
 }) => (
   <button
     type={type}
-    className={`inline-flex max-w-full min-w-0 items-center justify-center gap-2 rounded-xl border text-center font-medium leading-tight transition disabled:cursor-not-allowed disabled:opacity-60 [overflow-wrap:anywhere] sm:whitespace-nowrap ${size === 'sm' ? 'min-h-9 px-3 py-2 text-xs' : 'min-h-10 px-4 py-2 text-sm'} ${className}`.trim()}
+    className={`inline-flex max-w-full min-w-0 items-center justify-center gap-2 rounded-xl border text-center font-medium leading-tight transition duration-200 hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 [overflow-wrap:anywhere] sm:whitespace-nowrap ${size === 'sm' ? 'min-h-9 px-3 py-2 text-xs' : 'min-h-10 px-4 py-2 text-sm'} ${className}`.trim()}
     style={{ ...buttonToneStyles[tone], ...style }}
     {...buttonProps}
   >
     {Icon ? <Icon size={size === 'sm' ? 14 : 16} className={loading ? 'animate-spin' : undefined} /> : null}
     {children}
   </button>
+);
+
+type SettingsDangerZoneProps = {
+  title: string;
+  description: ReactNode;
+  action?: ReactNode;
+};
+
+export const SettingsDangerZone: React.FC<SettingsDangerZoneProps> = ({
+  title,
+  description,
+  action,
+}) => (
+  <div
+    className="rounded-[18px] border p-4 md:p-5"
+    style={{
+      borderColor: 'var(--state-danger-border)',
+      backgroundColor: 'var(--state-danger-bg)',
+    }}
+  >
+    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          {title}
+        </div>
+        <div className="mt-1 text-sm leading-6" style={{ color: 'var(--state-danger-muted)' }}>
+          {description}
+        </div>
+      </div>
+      {action ? <div className="flex max-w-full flex-wrap gap-2 md:justify-end">{action}</div> : null}
+    </div>
+  </div>
 );

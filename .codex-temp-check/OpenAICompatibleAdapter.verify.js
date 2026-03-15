@@ -14947,12 +14947,13 @@ var init_providerPricingSnapshot = __esm({
         _rawData: Array.isArray(pricingData) ? pricingData : []
       };
       for (const item of Array.isArray(pricingData) ? pricingData : []) {
-        const model = String(item?.model_name || item?.model || "").trim();
+        const model = String(item?.model || item?.model_name || "").trim();
         if (!model) continue;
-        const modelPrice = toNumber2(item?.model_price);
+        const perRequestPrice = toNumber2(item?.per_request_price ?? item?.perRequestPrice ?? item?.price_per_image ?? item?.pricePerImage);
+        const modelPrice = toNumber2(item?.model_price ?? item?.modelPrice) ?? perRequestPrice;
         const modelRatio = toNumber2(item?.model_ratio);
         const completionRatio = toNumber2(item?.completion_ratio);
-        const quotaType = item?.quota_type;
+        const quotaType = item?.quota_type ?? item?.quotaType ?? (perRequestPrice !== void 0 ? "per_request" : void 0);
         const provider = typeof item?.provider === "string" ? item.provider.trim() : void 0;
         const providerLabel = typeof item?.provider_label === "string" ? item.provider_label.trim() : void 0;
         const providerLogo = typeof item?.provider_logo === "string" ? item.provider_logo.trim() : void 0;
@@ -14960,6 +14961,11 @@ var init_providerPricingSnapshot = __esm({
         const tokenGroup = typeof item?.token_group === "string" ? item.token_group.trim() : void 0;
         const billingType = typeof item?.billing_type === "string" ? item.billing_type.trim() : void 0;
         const endpointType = typeof item?.endpoint_type === "string" ? item.endpoint_type.trim() : void 0;
+        const endpointUrl = typeof item?.endpoint_url === "string" ? item.endpoint_url.trim() : typeof item?.endpointUrl === "string" ? item.endpointUrl.trim() : void 0;
+        const endpointPath = typeof item?.endpoint_path === "string" ? item.endpoint_path.trim() : typeof item?.endpointPath === "string" ? item.endpointPath.trim() : void 0;
+        const currency = typeof item?.currency === "string" ? item.currency.trim() : void 0;
+        const billingUnit = typeof item?.pay_unit === "string" ? item.pay_unit.trim() : typeof item?.billing_unit === "string" ? item.billing_unit.trim() : void 0;
+        const displayPrice = typeof item?.display_price === "string" ? item.display_price.trim() : void 0;
         const sizeRatio = normalizeRatioMap(item?.size_ratio);
         const groupModelRatio = normalizeRatioMap(item?.group_model_ratio);
         const groupSizeRatio = normalizeNestedRatioMap(item?.group_size_ratio);
@@ -14973,8 +14979,14 @@ var init_providerPricingSnapshot = __esm({
           tokenGroup,
           billingType,
           endpointType,
+          endpointUrl,
+          endpointPath,
           modelRatio,
           modelPrice,
+          perRequestPrice,
+          currency,
+          billingUnit,
+          displayPrice,
           completionRatio,
           quotaType,
           sizeRatio,
@@ -14994,7 +15006,7 @@ var init_providerPricingSnapshot = __esm({
         if (completionRatio !== void 0) {
           snapshot.completionRatios[model] = completionRatio;
         }
-        if (provider || providerLabel || providerLogo || tags?.length || tokenGroup || billingType || endpointType) {
+        if (provider || providerLabel || providerLogo || tags?.length || tokenGroup || billingType || endpointType || endpointUrl || endpointPath) {
           snapshot.modelMeta[model] = {
             provider,
             providerLabel,
@@ -15002,7 +15014,9 @@ var init_providerPricingSnapshot = __esm({
             tags,
             tokenGroup,
             billingType,
-            endpointType
+            endpointType,
+            endpointUrl,
+            endpointPath
           };
         }
         if (sizeRatio) {
@@ -15089,6 +15103,57 @@ var init_providerPricingSnapshot = __esm({
 });
 
 // src/services/billing/newApiPricingService.ts
+function extractWuyinAsyncEndpointDetails(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const directPathMatch = raw.match(WUYIN_ASYNC_ENDPOINT_RE);
+  if (directPathMatch && !/^detail$/i.test(directPathMatch[1])) {
+    const endpointPath = raw.replace(/\/+$/, "");
+    return {
+      endpointUrl: `${WUYIN_DEFAULT_ROOT_URL}${endpointPath}`,
+      endpointPath,
+      modelId: decodeURIComponent(directPathMatch[1])
+    };
+  }
+  const candidates = /^https?:\/\//i.test(raw) ? [raw] : [`https://${raw}`];
+  for (const candidate of candidates) {
+    try {
+      const parsed = new URL(candidate);
+      const endpointPath = parsed.pathname.replace(/\/+$/, "");
+      const match = endpointPath.match(WUYIN_ASYNC_ENDPOINT_RE);
+      if (!match || /^detail$/i.test(match[1])) continue;
+      return {
+        endpointUrl: `${parsed.protocol}//${parsed.host}${endpointPath}`,
+        endpointPath,
+        modelId: decodeURIComponent(match[1])
+      };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+function extractWuyinModelIdFromBaseUrl(baseUrl) {
+  return extractWuyinAsyncEndpointDetails(baseUrl)?.modelId || null;
+}
+function selectWuyinCatalogModels(baseUrl, pricingList) {
+  const endpointModelId = extractWuyinModelIdFromBaseUrl(baseUrl);
+  if (!endpointModelId) {
+    return pricingList;
+  }
+  const normalizedTarget = endpointModelId.trim().toLowerCase();
+  const filtered = pricingList.filter((item) => {
+    const candidateIds = [
+      String(item.modelId || "").trim().toLowerCase(),
+      String(item.modelName || "").trim().toLowerCase()
+    ].filter(Boolean);
+    return candidateIds.includes(normalizedTarget);
+  });
+  if (filtered.length > 0) {
+    return filtered;
+  }
+  return [createFallbackWuyinCatalogItem(endpointModelId)];
+}
 function buildPricingEndpointCandidates(baseUrl) {
   const cleanUrl = normalizePricingBaseUrl(baseUrl);
   if (!cleanUrl) return [];
@@ -15145,7 +15210,9 @@ function toWuyinPricingRows(pricingList) {
     price_per_image: item.inputPrice,
     currency: item.currency,
     pay_unit: item.billingUnit,
-    display_price: item.displayPrice
+    display_price: item.displayPrice,
+    endpoint_url: item.endpointUrl,
+    endpoint_path: item.endpointPath
   }));
 }
 async function fetchRawPricingCatalog(baseUrl, apiKey, format = "auto") {
@@ -15153,7 +15220,7 @@ async function fetchRawPricingCatalog(baseUrl, apiKey, format = "auto") {
   if (!cleanUrl) return null;
   const runtime = resolveProviderRuntime({ baseUrl: cleanUrl, format });
   if (runtime.strategyId === "wuyinkeji") {
-    const pricingList = await fetchWuyinPricingCatalog(cleanUrl);
+    const pricingList = selectWuyinCatalogModels(cleanUrl, await fetchWuyinPricingCatalog(cleanUrl));
     const rootUrl = runtime.host === "api.wuyinkeji.com" ? "https://api.wuyinkeji.com" : cleanUrl;
     return {
       endpointUrl: `${rootUrl}${WUYIN_PRICE_API_PATH}`,
@@ -15215,7 +15282,8 @@ async function fetchWuyinPricingCatalog(baseUrl) {
   const apiList = Array.isArray(data?.data?.api_list) ? data.data.api_list : [];
   return apiList.map((item) => {
     const { numeric, unit, displayPrice } = extractWuyinDisplayPrice(item);
-    const modelId = String(item?.url || "").trim().split("/").filter(Boolean).pop() || String(item?.name || "").trim() || String(item?.id || "").trim();
+    const endpoint = extractWuyinAsyncEndpointDetails(String(item?.url || "").trim());
+    const modelId = endpoint?.modelId || String(item?.name || "").trim() || String(item?.id || "").trim();
     return {
       modelId,
       modelName: String(item?.name || modelId).trim(),
@@ -15226,11 +15294,13 @@ async function fetchWuyinPricingCatalog(baseUrl) {
       currency: "CNY",
       billingUnit: unit,
       displayPrice,
-      supportsGroups: false
+      supportsGroups: false,
+      endpointUrl: endpoint?.endpointUrl,
+      endpointPath: endpoint?.endpointPath
     };
   }).filter((item) => item.modelId);
 }
-var normalizePricingBaseUrl, WUYIN_PRICE_API_PATH, normalizeBaseUrl2, stripHtml, toFiniteNumber, extractWuyinDisplayPrice;
+var normalizePricingBaseUrl, WUYIN_DEFAULT_ROOT_URL, WUYIN_ASYNC_ENDPOINT_RE, createFallbackWuyinCatalogItem, WUYIN_PRICE_API_PATH, normalizeBaseUrl2, stripHtml, toFiniteNumber, extractWuyinDisplayPrice;
 var init_newApiPricingService = __esm({
   "src/services/billing/newApiPricingService.ts"() {
     "use strict";
@@ -15238,6 +15308,22 @@ var init_newApiPricingService = __esm({
     init_apiConfig();
     init_providerStrategy();
     normalizePricingBaseUrl = (baseUrl) => baseUrl.replace(/\/+$/, "");
+    WUYIN_DEFAULT_ROOT_URL = "https://api.wuyinkeji.com";
+    WUYIN_ASYNC_ENDPOINT_RE = /^\/api\/async\/([a-z0-9_.-]+)$/i;
+    createFallbackWuyinCatalogItem = (modelId) => ({
+      modelId,
+      modelName: modelId,
+      inputPrice: 0,
+      outputPrice: 0,
+      isPerToken: false,
+      groupRatio: 1,
+      currency: "CNY",
+      billingUnit: "\u6B21",
+      displayPrice: "\u5F85\u624B\u52A8\u8BBE\u7F6E",
+      supportsGroups: false,
+      endpointUrl: `${WUYIN_DEFAULT_ROOT_URL}/api/async/${modelId}`,
+      endpointPath: `/api/async/${modelId}`
+    });
     WUYIN_PRICE_API_PATH = "/themes/DigitalBlue/api?action=api_list";
     normalizeBaseUrl2 = (baseUrl) => baseUrl.replace(/\/$/, "");
     stripHtml = (value) => value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -16858,7 +16944,14 @@ async function autoDetectAndConfigureModels(apiKey, baseUrl, preferredFormat) {
   );
   console.log("[KeyManager] \u6FE1\uE09F\u5053\u6FDE\u6751\u73E8\u9369\u5B49PI\u7F01\uE0A5\uE1E7\u940E?", apiType);
   let models = [];
-  if (resolvedFormat === "gemini") {
+  const runtime = resolveProviderRuntime({
+    baseUrl,
+    format: resolvedFormat === "gemini" ? "gemini" : preferredFormat
+  });
+  if (runtime.strategyId === "wuyinkeji" && baseUrl) {
+    const catalog = selectWuyinCatalogModels(baseUrl, await fetchWuyinPricingCatalog(baseUrl));
+    models = catalog.map((item) => item.modelId).filter(Boolean);
+  } else if (resolvedFormat === "gemini") {
     models = await fetchGeminiCompatModels(apiKey, baseUrl);
   } else if (apiType === "google-official") {
     models = await fetchGoogleModels(apiKey);
@@ -19195,6 +19288,130 @@ init_providerStrategy();
 init_types3();
 init_systemLogService();
 init_RegionService();
+
+// src/services/llm/syncImageBridge.ts
+var SYNC_IMAGE_BRIDGE_SW_URL = "/sync-image-bridge-sw.js";
+var DEFAULT_POLL_INTERVAL_MS = 1200;
+var DEFAULT_WAIT_TIMEOUT_MS = 15 * 60 * 1e3;
+var bridgeMessageCounter = 0;
+var pendingResponses = /* @__PURE__ */ new Map();
+var bridgeMessageListenerBound = false;
+var bridgeRegistrationPromise = null;
+function isWindowAvailable() {
+  return typeof window !== "undefined" && typeof navigator !== "undefined";
+}
+function isSyncImageBridgeSupported() {
+  return isWindowAvailable() && "serviceWorker" in navigator && (window.isSecureContext || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+}
+function handleBridgeMessage(event) {
+  const data = event.data;
+  if (!data || data.source !== "kk-sync-image-bridge" || typeof data.correlationId !== "string") {
+    return;
+  }
+  const pending = pendingResponses.get(data.correlationId);
+  if (!pending) return;
+  pendingResponses.delete(data.correlationId);
+  window.clearTimeout(pending.timeoutId);
+  if (data.ok === false) {
+    pending.reject(new Error(data.error || "Sync image bridge request failed"));
+    return;
+  }
+  pending.resolve(data.result);
+}
+function ensureBridgeMessageListener() {
+  if (!isWindowAvailable() || bridgeMessageListenerBound) return;
+  navigator.serviceWorker.addEventListener("message", handleBridgeMessage);
+  bridgeMessageListenerBound = true;
+}
+async function getBridgeWorker() {
+  if (!isSyncImageBridgeSupported()) {
+    return null;
+  }
+  ensureBridgeMessageListener();
+  if (!bridgeRegistrationPromise) {
+    bridgeRegistrationPromise = navigator.serviceWorker.register(SYNC_IMAGE_BRIDGE_SW_URL).then(async (registration2) => {
+      const installingWorker = registration2.installing;
+      if (installingWorker) {
+        await new Promise((resolve) => {
+          const onStateChange = () => {
+            if (installingWorker.state === "activated") {
+              installingWorker.removeEventListener("statechange", onStateChange);
+              resolve();
+            }
+          };
+          installingWorker.addEventListener("statechange", onStateChange);
+        });
+      }
+      return registration2;
+    }).catch((error) => {
+      console.warn("[syncImageBridge] Service worker registration failed:", error);
+      return null;
+    });
+  }
+  const registration = await bridgeRegistrationPromise;
+  if (!registration) return null;
+  return registration.active || registration.waiting || registration.installing || navigator.serviceWorker.controller || null;
+}
+async function postBridgeMessage(action, payload, timeoutMs = 1e4) {
+  const worker = await getBridgeWorker();
+  if (!worker) {
+    throw new Error("Sync image bridge is unavailable");
+  }
+  const correlationId = `sync-bridge-${Date.now()}-${++bridgeMessageCounter}`;
+  const message = {
+    source: "kk-sync-image-bridge",
+    correlationId,
+    action,
+    payload
+  };
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      pendingResponses.delete(correlationId);
+      reject(new Error(`Sync image bridge timed out for ${action}`));
+    }, timeoutMs);
+    pendingResponses.set(correlationId, { resolve, reject, timeoutId });
+    worker.postMessage(message);
+  });
+}
+async function startSyncImageBridgeRequest(payload) {
+  return postBridgeMessage("start-job", payload, 15e3);
+}
+async function getSyncImageBridgeRequest(requestId) {
+  return postBridgeMessage("get-job", { requestId }, 1e4);
+}
+async function abortSyncImageBridgeRequest(requestId) {
+  await postBridgeMessage("abort-job", { requestId }, 1e4);
+}
+async function executeSyncImageBridgeRequest(params) {
+  const { signal, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS, requestId, ...startPayload } = params;
+  const startResult = await startSyncImageBridgeRequest({
+    requestId,
+    timeoutMs,
+    ...startPayload
+  });
+  if (startResult.status === "success" || startResult.status === "error") {
+    return startResult;
+  }
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (signal?.aborted) {
+      try {
+        await abortSyncImageBridgeRequest(requestId);
+      } catch (error) {
+        console.warn("[syncImageBridge] Failed to abort request:", error);
+      }
+      throw signal.reason instanceof Error ? signal.reason : new Error("Generation cancelled");
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, DEFAULT_POLL_INTERVAL_MS));
+    const current = await getSyncImageBridgeRequest(requestId);
+    if (current.status === "success" || current.status === "error") {
+      return current;
+    }
+  }
+  throw new Error("Timed out waiting for sync image bridge result");
+}
+
+// src/services/llm/OpenAICompatibleAdapter.ts
 var WUYIN_DEFAULT_BASE_URL = "https://api.wuyinkeji.com";
 var WUYIN_DETAIL_PATH = "/api/async/detail";
 var WUYIN_IMAGE_ROUTES = [
@@ -19373,6 +19590,42 @@ var OpenAICompatibleAdapter = class {
     if (params.provider) err.provider = params.provider;
     return err;
   }
+  async executeRecoverableSyncImageRequest(params) {
+    const { options, parserType, url, method = "POST", headers, body, timeoutMs } = params;
+    const requestId = String(options.syncBridgeRequestId || "").trim();
+    if (!requestId || !isSyncImageBridgeSupported()) {
+      return null;
+    }
+    const result = await executeSyncImageBridgeRequest({
+      requestId,
+      parserType,
+      url,
+      method,
+      headers,
+      body,
+      timeoutMs,
+      signal: options.signal
+    });
+    options.onSyncBridgeRegistered?.(requestId);
+    if (result.status === "success") {
+      return {
+        urls: result.urls,
+        responseStatus: result.responseStatus,
+        responseBodyPreview: result.responseBodyPreview
+      };
+    }
+    if (result.status === "error") {
+      throw this.buildHttpError({
+        message: result.responseStatus ? `[${result.responseStatus}] ${result.error}` : result.error,
+        status: result.responseStatus,
+        requestPath: params.requestPath,
+        requestBody: params.requestBodyPreview,
+        responseBody: result.responseBodyPreview,
+        provider: params.provider
+      });
+    }
+    return null;
+  }
   buildImageCompatibilityModeError(endpointMode, originalError, keySlot) {
     const originalMessage = String(originalError?.message || originalError || "Unknown image endpoint error");
     const guidance = endpointMode === "chat" ? "Chat image endpoint failed. Automatic fallback to Images API is disabled to avoid duplicate billed requests. If this provider requires the Images endpoint, switch this channel to Standard mode in Settings > API Management and retry." : "Standard Images endpoint failed. Automatic fallback to Chat API is disabled to avoid duplicate billed requests. If this provider requires the Chat endpoint, switch this channel to Chat mode in Settings > API Management and retry.";
@@ -19502,8 +19755,79 @@ var OpenAICompatibleAdapter = class {
       return WUYIN_DEFAULT_BASE_URL;
     }
   }
+  extractWuyinDirectEndpointPath(baseUrl) {
+    const raw = String(baseUrl || "").trim();
+    if (!raw) return null;
+    const candidates = /^https?:\/\//i.test(raw) ? [raw] : [`https://${raw}`];
+    for (const candidate of candidates) {
+      try {
+        const parsed = new URL(candidate);
+        const pathname = parsed.pathname.replace(/\/+$/, "");
+        if (/^\/api\/async\/[a-z0-9_.-]+$/i.test(pathname)) {
+          return pathname;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
   normalizeWuyinAlias(value) {
     return String(value || "").trim().toLowerCase().replace(/^models\//i, "").replace(/\|.*$/, "").replace(/@.*$/, "").replace(/[^a-z0-9]+/g, "");
+  }
+  normalizeProviderLinkValue(value) {
+    return String(value || "").trim().replace(/\/+$/, "").toLowerCase();
+  }
+  findLinkedWuyinProvider(keySlot) {
+    const directProvider = keyManager.getProvider?.(keySlot.id);
+    if (directProvider) {
+      return directProvider;
+    }
+    const slotBaseUrl = this.normalizeProviderLinkValue(keySlot.baseUrl);
+    const slotKey = String(keySlot.key || "").trim();
+    const slotName = this.normalizeProviderLinkValue(keySlot.name);
+    const providers = keyManager.getProviders().filter((provider) => provider.isActive);
+    const exactMatch = providers.find((provider) => {
+      if (this.normalizeProviderLinkValue(provider.baseUrl) !== slotBaseUrl) return false;
+      const providerKey = String(provider.apiKey || "").trim();
+      const providerName = this.normalizeProviderLinkValue(provider.name);
+      return slotKey && providerKey === slotKey || slotName && providerName === slotName;
+    });
+    if (exactMatch) {
+      return exactMatch;
+    }
+    const sameBaseProviders = providers.filter((provider) => this.normalizeProviderLinkValue(provider.baseUrl) === slotBaseUrl);
+    return sameBaseProviders.length === 1 ? sameBaseProviders[0] : null;
+  }
+  resolveWuyinSnapshotRoute(keySlot, modelId) {
+    const provider = this.findLinkedWuyinProvider(keySlot);
+    if (!provider?.pricingSnapshot) return null;
+    const rawModelId = String(modelId || "").trim().split("@")[0].split("|")[0].trim();
+    const normalizedTarget = rawModelId.toLowerCase();
+    const normalizedAlias = this.normalizeWuyinAlias(rawModelId);
+    const pricingEntries = [
+      ...Array.isArray(provider.pricingSnapshot._rawData) ? provider.pricingSnapshot._rawData : [],
+      ...Array.isArray(provider.pricingSnapshot.rows) ? provider.pricingSnapshot.rows : []
+    ];
+    for (const entry of pricingEntries) {
+      const endpointUrl = String(entry?.endpoint_url ?? entry?.endpointUrl ?? "").trim();
+      const endpointPath = String(entry?.endpoint_path ?? entry?.endpointPath ?? "").trim() || this.extractWuyinDirectEndpointPath(endpointUrl) || "";
+      if (!endpointPath) continue;
+      const entryModel = String(entry?.model ?? entry?.model_name ?? "").trim();
+      const endpointModelId = endpointPath.split("/").filter(Boolean).pop() || entryModel || rawModelId;
+      const modelCandidates = [entryModel, endpointModelId].filter(Boolean);
+      const matched = modelCandidates.some((candidate) => {
+        const normalizedCandidate = candidate.toLowerCase();
+        return normalizedCandidate === normalizedTarget || this.normalizeWuyinAlias(candidate) === normalizedAlias;
+      });
+      if (!matched) continue;
+      return {
+        endpointPath,
+        endpointModelId,
+        endpointUrl: endpointUrl || void 0
+      };
+    }
+    return null;
   }
   resolveWuyinImageEndpoint(modelId) {
     const rawModelId = String(modelId || "").trim().split("@")[0].split("|")[0].trim();
@@ -19563,6 +19887,22 @@ var OpenAICompatibleAdapter = class {
     }
     throw new Error(`Wuyin provider does not know how to route image model "${modelId}". Please use the exact Wuyin model ID from the catalog, such as image_nanoBanana2.`);
   }
+  resolveWuyinRequestRoute(baseUrl, modelId, keySlot) {
+    const directEndpointPath = this.extractWuyinDirectEndpointPath(baseUrl);
+    if (directEndpointPath) {
+      return {
+        endpointPath: directEndpointPath,
+        endpointModelId: directEndpointPath.split("/").filter(Boolean).pop() || modelId
+      };
+    }
+    if (keySlot) {
+      const snapshotRoute = this.resolveWuyinSnapshotRoute(keySlot, modelId);
+      if (snapshotRoute) {
+        return snapshotRoute;
+      }
+    }
+    return this.resolveWuyinImageEndpoint(modelId);
+  }
   normalizeWuyinImageSize(raw) {
     const normalized = String(raw || "").trim().toUpperCase();
     if (normalized.includes("4K") || normalized.includes("HD")) return "4K";
@@ -19572,6 +19912,39 @@ var OpenAICompatibleAdapter = class {
   normalizeWuyinAspectRatio(raw) {
     const normalized = String(raw || "").trim() || "auto" /* AUTO */;
     return WUYIN_SUPPORTED_ASPECT_RATIOS.has(normalized) ? normalized : "auto" /* AUTO */;
+  }
+  normalizeWuyinReferenceImage(ref, index) {
+    const sourceUrl = typeof ref?.url === "string" ? String(ref.url || "").trim() : "";
+    if (/^https?:\/\//i.test(sourceUrl)) {
+      return { value: sourceUrl, kind: "url" };
+    }
+    const { data } = extractRefImageData(ref);
+    const raw = String(data || "").trim();
+    if (!raw) {
+      throw new Error(`\u4E94\u97F3\u53C2\u8003\u56FE ${index + 1} \u4E3A\u7A7A\uFF0C\u8BF7\u91CD\u65B0\u4E0A\u4F20\u540E\u518D\u8BD5`);
+    }
+    if (/^https?:\/\//i.test(raw)) {
+      return { value: raw, kind: "url" };
+    }
+    if (/^blob:/i.test(raw)) {
+      throw new Error(`\u4E94\u97F3\u53C2\u8003\u56FE ${index + 1} \u4ECD\u662F\u672C\u5730\u9884\u89C8\u5730\u5740\uFF08blob\uFF09\uFF0C\u8BF7\u7B49\u5F85\u56FE\u7247\u5904\u7406\u5B8C\u6210\u540E\u518D\u8BD5`);
+    }
+    if (/^data:/i.test(raw)) {
+      const commaIndex = raw.indexOf(",");
+      if (commaIndex === -1) {
+        throw new Error(`\u4E94\u97F3\u53C2\u8003\u56FE ${index + 1} \u4E0D\u662F\u6709\u6548\u7684 Base64 \u6570\u636E`);
+      }
+      const base64 = raw.slice(commaIndex + 1).replace(/\s+/g, "");
+      if (!base64) {
+        throw new Error(`\u4E94\u97F3\u53C2\u8003\u56FE ${index + 1} \u7684 Base64 \u6570\u636E\u4E3A\u7A7A`);
+      }
+      return { value: base64, kind: "base64" };
+    }
+    const cleaned = raw.replace(/\s+/g, "");
+    if (!cleaned) {
+      throw new Error(`\u4E94\u97F3\u53C2\u8003\u56FE ${index + 1} \u4E0D\u662F\u6709\u6548\u7684 URL \u6216 Base64 \u6570\u636E`);
+    }
+    return { value: cleaned, kind: "base64" };
   }
   extractWuyinTaskId(payload) {
     return String(
@@ -19717,8 +20090,8 @@ var OpenAICompatibleAdapter = class {
   }
   async generateImageWuyinAsync(options, keySlot) {
     const cleanBase = this.normalizeWuyinBaseUrl(keySlot.baseUrl || "");
-    const route = this.resolveWuyinImageEndpoint(options.modelId);
-    const url = `${cleanBase}${route.endpointPath}`;
+    const route = this.resolveWuyinRequestRoute(keySlot.baseUrl || "", options.modelId, keySlot);
+    const url = route.endpointUrl || `${cleanBase}${route.endpointPath}`;
     const requestPath = route.endpointPath;
     const body = {
       prompt: options.prompt,
@@ -19726,16 +20099,14 @@ var OpenAICompatibleAdapter = class {
       aspectRatio: this.normalizeWuyinAspectRatio(options.aspectRatio)
     };
     if (options.referenceImages?.length) {
-      body.urls = options.referenceImages.map((ref) => {
-        const { data, mimeType } = extractRefImageData(ref);
-        if (/^https?:\/\//i.test(data)) {
-          return data;
-        }
-        if (/^data:/i.test(data)) {
-          return data;
-        }
-        return `data:${mimeType || "image/png"};base64,${data}`;
-      });
+      const normalizedRefs = options.referenceImages.map(
+        (ref, index) => this.normalizeWuyinReferenceImage(ref, index)
+      );
+      body.urls = normalizedRefs.map((item) => item.value);
+      const remoteRefCount = normalizedRefs.filter((item) => item.kind === "url").length;
+      console.log(
+        `[OpenAICompatibleAdapter] Wuyin refs prepared -> total=${normalizedRefs.length}, remote=${remoteRefCount}, base64=${normalizedRefs.length - remoteRefCount}`
+      );
     }
     const headers = this.buildImageRequestHeaders(keySlot, true);
     const payload = this.applyCustomBody(body, keySlot);
@@ -20502,9 +20873,35 @@ print(resp.text[:1000])`;
       headers[keySlot.headerName] = keySlot.key;
     }
     headers = this.applyCustomHeaders(headers, keySlot);
-    const payloadStr = JSON.stringify(this.applyCustomBody(body, keySlot));
+    const requestBody = this.applyCustomBody(body, keySlot);
+    const requestBodyPreview = this.buildSafeRequestBodyPreview(requestBody);
+    const payloadStr = JSON.stringify(requestBody);
     if (payloadStr.length > 48 * 1024 * 1024) {
       console.error(`[OpenAICompatibleAdapter] Chat-Image \u8BF7\u6C42\u4F53\u79EF (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) \u63A5\u8FD1 50MB \u4E0A\u9650!`);
+    }
+    const bridgedResult = await this.executeRecoverableSyncImageRequest({
+      options,
+      parserType: "openai-chat-best-image",
+      url,
+      headers,
+      body: payloadStr,
+      timeoutMs: this.getTimeoutMs(keySlot, 4e5),
+      requestPath,
+      requestBodyPreview,
+      provider: keySlot.provider
+    });
+    if (bridgedResult) {
+      return {
+        urls: bridgedResult.urls,
+        provider: "OpenAI-Chat",
+        model: options.modelId,
+        imageSize: sizeString,
+        metadata: {
+          requestPath,
+          requestBodyPreview,
+          pythonSnippet
+        }
+      };
     }
     const response = await this.fetchWithTimeout(url, {
       method: "POST",
@@ -20518,7 +20915,7 @@ print(resp.text[:1000])`;
         message: `Chat-to-Image Error (${response.status}): ${text.substring(0, 200)}`,
         status: response.status,
         requestPath,
-        requestBody: this.buildSafeRequestBodyPreview(body),
+        requestBody: requestBodyPreview,
         responseBody: text.substring(0, 1200),
         provider: keySlot.provider
       });
@@ -20550,7 +20947,7 @@ print(resp.text[:1000])`;
         imageSize: sizeString,
         metadata: {
           requestPath,
-          requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+          requestBodyPreview,
           pythonSnippet
         }
       };
@@ -20563,7 +20960,7 @@ print(resp.text[:1000])`;
         imageSize: sizeString,
         metadata: {
           requestPath,
-          requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+          requestBodyPreview,
           pythonSnippet
         }
       };
@@ -20580,7 +20977,7 @@ print(resp.text[:1000])`;
         imageSize: sizeString,
         metadata: {
           requestPath,
-          requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+          requestBodyPreview,
           pythonSnippet
         }
       };
@@ -20595,7 +20992,7 @@ print(resp.text[:1000])`;
         imageSize: sizeString,
         metadata: {
           requestPath,
-          requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+          requestBodyPreview,
           pythonSnippet
         }
       };
@@ -20610,7 +21007,7 @@ print(resp.text[:1000])`;
         imageSize: sizeString,
         metadata: {
           requestPath,
-          requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+          requestBodyPreview,
           pythonSnippet
         }
       };
@@ -20671,7 +21068,33 @@ print(resp.text[:1000])`;
     }
     headers = this.applyCustomHeaders(headers, keySlot);
     const requestBody = this.applyCustomBody(body, keySlot);
+    const requestBodyPreview = this.buildSafeRequestBodyPreview(requestBody);
     const payloadStr = JSON.stringify(requestBody);
+    const bridgedResult = await this.executeRecoverableSyncImageRequest({
+      options,
+      parserType: "openai-chat-best-image",
+      url,
+      headers,
+      body: payloadStr,
+      timeoutMs: this.getTimeoutMs(keySlot, 4e5),
+      requestPath,
+      requestBodyPreview,
+      provider: keySlot.provider
+    });
+    if (bridgedResult) {
+      return {
+        urls: bridgedResult.urls,
+        provider: "OpenAI-Chat",
+        model: options.modelId,
+        imageSize: reportedImageSize,
+        metadata: {
+          aspectRatio,
+          requestPath,
+          requestBodyPreview,
+          pythonSnippet
+        }
+      };
+    }
     const response = await this.fetchWithTimeout(url, {
       method: "POST",
       headers,
@@ -20684,7 +21107,7 @@ print(resp.text[:1000])`;
         message: `Chat-to-Image Error (${response.status}): ${text.substring(0, 200)}`,
         status: response.status,
         requestPath,
-        requestBody: this.buildSafeRequestBodyPreview(requestBody),
+        requestBody: requestBodyPreview,
         responseBody: text.substring(0, 1200),
         provider: keySlot.provider
       });
@@ -20716,7 +21139,7 @@ print(resp.text[:1000])`;
         metadata: {
           aspectRatio,
           requestPath,
-          requestBodyPreview: this.buildSafeRequestBodyPreview(requestBody),
+          requestBodyPreview,
           pythonSnippet
         }
       };
@@ -20730,7 +21153,7 @@ print(resp.text[:1000])`;
         metadata: {
           aspectRatio,
           requestPath,
-          requestBodyPreview: this.buildSafeRequestBodyPreview(requestBody),
+          requestBodyPreview,
           pythonSnippet
         }
       };
@@ -20853,6 +21276,7 @@ print(resp.text[:1000])`;
     const url = `${cleanBase}/images/generations`;
     const is4K = options.imageSize === "4K" || options.imageSize === "SIZE_4K";
     const is2K = options.imageSize === "2K" || options.imageSize === "SIZE_2K";
+    const is12AIChannel = this.resolveChannelRuntime(baseUrl, keySlot, options.modelId).strategyId === "12ai";
     const effectiveModelId = is12AIChannel ? options.modelId : normalizeGeminiModelId(options.modelId);
     let baseDim = 1024;
     if (is4K) baseDim = 4096;
@@ -20967,9 +21391,9 @@ print(resp.text[:1000])`;
   // ============================================================================
   async generateImageGeminiNative(options, keySlot) {
     const initialRuntime = this.resolveChannelRuntime(keySlot.baseUrl || "", keySlot, options.modelId, "gemini");
-    const is12AIChannel2 = initialRuntime.strategyId === "12ai";
-    const rawBase = keySlot.baseUrl || (is12AIChannel2 ? RegionService.get12AIBaseUrl() : "");
-    const cleanBase = is12AIChannel2 ? this.normalize12AIBaseUrl(rawBase).replace(/\/+$/, "") : normalizeGeminiBaseUrl(rawBase).replace(/\/+$/, "");
+    const is12AIChannel = initialRuntime.strategyId === "12ai";
+    const rawBase = keySlot.baseUrl || (is12AIChannel ? RegionService.get12AIBaseUrl() : "");
+    const cleanBase = is12AIChannel ? this.normalize12AIBaseUrl(rawBase).replace(/\/+$/, "") : normalizeGeminiBaseUrl(rawBase).replace(/\/+$/, "");
     const runtime = this.resolveChannelRuntime(cleanBase, keySlot, options.modelId, "gemini");
     const authMethod = runtime.authMethod;
     const effectiveModelId = normalizeGeminiModelId(options.modelId);
@@ -20984,7 +21408,7 @@ print(resp.text[:1000])`;
     if (!queryKey) {
       throw new Error("12AI API Key is empty or invalid");
     }
-    const url = is12AIChannel2 ? `${cleanBase}/v1beta/models/${effectiveModelId}:generateContent?key=${encodeURIComponent(queryKey)}` : buildGeminiEndpoint(cleanBase, effectiveModelId, "generateContent", normalizedKey, authMethod, keySlot.provider);
+    const url = is12AIChannel ? `${cleanBase}/v1beta/models/${effectiveModelId}:generateContent?key=${encodeURIComponent(queryKey)}` : buildGeminiEndpoint(cleanBase, effectiveModelId, "generateContent", normalizedKey, authMethod, keySlot.provider);
     const parts = [];
     if (options.referenceImages?.length) {
       for (const refImg of options.referenceImages) {
@@ -21035,12 +21459,13 @@ print(resp.text[:1000])`;
       }];
     }
     const payloadStr = JSON.stringify(payload);
-    let headers = is12AIChannel2 ? {
+    const requestPath = `/v1beta/models/${is12AIChannel ? options.modelId : effectiveModelId}:generateContent`;
+    let headers = is12AIChannel ? {
       "Content-Type": "application/json",
       "Accept": "application/json"
     } : buildGeminiHeaders(authMethod, normalizedKey, runtime.headerName, runtime.authorizationValueFormat);
     headers = this.applyCustomHeaders(headers, keySlot);
-    if (is12AIChannel2 || authMethod === "query") {
+    if (is12AIChannel || authMethod === "query") {
       delete headers["x-goog-api-key"];
       delete headers["Authorization"];
       delete headers["authorization"];
@@ -21048,7 +21473,30 @@ print(resp.text[:1000])`;
     const startTime = Date.now();
     const safeUrl = url.replace(/key=[^&]+/, "key=***");
     const maskedKey = queryKey.length > 8 ? `${queryKey.slice(0, 4)}***${queryKey.slice(-4)}` : "***";
-    console.log(`[OpenAICompatibleAdapter] ${is12AIChannel2 ? "12AI Native" : "Gemini Native"} Request -> ${safeUrl} | slot=${keySlot.id} | channel=${keySlot.name} | auth=${is12AIChannel2 ? "query" : authMethod} | refs=${options.referenceImages?.length || 0} | key=${maskedKey}`);
+    console.log(`[OpenAICompatibleAdapter] ${is12AIChannel ? "12AI Native" : "Gemini Native"} Request -> ${safeUrl} | slot=${keySlot.id} | channel=${keySlot.name} | auth=${is12AIChannel ? "query" : authMethod} | refs=${options.referenceImages?.length || 0} | key=${maskedKey}`);
+    const bridgedResult = await this.executeRecoverableSyncImageRequest({
+      options,
+      parserType: "gemini-native-image",
+      url,
+      headers,
+      body: payloadStr,
+      timeoutMs: this.getTimeoutMs(keySlot, 12e4),
+      requestPath,
+      requestBodyPreview: this.buildSafeRequestBodyPreview(payload),
+      provider: keySlot.provider
+    });
+    if (bridgedResult) {
+      return {
+        urls: bridgedResult.urls,
+        provider: is12AIChannel ? "12AI-Native" : "Gemini-Native",
+        model: is12AIChannel ? options.modelId : effectiveModelId,
+        imageSize: requestedImageSize,
+        metadata: {
+          requestPath,
+          requestBodyPreview: this.buildSafeRequestBodyPreview(payload)
+        }
+      };
+    }
     const response = await this.fetchWithTimeout(url, {
       method: "POST",
       headers,
@@ -21058,7 +21506,7 @@ print(resp.text[:1000])`;
     const duration = Date.now() - startTime;
     if (!response.ok) {
       const raw = await response.text().catch(() => "");
-      let detail = `${is12AIChannel2 ? "12AI Native" : "Gemini Native"} Error: ${response.status}`;
+      let detail = `${is12AIChannel ? "12AI Native" : "Gemini Native"} Error: ${response.status}`;
       try {
         const err = JSON.parse(raw || "{}");
         detail = err.error?.message || err.message || detail;
@@ -21071,7 +21519,7 @@ print(resp.text[:1000])`;
     const data = await response.json();
     keyManager.reportCallResult(keySlot.id, true);
     const candidate = data.candidates?.[0];
-    if (!candidate) throw new Error(is12AIChannel2 ? "12AI API returned no candidate content" : "Gemini native API returned no candidate content");
+    if (!candidate) throw new Error(is12AIChannel ? "12AI API returned no candidate content" : "Gemini native API returned no candidate content");
     const candidateParts = candidate.content?.parts || [];
     const imagePart = candidateParts.find((p) => p.inlineData || p.inline_data);
     if (!imagePart) {
@@ -21084,11 +21532,11 @@ print(resp.text[:1000])`;
     const b64 = String(inlineData.data || "").replace(/\s+/g, "");
     return {
       urls: [`data:${mime};base64,${b64}`],
-      provider: is12AIChannel2 ? "12AI-Native" : "Gemini-Native",
-      model: is12AIChannel2 ? options.modelId : effectiveModelId,
+      provider: is12AIChannel ? "12AI-Native" : "Gemini-Native",
+      model: is12AIChannel ? options.modelId : effectiveModelId,
       imageSize: requestedImageSize,
       metadata: {
-        requestPath: `/v1beta/models/${is12AIChannel2 ? options.modelId : effectiveModelId}:generateContent`,
+        requestPath,
         apiDurationMs: duration,
         requestBodyPreview: this.buildSafeRequestBodyPreview(payload)
       }
@@ -21194,13 +21642,46 @@ print(resp.text[:1000])`
     if (payloadStr.length > 48 * 1024 * 1024) {
       console.error(`[OpenAICompatibleAdapter] Image \u8BF7\u6C42\u4F53\u79EF (${(payloadStr.length / 1024 / 1024).toFixed(2)}MB) \u63A5\u8FD1 50MB \u4E0A\u9650!`);
     }
+    const requestPath = this.getRequestPathFromUrl(url);
+    const requestBodyPreview = this.buildSafeRequestBodyPreview(body);
+    const bridgedResult = await this.executeRecoverableSyncImageRequest({
+      options,
+      parserType: "openai-compatible-image",
+      url,
+      headers,
+      body: payloadStr,
+      timeoutMs: this.getTimeoutMs(keySlot, 4e5),
+      requestPath,
+      requestBodyPreview,
+      provider: keySlot.provider
+    });
+    if (bridgedResult) {
+      return {
+        urls: bridgedResult.urls,
+        provider: "OpenAI",
+        providerName: keySlot.name,
+        model: options.modelId,
+        imageSize: body.size || body.image_size || "Unknown",
+        metadata: {
+          requestPath,
+          requestBodyPreview,
+          pythonSnippet: `import requests
+
+url = "${url}"
+headers = {"Authorization": "Bearer <API_KEY>", "Content-Type": "application/json"}
+payload = ${JSON.stringify(body, null, 2)}
+resp = requests.post(url, headers=headers, json=payload, timeout=150)
+print(resp.status_code)
+print(resp.text[:1000])`
+        }
+      };
+    }
     const response = await this.fetchWithTimeout(url, {
       method: "POST",
       headers,
       body: payloadStr,
       signal: options.signal
     }, this.getTimeoutMs(keySlot, 4e5), 1);
-    const requestPath = this.getRequestPathFromUrl(url);
     if (!response.ok) {
       const raw = await response.text().catch(() => "");
       let detail = `OpenAI Image Error: ${response.status}`;
@@ -21219,7 +21700,7 @@ Raw Response: ${raw.slice(0, 500)}`);
         message: `[${response.status}] ${detail}`,
         status: response.status,
         requestPath,
-        requestBody: this.buildSafeRequestBodyPreview(body),
+        requestBody: requestBodyPreview,
         responseBody: raw.slice(0, 1600),
         provider: keySlot.provider
       });
@@ -21241,7 +21722,7 @@ Raw Response: ${raw.slice(0, 500)}`);
         message: "\u63A5\u53E3\u5DF2\u8FD4\u56DE\u6210\u529F\u72B6\u6001\uFF0C\u4F46\u672A\u627E\u5230\u53EF\u7528\u56FE\u7247\u6570\u636E",
         status: response.status,
         requestPath,
-        requestBody: this.buildSafeRequestBodyPreview(body),
+        requestBody: requestBodyPreview,
         responseBody: rawPreview,
         provider: keySlot.provider
       });
@@ -21254,7 +21735,7 @@ Raw Response: ${raw.slice(0, 500)}`);
       imageSize: body.size || body.image_size || "Unknown",
       metadata: {
         requestPath,
-        requestBodyPreview: this.buildSafeRequestBodyPreview(body),
+        requestBodyPreview,
         pythonSnippet: `import requests
 
 url = "${url}"

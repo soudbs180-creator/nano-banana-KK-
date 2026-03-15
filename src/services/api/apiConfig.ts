@@ -16,7 +16,7 @@ import {
  * - 'header': API key passed in request header
  */
 export type AuthMethod = 'query' | 'header';
-export type ApiProtocolFormat = 'auto' | 'openai' | 'gemini';
+export type ApiProtocolFormat = 'auto' | 'openai' | 'gemini' | 'claude';
 
 /**
  * API Provider configuration interface
@@ -59,7 +59,7 @@ export function normalizeApiProtocolFormat(
     fallback: ApiProtocolFormat = 'auto'
 ): ApiProtocolFormat {
     const normalized = String(format || '').trim().toLowerCase();
-    if (normalized === 'openai' || normalized === 'gemini' || normalized === 'auto') {
+    if (normalized === 'openai' || normalized === 'gemini' || normalized === 'claude' || normalized === 'auto') {
         return normalized;
     }
     return fallback;
@@ -175,6 +175,24 @@ export function buildOpenAIEndpoint(baseUrl: string | undefined, endpoint: strin
     return `${cleanBase}/${endpoint.replace(/^\/+/, '')}`;
 }
 
+export function normalizeClaudeBaseUrl(url: string | undefined): string {
+    if (!url) return '';
+
+    let clean = url.trim().replace(/\/+$/, '');
+    clean = clean.replace(/\/(?:messages|models)$/i, '');
+
+    if (!/\/v\d[\w.-]*$/i.test(clean)) {
+        clean = `${clean}/v1`;
+    }
+
+    return clean.replace(/\/+$/, '');
+}
+
+export function buildClaudeEndpoint(baseUrl: string | undefined, endpoint: string): string {
+    const cleanBase = normalizeClaudeBaseUrl(baseUrl);
+    return `${cleanBase}/${endpoint.replace(/^\/+/, '')}`;
+}
+
 export function normalizeGeminiBaseUrl(url: string | undefined): string {
     let clean = (url || GOOGLE_API_BASE).trim().replace(/\/+$/, '');
     clean = clean
@@ -285,6 +303,29 @@ export function buildGeminiHeaders(
 
     const effectiveHeaderName = headerName || 'Authorization';
     headers[effectiveHeaderName] = effectiveHeaderName === 'Authorization'
+        ? formatAuthorizationHeaderValue(apiKey, authorizationValueFormat)
+        : getApiKeyToken(apiKey);
+
+    return headers;
+}
+
+export function buildClaudeHeaders(
+    authMethod: AuthMethod,
+    apiKey: string,
+    headerName: string = 'x-api-key',
+    authorizationValueFormat: ProviderStrategyAuthorizationValueFormat = 'raw'
+): Record<string, string> {
+    const headers: Record<string, string> = {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+    };
+
+    if (authMethod !== 'header') {
+        return headers;
+    }
+
+    headers[headerName] = headerName === 'Authorization'
         ? formatAuthorizationHeaderValue(apiKey, authorizationValueFormat)
         : getApiKeyToken(apiKey);
 

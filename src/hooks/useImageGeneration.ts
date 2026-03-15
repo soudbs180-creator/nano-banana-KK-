@@ -4,6 +4,7 @@ import { llmService } from '../services/llm/LLMService';
 import { generateImage, cancelGeneration } from '../services/llm/geminiService';
 import { useCanvas } from '../context/CanvasContext';
 import { useBilling } from '../context/BillingContext';
+import { calculateCost } from '../services/billing/costService';
 import { saveImage, saveOriginalImage, getImage } from '../services/storage/imageStorage';
 import { fileSystemService } from '../services/storage/fileSystemService';
 import { keyManager } from '../services/auth/keyManager';
@@ -38,6 +39,57 @@ const hasRecoverableReferenceImage = (img?: Partial<ReferenceImage> | null): boo
 
   // Keep legacy records that rely on id-only cache recovery.
   return typeof img.id === 'string' && img.id.trim().length > 0;
+};
+
+const toFiniteNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+
+const splitMetricAcrossItems = (value: number | undefined, count: number): number | undefined => {
+  if (value === undefined) return undefined;
+  const safeCount = Math.max(1, count || 1);
+  return value / safeCount;
+};
+
+const resolveUsageMetrics = (params: {
+  model: string;
+  imageSize?: ImageSize;
+  prompt?: string;
+  imageCount?: number;
+  referenceImageCount?: number;
+  keySlotId?: string;
+  explicitCost?: number;
+  explicitTokens?: number;
+}) => {
+  const explicitCost = toFiniteNumber(params.explicitCost);
+  const explicitTokens = toFiniteNumber(params.explicitTokens);
+  const resolvedImageSize = params.imageSize || ImageSize.SIZE_1K;
+
+  try {
+    const estimate = calculateCost(
+      params.model,
+      resolvedImageSize,
+      Math.max(1, params.imageCount || 1),
+      String(params.prompt || '').length,
+      Math.max(0, params.referenceImageCount || 0),
+      params.keySlotId
+    );
+
+    return {
+      cost: explicitCost ?? estimate.cost,
+      tokens: explicitTokens ?? estimate.tokens,
+    };
+  } catch {
+    return {
+      cost: explicitCost,
+      tokens: explicitTokens,
+    };
+  }
 };
 
 export const useImageGeneration = (options: {
@@ -303,6 +355,14 @@ export const useImageGeneration = (options: {
 
       const currentChildIds = Array.from(new Set((latestNode.childImageIds || []).filter(Boolean)));
       const expectedCount = getExpectedGenerationCount(latestNode);
+      const recoveredUsage = resolveUsageMetrics({
+        model: latestNode.model,
+        imageSize: latestNode.imageSize,
+        prompt: pendingRequest.prompt || latestNode.prompt,
+        imageCount: bridgeResult.urls.length,
+        referenceImageCount: latestNode.referenceImages?.length || 0,
+        keySlotId: pendingRequest.keySlotId || latestNode.keySlotId,
+      });
       const recoveredResults = bridgeResult.urls.map((url, index) => {
         const imageId = `${nodeId}_sync_recovered_${Date.now()}_${pendingRequest.index}_${index}`;
         const layoutIndex = pendingRequest.index + index;
@@ -328,6 +388,8 @@ export const useImageGeneration = (options: {
           providerLabel: latestNode.providerLabel,
           keySlotId: pendingRequest.keySlotId || latestNode.keySlotId,
           generationTime: 0,
+          tokens: splitMetricAcrossItems(recoveredUsage.tokens, bridgeResult.urls.length),
+          cost: splitMetricAcrossItems(recoveredUsage.cost, bridgeResult.urls.length),
           alias: latestNode.mode === GenerationMode.PPT ? buildPptPageAlias(latestNode.pptSlides?.[layoutIndex], layoutIndex) : undefined,
         };
       });
@@ -410,6 +472,23 @@ export const useImageGeneration = (options: {
         if (result.status === 'success') {
           const imageUrls = (result as any).urls || [(result as any).url].filter(Boolean);
           if (imageUrls.length > 0) {
+            const resolvedResultImageSize = ((result as any).imageSize || latestNode.imageSize) as ImageSize | undefined;
+            const recoveredUsage = latestNode.mode === GenerationMode.IMAGE
+              ? resolveUsageMetrics({
+                  model: (result as any).model || latestNode.model,
+                  imageSize: resolvedResultImageSize,
+                  prompt: latestNode.prompt,
+                  imageCount: imageUrls.length,
+                  referenceImageCount: latestNode.referenceImages?.length || 0,
+                  keySlotId: (result as any).keySlotId || latestNode.keySlotId,
+                  explicitCost: (result as any).usage?.cost,
+                  explicitTokens: (result as any).usage?.totalTokens,
+                })
+              : {
+                  cost: toFiniteNumber((result as any).usage?.cost),
+                  tokens: toFiniteNumber((result as any).usage?.totalTokens),
+                };
+
             // Success recovery logic (similar to executeGeneration completion)
             const recoveredImageNodes = imageUrls.map((url: string, index: number) => {
               const imageId = `${node.id}_recovered_${Date.now()}_${index}`;
@@ -433,6 +512,8 @@ export const useImageGeneration = (options: {
                 providerLabel: latestNode.providerLabel || (result as any).providerName,
                 keySlotId: (result as any).keySlotId || latestNode.keySlotId,
                 generationTime: (result as any).generationTime || 0,
+                tokens: splitMetricAcrossItems(recoveredUsage.tokens, imageUrls.length),
+                cost: splitMetricAcrossItems(recoveredUsage.cost, imageUrls.length),
                 alias: latestNode.mode === GenerationMode.PPT ? buildPptPageAlias(latestNode.pptSlides?.[layoutIndex], layoutIndex) : undefined,
               };
             });
@@ -590,6 +671,9 @@ export const useImageGeneration = (options: {
           let resolvedProviderName = executionNode.providerLabel;
           let resolvedModelName = executionNode.modelLabel;
           let resolvedModelId = executionNode.model;
+          let resolvedCost: number | undefined = undefined;
+          let resolvedTokens: number | undefined = undefined;
+          let resolvedImageSize: ImageSize | undefined = executionNode.imageSize;
           
           if (isAudio) {
             const audioResult = await llmService.generateAudio({ modelId: executionNode.model, prompt: taskPrompt, audioDuration: executionNode.audioDuration, audioLyrics: executionNode.audioLyrics, preferredKeyId: executionNode.keySlotId, providerConfig: {} });
@@ -599,6 +683,8 @@ export const useImageGeneration = (options: {
             resolvedProviderName = audioResult.providerName || resolvedProviderName;
             resolvedModelName = audioResult.modelName || resolvedModelName;
             resolvedModelId = audioResult.model || resolvedModelId;
+            resolvedCost = toFiniteNumber(audioResult.usage?.cost);
+            resolvedTokens = toFiniteNumber(audioResult.usage?.totalTokens);
           } else if (isVideo) {
             const videoResult = await llmService.generateVideo({ 
               modelId: executionNode.model, prompt: taskPrompt, aspectRatio: executionNode.aspectRatio === '9:16' ? '9:16' : '16:9', 
@@ -616,6 +702,8 @@ export const useImageGeneration = (options: {
             resolvedProviderName = videoResult.providerName || resolvedProviderName;
             resolvedModelName = videoResult.modelName || resolvedModelName;
             resolvedModelId = videoResult.model || resolvedModelId;
+            resolvedCost = toFiniteNumber(videoResult.usage?.cost);
+            resolvedTokens = toFiniteNumber(videoResult.usage?.totalTokens);
           } else {
             const result = await generateImage(taskPrompt, executionNode.aspectRatio, executionNode.imageSize, files, executionNode.model, '', currentRequestId, !!executionNode.enableGrounding || !!executionNode.enableImageSearch, {
               maskUrl: executionNode.maskUrl, editMode: executionNode.mode === GenerationMode.INPAINT ? 'inpaint' : (executionNode.mode === GenerationMode.EDIT ? 'edit' : undefined),
@@ -643,13 +731,28 @@ export const useImageGeneration = (options: {
             resolvedProviderName = result.providerName || resolvedProviderName;
             resolvedModelName = result.modelName || resolvedModelName;
             resolvedModelId = result.effectiveModel || resolvedModelId;
+            resolvedImageSize = result.effectiveSize || result.imageSize || resolvedImageSize;
+
+            const resolvedUsage = resolveUsageMetrics({
+              model: resolvedModelId,
+              imageSize: resolvedImageSize,
+              prompt: taskPrompt,
+              imageCount: 1,
+              referenceImageCount: files.length,
+              keySlotId: resolvedResultKeySlotId,
+              explicitCost: result.cost,
+              explicitTokens: result.tokens,
+            });
+            resolvedCost = resolvedUsage.cost;
+            resolvedTokens = resolvedUsage.tokens;
           }
 
           return { 
             index, url: isVideo || isAudio ? videoUrl : generatedBase64, originalUrl: isVideo || isAudio ? videoUrl : generatedBase64, 
             generationTime: Date.now() - startTime, base64: generatedBase64, mode, 
             taskId: taskIdForRecovery, taskPrompt, keySlotId: resolvedResultKeySlotId, requestId: currentRequestId,
-            provider: resolvedProvider, providerName: resolvedProviderName, modelName: resolvedModelName, model: resolvedModelId 
+            provider: resolvedProvider, providerName: resolvedProviderName, modelName: resolvedModelName, model: resolvedModelId,
+            imageSize: resolvedImageSize, tokens: resolvedTokens, cost: resolvedCost,
           };
         } catch (error: any) {
           return { error: error.message || 'Unknown error', errorDetails: extractErrorDetails(error, executionNode.model), taskId: taskIdForRecovery, requestId: currentRequestId };
@@ -670,7 +773,7 @@ export const useImageGeneration = (options: {
           
           return {
             id: uniqueId, storageId: uniqueId, url: item.url, originalUrl: item.originalUrl,
-            prompt: item.taskPrompt || promptToUse, aspectRatio: executionNode.aspectRatio, imageSize: executionNode.imageSize,
+            prompt: item.taskPrompt || promptToUse, aspectRatio: executionNode.aspectRatio, imageSize: item.imageSize || executionNode.imageSize,
             timestamp: Date.now(), model: item.model || executionNode.model, canvasId: activeCanvasRef.current?.id || 'default',
             modelLabel: item.modelName || executionNode.modelLabel,
             modelColorStart: executionNode.modelColorStart,
@@ -680,7 +783,8 @@ export const useImageGeneration = (options: {
             provider: item.provider || executionNode.provider,
             providerLabel: item.providerName || executionNode.providerLabel,
             parentPromptId: promptNodeId, position: getGeneratedImagePosition(executionNode.position, executionNode.aspectRatio, executionNode.mode, idx, actualCount),
-            generationTime: item.generationTime, keySlotId: item.keySlotId, mode
+            generationTime: item.generationTime, keySlotId: item.keySlotId, mode,
+            tokens: item.tokens, cost: item.cost,
           };
         });
 

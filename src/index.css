@@ -4117,39 +4117,61 @@ iframe,
    Simplified Advanced Settings Refresh
    ============================================ */
 .settings-panel {
-  --settings-accent-rgb: 124 92 255;
-  --settings-accent-soft-rgb: 233 126 255;
-  --settings-layer-base: #f6f2fb;
-  --settings-layer-surface: rgba(255, 255, 255, 0.88);
-  --settings-layer-emphasis: #f1eafe;
-  --settings-layer-strong: #e7dbfb;
-  --settings-layer-input: rgba(255, 255, 255, 0.74);
-  --settings-layer-hover: #ece2ff;
-  --settings-text-main: #1f1633;
-  --settings-text-sub: rgba(31, 22, 51, 0.7);
-  --settings-text-muted: rgba(31, 22, 51, 0.46);
-  --settings-icon-main: #6e5a97;
+  --settings-accent-rgb: 68 110 255;
+  --settings-accent-soft-rgb: 112 197 255;
+  --settings-layer-base: #f3f5fa;
+  --settings-layer-surface: rgba(255, 255, 255, 0.94);
+  --settings-layer-emphasis: #ffffff;
+  --settings-layer-strong: #eef2f8;
+  --settings-layer-input: rgba(246, 248, 252, 0.96);
+  --settings-layer-hover: #edf2fb;
+  --settings-page-bg: #eef2f7;
+  --settings-shell-bg: rgba(255, 255, 255, 0.92);
+  --settings-shell-header-bg:
+    linear-gradient(180deg, rgb(var(--settings-accent-rgb) / 0.06) 0%, transparent 100%),
+    rgba(255, 255, 255, 0.88);
+  --settings-section-bg: rgba(255, 255, 255, 0.9);
+  --settings-surface-elevated: #ffffff;
+  --settings-surface-overlay: #f6f8fc;
+  --settings-surface-muted: #ecf1f8;
+  --settings-input-bg: var(--settings-layer-input);
+  --settings-input-border: rgba(15, 23, 42, 0.08);
+  --settings-border-subtle: rgba(15, 23, 42, 0.08);
+  --settings-border-strong: rgba(15, 23, 42, 0.14);
+  --settings-focus-border: rgba(68, 110, 255, 0.42);
+  --settings-focus-ring: rgba(68, 110, 255, 0.16);
+  --settings-text-main: #182033;
+  --settings-text-sub: rgba(24, 32, 51, 0.74);
+  --settings-text-muted: rgba(24, 32, 51, 0.5);
+  --settings-icon-main: #6a7387;
   --settings-icon-accent: rgb(var(--settings-accent-rgb));
   --settings-button-primary-bg: linear-gradient(135deg, rgb(var(--settings-accent-rgb)) 0%, rgb(var(--settings-accent-soft-rgb)) 100%);
-  --settings-button-primary-bg-hover: linear-gradient(135deg, rgb(111 79 242) 0%, rgb(222 112 247) 100%);
+  --settings-button-primary-bg-hover: linear-gradient(135deg, rgb(57 94 227) 0%, rgb(87 176 240) 100%);
   --settings-button-primary-text: #ffffff;
-  --settings-button-secondary-bg: rgba(255, 255, 255, 0.68);
-  --settings-button-secondary-bg-hover: rgba(255, 255, 255, 0.82);
-  --settings-button-secondary-text: #4b3d71;
-  --settings-button-secondary-border: rgba(124, 92, 255, 0.14);
-  --settings-button-icon-bg: rgba(255, 255, 255, 0.62);
-  --settings-button-icon-bg-hover: rgba(255, 255, 255, 0.82);
-  --settings-button-icon-text: #755ca7;
+  --settings-button-primary-shadow:
+    0 14px 30px rgb(var(--settings-accent-rgb) / 0.22),
+    inset 0 1px 0 rgb(255 255 255 / 0.2);
+  --settings-button-secondary-bg: rgba(255, 255, 255, 0.88);
+  --settings-button-secondary-bg-hover: #ffffff;
+  --settings-button-secondary-text: #1f2937;
+  --settings-button-secondary-border: rgba(15, 23, 42, 0.08);
+  --settings-button-icon-bg: var(--settings-surface-muted);
+  --settings-button-icon-bg-hover: #e6edf8;
+  --settings-button-icon-text: #516077;
+  --settings-button-danger-bg: rgba(239, 68, 68, 0.08);
+  --settings-button-danger-border: rgba(239, 68, 68, 0.18);
+  --settings-button-danger-text: #b42318;
   --settings-surface-start: var(--settings-layer-surface);
-  --settings-surface-end: rgba(255, 255, 255, 0.74);
-  --settings-soft-start: var(--settings-layer-emphasis);
-  --settings-soft-end: rgba(236, 226, 255, 0.92);
-  --settings-muted-surface: rgba(255, 255, 255, 0.58);
-  --settings-muted-surface-strong: rgba(255, 255, 255, 0.8);
-  --settings-panel-shadow: 0 28px 80px rgba(88, 58, 168, 0.18);
-  --settings-card-shadow: 0 18px 44px rgba(88, 58, 168, 0.12);
+  --settings-surface-end: rgba(255, 255, 255, 0.86);
+  --settings-soft-start: #ffffff;
+  --settings-soft-end: #f6f8fc;
+  --settings-muted-surface: rgba(236, 241, 248, 0.72);
+  --settings-muted-surface-strong: #f1f4fa;
+  --settings-panel-shadow: 0 20px 52px rgba(17, 24, 39, 0.12);
+  --settings-card-shadow: 0 12px 28px rgba(17, 24, 39, 0.08);
+  --settings-shell-shadow: 0 24px 70px rgba(15, 23, 42, 0.14);
   --settings-inset-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
-  --settings-backdrop: rgba(20, 16, 36, 0.36);
+  --settings-backdrop: rgba(11, 19, 32, 0.28);
   --bg-base: var(--settings-layer-base);
   --bg-surface: var(--settings-layer-surface);
   --bg-elevated: var(--settings-layer-emphasis);
@@ -4157,73 +4179,95 @@ iframe,
   --bg-overlay: var(--settings-layer-emphasis);
   --bg-input: var(--settings-layer-input);
   --bg-hover: var(--settings-layer-hover);
-  --toolbar-bg: rgba(255, 255, 255, 0.76);
-  --toolbar-hover: rgba(124, 92, 255, 0.08);
-  --toolbar-active: rgba(124, 92, 255, 0.12);
-  --toolbar-divider: rgba(124, 92, 255, 0.1);
-  --border-subtle: rgba(124, 92, 255, 0.08);
-  --border-default: rgba(124, 92, 255, 0.12);
-  --border-strong: rgba(124, 92, 255, 0.2);
+  --toolbar-bg: rgba(255, 255, 255, 0.82);
+  --toolbar-hover: rgba(68, 110, 255, 0.08);
+  --toolbar-active: rgba(68, 110, 255, 0.12);
+  --toolbar-divider: rgba(15, 23, 42, 0.08);
+  --border-subtle: var(--settings-border-subtle);
+  --border-default: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.14);
   --border-light: var(--border-default);
   --border-medium: var(--border-strong);
   --text-primary: var(--settings-text-main);
   --text-secondary: var(--settings-text-sub);
   --text-tertiary: var(--settings-text-muted);
-  --text-muted: rgba(21, 32, 51, 0.34);
+  --text-muted: rgba(24, 32, 51, 0.34);
   --state-success-bg: rgba(16, 185, 129, 0.12);
   --state-success-border: rgba(16, 185, 129, 0.22);
-  --state-success-text: #11895f;
-  --state-success-muted: rgba(17, 137, 95, 0.82);
+  --state-success-text: #0f7a56;
+  --state-success-muted: rgba(15, 122, 86, 0.82);
   --state-warning-bg: rgba(245, 158, 11, 0.14);
-  --state-warning-border: rgba(251, 191, 36, 0.26);
-  --state-warning-text: #ad6a02;
-  --state-warning-muted: rgba(173, 106, 2, 0.82);
+  --state-warning-border: rgba(245, 158, 11, 0.24);
+  --state-warning-text: #9a6004;
+  --state-warning-muted: rgba(154, 96, 4, 0.82);
   --state-danger-bg: rgba(239, 68, 68, 0.1);
   --state-danger-border: rgba(239, 68, 68, 0.2);
-  --state-danger-text: #c44444;
-  --state-danger-muted: rgba(196, 68, 68, 0.78);
+  --state-danger-text: #be3f3f;
+  --state-danger-muted: rgba(190, 63, 63, 0.78);
   --state-info-bg: rgba(59, 130, 246, 0.1);
   --state-info-border: rgba(59, 130, 246, 0.2);
-  --state-info-text: #2563eb;
-  --state-info-muted: rgba(37, 99, 235, 0.82);
+  --state-info-text: #295cd8;
+  --state-info-muted: rgba(41, 92, 216, 0.82);
   color: var(--text-primary);
   color-scheme: light;
 }
 
 body.dark-mode .settings-panel {
-  --settings-accent-rgb: 198 92 255;
-  --settings-accent-soft-rgb: 91 163 255;
-  --settings-layer-base: #12141b;
-  --settings-layer-surface: rgba(29, 32, 44, 0.92);
-  --settings-layer-emphasis: #232838;
-  --settings-layer-strong: #2d3448;
-  --settings-layer-input: rgba(39, 44, 60, 0.96);
-  --settings-layer-hover: #343c52;
-  --settings-text-main: rgba(255, 255, 255, 0.96);
-  --settings-text-sub: rgba(255, 255, 255, 0.8);
-  --settings-text-muted: rgba(255, 255, 255, 0.62);
-  --settings-icon-main: #d0c0f1;
+  --settings-accent-rgb: 130 167 255;
+  --settings-accent-soft-rgb: 86 212 255;
+  --settings-layer-base: #0f131a;
+  --settings-layer-surface: rgba(19, 24, 33, 0.94);
+  --settings-layer-emphasis: #161d28;
+  --settings-layer-strong: #202938;
+  --settings-layer-input: rgba(16, 24, 35, 0.96);
+  --settings-layer-hover: #263243;
+  --settings-page-bg: #0d1117;
+  --settings-shell-bg: rgba(19, 24, 33, 0.94);
+  --settings-shell-header-bg:
+    linear-gradient(180deg, rgb(var(--settings-accent-rgb) / 0.08) 0%, transparent 100%),
+    rgba(18, 24, 34, 0.92);
+  --settings-section-bg: rgba(21, 28, 40, 0.92);
+  --settings-surface-elevated: #161d28;
+  --settings-surface-overlay: #1d2634;
+  --settings-surface-muted: #202a39;
+  --settings-input-bg: var(--settings-layer-input);
+  --settings-input-border: rgba(255, 255, 255, 0.08);
+  --settings-border-subtle: rgba(255, 255, 255, 0.08);
+  --settings-border-strong: rgba(255, 255, 255, 0.14);
+  --settings-focus-border: rgba(130, 167, 255, 0.48);
+  --settings-focus-ring: rgba(130, 167, 255, 0.18);
+  --settings-text-main: rgba(246, 249, 255, 0.96);
+  --settings-text-sub: rgba(230, 236, 249, 0.76);
+  --settings-text-muted: rgba(196, 206, 224, 0.62);
+  --settings-icon-main: #b6c3d8;
   --settings-icon-accent: rgb(var(--settings-accent-rgb));
   --settings-button-primary-bg: linear-gradient(135deg, rgb(var(--settings-accent-rgb)) 0%, rgb(var(--settings-accent-soft-rgb)) 100%);
-  --settings-button-primary-bg-hover: linear-gradient(135deg, rgb(183 77 241) 0%, rgb(77 148 240) 100%);
+  --settings-button-primary-bg-hover: linear-gradient(135deg, rgb(111 147 236) 0%, rgb(62 191 242) 100%);
   --settings-button-primary-text: #ffffff;
-  --settings-button-secondary-bg: rgba(255, 255, 255, 0.08);
-  --settings-button-secondary-bg-hover: rgba(255, 255, 255, 0.14);
-  --settings-button-secondary-text: #ebe4ff;
-  --settings-button-secondary-border: rgba(198, 92, 255, 0.18);
-  --settings-button-icon-bg: rgba(255, 255, 255, 0.08);
-  --settings-button-icon-bg-hover: rgba(255, 255, 255, 0.15);
-  --settings-button-icon-text: #cbb9f7;
+  --settings-button-primary-shadow:
+    0 16px 34px rgb(9 14 22 / 0.38),
+    inset 0 1px 0 rgb(255 255 255 / 0.16);
+  --settings-button-secondary-bg: rgba(255, 255, 255, 0.06);
+  --settings-button-secondary-bg-hover: rgba(255, 255, 255, 0.1);
+  --settings-button-secondary-text: rgba(241, 245, 255, 0.92);
+  --settings-button-secondary-border: rgba(255, 255, 255, 0.08);
+  --settings-button-icon-bg: rgba(255, 255, 255, 0.06);
+  --settings-button-icon-bg-hover: rgba(255, 255, 255, 0.1);
+  --settings-button-icon-text: #d4deef;
+  --settings-button-danger-bg: rgba(239, 68, 68, 0.12);
+  --settings-button-danger-border: rgba(239, 68, 68, 0.22);
+  --settings-button-danger-text: #fecaca;
   --settings-surface-start: var(--settings-layer-surface);
-  --settings-surface-end: rgba(34, 37, 50, 0.96);
-  --settings-soft-start: var(--settings-layer-emphasis);
-  --settings-soft-end: rgba(39, 44, 60, 0.96);
+  --settings-surface-end: rgba(25, 31, 43, 0.98);
+  --settings-soft-start: #171f2b;
+  --settings-soft-end: #1d2634;
   --settings-muted-surface: rgba(255, 255, 255, 0.08);
-  --settings-muted-surface-strong: rgba(255, 255, 255, 0.12);
-  --settings-panel-shadow: 0 28px 76px rgba(0, 0, 0, 0.34);
-  --settings-card-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+  --settings-muted-surface-strong: rgba(255, 255, 255, 0.1);
+  --settings-panel-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+  --settings-card-shadow: 0 16px 36px rgba(0, 0, 0, 0.24);
+  --settings-shell-shadow: 0 28px 76px rgba(0, 0, 0, 0.38);
   --settings-inset-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  --settings-backdrop: rgba(18, 21, 31, 0.72);
+  --settings-backdrop: rgba(5, 10, 18, 0.62);
   --bg-base: var(--settings-layer-base);
   --bg-surface: var(--settings-layer-surface);
   --bg-elevated: var(--settings-layer-emphasis);
@@ -4231,13 +4275,13 @@ body.dark-mode .settings-panel {
   --bg-overlay: var(--settings-layer-emphasis);
   --bg-input: var(--settings-layer-input);
   --bg-hover: var(--settings-layer-hover);
-  --toolbar-bg: rgba(31, 35, 49, 0.88);
-  --toolbar-hover: rgba(198, 92, 255, 0.1);
-  --toolbar-active: rgba(198, 92, 255, 0.14);
-  --toolbar-divider: rgba(198, 92, 255, 0.12);
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-default: rgba(198, 92, 255, 0.14);
-  --border-strong: rgba(198, 92, 255, 0.22);
+  --toolbar-bg: rgba(17, 24, 35, 0.88);
+  --toolbar-hover: rgba(130, 167, 255, 0.1);
+  --toolbar-active: rgba(130, 167, 255, 0.14);
+  --toolbar-divider: rgba(255, 255, 255, 0.08);
+  --border-subtle: var(--settings-border-subtle);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.14);
   --border-light: var(--border-default);
   --border-medium: var(--border-strong);
   --text-primary: var(--settings-text-main);
@@ -4245,52 +4289,52 @@ body.dark-mode .settings-panel {
   --text-tertiary: var(--settings-text-muted);
   --text-muted: rgba(255, 255, 255, 0.44);
   --state-success-bg: rgba(16, 185, 129, 0.14);
-  --state-success-border: rgba(52, 211, 153, 0.32);
-  --state-success-text: #6ee7b7;
-  --state-success-muted: rgba(167, 243, 208, 0.86);
+  --state-success-border: rgba(52, 211, 153, 0.28);
+  --state-success-text: #9ce6c4;
+  --state-success-muted: rgba(156, 230, 196, 0.84);
   --state-warning-bg: rgba(245, 158, 11, 0.16);
-  --state-warning-border: rgba(251, 191, 36, 0.3);
-  --state-warning-text: #fcd34d;
-  --state-warning-muted: rgba(253, 230, 138, 0.86);
+  --state-warning-border: rgba(245, 158, 11, 0.26);
+  --state-warning-text: #f9d489;
+  --state-warning-muted: rgba(249, 212, 137, 0.86);
   --state-danger-bg: rgba(239, 68, 68, 0.14);
-  --state-danger-border: rgba(248, 113, 113, 0.3);
-  --state-danger-text: #fda4af;
-  --state-danger-muted: rgba(254, 205, 211, 0.84);
-  --state-info-bg: rgba(59, 130, 246, 0.16);
-  --state-info-border: rgba(96, 165, 250, 0.28);
-  --state-info-text: #7dd3fc;
-  --state-info-muted: rgba(186, 230, 253, 0.84);
+  --state-danger-border: rgba(239, 68, 68, 0.22);
+  --state-danger-text: #ffc6c6;
+  --state-danger-muted: rgba(255, 198, 198, 0.84);
+  --state-info-bg: rgba(130, 167, 255, 0.16);
+  --state-info-border: rgba(130, 167, 255, 0.26);
+  --state-info-text: #c8dbff;
+  --state-info-muted: rgba(200, 219, 255, 0.86);
   color-scheme: dark;
 }
 
 .settings-shell-backdrop {
   background:
-    radial-gradient(circle at 18% 12%, rgb(var(--settings-accent-rgb) / 0.16), transparent 24%),
-    radial-gradient(circle at 82% 18%, rgb(var(--settings-accent-soft-rgb) / 0.14), transparent 26%),
-    radial-gradient(circle at 70% 72%, rgb(var(--settings-accent-soft-rgb) / 0.1), transparent 22%),
+    radial-gradient(circle at 18% 12%, rgb(var(--settings-accent-rgb) / 0.12), transparent 24%),
+    radial-gradient(circle at 82% 18%, rgb(var(--settings-accent-soft-rgb) / 0.12), transparent 26%),
+    radial-gradient(circle at 70% 72%, rgb(var(--settings-accent-soft-rgb) / 0.08), transparent 22%),
     var(--settings-backdrop);
-  backdrop-filter: blur(24px);
+  backdrop-filter: blur(20px);
 }
 
 .settings-panel.apple-glass-card,
 .settings-panel .apple-glass-card {
-  border: 1px solid var(--border-light);
-  background: linear-gradient(180deg, var(--settings-surface-start) 0%, var(--settings-surface-end) 100%);
-  box-shadow: var(--settings-panel-shadow), var(--settings-inset-shadow);
-  backdrop-filter: blur(28px) saturate(1.4);
+  border: 1px solid var(--settings-border-subtle);
+  background: var(--settings-shell-bg);
+  box-shadow: var(--settings-shell-shadow), var(--settings-inset-shadow);
+  backdrop-filter: blur(22px) saturate(1.1);
 }
 
 .settings-panel .apple-soft-card {
-  border-color: var(--border-light);
-  background: linear-gradient(180deg, var(--settings-soft-start) 0%, var(--settings-soft-end) 100%);
-  box-shadow: var(--settings-card-shadow), var(--settings-inset-shadow);
+  border-color: var(--settings-border-subtle);
+  background: var(--settings-section-bg);
+  box-shadow: var(--settings-card-shadow);
 }
 
 .settings-panel input:not([type="color"]),
 .settings-panel textarea,
 .settings-panel select {
-  border-color: var(--border-light);
-  background-color: var(--bg-input);
+  border-color: var(--settings-input-border);
+  background-color: var(--settings-input-bg);
   color: var(--text-primary);
 }
 
@@ -4300,14 +4344,14 @@ body.dark-mode .settings-panel {
 }
 
 .settings-panel .apple-pill-button:hover {
-  background: rgb(var(--settings-accent-rgb) / 0.08);
+  background: var(--settings-button-icon-bg-hover);
 }
 
 .settings-panel .apple-pill-button.active {
-  background: linear-gradient(180deg, rgb(var(--settings-accent-soft-rgb) / 0.96) 0%, rgb(var(--settings-accent-rgb) / 0.96) 100%);
-  box-shadow:
-    0 12px 26px rgb(var(--settings-accent-rgb) / 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  background:
+    linear-gradient(180deg, rgb(var(--settings-accent-rgb) / 0.08) 0%, rgb(var(--settings-accent-soft-rgb) / 0.08) 100%),
+    var(--settings-surface-elevated);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
 }
 
 .settings-shell-desktop {
@@ -4317,12 +4361,12 @@ body.dark-mode .settings-panel {
 .settings-shell-mobile,
 .settings-shell-nav,
 .settings-shell-main {
-  border: 1px solid var(--border-light);
-  background: linear-gradient(180deg, var(--settings-surface-start) 0%, var(--settings-surface-end) 100%);
+  border: 1px solid var(--settings-border-subtle);
+  background: var(--settings-shell-bg);
 }
 
 .settings-shell-mobile {
-  box-shadow: var(--settings-panel-shadow), var(--settings-inset-shadow);
+  box-shadow: var(--settings-shell-shadow), var(--settings-inset-shadow);
 }
 
 .settings-shell-nav {
@@ -4335,7 +4379,7 @@ body.dark-mode .settings-panel {
 .settings-shell-mobile__topbar,
 .settings-shell-mobile__tabs,
 .settings-shell-loading-card {
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--settings-border-subtle);
   background: var(--settings-muted-surface);
   box-shadow: var(--settings-inset-shadow);
 }
@@ -4575,27 +4619,31 @@ body:not(.dark-mode) .settings-panel .settings-sidebar-item.active .settings-sid
 
 .api-settings-view,
 .api-settings-view * {
-  writing-mode: horizontal-tb;
-  text-orientation: mixed;
+  writing-mode: horizontal-tb !important;
+  text-orientation: mixed !important;
+  line-break: auto;
 }
 
 .api-settings-provider-item {
-  word-break: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .api-settings-provider-name,
 .api-settings-provider-url {
   display: block;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  line-height: 1.6;
 }
 
 .api-settings-provider-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
   font-size: 11px;
   color: var(--text-secondary);
 }
@@ -4608,6 +4656,23 @@ body:not(.dark-mode) .settings-panel .settings-sidebar-item.active .settings-sid
   border-radius: 999px;
   padding: 6px 10px;
   background: var(--bg-overlay);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.api-settings-provider-action-row {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.api-settings-provider-action-row > button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
 }
 
 .api-settings-summary-list {
@@ -4618,7 +4683,8 @@ body:not(.dark-mode) .settings-panel .settings-sidebar-item.active .settings-sid
 
 .api-settings-summary-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 16px;
   min-width: 0;
@@ -4653,19 +4719,23 @@ body:not(.dark-mode) .settings-panel .settings-sidebar-item.active .settings-sid
   gap: 16px;
   width: 100%;
   grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.api-settings-list-panel,
+.api-settings-editor-panel {
+  min-width: 0;
 }
 
 @media (min-width: 1024px) {
-  .api-settings-layout {
-    align-items: start;
+  .api-settings-layout.is-editing {
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+    gap: 20px;
   }
 
-.api-settings-editor-panel {
-  min-width: 0;
-  flex: 1;
-  animation: api-settings-editor-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  display: none;
-}
+  .api-settings-editor-panel {
+    animation: api-settings-editor-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
 
   .api-settings-editor-card {
     animation: api-settings-editor-card-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -5026,17 +5096,7 @@ body:not(.dark-mode) .settings-panel .settings-sidebar-item.active .settings-sid
 }
 
 .api-settings-provider-list {
-  overscroll-behavior: contain;
-}
-
-.api-settings-provider-list.is-editing {
-  max-height: min(38vh, 380px);
-  overflow-y: auto;
-}
-
-.api-settings-provider-list.is-browsing {
-  max-height: min(58vh, 620px);
-  overflow-y: auto;
+  overscroll-behavior: auto;
 }
 
 .api-settings-editor-toolbar {
@@ -6268,22 +6328,17 @@ body.dark-mode .credit-advanced-note svg {
 /* ============================================
    Settings Minimal Refresh + Overflow Fixes
    ============================================ */
-.settings-shell-backdrop {
-  background: rgba(5, 10, 18, 0.42);
-  backdrop-filter: blur(14px);
-}
-
 .settings-panel.apple-glass-card,
 .settings-panel .apple-glass-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-light);
-  box-shadow: 0 20px 42px rgba(15, 23, 42, 0.1);
-  backdrop-filter: none;
+  background: var(--settings-shell-bg);
+  border: 1px solid var(--settings-border-subtle);
+  box-shadow: var(--settings-shell-shadow), var(--settings-inset-shadow);
+  backdrop-filter: blur(18px);
 }
 
 body.dark-mode .settings-panel.apple-glass-card,
 body.dark-mode .settings-panel .apple-glass-card {
-  box-shadow: 0 20px 42px rgba(6, 10, 16, 0.28);
+  box-shadow: var(--settings-shell-shadow), var(--settings-inset-shadow);
 }
 
 .settings-panel .apple-soft-card,
@@ -6299,13 +6354,13 @@ body.dark-mode .settings-panel .apple-glass-card {
 }
 
 .settings-panel .apple-soft-card {
-  background: var(--bg-surface);
+  background: var(--settings-section-bg);
 }
 
 .settings-shell-nav,
 .settings-shell-main,
 .settings-shell-mobile {
-  background: var(--bg-surface);
+  background: var(--settings-shell-bg);
 }
 
 .settings-shell-nav {
@@ -6319,8 +6374,8 @@ body.dark-mode .settings-panel .apple-glass-card {
 .settings-shell-nav__search {
   min-height: 42px;
   border-radius: 14px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-light);
+  background: var(--settings-input-bg);
+  border: 1px solid var(--settings-input-border);
   color: var(--text-secondary);
   box-shadow: none;
 }
@@ -6338,24 +6393,24 @@ body.dark-mode .settings-panel .apple-glass-card {
   gap: 10px;
   padding: 12px;
   border-radius: 16px;
-  border-color: var(--border-subtle);
-  background: var(--bg-surface);
+  border-color: var(--settings-border-subtle);
+  background: var(--settings-surface-elevated);
   color: var(--text-primary);
   box-shadow: none;
 }
 
 .settings-sidebar-item:hover {
-  border-color: var(--border-light);
-  background: var(--bg-hover);
+  border-color: var(--settings-border-strong);
+  background: var(--settings-layer-hover);
   box-shadow: none;
   transform: none;
 }
 
 .settings-sidebar-item.active {
-  border-color: rgb(var(--settings-accent-rgb) / 0.2);
+  border-color: rgb(var(--settings-accent-rgb) / 0.22);
   background:
-    linear-gradient(135deg, rgb(var(--settings-accent-rgb) / 0.1) 0%, rgb(var(--settings-accent-soft-rgb) / 0.08) 100%),
-    var(--bg-elevated);
+    linear-gradient(135deg, rgb(var(--settings-accent-rgb) / 0.08) 0%, rgb(var(--settings-accent-soft-rgb) / 0.08) 100%),
+    var(--settings-surface-elevated);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
 }
 
@@ -6379,9 +6434,7 @@ body.dark-mode .settings-panel .apple-glass-card {
 .settings-shell-main__topbar,
 .settings-shell-mobile__topbar {
   gap: 12px;
-  background:
-    linear-gradient(180deg, rgb(var(--settings-accent-rgb) / 0.04) 0%, transparent 100%),
-    var(--bg-surface);
+  background: var(--settings-shell-header-bg);
 }
 
 .settings-shell-main__topbar {
@@ -6390,7 +6443,7 @@ body.dark-mode .settings-panel .apple-glass-card {
 
 .settings-shell-page--desktop,
 .settings-shell-page--mobile {
-  background: var(--bg-base);
+  background: var(--settings-page-bg);
 }
 
 .settings-shell-page--mobile {
@@ -6416,9 +6469,7 @@ body.dark-mode .settings-panel .apple-glass-card {
   background: var(--settings-button-primary-bg);
   border-color: transparent;
   color: var(--settings-button-primary-text);
-  box-shadow:
-    0 14px 28px rgb(var(--settings-accent-rgb) / 0.24),
-    inset 0 1px 0 rgb(255 255 255 / 0.18);
+  box-shadow: var(--settings-button-primary-shadow);
 }
 
 .settings-panel .apple-button-primary:hover {
@@ -6437,9 +6488,9 @@ body.dark-mode .settings-panel .apple-glass-card {
 }
 
 .settings-panel .apple-button-danger {
-  background: var(--state-danger-bg);
-  border-color: var(--state-danger-border);
-  color: var(--state-danger-text);
+  background: var(--settings-button-danger-bg);
+  border-color: var(--settings-button-danger-border);
+  color: var(--settings-button-danger-text);
 }
 
 .settings-panel .apple-icon-button {
@@ -6699,6 +6750,8 @@ body.dark-mode .settings-panel .apple-glass-card {
 
 .settings-panel .api-settings-provider-budget {
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  background: var(--settings-surface-overlay);
+  border: 1px solid var(--settings-border-subtle);
 }
 
 .settings-panel .api-settings-provider-budget-item {
@@ -6713,12 +6766,13 @@ body.dark-mode .settings-panel .apple-glass-card {
 
 .settings-panel .api-settings-summary-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 16px;
   min-width: 0;
   padding: 10px 0;
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--settings-border-subtle);
 }
 
 .settings-panel .api-settings-summary-item:first-child {
@@ -6745,21 +6799,126 @@ body.dark-mode .settings-panel .apple-glass-card {
   overflow-wrap: anywhere;
 }
 
+.settings-panel .settings-quiet-meta {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+}
+
+.settings-panel .settings-quiet-meta > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settings-panel .settings-quiet-meta__item {
+  min-width: 0;
+  border: 1px solid var(--settings-border-subtle);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: var(--settings-surface-elevated);
+}
+
+.settings-panel .settings-quiet-meta > span {
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-height: 56px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  white-space: normal;
+  line-height: 1.45;
+}
+
+.settings-panel .settings-quiet-meta__label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+
+.settings-panel .settings-quiet-meta__value {
+  margin-top: 4px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.settings-panel .settings-inline-chip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.settings-panel .settings-inline-chip svg {
+  flex: 0 0 auto;
+}
+
+.settings-panel .settings-inline-note {
+  min-width: 0;
+  border-top: 1px solid var(--settings-border-subtle);
+  padding-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.settings-panel .settings-action-row {
+  justify-content: flex-end;
+}
+
+.settings-panel .settings-action-row > * {
+  flex: 0 1 auto;
+}
+
 .settings-panel .api-settings-provider-action-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  width: auto;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .settings-panel .api-settings-provider-action-row > button {
-  flex: 1 1 110px;
+  flex: 0 1 auto;
   min-width: 0;
+  white-space: nowrap;
+}
+
+.settings-panel .settings-provider-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-panel .settings-provider-footer > *:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.settings-panel .settings-provider-footer > *:last-child {
+  flex: 0 0 auto;
+  text-align: right;
 }
 
 .settings-panel .api-settings-editor-toolbar {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   row-gap: 8px;
-  overflow-x: auto;
+  overflow-x: visible;
+  justify-content: flex-end;
 }
 
 .settings-panel .api-settings-editor-toolbar > * {
@@ -6769,11 +6928,16 @@ body.dark-mode .settings-panel .apple-glass-card {
 
 @media (min-width: 1024px) {
   .settings-panel .api-settings-layout.is-editing {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+    gap: 20px;
   }
 
-  .settings-panel .api-settings-layout.is-editing .api-settings-list-panel {
+  .settings-panel .api-settings-layout.is-browsing {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-panel .api-settings-layout.is-editing .api-settings-list-panel,
+  .settings-panel .api-settings-layout.is-browsing .api-settings-list-panel {
     max-width: none;
   }
 }
@@ -6806,6 +6970,37 @@ body.dark-mode .settings-panel .apple-glass-card {
     flex-basis: 100%;
   }
 
+  .settings-panel .settings-quiet-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-panel .settings-action-row {
+    justify-content: stretch;
+  }
+
+  .settings-panel .settings-action-row > button,
+  .settings-panel .settings-action-row > a {
+    flex: 1 1 100%;
+  }
+
+  .settings-panel .api-settings-provider-action-row {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .settings-panel .api-settings-provider-action-row > button {
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+
+  .settings-panel .api-settings-editor-toolbar {
+    justify-content: stretch;
+  }
+
+  .settings-panel .api-settings-editor-toolbar > * {
+    flex: 1 1 100%;
+  }
+
   .settings-panel .api-settings-summary-item {
     align-items: flex-start;
     flex-direction: column;
@@ -6814,6 +7009,10 @@ body.dark-mode .settings-panel .apple-glass-card {
 
   .settings-panel .api-settings-summary-item__value {
     text-align: left;
+  }
+
+  .settings-panel .settings-provider-footer {
+    flex-direction: column;
   }
 }
 

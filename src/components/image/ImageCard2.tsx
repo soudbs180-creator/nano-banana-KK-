@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { AspectRatio, GeneratedImage, GenerationMode } from '../../types';
+import { AspectRatio, GeneratedImage, GenerationMode, ImageSize } from '../../types';
 import { Download, Trash2, Loader2, ImageOff, Play, Pause, Music } from 'lucide-react';
 import { getCardDimensions } from '../../utils/styleUtils';
 import { getLaunchTimelineByOffset, getPromptBarLaunchPoint } from '../../utils/cardLaunch';
 import { generateTagColor } from '../../utils/colorUtils';
 import { useLazyImage } from '../../hooks/useLazyImage';
 import { getImage, getStrictOriginalImage } from '../../services/storage/imageStorage';
+import { calculateCost } from '../../services/billing/costService';
 import { getModelBadgeInfo, getProviderBadgeColor, getProviderBadgeStyle } from '../../utils/modelBadge';
 import { loadImage, cancelImageLoad } from '../../services/image/imageLoader';
 import { ImageQuality, getAppropriateQuality } from '../../services/image/imageQuality';
@@ -446,6 +447,25 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     // Video Control
     const videoRef = useRef<HTMLVideoElement>(null);
     const [isPlaying, setIsPlaying] = useState(true); // Default autoPlay is true
+    const displayCost = useMemo(() => {
+        if (typeof image.cost === 'number' && Number.isFinite(image.cost)) {
+            return image.cost;
+        }
+
+        try {
+            const estimate = calculateCost(
+                image.model || '',
+                image.imageSize || ImageSize.SIZE_1K,
+                1,
+                image.prompt?.length || 0,
+                0,
+                image.keySlotId
+            );
+            return estimate.cost;
+        } catch {
+            return 0;
+        }
+    }, [image.cost, image.model, image.imageSize, image.prompt, image.keySlotId]);
 
     // 🚀 [UI Optimization] 判断是否为内置积分加速模型
     const isCreditModel = useMemo(() => {
@@ -458,7 +478,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
         }
 
         // 2. 有代币或金额必然是用户 API (系统积分不记录此值，且前面已拦截)
-        if ((image.tokens && image.tokens > 0) || (image.cost && image.cost > 0)) {
+        if ((image.tokens && image.tokens > 0) || displayCost > 0) {
             return false;
         }
 
@@ -469,7 +489,16 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
 
         // 4. 兜底猜测历史数据
         return isCreditBasedModel(modelId, image.provider);
-    }, [image.provider, image.model, image.tokens, image.cost]);
+    }, [image.provider, image.model, image.tokens, displayCost]);
+
+    useEffect(() => {
+        if (!onUpdate) return;
+        if (isCreditModel) return;
+        if (typeof image.cost === 'number' && Number.isFinite(image.cost)) return;
+        if (!(displayCost > 0)) return;
+
+        onUpdate(image.id, { cost: displayCost });
+    }, [displayCost, image.cost, image.id, isCreditModel, onUpdate]);
 
     const modelText = image.modelLabel || image.model || image.id;
     const providerText = image.providerLabel || image.provider || '';

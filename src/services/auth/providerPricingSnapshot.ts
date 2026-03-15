@@ -1,20 +1,26 @@
 export interface ProviderPricingSnapshot {
   fetchedAt: number;
   note?: string;
-  rows?: Array<{
-    model: string;
-    provider?: string;
-    providerLabel?: string;
-    providerLogo?: string;
-    tags?: string[];
-    tokenGroup?: string;
-    billingType?: string;
-    endpointType?: string;
-    modelRatio?: number;
-    modelPrice?: number;
-    completionRatio?: number;
-    quotaType?: number | string;
-    sizeRatio?: Record<string, number>;
+    rows?: Array<{
+      model: string;
+      provider?: string;
+      providerLabel?: string;
+      providerLogo?: string;
+      tags?: string[];
+      tokenGroup?: string;
+      billingType?: string;
+      endpointType?: string;
+      endpointUrl?: string;
+      endpointPath?: string;
+      modelRatio?: number;
+      modelPrice?: number;
+      perRequestPrice?: number;
+      currency?: string;
+      billingUnit?: string;
+      displayPrice?: string;
+      completionRatio?: number;
+      quotaType?: number | string;
+      sizeRatio?: Record<string, number>;
     groupModelRatio?: Record<string, number>;
     groupSizeRatio?: Record<string, Record<string, number>>;
     groupModelPrice?: Record<string, { modelRatio?: number; completionRatio?: number; modelPrice?: number }>;
@@ -37,6 +43,8 @@ export interface ProviderPricingSnapshot {
     tokenGroup?: string;
     billingType?: string;
     endpointType?: string;
+    endpointUrl?: string;
+    endpointPath?: string;
   }>;
   _rawData?: any[];
 }
@@ -147,13 +155,14 @@ export const buildProviderPricingSnapshot = (
   };
 
   for (const item of Array.isArray(pricingData) ? pricingData : []) {
-    const model = String(item?.model_name || item?.model || '').trim();
+    const model = String(item?.model || item?.model_name || '').trim();
     if (!model) continue;
 
-    const modelPrice = toNumber(item?.model_price);
+    const perRequestPrice = toNumber(item?.per_request_price ?? item?.perRequestPrice ?? item?.price_per_image ?? item?.pricePerImage);
+    const modelPrice = toNumber(item?.model_price ?? item?.modelPrice) ?? perRequestPrice;
     const modelRatio = toNumber(item?.model_ratio);
     const completionRatio = toNumber(item?.completion_ratio);
-    const quotaType = item?.quota_type;
+    const quotaType = item?.quota_type ?? item?.quotaType ?? (perRequestPrice !== undefined ? 'per_request' : undefined);
     const provider = typeof item?.provider === 'string' ? item.provider.trim() : undefined;
     const providerLabel = typeof item?.provider_label === 'string' ? item.provider_label.trim() : undefined;
     const providerLogo = typeof item?.provider_logo === 'string' ? item.provider_logo.trim() : undefined;
@@ -163,6 +172,17 @@ export const buildProviderPricingSnapshot = (
     const tokenGroup = typeof item?.token_group === 'string' ? item.token_group.trim() : undefined;
     const billingType = typeof item?.billing_type === 'string' ? item.billing_type.trim() : undefined;
     const endpointType = typeof item?.endpoint_type === 'string' ? item.endpoint_type.trim() : undefined;
+    const endpointUrl = typeof item?.endpoint_url === 'string'
+      ? item.endpoint_url.trim()
+      : (typeof item?.endpointUrl === 'string' ? item.endpointUrl.trim() : undefined);
+    const endpointPath = typeof item?.endpoint_path === 'string'
+      ? item.endpoint_path.trim()
+      : (typeof item?.endpointPath === 'string' ? item.endpointPath.trim() : undefined);
+    const currency = typeof item?.currency === 'string' ? item.currency.trim() : undefined;
+    const billingUnit = typeof item?.pay_unit === 'string'
+      ? item.pay_unit.trim()
+      : (typeof item?.billing_unit === 'string' ? item.billing_unit.trim() : undefined);
+    const displayPrice = typeof item?.display_price === 'string' ? item.display_price.trim() : undefined;
     const sizeRatio = normalizeRatioMap(item?.size_ratio);
     const groupModelRatio = normalizeRatioMap(item?.group_model_ratio);
     const groupSizeRatio = normalizeNestedRatioMap(item?.group_size_ratio);
@@ -177,8 +197,14 @@ export const buildProviderPricingSnapshot = (
       tokenGroup,
       billingType,
       endpointType,
+      endpointUrl,
+      endpointPath,
       modelRatio,
       modelPrice,
+      perRequestPrice,
+      currency,
+      billingUnit,
+      displayPrice,
       completionRatio,
       quotaType,
       sizeRatio,
@@ -201,7 +227,7 @@ export const buildProviderPricingSnapshot = (
       snapshot.completionRatios![model] = completionRatio;
     }
 
-    if (provider || providerLabel || providerLogo || tags?.length || tokenGroup || billingType || endpointType) {
+    if (provider || providerLabel || providerLogo || tags?.length || tokenGroup || billingType || endpointType || endpointUrl || endpointPath) {
       snapshot.modelMeta![model] = {
         provider,
         providerLabel,
@@ -210,6 +236,8 @@ export const buildProviderPricingSnapshot = (
         tokenGroup,
         billingType,
         endpointType,
+        endpointUrl,
+        endpointPath,
       };
     }
 

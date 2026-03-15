@@ -21,13 +21,14 @@ import {
 } from '../api/apiConfig';
 import { buildUserFacingApiErrorMessage, classifyApiFailure, hasAuthErrorMarkers } from '../api/errorClassification';
 import { resolveProviderKeyType, resolveProviderRuntime } from '../api/providerStrategy';
+import type { ChannelConfig } from '../api/channelConfig';
 import { MODEL_PRESETS, CHAT_MODEL_PRESETS } from '../model/modelPresets';
 import { RegionService } from '../system/RegionService';
 import { Provider } from '../../types';
 import { MODEL_REGISTRY } from '../model/modelRegistry';
 import { adminModelService } from '../model/adminModelService'; // 棣冩畬 [閺傛澘顤僝 缁狅紕鎮婇敾姗€鍘嗙純顔芥箛閿?
 import { buildProviderPricingSnapshot, mergeProviderPricingSnapshot, type ProviderPricingSnapshot } from './providerPricingSnapshot';
-import { fetchRawPricingCatalog } from '../billing/newApiPricingService';
+import { fetchRawPricingCatalog, fetchWuyinPricingCatalog, selectWuyinCatalogModels } from '../billing/newApiPricingService';
 
 /**
  * Helper: Parse "id(name, description)" format
@@ -262,7 +263,7 @@ export interface ThirdPartyProvider {
     apiKey: string;               // API Key
     group?: string;
     models: string[];             // 鏀寔鐨勬ā鍨嬪垪琛?
-    format: 'auto' | 'openai' | 'gemini';  // 鍗忚鏍煎紡
+    format: ApiProtocolFormat;  // 鍗忚鏍煎紡
     icon?: string;                // 鍥炬爣 emoji
     isActive: boolean;            // 鏄惁婵€娲?
     providerColor?: string;
@@ -1787,16 +1788,7 @@ export class KeyManager {
      * 2. Filter healthy channels (Active, Valid, Budget OK)
      * 3. Apply Rotation Strategy (Round Robin vs Sequential)
      */
-    getNextKey(modelId: string, preferredKeyId?: string): {
-        id: string;
-        key: string;
-        name: string;
-        baseUrl: string;
-        authMethod: AuthMethod;
-        headerName: string;
-        group?: string;
-        provider: Provider;
-    } | null {
+    getNextKey(modelId: string, preferredKeyId?: string): KeySlot | null {
         // Parse the requested ID to separate base model and suffix
         // Format: modelId@Suffix or just modelId
         const [baseIdPart, suffix] = modelId.split('@');
@@ -2165,7 +2157,7 @@ export class KeyManager {
     /**
      * Helper to format the key result and update metadata
      */
-    private prepareKeyResult(slot: KeySlot) {
+    private prepareKeyResult(slot: KeySlot): KeySlot {
         // Update last used timestamp (skip for built-in proxy to avoid concurrent request issues)
         if (slot.provider !== 'SystemProxy' && !slot.id?.startsWith('backend_proxy')) {
             const actualSlot = this.state.slots.find(s => s.id === slot.id);
@@ -2175,33 +2167,29 @@ export class KeyManager {
             }
         }
 
-        return {
-            id: slot.id,
-            key: slot.key,
-            name: slot.name || slot.provider || 'Unnamed Channel',
-            baseUrl: slot.baseUrl || GOOGLE_API_BASE,
-            authMethod: slot.authMethod || getDefaultAuthMethod(slot.baseUrl || GOOGLE_API_BASE, {
+        const baseUrl = slot.baseUrl || GOOGLE_API_BASE;
+        const runtime = resolveProviderRuntime({
+            provider: slot.provider,
+            baseUrl,
+            format: slot.format,
+            authMethod: slot.authMethod || getDefaultAuthMethod(baseUrl, {
                 provider: slot.provider,
                 format: slot.format,
             }),
-            headerName: slot.headerName || resolveProviderRuntime({
-                provider: slot.provider,
-                baseUrl: slot.baseUrl || GOOGLE_API_BASE,
-                format: slot.format,
-                authMethod: slot.authMethod || getDefaultAuthMethod(slot.baseUrl || GOOGLE_API_BASE, {
-                    provider: slot.provider,
-                    format: slot.format,
-                }),
-                compatibilityMode: slot.compatibilityMode,
-            }).headerName,
-            compatibilityMode: resolveProviderRuntime({
-                provider: slot.provider,
-                baseUrl: slot.baseUrl || GOOGLE_API_BASE,
-                format: slot.format,
-                authMethod: slot.authMethod,
-                headerName: slot.headerName,
-                compatibilityMode: slot.compatibilityMode,
-            }).compatibilityMode,
+            headerName: slot.headerName,
+            compatibilityMode: slot.compatibilityMode,
+        });
+
+        return {
+            ...slot,
+            id: slot.id,
+            key: slot.key,
+            name: slot.name || slot.provider || 'Unnamed Channel',
+            baseUrl,
+            format: normalizeApiProtocolFormat(slot.format, runtime.resolvedFormat),
+            authMethod: runtime.authMethod as AuthMethod,
+            headerName: runtime.headerName,
+            compatibilityMode: runtime.compatibilityMode,
             group: slot.group,
             provider: slot.provider || 'Google',
             timeout: slot.timeout,
@@ -3095,6 +3083,120 @@ export class KeyManager {
         return [...this.state.slots];
     }
 
+    private buildChannelCapabilities(models: string[], pricingSupport: ChannelConfig['pricingSupport'], managementSupport: ChannelConfig['managementSupport']) {
+        const normalizedModels = Array.isArray(models) ? models : [];
+        const hasWildcard = normalizedModels.includes('*');
+        const categorized = categorizeModels(normalizedModels.map((item) => parseModelString(item).id));
+        const lowerModels = normalizedModels.map((item) => parseModelString(item).id.toLowerCase());
+
+        return {
+            chat: hasWildcard || categorized.chatModels.length > 0 || normalizedModels.length === 0,
+            image: hasWildcard || categorized.imageModels.length > 0,
+            video: hasWildcard || categorized.videoModels.length > 0,
+            audio: hasWildcard || lowerModels.some((model) => /audio|tts|suno|lyria|minimax-t2a/i.test(model)),
+            modelDiscovery: true,
+            pricingDiscovery: pricingSupport === 'native',
+            managementApi: managementSupport === 'native',
+        };
+    }
+
+    private buildSlotChannelConfig(slot: KeySlot): ChannelConfig {
+        const runtime = resolveProviderRuntime({
+            provider: slot.provider,
+            baseUrl: slot.baseUrl || GOOGLE_API_BASE,
+            format: slot.format,
+            authMethod: slot.authMethod,
+            headerName: slot.headerName,
+            compatibilityMode: slot.compatibilityMode,
+        });
+        const pricingSupport = runtime.pricingSupport === 'native' ? 'native' : runtime.pricingSupport === 'manual' ? 'manual' : 'none';
+        const managementSupport = runtime.managementSupport === 'native' ? 'native' : runtime.managementSupport === 'external' ? 'external' : 'none';
+
+        return {
+            id: slot.id,
+            name: slot.name || slot.provider || 'Unnamed Channel',
+            baseUrl: slot.baseUrl || GOOGLE_API_BASE,
+            apiKey: slot.key,
+            provider: slot.provider,
+            providerFamily: runtime.providerFamily,
+            protocolHint: normalizeApiProtocolFormat(slot.format, runtime.resolvedFormat),
+            authProfile: {
+                authMethod: slot.authMethod || (runtime.authMethod as AuthMethod),
+                headerName: slot.headerName || runtime.headerName,
+                authorizationValueFormat: runtime.authorizationValueFormat,
+            },
+            capabilities: this.buildChannelCapabilities(slot.supportedModels || [], pricingSupport, managementSupport),
+            pricingSupport,
+            managementSupport,
+            supportedModels: normalizeModelList(slot.supportedModels || [], slot.provider),
+            group: slot.group,
+            compatibilityMode: slot.compatibilityMode,
+            source: slot.provider === 'SystemProxy' ? 'system' : 'user-slot',
+        };
+    }
+
+    private buildProviderChannelConfig(provider: ThirdPartyProvider): ChannelConfig {
+        const runtime = resolveProviderRuntime({
+            provider: provider.name,
+            baseUrl: provider.baseUrl,
+            format: provider.format,
+        });
+        const pricingSupport = runtime.pricingSupport === 'native' ? 'native' : runtime.pricingSupport === 'manual' ? 'manual' : 'none';
+        const managementSupport = runtime.managementSupport === 'native' ? 'native' : runtime.managementSupport === 'external' ? 'external' : 'none';
+
+        return {
+            id: provider.id,
+            name: provider.name,
+            baseUrl: provider.baseUrl,
+            apiKey: provider.apiKey,
+            provider: runtime.uiProvider,
+            providerFamily: runtime.providerFamily,
+            protocolHint: normalizeApiProtocolFormat(provider.format, runtime.resolvedFormat),
+            authProfile: {
+                authMethod: runtime.authMethod as AuthMethod,
+                headerName: runtime.headerName,
+                authorizationValueFormat: runtime.authorizationValueFormat,
+            },
+            capabilities: this.buildChannelCapabilities(provider.models || [], pricingSupport, managementSupport),
+            pricingSupport,
+            managementSupport,
+            supportedModels: normalizeModelList(provider.models || [], runtime.uiProvider),
+            group: provider.group,
+            compatibilityMode: runtime.compatibilityMode,
+            source: 'provider',
+        };
+    }
+
+    getChannelConfigs(options?: { includeDisabled?: boolean; includeProviders?: boolean }): ChannelConfig[] {
+        const includeDisabled = options?.includeDisabled ?? true;
+        const includeProviders = options?.includeProviders ?? true;
+        const slotChannels = this.state.slots
+            .filter((slot) => includeDisabled || !slot.disabled)
+            .map((slot) => this.buildSlotChannelConfig(slot));
+
+        if (!includeProviders) {
+            return slotChannels;
+        }
+
+        this.loadProviders();
+        const providerChannels = this.providers
+            .filter((provider) => includeDisabled || provider.isActive)
+            .map((provider) => this.buildProviderChannelConfig(provider));
+
+        return [...slotChannels, ...providerChannels];
+    }
+
+    getChannelConfig(id: string): ChannelConfig | undefined {
+        const slot = this.state.slots.find((item) => item.id === id);
+        if (slot) {
+            return this.buildSlotChannelConfig(slot);
+        }
+
+        this.loadProviders();
+        const provider = this.providers.find((item) => item.id === id);
+        return provider ? this.buildProviderChannelConfig(provider) : undefined;
+    }
+
     /**
      * Get statistics
      */
@@ -3878,8 +3980,15 @@ export async function autoDetectAndConfigureModels(
     console.log('[KeyManager] 濡偓濞村珨鍩孉PI缁鐎?', apiType);
 
     let models: string[] = [];
+    const runtime = resolveProviderRuntime({
+        baseUrl,
+        format: resolvedFormat === 'gemini' ? 'gemini' : preferredFormat,
+    });
 
-    if (resolvedFormat === 'gemini') {
+    if (runtime.strategyId === 'wuyinkeji' && baseUrl) {
+        const catalog = selectWuyinCatalogModels(baseUrl, await fetchWuyinPricingCatalog(baseUrl));
+        models = catalog.map((item) => item.modelId).filter(Boolean);
+    } else if (resolvedFormat === 'gemini') {
         models = await fetchGeminiCompatModels(apiKey, baseUrl);
     } else if (apiType === 'google-official') {
         models = await fetchGoogleModels(apiKey);
