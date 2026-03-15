@@ -448,8 +448,11 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     const videoRef = useRef<HTMLVideoElement>(null);
     const [isPlaying, setIsPlaying] = useState(true); // Default autoPlay is true
     const displayCost = useMemo(() => {
-        if (typeof image.cost === 'number' && Number.isFinite(image.cost)) {
-            return image.cost;
+        const storedCost = typeof image.cost === 'number' && Number.isFinite(image.cost)
+            ? image.cost
+            : undefined;
+        if (storedCost !== undefined && (storedCost > 0 || !image.keySlotId)) {
+            return storedCost;
         }
 
         try {
@@ -494,7 +497,7 @@ const ImageNodeComponent: React.FC<ImageNodeProps> = React.memo(({
     useEffect(() => {
         if (!onUpdate) return;
         if (isCreditModel) return;
-        if (typeof image.cost === 'number' && Number.isFinite(image.cost)) return;
+        if (typeof image.cost === 'number' && Number.isFinite(image.cost) && image.cost > 0) return;
         if (!(displayCost > 0)) return;
 
         onUpdate(image.id, { cost: displayCost });

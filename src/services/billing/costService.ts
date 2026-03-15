@@ -237,10 +237,12 @@ export const calculateCost = (
 
     // =============== 鏂扮増 API 鎺ュ彛鑷畾涔夎璐归€昏緫 ===============
     if (keySlotId) {
-        const slot = keyManager.getProviders().find(p => p.id === keySlotId);
-        if (slot && slot.pricingSnapshot) {
-            const snap = slot.pricingSnapshot;
-            const preferredGroup = slot.group;
+        const slot = keyManager.getEffectiveKey(keySlotId) || keyManager.getKey(keySlotId);
+        const linkedProvider = keyManager.getProviderForKeySlot(keySlotId);
+
+        if (linkedProvider?.pricingSnapshot) {
+            const snap = linkedProvider.pricingSnapshot;
+            const preferredGroup = slot?.group || linkedProvider.group;
             const mPrice = getSnapshotNumber(snap.modelPrices, modelId) ?? getSnapshotNumber(snap.modelPrices, normalizedId);
             let mRatio = getSnapshotNumber(snap.modelRatios, modelId) ?? getSnapshotNumber(snap.modelRatios, normalizedId);
             const groupRatioKey = getPreferredGroupKey(preferredGroup, snap.groupRatioMap);

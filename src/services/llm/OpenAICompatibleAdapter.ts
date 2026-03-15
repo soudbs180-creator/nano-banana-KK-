@@ -495,33 +495,8 @@ export class OpenAICompatibleAdapter implements LLMAdapter {
             .replace(/[^a-z0-9]+/g, '');
     }
 
-    private normalizeProviderLinkValue(value: string | undefined | null): string {
-        return String(value || '').trim().replace(/\/+$/, '').toLowerCase();
-    }
-
     private findLinkedWuyinProvider(keySlot: KeySlot) {
-        const directProvider = keyManager.getProvider?.(keySlot.id);
-        if (directProvider) {
-            return directProvider;
-        }
-
-        const slotBaseUrl = this.normalizeProviderLinkValue(keySlot.baseUrl);
-        const slotKey = String(keySlot.key || '').trim();
-        const slotName = this.normalizeProviderLinkValue(keySlot.name);
-        const providers = keyManager.getProviders().filter((provider) => provider.isActive);
-
-        const exactMatch = providers.find((provider) => {
-            if (this.normalizeProviderLinkValue(provider.baseUrl) !== slotBaseUrl) return false;
-            const providerKey = String(provider.apiKey || '').trim();
-            const providerName = this.normalizeProviderLinkValue(provider.name);
-            return (slotKey && providerKey === slotKey) || (slotName && providerName === slotName);
-        });
-        if (exactMatch) {
-            return exactMatch;
-        }
-
-        const sameBaseProviders = providers.filter((provider) => this.normalizeProviderLinkValue(provider.baseUrl) === slotBaseUrl);
-        return sameBaseProviders.length === 1 ? sameBaseProviders[0] : null;
+        return keyManager.getProviderForKeySlot(keySlot) || null;
     }
 
     private resolveWuyinSnapshotRoute(keySlot: KeySlot, modelId: string): WuyinResolvedRoute | null {

@@ -138,7 +138,7 @@ export const useImageGeneration = (options: {
   const resolveProviderDisplay = useCallback((keySlotId?: string, fallbackProviderLabel?: string, fallbackProvider?: string) => {
     if (fallbackProviderLabel) return { provider: fallbackProvider, providerLabel: fallbackProviderLabel };
     if (keySlotId) {
-      const provider = keyManager.getProvider(keySlotId);
+      const provider = keyManager.getProviderForKeySlot(keySlotId);
       if (provider) return { provider: provider.name || fallbackProvider, providerLabel: provider.name || fallbackProviderLabel || 'Custom' };
       const keySlot = keyManager.getKey(keySlotId);
       if (keySlot) return { provider: String(keySlot.provider || ''), providerLabel: keySlot.name || String(keySlot.provider || 'Official') };

@@ -253,7 +253,7 @@ const snapshotHasAutoPricingRows = (snapshot?: ProviderPricingSnapshot | null) =
 };
 
 const resolveProviderWorkbenchMode = (
-  runtime: Pick<ProviderRuntime, 'pricingSupport'>,
+  runtime: Pick<ProviderRuntime, 'pricingSupport' | 'strategyId'>,
   options: {
     endpointModelId?: string | null;
     hasAutoPricing?: boolean;
@@ -264,7 +264,15 @@ const resolveProviderWorkbenchMode = (
     return 'endpoint-model';
   }
 
-  if (options.hasAutoPricing || options.isCatalogMode || runtime.pricingSupport === 'native') {
+  if (options.isCatalogMode) {
+    return 'pricing-sync';
+  }
+
+  if (runtime.strategyId === '12ai') {
+    return options.hasAutoPricing ? 'pricing-sync' : 'model-detect';
+  }
+
+  if (options.hasAutoPricing || runtime.pricingSupport === 'native') {
     return 'pricing-sync';
   }
 
@@ -291,13 +299,21 @@ const providerWorkbenchCopy: Record<ProviderWorkbenchMode, { label: string; help
 
 const getProviderWorkbenchMeta = (
   mode: ProviderWorkbenchMode,
-  options: { isCatalogMode?: boolean } = {}
+  options: { isCatalogMode?: boolean; manualPricingOnly?: boolean } = {}
 ): { label: string; helper: string; tone: StatusTone } => {
   if (options.isCatalogMode && mode === 'pricing-sync') {
     return {
       label: '目录可读取',
       helper: '先读取目录价格，再补充具体接口单价。',
       tone: 'sky',
+    };
+  }
+
+  if (options.manualPricingOnly && mode === 'pricing-sync') {
+    return {
+      label: '价格需校准',
+      helper: '该供应商没有兼容的价格扫描接口，请以现有价格快照或手动维护结果为准。',
+      tone: 'amber',
     };
   }
 
@@ -1186,9 +1202,12 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
   );
   const currentProviderWorkbenchMeta = getProviderWorkbenchMeta(currentProviderWorkbenchMode, {
     isCatalogMode: isCurrentWuyinCatalogMode,
+    manualPricingOnly: currentProviderRuntime.strategyId === '12ai',
   });
   const currentProviderUsesEndpointPricingRows = isCurrentProviderWuyin;
-  const currentProviderCanScanPricing = currentProviderWorkbenchMode === 'pricing-sync';
+  const isCurrentManualPricingOnlyProvider = currentProviderRuntime.strategyId === '12ai';
+  const currentProviderCanScanPricing =
+    currentProviderWorkbenchMode === 'pricing-sync' && !isCurrentManualPricingOnlyProvider;
   const currentProviderCanValidateModels =
     currentProviderWorkbenchMode !== 'endpoint-model' && currentProviderRuntime.strategyId !== 'wuyinkeji';
   const manualPricingData = useMemo(
@@ -2295,6 +2314,16 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     try {
       // 🚀 [Fix] 传递 API Key 以支持需要认证的接口
       const result = await fetchPricingFromUrl(provider.baseUrl, provider.apiKey);
+      const providerRuntime = resolveProviderRuntime({ baseUrl: provider.baseUrl, format: provider.format || 'auto' });
+      if (providerRuntime.strategyId === '12ai' && !result?.pricingData?.length) {
+        if (providerForm.id === provider.id && result) {
+          setAdvancedResult(result);
+          setShowAdvancedMode(true);
+        }
+        notify.info('当前供应商不支持价格扫描', '12AI 暂无兼容的价格扫描接口，请以现有价格快照或手动维护结果为准。');
+        return;
+      }
+
       if (!result?.pricingData?.length) {
         notify.error('同步失败', '未从价格页获取到基础价和倍率。请检查供应商地址和 API Key 是否正确。');
         return;
@@ -2658,15 +2687,21 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     const workbenchPriceStatus: StatusMeta =
       currentProviderSnapshotCount > 0
         ? {
-            label: isEndpointModelMode ? '接口价格已就绪' : isModelDetectMode ? '手动价格已就绪' : '已准备价格',
+            label: isEndpointModelMode ? '接口价格已就绪' : isModelDetectMode ? '手动价格已就绪' : isCurrentManualPricingOnlyProvider ? '价格快照已就绪' : '已准备价格',
             tone: 'green',
-            helper: `当前已准备 ${currentProviderSnapshotCount} 条价格记录`,
+            helper: isCurrentManualPricingOnlyProvider
+              ? `当前已保存 ${currentProviderSnapshotCount} 条价格快照记录，不支持直接扫描供应商价格接口。`
+              : `当前已准备 ${currentProviderSnapshotCount} 条价格记录`,
           }
         : isPricingSyncMode
           ? {
-              label: isCurrentWuyinCatalogMode ? '待读取目录' : '待同步价格',
+              label: isCurrentWuyinCatalogMode ? '待读取目录' : isCurrentManualPricingOnlyProvider ? '待维护价格' : '待同步价格',
               tone: 'amber',
-              helper: isCurrentWuyinCatalogMode ? '先读取目录价格，再补充具体接口单价。' : '先同步价格，再确认分组和预算。',
+              helper: isCurrentWuyinCatalogMode
+                ? '先读取目录价格，再补充具体接口单价。'
+                : isCurrentManualPricingOnlyProvider
+                  ? '该供应商没有兼容的价格扫描接口，请手动维护或导入价格快照。'
+                  : '先同步价格，再确认分组和预算。',
             }
           : isModelDetectMode
             ? {
@@ -2694,7 +2729,9 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
         : (mode === 'edit'
           ? (isCurrentWuyinCatalogMode
             ? '当前供应商支持读取目录价格；如果后续要直接生成，可在下方继续补充具体 async 接口单价。'
-            : '当前供应商支持直接抓取价格与分组，连接、模型校验和价格同步统一在这里处理。')
+            : isCurrentManualPricingOnlyProvider
+              ? '当前供应商没有兼容的价格扫描接口，这里展示的是现有价格快照与分组定价；实际生成会按当前生效分组计费。'
+              : '当前供应商支持直接抓取价格与分组，连接、模型校验和价格同步统一在这里处理。')
           : '先补齐基础连接并保存，然后同步价格与模型。');
     const workbenchReadyText = nextPendingStep
       ? `下一步：${nextPendingStep.label}`
@@ -2723,11 +2760,13 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
     ];
     const workbenchSummaryRows = isPricingSyncMode
       ? [
-          { label: isCurrentWuyinCatalogMode ? '目录状态' : '价格状态', value: workbenchPriceStatus.label },
+          { label: isCurrentWuyinCatalogMode ? '目录状态' : isCurrentManualPricingOnlyProvider ? '快照状态' : '价格状态', value: workbenchPriceStatus.label },
           { label: '可用分组', value: String(currentProviderGroupCount) },
           {
-            label: isCurrentWuyinCatalogMode ? '最近读取' : '最近同步',
-            value: currentProviderLastSync ? formatDate(currentProviderLastSync) : (isCurrentWuyinCatalogMode ? '未读取' : '未同步'),
+            label: isCurrentWuyinCatalogMode ? '最近读取' : isCurrentManualPricingOnlyProvider ? '最近校准' : '最近同步',
+            value: currentProviderLastSync
+              ? formatDate(currentProviderLastSync)
+              : (isCurrentWuyinCatalogMode ? '未读取' : isCurrentManualPricingOnlyProvider ? '未校准' : '未同步'),
           },
         ]
       : isModelDetectMode
@@ -2769,14 +2808,20 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
           ? '该类供应商优先使用接口识别模型，不依赖价格页或目录接口。'
           : 'OpenAI 兼容会调用 `/v1/chat/completions`；Gemini 原生会调用 `/v1beta/models/...:generateContent?key=...`。';
     const workbenchSectionTitle = isPricingSyncMode
-      ? (isCurrentWuyinCatalogMode ? '目录读取与接口补价' : '价格抓取与校验')
+      ? (isCurrentWuyinCatalogMode
+        ? '目录读取与接口补价'
+        : isCurrentManualPricingOnlyProvider
+          ? '价格快照与手动校准'
+          : '价格抓取与校验')
       : isModelDetectMode
         ? '模型识别'
         : '接口识别';
     const workbenchSectionDescription = isPricingSyncMode
       ? (isCurrentWuyinCatalogMode
         ? '这里不是通用价格抓取模块。目录型供应商会先读取目录价格，再按需补充具体 async 接口单价。'
-        : '这类供应商支持直接拉价格，先同步价格，再决定是否补充模型校验。')
+        : isCurrentManualPricingOnlyProvider
+          ? '该供应商没有兼容的价格扫描接口。这里展示的是你当前保存的价格快照与分组价格，实际生成会按当前生效分组计费。'
+          : '这类供应商支持直接拉价格，先同步价格，再决定是否补充模型校验。')
       : isModelDetectMode
         ? '这类供应商没有稳定的价格接口，流程先落在模型识别，价格交给下方手动维护。'
         : '这类供应商的模型由接口地址直接决定，因此这里不再展示通用模型校验和价格同步按钮。';
@@ -2800,9 +2845,19 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
         : (isCurrentWuyinCatalogMode
           ? (currentProviderSnapshotCount > 0 ? '已读取目录' : '待读取目录')
           : (currentProviderSnapshotCount > 0 ? '已同步价格' : '待同步价格'));
+    const fetchPricingActionLabel = syncingProviderId === currentEditingProvider?.id || advancedLoading
+      ? (isCurrentWuyinCatalogMode ? '读取中...' : '获取中...')
+      : (isCurrentWuyinCatalogMode
+        ? (currentProviderSnapshotCount > 0 ? '重新读取目录价格' : '读取目录价格')
+        : (currentProviderSnapshotCount > 0 ? '重新获取价格' : '获取价格'));
+    const validateActionLabel = detectingProviderId === currentEditingProvider?.id
+      ? (isModelDetectMode ? '识别中...' : '校验中...')
+      : (isModelDetectMode
+        ? (currentProviderModelCount > 0 ? '重新识别模型' : '识别模型')
+        : '重新校验模型');
     const scanActionLabel = advancedLoading
-      ? (isCurrentWuyinCatalogMode ? '读取中...' : isModelDetectMode ? '识别中...' : '扫描中...')
-      : (isCurrentWuyinCatalogMode ? '读取产品目录' : isModelDetectMode ? '重新识别模型' : '重新扫描价格');
+      ? (isCurrentWuyinCatalogMode ? '读取中...' : '获取中...')
+      : (isCurrentWuyinCatalogMode ? '读取产品目录' : (currentProviderSnapshotCount > 0 ? '重新获取价格' : '获取价格'));
     const manualAddLabel = currentProviderUsesEndpointPricingRows ? '手动添加接口' : '手动添加模型';
     const manualSummaryLabel = advancedResult?.fetchedAt
       ? `${isCurrentWuyinCatalogMode ? '最近读取' : isModelDetectMode ? '最近识别' : isEndpointModelMode ? '最近维护' : '最近扫描'}：${formatDate(advancedResult.fetchedAt)}`
@@ -3001,10 +3056,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                     onClick={() => void handleFetchAndSyncPricing()}
                     disabled={advancedLoading || syncingProviderId === currentEditingProvider?.id}
                   >
-                    <Search size={14} />
-                    {advancedLoading
-                      ? (isCurrentWuyinCatalogMode ? '读取中...' : '扫描中...')
-                      : (isCurrentWuyinCatalogMode ? '读取目录价格' : '扫描价格')}
+                    <RefreshCw size={14} className={advancedLoading || syncingProviderId === currentEditingProvider?.id ? 'animate-spin' : ''} />
+                    {fetchPricingActionLabel}
                   </button>
                 ) : null}
 
@@ -3016,7 +3069,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                     disabled={!canOperateOnCurrentProvider || detectingProviderId === currentEditingProvider?.id}
                   >
                     <CheckCircle2 size={14} />
-                    {detectingProviderId === currentEditingProvider?.id ? '识别中...' : '识别模型'}
+                    {validateActionLabel}
                   </button>
                 ) : null}
 
@@ -3187,7 +3240,19 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                 <div className="flex flex-wrap items-center gap-2">
                   {currentProviderCanScanPricing ? (
                     <button className="inline-flex h-9 items-center gap-1 rounded-xl border px-3 text-sm" style={secondaryButtonStyle} onClick={() => void handleDetectAdvanced()} disabled={advancedLoading}>
-                      <Search size={14} />{scanActionLabel}
+                      <RefreshCw size={14} className={advancedLoading ? 'animate-spin' : ''} />{scanActionLabel}
+                    </button>
+                  ) : null}
+                  {currentProviderCanValidateModels ? (
+                    <button
+                      type="button"
+                      className="inline-flex h-9 items-center gap-1 rounded-xl border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                      style={secondaryButtonStyle}
+                      onClick={() => currentEditingProvider && void handleValidateProvider(currentEditingProvider)}
+                      disabled={!canOperateOnCurrentProvider || detectingProviderId === currentEditingProvider?.id}
+                    >
+                      <CheckCircle2 size={14} className={detectingProviderId === currentEditingProvider?.id ? 'animate-spin' : ''} />
+                      {validateActionLabel}
                     </button>
                   ) : null}
                   <button
@@ -3444,6 +3509,8 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                         ? '识别接口模型后，这里会展示当前接口对应的价格记录，方便继续维护单接口成本。'
                         : isCurrentWuyinCatalogMode
                           ? '读取目录后，这里会展示目录返回的型号、品牌和基础价格；如果某个 async 接口需要单独计费，可继续在下方补充接口单价。'
+                          : isCurrentManualPricingOnlyProvider
+                            ? '该供应商没有兼容的价格扫描接口。这里会展示你已经保存的价格快照或手动维护结果，方便核对当前生效分组的计费。'
                           : '扫描价格后，这里会展示供应商返回的品牌、分组、计费方式和最终价格，方便你直接确认同步内容。'}
                   </div>
                 )}
@@ -3713,7 +3780,17 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                     });
                     const providerWorkbenchMeta = getProviderWorkbenchMeta(providerWorkbenchMode, {
                       isCatalogMode: isWuyinCatalogMode,
+                      manualPricingOnly: providerRuntime.strategyId === '12ai',
                     });
+                    const providerCanScanPricing =
+                      providerWorkbenchMode === 'pricing-sync' && !isWuyinCatalogMode && providerRuntime.strategyId !== '12ai';
+                    const providerCanValidateModels =
+                      providerWorkbenchMode !== 'endpoint-model' && providerRuntime.strategyId !== 'wuyinkeji';
+                    const providerPriceActionLabel = provider.pricingSnapshot?.rows?.length ? '重新获取价格' : '获取价格';
+                    const providerValidateActionLabel =
+                      providerWorkbenchMode === 'model-detect'
+                        ? (provider.models?.length ? '重新识别模型' : '识别模型')
+                        : '重新校验模型';
                     const providerColor = provider.providerColor || provider.badgeColor || '#3B82F6';
                     const providerStatus = getProviderStatusMeta(provider);
                     const providerPricingCount = provider.pricingSnapshot?.rows?.length || 0;
@@ -3801,7 +3878,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                                 {provider.isActive ? <Pause size={12} /> : <Play size={12} />}
                                 {provider.isActive ? '停用' : '启用'}
                               </button>
-                              {providerWorkbenchMode === 'pricing-sync' && !isWuyinCatalogMode ? (
+                              {providerCanScanPricing ? (
                                 <button
                                   type="button"
                                   className="apple-button-secondary h-8 px-3 text-xs transition-all active:scale-95"
@@ -3812,9 +3889,10 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                                   }}
                                 >
                                   <RefreshCw size={12} className={syncingProviderId === provider.id ? 'animate-spin' : ''} />
-                                  同步价格
+                                  {syncingProviderId === provider.id ? '获取中...' : providerPriceActionLabel}
                                 </button>
-                              ) : providerWorkbenchMode === 'model-detect' ? (
+                              ) : null}
+                              {providerCanValidateModels ? (
                                 <button
                                   type="button"
                                   className="apple-button-secondary h-8 px-3 text-xs transition-all active:scale-95"
@@ -3825,7 +3903,7 @@ const ApiSettingsView: React.FC<ApiSettingsViewProps> = ({ initialSupplier = nul
                                   }}
                                 >
                                   <CheckCircle2 size={12} className={detectingProviderId === provider.id ? 'animate-spin' : ''} />
-                                  识别模型
+                                  {detectingProviderId === provider.id ? (providerWorkbenchMode === 'model-detect' ? '识别中...' : '校验中...') : providerValidateActionLabel}
                                 </button>
                               ) : null}
                             </div>

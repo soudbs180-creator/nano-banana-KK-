@@ -2625,6 +2625,14 @@ export class KeyManager {
     public getKey(id: string): KeySlot | undefined {
         return this.state.slots.find(s => s.id === id);
     }
+
+    public getEffectiveKey(id: string): KeySlot | undefined {
+        const slot = this.state.slots.find((item) => item.id === id);
+        if (!slot) return undefined;
+
+        const linkedProvider = this.findLinkedProviderForSlot(slot);
+        return linkedProvider ? this.buildEffectiveSlotFromProvider(slot, linkedProvider) : slot;
+    }
     /**
      * Refresh a single key
      * 棣冩畬 Now also synchronizes model list!
@@ -3305,6 +3313,20 @@ export class KeyManager {
     getProvider(id: string): ThirdPartyProvider | undefined {
         this.loadProviders();
         return this.providers.find(p => p.id === id);
+    }
+
+    getProviderForKeySlot(slotOrId: string | KeySlot): ThirdPartyProvider | undefined {
+        this.loadProviders();
+
+        if (typeof slotOrId === 'string') {
+            const directProvider = this.providers.find((provider) => provider.id === slotOrId);
+            if (directProvider) return directProvider;
+
+            const slot = this.state.slots.find((entry) => entry.id === slotOrId);
+            return slot ? this.findLinkedProviderForSlot(slot) || undefined : undefined;
+        }
+
+        return this.findLinkedProviderForSlot(slotOrId) || undefined;
     }
 
     /**

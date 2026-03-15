@@ -164,8 +164,11 @@ const getMediaExtension = (image: GeneratedImage, source: string | null, blobTyp
 };
 
 const getDisplayCost = (image: GeneratedImage): number => {
-  if (typeof image.cost === 'number' && Number.isFinite(image.cost)) {
-    return image.cost;
+  const storedCost = typeof image.cost === 'number' && Number.isFinite(image.cost)
+    ? image.cost
+    : undefined;
+  if (storedCost !== undefined && (storedCost > 0 || !image.keySlotId)) {
+    return storedCost;
   }
 
   try {
